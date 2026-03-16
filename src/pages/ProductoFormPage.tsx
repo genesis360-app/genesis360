@@ -194,7 +194,7 @@ export default function ProductoFormPage() {
     }
   }
 
-  const canEdit = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR'
+  const canEdit = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">

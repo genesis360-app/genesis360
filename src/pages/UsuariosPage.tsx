@@ -106,7 +106,7 @@ export default function UsuariosPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const canManage = user?.rol === 'OWNER' || user?.rol === 'ADMIN'
+  const canManage = user?.rol === 'OWNER'
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -236,7 +236,7 @@ export default function UsuariosPage() {
                     </span>
                   </div>
 
-                  {canManage && u.activo && !esMiUsuario && (
+                  {canManage && u.activo && (
                     <div className="flex items-center gap-2">
                       <select value={u.rol}
                         onChange={e => updateRol.mutate({ userId: u.id, rol: e.target.value as UserRole })}
@@ -247,10 +247,12 @@ export default function UsuariosPage() {
                             <option key={r} value={r}>{cfg.label}</option>
                           ))}
                       </select>
-                      <button onClick={() => { if (confirm(`¿Desactivar a ${u.nombre_display}?`)) desactivar.mutate(u.id) }}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                        <Trash2 size={15} />
-                      </button>
+                      {!esMiUsuario && (
+                        <button onClick={() => { if (confirm(`¿Desactivar a ${u.nombre_display}?`)) desactivar.mutate(u.id) }}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

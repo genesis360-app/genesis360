@@ -30,28 +30,10 @@ export default function SuscripcionPage() {
     }
     setLoading(planId)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/crear-suscripcion`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            plan_id: mpPlanId,
-            tenant_id: tenant?.id,
-            back_url: `${window.location.origin}/suscripcion`,
-          }),
-        }
-      )
-      const data = await response.json()
-      if (data.init_point) {
-        window.location.href = data.init_point
-      } else {
-        throw new Error(data.error ?? 'Error al crear suscripción')
-      }
+      // Redirigir directo al checkout del plan en MP
+      // El plan ya tiene configurado el back_url con el tenant_id como external_reference
+      const checkoutUrl = `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${mpPlanId}&external_reference=${tenant?.id}&back_url=${encodeURIComponent(window.location.origin + '/suscripcion')}`
+      window.location.href = checkoutUrl
     } catch (err: any) {
       toast.error(err.message ?? 'Error al conectar con Mercado Pago')
       setLoading(null)

@@ -75,7 +75,7 @@ export default function MovimientosPage() {
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%`)
         .limit(8)
-      return (data ?? []) as Producto[]
+      return (data ?? []) as unknown as Producto[]
     },
     enabled: !!tenant && form.productoSearch.length > 1,
   })

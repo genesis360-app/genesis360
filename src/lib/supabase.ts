@@ -29,6 +29,7 @@ export interface Tenant {
   trial_ends_at: string
   plan_id?: string
   max_users: number
+  max_productos: number
   mp_subscription_id?: string
   logo_url?: string
   created_at: string

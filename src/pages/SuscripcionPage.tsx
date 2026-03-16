@@ -24,16 +24,30 @@ export default function SuscripcionPage() {
   const preapprovalId = searchParams.get('preapproval_id')
 
   const handleSuscribir = async (planId: string, mpPlanId: string) => {
-    if (!mpPlanId) {
-      toast.error('Plan no configurado. Contactá soporte.')
-      return
-    }
+    if (!mpPlanId) { toast.error('Plan no configurado'); return }
     setLoading(planId)
+    const plan = PLANES.find(p => p.id === planId)
     try {
-      // Redirigir directo al checkout del plan en MP
-      // El plan ya tiene configurado el back_url con el tenant_id como external_reference
-      const checkoutUrl = `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${mpPlanId}&external_reference=${tenant?.id}&back_url=${encodeURIComponent(window.location.origin + '/suscripcion')}`
-      window.location.href = checkoutUrl
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/crear-suscripcion`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: mpPlanId,
+            tenant_id: tenant?.id,
+            monto: plan?.precio ?? 4900,
+            descripcion: `Stokio ${plan?.nombre} - Suscripción mensual`,
+            back_url: `${window.location.origin}/suscripcion`,
+          }),
+        }
+      )
+      const data = await response.json()
+      if (data.error) throw new Error(data.error)
+      // En sandbox usar sandbox_init_point, en producción usar init_point
+      const url = data.sandbox_init_point ?? data.init_point
+      if (url) window.location.href = url
+      else throw new Error('No se obtuvo URL de pago')
     } catch (err: any) {
       toast.error(err.message ?? 'Error al conectar con Mercado Pago')
       setLoading(null)

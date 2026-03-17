@@ -261,7 +261,7 @@ export default function MetricasPage() {
               <BarChart data={dataGrafico}>
                 <XAxis dataKey="fecha" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
-                <Tooltip formatter={(v: number) => formatMoneda(v)} />
+                <Tooltip formatter={(v: any) => formatMoneda(v as number)} />
                 <Bar dataKey="total" fill="#2E75B6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -277,11 +277,11 @@ export default function MetricasPage() {
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie data={dataMediosPago} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`}
                   labelLine={false}>
                   {dataMediosPago.map((_, i) => <Cell key={i} fill={COLORES[i % COLORES.length]} />)}
                 </Pie>
-                <Tooltip formatter={(v: number) => formatMoneda(v)} />
+                <Tooltip formatter={(v: any) => formatMoneda(v as number)} />
               </PieChart>
             </ResponsiveContainer>
           )}

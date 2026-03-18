@@ -87,6 +87,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (!tieneSeries && (isNaN(cantNueva) || cantNueva < 0))
         throw new Error('Cantidad inválida')
 
+      // Validar atributos obligatorios según el producto
+      if (producto.tiene_lote && !editForm.nro_lote.trim())
+        throw new Error('Este producto requiere número de lote')
+      if (producto.tiene_vencimiento && !editForm.fecha_vencimiento)
+        throw new Error('Este producto requiere fecha de vencimiento')
+
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
 
@@ -330,19 +336,25 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 </div>
                 {producto.tiene_lote && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Nro. lote</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Nro. lote <span className="text-red-500">*</span>
+                    </label>
                     <input type="text" value={editForm.nro_lote} onChange={e => setEditForm(p => ({ ...p, nro_lote: e.target.value }))}
                       placeholder="Lote-001"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]
+                        ${!editForm.nro_lote.trim() ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                   </div>
                 )}
               </div>
 
               {producto.tiene_vencimiento && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Fecha de vencimiento</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Fecha de vencimiento <span className="text-red-500">*</span>
+                  </label>
                   <input type="date" value={editForm.fecha_vencimiento} onChange={e => setEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]
+                      ${!editForm.fecha_vencimiento ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                 </div>
               )}
 

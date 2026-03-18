@@ -32,6 +32,8 @@ export interface Tenant {
   max_productos: number
   mp_subscription_id?: string
   logo_url?: string
+  cotizacion_usd?: number
+  cotizacion_usd_updated_at?: string
   created_at: string
 }
 

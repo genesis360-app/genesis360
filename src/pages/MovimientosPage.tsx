@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers } from 'lucide-react'
+import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, DollarSign } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
+import { useCotizacion } from '@/hooks/useCotizacion'
 import toast from 'react-hot-toast'
 import type { Producto } from '@/lib/supabase'
 
@@ -12,6 +13,7 @@ type ModalType = 'ingreso' | 'rebaje' | null
 const emptyIngreso = {
   productoSearch: '', cantidad: '', motivo: '', ubicacionId: '',
   estadoId: '', proveedorId: '', nroLote: '', fechaVencimiento: '', lpn: '',
+  precioCosto: '',
 }
 
 // Info tooltip component
@@ -35,6 +37,7 @@ function InfoTip({ text }: { text: string }) {
 
 export default function MovimientosPage() {
   const { tenant, user } = useAuthStore()
+  const { cotizacion: cotizacionNum } = useCotizacion()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const [modal, setModal] = useState<ModalType>(null)
@@ -71,7 +74,7 @@ export default function MovimientosPage() {
     queryKey: ['productos-busqueda', tenant?.id, form.productoSearch],
     queryFn: async () => {
       const { data } = await supabase.from('productos')
-        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id')
+        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%`)
         .limit(8)
@@ -164,6 +167,7 @@ export default function MovimientosPage() {
           proveedor_id: form.proveedorId || null,
           nro_lote: form.nroLote || null,
           fecha_vencimiento: form.fechaVencimiento || null,
+          precio_costo_snapshot: parseFloat(form.precioCosto) || (selectedProduct as any).precio_costo || null,
         })
         .select().single()
       if (lineaError) throw lineaError
@@ -417,8 +421,8 @@ export default function MovimientosPage() {
                           setForm(f => ({
                             ...f,
                             productoSearch: '',
-                            // Preseleccionar ubicación del producto si tiene una definida
                             ubicacionId: (p as any).ubicacion_id ?? f.ubicacionId,
+                            precioCosto: (p as any).precio_costo?.toString() ?? '',
                           }))
                         }}
                           className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0">
@@ -544,6 +548,48 @@ export default function MovimientosPage() {
                         ${!form.fechaVencimiento ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                   </div>
                 )}
+
+                {/* Precio de compra (snapshot para rentabilidad histórica) */}
+                <div className="mb-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Precio de compra <span className="text-gray-400 font-normal text-xs">(costo unitario de este ingreso)</span>
+                  </label>
+                  <div className="flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={form.precioCosto}
+                        onChange={e => setForm(p => ({ ...p, precioCosto: e.target.value }))}
+                        placeholder="0.00"
+                        className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]"
+                      />
+                    </div>
+                    {cotizacionNum > 0 && parseFloat(form.precioCosto) > 0 && (
+                      <span className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1">
+                        <DollarSign size={11} />
+                        {(parseFloat(form.precioCosto) / cotizacionNum).toFixed(2)} USD
+                      </span>
+                    )}
+                  </div>
+                  {cotizacionNum > 0 && (
+                    <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
+                      <DollarSign size={11} />
+                      Podés ingresar en USD: ${(parseFloat(form.precioCosto || '0') / cotizacionNum || 0).toFixed(2)} ·{' '}
+                      <button
+                        type="button"
+                        className="underline"
+                        onClick={() => {
+                          const usdVal = window.prompt('Ingresá el precio en USD:')
+                          if (usdVal && parseFloat(usdVal) > 0)
+                            setForm(p => ({ ...p, precioCosto: (parseFloat(usdVal) * cotizacionNum).toFixed(2) }))
+                        }}
+                      >
+                        convertir desde USD
+                      </button>
+                    </p>
+                  )}
+                </div>
 
                 <div className="mb-5">
 				  <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>

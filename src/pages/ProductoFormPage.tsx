@@ -5,6 +5,7 @@ import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign } from 'luci
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import toast from 'react-hot-toast'
 
@@ -23,6 +24,7 @@ export default function ProductoFormPage() {
   const qc = useQueryClient()
   const { tenant, user } = useAuthStore()
   const { limits } = usePlanLimits()
+  const { cotizacion: cotizacionNum } = useCotizacion()
   const [showLimitModal, setShowLimitModal] = useState(false)
 
   const [form, setForm] = useState({
@@ -37,8 +39,7 @@ export default function ProductoFormPage() {
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
-  // Cotización USD
-  const [cotizacion, setCotizacion] = useState('')
+  // USD mode (usa cotización global del sidebar)
   const [usdModoCosto, setUsdModoCosto] = useState(false)
   const [usdModoVenta, setUsdModoVenta] = useState(false)
   const [usdInputCosto, setUsdInputCosto] = useState('')
@@ -346,18 +347,19 @@ export default function ProductoFormPage() {
             <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-gray-700">Precios y stock</h2>
-                <div className="flex items-center gap-2">
-                  <DollarSign size={13} className="text-gray-400" />
-                  <span className="text-xs text-gray-500">$1 USD =</span>
-                  <input type="number" min="0" step="1" value={cotizacion}
-                    onChange={e => { setCotizacion(e.target.value); setUsdModoCosto(false); setUsdModoVenta(false) }}
-                    placeholder="cotización"
-                    className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#2E75B6]" />
-                  <span className="text-xs text-gray-400">ARS</span>
-                </div>
+                {cotizacionNum > 0 ? (
+                  <div className="flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-lg">
+                    <DollarSign size={12} className="text-blue-400" />
+                    <span className="text-xs text-blue-600 font-medium">
+                      $1 USD = ${cotizacionNum.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-400">Sin cotización USD (configurar en el menú lateral)</span>
+                )}
               </div>
               {(() => {
-                const cotizNum = parseFloat(cotizacion) || 0
+                const cotizNum = cotizacionNum
                 const toggleCosto = () => {
                   if (!usdModoCosto && cotizNum > 0)
                     setUsdInputCosto(((parseFloat(form.precio_costo) || 0) / cotizNum).toFixed(2))

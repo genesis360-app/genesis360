@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
+import { CotizacionWidget } from '@/components/CotizacionWidget'
 import { differenceInDays } from 'date-fns'
 
 const navItems = [
@@ -83,8 +84,11 @@ export function AppLayout() {
         })}
       </nav>
 
+      {/* Cotización USD */}
+      <CotizacionWidget />
+
       {/* Usuario y logout */}
-      <div className="px-3 py-4 border-t border-[#2E75B6]/20 space-y-1">
+      <div className="px-3 py-3 border-t border-[#2E75B6]/20 space-y-1">
         <div className="px-3 py-2">
           <p className="text-white text-sm font-medium truncate">{user?.nombre_display}</p>
           <p className="text-blue-300 text-xs capitalize">{user?.rol?.toLowerCase()}</p>

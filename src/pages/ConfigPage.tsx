@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados'
+type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
 const COLORES = [
@@ -154,6 +154,88 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
   )
 }
 
+function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
+  motivos: any[]; loading: boolean
+  onAdd: (nombre: string, tipo?: string) => Promise<void>
+  onUpdate: (id: string, nombre: string, tipo?: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}) {
+  const [newNombre, setNewNombre] = useState('')
+  const [newTipo, setNewTipo] = useState('ambos')
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editNombre, setEditNombre] = useState('')
+  const [editTipo, setEditTipo] = useState('ambos')
+  const [saving, setSaving] = useState(false)
+
+  const TIPOS = [
+    { value: 'ingreso', label: 'Solo ingreso' },
+    { value: 'rebaje', label: 'Solo rebaje' },
+    { value: 'ambos', label: 'Ambos' },
+  ]
+  const tipoLabel = (tipo: string) => TIPOS.find(t => t.value === tipo)?.label ?? tipo
+  const tipoColor = (tipo: string) => tipo === 'ingreso' ? 'bg-green-100 text-green-700' : tipo === 'rebaje' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+
+  const handleAdd = async () => {
+    if (!newNombre.trim()) return
+    setSaving(true)
+    await onAdd(newNombre.trim(), newTipo)
+    setNewNombre(''); setNewTipo('ambos'); setSaving(false)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input type="text" value={newNombre} onChange={e => setNewNombre(e.target.value)}
+          placeholder="Nuevo motivo..." onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+        <select value={newTipo} onChange={e => setNewTipo(e.target.value)}
+          className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+          {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+        <button onClick={handleAdd} disabled={saving || !newNombre.trim()}
+          className="px-4 py-2.5 bg-[#1E3A5F] text-white rounded-xl text-sm disabled:opacity-50 hover:bg-[#2E75B6] transition-all">
+          <Plus size={16} />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" /></div>
+      ) : motivos.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-6">No hay motivos cargados</p>
+      ) : (
+        <div className="space-y-2">
+          {motivos.map((m: any) => (
+            <div key={m.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+              {editId === m.id ? (
+                <>
+                  <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)}
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  <select value={editTipo} onChange={e => setEditTipo(e.target.value)}
+                    className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none">
+                    {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                  <button onClick={async () => { setSaving(true); await onUpdate(m.id, editNombre, editTipo); setEditId(null); setSaving(false) }}
+                    className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"><Check size={15} /></button>
+                  <button onClick={() => setEditId(null)} className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-lg"><X size={15} /></button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 text-sm font-medium text-gray-800">{m.nombre}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipoColor(m.tipo)}`}>{tipoLabel(m.tipo)}</span>
+                  <button onClick={() => { setEditId(m.id); setEditNombre(m.nombre); setEditTipo(m.tipo) }}
+                    className="p-1.5 text-gray-400 hover:text-[#2E75B6] hover:bg-blue-50 rounded-lg"><Pencil size={15} /></button>
+                  <button onClick={() => onDelete(m.id)}
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ConfigPage() {
   const [tab, setTab] = useState<Tab>('negocio')
   const { tenant, user, setTenant } = useAuthStore()
@@ -253,12 +335,33 @@ export default function ConfigPage() {
     if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }) }
   }
 
+  // Motivos
+  const { data: motivos = [], isLoading: loadingMotivos } = useQuery({
+    queryKey: ['motivos', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('motivos_movimiento').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
+    enabled: !!tenant,
+  })
+  const addMotivo = async (nombre: string, tipo?: string) => {
+    const { error } = await supabase.from('motivos_movimiento').insert({ tenant_id: tenant!.id, nombre, tipo: tipo || 'ambos' })
+    if (error) toast.error(error.message); else { toast.success('Motivo agregado'); qc.invalidateQueries({ queryKey: ['motivos'] }) }
+  }
+  const updateMotivo = async (id: string, nombre: string, tipo?: string) => {
+    const { error } = await supabase.from('motivos_movimiento').update({ nombre, tipo: tipo || 'ambos' }).eq('id', id)
+    if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['motivos'] }) }
+  }
+  const deleteMotivo = async (id: string) => {
+    if (!confirm('¿Eliminar este motivo?')) return
+    const { error } = await supabase.from('motivos_movimiento').update({ activo: false }).eq('id', id)
+    if (error) toast.error(error.message); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['motivos'] }) }
+  }
+
   const tabs = [
     { id: 'negocio' as Tab, label: 'Mi negocio', icon: Building2 },
     { id: 'categorias' as Tab, label: 'Categorías', icon: Tag },
     { id: 'proveedores' as Tab, label: 'Proveedores', icon: Truck },
     { id: 'ubicaciones' as Tab, label: 'Ubicaciones', icon: MapPin },
     { id: 'estados' as Tab, label: 'Estados', icon: CircleDot },
+    { id: 'motivos' as Tab, label: 'Motivos', icon: MessageSquare },
   ]
 
   return (
@@ -355,6 +458,18 @@ export default function ConfigPage() {
           </div>
           <p className="text-xs text-gray-400 mb-4">Definen la condición del producto: Disponible, Dañado, Reservado, En tránsito, etc.</p>
           <ListaABM items={estados} loading={loadingEstados} withColor onAdd={addEstado} onUpdate={updateEstado} onDelete={deleteEstado} />
+        </div>
+      )}
+
+      {tab === 'motivos' && (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 mb-1">
+            <MessageSquare size={18} className="text-[#2E75B6]" />
+            <h2 className="font-semibold text-gray-700">Motivos de movimiento</h2>
+            <span className="ml-auto text-xs text-gray-400">{motivos.length} cargados</span>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">Motivos predefinidos que aparecen al registrar ingresos y rebajes de stock.</p>
+          <MotivosList motivos={motivos} loading={loadingMotivos} onAdd={addMotivo} onUpdate={updateMotivo} onDelete={deleteMotivo} />
         </div>
       )}
     </div>

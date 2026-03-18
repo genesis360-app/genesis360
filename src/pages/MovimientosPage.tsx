@@ -71,7 +71,7 @@ export default function MovimientosPage() {
     queryKey: ['productos-busqueda', tenant?.id, form.productoSearch],
     queryFn: async () => {
       const { data } = await supabase.from('productos')
-        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento')
+        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%`)
         .limit(8)
@@ -80,6 +80,15 @@ export default function MovimientosPage() {
     enabled: !!tenant && form.productoSearch.length > 1,
   })
 
+  const { data: motivos = [] } = useQuery({
+    queryKey: ['motivos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('motivos_movimiento')
+        .select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
   const { data: ubicaciones = [] } = useQuery({
     queryKey: ['ubicaciones', tenant?.id],
     queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
@@ -403,7 +412,15 @@ export default function MovimientosPage() {
                   {productosBusqueda.length > 0 && (
                     <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                       {productosBusqueda.map(p => (
-                        <button key={p.id} onClick={() => { setSelectedProduct(p); setForm(f => ({ ...f, productoSearch: '' })) }}
+                        <button key={p.id} onClick={() => {
+                          setSelectedProduct(p)
+                          setForm(f => ({
+                            ...f,
+                            productoSearch: '',
+                            // Preseleccionar ubicación del producto si tiene una definida
+                            ubicacionId: (p as any).ubicacion_id ?? f.ubicacionId,
+                          }))
+                        }}
                           className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0">
                           <span className="font-medium">{p.nombre}</span>
                           <span className="text-gray-400 ml-2 text-xs">{p.sku}</span>
@@ -477,7 +494,12 @@ export default function MovimientosPage() {
                   )}
                   {ubicaciones.length > 0 && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Ubicación
+                        {selectedProduct && (selectedProduct as any).ubicacion_id && form.ubicacionId === (selectedProduct as any).ubicacion_id && (
+                          <span className="ml-2 text-xs text-blue-500 font-normal">← ubicación del producto</span>
+                        )}
+                      </label>
                       <select value={form.ubicacionId} onChange={e => setForm(p => ({ ...p, ubicacionId: e.target.value }))}
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
                         <option value="">Sin ubicación</option>
@@ -524,10 +546,29 @@ export default function MovimientosPage() {
                 )}
 
                 <div className="mb-5">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Motivo (opcional)</label>
-                  <input type="text" value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
-                    placeholder="Ej: Compra a proveedor"
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
+                  {motivos.filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ambos').length > 0 ? (
+                    <div className="space-y-2">
+                      <select
+                        onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+                        <option value="">Seleccioná un motivo...</option>
+                        {(motivos as any[])
+                          .filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ambos')
+                          .map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                        <option value="__otro__">Otro (escribir)</option>
+                      </select>
+                      {form.motivo === '__otro__' && (
+                        <input type="text" placeholder="Escribí el motivo..."
+                          onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
+                          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                      )}
+                    </div>
+                  ) : (
+                    <input type="text" value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
+                      placeholder="Ej: Compra a proveedor"
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  )}
                 </div>
               </>
             )}
@@ -737,9 +778,28 @@ export default function MovimientosPage() {
 
                     <div className="mb-5">
                       <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
-                      <input type="text" value={rebajeMotivo} onChange={e => setRebajeMotivo(e.target.value)}
-                        placeholder="Ej: Venta, pérdida, consumo..."
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                      {motivos.filter((m: any) => m.tipo === 'rebaje' || m.tipo === 'ambos').length > 0 ? (
+                        <div className="space-y-2">
+                          <select value={rebajeMotivo}
+                            onChange={e => setRebajeMotivo(e.target.value)}
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+                            <option value="">Seleccioná un motivo...</option>
+                            {(motivos as any[])
+                              .filter((m: any) => m.tipo === 'rebaje' || m.tipo === 'ambos')
+                              .map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                            <option value="__otro__">Otro (escribir)</option>
+                          </select>
+                          {rebajeMotivo === '__otro__' && (
+                            <input type="text" placeholder="Escribí el motivo..."
+                              onChange={e => setRebajeMotivo(e.target.value)}
+                              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                          )}
+                        </div>
+                      ) : (
+                        <input type="text" value={rebajeMotivo} onChange={e => setRebajeMotivo(e.target.value)}
+                          placeholder="Ej: Venta, pérdida, consumo..."
+                          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                      )}
                     </div>
                   </>
                 )}

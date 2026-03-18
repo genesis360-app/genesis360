@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -36,6 +36,13 @@ export default function ProductoFormPage() {
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
+
+  // Cotización USD
+  const [cotizacion, setCotizacion] = useState('')
+  const [usdModoCosto, setUsdModoCosto] = useState(false)
+  const [usdModoVenta, setUsdModoVenta] = useState(false)
+  const [usdInputCosto, setUsdInputCosto] = useState('')
+  const [usdInputVenta, setUsdInputVenta] = useState('')
 
   const { data: categorias = [] } = useQuery({
     queryKey: ['categorias', tenant?.id],
@@ -194,6 +201,41 @@ export default function ProductoFormPage() {
     }
   }
 
+  const handleDuplicate = async () => {
+    if (!confirm(`¿Duplicar "${form.nombre}"? Se creará una copia con stock en 0.`)) return
+    setSaving(true)
+    try {
+      const payload = {
+        tenant_id: tenant!.id,
+        nombre: `Copia de ${form.nombre}`,
+        sku: generateSKU(`Copia ${form.nombre}`),
+        descripcion: form.descripcion.trim() || null,
+        categoria_id: form.categoria_id || null,
+        proveedor_id: form.proveedor_id || null,
+        ubicacion_id: form.ubicacion_id || null,
+        precio_costo: parseFloat(form.precio_costo) || 0,
+        precio_venta: parseFloat(form.precio_venta) || 0,
+        stock_minimo: parseInt(form.stock_minimo) || 0,
+        unidad_medida: form.unidad_medida,
+        codigo_barras: null,
+        imagen_url: existingImageUrl,
+        activo: true,
+        tiene_series: form.tiene_series,
+        tiene_lote: form.tiene_lote,
+        tiene_vencimiento: form.tiene_vencimiento,
+      }
+      const { data: newProd, error } = await supabase.from('productos').insert(payload).select().single()
+      if (error) throw error
+      toast.success('Producto duplicado')
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      navigate(newProd?.id ? `/inventario/${newProd.id}/editar` : '/inventario')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al duplicar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const canEdit = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
 
   return (
@@ -210,10 +252,16 @@ export default function ProductoFormPage() {
           <p className="text-gray-500 text-sm mt-0.5">{isEditing ? 'Modificá los datos del producto' : 'Completá los datos del nuevo producto'}</p>
         </div>
         {isEditing && canEdit && (
-          <button onClick={handleDelete}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 border border-red-200 rounded-xl hover:bg-red-50 transition-all">
-            Eliminar
-          </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={handleDuplicate} disabled={saving}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[#1E3A5F] border border-gray-200 rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50">
+              <Copy size={15} /> Duplicar
+            </button>
+            <button type="button" onClick={handleDelete}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 border border-red-200 rounded-xl hover:bg-red-50 transition-all">
+              Eliminar
+            </button>
+          </div>
         )}
       </div>
 
@@ -296,27 +344,103 @@ export default function ProductoFormPage() {
 
             {/* Precios y stock */}
             <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
-              <h2 className="font-semibold text-gray-700">Precios y stock</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio de costo</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                    <input type="number" min="0" step="0.01" value={form.precio_costo} disabled={!canEdit}
-                      onChange={e => setForm(p => ({ ...p, precio_costo: e.target.value }))}
-                      className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] disabled:bg-gray-50" placeholder="0.00" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio de venta</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                    <input type="number" min="0" step="0.01" value={form.precio_venta} disabled={!canEdit}
-                      onChange={e => setForm(p => ({ ...p, precio_venta: e.target.value }))}
-                      className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] disabled:bg-gray-50" placeholder="0.00" />
-                  </div>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-gray-700">Precios y stock</h2>
+                <div className="flex items-center gap-2">
+                  <DollarSign size={13} className="text-gray-400" />
+                  <span className="text-xs text-gray-500">$1 USD =</span>
+                  <input type="number" min="0" step="1" value={cotizacion}
+                    onChange={e => { setCotizacion(e.target.value); setUsdModoCosto(false); setUsdModoVenta(false) }}
+                    placeholder="cotización"
+                    className="w-24 px-2 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#2E75B6]" />
+                  <span className="text-xs text-gray-400">ARS</span>
                 </div>
               </div>
+              {(() => {
+                const cotizNum = parseFloat(cotizacion) || 0
+                const toggleCosto = () => {
+                  if (!usdModoCosto && cotizNum > 0)
+                    setUsdInputCosto(((parseFloat(form.precio_costo) || 0) / cotizNum).toFixed(2))
+                  setUsdModoCosto(v => !v)
+                }
+                const toggleVenta = () => {
+                  if (!usdModoVenta && cotizNum > 0)
+                    setUsdInputVenta(((parseFloat(form.precio_venta) || 0) / cotizNum).toFixed(2))
+                  setUsdModoVenta(v => !v)
+                }
+                return (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-medium text-gray-700">Precio de costo</label>
+                        {cotizNum > 0 && canEdit && (
+                          <button type="button" onClick={toggleCosto}
+                            className="text-xs text-[#2E75B6] hover:underline">
+                            {usdModoCosto ? 'Ingresar en ARS' : 'Ingresar en USD'}
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
+                          {usdModoCosto ? 'USD' : '$'}
+                        </span>
+                        <input type="number" min="0" step="0.01" disabled={!canEdit}
+                          value={usdModoCosto ? usdInputCosto : form.precio_costo}
+                          onChange={e => {
+                            if (usdModoCosto && cotizNum > 0) {
+                              setUsdInputCosto(e.target.value)
+                              setForm(p => ({ ...p, precio_costo: ((parseFloat(e.target.value) || 0) * cotizNum).toString() }))
+                            } else {
+                              setForm(p => ({ ...p, precio_costo: e.target.value }))
+                            }
+                          }}
+                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] disabled:bg-gray-50" placeholder="0.00" />
+                      </div>
+                      {cotizNum > 0 && (parseFloat(form.precio_costo) || 0) > 0 && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          {usdModoCosto
+                            ? `= $${(parseFloat(form.precio_costo) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
+                            : `≈ USD ${((parseFloat(form.precio_costo) || 0) / cotizNum).toFixed(2)}`}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-sm font-medium text-gray-700">Precio de venta</label>
+                        {cotizNum > 0 && canEdit && (
+                          <button type="button" onClick={toggleVenta}
+                            className="text-xs text-[#2E75B6] hover:underline">
+                            {usdModoVenta ? 'Ingresar en ARS' : 'Ingresar en USD'}
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
+                          {usdModoVenta ? 'USD' : '$'}
+                        </span>
+                        <input type="number" min="0" step="0.01" disabled={!canEdit}
+                          value={usdModoVenta ? usdInputVenta : form.precio_venta}
+                          onChange={e => {
+                            if (usdModoVenta && cotizNum > 0) {
+                              setUsdInputVenta(e.target.value)
+                              setForm(p => ({ ...p, precio_venta: ((parseFloat(e.target.value) || 0) * cotizNum).toString() }))
+                            } else {
+                              setForm(p => ({ ...p, precio_venta: e.target.value }))
+                            }
+                          }}
+                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] disabled:bg-gray-50" placeholder="0.00" />
+                      </div>
+                      {cotizNum > 0 && (parseFloat(form.precio_venta) || 0) > 0 && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          {usdModoVenta
+                            ? `= $${(parseFloat(form.precio_venta) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
+                            : `≈ USD ${((parseFloat(form.precio_venta) || 0) / cotizNum).toFixed(2)}`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
               {margen !== null && (
                 <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
                   ${parseFloat(margen) >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>

@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 type EstadoVenta = 'pendiente' | 'reservada' | 'despachada' | 'cancelada' | 'facturada'
 type Tab = 'nueva' | 'historial'
 type DescTipo = 'pct' | 'monto'
+type MedioPagoItem = { tipo: string; monto: string }
 
 const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }> = {
   pendiente:  { label: 'Pendiente',  color: 'text-yellow-700', bg: 'bg-yellow-100' },
@@ -46,7 +47,7 @@ export default function VentasPage() {
   const [productoSearch, setProductoSearch] = useState('')
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
-  const [medioPago, setMedioPago] = useState('')
+  const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   const [descuentoTotal, setDescuentoTotal] = useState('')
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
   const [notas, setNotas] = useState('')
@@ -61,6 +62,9 @@ export default function VentasPage() {
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
 
+  // Foco en buscador de productos
+  const [searchFocused, setSearchFocused] = useState(false)
+
   const { data: productosBusqueda = [] } = useQuery({
     queryKey: ['productos-venta', tenant?.id, productoSearch, ventaGrupoId],
     queryFn: async () => {
@@ -73,11 +77,14 @@ export default function VentasPage() {
       const estadosFiltro = grupoActivo?.estado_ids ?? []
 
       // Buscar productos
-      const { data: prods } = await supabase.from('productos')
+      let prodQuery = supabase.from('productos')
         .select('id, nombre, sku, precio_venta, tiene_series, stock_actual, unidad_medida')
         .eq('tenant_id', tenant!.id).eq('activo', true)
-        .or(`nombre.ilike.%${productoSearch}%,sku.ilike.%${productoSearch}%`)
-        .limit(8)
+        .order('nombre')
+        .limit(20)
+      if (productoSearch.length > 0)
+        prodQuery = prodQuery.or(`nombre.ilike.%${productoSearch}%,sku.ilike.%${productoSearch}%`)
+      const { data: prods } = await prodQuery
 
       if (!prods || prods.length === 0) return []
 
@@ -126,7 +133,7 @@ export default function VentasPage() {
         }))
         .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0)
     },
-    enabled: !!tenant && productoSearch.length > 1,
+    enabled: !!tenant,
   })
 
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
@@ -221,6 +228,33 @@ export default function VentasPage() {
   const descTotalMonto = descuentoTotalTipo === 'pct' ? subtotal * descTotalVal / 100 : descTotalVal
   const total = Math.max(0, subtotal - descTotalMonto)
 
+  // Medios de pago helpers
+  const updateMedioPago = (idx: number, field: keyof MedioPagoItem, value: string) =>
+    setMediosPago(prev => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m))
+  const addMedioPago = () => setMediosPago(prev => [...prev, { tipo: '', monto: '' }])
+  const removeMedioPago = (idx: number) => setMediosPago(prev => prev.filter((_, i) => i !== idx))
+
+  const serializeMediosPago = (items: MedioPagoItem[], totalVenta: number): string | null => {
+    const filled = items.filter(m => m.tipo)
+    if (filled.length === 0) return null
+    if (filled.length === 1 && !filled[0].monto)
+      return JSON.stringify([{ tipo: filled[0].tipo, monto: totalVenta }])
+    return JSON.stringify(filled.map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto) || 0 })))
+  }
+
+  const formatMedioPago = (raw: string | null | undefined): string => {
+    if (!raw) return ''
+    try {
+      const arr = JSON.parse(raw) as { tipo: string; monto: number }[]
+      if (Array.isArray(arr))
+        return arr.map(p => p.monto ? `${p.tipo} $${p.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : p.tipo).join(' + ')
+    } catch {}
+    return raw
+  }
+
+  const totalAsignado = mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  const totalFaltante = total - totalAsignado
+
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
     for (const item of cart) {
@@ -230,6 +264,21 @@ export default function VentasPage() {
       if (item.tiene_series && item.series_seleccionadas.length !== item.cantidad) {
         toast.error(`Seleccioná ${item.cantidad} serie(s) para ${item.nombre}`); return
       }
+    }
+    // Validar medios de pago
+    const hayMontos = mediosPago.some(m => m.monto !== '')
+    if (hayMontos && Math.abs(totalFaltante) > 0.5) {
+      toast.error(
+        totalFaltante > 0
+          ? `Falta asignar $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en medios de pago`
+          : `El monto ingresado excede el total por $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+      )
+      return
+    }
+    // Para reservar o despachar no se puede cobrar de menos
+    if ((estado === 'reservada' || estado === 'despachada') && hayMontos && totalFaltante > 0.5) {
+      toast.error(`El monto pagado ($${totalAsignado.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) es menor al total. No se puede reservar ni despachar con pago incompleto.`)
+      return
     }
     setSaving(true)
     try {
@@ -242,7 +291,7 @@ export default function VentasPage() {
         subtotal,
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
         total,
-        medio_pago: medioPago || null,
+        medio_pago: serializeMediosPago(mediosPago, total),
         notas: notas || null,
         usuario_id: user?.id,
         ...(estado === 'despachada' ? { despachado_at: new Date().toISOString() } : {}),
@@ -315,13 +364,33 @@ export default function VentasPage() {
             }
           }
         }
+        // B1: Sincronizar stock_actual y registrar movimiento al despachar
+        if (estado === 'despachada') {
+          const { data: prodData } = await supabase.from('productos')
+            .select('stock_actual').eq('id', item.producto_id).single()
+          if (prodData) {
+            const stockAntes = prodData.stock_actual
+            const stockDespues = Math.max(0, stockAntes - cant)
+            await supabase.from('productos').update({ stock_actual: stockDespues }).eq('id', item.producto_id)
+            await supabase.from('movimientos_stock').insert({
+              tenant_id: tenant!.id,
+              producto_id: item.producto_id,
+              tipo: 'rebaje',
+              cantidad: cant,
+              stock_antes: stockAntes,
+              stock_despues: stockDespues,
+              motivo: `Venta #${venta.numero}`,
+              usuario_id: user?.id,
+            })
+          }
+        }
       } // cierre del for (const item of cart)
 
       const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })) })
       setCart([]); setClienteNombre(''); setClienteTelefono('')
-      setMedioPago(''); setDescuentoTotal(''); setNotas('')
+      setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas('')
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
@@ -394,6 +463,24 @@ export default function VentasPage() {
                 .eq('id', linea.id)
               restante -= rebajar
             }
+          }
+          // B1: Sincronizar stock_actual y registrar movimiento
+          const { data: prodData } = await supabase.from('productos')
+            .select('stock_actual').eq('id', item.producto_id).single()
+          if (prodData) {
+            const stockAntes = prodData.stock_actual
+            const stockDespues = Math.max(0, stockAntes - item.cantidad)
+            await supabase.from('productos').update({ stock_actual: stockDespues }).eq('id', item.producto_id)
+            await supabase.from('movimientos_stock').insert({
+              tenant_id: tenant!.id,
+              producto_id: item.producto_id,
+              tipo: 'rebaje',
+              cantidad: item.cantidad,
+              stock_antes: stockAntes,
+              stock_despues: stockDespues,
+              motivo: `Venta #${venta.numero}`,
+              usuario_id: user?.id,
+            })
           }
         }
         await supabase.from('ventas')
@@ -505,8 +592,10 @@ export default function VentasPage() {
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input type="text" value={productoSearch} onChange={e => setProductoSearch(e.target.value)}
                   placeholder="Buscar por nombre o SKU..."
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
                   className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
-                {productosBusqueda.length > 0 && productoSearch && (
+                {productosBusqueda.length > 0 && searchFocused && (
                   <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
                     {(productosBusqueda as any[]).map(p => (
                       <button key={p.id} onClick={() => agregarProducto(p)}
@@ -631,11 +720,40 @@ export default function VentasPage() {
             {/* Pago */}
             <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
               <h2 className="font-semibold text-gray-700 flex items-center gap-2"><CreditCard size={16} /> Pago</h2>
-              <select value={medioPago} onChange={e => setMedioPago(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
-                <option value="">Medio de pago...</option>
-                {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
+
+              {mediosPago.map((mp, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <select value={mp.tipo} onChange={e => updateMedioPago(idx, 'tipo', e.target.value)}
+                    className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+                    <option value="">Medio de pago...</option>
+                    {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <input type="number" min="0" value={mp.monto}
+                    onChange={e => updateMedioPago(idx, 'monto', e.target.value)}
+                    placeholder="Monto"
+                    className="w-24 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  {mediosPago.length > 1 && (
+                    <button onClick={() => removeMedioPago(idx)} className="text-gray-400 hover:text-red-500 flex-shrink-0">
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              <button onClick={addMedioPago}
+                className="flex items-center gap-1 text-xs text-[#2E75B6] hover:underline">
+                <Plus size={12} /> Agregar otro medio
+              </button>
+
+              {cart.length > 0 && totalAsignado > 0 && (
+                <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600' : totalFaltante > 0 ? 'text-orange-500' : 'text-red-500'}`}>
+                  {totalFaltante === 0
+                    ? '✓ Total cubierto'
+                    : totalFaltante > 0
+                      ? `Falta asignar: $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                      : `Excede por: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                </p>
+              )}
               {/* Descuento general con toggle % / $ */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Descuento general</label>
@@ -757,7 +875,7 @@ export default function VentasPage() {
                         <span className="font-bold text-gray-800">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-400">
-                        <span>{v.cliente_nombre ?? 'Sin cliente'} {v.medio_pago ? `· ${v.medio_pago}` : ''}</span>
+                        <span>{v.cliente_nombre ?? 'Sin cliente'} {v.medio_pago ? `· ${formatMedioPago(v.medio_pago)}` : ''}</span>
                         <span>{new Date(v.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</span>
                       </div>
                       <div className="flex gap-1 mt-1 flex-wrap">
@@ -783,9 +901,14 @@ export default function VentasPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-bold text-[#1E3A5F]">Venta #{ventaDetalle.numero}</h2>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ESTADOS[ventaDetalle.estado as EstadoVenta]?.bg} ${ESTADOS[ventaDetalle.estado as EstadoVenta]?.color}`}>
-                  {ESTADOS[ventaDetalle.estado as EstadoVenta]?.label}
-                </span>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ESTADOS[ventaDetalle.estado as EstadoVenta]?.bg} ${ESTADOS[ventaDetalle.estado as EstadoVenta]?.color}`}>
+                    {ESTADOS[ventaDetalle.estado as EstadoVenta]?.label}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {new Date(ventaDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                  </span>
+                </div>
               </div>
               <button onClick={() => setVentaDetalle(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
@@ -820,12 +943,29 @@ export default function VentasPage() {
                 <span>Total</span>
                 <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
-              {ventaDetalle.medio_pago && <p className="text-gray-500">Medio de pago: {ventaDetalle.medio_pago}</p>}
+              {ventaDetalle.medio_pago && <p className="text-gray-500">Medio de pago: {formatMedioPago(ventaDetalle.medio_pago)}</p>}
               {ventaDetalle.notas && <p className="text-gray-500">Notas: {ventaDetalle.notas}</p>}
             </div>
 
             {/* Acciones según estado */}
             <div className="space-y-2">
+              <button
+                onClick={() => {
+                  const items = (ventaDetalle.venta_items ?? []).map((item: any) => ({
+                    nombre: item.productos?.nombre ?? '',
+                    cantidad: item.cantidad,
+                    precio_unitario: item.precio_unitario,
+                    descuento: item.descuento ?? 0,
+                    descuento_tipo: 'pct' as DescTipo,
+                    subtotal: item.subtotal,
+                    tiene_series: false,
+                    series_seleccionadas: [],
+                  }))
+                  setTicketVenta({ ...ventaDetalle, items })
+                }}
+                className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-600 font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-all text-sm">
+                <Printer size={15} /> Ver / Imprimir ticket
+              </button>
               {ventaDetalle.estado === 'pendiente' && (
                 <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })}
                   disabled={cambiarEstado.isPending}
@@ -880,7 +1020,7 @@ export default function VentasPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" id="ticket-print">
             <div className="text-center mb-4 border-b border-dashed border-gray-300 pb-4">
-              <p className="text-lg font-bold text-[#1E3A5F]">{ticketVenta.tenant?.nombre ?? 'StockApp'}</p>
+              <p className="text-lg font-bold text-[#1E3A5F]">{tenant?.nombre ?? 'Stokio'}</p>
               <p className="text-xs text-gray-400 mt-1">
                 {new Date(ticketVenta.created_at ?? Date.now()).toLocaleString('es-AR', {
                   dateStyle: 'full', timeStyle: 'short'
@@ -896,43 +1036,80 @@ export default function VentasPage() {
             )}
 
             <div className="space-y-1.5 mb-4">
-              {(ticketVenta.items ?? []).map((item: any, i: number) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <div className="flex-1">
-                    <span className="font-medium">{item.nombre}</span>
-                    <span className="text-gray-400 ml-1 text-xs">
-                      × {item.tiene_series ? item.series_seleccionadas.length : item.cantidad}
-                    </span>
-                    {item.descuento > 0 && (
-                      <span className="text-green-600 text-xs ml-1">
-                        -{item.descuento_tipo === 'pct' ? `${item.descuento}%` : `$${item.descuento}`}
-                      </span>
-                    )}
+              {(ticketVenta.items ?? []).map((item: any, i: number) => {
+                const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+                const precioOriginalItem = item.precio_unitario * cant
+                return (
+                  <div key={i} className="flex justify-between text-sm">
+                    <div className="flex-1 min-w-0 pr-2">
+                      <span className="font-medium">{item.nombre}</span>
+                      <span className="text-gray-400 ml-1 text-xs">× {cant}</span>
+                      {item.descuento > 0 && (
+                        <span className="text-green-600 text-xs ml-1">
+                          -{item.descuento_tipo === 'pct' ? `${item.descuento}%` : `$${item.descuento}`}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-right whitespace-nowrap">
+                      {item.descuento > 0 && (
+                        <span className="line-through text-gray-300 text-xs mr-1">
+                          ${precioOriginalItem.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                        </span>
+                      )}
+                      <span className="font-medium">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
                   </div>
-                  <span className="font-medium">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
-            <div className="border-t border-dashed border-gray-300 pt-3 space-y-1">
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>Subtotal</span>
-                <span>${ticketVenta.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-              </div>
-              {ticketVenta.descuento_total > 0 && (
-                <div className="flex justify-between text-sm text-green-600">
-                  <span>Descuento {ticketVenta.descuento_total}%</span>
-                  <span>−${(ticketVenta.subtotal * ticketVenta.descuento_total / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+            {(() => {
+              const precioLista = (ticketVenta.items ?? []).reduce((acc: number, item: any) => {
+                const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+                return acc + item.precio_unitario * cant
+              }, 0)
+              const tieneDescItems = precioLista > (ticketVenta.subtotal ?? 0)
+              return (
+                <div className="border-t border-dashed border-gray-300 pt-3 space-y-1">
+                  {tieneDescItems && (
+                    <div className="flex justify-between text-sm text-gray-400">
+                      <span>Precio lista</span>
+                      <span className="line-through">${precioLista.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>Subtotal</span>
+                    <span>${ticketVenta.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  {ticketVenta.descuento_total > 0 && (
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>Descuento {ticketVenta.descuento_total}%</span>
+                      <span>−${(ticketVenta.subtotal * ticketVenta.descuento_total / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-[#1E3A5F] text-base">
+                    <span>TOTAL</span>
+                    <span>${ticketVenta.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  {ticketVenta.medio_pago && (() => {
+                    let pagos: { tipo: string; monto: number }[] = []
+                    try { const p = JSON.parse(ticketVenta.medio_pago); if (Array.isArray(p)) pagos = p } catch {}
+                    if (pagos.length === 0)
+                      return <p className="text-xs text-gray-400 text-right">{ticketVenta.medio_pago}</p>
+                    return (
+                      <div className="space-y-0.5 pt-1 border-t border-dashed border-gray-200 mt-1">
+                        {pagos.map((p, i) => (
+                          <div key={i} className="flex justify-between text-xs text-gray-400">
+                            <span>{p.tipo}</span>
+                            {p.monto > 0 && <span>${p.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
-              )}
-              <div className="flex justify-between font-bold text-[#1E3A5F] text-base">
-                <span>TOTAL</span>
-                <span>${ticketVenta.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-              </div>
-              {ticketVenta.medio_pago && (
-                <p className="text-xs text-gray-400 text-right">{ticketVenta.medio_pago}</p>
-              )}
-            </div>
+              )
+            })()}
 
             <p className="text-center text-xs text-gray-300 mt-4 border-t border-dashed border-gray-200 pt-3">
               ¡Gracias por su compra!

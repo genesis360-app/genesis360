@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Search, Package, AlertTriangle, ChevronDown, ChevronRight, MapPin, Tag, Hash } from 'lucide-react'
+import { Plus, Search, Package, AlertTriangle, ChevronDown, ChevronRight, MapPin, Tag, Hash, Settings2 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
+import { LpnAccionesModal } from '@/components/LpnAccionesModal'
 import toast from 'react-hot-toast'
 
 export default function InventarioPage() {
@@ -17,6 +18,7 @@ export default function InventarioPage() {
   const [filterAlerta, setFilterAlerta] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showLimitModal, setShowLimitModal] = useState(false)
+  const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
 
   const { data: productos = [], isLoading } = useQuery({
     queryKey: ['productos', tenant?.id, search],
@@ -95,6 +97,15 @@ export default function InventarioPage() {
       {/* Modal límite */}
       {showLimitModal && limits && (
         <PlanLimitModal tipo="producto" limits={limits} onClose={() => setShowLimitModal(false)} />
+      )}
+
+      {/* Modal acciones LPN */}
+      {lpnAcciones && (
+        <LpnAccionesModal
+          linea={lpnAcciones.linea}
+          producto={lpnAcciones.producto}
+          onClose={() => setLpnAcciones(null)}
+        />
       )}
 
       <div className="flex items-center justify-between">
@@ -238,16 +249,17 @@ export default function InventarioPage() {
                         <p className="text-sm text-gray-400 text-center py-2">Sin líneas de inventario. Registrá un ingreso para este producto.</p>
                       ) : (
                         <div className="space-y-2">
-                          <div className="grid grid-cols-6 gap-2 text-xs font-semibold text-gray-500 px-3 mb-1">
+                          <div className="grid grid-cols-7 gap-2 text-xs font-semibold text-gray-500 px-3 mb-1">
                             <span className="col-span-1">LPN</span>
                             <span className="col-span-1 text-right">Cantidad</span>
                             <span className="col-span-1">Estado</span>
                             <span className="col-span-1">Ubicación</span>
                             <span className="col-span-1">Lote / Venc.</span>
                             <span className="col-span-1">Series</span>
+                            <span className="col-span-1 text-center">Acciones</span>
                           </div>
                           {lineas.map((l: any) => (
-                            <div key={l.id} className="bg-white rounded-xl border border-gray-100 px-3 py-2.5 grid grid-cols-6 gap-2 items-center text-sm">
+                            <div key={l.id} className="bg-white rounded-xl border border-gray-100 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
                               {/* LPN */}
                               <div className="col-span-1">
                                 <span className="font-mono text-xs text-[#1E3A5F] font-semibold">{l.lpn}</span>
@@ -332,6 +344,16 @@ export default function InventarioPage() {
                                     ))}
                                   </div>
                                 ) : <span className="text-xs text-gray-300">—</span>}
+                              </div>
+
+                              {/* Acciones */}
+                              <div className="col-span-1 flex justify-center">
+                                <button
+                                  onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: p }) }}
+                                  className="p-1.5 text-gray-400 hover:text-[#2E75B6] hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Acciones sobre este LPN">
+                                  <Settings2 size={15} />
+                                </button>
                               </div>
                             </div>
                           ))}

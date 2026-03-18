@@ -29,7 +29,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     ubicacion_id: linea.ubicacion_id ?? '',
     proveedor_id: linea.proveedor_id ?? '',
     nro_lote: linea.nro_lote ?? '',
-    fecha_vencimiento: linea.fecha_vencimiento ? linea.fecha_vencimiento.split('T')[0] : '',
+    // Tomar solo los primeros 10 chars para evitar desfase de timezone
+    fecha_vencimiento: linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : '',
     cantidad: String(linea.cantidad ?? 0),
   })
 
@@ -327,19 +328,23 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Nro. lote</label>
-                  <input type="text" value={editForm.nro_lote} onChange={e => setEditForm(p => ({ ...p, nro_lote: e.target.value }))}
-                    placeholder="Lote-001"
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
-                </div>
+                {producto.tiene_lote && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Nro. lote</label>
+                    <input type="text" value={editForm.nro_lote} onChange={e => setEditForm(p => ({ ...p, nro_lote: e.target.value }))}
+                      placeholder="Lote-001"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Fecha de vencimiento</label>
-                <input type="date" value={editForm.fecha_vencimiento} onChange={e => setEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
-              </div>
+              {producto.tiene_vencimiento && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Fecha de vencimiento</label>
+                  <input type="date" value={editForm.fecha_vencimiento} onChange={e => setEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
+                </div>
+              )}
 
               <button onClick={() => guardarEdicion.mutate()} disabled={guardarEdicion.isPending}
                 className="w-full bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">

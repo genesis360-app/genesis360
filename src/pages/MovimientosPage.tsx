@@ -123,11 +123,19 @@ export default function MovimientosPage() {
     mutationFn: async () => {
       if (!selectedProduct) throw new Error('Seleccioná un producto')
       const tieneSeries = (selectedProduct as any).tiene_series
+      const tieneLote = (selectedProduct as any).tiene_lote
+      const tieneVencimiento = (selectedProduct as any).tiene_vencimiento
       const cant = tieneSeries
         ? series.filter(s => s.trim()).length
         : parseInt(form.cantidad)
 
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
+
+      // Validar atributos obligatorios
+      if (tieneLote && !form.nroLote.trim())
+        throw new Error('Este producto requiere número de lote')
+      if (tieneVencimiento && !form.fechaVencimiento)
+        throw new Error('Este producto requiere fecha de vencimiento')
 
       // Capturar stock ANTES de insertar (el trigger lo modifica después)
       const { data: prodAntes } = await supabase
@@ -492,19 +500,26 @@ export default function MovimientosPage() {
                   )}
                   {(selectedProduct as any).tiene_lote && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Nro. de lote</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nro. de lote <span className="text-red-500">*</span>
+                      </label>
                       <input type="text" value={form.nroLote} onChange={e => setForm(p => ({ ...p, nroLote: e.target.value }))}
-                        placeholder="Lote-001"
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                        placeholder="Lote-001" required
+                        className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]
+                          ${!form.nroLote.trim() ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                     </div>
                   )}
                 </div>
 
                 {(selectedProduct as any).tiene_vencimiento && (
                   <div className="mb-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de vencimiento</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Fecha de vencimiento <span className="text-red-500">*</span>
+                    </label>
                     <input type="date" value={form.fechaVencimiento} onChange={e => setForm(p => ({ ...p, fechaVencimiento: e.target.value }))}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                      required
+                      className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]
+                        ${!form.fechaVencimiento ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                   </div>
                 )}
 

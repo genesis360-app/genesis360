@@ -658,13 +658,35 @@ export default function VentasPage() {
             {/* Totales */}
             {cart.length > 0 && (
               <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-2">
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Subtotal</span>
-                  <span>${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                </div>
+                {/* Subtotal sin descuentos */}
+                {(() => {
+                  const subtotalSinDesc = cart.reduce((acc, item) => {
+                    const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+                    return acc + item.precio_unitario * cant
+                  }, 0)
+                  const descItemsTotal = subtotalSinDesc - subtotal
+                  return (
+                    <>
+                      <div className="flex justify-between text-sm text-gray-500">
+                        <span>Precio lista</span>
+                        <span>${subtotalSinDesc.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                      </div>
+                      {descItemsTotal > 0 && (
+                        <div className="flex justify-between text-sm text-blue-600">
+                          <span>Desc. por producto</span>
+                          <span>−${descItemsTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm text-gray-600">
+                        <span>Subtotal</span>
+                        <span>${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                      </div>
+                    </>
+                  )
+                })()}
                 {descTotalMonto > 0 && (
                   <div className="flex justify-between text-sm text-green-600">
-                    <span>Descuento {descuentoTotalTipo === 'pct' ? `${descTotalVal}%` : `$${descTotalVal}`}</span>
+                    <span>Desc. general {descuentoTotalTipo === 'pct' ? `(${descTotalVal}%)` : `($${descTotalVal})`}</span>
                     <span>−${descTotalMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 )}
@@ -833,6 +855,19 @@ export default function VentasPage() {
                   disabled={cambiarEstado.isPending}
                   className="w-full border-2 border-red-200 text-red-600 font-semibold py-2.5 rounded-xl hover:bg-red-50 transition-all">
                   Cancelar venta
+                </button>
+              )}
+              {['cancelada', 'pendiente'].includes(ventaDetalle.estado) && (
+                <button onClick={async () => {
+                  if (!confirm('¿Eliminar definitivamente esta venta? Esta acción no se puede deshacer.')) return
+                  const { error } = await supabase.from('ventas').delete().eq('id', ventaDetalle.id)
+                  if (error) { toast.error('Error al eliminar'); return }
+                  toast.success('Venta eliminada')
+                  setVentaDetalle(null)
+                  qc.invalidateQueries({ queryKey: ['ventas'] })
+                }}
+                  className="w-full border-2 border-gray-200 text-gray-500 font-semibold py-2 rounded-xl hover:bg-gray-50 hover:border-red-200 hover:text-red-500 transition-all text-sm">
+                  Eliminar venta
                 </button>
               )}
             </div>

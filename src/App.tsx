@@ -26,8 +26,9 @@ const UsuariosPage     = lazy(() => import('@/pages/UsuariosPage'))
 const ConfigPage       = lazy(() => import('@/pages/ConfigPage'))
 const SuscripcionPage  = lazy(() => import('@/pages/SuscripcionPage'))
 const AdminPage        = lazy(() => import('@/pages/AdminPage'))
-const ClientesPage     = lazy(() => import('@/pages/ClientesPage'))
-const RentabilidadPage = lazy(() => import('@/pages/RentabilidadPage'))
+const ClientesPage        = lazy(() => import('@/pages/ClientesPage'))
+const RentabilidadPage    = lazy(() => import('@/pages/RentabilidadPage'))
+const RecomendacionesPage = lazy(() => import('@/pages/RecomendacionesPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -103,6 +104,7 @@ function App() {
                   <Route path="/metricas" element={<MetricasPage />} />
                   <Route path="/clientes" element={<ClientesPage />} />
                   <Route path="/rentabilidad" element={<RentabilidadPage />} />
+                  <Route path="/recomendaciones" element={<RecomendacionesPage />} />
                 </Route>
               </Route>
             </Route>

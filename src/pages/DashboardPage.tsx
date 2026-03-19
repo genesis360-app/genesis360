@@ -7,6 +7,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
+import { useRecomendaciones } from '@/hooks/useRecomendaciones'
 
 type InsightTipo = 'danger' | 'warning' | 'success' | 'info'
 
@@ -41,6 +42,7 @@ const SEMAFORO_COLOR: Record<string, string> = {
 
 export default function DashboardPage() {
   const { tenant } = useAuthStore()
+  const { score, recomendaciones } = useRecomendaciones()
 
   const { data: stats } = useQuery({
     queryKey: ['dashboard-stats', tenant?.id],
@@ -296,11 +298,71 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Score de Salud + Recomendaciones urgentes */}
+      {score && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Score widget */}
+          <Link to="/recomendaciones" className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all flex items-center gap-4">
+            <div className="relative w-16 h-16 flex-shrink-0">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="12" />
+                <circle
+                  cx="50" cy="50" r="40" fill="none" strokeWidth="12"
+                  stroke={score.total >= 70 ? '#22c55e' : score.total >= 40 ? '#f59e0b' : '#ef4444'}
+                  strokeDasharray={`${2 * Math.PI * 40}`}
+                  strokeDashoffset={`${2 * Math.PI * 40 * (1 - score.total / 100)}`}
+                  strokeLinecap="round"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-lg font-bold text-gray-800">{score.total}</span>
+              </div>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800">Score de salud</p>
+              <p className={`text-sm font-medium ${score.total >= 70 ? 'text-green-600' : score.total >= 40 ? 'text-amber-500' : 'text-red-500'}`}>
+                {score.total >= 70 ? 'Negocio saludable' : score.total >= 40 ? 'Puede mejorar' : 'Necesita atención'}
+              </p>
+              <p className="text-xs text-gray-400 mt-0.5">Ver análisis completo →</p>
+            </div>
+          </Link>
+
+          {/* Recomendaciones urgentes (2 primeras) */}
+          {recomendaciones.slice(0, 2).map(r => {
+            const urgente = r.tipo === 'danger' || r.tipo === 'warning'
+            return (
+              <Link
+                key={r.id}
+                to={r.link}
+                className={`rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-all
+                  ${r.tipo === 'danger' ? 'bg-red-50 border-l-4 border-l-red-500' :
+                    r.tipo === 'warning' ? 'bg-amber-50 border-l-4 border-l-amber-500' :
+                    r.tipo === 'success' ? 'bg-green-50 border-l-4 border-l-green-500' :
+                    'bg-blue-50 border-l-4 border-l-blue-400'}`}
+              >
+                <p className="font-semibold text-gray-800 text-sm leading-snug">{r.titulo}</p>
+                <p className={`text-xs mt-1 font-medium
+                  ${r.tipo === 'danger' ? 'text-red-600' : r.tipo === 'warning' ? 'text-amber-600' :
+                    r.tipo === 'success' ? 'text-green-600' : 'text-blue-600'}`}>
+                  {r.impacto}
+                </p>
+                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                  {r.accion} <ChevronRight size={11} />
+                </p>
+              </Link>
+            )
+          })}
+        </div>
+      )}
+
       {/* Insights */}
       <div>
-        <div className="flex items-center gap-2 mb-3">
-          <Zap size={16} className="text-[#2E75B6]" />
-          <h2 className="font-semibold text-gray-700">Lo que necesitás saber</h2>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Zap size={16} className="text-[#2E75B6]" />
+            <h2 className="font-semibold text-gray-700">Lo que necesitás saber</h2>
+          </div>
+          <Link to="/recomendaciones" className="text-xs text-[#2E75B6] hover:underline">Ver todas →</Link>
         </div>
         <div className="space-y-2">
           {insights.map((insight, i) => {

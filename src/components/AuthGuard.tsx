@@ -8,11 +8,11 @@ interface AuthGuardProps {
 }
 
 export function AuthGuard({ requireRole }: AuthGuardProps) {
-  const { user, loading } = useAuthStore()
+  const { user, loading, needsOnboarding } = useAuthStore()
 
   if (loading) return null
 
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) return <Navigate to={needsOnboarding ? '/onboarding' : '/login'} replace />
 
   if (requireRole && user.rol !== requireRole) {
     return <Navigate to="/dashboard" replace />

@@ -6,6 +6,7 @@ interface AuthState {
   tenant: Tenant | null
   loading: boolean
   initialized: boolean
+  needsOnboarding: boolean
   setUser: (user: User | null) => void
   setTenant: (tenant: Tenant | null) => void
   signOut: () => Promise<void>
@@ -17,6 +18,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   tenant: null,
   loading: true,
   initialized: false,
+  needsOnboarding: false,
 
   setUser: (user) => set({ user }),
   setTenant: (tenant) => set({ tenant }),
@@ -33,7 +35,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 		console.log('userData:', userData, 'error:', userError)
 
 		if (!userData) {
-		  set({ user: null, tenant: null, loading: false, initialized: true })
+		  set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: true })
 		  return
 		}
 
@@ -53,7 +55,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 		})
 	  } catch (err) {
 		console.error('Error en loadUserData:', err)
-		set({ user: null, tenant: null, loading: false, initialized: true })
+		set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: false })
 	  }
 	},
 

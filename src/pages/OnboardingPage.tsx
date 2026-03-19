@@ -29,6 +29,22 @@ export default function OnboardingPage() {
     nombre: '', tipo_comercio: '', pais: 'AR', telefono: '',
   })
 
+  // Si el usuario ya tiene sesión (ej: vino de Google OAuth), saltear paso de cuenta
+  const [existingAuthUser, setExistingAuthUser] = useState<{ id: string; email: string; name: string } | null>(null)
+  useState(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const u = session.user
+        setExistingAuthUser({
+          id: u.id,
+          email: u.email ?? '',
+          name: u.user_metadata?.full_name ?? u.user_metadata?.name ?? '',
+        })
+        setStep('business')
+      }
+    })
+  })
+
   const handleAccountSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (accountData.password.length < 8) {
@@ -43,14 +59,25 @@ export default function OnboardingPage() {
     setLoading(true)
 
     try {
-      // 1. Crear usuario en Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: accountData.email,
-        password: accountData.password,
-        options: { data: { full_name: accountData.name } },
-      })
-      if (authError) throw authError
-      if (!authData.user) throw new Error('No se pudo crear el usuario')
+      let userId: string
+      let displayName: string
+
+      if (existingAuthUser) {
+        // Vino de Google OAuth — ya tiene sesión, no crear nuevo auth user
+        userId = existingAuthUser.id
+        displayName = existingAuthUser.name || existingAuthUser.email
+      } else {
+        // Registro normal con email/password
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: accountData.email,
+          password: accountData.password,
+          options: { data: { full_name: accountData.name } },
+        })
+        if (authError) throw authError
+        if (!authData.user) throw new Error('No se pudo crear el usuario')
+        userId = authData.user.id
+        displayName = accountData.name
+      }
 
       // 2. Crear tenant
       const { data: tenantData, error: tenantError } = await supabase
@@ -70,16 +97,21 @@ export default function OnboardingPage() {
       const { error: userError } = await supabase
         .from('users')
         .insert({
-          id: authData.user.id,
+          id: userId,
           tenant_id: tenantData.id,
           rol: 'OWNER',
-          nombre_display: accountData.name,
+          nombre_display: displayName,
           activo: true,
         })
       if (userError) throw userError
 
-      toast.success('¡Negocio registrado! Revisá tu email para confirmar tu cuenta.')
-      navigate('/login')
+      if (existingAuthUser) {
+        toast.success('¡Negocio creado! Bienvenido.')
+        navigate('/dashboard')
+      } else {
+        toast.success('¡Negocio registrado! Revisá tu email para confirmar tu cuenta.')
+        navigate('/login')
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al registrar')
     } finally {

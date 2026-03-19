@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Package, Building2, Globe, Phone, Mail, Lock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
 const TIPOS_COMERCIO = [
@@ -23,6 +24,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<'account' | 'business'>('account')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
+  const { loadUserData } = useAuthStore()
 
   const [accountData, setAccountData] = useState({ email: '', password: '', name: '' })
   const [bizData, setBizData] = useState({
@@ -107,6 +109,7 @@ export default function OnboardingPage() {
 
       if (existingAuthUser) {
         toast.success('¡Negocio creado! Bienvenido.')
+        await loadUserData(existingAuthUser.id)
         navigate('/dashboard')
       } else {
         toast.success('¡Negocio registrado! Revisá tu email para confirmar tu cuenta.')

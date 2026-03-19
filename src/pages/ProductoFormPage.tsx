@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign } from 'lucide-react'
@@ -81,29 +81,35 @@ export default function ProductoFormPage() {
     enabled: !!tenant,
   })
 
-  useQuery({
+  const { data: productoData } = useQuery({
     queryKey: ['producto', id],
     queryFn: async () => {
       const { data, error } = await supabase.from('productos').select('*').eq('id', id).single()
       if (error) throw error
-      setForm({
-        nombre: data.nombre, sku: data.sku, descripcion: data.descripcion ?? '',
-        categoria_id: data.categoria_id ?? '', proveedor_id: data.proveedor_id ?? '',
-        ubicacion_id: data.ubicacion_id ?? '', estado_id: data.estado_id ?? '',
-        precio_costo: data.precio_costo.toString(),
-        precio_venta: data.precio_venta.toString(), stock_actual: data.stock_actual.toString(),
-        stock_minimo: data.stock_minimo.toString(), unidad_medida: data.unidad_medida,
-        codigo_barras: data.codigo_barras ?? '', activo: data.activo,
-        tiene_series: data.tiene_series ?? false,
-        tiene_lote: data.tiene_lote ?? false,
-        tiene_vencimiento: data.tiene_vencimiento ?? false,
-      })
-      if (data.imagen_url) setExistingImageUrl(data.imagen_url)
-      setLoaded(true)
       return data
     },
-    enabled: isEditing && !loaded,
+    enabled: isEditing,
+    staleTime: 0, // siempre re-fetch al navegar a esta página
   })
+
+  useEffect(() => {
+    if (productoData && !loaded) {
+      setForm({
+        nombre: productoData.nombre, sku: productoData.sku, descripcion: productoData.descripcion ?? '',
+        categoria_id: productoData.categoria_id ?? '', proveedor_id: productoData.proveedor_id ?? '',
+        ubicacion_id: productoData.ubicacion_id ?? '', estado_id: productoData.estado_id ?? '',
+        precio_costo: productoData.precio_costo.toString(),
+        precio_venta: productoData.precio_venta.toString(), stock_actual: productoData.stock_actual.toString(),
+        stock_minimo: productoData.stock_minimo.toString(), unidad_medida: productoData.unidad_medida,
+        codigo_barras: productoData.codigo_barras ?? '', activo: productoData.activo,
+        tiene_series: productoData.tiene_series ?? false,
+        tiene_lote: productoData.tiene_lote ?? false,
+        tiene_vencimiento: productoData.tiene_vencimiento ?? false,
+      })
+      if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
+      setLoaded(true)
+    }
+  }, [productoData])
 
   const margen = (() => {
     const costo = parseFloat(form.precio_costo)

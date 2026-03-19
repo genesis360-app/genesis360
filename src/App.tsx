@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { AuthGuard, SubscriptionGuard } from '@/components/AuthGuard'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 // Lazy loading de módulos
 const LoginPage        = lazy(() => import('@/pages/LoginPage'))
@@ -69,6 +70,7 @@ function App() {
   }
 
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Suspense fallback={
@@ -120,6 +122,7 @@ function App() {
       </BrowserRouter>
       <Toaster position="top-right" />
     </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
 

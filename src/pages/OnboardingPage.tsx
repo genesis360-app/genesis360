@@ -79,18 +79,18 @@ export default function OnboardingPage() {
         displayName = accountData.name
       }
 
-      // 2. Crear tenant
-      const { data: tenantData, error: tenantError } = await supabase
+      // 2. Crear tenant (UUID generado en cliente para evitar problema de RLS en SELECT post-insert)
+      const tenantId = crypto.randomUUID()
+      const { error: tenantError } = await supabase
         .from('tenants')
         .insert({
+          id: tenantId,
           nombre: bizData.nombre,
           tipo_comercio: bizData.tipo_comercio,
           pais: bizData.pais,
           subscription_status: 'trial',
           max_users: 2,
         })
-        .select()
-        .single()
       if (tenantError) throw tenantError
 
       // 3. Crear perfil de usuario con rol OWNER
@@ -98,7 +98,7 @@ export default function OnboardingPage() {
         .from('users')
         .insert({
           id: userId,
-          tenant_id: tenantData.id,
+          tenant_id: tenantId,
           rol: 'OWNER',
           nombre_display: displayName,
           activo: true,

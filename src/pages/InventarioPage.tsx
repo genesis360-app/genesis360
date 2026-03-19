@@ -4,6 +4,7 @@ import { Plus, Search, Package, AlertTriangle, ChevronDown, ChevronRight, MapPin
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -15,6 +16,7 @@ export default function InventarioPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { limits } = usePlanLimits()
+  const { cotizacion } = useCotizacion()
   const [search, setSearch] = useState('')
   const [filterAlerta, setFilterAlerta] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -235,6 +237,17 @@ export default function InventarioPage() {
 
                     <div className="hidden md:block text-xs text-gray-400">
                       {(p as any).categorias?.nombre ?? '—'}
+                    </div>
+
+                    <div className="hidden sm:block text-right flex-shrink-0">
+                      <p className="text-sm font-medium text-gray-700">
+                        ${((p as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                      </p>
+                      {cotizacion > 0 && (p as any).precio_venta > 0 && (
+                        <p className="text-xs text-gray-400">
+                          USD {((p as any).precio_venta / cotizacion).toFixed(2)}
+                        </p>
+                      )}
                     </div>
 
                     <div className="text-right flex-shrink-0">

@@ -46,6 +46,16 @@ export interface User {
   created_at: string
 }
 
+export interface Cliente {
+  id: string
+  tenant_id: string
+  nombre: string
+  telefono?: string
+  email?: string
+  notas?: string
+  created_at: string
+}
+
 export interface Categoria {
   id: string
   tenant_id: string

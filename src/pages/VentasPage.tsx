@@ -26,6 +26,7 @@ interface CartItem {
   nombre: string
   sku: string
   precio_unitario: number
+  precio_costo: number
   cantidad: number
   descuento: number
   descuento_tipo: DescTipo
@@ -45,8 +46,11 @@ export default function VentasPage() {
   // Nueva venta
   const [cart, setCart] = useState<CartItem[]>([])
   const [productoSearch, setProductoSearch] = useState('')
+  const [clienteId, setClienteId] = useState<string | null>(null)
+  const [clienteSearch, setClienteSearch] = useState('')
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
+  const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   const [descuentoTotal, setDescuentoTotal] = useState('')
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
@@ -78,7 +82,7 @@ export default function VentasPage() {
 
       // Buscar productos
       let prodQuery = supabase.from('productos')
-        .select('id, nombre, sku, precio_venta, tiene_series, stock_actual, unidad_medida')
+        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, stock_actual, unidad_medida')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('nombre')
         .limit(20)
@@ -134,6 +138,18 @@ export default function VentasPage() {
         .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0)
     },
     enabled: !!tenant,
+  })
+
+  const { data: clientesBusqueda = [] } = useQuery({
+    queryKey: ['clientes-search', tenant?.id, clienteSearch],
+    queryFn: async () => {
+      let q = supabase.from('clientes').select('id, nombre, telefono')
+        .eq('tenant_id', tenant!.id).order('nombre').limit(10)
+      if (clienteSearch) q = q.ilike('nombre', `%${clienteSearch}%`)
+      const { data } = await q
+      return data ?? []
+    },
+    enabled: !!tenant && clienteDropOpen,
   })
 
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
@@ -200,6 +216,7 @@ export default function VentasPage() {
       nombre: p.nombre,
       sku: p.sku,
       precio_unitario: p.precio_venta,
+      precio_costo: p.precio_costo ?? 0,
       cantidad: 1,
       descuento: 0,
       descuento_tipo: 'pct',
@@ -285,6 +302,7 @@ export default function VentasPage() {
       // Crear venta
       const { data: venta, error: ventaError } = await supabase.from('ventas').insert({
         tenant_id: tenant!.id,
+        cliente_id: clienteId || null,
         cliente_nombre: clienteNombre || null,
         cliente_telefono: clienteTelefono || null,
         estado,
@@ -309,6 +327,7 @@ export default function VentasPage() {
           producto_id: item.producto_id,
           cantidad: cant,
           precio_unitario: item.precio_unitario,
+          precio_costo_historico: item.precio_costo || null,
           descuento: item.descuento_tipo === 'pct' ? item.descuento : 0,
           subtotal: itemSubtotal,
         }).select().single()
@@ -389,7 +408,7 @@ export default function VentasPage() {
       const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })) })
-      setCart([]); setClienteNombre(''); setClienteTelefono('')
+      setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas('')
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -709,12 +728,58 @@ export default function VentasPage() {
             {/* Cliente */}
             <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
               <h2 className="font-semibold text-gray-700 flex items-center gap-2"><User size={16} /> Cliente</h2>
-              <input type="text" value={clienteNombre} onChange={e => setClienteNombre(e.target.value)}
-                placeholder="Nombre (opcional)"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
-              <input type="text" value={clienteTelefono} onChange={e => setClienteTelefono(e.target.value)}
-                placeholder="Teléfono (opcional)"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+              {/* Autocomplete cliente registrado */}
+              <div className="relative">
+                {clienteId ? (
+                  <div className="flex items-center gap-2 px-3 py-2.5 border border-blue-300 bg-blue-50 rounded-xl text-sm">
+                    <span className="flex-1 font-medium text-blue-800">{clienteNombre}</span>
+                    <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch('') }} className="text-blue-400 hover:text-blue-700"><X size={14} /></button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={clienteSearch}
+                      onChange={e => { setClienteSearch(e.target.value); setClienteDropOpen(true) }}
+                      onFocus={() => setClienteDropOpen(true)}
+                      onBlur={() => setTimeout(() => setClienteDropOpen(false), 150)}
+                      placeholder="Buscar cliente registrado..."
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]"
+                    />
+                    {clienteDropOpen && clientesBusqueda.length > 0 && (
+                      <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                        {clientesBusqueda.map((c: any) => (
+                          <button
+                            key={c.id}
+                            onMouseDown={() => {
+                              setClienteId(c.id)
+                              setClienteNombre(c.nombre)
+                              setClienteTelefono(c.telefono ?? '')
+                              setClienteSearch('')
+                              setClienteDropOpen(false)
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm"
+                          >
+                            <span className="font-medium">{c.nombre}</span>
+                            {c.telefono && <span className="text-gray-400 ml-2">{c.telefono}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              {/* Campos manuales (si no hay cliente registrado) */}
+              {!clienteId && (
+                <>
+                  <input type="text" value={clienteNombre} onChange={e => setClienteNombre(e.target.value)}
+                    placeholder="Nombre (opcional)"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  <input type="text" value={clienteTelefono} onChange={e => setClienteTelefono(e.target.value)}
+                    placeholder="Teléfono (opcional)"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                </>
+              )}
             </div>
 
             {/* Pago */}

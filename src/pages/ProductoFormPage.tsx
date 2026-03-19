@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
+import { ProductoQR } from '@/components/ProductoQR'
 import toast from 'react-hot-toast'
 
 const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
@@ -26,6 +27,7 @@ export default function ProductoFormPage() {
   const { limits } = usePlanLimits()
   const { cotizacion: cotizacionNum } = useCotizacion()
   const [showLimitModal, setShowLimitModal] = useState(false)
+  const [showQR, setShowQR] = useState(false)
 
   const [form, setForm] = useState({
     nombre: '', sku: '', descripcion: '', categoria_id: '', proveedor_id: '',
@@ -260,6 +262,10 @@ export default function ProductoFormPage() {
         </div>
         {isEditing && canEdit && (
           <div className="flex gap-2">
+            <button type="button" onClick={() => setShowQR(true)}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-[#2E75B6] border border-blue-200 rounded-xl hover:bg-blue-50 transition-all">
+              <QrCode size={15} /> QR
+            </button>
             <button type="button" onClick={handleDuplicate} disabled={saving}
               className="flex items-center gap-2 px-3 py-2 text-sm text-[#1E3A5F] border border-gray-200 rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50">
               <Copy size={15} /> Duplicar
@@ -576,6 +582,15 @@ export default function ProductoFormPage() {
           </div>
         )}
       </form>
+
+      {showQR && productoData && (
+        <ProductoQR
+          productoId={productoData.id}
+          nombre={productoData.nombre}
+          sku={productoData.sku}
+          onClose={() => setShowQR(false)}
+        />
+      )}
     </div>
   )
 }

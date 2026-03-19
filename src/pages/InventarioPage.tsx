@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Plus, Search, Package, AlertTriangle, ChevronDown, ChevronRight, MapPin, Tag, Hash, Settings2 } from 'lucide-react'
+import { Plus, Search, Package, AlertTriangle, ChevronDown, ChevronRight, MapPin, Tag, Hash, Settings2, Camera } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
+import { BarcodeScanner } from '@/components/BarcodeScanner'
 import toast from 'react-hot-toast'
 
 export default function InventarioPage() {
@@ -18,6 +19,7 @@ export default function InventarioPage() {
   const [filterAlerta, setFilterAlerta] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showLimitModal, setShowLimitModal] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
 
   const { data: productos = [], isLoading } = useQuery({
@@ -171,11 +173,20 @@ export default function InventarioPage() {
         </div>
       )}
 
-      <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por nombre o SKU..."
-          className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nombre, SKU o código..."
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+        </div>
+        <button
+          onClick={() => setScannerOpen(true)}
+          className="px-3 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500 hover:text-[#2E75B6] transition-colors bg-white"
+          title="Escanear código de barras"
+        >
+          <Camera size={17} />
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -367,6 +378,14 @@ export default function InventarioPage() {
           </div>
         )}
       </div>
+
+      {scannerOpen && (
+        <BarcodeScanner
+          title="Buscar producto"
+          onDetected={code => { setSearch(code); setScannerOpen(false) }}
+          onClose={() => setScannerOpen(false)}
+        />
+      )}
     </div>
   )
 }

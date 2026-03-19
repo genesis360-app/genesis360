@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
+import { BarcodeScanner } from '@/components/BarcodeScanner'
 import toast from 'react-hot-toast'
 
 type EstadoVenta = 'pendiente' | 'reservada' | 'despachada' | 'cancelada' | 'facturada'
@@ -51,6 +52,7 @@ export default function VentasPage() {
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   const [descuentoTotal, setDescuentoTotal] = useState('')
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
@@ -225,6 +227,24 @@ export default function VentasPage() {
       series_disponibles: seriesDisp,
     }
     setCart(prev => [...prev, newItem])
+  }
+
+  const handleBarcodeScan = async (code: string) => {
+    setScannerOpen(false)
+    // Buscar por codigo_barras o SKU exacto
+    const { data: prods } = await supabase.from('productos')
+      .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, stock_actual, unidad_medida, codigo_barras')
+      .eq('tenant_id', tenant!.id).eq('activo', true)
+      .or(`codigo_barras.eq.${code},sku.eq.${code}`)
+      .limit(1)
+
+    if (!prods || prods.length === 0) {
+      toast.error(`No se encontró ningún producto con código "${code}"`)
+      return
+    }
+    // Calcular stock_disponible antes de agregar
+    const p = { ...prods[0], stock_disponible: prods[0].stock_actual }
+    await agregarProducto(p)
   }
 
   const updateItem = (idx: number, field: keyof CartItem, value: any) => {
@@ -607,13 +627,23 @@ export default function VentasPage() {
                   ))}
                 </div>
               )}
-              <div className="relative">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" value={productoSearch} onChange={e => setProductoSearch(e.target.value)}
-                  placeholder="Buscar por nombre o SKU..."
-                  onFocus={() => setSearchFocused(true)}
-                  onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
-                  className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+              <div className="relative flex gap-2">
+                <div className="relative flex-1">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input type="text" value={productoSearch} onChange={e => setProductoSearch(e.target.value)}
+                    placeholder="Buscar por nombre, SKU o código..."
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setScannerOpen(true)}
+                  className="px-3 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500 hover:text-[#2E75B6] transition-colors flex-shrink-0"
+                  title="Escanear código de barras"
+                >
+                  <Camera size={17} />
+                </button>
                 {productosBusqueda.length > 0 && searchFocused && (
                   <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
                     {(productosBusqueda as any[]).map(p => (
@@ -1230,6 +1260,15 @@ export default function VentasPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Escáner de código de barras */}
+      {scannerOpen && (
+        <BarcodeScanner
+          title="Escanear producto"
+          onDetected={handleBarcodeScan}
+          onClose={() => setScannerOpen(false)}
+        />
       )}
     </div>
   )

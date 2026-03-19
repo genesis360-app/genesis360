@@ -6,6 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-signature, x-request-id',
 }
 
+// Límites por plan MP (preapproval_plan_id → límites)
+const MP_PLAN_LIMITS: Record<string, { max_users: number; max_productos: number }> = {
+  [Deno.env.get('MP_PLAN_BASICO') ?? '']: { max_users: 2,  max_productos: 500 },
+  [Deno.env.get('MP_PLAN_PRO')    ?? '']: { max_users: 10, max_productos: 5000 },
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders })
@@ -33,11 +39,12 @@ serve(async (req) => {
         headers: { Authorization: `Bearer ${mpToken}` },
       })
       const subscription = await mpRes.json()
+      console.log('Subscription status:', subscription.status, 'plan:', subscription.preapproval_plan_id)
 
       let newStatus: string
       switch (subscription.status) {
         case 'authorized': newStatus = 'active'; break
-        case 'cancelled':
+        case 'cancelled':  newStatus = 'cancelled'; break
         case 'paused':     newStatus = 'inactive'; break
         case 'pending':    newStatus = 'trial'; break
         default:           newStatus = 'inactive'
@@ -45,10 +52,17 @@ serve(async (req) => {
 
       const tenantId = subscription.external_reference
       if (tenantId) {
+        const planLimits = MP_PLAN_LIMITS[subscription.preapproval_plan_id] ?? {}
         await supabase.from('tenants').update({
           subscription_status: newStatus,
           mp_subscription_id: subscriptionId,
+          ...(newStatus === 'active' && planLimits.max_users ? {
+            max_users: planLimits.max_users,
+            max_productos: planLimits.max_productos,
+          } : {}),
         }).eq('id', tenantId)
+
+        console.log(`Tenant ${tenantId} → ${newStatus}`, planLimits)
       }
     }
 
@@ -60,6 +74,7 @@ serve(async (req) => {
         headers: { Authorization: `Bearer ${mpToken}` },
       })
       const payment = await mpRes.json()
+      console.log('Payment status:', payment.status, 'ref:', payment.external_reference)
 
       if (payment.status === 'approved' && payment.external_reference) {
         await supabase.from('tenants').update({

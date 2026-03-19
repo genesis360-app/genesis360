@@ -73,18 +73,24 @@ src/
 - Atributos de tracking (serie, lote, vencimiento) son obligatorios si el producto los tiene activados
 
 ## Módulos pendientes de desarrollar (roadmap)
-### Grupo 2 (en progreso)
+### Grupo 2 ✅ completo
 - [x] Carga masiva productos CSV/Excel
 - [x] Filtros por grupo de estados
 - [x] Rotación de stock y métricas
 - [x] Medios de pago mixtos en ventas
-- [ ] Precio en USD con cotización dólar
+- [x] Precio en USD con cotización dólar
 
-### Grupo 3
-- [ ] Escáner de código de barras en ventas
-- [ ] QR por producto
+### Grupo 3 (en progreso)
+- [x] Escáner de código de barras en ventas
+- [x] QR por producto
 - [ ] Emails transaccionales (Resend)
 - [ ] Integración completa Mercado Pago producción
+
+### Grupo 4 — IA aplicada al negocio
+- [ ] Crear producto desde foto: Claude Vision + barcode lookup (UPC/EAN)
+  - Supabase Edge Function recibe imagen → llama Claude Haiku → extrae nombre/descripción/categoría/unidad
+  - Si hay código de barras en la imagen → lookup en Open Food Facts primero
+  - Pre-rellena el form de producto, usuario revisa y guarda
 
 ### Visión futura (del documento de objetivos)
 - Dashboard inteligente con insights automáticos ("estás perdiendo $X por stock muerto")

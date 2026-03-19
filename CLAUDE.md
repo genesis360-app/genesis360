@@ -12,8 +12,14 @@ Posicionamiento: "La herramienta que te dice cómo ganar más plata con tu negoc
 - **Pagos**: Mercado Pago (suscripciones)
 - **Librerías clave**: recharts, jspdf, jspdf-autotable, xlsx, @zxing/library
 
+## Git / Deploy workflow
+- **`main` = producción**. Claude Code **NUNCA** hace push directo a `main`.
+- Todo desarrollo va en la rama `dev`. Cuando está listo → PR hacia `main`.
+- Ver `WORKFLOW.md` para el flujo completo.
+
 ## Supabase
-- Project URL: `https://jjffnbrdjchquexdfgwq.supabase.co`
+- **PROD**: `https://jjffnbrdjchquexdfgwq.supabase.co` — NO tocar directamente
+- **DEV**: proyecto separado (ver WORKFLOW.md para setup)
 - Tenant de desarrollo: `5f05f3eb-6757-4f60-b9d2-8853fdfae806`
 - Usuario dueño: `48a4eca2-0152-4a6c-bfae-9a1a0778d12b` (rol OWNER)
 

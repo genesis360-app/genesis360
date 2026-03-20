@@ -71,7 +71,9 @@ export default function DashboardPage() {
       const valorInventario  = prods.reduce((acc, p) => acc + p.precio_costo * p.stock_actual, 0)
       const alertasActivas   = alertas.data?.length ?? 0
       const movs             = movimientos.data ?? []
-      const ingresosHoy      = movs.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + m.cantidad * ((m as any).productos?.precio_costo ?? 0), 0)
+      const ingresosMovs     = movs.filter(m => m.tipo === 'ingreso')
+      const ingresosHoy      = ingresosMovs.reduce((a, m) => a + m.cantidad * ((m as any).productos?.precio_costo ?? 0), 0)
+      const cantIngresosHoy  = ingresosMovs.reduce((a, m) => a + m.cantidad, 0)
       const rebajesHoy       = movs.filter(m => m.tipo === 'rebaje').reduce((a, m) => a + m.cantidad, 0)
       const totalVentasMes   = (ventasMes.data ?? []).reduce((a, v) => a + (v.total ?? 0), 0)
       const cantVentasMes    = ventasMes.data?.length ?? 0
@@ -85,7 +87,7 @@ export default function DashboardPage() {
 
       return {
         totalProductos, stockCritico, valorInventario, alertasActivas,
-        ingresosHoy, rebajesHoy, totalVentasMes, cantVentasMes,
+        ingresosHoy, cantIngresosHoy, rebajesHoy, totalVentasMes, cantVentasMes,
         totalVentasMesAnt, cantStockMuerto, valorStockMuerto,
       }
     },
@@ -275,6 +277,9 @@ export default function DashboardPage() {
           </div>
           <p className="text-2xl font-bold text-gray-800">${(stats?.ingresosHoy ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
           <p className="text-sm text-gray-500 mt-0.5">Ingresos (7d)</p>
+          {(stats?.cantIngresosHoy ?? 0) > 0 && (
+            <p className="text-xs text-gray-400 mt-0.5">{stats!.cantIngresosHoy} unidades</p>
+          )}
         </Link>
 
         <Link to="/alertas" className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all">

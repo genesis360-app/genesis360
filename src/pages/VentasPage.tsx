@@ -832,6 +832,7 @@ export default function VentasPage() {
                     onChange={e => updateMedioPago(idx, 'monto', e.target.value)}
                     onFocus={() => setPagoFocused(true)}
                     onBlur={() => setPagoFocused(false)}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                     placeholder="Monto"
                     className="w-24 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
                   {mediosPago.length > 1 && (

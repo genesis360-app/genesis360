@@ -115,8 +115,8 @@ src/
   - Detección automática del combo al agregar unidades
 
 **Ventas**
-- [ ] Permitir escribir cantidad de unidades directamente (no solo +/-)
-- [ ] Cálculo de vuelto/faltante: actualizar solo al presionar Enter, no mientras se escribe
+- [x] Permitir escribir cantidad de unidades directamente (no solo +/-)
+- [x] Cálculo de vuelto/faltante: actualizar solo al presionar Enter, no mientras se escribe
 - [x] Medir descuentos en $ por producto y verlos en el detalle
 - [ ] Separar unidades para descuentos parciales (ej: 3 con 10% desc + 1 sin descuento)
 

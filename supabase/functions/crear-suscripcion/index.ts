@@ -11,38 +11,31 @@ serve(async (req) => {
   }
 
   try {
-    const { plan_id, tenant_id, back_url, payer_email } = await req.json()
+    const { plan_id } = await req.json()
 
-    if (!plan_id || !tenant_id) {
-      return new Response(JSON.stringify({ error: 'Faltan parámetros' }), {
+    if (!plan_id) {
+      return new Response(JSON.stringify({ error: 'Falta plan_id' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
-    if (!mpToken) throw new Error('MP_ACCESS_TOKEN no configurado')
+    // Leer env vars dentro del handler (no a nivel de módulo)
+    const planBasico = Deno.env.get('MP_PLAN_BASICO') ?? ''
+    const planPro    = Deno.env.get('MP_PLAN_PRO') ?? ''
 
-    const response = await fetch('https://api.mercadopago.com/preapproval', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${mpToken}`,
-      },
-      body: JSON.stringify({
-        preapproval_plan_id: plan_id,
-        back_url: back_url ?? 'https://stokio-tau.vercel.app/suscripcion',
-        external_reference: tenant_id,
-        ...(payer_email ? { payer_email } : {}),
-      }),
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.message ?? 'Error en Mercado Pago')
+    const PLAN_INIT_POINTS: Record<string, string> = {
+      [planBasico]: `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${planBasico}`,
+      [planPro]:    `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${planPro}`,
     }
 
-    return new Response(JSON.stringify({ init_point: data.init_point, id: data.id }), {
+    const init_point = PLAN_INIT_POINTS[plan_id]
+    if (!init_point) {
+      return new Response(JSON.stringify({ error: `Plan no reconocido: ${plan_id}` }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    return new Response(JSON.stringify({ init_point }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   } catch (err: any) {

@@ -14,6 +14,11 @@ const MP_PLAN_IDS: Record<string, string> = {
   pro:    import.meta.env.VITE_MP_PLAN_PRO ?? '',
 }
 
+const MP_PLAN_LIMITS: Record<string, { max_users: number; max_productos: number }> = {
+  [import.meta.env.VITE_MP_PLAN_BASICO ?? '']: { max_users: 2,  max_productos: 500  },
+  [import.meta.env.VITE_MP_PLAN_PRO    ?? '']: { max_users: 10, max_productos: 5000 },
+}
+
 export default function SuscripcionPage() {
   const { tenant, loadUserData } = useAuthStore()
   const [searchParams] = useSearchParams()
@@ -23,45 +28,29 @@ export default function SuscripcionPage() {
   const status = searchParams.get('status')
   const preapprovalId = searchParams.get('preapproval_id')
 
-  const handleSuscribir = async (planId: string, mpPlanId: string) => {
+  const handleSuscribir = (planId: string, mpPlanId: string) => {
     if (!mpPlanId) { toast.error('Plan no configurado'); return }
-    setLoading(planId)
-    const plan = PLANES.find(p => p.id === planId)
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/crear-suscripcion`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            plan_id: mpPlanId,
-            tenant_id: tenant?.id,
-            monto: plan?.precio ?? 4900,
-            descripcion: `Stokio ${plan?.nombre} - Suscripción mensual`,
-            back_url: `${window.location.origin}/suscripcion`,
-          }),
-        }
-      )
-      const data = await response.json()
-      if (data.error) throw new Error(data.error)
-      // En sandbox usar sandbox_init_point, en producción usar init_point
-      const url = data.sandbox_init_point ?? data.init_point
-      if (url) window.location.href = url
-      else throw new Error('No se obtuvo URL de pago')
-    } catch (err: any) {
-      toast.error(err.message ?? 'Error al conectar con Mercado Pago')
-      setLoading(null)
-    }
+    // El init_point de MP es una URL pública — no requiere llamada al backend
+    const url = `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${mpPlanId}`
+    sessionStorage.setItem('mp_plan_id', mpPlanId)
+    window.location.href = url
   }
 
   const handleVerificarPago = async () => {
     if (!preapprovalId || !tenant) return
     setLoading('verificando')
     try {
-      // Actualizar manualmente el tenant mientras el webhook no llegó
+      const savedPlanId = sessionStorage.getItem('mp_plan_id') ?? ''
+      const planLimits = MP_PLAN_LIMITS[savedPlanId] ?? {}
+      sessionStorage.removeItem('mp_plan_id')
+
       const { error } = await supabase.from('tenants').update({
         subscription_status: 'active',
         mp_subscription_id: preapprovalId,
+        ...(planLimits.max_users ? {
+          max_users: planLimits.max_users,
+          max_productos: planLimits.max_productos,
+        } : {}),
       }).eq('id', tenant.id)
 
       if (error) throw error

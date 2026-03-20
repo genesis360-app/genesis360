@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Package, AlertTriangle, ArrowDown, TrendingUp, TrendingDown,
@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
 import { useRecomendaciones } from '@/hooks/useRecomendaciones'
+import MetricasPage from './MetricasPage'
 
 type InsightTipo = 'danger' | 'warning' | 'success' | 'info'
 
@@ -43,6 +44,7 @@ const SEMAFORO_COLOR: Record<string, string> = {
 export default function DashboardPage() {
   const { tenant } = useAuthStore()
   const { score, recomendaciones } = useRecomendaciones()
+  const [tab, setTab] = useState<'general' | 'metricas'>('general')
 
   const { data: stats } = useQuery({
     queryKey: ['dashboard-stats', tenant?.id],
@@ -200,13 +202,49 @@ export default function DashboardPage() {
 
   const fecha = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
 
+  if (tab === 'metricas') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-[#1E3A5F]">Dashboard</h1>
+            <p className="text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
+          </div>
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+            <button onClick={() => setTab('general')}
+              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 hover:text-gray-700">
+              General
+            </button>
+            <button onClick={() => setTab('metricas')}
+              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white text-[#1E3A5F] shadow-sm">
+              Métricas
+            </button>
+          </div>
+        </div>
+        <MetricasPage hideHeader />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[#1E3A5F] capitalize">{fecha}</h1>
-        <p className="text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1E3A5F] capitalize">{fecha}</h1>
+          <p className="text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
+        </div>
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          <button onClick={() => setTab('general')}
+            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white text-[#1E3A5F] shadow-sm">
+            General
+          </button>
+          <button onClick={() => setTab('metricas')}
+            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 hover:text-gray-700">
+            Métricas
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards con semáforo */}

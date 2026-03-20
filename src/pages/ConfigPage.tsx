@@ -166,6 +166,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
   const [editNombre, setEditNombre] = useState('')
   const [editTipo, setEditTipo] = useState('ambos')
   const [saving, setSaving] = useState(false)
+  const [filterTipo, setFilterTipo] = useState<'todos' | 'ingreso' | 'rebaje' | 'ambos'>('todos')
 
   const TIPOS = [
     { value: 'ingreso', label: 'Solo ingreso' },
@@ -181,6 +182,8 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
     await onAdd(newNombre.trim(), newTipo)
     setNewNombre(''); setNewTipo('ambos'); setSaving(false)
   }
+
+  const motivosFiltrados = filterTipo === 'todos' ? motivos : motivos.filter((m: any) => m.tipo === filterTipo)
 
   return (
     <div className="space-y-3">
@@ -198,13 +201,24 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
         </button>
       </div>
 
+      {/* Filtro por tipo */}
+      <div className="flex gap-1">
+        {(['todos', 'ingreso', 'rebaje', 'ambos'] as const).map(t => (
+          <button key={t} onClick={() => setFilterTipo(t)}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all capitalize
+              ${filterTipo === t ? 'bg-[#1E3A5F] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+            {t === 'todos' ? 'Todos' : t === 'ingreso' ? 'Solo ingreso' : t === 'rebaje' ? 'Solo rebaje' : 'Ambos'}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" /></div>
-      ) : motivos.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-6">No hay motivos cargados</p>
+      ) : motivosFiltrados.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-6">{motivos.length === 0 ? 'No hay motivos cargados' : 'Sin motivos para este filtro'}</p>
       ) : (
         <div className="space-y-2">
-          {motivos.map((m: any) => (
+          {motivosFiltrados.map((m: any) => (
             <div key={m.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
               {editId === m.id ? (
                 <>

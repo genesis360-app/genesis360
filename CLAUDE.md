@@ -102,12 +102,12 @@ src/
 ### Backlog — mejoras UX/funcionales
 
 **Config**
-- [ ] Filtro en motivos: solo rebaje / solo ingreso / ambos
-- [ ] Buscador en todas las pestañas de config (categorías, proveedores, ubicaciones, estados, motivos)
+- [x] Filtro en motivos: solo rebaje / solo ingreso / ambos
+- [x] Buscador en todas las pestañas de config (categorías, proveedores, ubicaciones, estados, motivos)
 
 **Dashboard**
-- [ ] Bug: "Ingresos" muestra unidades en vez de monto en $
-- [ ] Mover Métricas al Dashboard como segunda pestaña ("General" / "Métricas")
+- [x] Bug: "Ingresos" muestra unidades en vez de monto en $
+- [x] Mover Métricas al Dashboard como segunda pestaña ("General" / "Métricas")
 
 **Productos**
 - [ ] Combos: crear combo de productos con descuento como producto aparte
@@ -117,19 +117,19 @@ src/
 **Ventas**
 - [ ] Permitir escribir cantidad de unidades directamente (no solo +/-)
 - [ ] Cálculo de vuelto/faltante: actualizar solo al presionar Enter, no mientras se escribe
-- [ ] Medir descuentos en $ por producto y verlos en el detalle
+- [x] Medir descuentos en $ por producto y verlos en el detalle
 - [ ] Separar unidades para descuentos parciales (ej: 3 con 10% desc + 1 sin descuento)
 
 **Movimientos**
-- [ ] Sacar opción de cambiar precio de compra al ingresar nuevo inventario
+- [x] Sacar opción de cambiar precio de compra al ingresar nuevo inventario
 
 **Caja**
-- [ ] Al cierre: ingresar monto final real y registrar diferencia (sobre/faltante) con quién cerró
-- [ ] Mostrar balance total (ingresos/egresos) y permitir agregar dinero extra con aclaración (ej: caja fuerte, adelanto proveedor)
-- [ ] Historial de caja: abrir cada cierre y ver detalle completo de ingresos y egresos
+- [x] Al cierre: ingresar monto final real y registrar diferencia (sobre/faltante) con quién cerró
+- [x] Mostrar balance total (ingresos/egresos) y permitir agregar dinero extra con aclaración (ej: caja fuerte, adelanto proveedor)
+- [x] Historial de caja: abrir cada cierre y ver detalle completo de ingresos y egresos
 
 **Métricas**
-- [ ] Corregir: faltan productos en el detalle de "sin movimiento en el período"
+- [x] Corregir: faltan productos en el detalle de "sin movimiento en el período"
 
 ### Ideas futuras
 - Generador de cupones + aplicar cupón en ventas

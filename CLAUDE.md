@@ -201,7 +201,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Nombre de la app**: siempre `BRAND.name` desde `src/config/brand.ts`, nunca hardcodeado.
 
 ### Git / Deploy
-- **Claude Code NUNCA hace push a `main`**. Todo va a `dev`. Para pasar a `main`: merge manual o PR.
+- **Claude Code NUNCA hace push a `main`**. Todo va a `dev`. Para pasar a `main`: crear PR con gh CLI y mergearlo (ver WORKFLOW.md).
+- **PR workflow**: `gh pr create --base main --head dev` → `gh pr merge N --merge`. GH_TOKEN en `.env.local`.
 - **GitHub Free**: branch protection no disponible para repos privados vía API. No intentar configurarlo.
 - **Vercel envs**: variables de producción apuntan a Supabase PROD; variables de preview apuntan a Supabase DEV. Configurado manualmente en el dashboard de Vercel.
 - **Co-Authored-By**: siempre `GNO <gaston.otranto@gmail.com>` en todos los commits.

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BRAND } from '@/config/brand'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History,
-  Printer, X, ChevronDown, Settings, CheckCircle, AlertTriangle
+  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -26,10 +26,12 @@ export default function CajaPage() {
   const [showCierre, setShowCierre] = useState(false)
   const [showMovimiento, setShowMovimiento] = useState(false)
   const [showNuevaCaja, setShowNuevaCaja] = useState(false)
+  const [sesionExpandida, setSesionExpandida] = useState<string | null>(null)
 
   // Forms
   const [montoApertura, setMontoApertura] = useState('')
   const [notasCierre, setNotasCierre] = useState('')
+  const [montoRealCierre, setMontoRealCierre] = useState('')
   const [movTipo, setMovTipo] = useState<'ingreso' | 'egreso'>('ingreso')
   const [movConcepto, setMovConcepto] = useState('')
   const [movMonto, setMovMonto] = useState('')
@@ -76,20 +78,36 @@ export default function CajaPage() {
     queryKey: ['historial-sesiones', cajaId],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('*, cajas(nombre), users(nombre_display)')
+        .select('*, cajas(nombre), users(nombre_display), cerrado_por:cerrado_por_id(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'cerrada')
         .order('cerrada_at', { ascending: false })
-        .limit(20)
+        .limit(30)
       return data ?? []
     },
     enabled: !!tenant && tab === 'historial',
+  })
+
+  const { data: movimientosDetalle = [] } = useQuery({
+    queryKey: ['caja-movimientos-historial', sesionExpandida],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_movimientos')
+        .select('*, users(nombre_display)')
+        .eq('sesion_id', sesionExpandida!)
+        .order('created_at', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!sesionExpandida,
   })
 
   // Calcular totales de la sesión actual
   const totalIngresos = movimientos.filter((m: any) => m.tipo === 'ingreso').reduce((a: number, m: any) => a + m.monto, 0)
   const totalEgresos = movimientos.filter((m: any) => m.tipo === 'egreso').reduce((a: number, m: any) => a + m.monto, 0)
   const saldoActual = sesionActiva ? (sesionActiva.monto_apertura + totalIngresos - totalEgresos) : 0
+
+  // Diferencia al cierre
+  const montoRealNum = parseFloat(montoRealCierre) || 0
+  const diferencia = montoRealCierre !== '' ? montoRealNum - saldoActual : null
 
   // Mutations
   const abrirCaja = useMutation({
@@ -115,21 +133,27 @@ export default function CajaPage() {
   const cerrarCaja = useMutation({
     mutationFn: async () => {
       if (!sesionActiva) throw new Error('No hay caja abierta')
-      const { error } = await supabase.from('caja_sesiones').update({
+      const payload: any = {
         estado: 'cerrada',
         monto_cierre: saldoActual,
         total_ingresos: totalIngresos,
         total_egresos: totalEgresos,
         notas_cierre: notasCierre || null,
+        cerrado_por_id: user?.id,
         cerrada_at: new Date().toISOString(),
-      }).eq('id', sesionActiva.id)
+      }
+      if (montoRealCierre !== '') {
+        payload.monto_real_cierre = montoRealNum
+        payload.diferencia_cierre = diferencia
+      }
+      const { error } = await supabase.from('caja_sesiones').update(payload).eq('id', sesionActiva.id)
       if (error) throw error
     },
     onSuccess: () => {
       toast.success('Caja cerrada')
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
       qc.invalidateQueries({ queryKey: ['historial-sesiones'] })
-      setShowCierre(false); setNotasCierre('')
+      setShowCierre(false); setNotasCierre(''); setMontoRealCierre('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -190,17 +214,27 @@ export default function CajaPage() {
     doc.text(`Negocio: ${tenant?.nombre}`, 14, 42)
     doc.text(`Apertura: ${new Date(sesion.abierta_at).toLocaleString('es-AR')}`, 14, 49)
     doc.text(`Cierre: ${new Date(sesion.cerrada_at).toLocaleString('es-AR')}`, 14, 56)
-    doc.text(`Usuario: ${sesion.users?.nombre_display ?? '—'}`, 14, 63)
+    const abrioNombre = sesion.users?.nombre_display ?? '—'
+    const cerroNombre = sesion.cerrado_por?.nombre_display ?? abrioNombre
+    doc.text(`Abrió: ${abrioNombre}`, 14, 63)
+    doc.text(`Cerró: ${cerroNombre}`, 14, 70)
+
+    const rows: any[] = [
+      ['Monto de apertura', formatMoneda(sesion.monto_apertura)],
+      ['Total ingresos', formatMoneda(sesion.total_ingresos)],
+      ['Total egresos', formatMoneda(sesion.total_egresos)],
+      ['Saldo calculado', formatMoneda(sesion.monto_cierre)],
+    ]
+    if (sesion.monto_real_cierre != null) {
+      rows.push(['Conteo real', formatMoneda(sesion.monto_real_cierre)])
+      const dif = sesion.diferencia_cierre ?? 0
+      rows.push([dif >= 0 ? 'Sobrante' : 'Faltante', formatMoneda(Math.abs(dif))])
+    }
 
     autoTable(doc, {
-      startY: 72,
+      startY: 78,
       head: [['Concepto', 'Monto']],
-      body: [
-        ['Monto de apertura', formatMoneda(sesion.monto_apertura)],
-        ['Total ingresos', formatMoneda(sesion.total_ingresos)],
-        ['Total egresos', formatMoneda(sesion.total_egresos)],
-        ['Saldo final', formatMoneda(sesion.monto_cierre)],
-      ],
+      body: rows,
       styles: { fontSize: 10 },
       headStyles: { fillColor: [30, 58, 95] },
       columnStyles: { 1: { halign: 'right' } },
@@ -395,38 +429,94 @@ export default function CajaPage() {
               <History size={36} className="mx-auto mb-3 opacity-30" />
               <p>No hay cierres de caja registrados</p>
             </div>
-          ) : historialSesiones.map((s: any) => (
-            <div key={s.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="font-semibold text-gray-800">{s.cajas?.nombre}</p>
-                  <p className="text-xs text-gray-400">
-                    {new Date(s.abierta_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} →
-                    {new Date(s.cerrada_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
-                  </p>
-                  {s.users?.nombre_display && <p className="text-xs text-gray-400">{s.users.nombre_display}</p>}
-                </div>
-                <button onClick={() => imprimirCierre(s)}
-                  className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50">
-                  <Printer size={13} /> PDF
-                </button>
-              </div>
-              <div className="grid grid-cols-4 gap-2 text-center text-xs">
-                {[
-                  { label: 'Apertura', val: s.monto_apertura, color: 'text-gray-700' },
-                  { label: 'Ingresos', val: s.total_ingresos, color: 'text-green-600' },
-                  { label: 'Egresos', val: s.total_egresos, color: 'text-red-500' },
-                  { label: 'Cierre', val: s.monto_cierre, color: 'text-[#1E3A5F] font-bold' },
-                ].map(({ label, val, color }) => (
-                  <div key={label} className="bg-gray-50 rounded-lg p-2">
-                    <p className="text-gray-400 mb-0.5">{label}</p>
-                    <p className={`text-sm ${color}`}>{formatMoneda(val ?? 0)}</p>
+          ) : historialSesiones.map((s: any) => {
+            const isExpanded = sesionExpandida === s.id
+            const dif = s.diferencia_cierre
+            const cerroNombre = s.cerrado_por?.nombre_display ?? s.users?.nombre_display ?? '—'
+            return (
+              <div key={s.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="font-semibold text-gray-800">{s.cajas?.nombre}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        <Clock size={11} className="inline mr-1" />
+                        {new Date(s.abierta_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} →&nbsp;
+                        {new Date(s.cerrada_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                      </p>
+                      <p className="text-xs text-gray-400">Cerró: {cerroNombre}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {dif != null && (
+                        <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${
+                          dif > 0 ? 'bg-green-50 text-green-700' :
+                          dif < 0 ? 'bg-red-50 text-red-600' :
+                          'bg-gray-100 text-gray-500'
+                        }`}>
+                          {dif > 0 ? `+${formatMoneda(dif)}` : dif < 0 ? `-${formatMoneda(Math.abs(dif))}` : 'Sin diferencia'}
+                        </span>
+                      )}
+                      <button onClick={() => imprimirCierre(s)}
+                        className="flex items-center gap-1.5 text-xs border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg hover:bg-gray-50">
+                        <Printer size={13} /> PDF
+                      </button>
+                    </div>
                   </div>
-                ))}
+
+                  {/* Grilla de montos */}
+                  <div className={`grid gap-2 text-center text-xs ${s.monto_real_cierre != null ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                    {[
+                      { label: 'Apertura', val: s.monto_apertura, color: 'text-gray-700' },
+                      { label: 'Ingresos', val: s.total_ingresos, color: 'text-green-600' },
+                      { label: 'Egresos', val: s.total_egresos, color: 'text-red-500' },
+                      { label: 'Calculado', val: s.monto_cierre, color: 'text-[#1E3A5F]' },
+                      ...(s.monto_real_cierre != null ? [{ label: 'Conteo real', val: s.monto_real_cierre, color: 'font-bold text-[#1E3A5F]' }] : []),
+                    ].map(({ label, val, color }) => (
+                      <div key={label} className="bg-gray-50 rounded-lg p-2">
+                        <p className="text-gray-400 mb-0.5">{label}</p>
+                        <p className={`text-sm ${color}`}>{formatMoneda(val ?? 0)}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {s.notas_cierre && <p className="text-xs text-gray-400 mt-2 italic">"{s.notas_cierre}"</p>}
+
+                  {/* Toggle detalle */}
+                  <button
+                    onClick={() => setSesionExpandida(isExpanded ? null : s.id)}
+                    className="mt-3 flex items-center gap-1 text-xs text-[#2E75B6] hover:underline">
+                    {isExpanded ? <><ChevronUp size={13} /> Ocultar detalle</> : <><ChevronDown size={13} /> Ver movimientos</>}
+                  </button>
+                </div>
+
+                {/* Detalle expandido */}
+                {isExpanded && (
+                  <div className="border-t border-gray-100">
+                    {movimientosDetalle.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-4">Sin movimientos registrados en esta sesión</p>
+                    ) : (
+                      <div className="divide-y divide-gray-50">
+                        {movimientosDetalle.map((m: any) => (
+                          <div key={m.id} className="px-4 py-2.5 flex items-center justify-between">
+                            <div>
+                              <p className="text-sm text-gray-800">{m.concepto}</p>
+                              <p className="text-xs text-gray-400">
+                                {new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                                {m.users?.nombre_display && ` · ${m.users.nombre_display}`}
+                              </p>
+                            </div>
+                            <span className={`font-bold text-sm ${m.tipo === 'ingreso' ? 'text-green-600' : 'text-red-500'}`}>
+                              {m.tipo === 'ingreso' ? '+' : '-'}{formatMoneda(m.monto)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              {s.notas_cierre && <p className="text-xs text-gray-400 mt-2 italic">"{s.notas_cierre}"</p>}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -528,27 +618,56 @@ export default function CajaPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-[#1E3A5F]">Cerrar caja</h2>
-              <button onClick={() => setShowCierre(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+              <button onClick={() => { setShowCierre(false); setMontoRealCierre('') }}
+                className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
 
+            {/* Resumen calculado */}
             <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">Apertura</span><span className="font-medium">{formatMoneda(sesionActiva?.monto_apertura ?? 0)}</span></div>
               <div className="flex justify-between text-green-600"><span>+ Ingresos</span><span className="font-medium">{formatMoneda(totalIngresos)}</span></div>
               <div className="flex justify-between text-red-500"><span>− Egresos</span><span className="font-medium">{formatMoneda(totalEgresos)}</span></div>
               <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-[#1E3A5F]">
-                <span>Saldo final</span><span>{formatMoneda(saldoActual)}</span>
+                <span>Saldo calculado</span><span>{formatMoneda(saldoActual)}</span>
               </div>
             </div>
 
+            {/* Conteo real */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Conteo real en caja <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                <input type="number" min="0" value={montoRealCierre}
+                  onChange={e => setMontoRealCierre(e.target.value)}
+                  placeholder={formatMoneda(saldoActual).replace('$', '')}
+                  className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+              </div>
+              {diferencia !== null && (
+                <div className={`mt-2 flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg ${
+                  diferencia > 0 ? 'bg-green-50 text-green-700' :
+                  diferencia < 0 ? 'bg-red-50 text-red-600' :
+                  'bg-gray-100 text-gray-600'
+                }`}>
+                  {diferencia > 0
+                    ? <><CheckCircle size={15} /> Sobran {formatMoneda(diferencia)}</>
+                    : diferencia < 0
+                    ? <><AlertTriangle size={15} /> Faltan {formatMoneda(Math.abs(diferencia))}</>
+                    : 'Sin diferencia'}
+                </div>
+              )}
+            </div>
+
             <div className="mb-5">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notas de cierre (opcional)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notas de cierre <span className="text-gray-400 font-normal">(opcional)</span></label>
               <textarea value={notasCierre} onChange={e => setNotasCierre(e.target.value)} rows={2}
                 placeholder="Observaciones del cierre..."
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] resize-none" />
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setShowCierre(false)}
+              <button onClick={() => { setShowCierre(false); setMontoRealCierre('') }}
                 className="flex-1 border-2 border-gray-200 text-gray-600 font-semibold py-2.5 rounded-xl text-sm">
                 Cancelar
               </button>

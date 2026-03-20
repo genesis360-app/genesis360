@@ -4,25 +4,8 @@
 -- ============================================================
 
 -- ============================================================
--- FUNCIONES HELPER
+-- FUNCIONES: no dependen de tablas del usuario
 -- ============================================================
-CREATE OR REPLACE FUNCTION public.get_user_tenant_id()
-RETURNS UUID LANGUAGE SQL STABLE SECURITY DEFINER AS $$
-  SELECT tenant_id FROM users WHERE id = auth.uid()
-$$;
-
-CREATE OR REPLACE FUNCTION public.get_user_role()
-RETURNS TEXT LANGUAGE SQL STABLE SECURITY DEFINER AS $$
-  SELECT rol FROM users WHERE id = auth.uid()
-$$;
-
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND rol = 'ADMIN'
-  )
-$$;
-
 CREATE OR REPLACE FUNCTION public.update_updated_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
@@ -36,50 +19,6 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.lpn IS NULL OR NEW.lpn = '' THEN
     NEW.lpn := 'LPN-' || TO_CHAR(NOW(), 'YYYYMMDD') || '-' || UPPER(SUBSTRING(gen_random_uuid()::TEXT, 1, 6));
-  END IF;
-  RETURN NEW;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.recalcular_stock(p_producto_id UUID)
-RETURNS VOID LANGUAGE plpgsql AS $$
-DECLARE
-  v_tiene_series BOOLEAN;
-  v_stock INT;
-BEGIN
-  SELECT tiene_series INTO v_tiene_series FROM productos WHERE id = p_producto_id;
-  IF v_tiene_series THEN
-    SELECT COUNT(*) INTO v_stock FROM inventario_series
-    WHERE producto_id = p_producto_id AND activo = TRUE;
-  ELSE
-    SELECT COALESCE(SUM(cantidad), 0) INTO v_stock FROM inventario_lineas
-    WHERE producto_id = p_producto_id AND activo = TRUE;
-  END IF;
-  UPDATE productos SET stock_actual = v_stock WHERE id = p_producto_id;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.trigger_recalcular_stock()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
-BEGIN
-  IF TG_OP = 'DELETE' THEN
-    PERFORM recalcular_stock(OLD.producto_id);
-  ELSE
-    PERFORM recalcular_stock(NEW.producto_id);
-  END IF;
-  RETURN NEW;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.check_stock_minimo()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
-BEGIN
-  IF NEW.stock_actual <= NEW.stock_minimo THEN
-    INSERT INTO alertas (tenant_id, producto_id, tipo, mensaje)
-    VALUES (
-      NEW.tenant_id, NEW.id, 'stock_minimo',
-      'Stock de ' || NEW.nombre || ' llegó al mínimo (' || NEW.stock_actual || ' unidades)'
-    ) ON CONFLICT DO NOTHING;
   END IF;
   RETURN NEW;
 END;
@@ -139,6 +78,26 @@ CREATE TABLE users (
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================
+-- FUNCIONES HELPER (después de crear users)
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_user_tenant_id()
+RETURNS UUID LANGUAGE SQL STABLE SECURITY DEFINER AS $$
+  SELECT tenant_id FROM users WHERE id = auth.uid()
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_user_role()
+RETURNS TEXT LANGUAGE SQL STABLE SECURITY DEFINER AS $$
+  SELECT rol FROM users WHERE id = auth.uid()
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM users WHERE id = auth.uid() AND rol = 'ADMIN'
+  )
+$$;
 
 -- ============================================================
 -- 4. CATEGORÍAS
@@ -269,13 +228,10 @@ CREATE INDEX idx_productos_tenant   ON productos(tenant_id);
 CREATE INDEX idx_productos_sku      ON productos(tenant_id, sku);
 CREATE INDEX idx_productos_categoria ON productos(categoria_id);
 
-CREATE TRIGGER productos_updated_at
-  BEFORE UPDATE ON productos
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-CREATE TRIGGER productos_stock_check
-  AFTER UPDATE OF stock_actual ON productos
-  FOR EACH ROW EXECUTE FUNCTION check_stock_minimo();
+-- ============================================================
+-- FUNCIÓN check_stock_minimo (después de productos y alertas)
+-- se crea después de la tabla alertas más abajo
+-- ============================================================
 
 -- ============================================================
 -- 11. INVENTARIO LINEAS (LPN)
@@ -302,18 +258,6 @@ ALTER TABLE inventario_lineas ENABLE ROW LEVEL SECURITY;
 CREATE INDEX idx_lineas_tenant   ON inventario_lineas(tenant_id);
 CREATE INDEX idx_lineas_producto ON inventario_lineas(producto_id);
 
-CREATE TRIGGER lineas_lpn_trigger
-  BEFORE INSERT ON inventario_lineas
-  FOR EACH ROW EXECUTE FUNCTION generate_lpn();
-
-CREATE TRIGGER lineas_updated_at
-  BEFORE UPDATE ON inventario_lineas
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-CREATE TRIGGER lineas_recalcular_stock
-  AFTER INSERT ON inventario_lineas
-  FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
-
 -- ============================================================
 -- 12. INVENTARIO SERIES
 -- ============================================================
@@ -333,10 +277,6 @@ ALTER TABLE inventario_series ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX idx_series_producto ON inventario_series(producto_id);
 CREATE INDEX idx_series_linea    ON inventario_series(linea_id);
-
-CREATE TRIGGER series_recalcular_stock
-  AFTER INSERT ON inventario_series
-  FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
 
 -- ============================================================
 -- 13. MOVIMIENTOS DE STOCK
@@ -376,6 +316,80 @@ CREATE TABLE alertas (
 ALTER TABLE alertas ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX idx_alertas_tenant ON alertas(tenant_id, resuelta);
+
+-- ============================================================
+-- FUNCIONES que dependen de productos y alertas
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.check_stock_minimo()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.stock_actual <= NEW.stock_minimo THEN
+    INSERT INTO alertas (tenant_id, producto_id, tipo, mensaje)
+    VALUES (
+      NEW.tenant_id, NEW.id, 'stock_minimo',
+      'Stock de ' || NEW.nombre || ' llegó al mínimo (' || NEW.stock_actual || ' unidades)'
+    ) ON CONFLICT DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.recalcular_stock(p_producto_id UUID)
+RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE
+  v_tiene_series BOOLEAN;
+  v_stock INT;
+BEGIN
+  SELECT tiene_series INTO v_tiene_series FROM productos WHERE id = p_producto_id;
+  IF v_tiene_series THEN
+    SELECT COUNT(*) INTO v_stock FROM inventario_series
+    WHERE producto_id = p_producto_id AND activo = TRUE;
+  ELSE
+    SELECT COALESCE(SUM(cantidad), 0) INTO v_stock FROM inventario_lineas
+    WHERE producto_id = p_producto_id AND activo = TRUE;
+  END IF;
+  UPDATE productos SET stock_actual = v_stock WHERE id = p_producto_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.trigger_recalcular_stock()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    PERFORM recalcular_stock(OLD.producto_id);
+  ELSE
+    PERFORM recalcular_stock(NEW.producto_id);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- ============================================================
+-- TRIGGERS
+-- ============================================================
+CREATE TRIGGER productos_updated_at
+  BEFORE UPDATE ON productos
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER productos_stock_check
+  AFTER UPDATE OF stock_actual ON productos
+  FOR EACH ROW EXECUTE FUNCTION check_stock_minimo();
+
+CREATE TRIGGER lineas_lpn_trigger
+  BEFORE INSERT ON inventario_lineas
+  FOR EACH ROW EXECUTE FUNCTION generate_lpn();
+
+CREATE TRIGGER lineas_updated_at
+  BEFORE UPDATE ON inventario_lineas
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER lineas_recalcular_stock
+  AFTER INSERT ON inventario_lineas
+  FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
+
+CREATE TRIGGER series_recalcular_stock
+  AFTER INSERT ON inventario_series
+  FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
 
 -- ============================================================
 -- 15. CLIENTES (M8)
@@ -484,12 +498,15 @@ CREATE TABLE caja_sesiones (
   monto_cierre   DECIMAL(12,2),
   total_ingresos DECIMAL(12,2) DEFAULT 0,
   total_egresos  DECIMAL(12,2) DEFAULT 0,
-  total_ventas   DECIMAL(12,2) DEFAULT 0,
-  estado         TEXT NOT NULL DEFAULT 'abierta',
-  notas_cierre   TEXT,
-  abierta_at     TIMESTAMPTZ DEFAULT NOW(),
-  cerrada_at     TIMESTAMPTZ,
-  created_at     TIMESTAMPTZ DEFAULT NOW()
+  total_ventas       DECIMAL(12,2) DEFAULT 0,
+  estado             TEXT NOT NULL DEFAULT 'abierta',
+  notas_cierre       TEXT,
+  monto_real_cierre  DECIMAL(12,2),
+  diferencia_cierre  DECIMAL(12,2),
+  cerrado_por_id     UUID REFERENCES users(id),
+  abierta_at         TIMESTAMPTZ DEFAULT NOW(),
+  cerrada_at         TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE caja_sesiones ENABLE ROW LEVEL SECURITY;
 

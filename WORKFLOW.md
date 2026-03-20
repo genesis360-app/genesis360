@@ -5,7 +5,7 @@
 | Ambiente | Supabase | Vercel | Branch |
 |----------|----------|--------|--------|
 | **PROD** | `jjffnbrdjchquexdfgwq` (actual) | stokio-tau.vercel.app | `main` |
-| **DEV** | *(crear — ver abajo)* | preview automático | `dev` |
+| **DEV** | `gcmhzdedrkmmzfzfveig` | preview automático | `dev` |
 
 ---
 
@@ -21,15 +21,30 @@
 ## Flujo diario
 
 ```
-1. Trabajar en rama dev (o feature/xxx desde dev)
-2. Hacer commits con Co-Authored-By: GNO <noreply@anthropic.com>
-3. Testear en ambiente DEV (Vercel preview)
-4. Cuando el feature está listo:
-   git push origin dev
-   → Abrir PR en GitHub: dev → main
-   → Revisar → Merge
-   → Vercel despliega automáticamente a producción
+1. Trabajar en rama dev
+2. Hacer commits con Co-Authored-By: GNO <gaston.otranto@gmail.com>
+3. Testear en DEV (Vercel preview — link en el dashboard de Vercel)
+4. Cuando el batch de features está listo para producción:
+   a. Aplicar migrations pendientes en PROD (ver historial en este archivo)
+   b. Crear PR: dev → main  (ver comando abajo)
+   c. Mergear PR → Vercel deploya automáticamente a producción
+   d. Crear GitHub release vX.Y.Z (ver sección Releases)
 ```
+
+### Crear y mergear PR a producción
+
+```bash
+# Crear PR
+GH_TOKEN="ghp_..." "/c/Program Files/GitHub CLI/gh.exe" pr create \
+  --base main --head dev \
+  --title "vX.Y.Z — Descripción" \
+  --body "## Qué entra..."
+
+# Mergear (reemplazar N por el número del PR)
+GH_TOKEN="ghp_..." "/c/Program Files/GitHub CLI/gh.exe" pr merge N --merge
+```
+
+El `GH_TOKEN` está en `.env.local`.
 
 ---
 
@@ -155,6 +170,7 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 |---------|-------------|-------|
 | v0.12.0 | Búsquedas, config, movimientos, descuentos en ventas, fix métricas | 2026-03 |
 | v0.13.0 | Combos, separar unidades, vuelto al Enter, fix número de venta | 2026-03 |
+| v0.14.0 | Emails transaccionales (Resend), fix trigger ventas, ingresos con unidades en dashboard | 2026-03 |
 
 ### Crear release
 ```bash

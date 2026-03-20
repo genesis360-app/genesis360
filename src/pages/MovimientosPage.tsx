@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, DollarSign } from 'lucide-react'
+import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, DollarSign, ChevronRight, User, Clock, Package, TrendingDown, TrendingUp } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -54,6 +54,7 @@ export default function MovimientosPage() {
   const [rebajeSeries, setRebajeSeries] = useState<string[]>([])
   const [rebajeSearch, setRebajeSearch] = useState('')
   const [rebajeGrupoId, setRebajeGrupoId] = useState<string | null>(null)
+  const [movDetalle, setMovDetalle] = useState<any | null>(null)
 
   const { data: movimientos = [], isLoading } = useQuery({
     queryKey: ['movimientos', tenant?.id],
@@ -348,11 +349,13 @@ export default function MovimientosPage() {
                   <th className="text-right px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">Stock prev.</th>
                   <th className="text-right px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">Stock nuevo</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-600 hidden lg:table-cell">Motivo</th>
+                  <th className="px-4 py-3 w-8" />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((m: any) => (
-                  <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <tr key={m.id} onClick={() => setMovDetalle(m)}
+                    className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
                     </td>
@@ -371,6 +374,7 @@ export default function MovimientosPage() {
                     <td className="px-4 py-3 text-right text-gray-400 hidden md:table-cell">{m.stock_antes}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-700 hidden md:table-cell">{m.stock_despues}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell">{m.motivo ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-300"><ChevronRight size={14} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -378,6 +382,100 @@ export default function MovimientosPage() {
           </div>
         )}
       </div>
+
+      {/* Modal DETALLE MOVIMIENTO */}
+      {movDetalle && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setMovDetalle(null)}>
+          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className={`px-5 py-4 flex items-center justify-between
+              ${movDetalle.tipo === 'ingreso' ? 'bg-green-50' : 'bg-blue-50'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center
+                  ${movDetalle.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {movDetalle.tipo === 'ingreso' ? <ArrowDown size={18} /> : <ArrowUp size={18} />}
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-800 capitalize">{movDetalle.tipo}</p>
+                  <p className="text-xs text-gray-500">
+                    {new Date(movDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' })}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setMovDetalle(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-5 py-4 space-y-4">
+              {/* Producto */}
+              <div className="flex items-start gap-3">
+                <Package size={16} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Producto</p>
+                  <p className="font-semibold text-gray-800">{movDetalle.productos?.nombre}</p>
+                  <p className="text-xs text-gray-400 font-mono">{movDetalle.productos?.sku}</p>
+                </div>
+              </div>
+
+              {/* Cantidad y movimiento de stock */}
+              <div className="bg-gray-50 rounded-xl p-4 flex items-center justify-between">
+                <div className="text-center">
+                  <p className="text-xs text-gray-400 mb-1">Stock anterior</p>
+                  <p className="text-2xl font-bold text-gray-500">{movDetalle.stock_antes}</p>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <span className={`text-sm font-bold px-3 py-1 rounded-full
+                    ${movDetalle.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {movDetalle.tipo === 'ingreso' ? '+' : '−'}{movDetalle.cantidad}
+                  </span>
+                  {movDetalle.tipo === 'ingreso'
+                    ? <TrendingUp size={16} className="text-green-500" />
+                    : <TrendingDown size={16} className="text-blue-500" />}
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-gray-400 mb-1">Stock nuevo</p>
+                  <p className="text-2xl font-bold text-gray-800">{movDetalle.stock_despues}</p>
+                </div>
+              </div>
+
+              {/* Detalles en grilla */}
+              <div className="grid grid-cols-2 gap-3">
+                {movDetalle.motivo && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Motivo</p>
+                    <p className="text-sm text-gray-700">{movDetalle.motivo}</p>
+                  </div>
+                )}
+                {movDetalle.estados_inventario && (
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Estado</p>
+                    <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: (movDetalle.estados_inventario.color ?? '#6b7280') + '20', color: movDetalle.estados_inventario.color ?? '#6b7280' }}>
+                      {movDetalle.estados_inventario.nombre}
+                    </span>
+                  </div>
+                )}
+                {movDetalle.users?.nombre_display && (
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Registrado por</p>
+                    <div className="flex items-center gap-1.5">
+                      <User size={13} className="text-gray-400" />
+                      <p className="text-sm text-gray-700">{movDetalle.users.nombre_display}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ID */}
+              <p className="text-xs text-gray-300 font-mono border-t border-gray-100 pt-3">ID: {movDetalle.id}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal INGRESO */}
       {modal === 'ingreso' && (

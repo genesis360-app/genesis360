@@ -58,6 +58,7 @@ export default function VentasPage() {
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
+  const [pagoFocused, setPagoFocused] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
 
   // Historial
@@ -693,7 +694,11 @@ export default function VentasPage() {
                           <div className="flex items-center gap-1">
                             <button onClick={() => updateItem(idx, 'cantidad', Math.max(1, item.cantidad - 1))}
                               className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">−</button>
-                            <span className="w-8 text-center text-sm font-medium">{item.cantidad}</span>
+                            <input
+                              type="number" min="1" value={item.cantidad}
+                              onChange={e => updateItem(idx, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
+                              className="w-12 text-center text-sm font-medium border border-gray-200 rounded-lg py-0.5 focus:outline-none focus:border-[#2E75B6]"
+                            />
                             <button onClick={() => updateItem(idx, 'cantidad', item.cantidad + 1)}
                               className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">+</button>
                           </div>
@@ -825,6 +830,8 @@ export default function VentasPage() {
                   </select>
                   <input type="number" min="0" value={mp.monto}
                     onChange={e => updateMedioPago(idx, 'monto', e.target.value)}
+                    onFocus={() => setPagoFocused(true)}
+                    onBlur={() => setPagoFocused(false)}
                     placeholder="Monto"
                     className="w-24 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
                   {mediosPago.length > 1 && (
@@ -840,7 +847,7 @@ export default function VentasPage() {
                 <Plus size={12} /> Agregar otro medio
               </button>
 
-              {cart.length > 0 && totalAsignado > 0 && (
+              {cart.length > 0 && totalAsignado > 0 && !pagoFocused && (
                 <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600' : totalFaltante > 0 ? 'text-orange-500' : 'text-red-500'}`}>
                   {totalFaltante === 0
                     ? '✓ Total cubierto'

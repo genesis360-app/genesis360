@@ -57,7 +57,7 @@ export default function DashboardPage() {
       const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes] = await Promise.all([
         supabase.from('productos').select('id, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
-        supabase.from('movimientos_stock').select('tipo, cantidad').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
+        supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
         supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes),
         supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt),
         supabase.from('movimientos_stock').select('producto_id').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias),
@@ -69,7 +69,7 @@ export default function DashboardPage() {
       const valorInventario  = prods.reduce((acc, p) => acc + p.precio_costo * p.stock_actual, 0)
       const alertasActivas   = alertas.data?.length ?? 0
       const movs             = movimientos.data ?? []
-      const ingresosHoy      = movs.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + m.cantidad, 0)
+      const ingresosHoy      = movs.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + m.cantidad * ((m as any).productos?.precio_costo ?? 0), 0)
       const rebajesHoy       = movs.filter(m => m.tipo === 'rebaje').reduce((a, m) => a + m.cantidad, 0)
       const totalVentasMes   = (ventasMes.data ?? []).reduce((a, v) => a + (v.total ?? 0), 0)
       const cantVentasMes    = ventasMes.data?.length ?? 0
@@ -235,7 +235,7 @@ export default function DashboardPage() {
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 bg-green-50 text-green-600">
             <ArrowDown size={20} />
           </div>
-          <p className="text-2xl font-bold text-gray-800">{(stats?.ingresosHoy ?? 0).toLocaleString()}</p>
+          <p className="text-2xl font-bold text-gray-800">${(stats?.ingresosHoy ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
           <p className="text-sm text-gray-500 mt-0.5">Ingresos (7d)</p>
         </Link>
 

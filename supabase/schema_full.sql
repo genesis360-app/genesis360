@@ -437,6 +437,23 @@ CREATE TRIGGER ventas_updated_at
   BEFORE UPDATE ON ventas
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+-- Trigger: auto-generar numero de venta por tenant
+CREATE OR REPLACE FUNCTION gen_venta_numero()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.numero IS NULL THEN
+    SELECT COALESCE(MAX(numero), 0) + 1 INTO NEW.numero
+    FROM ventas WHERE tenant_id = NEW.tenant_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS set_venta_numero ON ventas;
+CREATE TRIGGER set_venta_numero
+  BEFORE INSERT ON ventas
+  FOR EACH ROW EXECUTE FUNCTION gen_venta_numero();
+
 -- ============================================================
 -- 17. VENTA ITEMS
 -- ============================================================
@@ -661,3 +678,22 @@ CREATE POLICY "sesiones_tenant" ON caja_sesiones FOR ALL
 -- CAJA MOVIMIENTOS
 CREATE POLICY "mov_caja_tenant" ON caja_movimientos FOR ALL
   USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+-- ============================================================
+-- M14. COMBOS (reglas de precio por volumen)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS combos (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre        TEXT NOT NULL,
+  producto_id   UUID NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+  cantidad      INT NOT NULL DEFAULT 2 CHECK (cantidad >= 2),
+  descuento_pct DECIMAL(5,2) NOT NULL DEFAULT 0 CHECK (descuento_pct >= 0 AND descuento_pct <= 100),
+  activo        BOOLEAN DEFAULT true,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE combos ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "tenant_isolation" ON combos;
+CREATE POLICY "tenant_isolation" ON combos
+  USING  (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+  WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));

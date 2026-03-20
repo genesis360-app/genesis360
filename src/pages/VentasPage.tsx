@@ -58,7 +58,6 @@ export default function VentasPage() {
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
-  const [pagoFocused, setPagoFocused] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
 
   // Historial
@@ -894,8 +893,6 @@ export default function VentasPage() {
                   </select>
                   <input type="number" min="0" value={mp.monto}
                     onChange={e => updateMedioPago(idx, 'monto', e.target.value)}
-                    onFocus={() => setPagoFocused(true)}
-                    onBlur={() => setPagoFocused(false)}
                     onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                     placeholder="Monto"
                     className="w-24 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
@@ -912,7 +909,7 @@ export default function VentasPage() {
                 <Plus size={12} /> Agregar otro medio
               </button>
 
-              {cart.length > 0 && totalAsignado > 0 && !pagoFocused && (
+              {cart.length > 0 && totalAsignado > 0 && (
                 <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600' : totalFaltante > 0 ? 'text-orange-500' : 'text-red-500'}`}>
                   {totalFaltante === 0
                     ? '✓ Total cubierto'

@@ -89,6 +89,8 @@ curl -s -X POST "https://api.supabase.com/v1/projects/jjffnbrdjchquexdfgwq/datab
 | 002 | `002_cotizacion_y_precio_historico.sql` | Cotización USD y precio costo histórico | ✅ | ✅ |
 | 003 | `003_clientes_y_rentabilidad.sql` | Módulo clientes + rentabilidad real | ✅ | ✅ |
 | 004 | `004_caja_cierre_real.sql` | Caja: conteo real al cierre, diferencia, cerrado_por | ✅ | ✅ |
+| 005 | `005_combos.sql` | Tabla combos (reglas de precio por volumen) | ✅ | ⏳ |
+| 006 | `006_ventas_numero_trigger.sql` | Trigger para auto-generar número de venta por tenant | ✅ | ⏳ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero

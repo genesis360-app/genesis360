@@ -234,6 +234,10 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ### Movimientos de stock
 - **`linea_id` en `movimientos_stock`**: columna FK a `inventario_lineas` agregada. Permite mostrar en el detalle del movimiento: LPN, lote, vencimiento, precio de costo, ubicación, proveedor y series. Siempre guardar `linea_id` al insertar movimientos de ingreso y rebaje.
 
+### Ventas
+- **`numero` en `ventas`**: campo INT NOT NULL sin default en el schema original. Generado por trigger `set_venta_numero` (BEFORE INSERT) que hace `MAX(numero)+1` por tenant. **Nunca** enviar `numero` en el INSERT desde el frontend — lo asigna el trigger.
+- **Combos**: reglas de precio por volumen en tabla `combos` (producto_id, cantidad, descuento_pct). El frontend detecta en el carrito y aplica con split de filas. No afectan stock, solo precio.
+
 ### Hooks / Compactación
 - **PostCompact hook** configurado en `.claude/settings.local.json`: inyecta contexto recordando actualizar CLAUDE.md después de cada compactación.
 - **Limitación**: no existe un evento de hook para "contexto al 80%". El hook solo corre después de que la compactación ya ocurrió. La compactación debe ejecutarse manualmente con `/compact`.

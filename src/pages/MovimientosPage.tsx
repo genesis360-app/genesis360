@@ -61,7 +61,7 @@ export default function MovimientosPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('movimientos_stock')
-        .select('*, productos(nombre,sku), users(nombre_display), estados_inventario(nombre,color)')
+        .select('*, productos(nombre,sku,unidad_medida), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie))')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -204,6 +204,7 @@ export default function MovimientosPage() {
         motivo: form.motivo || null,
         estado_id: form.estadoId || null,
         usuario_id: user?.id,
+        linea_id: linea.id,
       })
     },
     onSuccess: () => {
@@ -270,6 +271,7 @@ export default function MovimientosPage() {
         stock_despues: Math.max(0, stockAntes - cant),
         motivo: rebajeMotivo || null,
         usuario_id: user?.id,
+        linea_id: rebajeLinea.id,
       })
     },
     onSuccess: () => {
@@ -384,98 +386,172 @@ export default function MovimientosPage() {
       </div>
 
       {/* Modal DETALLE MOVIMIENTO */}
-      {movDetalle && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-          onClick={() => setMovDetalle(null)}>
-          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden"
-            onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className={`px-5 py-4 flex items-center justify-between
-              ${movDetalle.tipo === 'ingreso' ? 'bg-green-50' : 'bg-blue-50'}`}>
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center
-                  ${movDetalle.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                  {movDetalle.tipo === 'ingreso' ? <ArrowDown size={18} /> : <ArrowUp size={18} />}
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-800 capitalize">{movDetalle.tipo}</p>
-                  <p className="text-xs text-gray-500">
-                    {new Date(movDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' })}
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setMovDetalle(null)} className="text-gray-400 hover:text-gray-600">
-                <X size={20} />
-              </button>
-            </div>
+      {movDetalle && (() => {
+        const linea = movDetalle.inventario_lineas
+        const series = linea?.inventario_series ?? []
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setMovDetalle(null)}>
+            <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+              onClick={e => e.stopPropagation()}>
 
-            {/* Body */}
-            <div className="px-5 py-4 space-y-4">
-              {/* Producto */}
-              <div className="flex items-start gap-3">
-                <Package size={16} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Producto</p>
-                  <p className="font-semibold text-gray-800">{movDetalle.productos?.nombre}</p>
-                  <p className="text-xs text-gray-400 font-mono">{movDetalle.productos?.sku}</p>
-                </div>
-              </div>
-
-              {/* Cantidad y movimiento de stock */}
-              <div className="bg-gray-50 rounded-xl p-4 flex items-center justify-between">
-                <div className="text-center">
-                  <p className="text-xs text-gray-400 mb-1">Stock anterior</p>
-                  <p className="text-2xl font-bold text-gray-500">{movDetalle.stock_antes}</p>
-                </div>
-                <div className="flex flex-col items-center gap-1">
-                  <span className={`text-sm font-bold px-3 py-1 rounded-full
+              {/* Header */}
+              <div className={`px-5 py-4 flex items-center justify-between flex-shrink-0
+                ${movDetalle.tipo === 'ingreso' ? 'bg-green-50' : 'bg-blue-50'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center
                     ${movDetalle.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                    {movDetalle.tipo === 'ingreso' ? '+' : '−'}{movDetalle.cantidad}
-                  </span>
-                  {movDetalle.tipo === 'ingreso'
-                    ? <TrendingUp size={16} className="text-green-500" />
-                    : <TrendingDown size={16} className="text-blue-500" />}
+                    {movDetalle.tipo === 'ingreso' ? <ArrowDown size={18} /> : <ArrowUp size={18} />}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800 capitalize">{movDetalle.tipo}</p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(movDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' })}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-xs text-gray-400 mb-1">Stock nuevo</p>
-                  <p className="text-2xl font-bold text-gray-800">{movDetalle.stock_despues}</p>
-                </div>
+                <button onClick={() => setMovDetalle(null)} className="text-gray-400 hover:text-gray-600">
+                  <X size={20} />
+                </button>
               </div>
 
-              {/* Detalles en grilla */}
-              <div className="grid grid-cols-2 gap-3">
-                {movDetalle.motivo && (
-                  <div className="col-span-2">
-                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Motivo</p>
-                    <p className="text-sm text-gray-700">{movDetalle.motivo}</p>
-                  </div>
-                )}
-                {movDetalle.estados_inventario && (
+              {/* Body scrollable */}
+              <div className="px-5 py-4 space-y-4 overflow-y-auto">
+
+                {/* Producto */}
+                <div className="flex items-start gap-3">
+                  <Package size={16} className="text-gray-400 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Estado</p>
-                    <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
-                      style={{ backgroundColor: (movDetalle.estados_inventario.color ?? '#6b7280') + '20', color: movDetalle.estados_inventario.color ?? '#6b7280' }}>
-                      {movDetalle.estados_inventario.nombre}
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Producto</p>
+                    <p className="font-semibold text-gray-800">{movDetalle.productos?.nombre}</p>
+                    <p className="text-xs text-gray-400 font-mono">{movDetalle.productos?.sku}
+                      {movDetalle.productos?.unidad_medida && <span className="ml-2 text-gray-300">· {movDetalle.productos.unidad_medida}</span>}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Cambio de stock */}
+                <div className="bg-gray-50 rounded-xl p-4 flex items-center justify-between">
+                  <div className="text-center">
+                    <p className="text-xs text-gray-400 mb-1">Stock anterior</p>
+                    <p className="text-2xl font-bold text-gray-500">{movDetalle.stock_antes}</p>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className={`text-sm font-bold px-3 py-1 rounded-full
+                      ${movDetalle.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {movDetalle.tipo === 'ingreso' ? '+' : '−'}{movDetalle.cantidad}
                     </span>
+                    {movDetalle.tipo === 'ingreso'
+                      ? <TrendingUp size={16} className="text-green-500" />
+                      : <TrendingDown size={16} className="text-blue-500" />}
                   </div>
-                )}
-                {movDetalle.users?.nombre_display && (
+                  <div className="text-center">
+                    <p className="text-xs text-gray-400 mb-1">Stock nuevo</p>
+                    <p className="text-2xl font-bold text-gray-800">{movDetalle.stock_despues}</p>
+                  </div>
+                </div>
+
+                {/* Grilla de detalles */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+
+                  {movDetalle.motivo && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Motivo</p>
+                      <p className="text-sm text-gray-700">{movDetalle.motivo}</p>
+                    </div>
+                  )}
+
+                  {movDetalle.estados_inventario && (
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Estado</p>
+                      <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: (movDetalle.estados_inventario.color ?? '#6b7280') + '20', color: movDetalle.estados_inventario.color ?? '#6b7280' }}>
+                        {movDetalle.estados_inventario.nombre}
+                      </span>
+                    </div>
+                  )}
+
+                  {linea?.ubicaciones?.nombre && (
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Posición / Ubicación</p>
+                      <p className="text-sm text-gray-700">{linea.ubicaciones.nombre}</p>
+                    </div>
+                  )}
+
+                  {linea?.proveedores?.nombre && (
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Proveedor</p>
+                      <p className="text-sm text-gray-700">{linea.proveedores.nombre}</p>
+                    </div>
+                  )}
+
+                  {linea?.lpn && (
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">LPN / Pallet</p>
+                      <p className="text-sm text-gray-700 font-mono">{linea.lpn}</p>
+                    </div>
+                  )}
+
+                  {linea?.nro_lote && (
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Nro. de lote</p>
+                      <p className="text-sm text-gray-700 font-mono">{linea.nro_lote}</p>
+                    </div>
+                  )}
+
+                  {linea?.fecha_vencimiento && (
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Vencimiento</p>
+                      <p className="text-sm text-gray-700">
+                        {new Date(linea.fecha_vencimiento).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </p>
+                    </div>
+                  )}
+
+                  {linea?.precio_costo_snapshot != null && (
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Precio de costo</p>
+                      <p className="text-sm font-semibold text-gray-700">
+                        ${linea.precio_costo_snapshot.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  )}
+
+                  {movDetalle.users?.nombre_display && (
+                    <div>
+                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Registrado por</p>
+                      <div className="flex items-center gap-1.5">
+                        <User size={13} className="text-gray-400" />
+                        <p className="text-sm text-gray-700">{movDetalle.users.nombre_display}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Series */}
+                {series.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Registrado por</p>
-                    <div className="flex items-center gap-1.5">
-                      <User size={13} className="text-gray-400" />
-                      <p className="text-sm text-gray-700">{movDetalle.users.nombre_display}</p>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-2">
+                      Series ({series.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {series.map((s: any) => (
+                        <span key={s.nro_serie}
+                          className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-lg font-mono border border-purple-100">
+                          {s.nro_serie}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 )}
-              </div>
 
-              {/* ID */}
-              <p className="text-xs text-gray-300 font-mono border-t border-gray-100 pt-3">ID: {movDetalle.id}</p>
+                {/* ID */}
+                <p className="text-xs text-gray-300 font-mono border-t border-gray-100 pt-3">ID: {movDetalle.id}</p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Modal INGRESO */}
       {modal === 'ingreso' && (

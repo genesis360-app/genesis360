@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
@@ -34,6 +34,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
   const [editNombre, setEditNombre] = useState('')
   const [editExtra, setEditExtra] = useState('')
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
 
   const handleAdd = async () => {
     if (!newNombre.trim()) return
@@ -55,6 +56,10 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
     setEditId(item.id); setEditNombre(item.nombre)
     setEditExtra(item.color ?? item.descripcion ?? item.contacto ?? '')
   }
+
+  const itemsFiltrados = search.trim()
+    ? items.filter(i => i.nombre.toLowerCase().includes(search.toLowerCase()))
+    : items
 
   return (
     <div className="space-y-3">
@@ -86,15 +91,24 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
         )}
       </div>
 
+      {items.length > 4 && (
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar..."
+            className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" />
         </div>
-      ) : items.length === 0 ? (
-        <p className="text-center text-gray-400 text-sm py-8">No hay elementos cargados aún</p>
+      ) : itemsFiltrados.length === 0 ? (
+        <p className="text-center text-gray-400 text-sm py-8">{items.length === 0 ? 'No hay elementos cargados aún' : 'Sin resultados para esa búsqueda'}</p>
       ) : (
         <div className="space-y-2">
-          {items.map(item => (
+          {itemsFiltrados.map(item => (
             <div key={item.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
               {editId === item.id ? (
                 <>
@@ -167,6 +181,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
   const [editTipo, setEditTipo] = useState('ambos')
   const [saving, setSaving] = useState(false)
   const [filterTipo, setFilterTipo] = useState<'todos' | 'ingreso' | 'rebaje' | 'ambos'>('todos')
+  const [search, setSearch] = useState('')
 
   const TIPOS = [
     { value: 'ingreso', label: 'Solo ingreso' },
@@ -183,7 +198,9 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
     setNewNombre(''); setNewTipo('ambos'); setSaving(false)
   }
 
-  const motivosFiltrados = filterTipo === 'todos' ? motivos : motivos.filter((m: any) => m.tipo === filterTipo)
+  const motivosFiltrados = motivos
+    .filter((m: any) => filterTipo === 'todos' || m.tipo === filterTipo)
+    .filter((m: any) => !search.trim() || m.nombre.toLowerCase().includes(search.toLowerCase()))
 
   return (
     <div className="space-y-3">
@@ -201,6 +218,16 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
         </button>
       </div>
 
+      {/* Buscador */}
+      {motivos.length > 4 && (
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar motivo..."
+            className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+        </div>
+      )}
+
       {/* Filtro por tipo */}
       <div className="flex gap-1">
         {(['todos', 'ingreso', 'rebaje', 'ambos'] as const).map(t => (
@@ -215,7 +242,9 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
       {loading ? (
         <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" /></div>
       ) : motivosFiltrados.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-6">{motivos.length === 0 ? 'No hay motivos cargados' : 'Sin motivos para este filtro'}</p>
+        <p className="text-sm text-gray-400 text-center py-6">
+          {motivos.length === 0 ? 'No hay motivos cargados' : 'Sin resultados'}
+        </p>
       ) : (
         <div className="space-y-2">
           {motivosFiltrados.map((m: any) => (

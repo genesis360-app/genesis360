@@ -33,24 +33,12 @@ export default function SuscripcionPage() {
     setLoading(planId)
     const plan = PLANES.find(p => p.id === planId)
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/crear-suscripcion`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            plan_id: mpPlanId,
-            tenant_id: tenant?.id,
-            monto: plan?.precio ?? 4900,
-            descripcion: `Stokio ${plan?.nombre} - Suscripción mensual`,
-            back_url: `${window.location.origin}/suscripcion`,
-          }),
-        }
-      )
-      const data = await response.json()
-      if (data.error) throw new Error(data.error)
-      // En sandbox usar sandbox_init_point, en producción usar init_point
-      const url = data.sandbox_init_point ?? data.init_point
+      const { data, error: fnError } = await supabase.functions.invoke('crear-suscripcion', {
+        body: { plan_id: mpPlanId },
+      })
+      if (fnError) throw fnError
+      if (data?.error) throw new Error(data.error)
+      const url = data?.init_point
       if (url) {
         sessionStorage.setItem('mp_plan_id', mpPlanId)
         window.location.href = url

@@ -5,44 +5,35 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// init_points de los planes (plan checkout de MP — el usuario ingresa su tarjeta en MP)
+// La back_url está configurada en cada plan → https://stokio-tau.vercel.app/suscripcion
+const PLAN_INIT_POINTS: Record<string, string> = {
+  [Deno.env.get('MP_PLAN_BASICO') ?? '']: `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${Deno.env.get('MP_PLAN_BASICO') ?? ''}`,
+  [Deno.env.get('MP_PLAN_PRO')    ?? '']: `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${Deno.env.get('MP_PLAN_PRO') ?? ''}`,
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { plan_id, tenant_id, back_url, payer_email } = await req.json()
+    const { plan_id } = await req.json()
 
-    if (!plan_id || !tenant_id) {
-      return new Response(JSON.stringify({ error: 'Faltan parámetros' }), {
+    if (!plan_id) {
+      return new Response(JSON.stringify({ error: 'Falta plan_id' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
 
-    const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
-    if (!mpToken) throw new Error('MP_ACCESS_TOKEN no configurado')
-
-    const response = await fetch('https://api.mercadopago.com/preapproval', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${mpToken}`,
-      },
-      body: JSON.stringify({
-        preapproval_plan_id: plan_id,
-        back_url: back_url ?? 'https://stokio-tau.vercel.app/suscripcion',
-        external_reference: tenant_id,
-        ...(payer_email ? { payer_email } : {}),
-      }),
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.message ?? 'Error en Mercado Pago')
+    const init_point = PLAN_INIT_POINTS[plan_id]
+    if (!init_point) {
+      return new Response(JSON.stringify({ error: 'Plan no reconocido' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    return new Response(JSON.stringify({ init_point: data.init_point, id: data.id }), {
+    return new Response(JSON.stringify({ init_point }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   } catch (err: any) {

@@ -14,6 +14,11 @@ const MP_PLAN_IDS: Record<string, string> = {
   pro:    import.meta.env.VITE_MP_PLAN_PRO ?? '',
 }
 
+const MP_PLAN_LIMITS: Record<string, { max_users: number; max_productos: number }> = {
+  [import.meta.env.VITE_MP_PLAN_BASICO ?? '']: { max_users: 2,  max_productos: 500  },
+  [import.meta.env.VITE_MP_PLAN_PRO    ?? '']: { max_users: 10, max_productos: 5000 },
+}
+
 export default function SuscripcionPage() {
   const { tenant, loadUserData } = useAuthStore()
   const [searchParams] = useSearchParams()
@@ -46,7 +51,10 @@ export default function SuscripcionPage() {
       if (data.error) throw new Error(data.error)
       // En sandbox usar sandbox_init_point, en producción usar init_point
       const url = data.sandbox_init_point ?? data.init_point
-      if (url) window.location.href = url
+      if (url) {
+        sessionStorage.setItem('mp_plan_id', mpPlanId)
+        window.location.href = url
+      }
       else throw new Error('No se obtuvo URL de pago')
     } catch (err: any) {
       toast.error(err.message ?? 'Error al conectar con Mercado Pago')
@@ -58,10 +66,17 @@ export default function SuscripcionPage() {
     if (!preapprovalId || !tenant) return
     setLoading('verificando')
     try {
-      // Actualizar manualmente el tenant mientras el webhook no llegó
+      const savedPlanId = sessionStorage.getItem('mp_plan_id') ?? ''
+      const planLimits = MP_PLAN_LIMITS[savedPlanId] ?? {}
+      sessionStorage.removeItem('mp_plan_id')
+
       const { error } = await supabase.from('tenants').update({
         subscription_status: 'active',
         mp_subscription_id: preapprovalId,
+        ...(planLimits.max_users ? {
+          max_users: planLimits.max_users,
+          max_productos: planLimits.max_productos,
+        } : {}),
       }).eq('id', tenant.id)
 
       if (error) throw error

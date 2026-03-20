@@ -28,26 +28,12 @@ export default function SuscripcionPage() {
   const status = searchParams.get('status')
   const preapprovalId = searchParams.get('preapproval_id')
 
-  const handleSuscribir = async (planId: string, mpPlanId: string) => {
+  const handleSuscribir = (planId: string, mpPlanId: string) => {
     if (!mpPlanId) { toast.error('Plan no configurado'); return }
-    setLoading(planId)
-    const plan = PLANES.find(p => p.id === planId)
-    try {
-      const { data, error: fnError } = await supabase.functions.invoke('crear-suscripcion', {
-        body: { plan_id: mpPlanId },
-      })
-      if (fnError) throw fnError
-      if (data?.error) throw new Error(data.error)
-      const url = data?.init_point
-      if (url) {
-        sessionStorage.setItem('mp_plan_id', mpPlanId)
-        window.location.href = url
-      }
-      else throw new Error('No se obtuvo URL de pago')
-    } catch (err: any) {
-      toast.error(err.message ?? 'Error al conectar con Mercado Pago')
-      setLoading(null)
-    }
+    // El init_point de MP es una URL pública — no requiere llamada al backend
+    const url = `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${mpPlanId}`
+    sessionStorage.setItem('mp_plan_id', mpPlanId)
+    window.location.href = url
   }
 
   const handleVerificarPago = async () => {

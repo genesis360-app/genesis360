@@ -150,16 +150,28 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 - **MINOR** (`v0.X.0`): features nuevos
 - No usamos MAJOR hasta el lanzamiento público
 
+### Historial de releases
+| Versión | Descripción | Fecha |
+|---------|-------------|-------|
+| v0.12.0 | Búsquedas, config, movimientos, descuentos en ventas, fix métricas | 2026-03 |
+| v0.13.0 | Combos, separar unidades, vuelto al Enter, fix número de venta | 2026-03 |
+
 ### Crear release
 ```bash
-# 1. Asegurarse de estar en main y actualizado
-git checkout main && git pull
+GH_TOKEN="ghp_..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z \
+  --target dev \
+  --title "vX.Y.Z — Título descriptivo" \
+  --notes "## Novedades..." \
+  --prerelease
+```
 
-# 2. Tag
+**Nota legacy** — también se puede con curl:
+```bash
+# Tag manual (solo si no se usa gh CLI)
 git tag -a v0.X.Y -m "Descripción del release"
 git push origin v0.X.Y
 
-# 3. GitHub Release (via API)
+# GitHub Release (via API)
 curl -s -X POST "https://api.github.com/repos/tongas86/stokio/releases" \
   -H "Authorization: token $GITHUB_TOKEN" \
   -H "Content-Type: application/json" \

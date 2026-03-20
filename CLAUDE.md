@@ -226,6 +226,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ### Vercel / Deploy
 - **`vercel.json` es obligatorio** para SPA routing. Sin él, Vercel devuelve 404 en rutas directas como `/dashboard`. Contenido mínimo: `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }`
 - **Service worker (PWA)**: cuando hay un nuevo deploy, el SW puede servir el `index.html` viejo con hashes de assets que ya no existen → pantalla en blanco. Fix: en la Console del browser ejecutar `navigator.serviceWorker.getRegistrations().then(r => r.forEach(sw => sw.unregister())).then(() => location.reload())`
+- **Preview deployments (rama `dev`)**: Vercel tiene "Deployment Protection" activado por defecto — cualquier visitante necesita estar logueado en Vercel. Desactivar en Settings → Deployment Protection → "Vercel Authentication" para que el link de preview sea accesible públicamente.
 
 ### Mercado Pago
 - **Planes creados**: Básico `f57914521a98415290aedf3fafa4bf98` ($4.900/mes), Pro `fe790716c9294035b6ee8fe50375fc63` ($9.900/mes)

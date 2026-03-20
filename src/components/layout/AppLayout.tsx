@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
-  BarChart2, Users, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, Layers, DollarSign, TrendingUp, Zap
+  BarChart2, Users, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, Layers, DollarSign, Zap
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -19,7 +19,6 @@ const navItems = [
   { to: '/caja',          icon: DollarSign,    label: 'Caja' },
   { to: '/alertas',       icon: Bell,          label: 'Alertas', badge: true },
   { to: '/recomendaciones', icon: Zap,         label: 'Recomendaciones' },
-  { to: '/metricas',      icon: TrendingUp,    label: 'Métricas' },
   { to: '/rentabilidad',  icon: BarChart2,     label: 'Rentabilidad' },
   { to: '/reportes',      icon: BarChart2,     label: 'Reportes' },
   { to: '/usuarios',      icon: Users,            label: 'Usuarios', ownerOnly: true },

@@ -54,6 +54,7 @@ export default function MovimientosPage() {
   const [rebajeSearch, setRebajeSearch] = useState('')
   const [rebajeGrupoId, setRebajeGrupoId] = useState<string | null>(null)
   const [movDetalle, setMovDetalle] = useState<any | null>(null)
+  const [searchFocused, setSearchFocused] = useState(false)
 
   const { data: movimientos = [], isLoading } = useQuery({
     queryKey: ['movimientos', tenant?.id],
@@ -73,14 +74,15 @@ export default function MovimientosPage() {
   const { data: productosBusqueda = [] } = useQuery({
     queryKey: ['productos-busqueda', tenant?.id, form.productoSearch],
     queryFn: async () => {
-      const { data } = await supabase.from('productos')
+      let q = supabase.from('productos')
         .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
-        .eq('tenant_id', tenant!.id).eq('activo', true)
-        .or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%`)
-        .limit(8)
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(12)
+      if (form.productoSearch.length > 0)
+        q = q.or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%`)
+      const { data } = await q
       return (data ?? []) as unknown as Producto[]
     },
-    enabled: !!tenant && form.productoSearch.length > 1,
+    enabled: !!tenant && (form.productoSearch.length > 0 || searchFocused),
   })
 
   const { data: motivos = [] } = useQuery({
@@ -450,79 +452,98 @@ export default function MovimientosPage() {
                   </div>
                 </div>
 
-                {/* Grilla de detalles */}
+                {/* Grilla de detalles — siempre visibles */}
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
 
-                  {movDetalle.motivo && (
-                    <div className="col-span-2">
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Motivo</p>
-                      <p className="text-sm text-gray-700">{movDetalle.motivo}</p>
+                  {/* Fecha y hora — siempre */}
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Fecha y hora</p>
+                    <div className="flex items-center gap-1.5">
+                      <Clock size={13} className="text-gray-400" />
+                      <p className="text-sm text-gray-700">
+                        {new Date(movDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'full', timeStyle: 'short' })}
+                      </p>
                     </div>
-                  )}
+                  </div>
 
-                  {movDetalle.estados_inventario && (
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Estado</p>
+                  {/* Usuario — siempre */}
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Registrado por</p>
+                    <div className="flex items-center gap-1.5">
+                      <User size={13} className="text-gray-400" />
+                      <p className="text-sm text-gray-700">{movDetalle.users?.nombre_display ?? '—'}</p>
+                    </div>
+                  </div>
+
+                  {/* Estado del movimiento */}
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Estado</p>
+                    {movDetalle.estados_inventario ? (
                       <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full"
                         style={{ backgroundColor: (movDetalle.estados_inventario.color ?? '#6b7280') + '20', color: movDetalle.estados_inventario.color ?? '#6b7280' }}>
                         {movDetalle.estados_inventario.nombre}
                       </span>
-                    </div>
-                  )}
+                    ) : <p className="text-sm text-gray-400">—</p>}
+                  </div>
 
-                  {linea?.ubicaciones?.nombre && (
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Posición / Ubicación</p>
-                      <p className="text-sm text-gray-700">{linea.ubicaciones.nombre}</p>
-                    </div>
-                  )}
+                  {/* Motivo */}
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Motivo</p>
+                    <p className="text-sm text-gray-700">{movDetalle.motivo ?? '—'}</p>
+                  </div>
 
-                  {linea?.proveedores?.nombre && (
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Proveedor</p>
-                      <p className="text-sm text-gray-700">{linea.proveedores.nombre}</p>
-                    </div>
-                  )}
+                  {/* Campos de la línea — solo si hay linea_id */}
+                  {linea ? (
+                    <>
+                      {linea.ubicaciones?.nombre && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Posición / Ubicación</p>
+                          <p className="text-sm text-gray-700">{linea.ubicaciones.nombre}</p>
+                        </div>
+                      )}
 
-                  {linea?.lpn && (
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">LPN / Pallet</p>
-                      <p className="text-sm text-gray-700 font-mono">{linea.lpn}</p>
-                    </div>
-                  )}
+                      {linea.proveedores?.nombre && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Proveedor</p>
+                          <p className="text-sm text-gray-700">{linea.proveedores.nombre}</p>
+                        </div>
+                      )}
 
-                  {linea?.nro_lote && (
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Nro. de lote</p>
-                      <p className="text-sm text-gray-700 font-mono">{linea.nro_lote}</p>
-                    </div>
-                  )}
+                      {linea.lpn && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">LPN / Pallet</p>
+                          <p className="text-sm text-gray-700 font-mono">{linea.lpn}</p>
+                        </div>
+                      )}
 
-                  {linea?.fecha_vencimiento && (
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Vencimiento</p>
-                      <p className="text-sm text-gray-700">
-                        {new Date(linea.fecha_vencimiento).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                      </p>
-                    </div>
-                  )}
+                      {linea.nro_lote && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Nro. de lote</p>
+                          <p className="text-sm text-gray-700 font-mono">{linea.nro_lote}</p>
+                        </div>
+                      )}
 
-                  {linea?.precio_costo_snapshot != null && (
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Precio de costo</p>
-                      <p className="text-sm font-semibold text-gray-700">
-                        ${linea.precio_costo_snapshot.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
-                      </p>
-                    </div>
-                  )}
+                      {linea.fecha_vencimiento && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Vencimiento</p>
+                          <p className="text-sm text-gray-700">
+                            {new Date(linea.fecha_vencimiento).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                          </p>
+                        </div>
+                      )}
 
-                  {movDetalle.users?.nombre_display && (
-                    <div>
-                      <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Registrado por</p>
-                      <div className="flex items-center gap-1.5">
-                        <User size={13} className="text-gray-400" />
-                        <p className="text-sm text-gray-700">{movDetalle.users.nombre_display}</p>
-                      </div>
+                      {linea.precio_costo_snapshot != null && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Precio de costo</p>
+                          <p className="text-sm font-semibold text-gray-700">
+                            ${linea.precio_costo_snapshot.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="col-span-2">
+                      <p className="text-xs text-amber-500 italic">Sin datos de línea — movimiento registrado antes del sistema de trazabilidad</p>
                     </div>
                   )}
                 </div>
@@ -584,9 +605,11 @@ export default function MovimientosPage() {
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="text" value={form.productoSearch}
                     onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                     placeholder="Buscar por nombre o SKU..."
                     className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
-                  {productosBusqueda.length > 0 && (
+                  {productosBusqueda.length > 0 && searchFocused && (
                     <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                       {productosBusqueda.map(p => (
                         <button key={p.id} onClick={() => {
@@ -613,7 +636,7 @@ export default function MovimientosPage() {
               <>
                 {/* LPN personalizado */}
                 <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                  <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
                     LPN
                     <InfoTip text="LPN (License Plate Number) es el identificador único de cada lote físico de mercadería. Se genera automáticamente si lo dejás vacío. Ejemplo: LPN-20260310-A3F2. Útil para rastrear exactamente dónde está cada grupo de productos." />
                     <span className="ml-1 text-gray-400 font-normal text-xs">(opcional — se genera automático)</span>
@@ -799,9 +822,11 @@ export default function MovimientosPage() {
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="text" value={form.productoSearch}
                     onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                     placeholder="Buscar por nombre o SKU..."
                     className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
-                  {productosBusqueda.length > 0 && (
+                  {productosBusqueda.length > 0 && searchFocused && (
                     <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                       {productosBusqueda.map(p => (
                         <button key={p.id} onClick={() => { setSelectedProduct(p); setForm(f => ({ ...f, productoSearch: '' })) }}

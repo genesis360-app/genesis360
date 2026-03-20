@@ -36,7 +36,7 @@ function StatCard({ label, value, sub, icon: Icon, color, trend }: any) {
   )
 }
 
-export default function MetricasPage() {
+export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = {}) {
   const { tenant } = useAuthStore()
   const [periodo, setPeriodo] = useState<Periodo>('30d')
 
@@ -68,7 +68,7 @@ export default function MetricasPage() {
     queryKey: ['metricas-ventas', tenant?.id, periodo],
     queryFn: async () => {
       const { data } = await supabase.from('ventas')
-        .select('*, venta_items(cantidad, subtotal, precio_unitario, descuento, productos(nombre, sku, precio_costo))')
+        .select('*, venta_items(producto_id, cantidad, subtotal, precio_unitario, descuento, productos(nombre, sku, precio_costo))')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', getFechaDesde())
@@ -206,11 +206,16 @@ export default function MetricasPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1E3A5F]">Métricas</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Análisis de ventas y rotación de stock</p>
+      {!hideHeader && (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-[#1E3A5F]">Métricas</h1>
+            <p className="text-gray-500 text-sm mt-0.5">Análisis de ventas y rotación de stock</p>
+          </div>
         </div>
+      )}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div />
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
           {PERIODOS.map(p => (
             <button key={p.id} onClick={() => setPeriodo(p.id as Periodo)}

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos'
+type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
 const COLORES = [
@@ -34,6 +34,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
   const [editNombre, setEditNombre] = useState('')
   const [editExtra, setEditExtra] = useState('')
   const [saving, setSaving] = useState(false)
+  const [search, setSearch] = useState('')
 
   const handleAdd = async () => {
     if (!newNombre.trim()) return
@@ -55,6 +56,10 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
     setEditId(item.id); setEditNombre(item.nombre)
     setEditExtra(item.color ?? item.descripcion ?? item.contacto ?? '')
   }
+
+  const itemsFiltrados = search.trim()
+    ? items.filter(i => i.nombre.toLowerCase().includes(search.toLowerCase()))
+    : items
 
   return (
     <div className="space-y-3">
@@ -86,15 +91,24 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
         )}
       </div>
 
+      {items.length > 4 && (
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar..."
+            className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" />
         </div>
-      ) : items.length === 0 ? (
-        <p className="text-center text-gray-400 text-sm py-8">No hay elementos cargados aún</p>
+      ) : itemsFiltrados.length === 0 ? (
+        <p className="text-center text-gray-400 text-sm py-8">{items.length === 0 ? 'No hay elementos cargados aún' : 'Sin resultados para esa búsqueda'}</p>
       ) : (
         <div className="space-y-2">
-          {items.map(item => (
+          {itemsFiltrados.map(item => (
             <div key={item.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
               {editId === item.id ? (
                 <>
@@ -166,6 +180,8 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
   const [editNombre, setEditNombre] = useState('')
   const [editTipo, setEditTipo] = useState('ambos')
   const [saving, setSaving] = useState(false)
+  const [filterTipo, setFilterTipo] = useState<'todos' | 'ingreso' | 'rebaje' | 'ambos'>('todos')
+  const [search, setSearch] = useState('')
 
   const TIPOS = [
     { value: 'ingreso', label: 'Solo ingreso' },
@@ -181,6 +197,10 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
     await onAdd(newNombre.trim(), newTipo)
     setNewNombre(''); setNewTipo('ambos'); setSaving(false)
   }
+
+  const motivosFiltrados = motivos
+    .filter((m: any) => filterTipo === 'todos' || m.tipo === filterTipo)
+    .filter((m: any) => !search.trim() || m.nombre.toLowerCase().includes(search.toLowerCase()))
 
   return (
     <div className="space-y-3">
@@ -198,13 +218,36 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
         </button>
       </div>
 
+      {/* Buscador */}
+      {motivos.length > 4 && (
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar motivo..."
+            className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+        </div>
+      )}
+
+      {/* Filtro por tipo */}
+      <div className="flex gap-1">
+        {(['todos', 'ingreso', 'rebaje', 'ambos'] as const).map(t => (
+          <button key={t} onClick={() => setFilterTipo(t)}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all capitalize
+              ${filterTipo === t ? 'bg-[#1E3A5F] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+            {t === 'todos' ? 'Todos' : t === 'ingreso' ? 'Solo ingreso' : t === 'rebaje' ? 'Solo rebaje' : 'Ambos'}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" /></div>
-      ) : motivos.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-6">No hay motivos cargados</p>
+      ) : motivosFiltrados.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-6">
+          {motivos.length === 0 ? 'No hay motivos cargados' : 'Sin resultados'}
+        </p>
       ) : (
         <div className="space-y-2">
-          {motivos.map((m: any) => (
+          {motivosFiltrados.map((m: any) => (
             <div key={m.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
               {editId === m.id ? (
                 <>
@@ -355,6 +398,63 @@ export default function ConfigPage() {
     if (error) toast.error(error.message); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['motivos'] }) }
   }
 
+  // Combos
+  const [comboForm, setComboForm] = useState({ nombre: '', producto_id: '', cantidad: '2', descuento_pct: '0' })
+  const [savingCombo, setSavingCombo] = useState(false)
+
+  const { data: productosAll = [] } = useQuery({
+    queryKey: ['productos-all', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos').select('id, nombre, sku')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'combos',
+  })
+
+  const { data: combos = [], isLoading: loadingCombos } = useQuery({
+    queryKey: ['combos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('combos')
+        .select('*, productos(nombre, sku)')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'combos',
+  })
+
+  const addCombo = async () => {
+    if (!comboForm.producto_id) { toast.error('Seleccioná un producto'); return }
+    const cantidad = parseInt(comboForm.cantidad)
+    if (!cantidad || cantidad < 2) { toast.error('La cantidad mínima es 2'); return }
+    const descuento = parseFloat(comboForm.descuento_pct)
+    if (isNaN(descuento) || descuento < 0 || descuento > 100) { toast.error('Descuento inválido'); return }
+    if (!comboForm.nombre.trim()) { toast.error('Ingresá un nombre'); return }
+    setSavingCombo(true)
+    const { error } = await supabase.from('combos').insert({
+      tenant_id: tenant!.id,
+      nombre: comboForm.nombre.trim(),
+      producto_id: comboForm.producto_id,
+      cantidad,
+      descuento_pct: descuento,
+    })
+    if (error) toast.error(error.message)
+    else {
+      toast.success('Combo creado')
+      setComboForm({ nombre: '', producto_id: '', cantidad: '2', descuento_pct: '0' })
+      qc.invalidateQueries({ queryKey: ['combos'] })
+    }
+    setSavingCombo(false)
+  }
+
+  const deleteCombo = async (id: string) => {
+    if (!confirm('¿Eliminar este combo?')) return
+    const { error } = await supabase.from('combos').update({ activo: false }).eq('id', id)
+    if (error) toast.error(error.message)
+    else { toast.success('Combo eliminado'); qc.invalidateQueries({ queryKey: ['combos'] }) }
+  }
+
   const tabs = [
     { id: 'negocio' as Tab, label: 'Mi negocio', icon: Building2 },
     { id: 'categorias' as Tab, label: 'Categorías', icon: Tag },
@@ -362,6 +462,7 @@ export default function ConfigPage() {
     { id: 'ubicaciones' as Tab, label: 'Ubicaciones', icon: MapPin },
     { id: 'estados' as Tab, label: 'Estados', icon: CircleDot },
     { id: 'motivos' as Tab, label: 'Motivos', icon: MessageSquare },
+    { id: 'combos' as Tab, label: 'Combos', icon: Gift },
   ]
 
   return (
@@ -470,6 +571,83 @@ export default function ConfigPage() {
           </div>
           <p className="text-xs text-gray-400 mb-4">Motivos predefinidos que aparecen al registrar ingresos y rebajes de stock.</p>
           <MotivosList motivos={motivos} loading={loadingMotivos} onAdd={addMotivo} onUpdate={updateMotivo} onDelete={deleteMotivo} />
+        </div>
+      )}
+
+      {tab === 'combos' && (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
+          <div className="flex items-center gap-2">
+            <Gift size={18} className="text-[#2E75B6]" />
+            <h2 className="font-semibold text-gray-700">Combos de productos</h2>
+            <span className="ml-auto text-xs text-gray-400">{combos.length} activos</span>
+          </div>
+          <p className="text-xs text-gray-400 -mt-2">
+            Definí reglas de precio por volumen. Cuando se alcanza la cantidad en el carrito, aparece una sugerencia para aplicar el descuento.
+          </p>
+
+          {/* Formulario nuevo combo */}
+          <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+            <p className="text-sm font-medium text-gray-700">Nuevo combo</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-2">
+                <input type="text" value={comboForm.nombre} onChange={e => setComboForm(p => ({ ...p, nombre: e.target.value }))}
+                  placeholder="Nombre del combo (ej: 3x Coca-Cola 10% off)"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+              </div>
+              <div className="col-span-2">
+                <select value={comboForm.producto_id} onChange={e => setComboForm(p => ({ ...p, producto_id: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+                  <option value="">Seleccionar producto...</option>
+                  {(productosAll as any[]).map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Cantidad mínima</label>
+                <input type="number" min="2" value={comboForm.cantidad}
+                  onChange={e => setComboForm(p => ({ ...p, cantidad: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Descuento %</label>
+                <input type="number" min="0" max="100" step="0.5" value={comboForm.descuento_pct}
+                  onChange={e => setComboForm(p => ({ ...p, descuento_pct: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+              </div>
+            </div>
+            <button onClick={addCombo} disabled={savingCombo}
+              className="w-full flex items-center justify-center gap-2 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
+              <Plus size={15} /> {savingCombo ? 'Creando...' : 'Crear combo'}
+            </button>
+          </div>
+
+          {/* Lista de combos */}
+          {loadingCombos ? (
+            <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" /></div>
+          ) : combos.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">No hay combos definidos</p>
+          ) : (
+            <div className="space-y-2">
+              {(combos as any[]).map((c: any) => (
+                <div key={c.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                  <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Gift size={15} className="text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800">{c.nombre}</p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {c.productos?.nombre} · {c.cantidad} unidades · {c.descuento_pct}% off
+                    </p>
+                  </div>
+                  <button onClick={() => deleteCombo(c.id)}
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg flex-shrink-0">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

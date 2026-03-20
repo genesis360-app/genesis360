@@ -19,9 +19,16 @@ Posicionamiento: "La herramienta que te dice cómo ganar más plata con tu negoc
 
 ## Supabase
 - **PROD**: `https://jjffnbrdjchquexdfgwq.supabase.co` — NO tocar directamente
-- **DEV**: proyecto separado (ver WORKFLOW.md para setup)
+- **DEV**: `https://gcmhzdedrkmmzfzfveig.supabase.co` — para desarrollo y tests
 - Tenant de desarrollo: `5f05f3eb-6757-4f60-b9d2-8853fdfae806`
 - Usuario dueño: `48a4eca2-0152-4a6c-bfae-9a1a0778d12b` (rol OWNER)
+
+## Migraciones de schema
+- **Siempre crear un archivo** en `supabase/migrations/NNN_descripcion.sql` (numeración secuencial, idempotente)
+- **Aplicar en DEV primero**, verificar, luego aplicar en PROD solo al momento del deploy a `main`
+- **Claude Code NO aplica en PROD** salvo que el usuario lo pida explícitamente en ese momento
+- Actualizar siempre `supabase/schema_full.sql` junto con cada migration
+- Ver historial y comandos en `WORKFLOW.md`
 
 ## Arquitectura multi-tenant
 - Todas las tablas tienen `tenant_id` con RLS habilitado
@@ -92,7 +99,44 @@ src/
   - Si hay código de barras en la imagen → lookup en Open Food Facts primero
   - Pre-rellena el form de producto, usuario revisa y guarda
 
-### Visión futura (del documento de objetivos)
+### Backlog — mejoras UX/funcionales
+
+**Config**
+- [x] Filtro en motivos: solo rebaje / solo ingreso / ambos
+- [x] Buscador en todas las pestañas de config (categorías, proveedores, ubicaciones, estados, motivos)
+
+**Dashboard**
+- [x] Bug: "Ingresos" muestra unidades en vez de monto en $
+- [x] Mover Métricas al Dashboard como segunda pestaña ("General" / "Métricas")
+
+**Productos**
+- [x] Combos: regla de precio por volumen — producto + cantidad + descuento %
+  - Definidos en ConfigPage pestaña "Combos"
+  - Detección automática en el carrito: banner ámbar con botón "Aplicar"
+  - Al aplicar: split en filas (N combos × cant + resto sin descuento)
+
+**Ventas**
+- [x] Permitir escribir cantidad de unidades directamente (no solo +/-)
+- [x] Cálculo de vuelto/faltante: actualizar solo al presionar Enter, no mientras se escribe
+- [x] Medir descuentos en $ por producto y verlos en el detalle
+- [x] Separar unidades para descuentos parciales (ej: 3 con 10% desc + 1 sin descuento)
+
+**Movimientos**
+- [x] Sacar opción de cambiar precio de compra al ingresar nuevo inventario
+
+**Caja**
+- [x] Al cierre: ingresar monto final real y registrar diferencia (sobre/faltante) con quién cerró
+- [x] Mostrar balance total (ingresos/egresos) y permitir agregar dinero extra con aclaración (ej: caja fuerte, adelanto proveedor)
+- [x] Historial de caja: abrir cada cierre y ver detalle completo de ingresos y egresos
+
+**Métricas**
+- [x] Corregir: faltan productos en el detalle de "sin movimiento en el período"
+
+### Ideas futuras
+- Generador de cupones + aplicar cupón en ventas
+- Módulo de gastos
+- Ubicación del local (para expansión multi-sucursal y logística)
+- Guía interactiva / walkthrough para onboarding de nuevos clientes
 - Dashboard inteligente con insights automáticos ("estás perdiendo $X por stock muerto")
 - Motor de recomendaciones accionables
 - Clasificación automática de productos (estrella/problema/oportunidad)
@@ -132,3 +176,69 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Producción**: https://stokio-tau.vercel.app
 - **Repo**: https://github.com/tongas86/stokio
 - Push a `main` → deploy automático en Vercel
+
+## Decisiones de arquitectura tomadas
+
+### Auth / Onboarding
+- **Google OAuth → OnboardingPage**: Cuando un usuario entra por OAuth, ya tiene sesión en Supabase Auth pero NO tiene registro en `users` ni `tenants`. El flujo correcto:
+  1. `loadUserData` no encuentra registro en `users` → pone `needsOnboarding: true`
+  2. `AuthGuard` detecta `needsOnboarding` → redirige a `/onboarding` (NO a `/login`)
+  3. `OnboardingPage` detecta sesión existente con `supabase.auth.getSession()` → salta el paso de cuenta, va directo al paso de negocio
+  4. Al guardar, NO llama `signUp()` — usa el `userId` de la sesión existente
+  5. **Crítico**: llamar `await loadUserData(userId)` ANTES de `navigate('/dashboard')` para actualizar el authStore; si no, `AuthGuard` vuelve a redirigir
+- **RLS SELECT-after-INSERT bug**: Después de hacer INSERT en `tenants`, un SELECT inmediato falla con 406 porque RLS requiere que el usuario ya esté en la tabla `users`. Solución: generar el UUID en el cliente con `crypto.randomUUID()` y nunca hacer SELECT del tenant recién insertado.
+
+### RLS / Supabase
+- **Patrón de políticas**: siempre subquery `tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid())`, nunca llamar funciones dentro de políticas de tablas que ya participan en la query (causa recursión infinita).
+- **`is_admin()`**: función con `SECURITY DEFINER` para el rol ADMIN (superadmin global). Única excepción al patrón anterior.
+- **Triggers de stock**: `stock_actual` en productos se recalcula automáticamente vía triggers en cada movimiento. **Nunca** actualizar `stock_actual` manualmente desde el frontend.
+- **Orden del schema**: al aplicar `schema_full.sql` en un proyecto nuevo, el orden importa: tablas helper → `planes` → `tenants` → `users` → funciones que referencian `users` → resto de tablas → triggers → RLS policies.
+
+### Frontend
+- **Cotización USD**: hook global `useCotizacion` (en el sidebar), no estado local por página. Cualquier feature que muestre precios en USD debe importar este hook.
+- **`SubscriptionGuard`**: siempre en el mismo archivo que `AuthGuard` (`src/components/AuthGuard.tsx`), nunca en archivo separado.
+- **Rutas**: antes de cualquier `navigate()` a una ruta nueva, verificar que existe en `App.tsx`. Error real: `navigate('/inventario/producto/:id')` en lugar de `/inventario/:id/editar` mandaba al wildcard `*`.
+- **Nombre de la app**: siempre `BRAND.name` desde `src/config/brand.ts`, nunca hardcodeado.
+
+### Git / Deploy
+- **Claude Code NUNCA hace push a `main`**. Todo va a `dev`. Para pasar a `main`: merge manual o PR.
+- **GitHub Free**: branch protection no disponible para repos privados vía API. No intentar configurarlo.
+- **Vercel envs**: variables de producción apuntan a Supabase PROD; variables de preview apuntan a Supabase DEV. Configurado manualmente en el dashboard de Vercel.
+- **Co-Authored-By**: siempre `GNO <gaston.otranto@gmail.com>` en todos los commits.
+
+### Migraciones
+- **Flujo**: crear `supabase/migrations/NNN_*.sql` → aplicar en DEV → commit → aplicar en PROD solo al deployar a `main`.
+- **Claude Code no aplica en PROD** sin pedido explícito del usuario en el momento del deploy.
+- **Exception histórica**: migrations 001–004 se aplicaron en PROD directamente (antes de formalizar el flujo).
+
+### Mercado Pago
+- **Suscripciones**: modelo preapproval (no pagos únicos). `preapproval_plan_id` determina el plan.
+- **Webhook**: Edge Function `mp-webhook` recibe eventos `subscription_preapproval` y `payment`. Mapea `preapproval_plan_id` → `max_users`/`max_productos` usando `MP_PLAN_LIMITS` (variables de entorno `MP_PLAN_BASICO` / `MP_PLAN_PRO`).
+- **`external_reference`**: se usa para pasar el `tenant_id` a MP y recuperarlo en el webhook.
+- **Edge Functions**: deploy con `npx supabase functions deploy <nombre> --project-ref <ref>`. No requiere Docker.
+
+### Supabase DEV
+- Proyecto ref: `gcmhzdedrkmmzfzfveig`
+- Creado y configurado completamente vía Management API (PAT guardado en `.env.local`)
+- Schema aplicado desde `supabase/schema_full.sql`
+- Google OAuth habilitado y configurado (callback URL registrado en Google Cloud Console)
+
+### Vercel / Deploy
+- **`vercel.json` es obligatorio** para SPA routing. Sin él, Vercel devuelve 404 en rutas directas como `/dashboard`. Contenido mínimo: `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }`
+- **Service worker (PWA)**: cuando hay un nuevo deploy, el SW puede servir el `index.html` viejo con hashes de assets que ya no existen → pantalla en blanco. Fix: en la Console del browser ejecutar `navigator.serviceWorker.getRegistrations().then(r => r.forEach(sw => sw.unregister())).then(() => location.reload())`
+- **Preview deployments (rama `dev`)**: Vercel tiene "Deployment Protection" activado por defecto — cualquier visitante necesita estar logueado en Vercel. Desactivar en Settings → Deployment Protection → "Vercel Authentication" para que el link de preview sea accesible públicamente.
+
+### Mercado Pago
+- **Planes creados**: Básico `f57914521a98415290aedf3fafa4bf98` ($4.900/mes), Pro `fe790716c9294035b6ee8fe50375fc63` ($9.900/mes)
+- **Webhooks MP**: modo prueba → DEV Supabase (`gcmhzdedrkmmzfzfveig`), modo productivo → PROD Supabase (`jjffnbrdjchquexdfgwq`)
+
+### Movimientos de stock
+- **`linea_id` en `movimientos_stock`**: columna FK a `inventario_lineas` agregada. Permite mostrar en el detalle del movimiento: LPN, lote, vencimiento, precio de costo, ubicación, proveedor y series. Siempre guardar `linea_id` al insertar movimientos de ingreso y rebaje.
+
+### Ventas
+- **`numero` en `ventas`**: campo INT NOT NULL sin default en el schema original. Generado por trigger `set_venta_numero` (BEFORE INSERT) que hace `MAX(numero)+1` por tenant. **Nunca** enviar `numero` en el INSERT desde el frontend — lo asigna el trigger.
+- **Combos**: reglas de precio por volumen en tabla `combos` (producto_id, cantidad, descuento_pct). El frontend detecta en el carrito y aplica con split de filas. No afectan stock, solo precio.
+
+### Hooks / Compactación
+- **PostCompact hook** configurado en `.claude/settings.local.json`: inyecta contexto recordando actualizar CLAUDE.md después de cada compactación.
+- **Limitación**: no existe un evento de hook para "contexto al 80%". El hook solo corre después de que la compactación ya ocurrió. La compactación debe ejecutarse manualmente con `/compact`.

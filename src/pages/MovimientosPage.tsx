@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, DollarSign } from 'lucide-react'
+import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, User, Clock, Package, TrendingDown, TrendingUp } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -13,7 +13,6 @@ type ModalType = 'ingreso' | 'rebaje' | null
 const emptyIngreso = {
   productoSearch: '', cantidad: '', motivo: '', ubicacionId: '',
   estadoId: '', proveedorId: '', nroLote: '', fechaVencimiento: '', lpn: '',
-  precioCosto: '',
 }
 
 // Info tooltip component
@@ -54,13 +53,15 @@ export default function MovimientosPage() {
   const [rebajeSeries, setRebajeSeries] = useState<string[]>([])
   const [rebajeSearch, setRebajeSearch] = useState('')
   const [rebajeGrupoId, setRebajeGrupoId] = useState<string | null>(null)
+  const [movDetalle, setMovDetalle] = useState<any | null>(null)
+  const [searchFocused, setSearchFocused] = useState(false)
 
   const { data: movimientos = [], isLoading } = useQuery({
     queryKey: ['movimientos', tenant?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('movimientos_stock')
-        .select('*, productos(nombre,sku), users(nombre_display), estados_inventario(nombre,color)')
+        .select('*, productos(nombre,sku,unidad_medida), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie))')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -73,14 +74,15 @@ export default function MovimientosPage() {
   const { data: productosBusqueda = [] } = useQuery({
     queryKey: ['productos-busqueda', tenant?.id, form.productoSearch],
     queryFn: async () => {
-      const { data } = await supabase.from('productos')
+      let q = supabase.from('productos')
         .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
-        .eq('tenant_id', tenant!.id).eq('activo', true)
-        .or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%`)
-        .limit(8)
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(12)
+      if (form.productoSearch.length > 0)
+        q = q.or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%`)
+      const { data } = await q
       return (data ?? []) as unknown as Producto[]
     },
-    enabled: !!tenant && form.productoSearch.length > 1,
+    enabled: !!tenant && (form.productoSearch.length > 0 || searchFocused),
   })
 
   const { data: motivos = [] } = useQuery({
@@ -167,7 +169,7 @@ export default function MovimientosPage() {
           proveedor_id: form.proveedorId || null,
           nro_lote: form.nroLote || null,
           fecha_vencimiento: form.fechaVencimiento || null,
-          precio_costo_snapshot: parseFloat(form.precioCosto) || (selectedProduct as any).precio_costo || null,
+          precio_costo_snapshot: (selectedProduct as any).precio_costo || null,
         })
         .select().single()
       if (lineaError) throw lineaError
@@ -203,6 +205,7 @@ export default function MovimientosPage() {
         motivo: form.motivo || null,
         estado_id: form.estadoId || null,
         usuario_id: user?.id,
+        linea_id: linea.id,
       })
     },
     onSuccess: () => {
@@ -269,6 +272,7 @@ export default function MovimientosPage() {
         stock_despues: Math.max(0, stockAntes - cant),
         motivo: rebajeMotivo || null,
         usuario_id: user?.id,
+        linea_id: rebajeLinea.id,
       })
     },
     onSuccess: () => {
@@ -348,11 +352,13 @@ export default function MovimientosPage() {
                   <th className="text-right px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">Stock prev.</th>
                   <th className="text-right px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">Stock nuevo</th>
                   <th className="text-left px-4 py-3 font-semibold text-gray-600 hidden lg:table-cell">Motivo</th>
+                  <th className="px-4 py-3 w-8" />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((m: any) => (
-                  <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <tr key={m.id} onClick={() => setMovDetalle(m)}
+                    className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
                     </td>
@@ -371,6 +377,7 @@ export default function MovimientosPage() {
                     <td className="px-4 py-3 text-right text-gray-400 hidden md:table-cell">{m.stock_antes}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-700 hidden md:table-cell">{m.stock_despues}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell">{m.motivo ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-300"><ChevronRight size={14} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -378,6 +385,193 @@ export default function MovimientosPage() {
           </div>
         )}
       </div>
+
+      {/* Modal DETALLE MOVIMIENTO */}
+      {movDetalle && (() => {
+        const linea = movDetalle.inventario_lineas
+        const series = linea?.inventario_series ?? []
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={() => setMovDetalle(null)}>
+            <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div className={`px-5 py-4 flex items-center justify-between flex-shrink-0
+                ${movDetalle.tipo === 'ingreso' ? 'bg-green-50' : 'bg-blue-50'}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center
+                    ${movDetalle.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {movDetalle.tipo === 'ingreso' ? <ArrowDown size={18} /> : <ArrowUp size={18} />}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800 capitalize">{movDetalle.tipo}</p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(movDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' })}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setMovDetalle(null)} className="text-gray-400 hover:text-gray-600">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Body scrollable */}
+              <div className="px-5 py-4 space-y-4 overflow-y-auto">
+
+                {/* Producto */}
+                <div className="flex items-start gap-3">
+                  <Package size={16} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Producto</p>
+                    <p className="font-semibold text-gray-800">{movDetalle.productos?.nombre}</p>
+                    <p className="text-xs text-gray-400 font-mono">{movDetalle.productos?.sku}
+                      {movDetalle.productos?.unidad_medida && <span className="ml-2 text-gray-300">· {movDetalle.productos.unidad_medida}</span>}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Cambio de stock */}
+                <div className="bg-gray-50 rounded-xl p-4 flex items-center justify-between">
+                  <div className="text-center">
+                    <p className="text-xs text-gray-400 mb-1">Stock anterior</p>
+                    <p className="text-2xl font-bold text-gray-500">{movDetalle.stock_antes}</p>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className={`text-sm font-bold px-3 py-1 rounded-full
+                      ${movDetalle.tipo === 'ingreso' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {movDetalle.tipo === 'ingreso' ? '+' : '−'}{movDetalle.cantidad}
+                    </span>
+                    {movDetalle.tipo === 'ingreso'
+                      ? <TrendingUp size={16} className="text-green-500" />
+                      : <TrendingDown size={16} className="text-blue-500" />}
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-gray-400 mb-1">Stock nuevo</p>
+                    <p className="text-2xl font-bold text-gray-800">{movDetalle.stock_despues}</p>
+                  </div>
+                </div>
+
+                {/* Grilla de detalles — siempre visibles */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+
+                  {/* Fecha y hora — siempre */}
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Fecha y hora</p>
+                    <div className="flex items-center gap-1.5">
+                      <Clock size={13} className="text-gray-400" />
+                      <p className="text-sm text-gray-700">
+                        {new Date(movDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'full', timeStyle: 'short' })}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Usuario — siempre */}
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Registrado por</p>
+                    <div className="flex items-center gap-1.5">
+                      <User size={13} className="text-gray-400" />
+                      <p className="text-sm text-gray-700">{movDetalle.users?.nombre_display ?? '—'}</p>
+                    </div>
+                  </div>
+
+                  {/* Estado del movimiento */}
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Estado</p>
+                    {movDetalle.estados_inventario ? (
+                      <span className="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full"
+                        style={{ backgroundColor: (movDetalle.estados_inventario.color ?? '#6b7280') + '20', color: movDetalle.estados_inventario.color ?? '#6b7280' }}>
+                        {movDetalle.estados_inventario.nombre}
+                      </span>
+                    ) : <p className="text-sm text-gray-400">—</p>}
+                  </div>
+
+                  {/* Motivo */}
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Motivo</p>
+                    <p className="text-sm text-gray-700">{movDetalle.motivo ?? '—'}</p>
+                  </div>
+
+                  {/* Campos de la línea — solo si hay linea_id */}
+                  {linea ? (
+                    <>
+                      {linea.ubicaciones?.nombre && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Posición / Ubicación</p>
+                          <p className="text-sm text-gray-700">{linea.ubicaciones.nombre}</p>
+                        </div>
+                      )}
+
+                      {linea.proveedores?.nombre && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Proveedor</p>
+                          <p className="text-sm text-gray-700">{linea.proveedores.nombre}</p>
+                        </div>
+                      )}
+
+                      {linea.lpn && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">LPN / Pallet</p>
+                          <p className="text-sm text-gray-700 font-mono">{linea.lpn}</p>
+                        </div>
+                      )}
+
+                      {linea.nro_lote && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Nro. de lote</p>
+                          <p className="text-sm text-gray-700 font-mono">{linea.nro_lote}</p>
+                        </div>
+                      )}
+
+                      {linea.fecha_vencimiento && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Vencimiento</p>
+                          <p className="text-sm text-gray-700">
+                            {new Date(linea.fecha_vencimiento).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                          </p>
+                        </div>
+                      )}
+
+                      {linea.precio_costo_snapshot != null && (
+                        <div>
+                          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-0.5">Precio de costo</p>
+                          <p className="text-sm font-semibold text-gray-700">
+                            ${linea.precio_costo_snapshot.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="col-span-2">
+                      <p className="text-xs text-amber-500 italic">Sin datos de línea — movimiento registrado antes del sistema de trazabilidad</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Series */}
+                {series.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-400 font-medium uppercase tracking-wide mb-2">
+                      Series ({series.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {series.map((s: any) => (
+                        <span key={s.nro_serie}
+                          className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded-lg font-mono border border-purple-100">
+                          {s.nro_serie}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ID */}
+                <p className="text-xs text-gray-300 font-mono border-t border-gray-100 pt-3">ID: {movDetalle.id}</p>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Modal INGRESO */}
       {modal === 'ingreso' && (
@@ -411,9 +605,11 @@ export default function MovimientosPage() {
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="text" value={form.productoSearch}
                     onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                     placeholder="Buscar por nombre o SKU..."
                     className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
-                  {productosBusqueda.length > 0 && (
+                  {productosBusqueda.length > 0 && searchFocused && (
                     <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                       {productosBusqueda.map(p => (
                         <button key={p.id} onClick={() => {
@@ -422,7 +618,6 @@ export default function MovimientosPage() {
                             ...f,
                             productoSearch: '',
                             ubicacionId: (p as any).ubicacion_id ?? f.ubicacionId,
-                            precioCosto: (p as any).precio_costo?.toString() ?? '',
                           }))
                         }}
                           className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0">
@@ -441,7 +636,7 @@ export default function MovimientosPage() {
               <>
                 {/* LPN personalizado */}
                 <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                  <label className="flex items-center text-sm font-medium text-gray-700 mb-1">
                     LPN
                     <InfoTip text="LPN (License Plate Number) es el identificador único de cada lote físico de mercadería. Se genera automáticamente si lo dejás vacío. Ejemplo: LPN-20260310-A3F2. Útil para rastrear exactamente dónde está cada grupo de productos." />
                     <span className="ml-1 text-gray-400 font-normal text-xs">(opcional — se genera automático)</span>
@@ -549,47 +744,6 @@ export default function MovimientosPage() {
                   </div>
                 )}
 
-                {/* Precio de compra (snapshot para rentabilidad histórica) */}
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Precio de compra <span className="text-gray-400 font-normal text-xs">(costo unitario de este ingreso)</span>
-                  </label>
-                  <div className="flex gap-2 items-center">
-                    <div className="relative flex-1">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={form.precioCosto}
-                        onChange={e => setForm(p => ({ ...p, precioCosto: e.target.value }))}
-                        placeholder="0.00"
-                        className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]"
-                      />
-                    </div>
-                    {cotizacionNum > 0 && parseFloat(form.precioCosto) > 0 && (
-                      <span className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1">
-                        <DollarSign size={11} />
-                        {(parseFloat(form.precioCosto) / cotizacionNum).toFixed(2)} USD
-                      </span>
-                    )}
-                  </div>
-                  {cotizacionNum > 0 && (
-                    <p className="text-xs text-blue-500 mt-1 flex items-center gap-1">
-                      <DollarSign size={11} />
-                      Podés ingresar en USD: ${(parseFloat(form.precioCosto || '0') / cotizacionNum || 0).toFixed(2)} ·{' '}
-                      <button
-                        type="button"
-                        className="underline"
-                        onClick={() => {
-                          const usdVal = window.prompt('Ingresá el precio en USD:')
-                          if (usdVal && parseFloat(usdVal) > 0)
-                            setForm(p => ({ ...p, precioCosto: (parseFloat(usdVal) * cotizacionNum).toFixed(2) }))
-                        }}
-                      >
-                        convertir desde USD
-                      </button>
-                    </p>
-                  )}
-                </div>
 
                 <div className="mb-5">
 				  <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
@@ -668,9 +822,11 @@ export default function MovimientosPage() {
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="text" value={form.productoSearch}
                     onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                     placeholder="Buscar por nombre o SKU..."
                     className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
-                  {productosBusqueda.length > 0 && (
+                  {productosBusqueda.length > 0 && searchFocused && (
                     <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                       {productosBusqueda.map(p => (
                         <button key={p.id} onClick={() => { setSelectedProduct(p); setForm(f => ({ ...f, productoSearch: '' })) }}

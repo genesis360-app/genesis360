@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Package, AlertTriangle, ArrowDown, TrendingUp, TrendingDown,
@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
 import { useRecomendaciones } from '@/hooks/useRecomendaciones'
+import MetricasPage from './MetricasPage'
 
 type InsightTipo = 'danger' | 'warning' | 'success' | 'info'
 
@@ -43,6 +44,7 @@ const SEMAFORO_COLOR: Record<string, string> = {
 export default function DashboardPage() {
   const { tenant } = useAuthStore()
   const { score, recomendaciones } = useRecomendaciones()
+  const [tab, setTab] = useState<'general' | 'metricas'>('general')
 
   const { data: stats } = useQuery({
     queryKey: ['dashboard-stats', tenant?.id],
@@ -57,7 +59,7 @@ export default function DashboardPage() {
       const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes] = await Promise.all([
         supabase.from('productos').select('id, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
-        supabase.from('movimientos_stock').select('tipo, cantidad').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
+        supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
         supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes),
         supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt),
         supabase.from('movimientos_stock').select('producto_id').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias),
@@ -69,7 +71,7 @@ export default function DashboardPage() {
       const valorInventario  = prods.reduce((acc, p) => acc + p.precio_costo * p.stock_actual, 0)
       const alertasActivas   = alertas.data?.length ?? 0
       const movs             = movimientos.data ?? []
-      const ingresosHoy      = movs.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + m.cantidad, 0)
+      const ingresosHoy      = movs.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + m.cantidad * ((m as any).productos?.precio_costo ?? 0), 0)
       const rebajesHoy       = movs.filter(m => m.tipo === 'rebaje').reduce((a, m) => a + m.cantidad, 0)
       const totalVentasMes   = (ventasMes.data ?? []).reduce((a, v) => a + (v.total ?? 0), 0)
       const cantVentasMes    = ventasMes.data?.length ?? 0
@@ -200,13 +202,49 @@ export default function DashboardPage() {
 
   const fecha = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
 
+  if (tab === 'metricas') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-[#1E3A5F]">Dashboard</h1>
+            <p className="text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
+          </div>
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+            <button onClick={() => setTab('general')}
+              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 hover:text-gray-700">
+              General
+            </button>
+            <button onClick={() => setTab('metricas')}
+              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white text-[#1E3A5F] shadow-sm">
+              Métricas
+            </button>
+          </div>
+        </div>
+        <MetricasPage hideHeader />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[#1E3A5F] capitalize">{fecha}</h1>
-        <p className="text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[#1E3A5F] capitalize">{fecha}</h1>
+          <p className="text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
+        </div>
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          <button onClick={() => setTab('general')}
+            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white text-[#1E3A5F] shadow-sm">
+            General
+          </button>
+          <button onClick={() => setTab('metricas')}
+            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 hover:text-gray-700">
+            Métricas
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards con semáforo */}
@@ -235,7 +273,7 @@ export default function DashboardPage() {
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 bg-green-50 text-green-600">
             <ArrowDown size={20} />
           </div>
-          <p className="text-2xl font-bold text-gray-800">{(stats?.ingresosHoy ?? 0).toLocaleString()}</p>
+          <p className="text-2xl font-bold text-gray-800">${(stats?.ingresosHoy ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
           <p className="text-sm text-gray-500 mt-0.5">Ingresos (7d)</p>
         </Link>
 

@@ -40,21 +40,62 @@
 ### Crear nueva migración
 ```
 supabase/migrations/
-  001_initial_schema.sql      ← tablas base
+  001_initial_schema.sql
   002_cotizacion_y_precio_historico.sql
   003_clientes_y_rentabilidad.sql
-  004_nombre_descriptivo.sql  ← nueva migración
+  004_caja_cierre_real.sql
+  005_nombre_descriptivo.sql  ← nueva migración
+```
+Usar numeración secuencial de 3 dígitos. Las migrations deben ser **idempotentes** (`IF NOT EXISTS`, `IF EXISTS`).
+
+### Flujo obligatorio
+
+```
+1. Crear archivo  →  supabase/migrations/NNN_descripcion.sql
+2. Aplicar en DEV →  (ver comando abajo)
+3. Actualizar schema_full.sql
+4. Commit + push a dev
+5. Probar en DEV
+6. Al mergear a main → aplicar en PROD + merge
 ```
 
-### Aplicar migración
-1. **En DEV primero:** SQL Editor del proyecto DEV → pegar contenido del `.sql`
-2. **Verificar** que todo funciona en el ambiente DEV
-3. **En PROD:** Solo después de merge a `main` → SQL Editor del proyecto PROD
+**Claude Code no aplica migraciones en PROD** salvo que el usuario lo pida explícitamente al momento del deploy.
+
+### Comandos para aplicar
+
+**DEV** (`gcmhzdedrkmmzfzfveig`):
+```bash
+curl -s -X POST "https://api.supabase.com/v1/projects/gcmhzdedrkmmzfzfveig/database/query" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"query\": \"<SQL aquí>\"}"
+```
+
+**PROD** (`jjffnbrdjchquexdfgwq`) — solo al deployar a main:
+```bash
+curl -s -X POST "https://api.supabase.com/v1/projects/jjffnbrdjchquexdfgwq/database/query" \
+  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"query\": \"<SQL aquí>\"}"
+```
+
+`SUPABASE_ACCESS_TOKEN` está en `.env.local`.
+
+### Historial de migrations
+
+| # | Archivo | Descripción | DEV | PROD |
+|---|---------|-------------|-----|------|
+| 001 | `001_initial_schema.sql` | Schema inicial completo | ✅ | ✅ |
+| 002 | `002_cotizacion_y_precio_historico.sql` | Cotización USD y precio costo histórico | ✅ | ✅ |
+| 003 | `003_clientes_y_rentabilidad.sql` | Módulo clientes + rentabilidad real | ✅ | ✅ |
+| 004 | `004_caja_cierre_real.sql` | Caja: conteo real al cierre, diferencia, cerrado_por | ✅ | ✅ |
+| 005 | `005_combos.sql` | Tabla combos (reglas de precio por volumen) | ✅ | ✅ |
+| 006 | `006_ventas_numero_trigger.sql` | Trigger para auto-generar número de venta por tenant | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
-- ❌ Cambiar datos de PROD manualmente
-- ❌ Hacer ALTER TABLE fuera de un archivo de migración
+- ❌ Hacer ALTER TABLE fuera de un archivo de migration
+- ❌ Claude Code aplica migration en PROD sin pedido explícito del usuario
 
 ---
 
@@ -109,16 +150,28 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 - **MINOR** (`v0.X.0`): features nuevos
 - No usamos MAJOR hasta el lanzamiento público
 
+### Historial de releases
+| Versión | Descripción | Fecha |
+|---------|-------------|-------|
+| v0.12.0 | Búsquedas, config, movimientos, descuentos en ventas, fix métricas | 2026-03 |
+| v0.13.0 | Combos, separar unidades, vuelto al Enter, fix número de venta | 2026-03 |
+
 ### Crear release
 ```bash
-# 1. Asegurarse de estar en main y actualizado
-git checkout main && git pull
+GH_TOKEN="ghp_..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z \
+  --target dev \
+  --title "vX.Y.Z — Título descriptivo" \
+  --notes "## Novedades..." \
+  --prerelease
+```
 
-# 2. Tag
+**Nota legacy** — también se puede con curl:
+```bash
+# Tag manual (solo si no se usa gh CLI)
 git tag -a v0.X.Y -m "Descripción del release"
 git push origin v0.X.Y
 
-# 3. GitHub Release (via API)
+# GitHub Release (via API)
 curl -s -X POST "https://api.github.com/repos/tongas86/stokio/releases" \
   -H "Authorization: token $GITHUB_TOKEN" \
   -H "Content-Type: application/json" \

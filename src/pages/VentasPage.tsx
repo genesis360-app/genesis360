@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
@@ -180,11 +180,11 @@ export default function VentasPage() {
       return
     }
 
-    // Si ya está en el carrito, incrementar
-    const idx = cart.findIndex(c => c.producto_id === p.id)
-    if (idx >= 0) {
-      const item = cart[idx]
-      if (item.cantidad >= stockDisponible) { toast.error(`Stock disponible: ${stockDisponible}`); return }
+    // Si ya está en el carrito, incrementar (sumando todas las filas del mismo producto)
+    const totalEnCarrito = cart.filter(c => c.producto_id === p.id).reduce((a, c) => a + c.cantidad, 0)
+    if (totalEnCarrito > 0) {
+      if (totalEnCarrito >= stockDisponible) { toast.error(`Stock disponible: ${stockDisponible}`); return }
+      const idx = cart.findIndex(c => c.producto_id === p.id)
       setCart(prev => prev.map((c, i) => i === idx ? { ...c, cantidad: c.cantidad + 1 } : c))
       return
     }
@@ -252,6 +252,46 @@ export default function VentasPage() {
   }
 
   const removeItem = (idx: number) => setCart(prev => prev.filter((_, i) => i !== idx))
+
+  const { data: combosDisp = [] } = useQuery({
+    queryKey: ['combos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('combos')
+        .select('id, nombre, producto_id, cantidad, descuento_pct')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  const findCombo = (productoId: string, cantidad: number, descActual: number) => {
+    return (combosDisp as any[])
+      .filter(c => c.producto_id === productoId && cantidad >= c.cantidad && descActual !== c.descuento_pct)
+      .sort((a, b) => b.cantidad - a.cantidad)[0] ?? null
+  }
+
+  const aplicarCombo = (idx: number, combo: any) => {
+    const item = cart[idx]
+    const comboUnits = Math.floor(item.cantidad / combo.cantidad) * combo.cantidad
+    const remainder = item.cantidad % combo.cantidad
+    const rows: CartItem[] = []
+    if (comboUnits > 0)
+      rows.push({ ...item, cantidad: comboUnits, descuento: combo.descuento_pct, descuento_tipo: 'pct' })
+    if (remainder > 0)
+      rows.push({ ...item, cantidad: remainder, descuento: 0, descuento_tipo: 'pct' })
+    setCart(prev => [...prev.slice(0, idx), ...rows, ...prev.slice(idx + 1)])
+    toast.success(`Combo aplicado: ${comboUnits} und. con ${combo.descuento_pct}% off${remainder > 0 ? ` + ${remainder} sin descuento` : ''}`)
+  }
+
+  const splitItem = (idx: number) => {
+    setCart(prev => {
+      const item = prev[idx]
+      if (item.cantidad <= 1) return prev
+      const reduced = { ...item, cantidad: item.cantidad - 1 }
+      const newRow: CartItem = { ...item, cantidad: 1, descuento: 0, descuento_tipo: 'pct' }
+      return [...prev.slice(0, idx), reduced, newRow, ...prev.slice(idx + 1)]
+    })
+  }
 
   const getItemSubtotal = (item: CartItem) => {
     const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
@@ -684,7 +724,15 @@ export default function VentasPage() {
                           <p className="font-medium text-gray-800">{item.nombre}</p>
                           <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
                         </div>
-                        <button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-400 transition-colors"><X size={16} /></button>
+                        <div className="flex items-center gap-1">
+                          {!item.tiene_series && item.cantidad > 1 && (
+                            <button onClick={() => splitItem(idx)} title="Separar 1 unidad con descuento diferente"
+                              className="text-gray-300 hover:text-blue-400 transition-colors">
+                              <Scissors size={14} />
+                            </button>
+                          )}
+                          <button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-400 transition-colors"><X size={16} /></button>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-3 mt-2">
@@ -693,7 +741,11 @@ export default function VentasPage() {
                           <div className="flex items-center gap-1">
                             <button onClick={() => updateItem(idx, 'cantidad', Math.max(1, item.cantidad - 1))}
                               className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">−</button>
-                            <span className="w-8 text-center text-sm font-medium">{item.cantidad}</span>
+                            <input
+                              type="number" min="1" value={item.cantidad}
+                              onChange={e => updateItem(idx, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
+                              className="w-12 text-center text-sm font-medium border border-gray-200 rounded-lg py-0.5 focus:outline-none focus:border-[#2E75B6]"
+                            />
                             <button onClick={() => updateItem(idx, 'cantidad', item.cantidad + 1)}
                               className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">+</button>
                           </div>
@@ -723,6 +775,22 @@ export default function VentasPage() {
                           ${getItemSubtotal(item).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                         </p>
                       </div>
+
+                      {/* Sugerencia de combo */}
+                      {!item.tiene_series && (() => {
+                        const combo = findCombo(item.producto_id, item.cantidad, item.descuento)
+                        if (!combo) return null
+                        return (
+                          <div className="mt-1.5 flex items-center gap-2 text-xs bg-amber-50 text-amber-700 rounded-lg px-3 py-1.5 border border-amber-200">
+                            <Gift size={12} />
+                            <span className="flex-1">Combo: {combo.cantidad}× con {combo.descuento_pct}% off disponible</span>
+                            <button onClick={() => aplicarCombo(idx, combo)}
+                              className="font-semibold hover:underline text-amber-800">
+                              Aplicar
+                            </button>
+                          </div>
+                        )
+                      })()}
 
                       {/* Series */}
                       {item.tiene_series && (
@@ -825,6 +893,7 @@ export default function VentasPage() {
                   </select>
                   <input type="number" min="0" value={mp.monto}
                     onChange={e => updateMedioPago(idx, 'monto', e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                     placeholder="Monto"
                     className="w-24 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
                   {mediosPago.length > 1 && (
@@ -1020,7 +1089,15 @@ export default function VentasPage() {
                 <div key={item.id} className="flex justify-between text-sm bg-gray-50 rounded-xl px-3 py-2">
                   <div>
                     <p className="font-medium">{item.productos?.nombre}</p>
-                    <p className="text-xs text-gray-400">{item.cantidad} × ${item.precio_unitario?.toLocaleString('es-AR')} {item.descuento > 0 ? `(−${item.descuento}%)` : ''}</p>
+                    <p className="text-xs text-gray-400">{item.cantidad} × ${item.precio_unitario?.toLocaleString('es-AR')}</p>
+                    {item.descuento > 0 && (() => {
+                      const descMonto = (item.precio_unitario * item.cantidad) - item.subtotal
+                      return (
+                        <p className="text-xs text-green-600 font-medium">
+                          Descuento {item.descuento}% · −${descMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                        </p>
+                      )
+                    })()}
                   </div>
                   <p className="font-semibold">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
                 </div>

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
@@ -181,11 +181,11 @@ export default function VentasPage() {
       return
     }
 
-    // Si ya está en el carrito, incrementar
-    const idx = cart.findIndex(c => c.producto_id === p.id)
-    if (idx >= 0) {
-      const item = cart[idx]
-      if (item.cantidad >= stockDisponible) { toast.error(`Stock disponible: ${stockDisponible}`); return }
+    // Si ya está en el carrito, incrementar (sumando todas las filas del mismo producto)
+    const totalEnCarrito = cart.filter(c => c.producto_id === p.id).reduce((a, c) => a + c.cantidad, 0)
+    if (totalEnCarrito > 0) {
+      if (totalEnCarrito >= stockDisponible) { toast.error(`Stock disponible: ${stockDisponible}`); return }
+      const idx = cart.findIndex(c => c.producto_id === p.id)
       setCart(prev => prev.map((c, i) => i === idx ? { ...c, cantidad: c.cantidad + 1 } : c))
       return
     }
@@ -253,6 +253,16 @@ export default function VentasPage() {
   }
 
   const removeItem = (idx: number) => setCart(prev => prev.filter((_, i) => i !== idx))
+
+  const splitItem = (idx: number) => {
+    setCart(prev => {
+      const item = prev[idx]
+      if (item.cantidad <= 1) return prev
+      const reduced = { ...item, cantidad: item.cantidad - 1 }
+      const newRow: CartItem = { ...item, cantidad: 1, descuento: 0, descuento_tipo: 'pct' }
+      return [...prev.slice(0, idx), reduced, newRow, ...prev.slice(idx + 1)]
+    })
+  }
 
   const getItemSubtotal = (item: CartItem) => {
     const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
@@ -685,7 +695,15 @@ export default function VentasPage() {
                           <p className="font-medium text-gray-800">{item.nombre}</p>
                           <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
                         </div>
-                        <button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-400 transition-colors"><X size={16} /></button>
+                        <div className="flex items-center gap-1">
+                          {!item.tiene_series && item.cantidad > 1 && (
+                            <button onClick={() => splitItem(idx)} title="Separar 1 unidad con descuento diferente"
+                              className="text-gray-300 hover:text-blue-400 transition-colors">
+                              <Scissors size={14} />
+                            </button>
+                          )}
+                          <button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-400 transition-colors"><X size={16} /></button>
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-3 mt-2">

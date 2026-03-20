@@ -358,6 +358,7 @@ export default function VentasPage() {
       return
     }
     setSaving(true)
+    const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     try {
       // Crear venta
       const { data: venta, error: ventaError } = await supabase.from('ventas').insert({
@@ -446,7 +447,7 @@ export default function VentasPage() {
         // B1: Sincronizar stock_actual y registrar movimiento al despachar
         if (estado === 'despachada') {
           const { data: prodData } = await supabase.from('productos')
-            .select('stock_actual').eq('id', item.producto_id).single()
+            .select('stock_actual, stock_minimo, nombre, sku').eq('id', item.producto_id).single()
           if (prodData) {
             const stockAntes = prodData.stock_actual
             const stockDespues = Math.max(0, stockAntes - cant)
@@ -461,9 +462,39 @@ export default function VentasPage() {
               motivo: `Venta #${venta.numero}`,
               usuario_id: user?.id,
             })
+            // Alerta de stock bajo (fire-and-forget)
+            if (stockDespues <= (prodData.stock_minimo ?? 0)) {
+              stockAlertas.push({ nombre: prodData.nombre, sku: prodData.sku ?? '', stock_actual: stockDespues, stock_minimo: prodData.stock_minimo ?? 0 })
+            }
           }
         }
       } // cierre del for (const item of cart)
+
+      // Emails transaccionales (fire-and-forget, no bloquean el flujo)
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      const ownerEmail = authUser?.email
+      if (ownerEmail) {
+        if (estado === 'despachada') {
+          supabase.functions.invoke('send-email', {
+            body: {
+              type: 'venta_confirmada',
+              to: ownerEmail,
+              data: {
+                numero: venta.numero,
+                negocio: tenant!.nombre,
+                total,
+                items: cart.map(i => ({ nombre: i.nombre, cantidad: i.tiene_series ? i.series_seleccionadas.length : i.cantidad, subtotal: getItemSubtotal(i) })),
+                medio_pago: serializeMediosPago(mediosPago, total) ?? '',
+              },
+            },
+          }).catch(() => {/* silencioso */})
+        }
+        for (const alerta of stockAlertas) {
+          supabase.functions.invoke('send-email', {
+            body: { type: 'alerta_stock', to: ownerEmail, data: { ...alerta, negocio: tenant!.nombre } },
+          }).catch(() => {/* silencioso */})
+        }
+      }
 
       const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)

@@ -107,6 +107,13 @@ export default function OnboardingPage() {
         })
       if (userError) throw userError
 
+      // Email de bienvenida (fire-and-forget, no bloquea el flujo)
+      const emailTo = existingAuthUser ? existingAuthUser.email : accountData.email
+      const emailNombre = existingAuthUser ? (existingAuthUser.name || existingAuthUser.email) : accountData.name
+      supabase.functions.invoke('send-email', {
+        body: { type: 'welcome', to: emailTo, data: { nombre: emailNombre, negocio: bizData.nombre } },
+      }).catch(() => {/* silencioso — el email no es bloqueante */})
+
       if (existingAuthUser) {
         toast.success('¡Negocio creado! Bienvenido.')
         await loadUserData(existingAuthUser.id)

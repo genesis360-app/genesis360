@@ -110,9 +110,10 @@ src/
 - [x] Mover Métricas al Dashboard como segunda pestaña ("General" / "Métricas")
 
 **Productos**
-- [ ] Combos: crear combo de productos con descuento como producto aparte
-  - Si hay combo de 3 con 10% desc y se piden 4 → 1 combo + 1 unidad
-  - Detección automática del combo al agregar unidades
+- [x] Combos: regla de precio por volumen — producto + cantidad + descuento %
+  - Definidos en ConfigPage pestaña "Combos"
+  - Detección automática en el carrito: banner ámbar con botón "Aplicar"
+  - Al aplicar: split en filas (N combos × cant + resto sin descuento)
 
 **Ventas**
 - [x] Permitir escribir cantidad de unidades directamente (no solo +/-)

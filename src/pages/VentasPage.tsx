@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
@@ -253,6 +253,36 @@ export default function VentasPage() {
   }
 
   const removeItem = (idx: number) => setCart(prev => prev.filter((_, i) => i !== idx))
+
+  const { data: combosDisp = [] } = useQuery({
+    queryKey: ['combos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('combos')
+        .select('id, nombre, producto_id, cantidad, descuento_pct')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  const findCombo = (productoId: string, cantidad: number, descActual: number) => {
+    return (combosDisp as any[])
+      .filter(c => c.producto_id === productoId && cantidad >= c.cantidad && descActual !== c.descuento_pct)
+      .sort((a, b) => b.cantidad - a.cantidad)[0] ?? null
+  }
+
+  const aplicarCombo = (idx: number, combo: any) => {
+    const item = cart[idx]
+    const comboUnits = Math.floor(item.cantidad / combo.cantidad) * combo.cantidad
+    const remainder = item.cantidad % combo.cantidad
+    const rows: CartItem[] = []
+    if (comboUnits > 0)
+      rows.push({ ...item, cantidad: comboUnits, descuento: combo.descuento_pct, descuento_tipo: 'pct' })
+    if (remainder > 0)
+      rows.push({ ...item, cantidad: remainder, descuento: 0, descuento_tipo: 'pct' })
+    setCart(prev => [...prev.slice(0, idx), ...rows, ...prev.slice(idx + 1)])
+    toast.success(`Combo aplicado: ${comboUnits} und. con ${combo.descuento_pct}% off${remainder > 0 ? ` + ${remainder} sin descuento` : ''}`)
+  }
 
   const splitItem = (idx: number) => {
     setCart(prev => {
@@ -746,6 +776,22 @@ export default function VentasPage() {
                           ${getItemSubtotal(item).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                         </p>
                       </div>
+
+                      {/* Sugerencia de combo */}
+                      {!item.tiene_series && (() => {
+                        const combo = findCombo(item.producto_id, item.cantidad, item.descuento)
+                        if (!combo) return null
+                        return (
+                          <div className="mt-1.5 flex items-center gap-2 text-xs bg-amber-50 text-amber-700 rounded-lg px-3 py-1.5 border border-amber-200">
+                            <Gift size={12} />
+                            <span className="flex-1">Combo: {combo.cantidad}× con {combo.descuento_pct}% off disponible</span>
+                            <button onClick={() => aplicarCombo(idx, combo)}
+                              className="font-semibold hover:underline text-amber-800">
+                              Aplicar
+                            </button>
+                          </div>
+                        )
+                      })()}
 
                       {/* Series */}
                       {item.tiene_series && (

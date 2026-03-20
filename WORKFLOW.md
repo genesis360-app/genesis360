@@ -170,6 +170,7 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 |---------|-------------|-------|
 | v0.12.0 | Búsquedas, config, movimientos, descuentos en ventas, fix métricas | 2026-03 |
 | v0.13.0 | Combos, separar unidades, vuelto al Enter, fix número de venta | 2026-03 |
+| v0.14.0 | Emails transaccionales (Resend), fix trigger ventas, ingresos con unidades en dashboard | 2026-03 |
 
 ### Crear release
 ```bash

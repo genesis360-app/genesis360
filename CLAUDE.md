@@ -90,7 +90,7 @@ src/
 ### Grupo 3 (en progreso)
 - [x] Escáner de código de barras en ventas
 - [x] QR por producto
-- [ ] Emails transaccionales (Resend)
+- [x] Emails transaccionales (Resend) — bienvenida, confirmación de venta, alertas de stock
 - [ ] Integración completa Mercado Pago producción
 
 ### Grupo 4 — IA aplicada al negocio
@@ -228,6 +228,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **`vercel.json` es obligatorio** para SPA routing. Sin él, Vercel devuelve 404 en rutas directas como `/dashboard`. Contenido mínimo: `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }`
 - **Service worker (PWA)**: cuando hay un nuevo deploy, el SW puede servir el `index.html` viejo con hashes de assets que ya no existen → pantalla en blanco. Fix: en la Console del browser ejecutar `navigator.serviceWorker.getRegistrations().then(r => r.forEach(sw => sw.unregister())).then(() => location.reload())`
 - **Preview deployments (rama `dev`)**: Vercel tiene "Deployment Protection" activado por defecto — cualquier visitante necesita estar logueado en Vercel. Desactivar en Settings → Deployment Protection → "Vercel Authentication" para que el link de preview sea accesible públicamente.
+
+### Emails transaccionales (Resend)
+- **Edge Function**: `send-email` — única función con 3 tipos: `welcome`, `venta_confirmada`, `alerta_stock`
+- **FROM**: `onboarding@resend.dev` (temporal). **Cambiar a `noreply@stokio.com`** en [supabase/functions/send-email/index.ts](supabase/functions/send-email/index.ts) línea `const FROM = ...` una vez verificado el dominio en Resend.
+- **Dominio pendiente**: `stokio.com` — no tiene registrador aún. Cuando se compre, verificar en Resend y actualizar FROM.
+- **Todos los emails son fire-and-forget** (no bloquean el flujo del usuario).
+- **Triggers**: bienvenida → OnboardingPage post-insert; venta_confirmada → VentasPage al despachar; alerta_stock → VentasPage al despachar si stock < mínimo.
+- **Destinatario**: el usuario autenticado en ese momento (`supabase.auth.getUser()`). Con dominio propio se puede expandir a notificar al OWNER siempre.
 
 ### Mercado Pago
 - **Planes creados**: Básico `f57914521a98415290aedf3fafa4bf98` ($4.900/mes), Pro `fe790716c9294035b6ee8fe50375fc63` ($9.900/mes)

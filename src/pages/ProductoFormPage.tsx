@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -40,6 +40,8 @@ export default function ProductoFormPage() {
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanResult, setScanResult] = useState<string | null>(null)
 
   // USD mode (usa cotización global del sidebar)
   const [usdModoCosto, setUsdModoCosto] = useState(false)
@@ -245,6 +247,55 @@ export default function ProductoFormPage() {
     }
   }
 
+  const handleScanPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = '' // reset para permitir seleccionar el mismo archivo de vuelta
+
+    setScanning(true)
+    setScanResult(null)
+    try {
+      // Convertir a base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve((reader.result as string).split(',')[1])
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      const media_type = file.type || 'image/jpeg'
+
+      const { data, error } = await supabase.functions.invoke('scan-product', {
+        body: { image: base64, media_type },
+      })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+
+      // Pre-llenar form con lo detectado
+      const fields: string[] = []
+      setForm(prev => {
+        const next = { ...prev }
+        if (data.nombre)        { next.nombre = data.nombre;               fields.push('nombre') }
+        if (data.descripcion)   { next.descripcion = data.descripcion;     fields.push('descripción') }
+        if (data.unidad_medida) { next.unidad_medida = data.unidad_medida; fields.push('unidad') }
+        if (data.codigo_barras) { next.codigo_barras = data.codigo_barras; fields.push('código de barras') }
+        // Auto-generar SKU si se detectó nombre y el SKU está vacío
+        if (data.nombre && !prev.nombre) next.sku = generateSKU(data.nombre)
+        return next
+      })
+
+      // Usar la foto también como imagen del producto
+      setImageFile(file)
+      setImagePreview(URL.createObjectURL(file))
+
+      const fuente = data.fuente === 'open_food_facts' ? 'Open Food Facts' : 'IA'
+      setScanResult(`Detectado por ${fuente}: ${fields.join(', ')}`)
+    } catch (err: any) {
+      toast.error(err.message ?? 'No se pudo analizar la imagen')
+    } finally {
+      setScanning(false)
+    }
+  }
+
   const canEdit = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
 
   return (
@@ -260,6 +311,18 @@ export default function ProductoFormPage() {
           <h1 className="text-2xl font-bold text-[#1E3A5F]">{isEditing ? 'Editar producto' : 'Nuevo producto'}</h1>
           <p className="text-gray-500 text-sm mt-0.5">{isEditing ? 'Modificá los datos del producto' : 'Completá los datos del nuevo producto'}</p>
         </div>
+        {!isEditing && canEdit && (
+          <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all
+            ${scanning
+              ? 'bg-purple-100 text-purple-400 cursor-not-allowed'
+              : 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 shadow-sm'}`}>
+            {scanning
+              ? <><RefreshCw size={15} className="animate-spin" /> Analizando...</>
+              : <><Sparkles size={15} /> Completar desde foto</>}
+            <input type="file" accept="image/*" capture="environment" className="hidden"
+              disabled={scanning} onChange={handleScanPhoto} />
+          </label>
+        )}
         {isEditing && canEdit && (
           <div className="flex gap-2">
             <button type="button" onClick={() => setShowQR(true)}
@@ -277,6 +340,16 @@ export default function ProductoFormPage() {
           </div>
         )}
       </div>
+
+      {scanResult && (
+        <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 text-sm text-purple-700">
+          <Sparkles size={15} className="flex-shrink-0" />
+          <span>{scanResult}. Revisá y completá los campos restantes.</span>
+          <button type="button" onClick={() => setScanResult(null)} className="ml-auto text-purple-400 hover:text-purple-600">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid lg:grid-cols-3 gap-5">

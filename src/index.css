@@ -7,9 +7,9 @@
    Formato: R G B  (sin comas, sin #)
    ─────────────────────────────────────────────────────────────────────────── */
 :root {
-  --color-primary:   30 58 95;     /* #1E3A5F — azul oscuro */
-  --color-accent:    46 117 182;   /* #2E75B6 — azul medio  */
-  --color-brand-bg:  245 247 250;  /* #F5F7FA — fondo gris  */
+  --color-primary:   13 13 13;     /* #0D0D0D — negro       */
+  --color-accent:    123 0 255;    /* #7B00FF — violeta elé */
+  --color-brand-bg:  245 240 255;  /* #F5F0FF — fondo lila  */
 }
 
 * { box-sizing: border-box; }

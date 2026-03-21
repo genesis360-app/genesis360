@@ -2,17 +2,29 @@
 // Para rebrandear la app:
 //   1. Cambiar name/tagline/etc. aquí
 //   2. Cambiar los colores TANTO aquí (hex) como en src/index.css (:root, formato RGB sin comas)
+//
+// ─── Paletas de referencia ────────────────────────────────────────────────────
+// Stokio (azul marino):
+//   primary: '#1E3A5F'  →  index.css: 30 58 95
+//   accent:  '#2E75B6'  →  index.css: 46 117 182
+//   bg:      '#F5F7FA'  →  index.css: 245 247 250
+//
+// Genesis360 (violeta eléctrico):
+//   primary: '#0D0D0D'  →  index.css: 13 13 13
+//   accent:  '#7B00FF'  →  index.css: 123 0 255
+//   bg:      '#F5F0FF'  →  index.css: 245 240 255
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const BRAND = {
-  name: 'Stokio',
+  name: 'Genesis360',
   tagline: 'El inventario inteligente para tu negocio',
   description: 'Gestioná tu stock, ventas y movimientos desde cualquier dispositivo. Simple, rápido y pensado para comercios reales.',
-  email: 'hola@stokio.app',
-  website: 'https://stokio.app',
+  email: 'hola@genesis360.app',
+  website: 'https://genesis360.app',
   color: {
-    primary: '#1E3A5F',
-    accent: '#2E75B6',
-    bg: '#F5F7FA',
+    primary: '#0D0D0D',
+    accent: '#7B00FF',
+    bg: '#F5F0FF',
   },
   social: {
     instagram: '',

@@ -69,7 +69,7 @@ export default function SuscripcionPage() {
   // Pantalla de resultado de pago
   if (status) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#1E3A5F] to-[#2E75B6] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-primary to-accent flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
           {status === 'approved' ? (
             <>
@@ -77,7 +77,7 @@ export default function SuscripcionPage() {
               <h1 className="text-2xl font-bold text-gray-800 mb-2">¡Pago aprobado!</h1>
               <p className="text-gray-500 mb-6">Tu suscripción está siendo procesada. En unos segundos tu cuenta quedará activa.</p>
               <button onClick={handleVerificarPago} disabled={loading === 'verificando'}
-                className="w-full bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                className="w-full bg-primary hover:bg-accent text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
                 {loading === 'verificando'
                   ? <><RefreshCw size={16} className="animate-spin" /> Verificando...</>
                   : <><CheckCircle size={16} /> Ir al dashboard</>}
@@ -88,7 +88,7 @@ export default function SuscripcionPage() {
               <Clock size={48} className="text-yellow-500 mx-auto mb-4" />
               <h1 className="text-2xl font-bold text-gray-800 mb-2">Pago pendiente</h1>
               <p className="text-gray-500 mb-6">Tu pago está siendo procesado. Te avisaremos por email cuando se confirme.</p>
-              <Link to="/dashboard" className="w-full block text-center bg-[#1E3A5F] text-white font-bold py-3 rounded-xl hover:bg-[#2E75B6] transition-all">
+              <Link to="/dashboard" className="w-full block text-center bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
                 Volver al dashboard
               </Link>
             </>
@@ -98,7 +98,7 @@ export default function SuscripcionPage() {
               <h1 className="text-2xl font-bold text-gray-800 mb-2">Pago no completado</h1>
               <p className="text-gray-500 mb-6">No se procesó el pago. Podés intentarlo de nuevo.</p>
               <button onClick={() => window.location.href = '/suscripcion'}
-                className="w-full bg-[#1E3A5F] text-white font-bold py-3 rounded-xl hover:bg-[#2E75B6] transition-all">
+                className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
                 Intentar de nuevo
               </button>
             </>
@@ -109,7 +109,7 @@ export default function SuscripcionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1E3A5F] via-[#1E3A5F] to-[#2E75B6]">
+    <div className="min-h-screen bg-gradient-to-br from-primary via-primary to-accent">
       {/* Header */}
       <div className="text-center pt-12 pb-8 px-4">
         <div className="inline-flex items-center justify-center w-14 h-14 bg-white/10 rounded-2xl mb-4">
@@ -142,13 +142,13 @@ export default function SuscripcionPage() {
                     : 'bg-white/10 border border-white/20'}`}>
 
                 {plan.destacado && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#2E75B6] text-white text-xs font-bold px-3 py-1 rounded-full">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">
                     MÁS POPULAR
                   </div>
                 )}
 
                 <div className="mb-5">
-                  <h3 className={`font-bold text-xl ${plan.destacado ? 'text-[#1E3A5F]' : 'text-white'}`}>
+                  <h3 className={`font-bold text-xl ${plan.destacado ? 'text-primary' : 'text-white'}`}>
                     {plan.nombre}
                   </h3>
                   <p className={`text-sm mt-0.5 ${plan.destacado ? 'text-gray-400' : 'text-blue-200'}`}>
@@ -156,12 +156,12 @@ export default function SuscripcionPage() {
                   </p>
                   <div className="mt-4">
                     {plan.precio === null ? (
-                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-[#1E3A5F]' : 'text-white'}`}>
+                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-primary' : 'text-white'}`}>
                         A consultar
                       </span>
                     ) : (
                       <div>
-                        <span className={`text-4xl font-bold ${plan.destacado ? 'text-[#1E3A5F]' : 'text-white'}`}>
+                        <span className={`text-4xl font-bold ${plan.destacado ? 'text-primary' : 'text-white'}`}>
                           ${plan.precio.toLocaleString('es-AR')}
                         </span>
                         <span className={`text-sm ml-1 ${plan.destacado ? 'text-gray-400' : 'text-blue-200'}`}>/mes</span>
@@ -193,7 +193,7 @@ export default function SuscripcionPage() {
                 ) : plan.precio === null ? (
                   <a href={`mailto:${BRAND.email}?subject=Plan Enterprise`}
                     className={`block text-center font-semibold py-3 rounded-xl transition-all text-sm
-                      ${plan.destacado ? 'bg-[#1E3A5F] text-white hover:bg-[#2E75B6]' : 'bg-white text-[#1E3A5F] hover:bg-blue-50'}`}>
+                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-blue-50'}`}>
                     Contactar
                   </a>
                 ) : (
@@ -201,7 +201,7 @@ export default function SuscripcionPage() {
                     onClick={() => handleSuscribir(plan.id, mpPlanId)}
                     disabled={!!loading}
                     className={`w-full font-semibold py-3 rounded-xl transition-all text-sm disabled:opacity-60 flex items-center justify-center gap-2
-                      ${plan.destacado ? 'bg-[#1E3A5F] text-white hover:bg-[#2E75B6]' : 'bg-white text-[#1E3A5F] hover:bg-blue-50'}`}>
+                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-blue-50'}`}>
                     {loading === plan.id
                       ? <><RefreshCw size={15} className="animate-spin" /> Redirigiendo...</>
                       : <><ArrowRight size={15} /> Suscribirme</>}

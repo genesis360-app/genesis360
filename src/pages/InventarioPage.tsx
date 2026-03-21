@@ -114,12 +114,12 @@ export default function InventarioPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E3A5F]">Inventario</h1>
+          <h1 className="text-2xl font-bold text-primary">Inventario</h1>
           <p className="text-gray-500 text-sm mt-0.5">{productos.length} productos registrados</p>
         </div>
         <div className="flex gap-2">
           <Link to="/inventario/importar"
-            className="flex items-center gap-2 border border-[#2E75B6] text-[#2E75B6] px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-50 transition-all">
+            className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-50 transition-all">
             Importar
           </Link>
           <button
@@ -130,7 +130,7 @@ export default function InventarioPage() {
                 navigate('/inventario/nuevo')
               }
             }}
-            className="flex items-center gap-2 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            className="flex items-center gap-2 bg-primary hover:bg-accent text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
             <Plus size={16} /> Nuevo producto
           </button>
         </div>
@@ -152,7 +152,7 @@ export default function InventarioPage() {
             </div>
             <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
               <div className={`h-full rounded-full transition-all
-                ${limits.pct_productos >= 90 ? 'bg-orange-500' : 'bg-[#2E75B6]'}`}
+                ${limits.pct_productos >= 90 ? 'bg-orange-500' : 'bg-accent'}`}
                 style={{ width: `${Math.min(limits.pct_productos, 100)}%` }} />
             </div>
           </div>
@@ -180,11 +180,11 @@ export default function InventarioPage() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por nombre, SKU o código..."
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent bg-white" />
         </div>
         <button
           onClick={() => setScannerOpen(true)}
-          className="px-3 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500 hover:text-[#2E75B6] transition-colors bg-white"
+          className="px-3 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500 hover:text-accent transition-colors bg-white"
           title="Escanear código de barras"
         >
           <Camera size={17} />
@@ -194,13 +194,13 @@ export default function InventarioPage() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1E3A5F]" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
             <Package size={40} className="mb-3 opacity-50" />
             <p className="font-medium">{search ? 'No se encontraron productos' : 'No hay productos aún'}</p>
-            {!search && <Link to="/inventario/nuevo" className="mt-3 text-[#2E75B6] text-sm hover:underline">Agregá tu primer producto →</Link>}
+            {!search && <Link to="/inventario/nuevo" className="mt-3 text-accent text-sm hover:underline">Agregá tu primer producto →</Link>}
           </div>
         ) : (
           <div className="divide-y divide-gray-50">
@@ -261,7 +261,7 @@ export default function InventarioPage() {
 
                     <Link to={`/inventario/${p.id}/editar`}
                       onClick={e => e.stopPropagation()}
-                      className="text-xs text-[#2E75B6] hover:underline flex-shrink-0 hidden sm:block">
+                      className="text-xs text-accent hover:underline flex-shrink-0 hidden sm:block">
                       Editar
                     </Link>
                   </div>
@@ -286,7 +286,7 @@ export default function InventarioPage() {
                             <div key={l.id} className="bg-white rounded-xl border border-gray-100 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
                               {/* LPN */}
                               <div className="col-span-1">
-                                <span className="font-mono text-xs text-[#1E3A5F] font-semibold">{l.lpn}</span>
+                                <span className="font-mono text-xs text-primary font-semibold">{l.lpn}</span>
                                 {l.proveedor_id && <p className="text-xs text-gray-400 truncate">{l.proveedores?.nombre}</p>}
                               </div>
 
@@ -325,7 +325,7 @@ export default function InventarioPage() {
                                 <select
                                   value={l.estado_id ?? ''}
                                   onChange={e => cambiarEstadoLinea.mutate({ lineaId: l.id, estadoId: e.target.value })}
-                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 w-full focus:outline-none focus:border-[#2E75B6] bg-white"
+                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 w-full focus:outline-none focus:border-accent bg-white"
                                   style={{ color: l.estados_inventario?.color ?? '#6b7280', fontWeight: 500 }}
                                 >
                                   <option value="">Sin estado</option>
@@ -374,7 +374,7 @@ export default function InventarioPage() {
                               <div className="col-span-1 flex justify-center">
                                 <button
                                   onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: p }) }}
-                                  className="p-1.5 text-gray-400 hover:text-[#2E75B6] hover:bg-blue-50 rounded-lg transition-colors"
+                                  className="p-1.5 text-gray-400 hover:text-accent hover:bg-blue-50 rounded-lg transition-colors"
                                   title="Acciones sobre este LPN">
                                   <Settings2 size={15} />
                                 </button>

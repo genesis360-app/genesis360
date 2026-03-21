@@ -111,25 +111,25 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#1E3A5F] rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <Package size={16} className="text-white" />
             </div>
-            <span className="font-bold text-xl text-[#1E3A5F]">{BRAND.name}</span>
+            <span className="font-bold text-xl text-primary">{BRAND.name}</span>
           </div>
 
           {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-6 text-sm text-gray-600">
-            <a href="#features" className="hover:text-[#1E3A5F] transition-colors">Funciones</a>
-            <a href="#precios" className="hover:text-[#1E3A5F] transition-colors">Precios</a>
-            <a href="#faq" className="hover:text-[#1E3A5F] transition-colors">FAQ</a>
+            <a href="#features" className="hover:text-primary transition-colors">Funciones</a>
+            <a href="#precios" className="hover:text-primary transition-colors">Precios</a>
+            <a href="#faq" className="hover:text-primary transition-colors">FAQ</a>
           </div>
 
           <div className="hidden md:flex items-center gap-3">
-            <Link to="/login" className="text-sm font-medium text-gray-600 hover:text-[#1E3A5F] transition-colors px-4 py-2">
+            <Link to="/login" className="text-sm font-medium text-gray-600 hover:text-primary transition-colors px-4 py-2">
               Ingresar
             </Link>
             <Link to="/onboarding"
-              className="text-sm font-semibold bg-[#1E3A5F] hover:bg-[#2E75B6] text-white px-5 py-2.5 rounded-xl transition-all">
+              className="text-sm font-semibold bg-primary hover:bg-accent text-white px-5 py-2.5 rounded-xl transition-all">
               Empezar gratis
             </Link>
           </div>
@@ -147,7 +147,7 @@ export default function LandingPage() {
             <a href="#faq" className="block text-gray-600 py-1">FAQ</a>
             <hr className="border-gray-100" />
             <Link to="/login" className="block text-gray-600 py-1">Ingresar</Link>
-            <Link to="/onboarding" className="block w-full text-center bg-[#1E3A5F] text-white font-semibold py-2.5 rounded-xl">
+            <Link to="/onboarding" className="block w-full text-center bg-primary text-white font-semibold py-2.5 rounded-xl">
               Empezar gratis
             </Link>
           </div>
@@ -155,7 +155,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ── HERO ── */}
-      <section className="bg-gradient-to-br from-[#1E3A5F] via-[#1E3A5F] to-[#2E75B6] text-white">
+      <section className="bg-gradient-to-br from-primary via-primary to-accent text-white">
         <div className="max-w-6xl mx-auto px-4 py-20 md:py-28 text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-sm mb-6">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -170,7 +170,7 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/onboarding"
-              className="flex items-center justify-center gap-2 bg-white text-[#1E3A5F] font-bold px-8 py-4 rounded-xl hover:bg-blue-50 transition-all text-lg shadow-lg">
+              className="flex items-center justify-center gap-2 bg-white text-primary font-bold px-8 py-4 rounded-xl hover:bg-blue-50 transition-all text-lg shadow-lg">
               Empezar gratis <ArrowRight size={20} />
             </Link>
             <a href="#features"
@@ -191,7 +191,7 @@ export default function LandingPage() {
           <div className="flex flex-wrap justify-center gap-6 md:gap-10 text-gray-400 text-sm font-medium">
             {['Ferreterías', 'Kioscos', 'Despensas', 'Mini-mercados', 'Farmacias', 'Librerías', 'Almacenes'].map(t => (
               <span key={t} className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 bg-[#2E75B6] rounded-full" />{t}
+                <span className="w-1.5 h-1.5 bg-accent rounded-full" />{t}
               </span>
             ))}
           </div>
@@ -199,10 +199,10 @@ export default function LandingPage() {
       </section>
 
       {/* ── FEATURES ── */}
-      <section id="features" className="py-20 bg-[#F5F7FA]">
+      <section id="features" className="py-20 bg-brand-bg">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold text-[#1E3A5F] mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-primary mb-4">
               Todo lo que necesitás en un solo lugar
             </h2>
             <p className="text-gray-500 text-lg max-w-xl mx-auto">
@@ -212,8 +212,8 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {FEATURES.map(({ icon: Icon, title, desc }) => (
               <div key={title} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-                <div className="w-11 h-11 bg-[#1E3A5F]/10 rounded-xl flex items-center justify-center mb-4">
-                  <Icon size={22} className="text-[#1E3A5F]" />
+                <div className="w-11 h-11 bg-primary/10 rounded-xl flex items-center justify-center mb-4">
+                  <Icon size={22} className="text-primary" />
                 </div>
                 <h3 className="font-bold text-gray-800 mb-2">{title}</h3>
                 <p className="text-gray-500 text-sm leading-relaxed">{desc}</p>
@@ -228,8 +228,8 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <span className="text-[#2E75B6] font-semibold text-sm uppercase tracking-wider">Trazabilidad completa</span>
-              <h2 className="text-3xl md:text-4xl font-bold text-[#1E3A5F] mt-2 mb-4">
+              <span className="text-accent font-semibold text-sm uppercase tracking-wider">Trazabilidad completa</span>
+              <h2 className="text-3xl md:text-4xl font-bold text-primary mt-2 mb-4">
                 Sabés exactamente qué tenés y dónde está
               </h2>
               <p className="text-gray-500 leading-relaxed mb-6">
@@ -251,11 +251,11 @@ export default function LandingPage() {
                 ))}
               </ul>
               <Link to="/onboarding"
-                className="inline-flex items-center gap-2 mt-8 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold px-6 py-3 rounded-xl transition-all">
+                className="inline-flex items-center gap-2 mt-8 bg-primary hover:bg-accent text-white font-semibold px-6 py-3 rounded-xl transition-all">
                 Probalo gratis <ArrowRight size={16} />
               </Link>
             </div>
-            <div className="bg-gradient-to-br from-[#1E3A5F] to-[#2E75B6] rounded-2xl p-6 shadow-xl">
+            <div className="bg-gradient-to-br from-primary to-accent rounded-2xl p-6 shadow-xl">
               <div className="bg-white/10 rounded-xl p-4 space-y-3">
                 <div className="flex items-center justify-between text-white text-sm">
                   <span className="font-semibold">Inventario</span>
@@ -283,9 +283,9 @@ export default function LandingPage() {
       </section>
 
       {/* ── TESTIMONIALS ── */}
-      <section className="py-20 bg-[#F5F7FA]">
+      <section className="py-20 bg-brand-bg">
         <div className="max-w-6xl mx-auto px-4">
-          <h2 className="text-3xl font-bold text-[#1E3A5F] text-center mb-12">
+          <h2 className="text-3xl font-bold text-primary text-center mb-12">
             Lo que dicen nuestros clientes
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
@@ -311,7 +311,7 @@ export default function LandingPage() {
       <section id="precios" className="py-20">
         <div className="max-w-6xl mx-auto px-4">
           <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold text-[#1E3A5F] mb-4">Planes y precios</h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-primary mb-4">Planes y precios</h2>
             <p className="text-gray-500">Empezá gratis. Crecé cuando lo necesites.</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -319,24 +319,24 @@ export default function LandingPage() {
               <div key={plan.id}
                 className={`rounded-2xl p-6 border-2 flex flex-col relative
                   ${plan.destacado
-                    ? 'border-[#2E75B6] bg-[#1E3A5F] text-white shadow-xl scale-105'
+                    ? 'border-accent bg-primary text-white shadow-xl scale-105'
                     : 'border-gray-200 bg-white text-gray-800'}`}>
                 {plan.destacado && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#2E75B6] text-white text-xs font-bold px-3 py-1 rounded-full">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">
                     MÁS POPULAR
                   </div>
                 )}
                 <div className="mb-5">
-                  <h3 className={`font-bold text-lg ${plan.destacado ? 'text-white' : 'text-[#1E3A5F]'}`}>{plan.nombre}</h3>
+                  <h3 className={`font-bold text-lg ${plan.destacado ? 'text-white' : 'text-primary'}`}>{plan.nombre}</h3>
                   <p className={`text-xs mt-0.5 ${plan.destacado ? 'text-blue-200' : 'text-gray-400'}`}>{plan.descripcion}</p>
                   <div className="mt-4">
                     {plan.precio === null ? (
-                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-white' : 'text-[#1E3A5F]'}`}>A consultar</span>
+                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-white' : 'text-primary'}`}>A consultar</span>
                     ) : plan.precio === 0 ? (
-                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-white' : 'text-[#1E3A5F]'}`}>Gratis</span>
+                      <span className={`text-2xl font-bold ${plan.destacado ? 'text-white' : 'text-primary'}`}>Gratis</span>
                     ) : (
                       <div>
-                        <span className={`text-3xl font-bold ${plan.destacado ? 'text-white' : 'text-[#1E3A5F]'}`}>
+                        <span className={`text-3xl font-bold ${plan.destacado ? 'text-white' : 'text-primary'}`}>
                           ${plan.precio.toLocaleString('es-AR')}
                         </span>
                         <span className={`text-sm ml-1 ${plan.destacado ? 'text-blue-200' : 'text-gray-400'}`}>/mes</span>
@@ -363,8 +363,8 @@ export default function LandingPage() {
                 <Link to={plan.precio === null ? `mailto:${BRAND.email}` : '/onboarding'}
                   className={`block text-center font-semibold py-3 rounded-xl transition-all text-sm
                     ${plan.destacado
-                      ? 'bg-white text-[#1E3A5F] hover:bg-blue-50'
-                      : 'bg-[#1E3A5F] text-white hover:bg-[#2E75B6]'}`}>
+                      ? 'bg-white text-primary hover:bg-blue-50'
+                      : 'bg-primary text-white hover:bg-accent'}`}>
                   {plan.precio === null ? 'Contactar' : plan.precio === 0 ? 'Empezar gratis' : 'Probar 7 días gratis'}
                 </Link>
               </div>
@@ -374,9 +374,9 @@ export default function LandingPage() {
       </section>
 
       {/* ── FAQ ── */}
-      <section id="faq" className="py-20 bg-[#F5F7FA]">
+      <section id="faq" className="py-20 bg-brand-bg">
         <div className="max-w-2xl mx-auto px-4">
-          <h2 className="text-3xl font-bold text-[#1E3A5F] text-center mb-12">Preguntas frecuentes</h2>
+          <h2 className="text-3xl font-bold text-primary text-center mb-12">Preguntas frecuentes</h2>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-6">
             {FAQ.map(({ q, a }) => <FAQItem key={q} q={q} a={a} />)}
           </div>
@@ -384,7 +384,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA FINAL ── */}
-      <section className="py-20 bg-gradient-to-r from-[#1E3A5F] to-[#2E75B6]">
+      <section className="py-20 bg-gradient-to-r from-primary to-accent">
         <div className="max-w-3xl mx-auto px-4 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
             ¿Listo para tomar el control de tu inventario?
@@ -393,14 +393,14 @@ export default function LandingPage() {
             Empezá hoy. 7 días gratis, sin tarjeta de crédito.
           </p>
           <Link to="/onboarding"
-            className="inline-flex items-center gap-2 bg-white text-[#1E3A5F] font-bold px-10 py-4 rounded-xl hover:bg-blue-50 transition-all text-lg shadow-lg">
+            className="inline-flex items-center gap-2 bg-white text-primary font-bold px-10 py-4 rounded-xl hover:bg-blue-50 transition-all text-lg shadow-lg">
             Crear cuenta gratis <ArrowRight size={20} />
           </Link>
         </div>
       </section>
 
       {/* ── FOOTER ── */}
-      <footer className="bg-[#1E3A5F] text-blue-200 py-10">
+      <footer className="bg-primary text-blue-200 py-10">
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">

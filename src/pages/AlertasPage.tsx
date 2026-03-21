@@ -67,13 +67,13 @@ export default function AlertasPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-[#1E3A5F]">Alertas</h1>
+        <h1 className="text-2xl font-bold text-primary">Alertas</h1>
         <p className="text-gray-500 text-sm mt-0.5">{totalAlertas} alerta{totalAlertas !== 1 ? 's' : ''} activa{totalAlertas !== 1 ? 's' : ''}</p>
       </div>
 
       {isLoadingAll ? (
         <div className="flex items-center justify-center py-16">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1E3A5F]" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       ) : totalAlertas === 0 ? (
         <div className="bg-white rounded-xl p-12 text-center shadow-sm border border-gray-100">
@@ -147,7 +147,7 @@ export default function AlertasPage() {
                   <div className="flex items-center gap-2">
                     <Link
                       to="/movimientos"
-                      className="text-xs bg-[#1E3A5F] text-white px-3 py-1.5 rounded-lg hover:bg-[#2E75B6] transition-all"
+                      className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-accent transition-all"
                     >
                       Ingresar stock
                     </Link>

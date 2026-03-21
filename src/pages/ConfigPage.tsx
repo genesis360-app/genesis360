@@ -78,16 +78,16 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
           <input type="text" value={newNombre} onChange={e => setNewNombre(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
             placeholder="Nombre..."
-            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
+            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
           <button onClick={handleAdd} disabled={saving || !newNombre.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50">
+            className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-accent text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50">
             <Plus size={15} /> Agregar
           </button>
         </div>
         {withDescription && (
           <input type="text" value={newExtra} onChange={e => setNewExtra(e.target.value)}
             placeholder="Descripción (opcional)..."
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
         )}
       </div>
 
@@ -96,13 +96,13 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar..."
-            className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+            className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent bg-white" />
         </div>
       )}
 
       {loading ? (
         <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" />
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
         </div>
       ) : itemsFiltrados.length === 0 ? (
         <p className="text-center text-gray-400 text-sm py-8">{items.length === 0 ? 'No hay elementos cargados aún' : 'Sin resultados para esa búsqueda'}</p>
@@ -123,7 +123,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
                       </div>
                     )}
                     <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-[#2E75B6] rounded-lg text-sm focus:outline-none" />
+                      className="w-full px-3 py-1.5 border border-accent rounded-lg text-sm focus:outline-none" />
                     {withDescription && (
                       <input type="text" value={editExtra} onChange={e => setEditExtra(e.target.value)}
                         placeholder="Descripción..."
@@ -151,7 +151,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
                     )}
                   </div>
                   <button onClick={() => startEdit(item)}
-                    className="p-1.5 text-gray-400 hover:text-[#2E75B6] hover:bg-blue-50 rounded-lg transition-colors">
+                    className="p-1.5 text-gray-400 hover:text-accent hover:bg-blue-50 rounded-lg transition-colors">
                     <Pencil size={15} />
                   </button>
                   <button onClick={() => onDelete(item.id)}
@@ -207,13 +207,13 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
       <div className="flex gap-2">
         <input type="text" value={newNombre} onChange={e => setNewNombre(e.target.value)}
           placeholder="Nuevo motivo..." onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+          className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
         <select value={newTipo} onChange={e => setNewTipo(e.target.value)}
-          className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+          className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
           {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
         <button onClick={handleAdd} disabled={saving || !newNombre.trim()}
-          className="px-4 py-2.5 bg-[#1E3A5F] text-white rounded-xl text-sm disabled:opacity-50 hover:bg-[#2E75B6] transition-all">
+          className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm disabled:opacity-50 hover:bg-accent transition-all">
           <Plus size={16} />
         </button>
       </div>
@@ -224,7 +224,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar motivo..."
-            className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+            className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent bg-white" />
         </div>
       )}
 
@@ -233,14 +233,14 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
         {(['todos', 'ingreso', 'rebaje', 'ambos'] as const).map(t => (
           <button key={t} onClick={() => setFilterTipo(t)}
             className={`px-3 py-1 rounded-lg text-xs font-medium transition-all capitalize
-              ${filterTipo === t ? 'bg-[#1E3A5F] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+              ${filterTipo === t ? 'bg-primary text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
             {t === 'todos' ? 'Todos' : t === 'ingreso' ? 'Solo ingreso' : t === 'rebaje' ? 'Solo rebaje' : 'Ambos'}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" /></div>
+        <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
       ) : motivosFiltrados.length === 0 ? (
         <p className="text-sm text-gray-400 text-center py-6">
           {motivos.length === 0 ? 'No hay motivos cargados' : 'Sin resultados'}
@@ -252,7 +252,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
               {editId === m.id ? (
                 <>
                   <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)}
-                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
+                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
                   <select value={editTipo} onChange={e => setEditTipo(e.target.value)}
                     className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none">
                     {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -266,7 +266,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
                   <span className="flex-1 text-sm font-medium text-gray-800">{m.nombre}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipoColor(m.tipo)}`}>{tipoLabel(m.tipo)}</span>
                   <button onClick={() => { setEditId(m.id); setEditNombre(m.nombre); setEditTipo(m.tipo) }}
-                    className="p-1.5 text-gray-400 hover:text-[#2E75B6] hover:bg-blue-50 rounded-lg"><Pencil size={15} /></button>
+                    className="p-1.5 text-gray-400 hover:text-accent hover:bg-blue-50 rounded-lg"><Pencil size={15} /></button>
                   <button onClick={() => onDelete(m.id)}
                     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
                 </>
@@ -468,7 +468,7 @@ export default function ConfigPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-[#1E3A5F]">Configuración</h1>
+        <h1 className="text-2xl font-bold text-primary">Configuración</h1>
         <p className="text-gray-500 text-sm mt-0.5">Administrá los datos de tu negocio</p>
       </div>
 
@@ -476,7 +476,7 @@ export default function ConfigPage() {
         {tabs.map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex-shrink-0 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all
-              ${tab === id ? 'bg-white text-[#1E3A5F] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              ${tab === id ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             <Icon size={15} /><span className="hidden sm:inline">{label}</span>
           </button>
         ))}
@@ -489,18 +489,18 @@ export default function ConfigPage() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
             <input type="text" value={bizForm.nombre} disabled={!canEdit}
               onChange={e => setBizForm(p => ({ ...p, nombre: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] disabled:bg-gray-50" />
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de comercio</label>
             <input type="text" value={bizForm.tipo_comercio} disabled={!canEdit}
               onChange={e => setBizForm(p => ({ ...p, tipo_comercio: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] disabled:bg-gray-50" />
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plan actual</label>
             <div className="px-4 py-2.5 bg-blue-50 border border-blue-100 rounded-xl text-sm">
-              <span className="font-medium text-[#1E3A5F] capitalize">{tenant?.subscription_status}</span>
+              <span className="font-medium text-primary capitalize">{tenant?.subscription_status}</span>
               {tenant?.subscription_status === 'trial' && (
                 <span className="text-gray-500 ml-2">— vence {new Date(tenant.trial_ends_at).toLocaleDateString('es-AR')}</span>
               )}
@@ -509,7 +509,7 @@ export default function ConfigPage() {
           {canEdit && (
             <div className="flex justify-end">
               <button onClick={handleSaveBiz} disabled={savingBiz}
-                className="px-6 py-2.5 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                className="px-6 py-2.5 bg-primary hover:bg-accent text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
                 {savingBiz ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>
@@ -520,7 +520,7 @@ export default function ConfigPage() {
       {tab === 'categorias' && (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
-            <Tag size={18} className="text-[#2E75B6]" />
+            <Tag size={18} className="text-accent" />
             <h2 className="font-semibold text-gray-700">Categorías de productos</h2>
             <span className="ml-auto text-xs text-gray-400">{categorias.length} cargadas</span>
           </div>
@@ -531,7 +531,7 @@ export default function ConfigPage() {
       {tab === 'proveedores' && (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
-            <Truck size={18} className="text-[#2E75B6]" />
+            <Truck size={18} className="text-accent" />
             <h2 className="font-semibold text-gray-700">Proveedores</h2>
             <span className="ml-auto text-xs text-gray-400">{proveedores.length} cargados</span>
           </div>
@@ -542,7 +542,7 @@ export default function ConfigPage() {
       {tab === 'ubicaciones' && (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
-            <MapPin size={18} className="text-[#2E75B6]" />
+            <MapPin size={18} className="text-accent" />
             <h2 className="font-semibold text-gray-700">Ubicaciones</h2>
             <span className="ml-auto text-xs text-gray-400">{ubicaciones.length} cargadas</span>
           </div>
@@ -553,7 +553,7 @@ export default function ConfigPage() {
       {tab === 'estados' && (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-1">
-            <CircleDot size={18} className="text-[#2E75B6]" />
+            <CircleDot size={18} className="text-accent" />
             <h2 className="font-semibold text-gray-700">Estados de inventario</h2>
             <span className="ml-auto text-xs text-gray-400">{estados.length} cargados</span>
           </div>
@@ -565,7 +565,7 @@ export default function ConfigPage() {
       {tab === 'motivos' && (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-1">
-            <MessageSquare size={18} className="text-[#2E75B6]" />
+            <MessageSquare size={18} className="text-accent" />
             <h2 className="font-semibold text-gray-700">Motivos de movimiento</h2>
             <span className="ml-auto text-xs text-gray-400">{motivos.length} cargados</span>
           </div>
@@ -577,7 +577,7 @@ export default function ConfigPage() {
       {tab === 'combos' && (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
           <div className="flex items-center gap-2">
-            <Gift size={18} className="text-[#2E75B6]" />
+            <Gift size={18} className="text-accent" />
             <h2 className="font-semibold text-gray-700">Combos de productos</h2>
             <span className="ml-auto text-xs text-gray-400">{combos.length} activos</span>
           </div>
@@ -592,11 +592,11 @@ export default function ConfigPage() {
               <div className="col-span-2">
                 <input type="text" value={comboForm.nombre} onChange={e => setComboForm(p => ({ ...p, nombre: e.target.value }))}
                   placeholder="Nombre del combo (ej: 3x Coca-Cola 10% off)"
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
               <div className="col-span-2">
                 <select value={comboForm.producto_id} onChange={e => setComboForm(p => ({ ...p, producto_id: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
                   <option value="">Seleccionar producto...</option>
                   {(productosAll as any[]).map((p: any) => (
                     <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
@@ -607,24 +607,24 @@ export default function ConfigPage() {
                 <label className="block text-xs text-gray-500 mb-1">Cantidad mínima</label>
                 <input type="number" min="2" value={comboForm.cantidad}
                   onChange={e => setComboForm(p => ({ ...p, cantidad: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Descuento %</label>
                 <input type="number" min="0" max="100" step="0.5" value={comboForm.descuento_pct}
                   onChange={e => setComboForm(p => ({ ...p, descuento_pct: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
             </div>
             <button onClick={addCombo} disabled={savingCombo}
-              className="w-full flex items-center justify-center gap-2 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
+              className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
               <Plus size={15} /> {savingCombo ? 'Creando...' : 'Crear combo'}
             </button>
           </div>
 
           {/* Lista de combos */}
           {loadingCombos ? (
-            <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#1E3A5F]" /></div>
+            <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
           ) : combos.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-4">No hay combos definidos</p>
           ) : (

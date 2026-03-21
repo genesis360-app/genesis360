@@ -2,5 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Colores de marca ────────────────────────────────────────────────────────
+   Para rebrandear: cambiá los valores RGB aquí Y en src/config/brand.ts
+   Formato: R G B  (sin comas, sin #)
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  --color-primary:   30 58 95;     /* #1E3A5F — azul oscuro */
+  --color-accent:    46 117 182;   /* #2E75B6 — azul medio  */
+  --color-brand-bg:  245 247 250;  /* #F5F7FA — fondo gris  */
+}
+
 * { box-sizing: border-box; }
 body { font-family: 'Inter', system-ui, sans-serif; }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { QrCode, Download, X, Printer } from 'lucide-react'
+import { BRAND } from '../config/brand'
 
 interface Props {
   productoId: string
@@ -21,7 +22,7 @@ export function ProductoQR({ productoId, nombre, sku, onClose }: Props) {
     QRCode.toCanvas(canvasRef.current, qrData, {
       width: 220,
       margin: 2,
-      color: { dark: '#1E3A5F', light: '#FFFFFF' },
+      color: { dark: BRAND.color.primary, light: '#FFFFFF' },
     }).then(() => {
       setDataUrl(canvasRef.current!.toDataURL('image/png'))
     })
@@ -47,7 +48,7 @@ export function ProductoQR({ productoId, nombre, sku, onClose }: Props) {
                margin: 0; background: white; }
         img { width: 200px; height: 200px; }
         p { margin: 4px 0; text-align: center; }
-        .nombre { font-size: 14px; font-weight: 600; color: #1E3A5F; max-width: 200px; }
+        .nombre { font-size: 14px; font-weight: 600; color: ${BRAND.color.primary}; max-width: 200px; }
         .sku { font-size: 11px; color: #6b7280; font-family: monospace; }
       </style>
       </head><body>
@@ -66,7 +67,7 @@ export function ProductoQR({ productoId, nombre, sku, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <QrCode size={17} className="text-[#2E75B6]" />
+            <QrCode size={17} className="text-accent" />
             <span className="font-semibold text-sm text-gray-800">Código QR</span>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
@@ -98,7 +99,7 @@ export function ProductoQR({ productoId, nombre, sku, onClose }: Props) {
           <button
             onClick={imprimir}
             disabled={!dataUrl}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#1E3A5F] text-white rounded-xl py-2.5 text-sm font-medium hover:bg-[#2E75B6] disabled:opacity-40"
+            className="flex-1 flex items-center justify-center gap-2 bg-primary text-white rounded-xl py-2.5 text-sm font-medium hover:bg-accent disabled:opacity-40"
           >
             <Printer size={15} /> Imprimir
           </button>

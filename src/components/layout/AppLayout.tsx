@@ -45,16 +45,16 @@ export function AppLayout() {
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-[#2E75B6]/20">
-        <div className="w-8 h-8 bg-[#2E75B6] rounded-lg flex items-center justify-center">
+      <div className="flex items-center gap-3 px-6 py-5 border-b border-accent/20">
+        <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center">
           <Package size={18} className="text-white" />
         </div>
         <span className="text-white font-bold text-xl tracking-tight">{BRAND.name}</span>
       </div>
 
       {/* Nombre del negocio */}
-      <div className="px-6 py-3 border-b border-[#2E75B6]/20">
-        <p className="text-[#2E75B6] text-xs font-medium uppercase tracking-wider">Negocio</p>
+      <div className="px-6 py-3 border-b border-accent/20">
+        <p className="text-accent text-xs font-medium uppercase tracking-wider">Negocio</p>
         <p className="text-white text-sm font-semibold truncate">{tenant?.nombre}</p>
       </div>
 
@@ -70,8 +70,8 @@ export function AppLayout() {
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
                 ${isActive
-                  ? 'bg-[#2E75B6] text-white'
-                  : 'text-blue-100 hover:bg-[#2E75B6]/30 hover:text-white'}`
+                  ? 'bg-accent text-white'
+                  : 'text-blue-100 hover:bg-accent/30 hover:text-white'}`
               }
             >
               <Icon size={18} />
@@ -90,7 +90,7 @@ export function AppLayout() {
       <CotizacionWidget />
 
       {/* Usuario y logout */}
-      <div className="px-3 py-3 border-t border-[#2E75B6]/20 space-y-1">
+      <div className="px-3 py-3 border-t border-accent/20 space-y-1">
         <div className="px-3 py-2">
           <p className="text-white text-sm font-medium truncate">{user?.nombre_display}</p>
           <p className="text-blue-300 text-xs capitalize">{user?.rol?.toLowerCase()}</p>
@@ -107,9 +107,9 @@ export function AppLayout() {
   )
 
   return (
-    <div className="flex h-screen bg-[#F5F7FA] overflow-hidden">
+    <div className="flex h-screen bg-brand-bg overflow-hidden">
       {/* Sidebar desktop */}
-      <aside className="hidden lg:flex w-64 flex-col bg-[#1E3A5F] flex-shrink-0">
+      <aside className="hidden lg:flex w-64 flex-col bg-primary flex-shrink-0">
         <SidebarContent />
       </aside>
 
@@ -117,7 +117,7 @@ export function AppLayout() {
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-64 bg-[#1E3A5F] z-50">
+          <aside className="absolute left-0 top-0 h-full w-64 bg-primary z-50">
             <button
               onClick={() => setSidebarOpen(false)}
               className="absolute top-4 right-4 text-white"
@@ -133,10 +133,10 @@ export function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar mobile */}
         <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shadow-sm">
-          <button onClick={() => setSidebarOpen(true)} className="text-[#1E3A5F]">
+          <button onClick={() => setSidebarOpen(true)} className="text-primary">
             <Menu size={22} />
           </button>
-          <span className="font-bold text-[#1E3A5F]">{BRAND.name}</span>
+          <span className="font-bold text-primary">{BRAND.name}</span>
         </header>
 
         {/* Trial banner */}

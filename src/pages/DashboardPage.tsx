@@ -209,7 +209,7 @@ export default function DashboardPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[#1E3A5F]">Dashboard</h1>
+            <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
             <p className="text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
           </div>
           <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
@@ -218,7 +218,7 @@ export default function DashboardPage() {
               General
             </button>
             <button onClick={() => setTab('metricas')}
-              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white text-[#1E3A5F] shadow-sm">
+              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white text-primary shadow-sm">
               Métricas
             </button>
           </div>
@@ -234,12 +234,12 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E3A5F] capitalize">{fecha}</h1>
+          <h1 className="text-2xl font-bold text-primary capitalize">{fecha}</h1>
           <p className="text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
         </div>
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
           <button onClick={() => setTab('general')}
-            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white text-[#1E3A5F] shadow-sm">
+            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white text-primary shadow-sm">
             General
           </button>
           <button onClick={() => setTab('metricas')}
@@ -296,7 +296,7 @@ export default function DashboardPage() {
 
       {/* Ventas del mes + Valor inventario */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gradient-to-br from-[#1E3A5F] to-[#2E75B6] rounded-xl p-5 text-white">
+        <div className="bg-gradient-to-br from-primary to-accent rounded-xl p-5 text-white">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <DollarSign size={18} className="text-blue-200" />
@@ -326,10 +326,10 @@ export default function DashboardPage() {
 
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-1">
-            <TrendingUp size={18} className="text-[#2E75B6]" />
+            <TrendingUp size={18} className="text-accent" />
             <h2 className="font-semibold text-gray-700">Valor del inventario</h2>
           </div>
-          <p className="text-3xl font-bold text-[#1E3A5F]">
+          <p className="text-3xl font-bold text-primary">
             ${(stats?.valorInventario ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
           </p>
           <p className="text-xs text-gray-400 mt-1">Precio costo × stock actual</p>
@@ -402,10 +402,10 @@ export default function DashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Zap size={16} className="text-[#2E75B6]" />
+            <Zap size={16} className="text-accent" />
             <h2 className="font-semibold text-gray-700">Lo que necesitás saber</h2>
           </div>
-          <Link to="/recomendaciones" className="text-xs text-[#2E75B6] hover:underline">Ver todas →</Link>
+          <Link to="/recomendaciones" className="text-xs text-accent hover:underline">Ver todas →</Link>
         </div>
         <div className="space-y-2">
           {insights.map((insight, i) => {
@@ -426,7 +426,7 @@ export default function DashboardPage() {
                 </div>
                 <Link
                   to={insight.link}
-                  className="flex items-center gap-1 text-xs font-semibold text-[#2E75B6] hover:text-[#1E3A5F] whitespace-nowrap flex-shrink-0 transition-colors"
+                  className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary whitespace-nowrap flex-shrink-0 transition-colors"
                 >
                   {insight.accion} <ChevronRight size={13} />
                 </Link>
@@ -442,9 +442,9 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700 flex items-center gap-2">
-              <ShoppingCart size={16} className="text-[#2E75B6]" /> Top productos este mes
+              <ShoppingCart size={16} className="text-accent" /> Top productos este mes
             </h2>
-            <Link to="/metricas" className="text-xs text-[#2E75B6] hover:underline">Ver más →</Link>
+            <Link to="/metricas" className="text-xs text-accent hover:underline">Ver más →</Link>
           </div>
           {topProductos.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">Sin ventas este mes</p>
@@ -459,7 +459,7 @@ export default function DashboardPage() {
                     </span>
                     <span className="text-gray-700 truncate max-w-[160px]">{p.nombre}</span>
                   </div>
-                  <span className="font-semibold text-[#1E3A5F]">{p.cantidad} u.</span>
+                  <span className="font-semibold text-primary">{p.cantidad} u.</span>
                 </div>
               ))}
             </div>
@@ -469,7 +469,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700">Movimientos recientes</h2>
-            <Link to="/movimientos" className="text-xs text-[#2E75B6] hover:underline">Ver todos →</Link>
+            <Link to="/movimientos" className="text-xs text-accent hover:underline">Ver todos →</Link>
           </div>
           {movRecientes.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">Sin movimientos aún</p>

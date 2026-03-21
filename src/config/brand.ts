@@ -1,5 +1,7 @@
 // ─── Configuración de marca ───────────────────────────────────────────────────
-// Cambiá estos valores en un solo lugar para actualizar toda la app
+// Para rebrandear la app:
+//   1. Cambiar name/tagline/etc. aquí
+//   2. Cambiar los colores TANTO aquí (hex) como en src/index.css (:root, formato RGB sin comas)
 
 export const BRAND = {
   name: 'Stokio',

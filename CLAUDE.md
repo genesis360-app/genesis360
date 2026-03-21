@@ -94,10 +94,11 @@ src/
 - [ ] Integración completa Mercado Pago producción
 
 ### Grupo 4 — IA aplicada al negocio
-- [ ] Crear producto desde foto: Claude Vision + barcode lookup (UPC/EAN)
-  - Supabase Edge Function recibe imagen → llama Claude Haiku → extrae nombre/descripción/categoría/unidad
-  - Si hay código de barras en la imagen → lookup en Open Food Facts primero
-  - Pre-rellena el form de producto, usuario revisa y guarda
+- [x] Crear producto desde foto: Claude Vision + barcode lookup (UPC/EAN)
+  - Edge Function `scan-product`: imagen → Claude Haiku → extrae nombre/descripción/unidad/barcode
+  - Si hay código de barras → lookup en Open Food Facts (tiene prioridad sobre Claude)
+  - Botón "✨ Completar desde foto" en ProductoFormPage (solo al crear)
+  - **Requiere créditos en console.anthropic.com** (ANTHROPIC_API_KEY ya configurado en DEV y PROD)
 
 ### Backlog — mejoras UX/funcionales
 
@@ -240,6 +241,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ### Mercado Pago
 - **Planes creados**: Básico `f57914521a98415290aedf3fafa4bf98` ($4.900/mes), Pro `fe790716c9294035b6ee8fe50375fc63` ($9.900/mes)
 - **Webhooks MP**: modo prueba → DEV Supabase (`gcmhzdedrkmmzfzfveig`), modo productivo → PROD Supabase (`jjffnbrdjchquexdfgwq`)
+- **Flujo suscripción**: `init_point` se construye directo en el frontend (`SuscripcionPage`) sin llamar al backend — URL pública de MP. `handleVerificarPago` activa el tenant al volver de MP y aplica límites del plan (guardados en `sessionStorage` antes del redirect).
+- **`crear-suscripcion` Edge Function**: simplificada, devuelve `init_point` a partir de los secrets `MP_PLAN_BASICO`/`MP_PLAN_PRO`. Ya no llama a `/preapproval` de MP (incompatible con test accounts).
+
+### IA — scan-product
+- **Edge Function `scan-product`**: recibe imagen base64 → Claude Haiku extrae nombre/descripción/unidad/barcode → si hay barcode, lookup en Open Food Facts
+- **ANTHROPIC_API_KEY**: configurado en DEV y PROD. **Requiere créditos cargados** en console.anthropic.com para funcionar.
+- **Modelo**: `claude-haiku-4-5-20251001` (rápido y barato ~$0.0003/imagen)
+- **Open Food Facts**: API pública, sin key. URL: `https://world.openfoodfacts.org/api/v0/product/{barcode}.json`
 
 ### Movimientos de stock
 - **`linea_id` en `movimientos_stock`**: columna FK a `inventario_lineas` agregada. Permite mostrar en el detalle del movimiento: LPN, lote, vencimiento, precio de costo, ubicación, proveedor y series. Siempre guardar `linea_id` al insertar movimientos de ingreso y rebaje.

@@ -247,7 +247,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <p className="font-bold text-[#1E3A5F] font-mono">{linea.lpn}</p>
+            <p className="font-bold text-primary font-mono">{linea.lpn}</p>
             <p className="text-xs text-gray-400">{producto.nombre} · {producto.sku}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -274,7 +274,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-all border-b-2
-                ${tab === id ? 'border-[#2E75B6] text-[#1E3A5F]' : 'border-transparent text-gray-400 hover:text-gray-600'}
+                ${tab === id ? 'border-accent text-primary' : 'border-transparent text-gray-400 hover:text-gray-600'}
                 ${id === 'eliminar' ? 'text-red-400 hover:text-red-600' : ''}`}>
               <Icon size={14} /> {label}
             </button>
@@ -289,14 +289,14 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Nombre del LPN</label>
                   <input type="text" value={editForm.lpn} onChange={e => setEditForm(p => ({ ...p, lpn: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-[#2E75B6]" />
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-accent" />
                 </div>
                 {!tieneSeries && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad</label>
                     <input type="number" min="0" value={editForm.cantidad}
                       onChange={e => setEditForm(p => ({ ...p, cantidad: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" />
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
                     {parseInt(editForm.cantidad) !== linea.cantidad && (
                       <p className="text-xs text-orange-500 mt-1">
                         ⚠ Diferencia: {parseInt(editForm.cantidad) - linea.cantidad > 0 ? '+' : ''}{parseInt(editForm.cantidad) - linea.cantidad} u.
@@ -310,7 +310,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Estado</label>
                   <select value={editForm.estado_id} onChange={e => setEditForm(p => ({ ...p, estado_id: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]">
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
                     <option value="">Sin estado</option>
                     {(estados as any[]).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                   </select>
@@ -318,7 +318,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Ubicación</label>
                   <select value={editForm.ubicacion_id} onChange={e => setEditForm(p => ({ ...p, ubicacion_id: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]">
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
                     <option value="">Sin ubicación</option>
                     {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                   </select>
@@ -329,7 +329,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Proveedor</label>
                   <select value={editForm.proveedor_id} onChange={e => setEditForm(p => ({ ...p, proveedor_id: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]">
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
                     <option value="">Sin proveedor</option>
                     {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
@@ -341,7 +341,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     </label>
                     <input type="text" value={editForm.nro_lote} onChange={e => setEditForm(p => ({ ...p, nro_lote: e.target.value }))}
                       placeholder="Lote-001"
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent
                         ${!editForm.nro_lote.trim() ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                   </div>
                 )}
@@ -353,13 +353,13 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     Fecha de vencimiento <span className="text-red-500">*</span>
                   </label>
                   <input type="date" value={editForm.fecha_vencimiento} onChange={e => setEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
-                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent
                       ${!editForm.fecha_vencimiento ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                 </div>
               )}
 
               <button onClick={() => guardarEdicion.mutate()} disabled={guardarEdicion.isPending}
-                className="w-full bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                className="w-full bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
                 <Save size={15} /> {guardarEdicion.isPending ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>
@@ -383,12 +383,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     </label>
                     <input type="number" min="1" max={linea.cantidad - (linea.cantidad_reservada ?? 0)}
                       value={cantMover} onChange={e => setCantMover(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]" placeholder="0" />
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="0" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Ubicación destino</label>
                     <select value={ubicDestino} onChange={e => setUbicDestino(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#2E75B6]">
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
                       <option value="">Seleccioná ubicación...</option>
                       {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                     </select>
@@ -400,7 +400,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     </div>
                   )}
                   <button onClick={() => moverStock.mutate()} disabled={moverStock.isPending || !cantMover || !ubicDestino}
-                    className="w-full bg-[#2E75B6] hover:bg-[#1E3A5F] text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                    className="w-full bg-accent hover:bg-primary text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
                     <ArrowRightLeft size={15} /> {moverStock.isPending ? 'Moviendo...' : 'Confirmar traslado'}
                   </button>
                 </>
@@ -418,7 +418,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   <input type="text" value={newSerie} onChange={e => setNewSerie(e.target.value)}
                     placeholder="Nro. de serie"
                     onKeyDown={e => e.key === 'Enter' && agregarSerie.mutate()}
-                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-[#2E75B6]" />
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-accent" />
                   <button onClick={() => agregarSerie.mutate()} disabled={agregarSerie.isPending || !newSerie.trim()}
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm disabled:opacity-50">
                     <Plus size={16} />
@@ -434,7 +434,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       {editSerieId === s.id ? (
                         <>
                           <input type="text" value={editSerieNro} onChange={e => setEditSerieNro(e.target.value)}
-                            className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:border-[#2E75B6]" />
+                            className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm font-mono focus:outline-none focus:border-accent" />
                           <button onClick={() => editarSerie.mutate({ serieId: s.id, nroNuevo: editSerieNro })}
                             className="text-green-600 text-xs font-medium hover:underline">Guardar</button>
                           <button onClick={() => setEditSerieId(null)} className="text-gray-400 text-xs hover:underline">Cancelar</button>
@@ -445,7 +445,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                           <span className="flex-1 text-sm font-mono text-gray-800">{s.nro_serie}</span>
                           {s.reservado && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">Reservada</span>}
                           <button onClick={() => { setEditSerieId(s.id); setEditSerieNro(s.nro_serie) }}
-                            className="text-gray-400 hover:text-[#2E75B6] p-1"><Edit2 size={12} /></button>
+                            className="text-gray-400 hover:text-accent p-1"><Edit2 size={12} /></button>
                           {!s.reservado && (
                             <button onClick={() => { if (confirm('¿Eliminar esta serie?')) eliminarSerie.mutate(s.id) }}
                               className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={12} /></button>

@@ -37,14 +37,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
     if (this.state.isChunkError) {
       return (
-        <div className="min-h-screen bg-[#F5F7FA] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1E3A5F]" />
+        <div className="min-h-screen bg-brand-bg flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       )
     }
 
     return (
-      <div className="min-h-screen bg-[#F5F7FA] flex items-center justify-center p-6">
+      <div className="min-h-screen bg-brand-bg flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 max-w-md w-full text-center">
           <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mx-auto mb-4">
             <AlertTriangle size={22} className="text-red-500" />
@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </p>
           <button
             onClick={() => window.location.reload()}
-            className="inline-flex items-center gap-2 bg-[#1E3A5F] text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-[#2E75B6] transition-colors"
+            className="inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-accent transition-colors"
           >
             <RefreshCw size={15} /> Recargar página
           </button>

@@ -37,7 +37,7 @@ export function CotizacionWidget() {
   }
 
   return (
-    <div className="px-3 pt-2 pb-1 border-t border-[#2E75B6]/20">
+    <div className="px-3 pt-2 pb-1 border-t border-accent/20">
       <div className="flex items-center gap-1.5 mb-1">
         <DollarSign size={12} className="text-blue-300 flex-shrink-0" />
         <span className="text-blue-300 text-xs font-medium tracking-wide">Cotización USD</span>
@@ -52,7 +52,7 @@ export function CotizacionWidget() {
             onChange={e => setInputVal(e.target.value)}
             onKeyDown={handleKey}
             autoFocus
-            className="flex-1 px-2 py-1 bg-[#2E75B6]/30 text-white text-xs rounded-lg border border-[#2E75B6] focus:outline-none min-w-0"
+            className="flex-1 px-2 py-1 bg-accent/30 text-white text-xs rounded-lg border border-accent focus:outline-none min-w-0"
             placeholder="ej: 1250"
           />
           <button onClick={handleSave} className="text-green-400 hover:text-green-300 flex-shrink-0">

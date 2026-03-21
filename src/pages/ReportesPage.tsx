@@ -300,7 +300,7 @@ export default function ReportesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-[#1E3A5F]">Reportes</h1>
+        <h1 className="text-2xl font-bold text-primary">Reportes</h1>
         <p className="text-gray-500 text-sm mt-0.5">Exportá tus datos en Excel o PDF</p>
       </div>
 
@@ -312,7 +312,7 @@ export default function ReportesPage() {
           return (
             <button key={r.id} onClick={() => setReporteActivo(activo ? null : r.id)}
               className={`text-left p-4 rounded-xl border-2 transition-all
-                ${activo ? 'border-[#2E75B6] bg-blue-50/50' : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'}`}>
+                ${activo ? 'border-accent bg-blue-50/50' : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'}`}>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${r.color}`}>
                 <Icon size={20} />
               </div>
@@ -344,10 +344,10 @@ export default function ReportesPage() {
                 <div className="flex items-center gap-2 text-sm">
                   <Calendar size={14} className="text-gray-400" />
                   <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#2E75B6]" />
+                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent" />
                   <span className="text-gray-400">→</span>
                   <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[#2E75B6]" />
+                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent" />
                 </div>
               )}
 
@@ -368,7 +368,7 @@ export default function ReportesPage() {
             <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
               <div className="px-5 py-3 text-center">
                 <p className="text-xs text-gray-400">Valor total a costo</p>
-                <p className="text-xl font-bold text-[#1E3A5F]">{formatMoneda(totalesReporte.valorizado.costo)}</p>
+                <p className="text-xl font-bold text-primary">{formatMoneda(totalesReporte.valorizado.costo)}</p>
               </div>
               <div className="px-5 py-3 text-center">
                 <p className="text-xs text-gray-400">Valor total a precio de venta</p>
@@ -380,7 +380,7 @@ export default function ReportesPage() {
             <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
               <div className="px-5 py-3 text-center">
                 <p className="text-xs text-gray-400">Ventas en el período</p>
-                <p className="text-xl font-bold text-[#1E3A5F]">{totalesReporte.ventas.cantidad}</p>
+                <p className="text-xl font-bold text-primary">{totalesReporte.ventas.cantidad}</p>
               </div>
               <div className="px-5 py-3 text-center">
                 <p className="text-xs text-gray-400">Total facturado</p>

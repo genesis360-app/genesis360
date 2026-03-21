@@ -22,11 +22,11 @@ function InfoTip({ text }: { text: string }) {
     <div className="relative inline-block ml-1">
       <button type="button" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}
         onClick={() => setShow(!show)}
-        className="text-gray-400 hover:text-[#2E75B6] transition-colors align-middle">
+        className="text-gray-400 hover:text-accent transition-colors align-middle">
         <Info size={14} />
       </button>
       {show && (
-        <div className="absolute z-50 left-5 top-0 w-64 bg-[#1E3A5F] text-white text-xs rounded-xl p-3 shadow-xl">
+        <div className="absolute z-50 left-5 top-0 w-64 bg-primary text-white text-xs rounded-xl p-3 shadow-xl">
           {text}
         </div>
       )}
@@ -308,7 +308,7 @@ export default function MovimientosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E3A5F]">Movimientos de Stock</h1>
+          <h1 className="text-2xl font-bold text-primary">Movimientos de Stock</h1>
           <p className="text-gray-500 text-sm mt-0.5">Registro de ingresos y rebajes</p>
         </div>
         <div className="flex gap-2">
@@ -317,7 +317,7 @@ export default function MovimientosPage() {
             <ArrowDown size={16} /> Ingreso
           </button>
           <button onClick={() => setModal('rebaje')}
-            className="flex items-center gap-2 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            className="flex items-center gap-2 bg-primary hover:bg-accent text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
             <ArrowUp size={16} /> Rebaje
           </button>
         </div>
@@ -327,14 +327,14 @@ export default function MovimientosPage() {
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Buscar por producto o SKU..."
-          className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+          className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent bg-white" />
       </div>
 
       {/* Tabla movimientos */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1E3A5F]" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
@@ -578,7 +578,7 @@ export default function MovimientosPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-[#1E3A5F] flex items-center gap-2">
+              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
                 <ArrowDown size={20} className="text-green-600" /> Ingreso de stock
               </h2>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -608,7 +608,7 @@ export default function MovimientosPage() {
                     onFocus={() => setSearchFocused(true)}
                     onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                     placeholder="Buscar por nombre o SKU..."
-                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
                   {productosBusqueda.length > 0 && searchFocused && (
                     <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                       {productosBusqueda.map(p => (
@@ -643,7 +643,7 @@ export default function MovimientosPage() {
                   </label>
                   <input type="text" value={form.lpn} onChange={e => setForm(p => ({ ...p, lpn: e.target.value }))}
                     placeholder="Ej: LPN-20260101-A1"
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:outline-none focus:border-[#2E75B6]" />
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:outline-none focus:border-accent" />
                 </div>
 
                 {/* Cantidad o series */}
@@ -658,7 +658,7 @@ export default function MovimientosPage() {
                             <input type="text" value={s}
                               onChange={e => { const ns = [...series]; ns[i] = e.target.value; setSeries(ns) }}
                               placeholder={`Serie ${i + 1}`}
-                              className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-[#2E75B6]" />
+                              className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-accent" />
                           </div>
                           {series.length > 1 && (
                             <button onClick={() => setSeries(series.filter((_, j) => j !== i))}
@@ -667,7 +667,7 @@ export default function MovimientosPage() {
                         </div>
                       ))}
                       <button onClick={() => setSeries([...series, ''])}
-                        className="flex items-center gap-1 text-sm text-[#2E75B6] hover:underline">
+                        className="flex items-center gap-1 text-sm text-accent hover:underline">
                         <Plus size={14} /> Agregar serie
                       </button>
                     </div>
@@ -676,7 +676,7 @@ export default function MovimientosPage() {
                   <div className="mb-3">
                     <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
                     <input type="number" min="1" value={form.cantidad} onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" placeholder="0" />
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
                   </div>
                 )}
 
@@ -685,7 +685,7 @@ export default function MovimientosPage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
                       <select value={form.estadoId} onChange={e => setForm(p => ({ ...p, estadoId: e.target.value }))}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
                         <option value="">Sin estado</option>
                         {(estados as any[]).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                       </select>
@@ -700,7 +700,7 @@ export default function MovimientosPage() {
                         )}
                       </label>
                       <select value={form.ubicacionId} onChange={e => setForm(p => ({ ...p, ubicacionId: e.target.value }))}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
                         <option value="">Sin ubicación</option>
                         {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                       </select>
@@ -713,7 +713,7 @@ export default function MovimientosPage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
                       <select value={form.proveedorId} onChange={e => setForm(p => ({ ...p, proveedorId: e.target.value }))}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
                         <option value="">Sin proveedor</option>
                         {(proveedores as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                       </select>
@@ -726,7 +726,7 @@ export default function MovimientosPage() {
                       </label>
                       <input type="text" value={form.nroLote} onChange={e => setForm(p => ({ ...p, nroLote: e.target.value }))}
                         placeholder="Lote-001" required
-                        className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]
+                        className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-accent
                           ${!form.nroLote.trim() ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                     </div>
                   )}
@@ -739,7 +739,7 @@ export default function MovimientosPage() {
                     </label>
                     <input type="date" value={form.fechaVencimiento} onChange={e => setForm(p => ({ ...p, fechaVencimiento: e.target.value }))}
                       required
-                      className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]
+                      className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-accent
                         ${!form.fechaVencimiento ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                   </div>
                 )}
@@ -757,7 +757,7 @@ export default function MovimientosPage() {
 							setForm(p => ({ ...p, motivo: e.target.value }))
 						  }
 						}}
-						className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+						className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
 						<option value="">Seleccioná un motivo...</option>
 						{(motivos as any[])
 						  .filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ambos')
@@ -767,12 +767,12 @@ export default function MovimientosPage() {
 					  <input type="text" value={form.motivo}
 						onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
 						placeholder="Escribí el motivo..."
-						className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+						className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
 					</div>
 				  ) : (
 					<input type="text" value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
 					  placeholder="Ej: Compra a proveedor"
-					  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+					  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
 				  )}
 				</div>
               </>
@@ -795,7 +795,7 @@ export default function MovimientosPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-[#1E3A5F] flex items-center gap-2">
+              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
                 <ArrowUp size={20} /> Rebaje de stock
               </h2>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -825,7 +825,7 @@ export default function MovimientosPage() {
                     onFocus={() => setSearchFocused(true)}
                     onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                     placeholder="Buscar por nombre o SKU..."
-                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
                   {productosBusqueda.length > 0 && searchFocused && (
                     <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                       {productosBusqueda.map(p => (
@@ -861,7 +861,7 @@ export default function MovimientosPage() {
                         onClick={() => setRebajeGrupoId(null)}
                         className={`text-xs px-2.5 py-1 rounded-full border transition-all
                           ${rebajeGrupoId === null && estadosDefault.length === 0
-                            ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]'
+                            ? 'bg-primary text-white border-primary'
                             : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
                         Todos
                       </button>
@@ -870,7 +870,7 @@ export default function MovimientosPage() {
                           onClick={() => setRebajeGrupoId(rebajeGrupoId === g.id ? null : g.id)}
                           className={`text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1
                             ${rebajeGrupoId === g.id || (rebajeGrupoId === null && g.es_default)
-                              ? 'bg-[#1E3A5F] text-white border-[#1E3A5F]'
+                              ? 'bg-primary text-white border-primary'
                               : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
                           {g.nombre}
                           {g.es_default && rebajeGrupoId === null && <span className="text-yellow-300">★</span>}
@@ -883,7 +883,7 @@ export default function MovimientosPage() {
                     <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input type="text" value={rebajeSearch} onChange={e => setRebajeSearch(e.target.value)}
                       placeholder="Buscar por ubicación, estado o lote..."
-                      className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#2E75B6]" />
+                      className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-accent" />
                   </div>
                   {lineasProducto.length === 0 ? (
                     <p className="text-sm text-gray-400 bg-gray-50 rounded-xl p-3 text-center">No hay líneas con stock disponible</p>
@@ -918,7 +918,7 @@ export default function MovimientosPage() {
                         .map((l: any) => (
                         <button key={l.id} onClick={() => { setRebajeLinea(l); setRebajeSeries([]) }}
                           className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm
-                            ${rebajeLinea?.id === l.id ? 'border-[#2E75B6] bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                            ${rebajeLinea?.id === l.id ? 'border-accent bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
                           {/* Fila principal: ubicación y estado prominentes */}
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -979,7 +979,7 @@ export default function MovimientosPage() {
                         </label>
                         <input type="number" min="1" max={rebajeLinea.cantidad} value={rebajeCantidad}
                           onChange={e => setRebajeCantidad(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" placeholder="0" />
+                          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
                       </div>
                     )}
 
@@ -995,7 +995,7 @@ export default function MovimientosPage() {
 								setRebajeMotivo(e.target.value)
 							  }
 							}}
-							className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+							className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
 							<option value="">Seleccioná un motivo...</option>
 							{(motivos as any[])
 							  .filter((m: any) => m.tipo === 'rebaje' || m.tipo === 'ambos')
@@ -1005,12 +1005,12 @@ export default function MovimientosPage() {
 						  <input type="text" value={rebajeMotivo}
 							onChange={e => setRebajeMotivo(e.target.value)}
 							placeholder="Escribí el motivo..."
-							className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+							className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
 						</div>
 					  ) : (
 						<input type="text" value={rebajeMotivo} onChange={e => setRebajeMotivo(e.target.value)}
 						  placeholder="Ej: Venta, pérdida, consumo..."
-						  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+						  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
 					  )}
 					</div>
                   </>
@@ -1022,7 +1022,7 @@ export default function MovimientosPage() {
               <button onClick={closeModal} className="flex-1 border-2 border-gray-200 text-gray-600 font-semibold py-2.5 rounded-xl hover:border-gray-300">Cancelar</button>
               <button onClick={() => rebajeMutation.mutate()}
                 disabled={!selectedProduct || !rebajeLinea || rebajeMutation.isPending}
-                className="flex-1 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
+                className="flex-1 bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
                 {rebajeMutation.isPending ? 'Guardando...' : 'Confirmar rebaje'}
               </button>
             </div>

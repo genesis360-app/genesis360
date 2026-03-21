@@ -252,7 +252,7 @@ export default function CajaPage() {
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E3A5F]">Caja</h1>
+          <h1 className="text-2xl font-bold text-primary">Caja</h1>
           <p className="text-gray-500 text-sm mt-0.5">Gestioná la caja de tu negocio</p>
         </div>
       </div>
@@ -266,7 +266,7 @@ export default function CajaPage() {
         ].map(({ id, label }) => (
           <button key={id} onClick={() => setTab(id as Tab)}
             className={`py-2 px-4 rounded-lg text-sm font-medium transition-all
-              ${tab === id ? 'bg-white text-[#1E3A5F] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              ${tab === id ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {label}
           </button>
         ))}
@@ -280,7 +280,7 @@ export default function CajaPage() {
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-500">Caja:</span>
               <select value={cajaId ?? ''} onChange={e => setCajaSeleccionada(e.target.value)}
-                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-[#2E75B6]">
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
                 {cajas.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
             </div>
@@ -292,7 +292,7 @@ export default function CajaPage() {
               <p className="font-medium text-gray-600">No hay cajas configuradas</p>
               <p className="text-sm text-gray-400 mt-1">Creá una caja en la pestaña Configuración</p>
               <button onClick={() => setTab('configuracion')}
-                className="mt-4 text-sm text-[#2E75B6] hover:underline">
+                className="mt-4 text-sm text-accent hover:underline">
                 Ir a configuración →
               </button>
             </div>
@@ -314,7 +314,7 @@ export default function CajaPage() {
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                       <input type="number" min="0" value={montoApertura} onChange={e => setMontoApertura(e.target.value)}
                         placeholder="0" autoFocus
-                        className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                        className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -339,7 +339,7 @@ export default function CajaPage() {
             /* Caja abierta */
             <div className="space-y-4">
               {/* Resumen */}
-              <div className="bg-[#1E3A5F] rounded-2xl p-5 text-white">
+              <div className="bg-primary rounded-2xl p-5 text-white">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <p className="text-blue-200 text-sm">{cajaActual?.nombre}</p>
@@ -469,8 +469,8 @@ export default function CajaPage() {
                       { label: 'Apertura', val: s.monto_apertura, color: 'text-gray-700' },
                       { label: 'Ingresos', val: s.total_ingresos, color: 'text-green-600' },
                       { label: 'Egresos', val: s.total_egresos, color: 'text-red-500' },
-                      { label: 'Calculado', val: s.monto_cierre, color: 'text-[#1E3A5F]' },
-                      ...(s.monto_real_cierre != null ? [{ label: 'Conteo real', val: s.monto_real_cierre, color: 'font-bold text-[#1E3A5F]' }] : []),
+                      { label: 'Calculado', val: s.monto_cierre, color: 'text-primary' },
+                      ...(s.monto_real_cierre != null ? [{ label: 'Conteo real', val: s.monto_real_cierre, color: 'font-bold text-primary' }] : []),
                     ].map(({ label, val, color }) => (
                       <div key={label} className="bg-gray-50 rounded-lg p-2">
                         <p className="text-gray-400 mb-0.5">{label}</p>
@@ -484,7 +484,7 @@ export default function CajaPage() {
                   {/* Toggle detalle */}
                   <button
                     onClick={() => setSesionExpandida(isExpanded ? null : s.id)}
-                    className="mt-3 flex items-center gap-1 text-xs text-[#2E75B6] hover:underline">
+                    className="mt-3 flex items-center gap-1 text-xs text-accent hover:underline">
                     {isExpanded ? <><ChevronUp size={13} /> Ocultar detalle</> : <><ChevronDown size={13} /> Ver movimientos</>}
                   </button>
                 </div>
@@ -527,7 +527,7 @@ export default function CajaPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-gray-700">Cajas del negocio</h2>
               <button onClick={() => setShowNuevaCaja(true)}
-                className="flex items-center gap-1.5 text-sm bg-[#1E3A5F] hover:bg-[#2E75B6] text-white px-3 py-2 rounded-xl transition-all">
+                className="flex items-center gap-1.5 text-sm bg-primary hover:bg-accent text-white px-3 py-2 rounded-xl transition-all">
                 <Plus size={15} /> Nueva caja
               </button>
             </div>
@@ -536,9 +536,9 @@ export default function CajaPage() {
               <div className="flex gap-2 mb-4">
                 <input type="text" value={nuevaCajaNombre} onChange={e => setNuevaCajaNombre(e.target.value)}
                   placeholder="Nombre de la caja (ej: Caja 1, Caja Principal)"
-                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
                 <button onClick={() => crearCaja.mutate()} disabled={crearCaja.isPending}
-                  className="px-4 py-2 bg-[#1E3A5F] text-white rounded-xl text-sm disabled:opacity-50">
+                  className="px-4 py-2 bg-primary text-white rounded-xl text-sm disabled:opacity-50">
                   Crear
                 </button>
                 <button onClick={() => setShowNuevaCaja(false)} className="px-3 py-2 text-gray-400 hover:text-gray-600">
@@ -554,8 +554,8 @@ export default function CajaPage() {
                 {cajas.map((c: any) => (
                   <div key={c.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-xl">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-[#1E3A5F]/10 rounded-lg flex items-center justify-center">
-                        <DollarSign size={15} className="text-[#1E3A5F]" />
+                      <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <DollarSign size={15} className="text-primary" />
                       </div>
                       <span className="font-medium text-gray-800">{c.nombre}</span>
                     </div>
@@ -573,7 +573,7 @@ export default function CajaPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-[#1E3A5F] flex items-center gap-2">
+              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
                 {movTipo === 'ingreso'
                   ? <><Plus size={18} className="text-green-600" /> Ingreso de caja</>
                   : <><Minus size={18} className="text-orange-500" /> Egreso de caja</>}
@@ -585,7 +585,7 @@ export default function CajaPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Concepto</label>
                 <input type="text" value={movConcepto} onChange={e => setMovConcepto(e.target.value)} autoFocus
                   placeholder="Ej: Pago a proveedor, Cobro efectivo..."
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto</label>
@@ -593,7 +593,7 @@ export default function CajaPage() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                   <input type="number" min="0" value={movMonto} onChange={e => setMovMonto(e.target.value)}
                     placeholder="0"
-                    className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                    className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
                 </div>
               </div>
             </div>
@@ -617,7 +617,7 @@ export default function CajaPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-[#1E3A5F]">Cerrar caja</h2>
+              <h2 className="text-lg font-bold text-primary">Cerrar caja</h2>
               <button onClick={() => { setShowCierre(false); setMontoRealCierre('') }}
                 className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
@@ -627,7 +627,7 @@ export default function CajaPage() {
               <div className="flex justify-between"><span className="text-gray-500">Apertura</span><span className="font-medium">{formatMoneda(sesionActiva?.monto_apertura ?? 0)}</span></div>
               <div className="flex justify-between text-green-600"><span>+ Ingresos</span><span className="font-medium">{formatMoneda(totalIngresos)}</span></div>
               <div className="flex justify-between text-red-500"><span>− Egresos</span><span className="font-medium">{formatMoneda(totalEgresos)}</span></div>
-              <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-[#1E3A5F]">
+              <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-primary">
                 <span>Saldo calculado</span><span>{formatMoneda(saldoActual)}</span>
               </div>
             </div>
@@ -642,7 +642,7 @@ export default function CajaPage() {
                 <input type="number" min="0" value={montoRealCierre}
                   onChange={e => setMontoRealCierre(e.target.value)}
                   placeholder={formatMoneda(saldoActual).replace('$', '')}
-                  className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  className="w-full pl-7 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
               {diferencia !== null && (
                 <div className={`mt-2 flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg ${
@@ -663,7 +663,7 @@ export default function CajaPage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">Notas de cierre <span className="text-gray-400 font-normal">(opcional)</span></label>
               <textarea value={notasCierre} onChange={e => setNotasCierre(e.target.value)} rows={2}
                 placeholder="Observaciones del cierre..."
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] resize-none" />
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
             </div>
 
             <div className="flex gap-3">

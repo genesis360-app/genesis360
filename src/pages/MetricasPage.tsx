@@ -7,10 +7,11 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import { BRAND } from '@/config/brand'
 
 type Periodo = '7d' | '30d' | '90d' | 'mes'
 
-const COLORES = ['#1E3A5F', '#2E75B6', '#7DB9E8', '#22c55e', '#f97316', '#8b5cf6', '#ef4444', '#eab308']
+const COLORES = [BRAND.color.primary, BRAND.color.accent, '#7DB9E8', '#22c55e', '#f97316', '#8b5cf6', '#ef4444', '#eab308']
 
 function formatMoneda(v: number) {
   return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
@@ -209,7 +210,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
       {!hideHeader && (
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-[#1E3A5F]">Métricas</h1>
+            <h1 className="text-2xl font-bold text-primary">Métricas</h1>
             <p className="text-gray-500 text-sm mt-0.5">Análisis de ventas y rotación de stock</p>
           </div>
         </div>
@@ -220,7 +221,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
           {PERIODOS.map(p => (
             <button key={p.id} onClick={() => setPeriodo(p.id as Periodo)}
               className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all
-                ${periodo === p.id ? 'bg-white text-[#1E3A5F] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                ${periodo === p.id ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
               {p.label}
             </button>
           ))}
@@ -267,7 +268,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
                 <XAxis dataKey="fecha" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
                 <Tooltip formatter={(v: any) => formatMoneda(v as number)} />
-                <Bar dataKey="total" fill="#2E75B6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="total" fill={BRAND.color.accent} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -315,7 +316,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
                     <p className="text-xs text-gray-400 font-mono">{p.sku}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="text-sm font-bold text-[#1E3A5F]">{p.cantidad} u.</p>
+                    <p className="text-sm font-bold text-primary">{p.cantidad} u.</p>
                     <p className="text-xs text-gray-400">{formatMoneda(p.total)}</p>
                   </div>
                 </div>

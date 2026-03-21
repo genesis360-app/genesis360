@@ -77,7 +77,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <Camera size={18} className="text-[#2E75B6]" />
+            <Camera size={18} className="text-accent" />
             <span className="font-semibold text-gray-800 text-sm">{title}</span>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
@@ -104,7 +104,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
               <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-white rounded-br" />
               {/* Línea de escaneo animada */}
               {scanning && (
-                <div className="absolute left-0 right-0 h-0.5 bg-[#2E75B6] opacity-80 animate-scan" />
+                <div className="absolute left-0 right-0 h-0.5 bg-accent opacity-80 animate-scan" />
               )}
             </div>
           </div>
@@ -125,7 +125,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
           {devices.length > 1 && (
             <button
               onClick={switchCamera}
-              className="flex items-center gap-1.5 text-xs text-[#2E75B6] font-medium hover:text-[#1E3A5F]"
+              className="flex items-center gap-1.5 text-xs text-accent font-medium hover:text-primary"
             >
               <SwitchCamera size={14} /> Cambiar cámara
             </button>

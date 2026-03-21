@@ -138,7 +138,7 @@ export default function AdminPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E3A5F] flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
             <Shield size={24} /> Panel de Administración
           </h1>
           <p className="text-gray-500 text-sm mt-0.5">Vista global de todos los tenants de {BRAND.name}</p>
@@ -173,7 +173,7 @@ export default function AdminPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por nombre o ID..."
-            className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] bg-white" />
+            className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent bg-white" />
         </div>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
           className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none bg-white">
@@ -188,7 +188,7 @@ export default function AdminPage() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1E3A5F]" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
@@ -254,7 +254,7 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <button onClick={() => openEdit(t)}
-                          className="p-1.5 text-gray-400 hover:text-[#2E75B6] hover:bg-blue-50 rounded-lg transition-colors">
+                          className="p-1.5 text-gray-400 hover:text-accent hover:bg-blue-50 rounded-lg transition-colors">
                           <Edit2 size={15} />
                         </button>
                       </td>
@@ -273,7 +273,7 @@ export default function AdminPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h2 className="text-lg font-bold text-[#1E3A5F]">Editar tenant</h2>
+                <h2 className="text-lg font-bold text-primary">Editar tenant</h2>
                 <p className="text-sm text-gray-500 mt-0.5">{editTenant.nombre}</p>
               </div>
               <button onClick={() => setEditTenant(null)} className="text-gray-400 hover:text-gray-600">
@@ -287,7 +287,7 @@ export default function AdminPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Estado de suscripción</label>
                 <select value={editForm.subscription_status}
                   onChange={e => setEditForm(p => ({ ...p, subscription_status: e.target.value as SubscriptionStatus }))}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]">
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
                   {Object.entries(STATUS_CONFIG).map(([k, v]) => (
                     <option key={k} value={k}>{v.label}</option>
                   ))}
@@ -301,7 +301,7 @@ export default function AdminPage() {
                   {[1, 2, 5, 10, 999].map(n => (
                     <button key={n} onClick={() => setEditForm(p => ({ ...p, max_users: n }))}
                       className={`flex-1 py-2 rounded-xl border-2 text-sm font-medium transition-all
-                        ${editForm.max_users === n ? 'border-[#2E75B6] bg-blue-50 text-[#1E3A5F]' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                        ${editForm.max_users === n ? 'border-accent bg-blue-50 text-primary' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
                       {n === 999 ? '∞' : n}
                     </button>
                   ))}
@@ -315,7 +315,7 @@ export default function AdminPage() {
                 </label>
                 <input type="number" min="0" max="365" value={editForm.trial_days}
                   onChange={e => setEditForm(p => ({ ...p, trial_days: parseInt(e.target.value) || 0 }))}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent"
                   placeholder="0 = sin cambio" />
                 <p className="text-xs text-gray-400 mt-1">
                   Trial actual vence: {new Date(editTenant.trial_ends_at).toLocaleDateString('es-AR')}
@@ -342,7 +342,7 @@ export default function AdminPage() {
                 Cancelar
               </button>
               <button onClick={() => updateTenant.mutate()} disabled={updateTenant.isPending}
-                className="flex-1 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
+                className="flex-1 bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
                 {updateTenant.isPending ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>

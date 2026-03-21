@@ -68,7 +68,7 @@ function RecomendacionCard({ r }: { r: Recomendacion }) {
       <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
         <Link
           to={r.link}
-          className="flex items-center gap-1.5 text-sm font-semibold text-[#2E75B6] hover:text-[#1E3A5F] transition-colors"
+          className="flex items-center gap-1.5 text-sm font-semibold text-accent hover:text-primary transition-colors"
         >
           {r.accion} <ChevronRight size={14} />
         </Link>

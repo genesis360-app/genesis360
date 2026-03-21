@@ -130,11 +130,11 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1E3A5F] to-[#2E75B6] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary to-accent flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
-            <Package size={32} className="text-[#1E3A5F]" />
+            <Package size={32} className="text-primary" />
           </div>
           <h1 className="text-3xl font-bold text-white">{BRAND.name}</h1>
           <p className="text-blue-200 mt-1">Registrá tu negocio — 7 días gratis</p>
@@ -147,7 +147,7 @@ export default function OnboardingPage() {
               <div key={s} className="flex items-center gap-2 flex-1">
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
                   ${(i === 0 && step === 'account') || (i === 1 && step === 'business')
-                    ? 'bg-[#1E3A5F] text-white'
+                    ? 'bg-primary text-white'
                     : i === 0 && step === 'business'
                     ? 'bg-green-500 text-white'
                     : 'bg-gray-200 text-gray-400'}`}>
@@ -169,7 +169,7 @@ export default function OnboardingPage() {
                   type="text" required value={accountData.name}
                   onChange={e => setAccountData(p => ({ ...p, name: e.target.value }))}
                   placeholder="Juan García"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] focus:ring-2 focus:ring-[#2E75B6]/20"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                 />
               </div>
 
@@ -181,7 +181,7 @@ export default function OnboardingPage() {
                     type="email" required value={accountData.email}
                     onChange={e => setAccountData(p => ({ ...p, email: e.target.value }))}
                     placeholder="tu@email.com"
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] focus:ring-2 focus:ring-[#2E75B6]/20"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                   />
                 </div>
               </div>
@@ -194,12 +194,12 @@ export default function OnboardingPage() {
                     type="password" required minLength={8} value={accountData.password}
                     onChange={e => setAccountData(p => ({ ...p, password: e.target.value }))}
                     placeholder="Mínimo 8 caracteres"
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] focus:ring-2 focus:ring-[#2E75B6]/20"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                   />
                 </div>
               </div>
 
-              <button type="submit" className="w-full bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold py-3 rounded-xl transition-all">
+              <button type="submit" className="w-full bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all">
                 Continuar
               </button>
             </form>
@@ -215,7 +215,7 @@ export default function OnboardingPage() {
                     type="text" required value={bizData.nombre}
                     onChange={e => setBizData(p => ({ ...p, nombre: e.target.value }))}
                     placeholder="Mi Ferretería"
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6] focus:ring-2 focus:ring-[#2E75B6]/20"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
                   />
                 </div>
               </div>
@@ -225,7 +225,7 @@ export default function OnboardingPage() {
                 <select
                   required value={bizData.tipo_comercio}
                   onChange={e => setBizData(p => ({ ...p, tipo_comercio: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent"
                 >
                   <option value="">Seleccioná...</option>
                   {TIPOS_COMERCIO.map(t => <option key={t} value={t}>{t}</option>)}
@@ -239,7 +239,7 @@ export default function OnboardingPage() {
                   <select
                     value={bizData.pais}
                     onChange={e => setBizData(p => ({ ...p, pais: e.target.value }))}
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent"
                   >
                     {PAISES.map(p => <option key={p.code} value={p.code}>{p.label}</option>)}
                   </select>
@@ -254,7 +254,7 @@ export default function OnboardingPage() {
                     type="tel" value={bizData.telefono}
                     onChange={e => setBizData(p => ({ ...p, telefono: e.target.value }))}
                     placeholder="+54 11 1234-5678"
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent"
                   />
                 </div>
               </div>
@@ -265,7 +265,7 @@ export default function OnboardingPage() {
                   Atrás
                 </button>
                 <button type="submit" disabled={loading}
-                  className="flex-1 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-60">
+                  className="flex-1 bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-60">
                   {loading ? 'Registrando...' : 'Crear negocio'}
                 </button>
               </div>
@@ -274,7 +274,7 @@ export default function OnboardingPage() {
 
           <p className="text-center text-sm text-gray-500 mt-4">
             ¿Ya tenés cuenta?{' '}
-            <Link to="/login" className="text-[#2E75B6] font-medium hover:underline">Iniciá sesión</Link>
+            <Link to="/login" className="text-accent font-medium hover:underline">Iniciá sesión</Link>
           </p>
         </div>
       </div>

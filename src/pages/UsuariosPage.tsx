@@ -116,7 +116,7 @@ export default function UsuariosPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#1E3A5F]">Usuarios</h1>
+          <h1 className="text-2xl font-bold text-primary">Usuarios</h1>
           <p className="text-gray-500 text-sm mt-0.5">Gestioná el equipo de tu negocio</p>
         </div>
         {canManage && !showInvitar && (
@@ -128,7 +128,7 @@ export default function UsuariosPage() {
                 setShowInvitar(true)
               }
             }}
-            className="flex items-center gap-2 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            className="flex items-center gap-2 bg-primary hover:bg-accent text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
             <UserPlus size={16} /> Agregar usuario
           </button>
         )}
@@ -149,7 +149,7 @@ export default function UsuariosPage() {
               </span>
             </div>
             <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div className={`h-full rounded-full transition-all ${limits.pct_usuarios >= 90 ? 'bg-orange-500' : 'bg-[#2E75B6]'}`}
+              <div className={`h-full rounded-full transition-all ${limits.pct_usuarios >= 90 ? 'bg-orange-500' : 'bg-accent'}`}
                 style={{ width: `${Math.min(limits.pct_usuarios, 100)}%` }} />
             </div>
           </div>
@@ -158,7 +158,7 @@ export default function UsuariosPage() {
 
       {/* Formulario nuevo usuario */}
       {showInvitar && (
-        <form onSubmit={handleInvitar} className="bg-white rounded-xl p-5 shadow-sm border border-[#2E75B6]/30 space-y-4">
+        <form onSubmit={handleInvitar} className="bg-white rounded-xl p-5 shadow-sm border border-accent/30 space-y-4">
           <h2 className="font-semibold text-gray-700">Nuevo usuario</h2>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
@@ -167,14 +167,14 @@ export default function UsuariosPage() {
                 <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)}
                   placeholder="usuario@email.com" required
-                  className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                  className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña temporal *</label>
               <input type="password" value={invPassword} onChange={e => setInvPassword(e.target.value)}
                 placeholder="Mínimo 8 caracteres" required minLength={8}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#2E75B6]" />
+                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
             </div>
           </div>
           <div>
@@ -185,7 +185,7 @@ export default function UsuariosPage() {
                 .map(([rol, cfg]) => (
                   <button key={rol} type="button" onClick={() => setInvRol(rol)}
                     className={`px-3 py-2.5 rounded-xl border-2 text-left transition-all
-                      ${invRol === rol ? 'border-[#2E75B6] bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                      ${invRol === rol ? 'border-accent bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
                     <p className="text-sm font-medium text-gray-700">{cfg.label}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{cfg.desc}</p>
                   </button>
@@ -202,7 +202,7 @@ export default function UsuariosPage() {
               Cancelar
             </button>
             <button type="submit" disabled={saving}
-              className="px-5 py-2.5 bg-[#1E3A5F] hover:bg-[#2E75B6] text-white font-semibold rounded-xl text-sm disabled:opacity-50">
+              className="px-5 py-2.5 bg-primary hover:bg-accent text-white font-semibold rounded-xl text-sm disabled:opacity-50">
               {saving ? 'Creando...' : 'Crear usuario'}
             </button>
           </div>
@@ -212,7 +212,7 @@ export default function UsuariosPage() {
       {/* Lista de usuarios */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1E3A5F]" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -222,8 +222,8 @@ export default function UsuariosPage() {
               const esMiUsuario = u.id === user?.id
               return (
                 <div key={u.id} className={`px-4 py-4 flex items-center gap-4 ${!u.activo ? 'opacity-50' : ''}`}>
-                  <div className="w-10 h-10 bg-[#1E3A5F]/10 rounded-full flex items-center justify-center flex-shrink-0">
-                    <User size={18} className="text-[#1E3A5F]" />
+                  <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+                    <User size={18} className="text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -240,7 +240,7 @@ export default function UsuariosPage() {
                     <div className="flex items-center gap-2">
                       <select value={u.rol}
                         onChange={e => updateRol.mutate({ userId: u.id, rol: e.target.value as UserRole })}
-                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-[#2E75B6]">
+                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent">
                         {(Object.entries(ROLES) as [UserRole, any][])
                           .filter(([r]) => r !== 'OWNER')
                           .map(([r, cfg]) => (

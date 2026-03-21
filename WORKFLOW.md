@@ -172,6 +172,7 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 | v0.13.0 | Combos, separar unidades, vuelto al Enter, fix número de venta | 2026-03 |
 | v0.14.0 | Emails transaccionales (Resend), fix trigger ventas, ingresos con unidades en dashboard | 2026-03 |
 | v0.15.0 | Crear producto desde foto (Claude Vision + Open Food Facts), fix flujo suscripción MP | 2026-03 |
+| v0.16.0 | Branding centralizado (tailwind.config.js + CSS vars) + rebrand Genesis360 | 2026-03 |
 
 ### Crear release
 ```bash

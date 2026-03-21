@@ -133,9 +133,27 @@ src/
 **Métricas**
 - [x] Corregir: faltan productos en el detalle de "sin movimiento en el período"
 
+### Próximo backlog priorizado
+
+**Branding centralizado**
+- [ ] Agregar colores de `BRAND.color` a `tailwind.config.js` como `primary`/`accent`
+- [ ] Reemplazar todos los `text-[#1E3A5F]` / `bg-[#2E75B6]` por `text-primary` / `bg-accent`
+- [ ] Con esto, cambiar nombre+colores en `src/config/brand.ts` + `tailwind.config.js` rebrandea toda la app
+
+**Export / Import de data master**
+- [ ] **Export**: agregar a ReportesPage tabs para exportar en Excel — categorías, proveedores, ubicaciones, estados, motivos (además de productos)
+- [ ] **Import upsert**: al importar productos por Excel, si el SKU ya existe → actualizar precios y campos (hoy los ignora). Comportamiento deseado: insert si no existe, update si existe.
+- [ ] **Import data master**: importar categorías, proveedores y ubicaciones desde Excel (crear si no existe, ignorar duplicados por nombre)
+- [ ] **Moneda en Excel de productos**: agregar columnas `precio_costo_moneda` (ARS/USD) y `precio_venta_moneda` al export/import
+
+**Módulo de clientes**
+- [ ] Historial de compras por cliente, recurrencia, ticket promedio
+
+**Módulo de gastos**
+- [ ] Registrar egresos del negocio con categoría y medio de pago
+
 ### Ideas futuras
 - Generador de cupones + aplicar cupón en ventas
-- Módulo de gastos
 - Ubicación del local (para expansión multi-sucursal y logística)
 - Guía interactiva / walkthrough para onboarding de nuevos clientes
 - Dashboard inteligente con insights automáticos ("estás perdiendo $X por stock muerto")
@@ -145,7 +163,6 @@ src/
 - IA tipo chat para consultas de negocio
 - Benchmark vs otros negocios del rubro
 - Automatizaciones (reposición automática, alertas de precio)
-- Módulo de clientes con historial y recurrencia
 - Gamificación ("score de salud del negocio")
 
 ## UX Principles (no negociables)

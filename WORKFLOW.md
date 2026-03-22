@@ -174,6 +174,7 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 | v0.15.0 | Crear producto desde foto (Claude Vision + Open Food Facts), fix flujo suscripción MP | 2026-03 |
 | v0.16.0 | Branding centralizado (tailwind.config.js + CSS vars) + rebrand Genesis360 | 2026-03 |
 | v0.17.0 | Export/Import data master + moneda en Excel de productos | 2026-03 |
+| v0.18.0 | Módulo de gastos (egresos del negocio con categorías, filtros y stats) | 2026-03 |
 
 ### Crear release
 ```bash

@@ -292,6 +292,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **`SubscriptionGuard`**: siempre en el mismo archivo que `AuthGuard` (`src/components/AuthGuard.tsx`), nunca en archivo separado.
 - **Rutas**: antes de cualquier `navigate()` a una ruta nueva, verificar que existe en `App.tsx`. Error real: `navigate('/inventario/producto/:id')` en lugar de `/inventario/:id/editar` mandaba al wildcard `*`.
 - **Nombre de la app**: siempre `BRAND.name` desde `src/config/brand.ts`, nunca hardcodeado.
+- **Roles en navItems**: `ownerOnly: true` → solo OWNER y ADMIN; `supervisorOnly: true` → OWNER, SUPERVISOR y ADMIN. El render en AppLayout filtra con ambas props. CAJERO solo ve el resto.
+- **Audit log (logActividad)**: fire-and-forget, nunca bloquea el flujo. Llamar sin `await`. Si el usuario no está autenticado, la función retorna silenciosamente. No lanzar errores desde ahí.
 
 ### Git / Deploy
 - **Claude Code NUNCA hace push a `main`**. Todo va a `dev`. Para pasar a `main`: crear PR con gh CLI y mergearlo (ver WORKFLOW.md).

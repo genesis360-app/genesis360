@@ -1,16 +1,19 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileSpreadsheet, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileSpreadsheet, RefreshCw, Tag, Truck, MapPin } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
-const COLUMNAS = ['nombre', 'sku', 'codigo_barras', 'categoria', 'proveedor', 'precio_costo', 'precio_venta', 'stock_minimo', 'unidad_medida', 'descripcion']
+const COLUMNAS = ['nombre', 'sku', 'codigo_barras', 'categoria', 'proveedor', 'precio_costo', 'precio_costo_moneda', 'precio_venta', 'precio_venta_moneda', 'stock_minimo', 'unidad_medida', 'descripcion']
 const UNIDADES_VALIDAS = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
+const MONEDAS_VALIDAS = ['ARS', 'USD']
 
 type ModoSKU = 'crear' | 'actualizar' | 'ambos'
+type TabImport = 'productos' | 'master'
+type TipoMaster = 'categorias' | 'proveedores' | 'ubicaciones'
 
 interface FilaPreview {
   idx: number
@@ -20,7 +23,9 @@ interface FilaPreview {
   categoria?: string
   proveedor?: string
   precio_costo: number
+  precio_costo_moneda: string
   precio_venta: number
+  precio_venta_moneda: string
   stock_minimo: number
   unidad_medida: string
   descripcion?: string
@@ -28,18 +33,41 @@ interface FilaPreview {
   errores: string[]
 }
 
+interface FilaMaster {
+  idx: number
+  nombre: string
+  extra: Record<string, string>
+  estado: 'nuevo' | 'existente' | 'error'
+  errores: string[]
+}
+
+const MASTER_CONFIG: Record<TipoMaster, { label: string; icon: any; cols: string[]; extraCols: string[] }> = {
+  categorias:  { label: 'Categorías',  icon: Tag,   cols: ['nombre', 'descripcion'],           extraCols: ['descripcion'] },
+  proveedores: { label: 'Proveedores', icon: Truck, cols: ['nombre', 'contacto', 'telefono', 'email'], extraCols: ['contacto', 'telefono', 'email'] },
+  ubicaciones: { label: 'Ubicaciones', icon: MapPin, cols: ['nombre', 'descripcion'],           extraCols: ['descripcion'] },
+}
+
 export default function ImportarProductosPage() {
   const navigate = useNavigate()
   const { tenant } = useAuthStore()
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
+  const fileRefMaster = useRef<HTMLInputElement>(null)
 
+  // ── Productos ──────────────────────────────────────────────────────────────
+  const [tab, setTab] = useState<TabImport>('productos')
   const [filas, setFilas] = useState<FilaPreview[]>([])
-  const [modo, setModo] = useState<ModoSKU>('crear')
+  const [modo, setModo] = useState<ModoSKU>('ambos')
   const [importando, setImportando] = useState(false)
   const [resultado, setResultado] = useState<{ creados: number; actualizados: number; errores: number } | null>(null)
 
-  // Cargar categorías y proveedores existentes para matching
+  // ── Data Master ────────────────────────────────────────────────────────────
+  const [tipoMaster, setTipoMaster] = useState<TipoMaster>('categorias')
+  const [filasMaster, setFilasMaster] = useState<FilaMaster[]>([])
+  const [importandoMaster, setImportandoMaster] = useState(false)
+  const [resultadoMaster, setResultadoMaster] = useState<{ creados: number; ignorados: number; errores: number } | null>(null)
+
+  // Cargar datos existentes para matching
   const { data: categorias = [] } = useQuery({
     queryKey: ['categorias', tenant?.id],
     queryFn: async () => { const { data } = await supabase.from('categorias').select('id, nombre').eq('tenant_id', tenant!.id); return data ?? [] },
@@ -50,29 +78,32 @@ export default function ImportarProductosPage() {
     queryFn: async () => { const { data } = await supabase.from('proveedores').select('id, nombre').eq('tenant_id', tenant!.id); return data ?? [] },
     enabled: !!tenant,
   })
+  const { data: ubicaciones = [] } = useQuery({
+    queryKey: ['ubicaciones', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('id, nombre').eq('tenant_id', tenant!.id); return data ?? [] },
+    enabled: !!tenant,
+  })
 
-  // Descargar plantilla
+  // ── Plantilla productos ───────────────────────────────────────────────────
   const descargarPlantilla = () => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['nombre', 'sku', 'codigo_barras', 'categoria', 'proveedor', 'precio_costo', 'precio_venta', 'stock_minimo', 'unidad_medida', 'descripcion'],
-      ['Tornillo hexagonal 1/4"', 'TORN-0001', '7791234567890', 'Ferretería', 'Proveedor A', 150, 250, 10, 'unidad', 'Tornillo de acero inoxidable'],
-      ['Pintura blanca 4L', 'PINT-0001', '', 'Pinturas', '', 800, 1200, 5, 'litro', ''],
+      ['nombre', 'sku', 'codigo_barras', 'categoria', 'proveedor', 'precio_costo', 'precio_costo_moneda', 'precio_venta', 'precio_venta_moneda', 'stock_minimo', 'unidad_medida', 'descripcion'],
+      ['Tornillo hexagonal 1/4"', 'TORN-0001', '7791234567890', 'Ferretería', 'Proveedor A', 150, 'ARS', 250, 'ARS', 10, 'unidad', 'Tornillo de acero inoxidable'],
+      ['Pintura blanca 4L', 'PINT-0001', '', 'Pinturas', '', 4.5, 'USD', 1200, 'ARS', 5, 'litro', ''],
     ])
 
-    // Estilos de encabezado
     const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-    const cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']
+    const cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
     cols.forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = headerStyle })
 
     ws['!cols'] = [
       { wch: 30 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 15 },
-      { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 15 }, { wch: 30 },
+      { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 15 }, { wch: 30 },
     ]
 
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Productos')
 
-    // Hoja de referencia
     const wsRef = XLSX.utils.aoa_to_sheet([
       ['Campo', 'Requerido', 'Notas'],
       ['nombre', 'SÍ', 'Nombre del producto'],
@@ -80,19 +111,36 @@ export default function ImportarProductosPage() {
       ['codigo_barras', 'no', 'Código EAN/UPC'],
       ['categoria', 'no', 'Debe coincidir con una categoría existente o se creará nueva'],
       ['proveedor', 'no', 'Debe coincidir con un proveedor existente o se creará nuevo'],
-      ['precio_costo', 'no', 'Número sin símbolos. Ej: 1500'],
+      ['precio_costo', 'no', 'Número sin símbolos. Ej: 1500 o 4.5 (si es USD)'],
+      ['precio_costo_moneda', 'no', 'ARS (default) o USD'],
       ['precio_venta', 'no', 'Número sin símbolos. Ej: 2500'],
+      ['precio_venta_moneda', 'no', 'ARS (default) o USD'],
       ['stock_minimo', 'no', 'Número entero. Ej: 5'],
       ['unidad_medida', 'no', 'unidad / kg / g / litro / ml / metro / cm / caja / pack / docena'],
       ['descripcion', 'no', 'Texto libre'],
     ])
-    wsRef['!cols'] = [{ wch: 18 }, { wch: 12 }, { wch: 55 }]
+    wsRef['!cols'] = [{ wch: 22 }, { wch: 12 }, { wch: 55 }]
     XLSX.utils.book_append_sheet(wb, wsRef, 'Referencia')
 
-    XLSX.writeFile(wb, 'plantilla_productos_stockapp.xlsx')
+    XLSX.writeFile(wb, 'plantilla_productos.xlsx')
   }
 
-  // Procesar archivo
+  // ── Plantilla data master ─────────────────────────────────────────────────
+  const descargarPlantillaMaster = (tipo: TipoMaster) => {
+    const cfg = MASTER_CONFIG[tipo]
+    const ws = XLSX.utils.aoa_to_sheet([
+      cfg.cols,
+      tipo === 'categorias'  ? ['Ferretería', 'Productos de ferretería'] :
+      tipo === 'proveedores' ? ['Proveedor A', 'Juan García', '1123456789', 'juan@proveedor.com'] :
+                               ['Depósito A', 'Primer piso'],
+    ])
+    ws['!cols'] = cfg.cols.map(() => ({ wch: 24 }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, cfg.label)
+    XLSX.writeFile(wb, `plantilla_${tipo}.xlsx`)
+  }
+
+  // ── Procesar archivo productos ────────────────────────────────────────────
   const procesarArchivo = async (file: File) => {
     setResultado(null)
     const reader = new FileReader()
@@ -105,7 +153,6 @@ export default function ImportarProductosPage() {
 
         if (rows.length === 0) { toast.error('El archivo está vacío'); return }
 
-        // Verificar SKUs existentes
         const skus = rows.map(r => String(r.sku || '').trim().toUpperCase()).filter(Boolean)
         const { data: existentes } = await supabase.from('productos')
           .select('sku').eq('tenant_id', tenant!.id).in('sku', skus)
@@ -116,7 +163,9 @@ export default function ImportarProductosPage() {
           const nombre = String(row.nombre || '').trim()
           const sku = String(row.sku || '').trim().toUpperCase()
           const precio_costo = parseFloat(String(row.precio_costo || '0').replace(',', '.')) || 0
+          const precio_costo_moneda = String(row.precio_costo_moneda || 'ARS').trim().toUpperCase()
           const precio_venta = parseFloat(String(row.precio_venta || '0').replace(',', '.')) || 0
+          const precio_venta_moneda = String(row.precio_venta_moneda || 'ARS').trim().toUpperCase()
           const stock_minimo = parseInt(String(row.stock_minimo || '0')) || 0
           const unidad = String(row.unidad_medida || 'unidad').trim().toLowerCase()
 
@@ -124,6 +173,8 @@ export default function ImportarProductosPage() {
           if (precio_costo < 0) errores.push('Precio costo inválido')
           if (precio_venta < 0) errores.push('Precio venta inválido')
           if (unidad && !UNIDADES_VALIDAS.includes(unidad)) errores.push(`Unidad "${unidad}" no válida`)
+          if (precio_costo_moneda && !MONEDAS_VALIDAS.includes(precio_costo_moneda)) errores.push(`Moneda costo "${precio_costo_moneda}" inválida`)
+          if (precio_venta_moneda && !MONEDAS_VALIDAS.includes(precio_venta_moneda)) errores.push(`Moneda venta "${precio_venta_moneda}" inválida`)
 
           const estado = errores.length > 0 ? 'error'
             : skusExistentes.has(sku) ? 'existente'
@@ -137,7 +188,9 @@ export default function ImportarProductosPage() {
             categoria: String(row.categoria || '').trim() || undefined,
             proveedor: String(row.proveedor || '').trim() || undefined,
             precio_costo,
+            precio_costo_moneda: MONEDAS_VALIDAS.includes(precio_costo_moneda) ? precio_costo_moneda : 'ARS',
             precio_venta,
+            precio_venta_moneda: MONEDAS_VALIDAS.includes(precio_venta_moneda) ? precio_venta_moneda : 'ARS',
             stock_minimo,
             unidad_medida: UNIDADES_VALIDAS.includes(unidad) ? unidad : 'unidad',
             descripcion: String(row.descripcion || '').trim() || undefined,
@@ -147,7 +200,7 @@ export default function ImportarProductosPage() {
         })
 
         setFilas(preview)
-      } catch (err) {
+      } catch {
         toast.error('Error al leer el archivo. Verificá que sea un Excel o CSV válido.')
       }
     }
@@ -159,6 +212,7 @@ export default function ImportarProductosPage() {
     if (file) procesarArchivo(file)
   }
 
+  // ── Confirmar importación productos ──────────────────────────────────────
   const confirmarImportacion = async () => {
     setImportando(true)
     let creados = 0; let actualizados = 0; let errores = 0
@@ -172,7 +226,6 @@ export default function ImportarProductosPage() {
 
     for (const fila of filasAImportar) {
       try {
-        // Resolver o crear categoría
         let categoria_id: string | null = null
         if (fila.categoria) {
           const catExistente = (categorias as any[]).find(c => c.nombre.toLowerCase() === fila.categoria!.toLowerCase())
@@ -186,7 +239,6 @@ export default function ImportarProductosPage() {
           }
         }
 
-        // Resolver o crear proveedor
         let proveedor_id: string | null = null
         if (fila.proveedor) {
           const provExistente = (proveedores as any[]).find(p => p.nombre.toLowerCase() === fila.proveedor!.toLowerCase())
@@ -208,7 +260,9 @@ export default function ImportarProductosPage() {
           categoria_id,
           proveedor_id,
           precio_costo: fila.precio_costo,
+          precio_costo_moneda: fila.precio_costo_moneda,
           precio_venta: fila.precio_venta,
+          precio_venta_moneda: fila.precio_venta_moneda,
           stock_minimo: fila.stock_minimo,
           unidad_medida: fila.unidad_medida,
           descripcion: fila.descripcion ?? null,
@@ -233,9 +287,78 @@ export default function ImportarProductosPage() {
     toast.success(`Importación completada: ${creados} creados, ${actualizados} actualizados`)
   }
 
+  // ── Procesar archivo data master ──────────────────────────────────────────
+  const procesarArchivoMaster = async (file: File, tipo: TipoMaster) => {
+    setResultadoMaster(null)
+    const existentesMap: Record<string, boolean> = {}
+    const listaExistentes = tipo === 'categorias' ? categorias : tipo === 'proveedores' ? proveedores : ubicaciones
+    ;(listaExistentes as any[]).forEach((item: any) => { existentesMap[item.nombre.toLowerCase()] = true })
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
+
+        if (rows.length === 0) { toast.error('El archivo está vacío'); return }
+
+        const cfg = MASTER_CONFIG[tipo]
+        const preview: FilaMaster[] = rows.map((row, idx) => {
+          const errores: string[] = []
+          const nombre = String(row.nombre || '').trim()
+          if (!nombre) errores.push('Nombre requerido')
+          const extra: Record<string, string> = {}
+          cfg.extraCols.forEach(c => { extra[c] = String((row as any)[c] || '').trim() })
+          const estado = errores.length > 0 ? 'error' : existentesMap[nombre.toLowerCase()] ? 'existente' : 'nuevo'
+          return { idx, nombre, extra, estado, errores }
+        })
+
+        setFilasMaster(preview)
+      } catch {
+        toast.error('Error al leer el archivo.')
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  const handleFileMaster = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) procesarArchivoMaster(file, tipoMaster)
+  }
+
+  // ── Confirmar importación data master ─────────────────────────────────────
+  const confirmarImportacionMaster = async () => {
+    setImportandoMaster(true)
+    let creados = 0; let ignorados = 0; let errores = 0
+
+    const nuevas = filasMaster.filter(f => f.estado === 'nuevo')
+    const tabla = tipoMaster
+
+    for (const fila of nuevas) {
+      try {
+        const payload: Record<string, any> = { tenant_id: tenant!.id, nombre: fila.nombre }
+        Object.entries(fila.extra).forEach(([k, v]) => { if (v) payload[k] = v })
+        await supabase.from(tabla).insert(payload)
+        creados++
+      } catch {
+        errores++
+      }
+    }
+
+    ignorados = filasMaster.filter(f => f.estado === 'existente').length
+    qc.invalidateQueries({ queryKey: [tabla] })
+    setResultadoMaster({ creados, ignorados, errores })
+    setImportandoMaster(false)
+    toast.success(`${MASTER_CONFIG[tipoMaster].label}: ${creados} creados, ${ignorados} ignorados`)
+  }
+
   const nuevos = filas.filter(f => f.estado === 'nuevo' && f.errores.length === 0).length
   const existentes = filas.filter(f => f.estado === 'existente' && f.errores.length === 0).length
   const conErrores = filas.filter(f => f.errores.length > 0).length
+  const nuevosMaster = filasMaster.filter(f => f.estado === 'nuevo').length
+  const existentesMaster = filasMaster.filter(f => f.estado === 'existente').length
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -245,171 +368,318 @@ export default function ImportarProductosPage() {
           <ArrowLeft size={20} className="text-gray-600" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-primary">Importar productos</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Cargá múltiples productos desde un archivo Excel o CSV</p>
+          <h1 className="text-2xl font-bold text-primary">Importar datos</h1>
+          <p className="text-gray-500 text-sm mt-0.5">Cargá productos o datos maestros desde Excel</p>
         </div>
       </div>
 
-      {/* Resultado final */}
-      {resultado && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-          <CheckCircle size={20} className="text-green-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="font-semibold text-green-800">Importación completada</p>
-            <p className="text-sm text-green-700 mt-0.5">
-              {resultado.creados} producto{resultado.creados !== 1 ? 's' : ''} creado{resultado.creados !== 1 ? 's' : ''} ·
-              {resultado.actualizados} actualizado{resultado.actualizados !== 1 ? 's' : ''} ·
-              {resultado.errores} error{resultado.errores !== 1 ? 'es' : ''}
-            </p>
-            <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 font-medium hover:underline">
-              Ver inventario →
-            </button>
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        <button onClick={() => setTab('productos')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'productos' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          Productos
+        </button>
+        <button onClick={() => setTab('master')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'master' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          Datos maestros
+        </button>
+      </div>
+
+      {/* ── TAB PRODUCTOS ────────────────────────────────────────────────────── */}
+      {tab === 'productos' && (
+        <>
+          {resultado && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+              <CheckCircle size={20} className="text-green-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold text-green-800">Importación completada</p>
+                <p className="text-sm text-green-700 mt-0.5">
+                  {resultado.creados} creado{resultado.creados !== 1 ? 's' : ''} · {resultado.actualizados} actualizado{resultado.actualizados !== 1 ? 's' : ''} · {resultado.errores} error{resultado.errores !== 1 ? 'es' : ''}
+                </p>
+                <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 font-medium hover:underline">
+                  Ver inventario →
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="grid lg:grid-cols-3 gap-5">
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <FileSpreadsheet size={16} className="text-accent" /> Plantilla
+                </h2>
+                <p className="text-xs text-gray-500 mb-3">Descargá la plantilla, completá los datos y subila.</p>
+                <button onClick={descargarPlantilla}
+                  className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-blue-50 transition-all text-sm">
+                  <Download size={15} /> Descargar plantilla
+                </button>
+              </div>
+
+              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <Upload size={16} className="text-accent" /> Subir archivo
+                </h2>
+                <div
+                  className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-blue-50/30 transition-all"
+                  onClick={() => fileRef.current?.click()}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}
+                >
+                  <FileSpreadsheet size={28} className="text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">Arrastrá o hacé click</p>
+                  <p className="text-xs text-gray-400 mt-1">.xlsx, .xls, .csv</p>
+                </div>
+                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+              </div>
+
+              {filas.length > 0 && existentes > 0 && (
+                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                  <h2 className="font-semibold text-gray-700 mb-3">Si el SKU ya existe</h2>
+                  <div className="space-y-2">
+                    {([
+                      { val: 'crear',     label: 'Solo crear nuevos',   desc: 'Ignorar los existentes' },
+                      { val: 'actualizar',label: 'Solo actualizar',      desc: 'Ignorar los nuevos' },
+                      { val: 'ambos',     label: 'Crear y actualizar',   desc: 'Procesar todos' },
+                    ] as { val: ModoSKU; label: string; desc: string }[]).map(({ val, label, desc }) => (
+                      <label key={val} className="flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                        <input type="radio" name="modo" value={val} checked={modo === val}
+                          onChange={() => setModo(val)} className="mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">{label}</p>
+                          <p className="text-xs text-gray-400">{desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="lg:col-span-2">
+              {filas.length === 0 ? (
+                <div className="bg-white rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400">
+                  <FileSpreadsheet size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">Subí un archivo para ver la previsualización</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
+                    <div className="px-4 py-3 text-center">
+                      <p className="text-2xl font-bold text-green-600">{nuevos}</p>
+                      <p className="text-xs text-gray-500">Nuevos</p>
+                    </div>
+                    <div className="px-4 py-3 text-center">
+                      <p className="text-2xl font-bold text-blue-600">{existentes}</p>
+                      <p className="text-xs text-gray-500">Existentes</p>
+                    </div>
+                    <div className="px-4 py-3 text-center">
+                      <p className="text-2xl font-bold text-red-500">{conErrores}</p>
+                      <p className="text-xs text-gray-500">Con errores</p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto max-h-96">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-gray-50">
+                        <tr className="border-b border-gray-100">
+                          <th className="text-left px-3 py-2 font-semibold text-gray-600">Estado</th>
+                          <th className="text-left px-3 py-2 font-semibold text-gray-600">Nombre</th>
+                          <th className="text-left px-3 py-2 font-semibold text-gray-600">SKU</th>
+                          <th className="text-right px-3 py-2 font-semibold text-gray-600">Costo</th>
+                          <th className="text-right px-3 py-2 font-semibold text-gray-600">Venta</th>
+                          <th className="text-left px-3 py-2 font-semibold text-gray-600">Categoría</th>
+                          <th className="text-left px-3 py-2 font-semibold text-gray-600">Errores</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filas.map(fila => (
+                          <tr key={fila.idx} className={`border-b border-gray-50 ${fila.errores.length > 0 ? 'bg-red-50' : fila.estado === 'existente' ? 'bg-blue-50/40' : ''}`}>
+                            <td className="px-3 py-2">
+                              {fila.errores.length > 0 ? (
+                                <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
+                              ) : fila.estado === 'existente' ? (
+                                <span className="flex items-center gap-1 text-blue-600"><RefreshCw size={12} /> Existe</span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Nuevo</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 font-medium text-gray-800 max-w-32 truncate">{fila.nombre || <span className="text-red-400 italic">vacío</span>}</td>
+                            <td className="px-3 py-2 font-mono text-gray-600">{fila.sku}</td>
+                            <td className="px-3 py-2 text-right text-gray-600">
+                              {fila.precio_costo > 0 ? `${fila.precio_costo_moneda === 'USD' ? 'USD ' : '$'}${fila.precio_costo.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right text-gray-600">
+                              {fila.precio_venta > 0 ? `${fila.precio_venta_moneda === 'USD' ? 'USD ' : '$'}${fila.precio_venta.toLocaleString()}` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-gray-500">{fila.categoria ?? '—'}</td>
+                            <td className="px-3 py-2 text-red-500">{fila.errores.join(', ') || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="p-4 border-t border-gray-100 bg-gray-50">
+                    <button
+                      onClick={confirmarImportacion}
+                      disabled={importando || (nuevos === 0 && existentes === 0) || filas.every(f => f.errores.length > 0)}
+                      className="w-full bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      {importando ? (
+                        <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Importando...</>
+                      ) : (
+                        <><Upload size={16} /> Confirmar ({modo === 'crear' ? nuevos : modo === 'actualizar' ? existentes : nuevos + existentes} productos)</>
+                      )}
+                    </button>
+                    {conErrores > 0 && (
+                      <p className="text-xs text-gray-400 text-center mt-2 flex items-center justify-center gap-1">
+                        <AlertTriangle size={11} /> Las filas con errores serán ignoradas
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      <div className="grid lg:grid-cols-3 gap-5">
-        {/* Panel izquierdo */}
-        <div className="space-y-4">
-          {/* Plantilla */}
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-              <FileSpreadsheet size={16} className="text-accent" /> Plantilla
-            </h2>
-            <p className="text-xs text-gray-500 mb-3">Descargá la plantilla, completá los datos y subila.</p>
-            <button onClick={descargarPlantilla}
-              className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-blue-50 transition-all text-sm">
-              <Download size={15} /> Descargar plantilla
-            </button>
-          </div>
-
-          {/* Upload */}
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-              <Upload size={16} className="text-accent" /> Subir archivo
-            </h2>
-            <div
-              className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-blue-50/30 transition-all"
-              onClick={() => fileRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}
-            >
-              <FileSpreadsheet size={28} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">Arrastrá o hacé click</p>
-              <p className="text-xs text-gray-400 mt-1">.xlsx, .xls, .csv</p>
-            </div>
-            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
-          </div>
-
-          {/* Modo SKU existente */}
-          {filas.length > 0 && existentes > 0 && (
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-              <h2 className="font-semibold text-gray-700 mb-3">Si el SKU ya existe</h2>
-              <div className="space-y-2">
-                {([
-                  { val: 'crear', label: 'Solo crear nuevos', desc: 'Ignorar los existentes' },
-                  { val: 'actualizar', label: 'Solo actualizar', desc: 'Ignorar los nuevos' },
-                  { val: 'ambos', label: 'Crear y actualizar', desc: 'Procesar todos' },
-                ] as { val: ModoSKU; label: string; desc: string }[]).map(({ val, label, desc }) => (
-                  <label key={val} className="flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
-                    <input type="radio" name="modo" value={val} checked={modo === val}
-                      onChange={() => setModo(val)} className="mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">{label}</p>
-                      <p className="text-xs text-gray-400">{desc}</p>
-                    </div>
-                  </label>
-                ))}
+      {/* ── TAB DATA MASTER ──────────────────────────────────────────────────── */}
+      {tab === 'master' && (
+        <>
+          {resultadoMaster && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+              <CheckCircle size={20} className="text-green-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-semibold text-green-800">Importación completada</p>
+                <p className="text-sm text-green-700 mt-0.5">
+                  {resultadoMaster.creados} creado{resultadoMaster.creados !== 1 ? 's' : ''} · {resultadoMaster.ignorados} ignorado{resultadoMaster.ignorados !== 1 ? 's' : ''} (ya existían) · {resultadoMaster.errores} error{resultadoMaster.errores !== 1 ? 'es' : ''}
+                </p>
               </div>
             </div>
           )}
-        </div>
 
-        {/* Preview */}
-        <div className="lg:col-span-2">
-          {filas.length === 0 ? (
-            <div className="bg-white rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400">
-              <FileSpreadsheet size={40} className="mx-auto mb-3 opacity-30" />
-              <p className="font-medium">Subí un archivo para ver la previsualización</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              {/* Stats */}
-              <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
-                <div className="px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-green-600">{nuevos}</p>
-                  <p className="text-xs text-gray-500">Nuevos</p>
-                </div>
-                <div className="px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-blue-600">{existentes}</p>
-                  <p className="text-xs text-gray-500">Existentes</p>
-                </div>
-                <div className="px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-red-500">{conErrores}</p>
-                  <p className="text-xs text-gray-500">Con errores</p>
+          <div className="grid lg:grid-cols-3 gap-5">
+            <div className="space-y-4">
+              {/* Selector de tipo */}
+              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 mb-3">¿Qué querés importar?</h2>
+                <div className="space-y-2">
+                  {(Object.entries(MASTER_CONFIG) as [TipoMaster, typeof MASTER_CONFIG[TipoMaster]][]).map(([tipo, cfg]) => {
+                    const Icon = cfg.icon
+                    return (
+                      <label key={tipo} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                        <input type="radio" name="tipoMaster" value={tipo} checked={tipoMaster === tipo}
+                          onChange={() => { setTipoMaster(tipo); setFilasMaster([]); setResultadoMaster(null) }} />
+                        <Icon size={15} className="text-accent" />
+                        <span className="text-sm font-medium text-gray-700">{cfg.label}</span>
+                      </label>
+                    )
+                  })}
                 </div>
               </div>
 
-              {/* Tabla preview */}
-              <div className="overflow-x-auto max-h-96">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-gray-50">
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Estado</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Nombre</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">SKU</th>
-                      <th className="text-right px-3 py-2 font-semibold text-gray-600">Costo</th>
-                      <th className="text-right px-3 py-2 font-semibold text-gray-600">Venta</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Categoría</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Errores</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filas.map(fila => (
-                      <tr key={fila.idx} className={`border-b border-gray-50 ${fila.errores.length > 0 ? 'bg-red-50' : fila.estado === 'existente' ? 'bg-blue-50/40' : ''}`}>
-                        <td className="px-3 py-2">
-                          {fila.errores.length > 0 ? (
-                            <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
-                          ) : fila.estado === 'existente' ? (
-                            <span className="flex items-center gap-1 text-blue-600"><RefreshCw size={12} /> Existe</span>
-                          ) : (
-                            <span className="flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Nuevo</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 font-medium text-gray-800 max-w-32 truncate">{fila.nombre || <span className="text-red-400 italic">vacío</span>}</td>
-                        <td className="px-3 py-2 font-mono text-gray-600">{fila.sku}</td>
-                        <td className="px-3 py-2 text-right text-gray-600">{fila.precio_costo > 0 ? `$${fila.precio_costo.toLocaleString()}` : '—'}</td>
-                        <td className="px-3 py-2 text-right text-gray-600">{fila.precio_venta > 0 ? `$${fila.precio_venta.toLocaleString()}` : '—'}</td>
-                        <td className="px-3 py-2 text-gray-500">{fila.categoria ?? '—'}</td>
-                        <td className="px-3 py-2 text-red-500">{fila.errores.join(', ') || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Botón confirmar */}
-              <div className="p-4 border-t border-gray-100 bg-gray-50">
-                <button
-                  onClick={confirmarImportacion}
-                  disabled={importando || (nuevos === 0 && existentes === 0) || filas.every(f => f.errores.length > 0)}
-                  className="w-full bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                  {importando ? (
-                    <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Importando...</>
-                  ) : (
-                    <><Upload size={16} /> Confirmar importación ({modo === 'crear' ? nuevos : modo === 'actualizar' ? existentes : nuevos + existentes} productos)</>
-                  )}
+              {/* Plantilla */}
+              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <FileSpreadsheet size={16} className="text-accent" /> Plantilla
+                </h2>
+                <button onClick={() => descargarPlantillaMaster(tipoMaster)}
+                  className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-blue-50 transition-all text-sm">
+                  <Download size={15} /> Descargar plantilla
                 </button>
-                {conErrores > 0 && (
-                  <p className="text-xs text-gray-400 text-center mt-2 flex items-center justify-center gap-1">
-                    <AlertTriangle size={11} /> Las filas con errores serán ignoradas
-                  </p>
-                )}
+              </div>
+
+              {/* Upload */}
+              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <Upload size={16} className="text-accent" /> Subir archivo
+                </h2>
+                <div
+                  className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-blue-50/30 transition-all"
+                  onClick={() => fileRefMaster.current?.click()}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivoMaster(f, tipoMaster) }}
+                >
+                  <FileSpreadsheet size={28} className="text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">Arrastrá o hacé click</p>
+                  <p className="text-xs text-gray-400 mt-1">.xlsx, .xls, .csv</p>
+                </div>
+                <input ref={fileRefMaster} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileMaster} />
+                <p className="text-xs text-gray-400 mt-2 text-center">Los duplicados (mismo nombre) se ignoran</p>
               </div>
             </div>
-          )}
-        </div>
-      </div>
+
+            <div className="lg:col-span-2">
+              {filasMaster.length === 0 ? (
+                <div className="bg-white rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400">
+                  <FileSpreadsheet size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">Subí un archivo para ver la previsualización</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
+                    <div className="px-4 py-3 text-center">
+                      <p className="text-2xl font-bold text-green-600">{nuevosMaster}</p>
+                      <p className="text-xs text-gray-500">Nuevos</p>
+                    </div>
+                    <div className="px-4 py-3 text-center">
+                      <p className="text-2xl font-bold text-gray-400">{existentesMaster}</p>
+                      <p className="text-xs text-gray-500">Ya existen (se ignoran)</p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto max-h-96">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-gray-50">
+                        <tr className="border-b border-gray-100">
+                          <th className="text-left px-3 py-2 font-semibold text-gray-600">Estado</th>
+                          <th className="text-left px-3 py-2 font-semibold text-gray-600">Nombre</th>
+                          {MASTER_CONFIG[tipoMaster].extraCols.map(c => (
+                            <th key={c} className="text-left px-3 py-2 font-semibold text-gray-600 capitalize">{c}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filasMaster.map(fila => (
+                          <tr key={fila.idx} className={`border-b border-gray-50 ${fila.errores.length > 0 ? 'bg-red-50' : fila.estado === 'existente' ? 'bg-gray-50' : ''}`}>
+                            <td className="px-3 py-2">
+                              {fila.errores.length > 0 ? (
+                                <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
+                              ) : fila.estado === 'existente' ? (
+                                <span className="flex items-center gap-1 text-gray-400"><RefreshCw size={12} /> Existe</span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Nuevo</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 font-medium text-gray-800">{fila.nombre}</td>
+                            {MASTER_CONFIG[tipoMaster].extraCols.map(c => (
+                              <td key={c} className="px-3 py-2 text-gray-500">{fila.extra[c] || '—'}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="p-4 border-t border-gray-100 bg-gray-50">
+                    <button
+                      onClick={confirmarImportacionMaster}
+                      disabled={importandoMaster || nuevosMaster === 0}
+                      className="w-full bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      {importandoMaster ? (
+                        <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Importando...</>
+                      ) : (
+                        <><Upload size={16} /> Crear {nuevosMaster} {MASTER_CONFIG[tipoMaster].label.toLowerCase()}</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

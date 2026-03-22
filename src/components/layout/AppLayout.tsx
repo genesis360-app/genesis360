@@ -11,20 +11,20 @@ import { CotizacionWidget } from '@/components/CotizacionWidget'
 import { differenceInDays } from 'date-fns'
 
 const navItems = [
-  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/inventario',    icon: Package,          label: 'Inventario' },
-  { to: '/movimientos',   icon: ArrowLeftRight,   label: 'Movimientos' },
-  { to: '/ventas',        icon: ShoppingCart,  label: 'Ventas' },
-  { to: '/clientes',      icon: Users,         label: 'Clientes' },
-  { to: '/caja',          icon: DollarSign,    label: 'Caja' },
-  { to: '/gastos',        icon: TrendingDown,  label: 'Gastos' },
-  { to: '/alertas',       icon: Bell,          label: 'Alertas', badge: true },
-  { to: '/recomendaciones', icon: Zap,         label: 'Recomendaciones' },
-  { to: '/rentabilidad',  icon: BarChart2,     label: 'Rentabilidad' },
-  { to: '/reportes',      icon: BarChart2,     label: 'Reportes' },
-  { to: '/usuarios',      icon: Users,            label: 'Usuarios', ownerOnly: true },
-  { to: '/configuracion',  icon: Settings,    label: 'Configuración' },
-  { to: '/grupos-estados', icon: Layers,      label: 'Grupos estados', ownerOnly: true },
+  { to: '/dashboard',       icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/ventas',          icon: ShoppingCart,    label: 'Ventas' },
+  { to: '/caja',            icon: DollarSign,      label: 'Caja' },
+  { to: '/inventario',      icon: Package,         label: 'Inventario' },
+  { to: '/movimientos',     icon: ArrowLeftRight,  label: 'Movimientos' },
+  { to: '/alertas',         icon: Bell,            label: 'Alertas', badge: true },
+  { to: '/gastos',          icon: TrendingDown,    label: 'Gastos' },
+  { to: '/clientes',        icon: Users,           label: 'Clientes' },
+  { to: '/reportes',        icon: BarChart2,       label: 'Reportes' },
+  { to: '/rentabilidad',    icon: BarChart2,       label: 'Rentabilidad' },
+  { to: '/recomendaciones', icon: Zap,             label: 'Recomendaciones' },
+  { to: '/usuarios',        icon: Users,           label: 'Usuarios',       ownerOnly: true },
+  { to: '/configuracion',   icon: Settings,        label: 'Configuración',  ownerOnly: true },
+  { to: '/grupos-estados',  icon: Layers,          label: 'Grupos estados', ownerOnly: true },
 ]
 
 export function AppLayout() {

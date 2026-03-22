@@ -420,7 +420,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     onKeyDown={e => e.key === 'Enter' && agregarSerie.mutate()}
                     className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:border-accent" />
                   <button onClick={() => agregarSerie.mutate()} disabled={agregarSerie.isPending || !newSerie.trim()}
-                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm disabled:opacity-50">
+                    className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm disabled:opacity-50">
                     <Plus size={16} />
                   </button>
                 </div>

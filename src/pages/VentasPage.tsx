@@ -1014,7 +1014,7 @@ export default function VentasPage() {
                     <ShoppingCart size={16} /> {saving ? 'Guardando...' : 'Reservar stock'}
                   </button>
                   <button onClick={() => registrarVenta('despachada')} disabled={saving}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     <Zap size={16} /> Venta directa (despacho inmediato)
                   </button>
                   <button onClick={() => registrarVenta('pendiente')} disabled={saving}
@@ -1172,21 +1172,21 @@ export default function VentasPage() {
               {ventaDetalle.estado === 'pendiente' && (
                 <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })}
                   disabled={cambiarEstado.isPending}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl transition-all">
+                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
                   Reservar stock
                 </button>
               )}
               {(ventaDetalle.estado === 'pendiente' || ventaDetalle.estado === 'reservada') && (
                 <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'despachada' })}
                   disabled={cambiarEstado.isPending}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
+                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
                   <Truck size={16} /> Despachar (rebaja stock)
                 </button>
               )}
               {ventaDetalle.estado === 'despachada' && (
                 <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'facturada' })}
                   disabled={cambiarEstado.isPending}
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 rounded-xl transition-all">
+                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
                   Marcar como facturada
                 </button>
               )}

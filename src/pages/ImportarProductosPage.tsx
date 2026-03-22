@@ -11,6 +11,28 @@ import toast from 'react-hot-toast'
 const UNIDADES_VALIDAS = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
 const MONEDAS_VALIDAS  = ['ARS', 'USD']
 
+// Convierte cualquier formato de fecha a YYYY-MM-DD (acepta DD-MM-YYYY, DD/MM/YYYY, serial Excel, o YYYY-MM-DD)
+function parseFecha(val: any): string | undefined {
+  if (val === null || val === undefined || val === '') return undefined
+  if (typeof val === 'number') {
+    // Serial de fecha de Excel
+    const d = XLSX.SSF.parse_date_code(val)
+    if (d) return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+    return undefined
+  }
+  if (val instanceof Date) {
+    return val.toISOString().slice(0, 10)
+  }
+  const s = String(val).trim()
+  if (!s) return undefined
+  // DD-MM-YYYY o DD/MM/YYYY
+  const m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/)
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  // Ya está en YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  return s
+}
+
 type ModoSKU  = 'crear' | 'actualizar' | 'ambos'
 type TabImport = 'productos' | 'inventario'
 
@@ -288,7 +310,7 @@ export default function ImportarProductosPage() {
             estado: String(row.estado || '').trim() || undefined,
             proveedor: String(row.proveedor || '').trim() || undefined,
             nro_lote: String(row.nro_lote || '').trim() || undefined,
-            fecha_vencimiento: String(row.fecha_vencimiento || '').trim() || undefined,
+            fecha_vencimiento: parseFecha(row.fecha_vencimiento),
             lpn: String(row.lpn || '').trim() || undefined,
             motivo: String(row.motivo || '').trim() || undefined,
             estadoFilaImport: errores.length > 0 ? 'error' : 'ok',

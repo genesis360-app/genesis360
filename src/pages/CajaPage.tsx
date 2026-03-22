@@ -323,14 +323,14 @@ export default function CajaPage() {
                       Cancelar
                     </button>
                     <button onClick={() => abrirCaja.mutate()} disabled={abrirCaja.isPending}
-                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl text-sm">
+                      className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm">
                       {abrirCaja.isPending ? 'Abriendo...' : 'Confirmar apertura'}
                     </button>
                   </div>
                 </div>
               ) : (
                 <button onClick={() => setShowApertura(true)}
-                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-xl transition-all mx-auto">
+                  className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-6 py-3 rounded-xl transition-all mx-auto">
                   <Unlock size={18} /> Abrir caja
                 </button>
               )}
@@ -374,11 +374,11 @@ export default function CajaPage() {
               {/* Acciones */}
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => { setMovTipo('ingreso'); setShowMovimiento(true) }}
-                  className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl transition-all">
+                  className="flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
                   <Plus size={18} /> Ingreso
                 </button>
                 <button onClick={() => { setMovTipo('egreso'); setShowMovimiento(true) }}
-                  className="flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 rounded-xl transition-all">
+                  className="flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-xl transition-all">
                   <Minus size={18} /> Egreso
                 </button>
               </div>
@@ -603,8 +603,7 @@ export default function CajaPage() {
                 Cancelar
               </button>
               <button onClick={() => agregarMovimiento.mutate()} disabled={agregarMovimiento.isPending}
-                className={`flex-1 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50
-                  ${movTipo === 'ingreso' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-500 hover:bg-orange-600'}`}>
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
                 {agregarMovimiento.isPending ? 'Guardando...' : 'Confirmar'}
               </button>
             </div>

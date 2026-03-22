@@ -697,3 +697,54 @@ DROP POLICY IF EXISTS "tenant_isolation" ON combos;
 CREATE POLICY "tenant_isolation" ON combos
   USING  (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
   WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+-- ============================================================
+-- M15. GASTOS (egresos del negocio)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS gastos (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  descripcion TEXT NOT NULL,
+  monto       NUMERIC(12,2) NOT NULL,
+  categoria   TEXT,
+  medio_pago  TEXT,
+  fecha       DATE NOT NULL DEFAULT CURRENT_DATE,
+  usuario_id  UUID REFERENCES users(id),
+  notas       TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE gastos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gastos_tenant" ON gastos
+  USING  (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+  WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+-- ============================================================
+-- M16. STORAGE — bucket 'productos' (imágenes de productos)
+-- ============================================================
+-- NOTA: El bucket debe crearse manualmente via API o dashboard de Supabase.
+-- No se puede crear con SQL. Comando para crear:
+--   curl -X POST "https://{PROJECT_REF}.supabase.co/storage/v1/bucket" \
+--     -H "Authorization: Bearer {SERVICE_ROLE_KEY}" \
+--     -H "Content-Type: application/json" \
+--     -d '{"id": "productos", "name": "productos", "public": true}'
+--
+-- Políticas RLS del bucket (sí se aplican con SQL):
+DO $$ BEGIN
+  CREATE POLICY read_productos ON storage.objects
+    FOR SELECT USING (bucket_id = 'productos');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY upload_productos ON storage.objects
+    FOR INSERT WITH CHECK ((bucket_id = 'productos') AND (auth.uid() IS NOT NULL));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY update_productos ON storage.objects
+    FOR UPDATE USING ((bucket_id = 'productos') AND (auth.uid() IS NOT NULL));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE POLICY delete_productos ON storage.objects
+    FOR DELETE USING ((bucket_id = 'productos') AND (auth.uid() IS NOT NULL));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;

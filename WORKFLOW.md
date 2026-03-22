@@ -127,6 +127,16 @@ curl -s -X POST "https://api.supabase.com/v1/projects/jjffnbrdjchquexdfgwq/datab
 1. En el nuevo proyecto → SQL Editor
 2. Pegar y ejecutar el contenido de `supabase/schema_full.sql`
 
+### 2b. Crear bucket de Storage
+El bucket `productos` no se crea con SQL, hay que crearlo por API:
+```bash
+curl -X POST "https://{PROJECT_REF}.supabase.co/storage/v1/bucket" \
+  -H "Authorization: Bearer {SERVICE_ROLE_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"id": "productos", "name": "productos", "public": true}'
+```
+Las políticas RLS del bucket ya están incluidas en `schema_full.sql`.
+
 ### 3. Obtener credenciales DEV
 En Settings → API del proyecto DEV:
 - `Project URL` → `VITE_SUPABASE_URL_DEV`

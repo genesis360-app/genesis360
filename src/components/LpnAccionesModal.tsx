@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 
 type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar'
@@ -119,6 +120,24 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       } else {
         await registrarMovimiento('edicion_lpn', 0, `Edición de datos del LPN ${linea.lpn}`, stockAntes)
       }
+
+      // Audit log: loguear cada campo modificado
+      const resolveNombre = (lista: any[], id: string) => lista.find((x: any) => x.id === id)?.nombre ?? id
+      const oldLpn = linea.lpn ?? ''
+      const newLpn = editForm.lpn || linea.lpn
+      if (oldLpn !== newLpn)
+        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'lpn', valor_anterior: oldLpn, valor_nuevo: newLpn, pagina: '/inventario' })
+      if (!tieneSeries && cantNueva !== cantVieja)
+        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'cantidad', valor_anterior: String(cantVieja), valor_nuevo: String(cantNueva), pagina: '/inventario' })
+      if ((editForm.estado_id || '') !== (linea.estado_id || ''))
+        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'cambio_estado', campo: 'estado', valor_anterior: linea.estado_id ? resolveNombre(estados, linea.estado_id) : null, valor_nuevo: editForm.estado_id ? resolveNombre(estados, editForm.estado_id) : null, pagina: '/inventario' })
+      if ((editForm.ubicacion_id || '') !== (linea.ubicacion_id || ''))
+        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'ubicacion', valor_anterior: linea.ubicacion_id ? resolveNombre(ubicaciones, linea.ubicacion_id) : null, valor_nuevo: editForm.ubicacion_id ? resolveNombre(ubicaciones, editForm.ubicacion_id) : null, pagina: '/inventario' })
+      if ((editForm.nro_lote || '') !== (linea.nro_lote || ''))
+        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'nro_lote', valor_anterior: linea.nro_lote ?? null, valor_nuevo: editForm.nro_lote || null, pagina: '/inventario' })
+      const oldVenc = linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : ''
+      if ((editForm.fecha_vencimiento || '') !== oldVenc)
+        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'fecha_vencimiento', valor_anterior: oldVenc || null, valor_nuevo: editForm.fecha_vencimiento || null, pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('LPN actualizado'); invalidar(); onClose() },
     onError: (e: Error) => toast.error(e.message),
@@ -157,6 +176,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (e2) throw e2
 
       await registrarMovimiento('traslado', cant, `Traslado parcial de ${linea.lpn} → ${newLpn} (${cant} u.)`, stockAntes)
+      const ubicNombre = (ubicaciones as any[]).find(u => u.id === ubicDestino)?.nombre ?? ubicDestino
+      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'traslado', valor_anterior: `${linea.lpn} (${linea.cantidad} u.)`, valor_nuevo: `${newLpn} → ${ubicNombre} (${cant} u.)`, pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('Stock movido — nuevo LPN creado'); invalidar(); onClose() },
     onError: (e: Error) => toast.error(e.message),
@@ -181,6 +202,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (error) throw error
 
       await registrarMovimiento('eliminacion_lpn', cantEliminada, `Eliminación del LPN ${linea.lpn}`, stockAntes)
+      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'eliminar', valor_anterior: `LPN ${linea.lpn} (${cantEliminada} u.)`, pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('LPN eliminado'); invalidar(); onClose() },
     onError: (e: Error) => toast.error(e.message),
@@ -202,6 +224,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       await registrarMovimiento('ingreso_serie', 1, `Serie ${newSerie.trim()} agregada al LPN ${linea.lpn}`, prodAntes?.stock_actual ?? 0)
+      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie', valor_nuevo: newSerie.trim(), pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('Serie agregada'); setNewSerie(''); invalidar() },
     onError: (e: Error) => toast.error(e.message),
@@ -216,6 +239,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       await registrarMovimiento('edicion_serie', 0, `Serie editada en LPN ${linea.lpn}: → ${nroNuevo.trim()}`, prodAntes?.stock_actual ?? 0)
+      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie', valor_nuevo: nroNuevo.trim(), pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('Serie actualizada'); setEditSerieId(null); invalidar() },
     onError: (e: Error) => toast.error(e.message),
@@ -225,8 +249,10 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     mutationFn: async (serieId: string) => {
       const { error } = await supabase.from('inventario_series').update({ activo: false }).eq('id', serieId)
       if (error) throw error
+      const serie = (linea.inventario_series ?? []).find((s: any) => s.id === serieId)
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       await registrarMovimiento('eliminacion_serie', 1, `Serie eliminada del LPN ${linea.lpn}`, prodAntes?.stock_actual ?? 0)
+      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie_eliminada', valor_anterior: serie?.nro_serie ?? serieId, pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('Serie eliminada'); invalidar() },
     onError: (e: Error) => toast.error(e.message),

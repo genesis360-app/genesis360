@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos'
@@ -307,16 +308,18 @@ export default function ConfigPage() {
   })
   const addCategoria = async (nombre: string, descripcion?: string) => {
     const { error } = await supabase.from('categorias').insert({ tenant_id: tenant!.id, nombre, descripcion })
-    if (error) toast.error(error.message); else { toast.success('Categoría agregada'); qc.invalidateQueries({ queryKey: ['categorias'] }) }
+    if (error) toast.error(error.message); else { toast.success('Categoría agregada'); qc.invalidateQueries({ queryKey: ['categorias'] }); logActividad({ entidad: 'categoria', entidad_nombre: nombre, accion: 'crear', pagina: '/configuracion' }) }
   }
   const updateCategoria = async (id: string, nombre: string, descripcion?: string) => {
+    const old = (categorias as Item[]).find(c => c.id === id)
     const { error } = await supabase.from('categorias').update({ nombre, descripcion }).eq('id', id)
-    if (error) toast.error(error.message); else { toast.success('Actualizada'); qc.invalidateQueries({ queryKey: ['categorias'] }) }
+    if (error) toast.error(error.message); else { toast.success('Actualizada'); qc.invalidateQueries({ queryKey: ['categorias'] }); logActividad({ entidad: 'categoria', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
   }
   const deleteCategoria = async (id: string) => {
     if (!confirm('¿Eliminar esta categoría?')) return
+    const old = (categorias as Item[]).find(c => c.id === id)
     const { error } = await supabase.from('categorias').delete().eq('id', id)
-    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['categorias'] }) }
+    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['categorias'] }); logActividad({ entidad: 'categoria', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
   // Proveedores
@@ -327,16 +330,18 @@ export default function ConfigPage() {
   })
   const addProveedor = async (nombre: string, contacto?: string) => {
     const { error } = await supabase.from('proveedores').insert({ tenant_id: tenant!.id, nombre, contacto })
-    if (error) toast.error(error.message); else { toast.success('Proveedor agregado'); qc.invalidateQueries({ queryKey: ['proveedores'] }) }
+    if (error) toast.error(error.message); else { toast.success('Proveedor agregado'); qc.invalidateQueries({ queryKey: ['proveedores'] }); logActividad({ entidad: 'proveedor', entidad_nombre: nombre, accion: 'crear', pagina: '/configuracion' }) }
   }
   const updateProveedor = async (id: string, nombre: string, contacto?: string) => {
+    const old = (proveedores as Item[]).find(p => p.id === id)
     const { error } = await supabase.from('proveedores').update({ nombre, contacto }).eq('id', id)
-    if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['proveedores'] }) }
+    if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['proveedores'] }); logActividad({ entidad: 'proveedor', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
   }
   const deleteProveedor = async (id: string) => {
     if (!confirm('¿Eliminar este proveedor?')) return
+    const old = (proveedores as Item[]).find(p => p.id === id)
     const { error } = await supabase.from('proveedores').delete().eq('id', id)
-    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['proveedores'] }) }
+    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['proveedores'] }); logActividad({ entidad: 'proveedor', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
   // Ubicaciones
@@ -347,16 +352,18 @@ export default function ConfigPage() {
   })
   const addUbicacion = async (nombre: string, descripcion?: string) => {
     const { error } = await supabase.from('ubicaciones').insert({ tenant_id: tenant!.id, nombre, descripcion })
-    if (error) toast.error(error.message); else { toast.success('Ubicación agregada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }) }
+    if (error) toast.error(error.message); else { toast.success('Ubicación agregada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }); logActividad({ entidad: 'ubicacion', entidad_nombre: nombre, accion: 'crear', pagina: '/configuracion' }) }
   }
   const updateUbicacion = async (id: string, nombre: string, descripcion?: string) => {
+    const old = (ubicaciones as Item[]).find(u => u.id === id)
     const { error } = await supabase.from('ubicaciones').update({ nombre, descripcion }).eq('id', id)
-    if (error) toast.error(error.message); else { toast.success('Actualizada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }) }
+    if (error) toast.error(error.message); else { toast.success('Actualizada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }); logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
   }
   const deleteUbicacion = async (id: string) => {
     if (!confirm('¿Eliminar esta ubicación?')) return
+    const old = (ubicaciones as Item[]).find(u => u.id === id)
     const { error } = await supabase.from('ubicaciones').delete().eq('id', id)
-    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }) }
+    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }); logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
   // Estados de inventario
@@ -367,16 +374,18 @@ export default function ConfigPage() {
   })
   const addEstado = async (nombre: string, color?: string) => {
     const { error } = await supabase.from('estados_inventario').insert({ tenant_id: tenant!.id, nombre, color: color ?? '#22c55e' })
-    if (error) toast.error(error.message); else { toast.success('Estado agregado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }) }
+    if (error) toast.error(error.message); else { toast.success('Estado agregado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }); logActividad({ entidad: 'estado', entidad_nombre: nombre, accion: 'crear', pagina: '/configuracion' }) }
   }
   const updateEstado = async (id: string, nombre: string, color?: string) => {
+    const old = (estados as Item[]).find(e => e.id === id)
     const { error } = await supabase.from('estados_inventario').update({ nombre, color }).eq('id', id)
-    if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }) }
+    if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }); logActividad({ entidad: 'estado', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
   }
   const deleteEstado = async (id: string) => {
     if (!confirm('¿Eliminar este estado?')) return
+    const old = (estados as Item[]).find(e => e.id === id)
     const { error } = await supabase.from('estados_inventario').delete().eq('id', id)
-    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }) }
+    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }); logActividad({ entidad: 'estado', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
   // Motivos
@@ -387,16 +396,18 @@ export default function ConfigPage() {
   })
   const addMotivo = async (nombre: string, tipo?: string) => {
     const { error } = await supabase.from('motivos_movimiento').insert({ tenant_id: tenant!.id, nombre, tipo: tipo || 'ambos' })
-    if (error) toast.error(error.message); else { toast.success('Motivo agregado'); qc.invalidateQueries({ queryKey: ['motivos'] }) }
+    if (error) toast.error(error.message); else { toast.success('Motivo agregado'); qc.invalidateQueries({ queryKey: ['motivos'] }); logActividad({ entidad: 'motivo', entidad_nombre: nombre, accion: 'crear', pagina: '/configuracion' }) }
   }
   const updateMotivo = async (id: string, nombre: string, tipo?: string) => {
+    const old = (motivos as any[]).find(m => m.id === id)
     const { error } = await supabase.from('motivos_movimiento').update({ nombre, tipo: tipo || 'ambos' }).eq('id', id)
-    if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['motivos'] }) }
+    if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['motivos'] }); logActividad({ entidad: 'motivo', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
   }
   const deleteMotivo = async (id: string) => {
     if (!confirm('¿Eliminar este motivo?')) return
+    const old = (motivos as any[]).find(m => m.id === id)
     const { error } = await supabase.from('motivos_movimiento').update({ activo: false }).eq('id', id)
-    if (error) toast.error(error.message); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['motivos'] }) }
+    if (error) toast.error(error.message); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['motivos'] }); logActividad({ entidad: 'motivo', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
   // Combos
@@ -443,6 +454,7 @@ export default function ConfigPage() {
     if (error) toast.error(error.message)
     else {
       toast.success('Combo creado')
+      logActividad({ entidad: 'combo', entidad_nombre: comboForm.nombre.trim(), accion: 'crear', pagina: '/configuracion' })
       setComboForm({ nombre: '', producto_id: '', cantidad: '2', descuento_pct: '0' })
       qc.invalidateQueries({ queryKey: ['combos'] })
     }
@@ -451,9 +463,10 @@ export default function ConfigPage() {
 
   const deleteCombo = async (id: string) => {
     if (!confirm('¿Eliminar este combo?')) return
+    const old = (combos as any[]).find(c => c.id === id)
     const { error } = await supabase.from('combos').update({ activo: false }).eq('id', id)
     if (error) toast.error(error.message)
-    else { toast.success('Combo eliminado'); qc.invalidateQueries({ queryKey: ['combos'] }) }
+    else { toast.success('Combo eliminado'); qc.invalidateQueries({ queryKey: ['combos'] }); logActividad({ entidad: 'combo', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
   const tabs = [

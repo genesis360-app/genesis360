@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { logActividad } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
@@ -172,10 +173,12 @@ export default function ProductoFormPage() {
         const { error } = await supabase.from('productos').update(payload).eq('id', id)
         if (error) throw error
         toast.success('Producto actualizado')
+        logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: form.nombre, accion: 'editar', pagina: '/inventario' })
       } else {
         const { error } = await supabase.from('productos').insert(payload)
         if (error) { if (error.code === '23505') throw new Error('Ya existe un producto con ese SKU'); throw error }
         toast.success('Producto creado')
+        logActividad({ entidad: 'producto', entidad_nombre: form.nombre, accion: 'crear', pagina: '/inventario' })
       }
       qc.invalidateQueries({ queryKey: ['productos'] })
       navigate('/inventario')
@@ -207,6 +210,7 @@ export default function ProductoFormPage() {
     if (error) toast.error(error.message)
     else {
       toast.success('Producto eliminado')
+      logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: form.nombre, accion: 'eliminar', pagina: '/inventario' })
       qc.invalidateQueries({ queryKey: ['productos'] })
       navigate('/inventario')
     }
@@ -238,6 +242,7 @@ export default function ProductoFormPage() {
       const { data: newProd, error } = await supabase.from('productos').insert(payload).select().single()
       if (error) throw error
       toast.success('Producto duplicado')
+      logActividad({ entidad: 'producto', entidad_id: newProd?.id, entidad_nombre: payload.nombre, accion: 'crear', campo: 'duplicado_de', valor_anterior: form.nombre, pagina: '/inventario' })
       qc.invalidateQueries({ queryKey: ['productos'] })
       navigate(newProd?.id ? `/inventario/${newProd.id}/editar` : '/inventario')
     } catch (err: any) {

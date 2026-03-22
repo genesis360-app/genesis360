@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { logActividad } from '@/lib/actividadLog'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import toast from 'react-hot-toast'
@@ -496,6 +497,7 @@ export default function VentasPage() {
         }
       }
 
+      logActividad({ entidad: 'venta', entidad_id: venta.id, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'crear', valor_nuevo: estado, pagina: '/ventas' })
       const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })) })
@@ -626,6 +628,7 @@ export default function VentasPage() {
       } else {
         await supabase.from('ventas').update({ estado: nuevoEstado }).eq('id', ventaId)
       }
+      logActividad({ entidad: 'venta', entidad_id: ventaId, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'cambio_estado', valor_anterior: venta.estado, valor_nuevo: nuevoEstado, pagina: '/ventas' })
     },
     onSuccess: () => {
       toast.success('Estado actualizado')

@@ -1,13 +1,14 @@
 import { BRAND } from '@/config/brand'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
-  BarChart2, Users, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, Layers, DollarSign, Zap, TrendingDown
+  BarChart2, Users, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, Layers, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
 import { CotizacionWidget } from '@/components/CotizacionWidget'
+import { Walkthrough, useWalkthrough } from '@/components/Walkthrough'
 import { differenceInDays } from 'date-fns'
 
 const navItems = [
@@ -22,6 +23,7 @@ const navItems = [
   { to: '/reportes',        icon: BarChart2,       label: 'Reportes' },
   { to: '/rentabilidad',    icon: BarChart2,       label: 'Rentabilidad' },
   { to: '/recomendaciones', icon: Zap,             label: 'Recomendaciones' },
+  { to: '/historial',       icon: ClipboardList,   label: 'Historial',      supervisorOnly: true },
   { to: '/usuarios',        icon: Users,           label: 'Usuarios',       ownerOnly: true },
   { to: '/configuracion',   icon: Settings,        label: 'Configuración',  ownerOnly: true },
   { to: '/grupos-estados',  icon: Layers,          label: 'Grupos estados', ownerOnly: true },
@@ -29,9 +31,16 @@ const navItems = [
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [walkthroughOpen, setWalkthroughOpen] = useState(false)
   const { user, tenant, signOut } = useAuthStore()
   const { count: alertCount } = useAlertas()
+  const { visto } = useWalkthrough()
   const navigate = useNavigate()
+
+  // Abrir automáticamente la primera vez
+  useEffect(() => {
+    if (!visto) setWalkthroughOpen(true)
+  }, [])
 
   const trialDaysLeft = tenant
     ? differenceInDays(new Date(tenant.trial_ends_at), new Date())
@@ -61,8 +70,9 @@ export function AppLayout() {
 
       {/* Navegación */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label, badge, ownerOnly }) => {
+        {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly }: any) => {
           if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN') return null
+          if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
           return (
             <NavLink
               key={to}
@@ -97,6 +107,13 @@ export function AppLayout() {
           <p className="text-blue-300 text-xs capitalize">{user?.rol?.toLowerCase()}</p>
         </div>
         <button
+          onClick={() => setWalkthroughOpen(true)}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-blue-100 hover:bg-accent/30 hover:text-white transition-all w-full"
+        >
+          <HelpCircle size={18} />
+          Tour guiado
+        </button>
+        <button
           onClick={handleSignOut}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-blue-100 hover:bg-red-500/20 hover:text-red-300 transition-all w-full"
         >
@@ -109,6 +126,8 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen bg-brand-bg overflow-hidden">
+      <Walkthrough open={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
+
       {/* Sidebar desktop */}
       <aside className="hidden lg:flex w-64 flex-col bg-primary flex-shrink-0">
         <SidebarContent />

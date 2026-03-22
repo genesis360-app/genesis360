@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X, ChevronDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 
 const CATEGORIAS_GASTO = [
@@ -128,10 +129,12 @@ export default function GastosPage() {
         const { error } = await supabase.from('gastos').update(payload).eq('id', editandoId)
         if (error) throw error
         toast.success('Gasto actualizado')
+        logActividad({ entidad: 'gasto', entidad_id: editandoId, entidad_nombre: form.descripcion.trim(), accion: 'editar', pagina: '/gastos' })
       } else {
         const { error } = await supabase.from('gastos').insert(payload)
         if (error) throw error
         toast.success('Gasto registrado')
+        logActividad({ entidad: 'gasto', entidad_nombre: form.descripcion.trim(), accion: 'crear', valor_nuevo: `$${monto}`, pagina: '/gastos' })
       }
 
       qc.invalidateQueries({ queryKey: ['gastos'] })
@@ -146,10 +149,12 @@ export default function GastosPage() {
   // ── Eliminar ─────────────────────────────────────────────────────────────
   const eliminar = async (id: string) => {
     if (!confirm('¿Eliminár este gasto?')) return
+    const g = (gastos as any[]).find(x => x.id === id)
     const { error } = await supabase.from('gastos').delete().eq('id', id)
     if (error) { toast.error('Error al eliminar'); return }
     qc.invalidateQueries({ queryKey: ['gastos'] })
     toast.success('Gasto eliminado')
+    logActividad({ entidad: 'gasto', entidad_id: id, entidad_nombre: g?.descripcion, accion: 'eliminar', pagina: '/gastos' })
   }
 
   return (

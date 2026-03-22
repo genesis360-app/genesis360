@@ -748,3 +748,33 @@ DO $$ BEGIN
   CREATE POLICY delete_productos ON storage.objects
     FOR DELETE USING ((bucket_id = 'productos') AND (auth.uid() IS NOT NULL));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ============================================================
+-- M17. ACTIVIDAD LOG (audit trail)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS actividad_log (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  usuario_id      UUID REFERENCES users(id),
+  usuario_nombre  TEXT,
+  entidad         TEXT NOT NULL,
+  entidad_id      TEXT,
+  entidad_nombre  TEXT,
+  accion          TEXT NOT NULL,
+  campo           TEXT,
+  valor_anterior  TEXT,
+  valor_nuevo     TEXT,
+  pagina          TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS actividad_log_tenant_idx  ON actividad_log (tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS actividad_log_entidad_idx ON actividad_log (tenant_id, entidad);
+CREATE INDEX IF NOT EXISTS actividad_log_usuario_idx ON actividad_log (tenant_id, usuario_id);
+ALTER TABLE actividad_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "actividad_log_insert" ON actividad_log
+  FOR INSERT WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+CREATE POLICY "actividad_log_select" ON actividad_log
+  FOR SELECT USING (
+    is_admin()
+    OR tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid() AND rol IN ('OWNER', 'SUPERVISOR'))
+  );

@@ -145,7 +145,7 @@ export default function GruposEstadosPage() {
         </div>
         {!showForm && (
           <button onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 bg-primary hover:bg-accent text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
             <Plus size={16} /> Nuevo grupo
           </button>
         )}
@@ -225,7 +225,7 @@ export default function GruposEstadosPage() {
               Cancelar
             </button>
             <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
-              className="px-5 py-2.5 bg-primary hover:bg-accent text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
+              className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
               {saveMutation.isPending ? 'Guardando...' : editId ? 'Guardar cambios' : 'Crear grupo'}
             </button>
           </div>
@@ -287,7 +287,7 @@ export default function GruposEstadosPage() {
                       </button>
                     )}
                     <button onClick={() => startEdit(grupo)}
-                      className="p-1.5 text-gray-400 hover:text-accent hover:bg-blue-50 rounded-lg transition-colors">
+                      className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
                       <Pencil size={15} />
                     </button>
                     <button onClick={() => { if (confirm('¿Eliminar este grupo?')) deleteMutation.mutate(grupo.id) }}

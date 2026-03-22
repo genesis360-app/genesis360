@@ -119,7 +119,7 @@ export default function InventarioPage() {
         </div>
         <div className="flex gap-2">
           <Link to="/inventario/importar"
-            className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-50 transition-all">
+            className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all">
             Importar
           </Link>
           <button
@@ -130,7 +130,7 @@ export default function InventarioPage() {
                 navigate('/inventario/nuevo')
               }
             }}
-            className="flex items-center gap-2 bg-primary hover:bg-accent text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
             <Plus size={16} /> Nuevo producto
           </button>
         </div>
@@ -374,7 +374,7 @@ export default function InventarioPage() {
                               <div className="col-span-1 flex justify-center">
                                 <button
                                   onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: p }) }}
-                                  className="p-1.5 text-gray-400 hover:text-accent hover:bg-blue-50 rounded-lg transition-colors"
+                                  className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"
                                   title="Acciones sobre este LPN">
                                   <Settings2 size={15} />
                                 </button>

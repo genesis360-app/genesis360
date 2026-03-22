@@ -317,7 +317,7 @@ export default function MovimientosPage() {
             <ArrowDown size={16} /> Ingreso
           </button>
           <button onClick={() => setModal('rebaje')}
-            className="flex items-center gap-2 bg-primary hover:bg-accent text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
             <ArrowUp size={16} /> Rebaje
           </button>
         </div>
@@ -588,7 +588,7 @@ export default function MovimientosPage() {
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
               {selectedProduct ? (
-                <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between bg-blue-50 border border-accent/30 rounded-xl px-4 py-3">
                   <div>
                     <p className="font-medium text-gray-800">{selectedProduct.nombre}</p>
                     <p className="text-xs text-gray-500">SKU: {selectedProduct.sku} | Stock: {(selectedProduct as any).stock_actual}</p>
@@ -805,7 +805,7 @@ export default function MovimientosPage() {
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
               {selectedProduct ? (
-                <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between bg-blue-50 border border-accent/30 rounded-xl px-4 py-3">
                   <div>
                     <p className="font-medium text-gray-800">{selectedProduct.nombre}</p>
                     <p className="text-xs text-gray-500">Stock total: {(selectedProduct as any).stock_actual}</p>
@@ -1022,7 +1022,7 @@ export default function MovimientosPage() {
               <button onClick={closeModal} className="flex-1 border-2 border-gray-200 text-gray-600 font-semibold py-2.5 rounded-xl hover:border-gray-300">Cancelar</button>
               <button onClick={() => rebajeMutation.mutate()}
                 disabled={!selectedProduct || !rebajeLinea || rebajeMutation.isPending}
-                className="flex-1 bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
                 {rebajeMutation.isPending ? 'Guardando...' : 'Confirmar rebaje'}
               </button>
             </div>

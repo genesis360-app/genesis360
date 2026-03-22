@@ -128,7 +128,7 @@ export default function UsuariosPage() {
                 setShowInvitar(true)
               }
             }}
-            className="flex items-center gap-2 bg-primary hover:bg-accent text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
             <UserPlus size={16} /> Agregar usuario
           </button>
         )}
@@ -202,7 +202,7 @@ export default function UsuariosPage() {
               Cancelar
             </button>
             <button type="submit" disabled={saving}
-              className="px-5 py-2.5 bg-primary hover:bg-accent text-white font-semibold rounded-xl text-sm disabled:opacity-50">
+              className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl text-sm disabled:opacity-50">
               {saving ? 'Creando...' : 'Crear usuario'}
             </button>
           </div>

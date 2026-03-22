@@ -14,11 +14,6 @@ const MP_PLAN_IDS: Record<string, string> = {
   pro:    import.meta.env.VITE_MP_PLAN_PRO ?? '',
 }
 
-const MP_PLAN_LIMITS: Record<string, { max_users: number; max_productos: number }> = {
-  [import.meta.env.VITE_MP_PLAN_BASICO ?? '']: { max_users: 2,  max_productos: 500  },
-  [import.meta.env.VITE_MP_PLAN_PRO    ?? '']: { max_users: 10, max_productos: 5000 },
-}
-
 export default function SuscripcionPage() {
   const { tenant, loadUserData } = useAuthStore()
   const [searchParams] = useSearchParams()
@@ -28,35 +23,48 @@ export default function SuscripcionPage() {
   const status = searchParams.get('status')
   const preapprovalId = searchParams.get('preapproval_id')
 
-  const handleSuscribir = (planId: string, mpPlanId: string) => {
+  const handleSuscribir = async (planId: string, mpPlanId: string) => {
     if (!mpPlanId) { toast.error('Plan no configurado'); return }
-    // El init_point de MP es una URL pública — no requiere llamada al backend
-    const url = `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${mpPlanId}`
-    sessionStorage.setItem('mp_plan_id', mpPlanId)
-    window.location.href = url
+    setLoading(planId)
+    try {
+      const { data, error } = await supabase.functions.invoke('crear-suscripcion', {
+        body: { plan_id: mpPlanId },
+      })
+      if (error || !data?.init_point) throw new Error(error?.message ?? 'No se obtuvo link de pago')
+      window.location.href = data.init_point
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al iniciar el pago')
+      setLoading(null)
+    }
   }
 
   const handleVerificarPago = async () => {
-    if (!preapprovalId || !tenant) return
+    if (!tenant) return
     setLoading('verificando')
     try {
-      const savedPlanId = sessionStorage.getItem('mp_plan_id') ?? ''
-      const planLimits = MP_PLAN_LIMITS[savedPlanId] ?? {}
-      sessionStorage.removeItem('mp_plan_id')
-
-      const { error } = await supabase.from('tenants').update({
-        subscription_status: 'active',
-        mp_subscription_id: preapprovalId,
-        ...(planLimits.max_users ? {
-          max_users: planLimits.max_users,
-          max_productos: planLimits.max_productos,
-        } : {}),
-      }).eq('id', tenant.id)
-
-      if (error) throw error
+      // El webhook de MP debería haber activado el tenant automáticamente via external_reference.
+      // Recargamos los datos del usuario para reflejar el estado actualizado.
       await loadUserData(tenant.id)
-      toast.success('¡Suscripción activada!')
-      window.location.href = '/dashboard'
+      // Si el webhook ya actuó, el status será 'active'
+      const { data } = await supabase.from('tenants').select('subscription_status').eq('id', tenant.id).single()
+      if (data?.subscription_status === 'active') {
+        toast.success('¡Suscripción activada!')
+        window.location.href = '/dashboard'
+        return
+      }
+      // Fallback: activar manualmente con el preapproval_id del redirect
+      if (preapprovalId) {
+        await supabase.from('tenants').update({
+          subscription_status: 'active',
+          mp_subscription_id: preapprovalId,
+        }).eq('id', tenant.id)
+        await loadUserData(tenant.id)
+        toast.success('¡Suscripción activada!')
+        window.location.href = '/dashboard'
+      } else {
+        toast('Tu pago está siendo procesado. En breve recibirás confirmación.', { icon: '⏳' })
+        window.location.href = '/dashboard'
+      }
     } catch {
       toast.error('Error al verificar el pago. Contactá soporte.')
     } finally {
@@ -77,7 +85,7 @@ export default function SuscripcionPage() {
               <h1 className="text-2xl font-bold text-gray-800 mb-2">¡Pago aprobado!</h1>
               <p className="text-gray-500 mb-6">Tu suscripción está siendo procesada. En unos segundos tu cuenta quedará activa.</p>
               <button onClick={handleVerificarPago} disabled={loading === 'verificando'}
-                className="w-full bg-primary hover:bg-accent text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
                 {loading === 'verificando'
                   ? <><RefreshCw size={16} className="animate-spin" /> Verificando...</>
                   : <><CheckCircle size={16} /> Ir al dashboard</>}
@@ -193,7 +201,7 @@ export default function SuscripcionPage() {
                 ) : plan.precio === null ? (
                   <a href={`mailto:${BRAND.email}?subject=Plan Enterprise`}
                     className={`block text-center font-semibold py-3 rounded-xl transition-all text-sm
-                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-blue-50'}`}>
+                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-accent/10'}`}>
                     Contactar
                   </a>
                 ) : (
@@ -201,7 +209,7 @@ export default function SuscripcionPage() {
                     onClick={() => handleSuscribir(plan.id, mpPlanId)}
                     disabled={!!loading}
                     className={`w-full font-semibold py-3 rounded-xl transition-all text-sm disabled:opacity-60 flex items-center justify-center gap-2
-                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-blue-50'}`}>
+                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-accent/10'}`}>
                     {loading === plan.id
                       ? <><RefreshCw size={15} className="animate-spin" /> Redirigiendo...</>
                       : <><ArrowRight size={15} /> Suscribirme</>}

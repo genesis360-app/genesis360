@@ -199,7 +199,7 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
-              <button type="submit" className="w-full bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all">
+              <button type="submit" className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
                 Continuar
               </button>
             </form>
@@ -265,7 +265,7 @@ export default function OnboardingPage() {
                   Atrás
                 </button>
                 <button type="submit" disabled={loading}
-                  className="flex-1 bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-60">
+                  className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-60">
                   {loading ? 'Registrando...' : 'Crear negocio'}
                 </button>
               </div>

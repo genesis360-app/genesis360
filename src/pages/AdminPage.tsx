@@ -254,7 +254,7 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <button onClick={() => openEdit(t)}
-                          className="p-1.5 text-gray-400 hover:text-accent hover:bg-blue-50 rounded-lg transition-colors">
+                          className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
                           <Edit2 size={15} />
                         </button>
                       </td>
@@ -342,7 +342,7 @@ export default function AdminPage() {
                 Cancelar
               </button>
               <button onClick={() => updateTenant.mutate()} disabled={updateTenant.isPending}
-                className="flex-1 bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
                 {updateTenant.isPending ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>

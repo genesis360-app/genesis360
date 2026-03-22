@@ -129,7 +129,7 @@ export default function LandingPage() {
               Ingresar
             </Link>
             <Link to="/onboarding"
-              className="text-sm font-semibold bg-primary hover:bg-accent text-white px-5 py-2.5 rounded-xl transition-all">
+              className="text-sm font-semibold bg-accent hover:bg-accent/90 text-white px-5 py-2.5 rounded-xl transition-all">
               Empezar gratis
             </Link>
           </div>
@@ -170,7 +170,7 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/onboarding"
-              className="flex items-center justify-center gap-2 bg-white text-primary font-bold px-8 py-4 rounded-xl hover:bg-blue-50 transition-all text-lg shadow-lg">
+              className="flex items-center justify-center gap-2 bg-white text-primary font-bold px-8 py-4 rounded-xl hover:bg-accent/10 transition-all text-lg shadow-lg">
               Empezar gratis <ArrowRight size={20} />
             </Link>
             <a href="#features"
@@ -251,7 +251,7 @@ export default function LandingPage() {
                 ))}
               </ul>
               <Link to="/onboarding"
-                className="inline-flex items-center gap-2 mt-8 bg-primary hover:bg-accent text-white font-semibold px-6 py-3 rounded-xl transition-all">
+                className="inline-flex items-center gap-2 mt-8 bg-accent hover:bg-accent/90 text-white font-semibold px-6 py-3 rounded-xl transition-all">
                 Probalo gratis <ArrowRight size={16} />
               </Link>
             </div>
@@ -363,7 +363,7 @@ export default function LandingPage() {
                 <Link to={plan.precio === null ? `mailto:${BRAND.email}` : '/onboarding'}
                   className={`block text-center font-semibold py-3 rounded-xl transition-all text-sm
                     ${plan.destacado
-                      ? 'bg-white text-primary hover:bg-blue-50'
+                      ? 'bg-white text-primary hover:bg-accent/10'
                       : 'bg-primary text-white hover:bg-accent'}`}>
                   {plan.precio === null ? 'Contactar' : plan.precio === 0 ? 'Empezar gratis' : 'Probar 7 días gratis'}
                 </Link>
@@ -393,7 +393,7 @@ export default function LandingPage() {
             Empezá hoy. 7 días gratis, sin tarjeta de crédito.
           </p>
           <Link to="/onboarding"
-            className="inline-flex items-center gap-2 bg-white text-primary font-bold px-10 py-4 rounded-xl hover:bg-blue-50 transition-all text-lg shadow-lg">
+            className="inline-flex items-center gap-2 bg-white text-primary font-bold px-10 py-4 rounded-xl hover:bg-accent/10 transition-all text-lg shadow-lg">
             Crear cuenta gratis <ArrowRight size={20} />
           </Link>
         </div>

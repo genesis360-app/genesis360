@@ -106,6 +106,7 @@ curl -s -X POST "https://api.supabase.com/v1/projects/jjffnbrdjchquexdfgwq/datab
 | 004 | `004_caja_cierre_real.sql` | Caja: conteo real al cierre, diferencia, cerrado_por | ✅ | ✅ |
 | 005 | `005_combos.sql` | Tabla combos (reglas de precio por volumen) | ✅ | ✅ |
 | 006 | `006_ventas_numero_trigger.sql` | Trigger para auto-generar número de venta por tenant | ✅ | ✅ |
+| 009 | `009_actividad_log.sql` | Tabla audit log con RLS (INSERT todos, SELECT owner/supervisor/admin) | ✅ | ❌ pendiente |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -189,6 +190,8 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 | v0.19.0 | Tab 'Inventario' en importar + reorden menú + Configuración ownerOnly + clientes mejorado | 2026-03 |
 | v0.20.0 | Fix bucket storage 'productos' en DEV + fix fecha import inventario + botones unificados con BTN en brand.ts | 2026-03 |
 | v0.21.0 | BTN unificados en toda la app + MP producción: crear-suscripcion con external_reference | 2026-03 |
+| v0.22.0 | Historial de actividad (audit log): tabla actividad_log, logActividad() en 6 módulos, HistorialPage con timeline/filtros/export | 2026-03 |
+| v0.23.0 | Walkthrough interactivo 11 slides (auto-launch + re-trigger desde sidebar) + fix etiquetas medios de pago en métricas | 2026-03 |
 
 ### Crear release
 ```bash

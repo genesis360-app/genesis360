@@ -46,16 +46,19 @@ src/
 │   ├── useAlertas.ts
 │   ├── useGruposEstados.ts
 │   └── usePlanLimits.ts
+├── lib/
+│   └── actividadLog.ts      # Helper logActividad() fire-and-forget para audit log
 ├── components/
 │   ├── AuthGuard.tsx        # AuthGuard + SubscriptionGuard (ambos en el mismo archivo)
 │   ├── PlanLimitModal.tsx
 │   ├── LpnAccionesModal.tsx # Modal de acciones sobre LPNs
+│   ├── Walkthrough.tsx      # Tour guiado interactivo (11 slides, auto-launch 1ra vez)
 │   └── layout/AppLayout.tsx
 └── pages/
     ├── LandingPage.tsx      # Página pública de marketing
     ├── LoginPage.tsx
     ├── OnboardingPage.tsx   # Registro de nuevo negocio
-    ├── DashboardPage.tsx
+    ├── DashboardPage.tsx    # Tabs: "General" / "Métricas"
     ├── InventarioPage.tsx   # Con LpnAccionesModal integrado
     ├── MovimientosPage.tsx  # Ingreso y rebaje con motivos predefinidos
     ├── VentasPage.tsx       # Carrito + checkout + historial
@@ -64,10 +67,11 @@ src/
     ├── ReportesPage.tsx     # Exportación Excel y PDF
     ├── CajaPage.tsx         # Apertura/cierre de caja
     ├── UsuariosPage.tsx
-    ├── ConfigPage.tsx       # Categorías, proveedores, ubicaciones, estados, motivos
+    ├── ConfigPage.tsx       # Categorías, proveedores, ubicaciones, estados, motivos, combos
     ├── GruposEstadosPage.tsx
     ├── ProductoFormPage.tsx
     ├── ImportarProductosPage.tsx
+    ├── HistorialPage.tsx    # Audit log — timeline filtrable, export Excel (SUPERVISOR+ only)
     ├── SuscripcionPage.tsx  # Checkout Mercado Pago
     └── AdminPage.tsx        # Panel superadmin (solo rol ADMIN)
 ```
@@ -78,6 +82,9 @@ src/
 - RLS policies: siempre usar subquery, nunca funciones que puedan causar recursión
 - Triggers de Supabase recalculan `stock_actual` automáticamente — nunca actualizar manualmente
 - Atributos de tracking (serie, lote, vencimiento) son obligatorios si el producto los tiene activados
+- **`logActividad()`**: llamar sin await (fire-and-forget) desde cualquier mutación. Está en `src/lib/actividadLog.ts`. Nunca lanzar errores desde ahí.
+- **`medio_pago`** en `ventas` se guarda como JSON string (`[{"tipo":"Efectivo","monto":1500}]`). Para mostrarlo usar `formatMedioPago()` (en VentasPage). Para agregarlo en métricas, parsearlo con `JSON.parse()`.
+- **Walkthrough**: flag de "visto" en localStorage, key construida como `${BRAND.name.toLowerCase()}_walkthrough_v1`. No reiniciar al cambiar de ruta.
 
 ## Módulos pendientes de desarrollar (roadmap)
 ### Grupo 2 ✅ completo
@@ -161,36 +168,67 @@ src/
 - [x] Bug: import inventario con `fecha_vencimiento` en formato DD-MM-YYYY daba 0 líneas cargadas
 - [x] Botones de acción primaria unificados en `bg-accent` — export `BTN` en `brand.ts` como fuente única
 
-### Próximo backlog
+**Historial de actividad / Audit log** ✅ completo (v0.22.0)
+- [x] Tabla `actividad_log` con RLS: INSERT todos los usuarios del tenant, SELECT solo OWNER/SUPERVISOR/ADMIN
+- [x] Helper `logActividad()` fire-and-forget en `src/lib/actividadLog.ts`
+- [x] Logging integrado en: LpnAccionesModal, VentasPage, ConfigPage, ProductoFormPage, UsuariosPage, GastosPage
+- [x] Página `/historial`: timeline agrupado por día, filtros, descripciones en lenguaje humano, export Excel
+- [x] Menú lateral: item "Historial" con `supervisorOnly` (SUPERVISOR, OWNER, ADMIN)
+- [x] Migración `009_actividad_log.sql` aplicada en DEV (pendiente PROD al deployar)
 
-**Historial de actividad / Audit log** — página `/historial`
-- Tabla `actividad_log` en Supabase: `id, tenant_id, usuario_id, entidad (producto/inventario/venta/config/etc), entidad_id, accion (crear/editar/eliminar), campo_modificado, valor_anterior, valor_nuevo, created_at`
-- Triggers en Supabase (o inserts desde el frontend) para capturar cambios en:
-  - `inventario_lineas`: cambio de ubicación, estado, lote, vencimiento, LPN, series
-  - `productos`: cambio de precio, categoría, proveedor, activo/inactivo
-  - `ventas`: cambio de estado (pendiente → reservada → despachada → facturada)
-  - `categorias`, `proveedores`, `ubicaciones`, `estados_inventario`, `motivos`: crear/editar/eliminar
-  - `users`: cambio de rol
-  - `gastos`: crear/editar/eliminar
-- Página `/historial` con:
-  - Filtros: fecha, usuario, entidad, tipo de acción
-  - Timeline visual: quién hizo qué, cuándo, en qué página, valor anterior → valor nuevo
-  - Exportable a Excel
-- Visibilidad: SUPERVISOR, OWNER y ADMIN pueden ver el historial completo. CAJERO no tiene acceso.
+**Walkthrough interactivo** ✅ completo (v0.23.0)
+- [x] Componente `src/components/Walkthrough.tsx` — 11 slides con barra de progreso, dots, tip por slide
+- [x] Auto-lanza en el primer login (localStorage flag por marca)
+- [x] Re-triggerable desde "Tour guiado" en el sidebar
+- [x] Cubre: Productos, Movimientos, Ventas, Caja, Gastos, Métricas, Historial, Configuración, Usuarios
+
+**Fix métricas — medios de pago** ✅ (v0.23.0)
+- [x] `medio_pago` se parsea como JSON correctamente; labels muestran "Efectivo", "Tarjeta", etc.
+- [x] Soporte para ventas con múltiples medios de pago (distribución proporcional por monto)
 
 **Integración Mercado Pago producción** ✅ completo (v0.21.0)
 - [x] `crear-suscripcion` llama a `POST /preapproval` de MP con `external_reference=tenant_id`
 - [x] `SuscripcionPage` usa `supabase.functions.invoke` en vez de URL directa
 - [x] Webhook `mp-webhook` activa tenant automáticamente via `external_reference`
 - [x] `handleVerificarPago` verifica webhook primero, hace fallback manual si no llegó aún
-- [ ] **Pendiente**: configurar URL del webhook en el dashboard de MP apuntando a `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook`
+- [ ] **Pendiente manual**: configurar URL del webhook en el dashboard de MP apuntando a `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook`
+
+### Próximo backlog — relevamiento 2026-03-22
+
+**Fixes/mejoras rápidas (alta prioridad):**
+- [ ] Tipo de comercio "Otro" en OnboardingPage → mostrar campo de texto libre para capturar tipo personalizado
+- [ ] Alerta visual (warning amarillo) en MovimientosPage al cambiar la ubicación preseleccionada del producto
+- [ ] Ventas: mostrar precio tachado por producto en el CARRITO activo (ya está en detalle/ticket, falta en el armar venta)
+- [ ] Ventas: señalizar visualmente cuando hay DOS niveles de descuento activos (producto + total) para que no confunda
+- [ ] Indicador "live" en menú/header: punto verde/rojo mostrando si la caja está abierta o cerrada
+
+**Métricas — refactor (media prioridad):**
+- [ ] Rango de fechas personalizado (desde/hasta) además de presets 7d/30d/90d/mes
+- [ ] Gasto total del período cruzado con ventas → ganancia neta en un solo KPI
+- [ ] Ticket promedio por orden
+- [ ] Filtro por producto(s) específico(s)
+- [ ] Métricas de inventario: ingresos de órdenes, egresos venta vs otros motivos, movimientos de ubicación
+
+**Caja — integración con ventas (alta complejidad):**
+- [ ] Ventas automáticamente generan movimiento de caja (sin entrada manual)
+- [ ] Bloquear creación de ventas si la caja está cerrada
+- [ ] Mover módulo de movimientos manuales de caja hacia Gastos
+
+**Usuarios — invitación real:**
+- [ ] Flujo de invitación por email: el dueño ingresa el email, el usuario recibe link y se auto-registra sin password temporal
+
+**Sidebar:**
+- [ ] Colapsable/expandible en desktop (no solo mobile)
+
+**Add-ons / cobro por uso (importante para revenue):**
+- [ ] Límite de movimientos por plan (`max_movimientos` en tabla `planes`/`tenants`)
+- [ ] Add-ons: comprar capacidad extra sin cambiar de plan (ej: +1.000 productos por $5/mes)
 
 **Ideas futuras / roadmap largo plazo**
 
 ### Ideas futuras
 - Generador de cupones + aplicar cupón en ventas
 - Ubicación del local (para expansión multi-sucursal y logística)
-- Guía interactiva / walkthrough para onboarding de nuevos clientes
 - Dashboard inteligente con insights automáticos ("estás perdiendo $X por stock muerto")
 - Motor de recomendaciones accionables
 - Clasificación automática de productos (estrella/problema/oportunidad)
@@ -199,6 +237,8 @@ src/
 - Benchmark vs otros negocios del rubro
 - Automatizaciones (reposición automática, alertas de precio)
 - Gamificación ("score de salud del negocio")
+- Tema claro/oscuro
+- Configuración de idioma (multilengua)
 
 ## UX Principles (no negociables)
 1. **Cero complejidad** — lenguaje humano, no técnico

@@ -163,8 +163,12 @@ src/
 
 ### Próximo backlog
 
-**Integración Mercado Pago producción**
-- [ ] Completar flujo de suscripción en ambiente productivo
+**Integración Mercado Pago producción** ✅ completo (v0.21.0)
+- [x] `crear-suscripcion` llama a `POST /preapproval` de MP con `external_reference=tenant_id`
+- [x] `SuscripcionPage` usa `supabase.functions.invoke` en vez de URL directa
+- [x] Webhook `mp-webhook` activa tenant automáticamente via `external_reference`
+- [x] `handleVerificarPago` verifica webhook primero, hace fallback manual si no llegó aún
+- [ ] **Pendiente**: configurar URL del webhook en el dashboard de MP apuntando a `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook`
 
 **Ideas futuras / roadmap largo plazo**
 

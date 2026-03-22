@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
@@ -467,9 +468,15 @@ export default function ConfigPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-primary">Configuración</h1>
-        <p className="text-gray-500 text-sm mt-0.5">Administrá los datos de tu negocio</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-primary">Configuración</h1>
+          <p className="text-gray-500 text-sm mt-0.5">Administrá los datos de tu negocio</p>
+        </div>
+        <Link to="/configuracion/importar"
+          className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-50 transition-all">
+          <Upload size={15} /> Importar
+        </Link>
       </div>
 
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl overflow-x-auto">

@@ -176,7 +176,7 @@ src/
   - Filtros: fecha, usuario, entidad, tipo de acción
   - Timeline visual: quién hizo qué, cuándo, en qué página, valor anterior → valor nuevo
   - Exportable a Excel
-- ownerOnly: solo OWNER/ADMIN pueden ver el historial completo; otros usuarios solo ven sus propias acciones
+- Visibilidad: SUPERVISOR, OWNER y ADMIN pueden ver el historial completo. CAJERO no tiene acceso.
 
 **Integración Mercado Pago producción** ✅ completo (v0.21.0)
 - [x] `crear-suscripcion` llama a `POST /preapproval` de MP con `external_reference=tenant_id`

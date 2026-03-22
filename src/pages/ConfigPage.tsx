@@ -81,7 +81,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
             placeholder="Nombre..."
             className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
           <button onClick={handleAdd} disabled={saving || !newNombre.trim()}
-            className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-accent text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50">
+            className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50">
             <Plus size={15} /> Agregar
           </button>
         </div>
@@ -152,7 +152,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
                     )}
                   </div>
                   <button onClick={() => startEdit(item)}
-                    className="p-1.5 text-gray-400 hover:text-accent hover:bg-blue-50 rounded-lg transition-colors">
+                    className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
                     <Pencil size={15} />
                   </button>
                   <button onClick={() => onDelete(item.id)}
@@ -267,7 +267,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
                   <span className="flex-1 text-sm font-medium text-gray-800">{m.nombre}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipoColor(m.tipo)}`}>{tipoLabel(m.tipo)}</span>
                   <button onClick={() => { setEditId(m.id); setEditNombre(m.nombre); setEditTipo(m.tipo) }}
-                    className="p-1.5 text-gray-400 hover:text-accent hover:bg-blue-50 rounded-lg"><Pencil size={15} /></button>
+                    className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg"><Pencil size={15} /></button>
                   <button onClick={() => onDelete(m.id)}
                     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={15} /></button>
                 </>
@@ -474,7 +474,7 @@ export default function ConfigPage() {
           <p className="text-gray-500 text-sm mt-0.5">Administrá los datos de tu negocio</p>
         </div>
         <Link to="/configuracion/importar"
-          className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-50 transition-all">
+          className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all">
           <Upload size={15} /> Importar
         </Link>
       </div>
@@ -516,7 +516,7 @@ export default function ConfigPage() {
           {canEdit && (
             <div className="flex justify-end">
               <button onClick={handleSaveBiz} disabled={savingBiz}
-                className="px-6 py-2.5 bg-primary hover:bg-accent text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
                 {savingBiz ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>
@@ -624,7 +624,7 @@ export default function ConfigPage() {
               </div>
             </div>
             <button onClick={addCombo} disabled={savingCombo}
-              className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
+              className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
               <Plus size={15} /> {savingCombo ? 'Creando...' : 'Crear combo'}
             </button>
           </div>

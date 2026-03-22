@@ -444,13 +444,13 @@ export default function ImportarProductosPage() {
               <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
                 <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent" /> Plantilla</h2>
                 <p className="text-xs text-gray-500 mb-3">Descargá, completá y subí.</p>
-                <button onClick={descargarPlantillaProductos} className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-blue-50 transition-all text-sm">
+                <button onClick={descargarPlantillaProductos} className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
                   <Download size={15} /> Descargar plantilla
                 </button>
               </div>
               <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
                 <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent" /> Subir archivo</h2>
-                <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-blue-50/30 transition-all"
+                <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
                   onClick={() => fileRefProd.current?.click()}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivoProductos(f) }}>
@@ -519,7 +519,7 @@ export default function ImportarProductosPage() {
                   </div>
                   <div className="p-4 border-t border-gray-100 bg-gray-50">
                     <button onClick={confirmarProductos} disabled={importandoProd || (nuevosProd === 0 && existentesProd === 0)}
-                      className="w-full bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                       {importandoProd ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Importando...</>
                         : <><Upload size={16} /> Confirmar ({modo === 'crear' ? nuevosProd : modo === 'actualizar' ? existentesProd : nuevosProd + existentesProd} productos)</>}
                     </button>
@@ -556,13 +556,13 @@ export default function ImportarProductosPage() {
               <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
                 <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent" /> Plantilla</h2>
                 <p className="text-xs text-gray-500 mb-3">Completá una fila por línea de inventario a cargar.</p>
-                <button onClick={descargarPlantillaInventario} className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-blue-50 transition-all text-sm">
+                <button onClick={descargarPlantillaInventario} className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
                   <Download size={15} /> Descargar plantilla
                 </button>
               </div>
               <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
                 <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent" /> Subir archivo</h2>
-                <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-blue-50/30 transition-all"
+                <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
                   onClick={() => fileRefInv.current?.click()}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivoInventario(f) }}>
@@ -620,7 +620,7 @@ export default function ImportarProductosPage() {
                   </div>
                   <div className="p-4 border-t border-gray-100 bg-gray-50">
                     <button onClick={confirmarInventario} disabled={importandoInv || okInv === 0}
-                      className="w-full bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                      className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                       {importandoInv ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Cargando...</>
                         : <><Boxes size={16} /> Cargar {okInv} línea{okInv !== 1 ? 's' : ''} al inventario</>}
                     </button>

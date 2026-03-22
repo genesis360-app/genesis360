@@ -359,7 +359,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
               )}
 
               <button onClick={() => guardarEdicion.mutate()} disabled={guardarEdicion.isPending}
-                className="w-full bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
                 <Save size={15} /> {guardarEdicion.isPending ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>

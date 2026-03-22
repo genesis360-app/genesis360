@@ -189,7 +189,7 @@ export default function ImportarMasterPage() {
               <FileSpreadsheet size={16} className="text-accent" /> Plantilla
             </h2>
             <button onClick={() => descargarPlantilla(tipoMaster)}
-              className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-blue-50 transition-all text-sm">
+              className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
               <Download size={15} /> Descargar plantilla
             </button>
           </div>
@@ -200,7 +200,7 @@ export default function ImportarMasterPage() {
               <Upload size={16} className="text-accent" /> Subir archivo
             </h2>
             <div
-              className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-blue-50/30 transition-all"
+              className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
               onClick={() => fileRef.current?.click()}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f, tipoMaster) }}
@@ -271,7 +271,7 @@ export default function ImportarMasterPage() {
                 <button
                   onClick={confirmarImportacion}
                   disabled={importando || nuevosMaster === 0}
-                  className="w-full bg-primary hover:bg-accent text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                   {importando ? (
                     <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Importando...</>
                   ) : (

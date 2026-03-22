@@ -77,7 +77,7 @@ export default function SuscripcionPage() {
               <h1 className="text-2xl font-bold text-gray-800 mb-2">¡Pago aprobado!</h1>
               <p className="text-gray-500 mb-6">Tu suscripción está siendo procesada. En unos segundos tu cuenta quedará activa.</p>
               <button onClick={handleVerificarPago} disabled={loading === 'verificando'}
-                className="w-full bg-primary hover:bg-accent text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
                 {loading === 'verificando'
                   ? <><RefreshCw size={16} className="animate-spin" /> Verificando...</>
                   : <><CheckCircle size={16} /> Ir al dashboard</>}
@@ -193,7 +193,7 @@ export default function SuscripcionPage() {
                 ) : plan.precio === null ? (
                   <a href={`mailto:${BRAND.email}?subject=Plan Enterprise`}
                     className={`block text-center font-semibold py-3 rounded-xl transition-all text-sm
-                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-blue-50'}`}>
+                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-accent/10'}`}>
                     Contactar
                   </a>
                 ) : (
@@ -201,7 +201,7 @@ export default function SuscripcionPage() {
                     onClick={() => handleSuscribir(plan.id, mpPlanId)}
                     disabled={!!loading}
                     className={`w-full font-semibold py-3 rounded-xl transition-all text-sm disabled:opacity-60 flex items-center justify-center gap-2
-                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-blue-50'}`}>
+                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white text-primary hover:bg-accent/10'}`}>
                     {loading === plan.id
                       ? <><RefreshCw size={15} className="animate-spin" /> Redirigiendo...</>
                       : <><ArrowRight size={15} /> Suscribirme</>}

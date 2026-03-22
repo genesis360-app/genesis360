@@ -1010,7 +1010,7 @@ export default function VentasPage() {
 
                 <div className="space-y-2 pt-1">
                   <button onClick={() => registrarVenta('reservada')} disabled={saving}
-                    className="w-full bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     <ShoppingCart size={16} /> {saving ? 'Guardando...' : 'Reservar stock'}
                   </button>
                   <button onClick={() => registrarVenta('despachada')} disabled={saving}
@@ -1324,7 +1324,7 @@ export default function VentasPage() {
                 <Printer size={15} /> Imprimir
               </button>
               <button onClick={() => setTicketVenta(null)}
-                className="flex-1 bg-primary hover:bg-accent text-white font-semibold py-2 rounded-xl text-sm transition-all">
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2 rounded-xl text-sm transition-all">
                 Cerrar
               </button>
             </div>
@@ -1363,7 +1363,7 @@ export default function VentasPage() {
               })}
             </div>
             <button onClick={() => setSeriesModal(null)}
-              className="w-full bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl transition-all">
+              className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
               Confirmar ({cart[seriesModal.itemIdx]?.series_seleccionadas.length} seleccionadas)
             </button>
           </div>

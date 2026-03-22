@@ -53,7 +53,7 @@ export function PlanLimitModal({ tipo, limits, onClose }: Props) {
           <Link
             to="/suscripcion"
             onClick={onClose}
-            className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-accent text-white font-semibold py-2.5 rounded-xl transition-all text-sm"
+            className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all text-sm"
           >
             <TrendingUp size={16} /> Ver planes disponibles
           </Link>

@@ -326,7 +326,7 @@ export default function ProductoFormPage() {
         {isEditing && canEdit && (
           <div className="flex gap-2">
             <button type="button" onClick={() => setShowQR(true)}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-accent border border-blue-200 rounded-xl hover:bg-blue-50 transition-all">
+              className="flex items-center gap-2 px-3 py-2 text-sm text-accent border border-accent/30 rounded-xl hover:bg-accent/10 transition-all">
               <QrCode size={15} /> QR
             </button>
             <button type="button" onClick={handleDuplicate} disabled={saving}
@@ -649,7 +649,7 @@ export default function ProductoFormPage() {
               Cancelar
             </button>
             <button type="submit" disabled={saving}
-              className="px-6 py-2.5 bg-primary hover:bg-accent text-white font-semibold rounded-xl transition-all disabled:opacity-60">
+              className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60">
               {saving ? 'Guardando...' : isEditing ? 'Guardar cambios' : 'Crear producto'}
             </button>
           </div>

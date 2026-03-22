@@ -527,7 +527,7 @@ export default function CajaPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-gray-700">Cajas del negocio</h2>
               <button onClick={() => setShowNuevaCaja(true)}
-                className="flex items-center gap-1.5 text-sm bg-primary hover:bg-accent text-white px-3 py-2 rounded-xl transition-all">
+                className="flex items-center gap-1.5 text-sm bg-accent hover:bg-accent/90 text-white px-3 py-2 rounded-xl transition-all">
                 <Plus size={15} /> Nueva caja
               </button>
             </div>

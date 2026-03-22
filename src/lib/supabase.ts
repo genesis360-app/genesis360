@@ -139,6 +139,19 @@ export interface Alerta {
   productos?: Pick<Producto, 'nombre' | 'sku' | 'stock_actual' | 'stock_minimo'>
 }
 
+export interface Gasto {
+  id: string
+  tenant_id: string
+  descripcion: string
+  monto: number
+  categoria?: string
+  medio_pago?: string
+  fecha: string
+  usuario_id?: string
+  notas?: string
+  created_at: string
+}
+
 export interface Plan {
   id: string
   nombre: string

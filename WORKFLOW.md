@@ -187,6 +187,7 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 | v0.18.0 | Módulo de gastos (egresos del negocio con categorías, filtros y stats) | 2026-03 |
 | v0.18.1 | Importar datos maestros movido a Configuración → Importar | 2026-03 |
 | v0.19.0 | Tab 'Inventario' en importar + reorden menú + Configuración ownerOnly + clientes mejorado | 2026-03 |
+| v0.20.0 | Fix bucket storage 'productos' en DEV + fix fecha import inventario + botones unificados con BTN en brand.ts | 2026-03 |
 
 ### Crear release
 ```bash

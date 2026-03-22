@@ -156,6 +156,11 @@ src/
 **Import inventario masivo** ✅ completo (v0.19.0)
 - [x] Tab "Inventario" en Inventario → Importar: carga masiva de `inventario_lineas` + `movimientos_stock` desde Excel
 
+**Fixes y calidad (v0.20.0)**
+- [x] Bucket storage `productos` creado en DEV (faltaba al configurar el proyecto DEV)
+- [x] Bug: import inventario con `fecha_vencimiento` en formato DD-MM-YYYY daba 0 líneas cargadas
+- [x] Botones de acción primaria unificados en `bg-accent` — export `BTN` en `brand.ts` como fuente única
+
 ### Próximo backlog
 
 **Integración Mercado Pago producción**

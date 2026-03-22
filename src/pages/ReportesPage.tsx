@@ -435,7 +435,7 @@ export default function ReportesPage() {
 
               {/* Botones de exportación */}
               <button onClick={() => exportarExcel(reporteActivo)} disabled={generando || datos.length === 0}
-                className="flex items-center gap-1.5 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50">
+                className="flex items-center gap-1.5 px-3 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50">
                 <FileSpreadsheet size={15} /> Excel
               </button>
               <button onClick={() => exportarPDF(reporteActivo)} disabled={generando || datos.length === 0}

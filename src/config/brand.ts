@@ -15,6 +15,19 @@
 //   bg:      '#F5F0FF'  →  index.css: 245 240 255
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Estilos de botones centralizados ────────────────────────────────────────
+// Cambiar acá afecta todos los botones de acción de la app.
+export const BTN = {
+  primary:   'bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-50',
+  secondary: 'border-2 border-gray-200 text-gray-600 font-semibold rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50',
+  danger:    'bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl transition-all disabled:opacity-50',
+  outline:   'border border-accent text-accent font-medium rounded-xl hover:bg-accent/10 transition-all',
+  ghost:     'hover:bg-gray-100 text-gray-600 rounded-lg transition-colors',
+  sm:        'px-3 py-1.5 text-sm',
+  md:        'px-4 py-2.5 text-sm',
+  lg:        'px-6 py-3 text-base',
+}
+
 export const BRAND = {
   name: 'Genesis360',
   tagline: 'El inventario inteligente para tu negocio',

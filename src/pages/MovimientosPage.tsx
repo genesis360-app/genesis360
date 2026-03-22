@@ -313,7 +313,7 @@ export default function MovimientosPage() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => setModal('ingreso')}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
             <ArrowDown size={16} /> Ingreso
           </button>
           <button onClick={() => setModal('rebaje')}
@@ -782,7 +782,7 @@ export default function MovimientosPage() {
               <button onClick={closeModal} className="flex-1 border-2 border-gray-200 text-gray-600 font-semibold py-2.5 rounded-xl hover:border-gray-300">Cancelar</button>
               <button onClick={() => ingresoMutation.mutate()}
                 disabled={!selectedProduct || ingresoMutation.isPending}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
                 {ingresoMutation.isPending ? 'Guardando...' : 'Confirmar ingreso'}
               </button>
             </div>

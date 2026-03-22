@@ -92,7 +92,9 @@ export interface Producto {
   proveedor_id?: string
   ubicacion_id?: string
   precio_costo: number
+  precio_costo_moneda: string
   precio_venta: number
+  precio_venta_moneda: string
   margen_ganancia: number
   stock_actual: number
   stock_minimo: number

@@ -4,7 +4,7 @@ import { BRAND } from '@/config/brand'
 import {
   BarChart2, Download, FileSpreadsheet, FileText,
   Package, AlertTriangle, ArrowLeftRight, ShoppingCart,
-  TrendingUp, DollarSign, Calendar, Filter
+  TrendingUp, DollarSign, Calendar, Tag, Truck, MapPin, Layers, CornerDownRight
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -85,6 +85,32 @@ export default function ReportesPage() {
         .order('created_at', { ascending: false })
       return data ?? []
     },
+    enabled: !!tenant,
+  })
+
+  const { data: masterCategorias = [] } = useQuery({
+    queryKey: ['reporte-master-categorias', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('categorias').select('nombre, descripcion').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
+    enabled: !!tenant,
+  })
+  const { data: masterProveedores = [] } = useQuery({
+    queryKey: ['reporte-master-proveedores', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('proveedores').select('nombre, contacto, telefono, email').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
+    enabled: !!tenant,
+  })
+  const { data: masterUbicaciones = [] } = useQuery({
+    queryKey: ['reporte-master-ubicaciones', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('nombre, descripcion').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
+    enabled: !!tenant,
+  })
+  const { data: masterEstados = [] } = useQuery({
+    queryKey: ['reporte-master-estados', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('estados_inventario').select('nombre, color, es_default').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
+    enabled: !!tenant,
+  })
+  const { data: masterMotivos = [] } = useQuery({
+    queryKey: ['reporte-master-motivos', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('motivos_movimiento').select('nombre, tipo').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
     enabled: !!tenant,
   })
 
@@ -293,6 +319,39 @@ export default function ReportesPage() {
     }
   }
 
+  // ── Exportar Data Master ─────────────────────────────────────────────────────
+  const MASTER_ITEMS = [
+    { id: 'categorias',  label: 'Categorías',   icon: Tag,          datos: masterCategorias,  cols: ['nombre', 'descripcion'] },
+    { id: 'proveedores', label: 'Proveedores',   icon: Truck,        datos: masterProveedores, cols: ['nombre', 'contacto', 'telefono', 'email'] },
+    { id: 'ubicaciones', label: 'Ubicaciones',   icon: MapPin,       datos: masterUbicaciones, cols: ['nombre', 'descripcion'] },
+    { id: 'estados',     label: 'Estados',       icon: Layers,       datos: masterEstados,     cols: ['nombre', 'color', 'es_default'] },
+    { id: 'motivos',     label: 'Motivos',       icon: CornerDownRight, datos: masterMotivos,  cols: ['nombre', 'tipo'] },
+  ] as const
+
+  const exportarMaster = (id: string) => {
+    const item = MASTER_ITEMS.find(m => m.id === id)
+    if (!item) return
+    const datos = item.datos as any[]
+    if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
+
+    const rows = datos.map(d => {
+      const row: Record<string, any> = {}
+      item.cols.forEach(c => { row[c] = (d as any)[c] ?? '' })
+      return row
+    })
+
+    const wb = XLSX.utils.book_new()
+    const wsInfo = XLSX.utils.aoa_to_sheet([
+      [BRAND.name], [item.label], [`Generado: ${new Date().toLocaleString('es-AR')}`], [`Negocio: ${tenant?.nombre}`], [''],
+    ])
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws['!cols'] = item.cols.map(() => ({ wch: 24 }))
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info')
+    XLSX.utils.book_append_sheet(wb, ws, item.label)
+    XLSX.writeFile(wb, `${BRAND.name.toLowerCase()}_${id}_${new Date().toISOString().split('T')[0]}.xlsx`)
+    toast.success(`${item.label} exportado`)
+  }
+
   const reporteSeleccionado = REPORTES.find(r => r.id === reporteActivo)
   const datos = reporteActivo ? datosPorReporte[reporteActivo] : []
   const necesitaFechas = reporteActivo && ['movimientos', 'ventas', 'rotacion'].includes(reporteActivo)
@@ -321,6 +380,29 @@ export default function ReportesPage() {
             </button>
           )
         })}
+      </div>
+
+      {/* Sección Data Master */}
+      <div>
+        <h2 className="text-base font-semibold text-gray-700 mb-3">Exportar datos maestros</h2>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {MASTER_ITEMS.map(m => {
+            const Icon = m.icon
+            return (
+              <button key={m.id} onClick={() => exportarMaster(m.id)}
+                className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 hover:border-accent hover:shadow-sm transition-all text-left">
+                <div className="w-8 h-8 rounded-lg bg-purple-50 text-accent flex items-center justify-center flex-shrink-0">
+                  <Icon size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{m.label}</p>
+                  <p className="text-xs text-gray-400">{(m.datos as any[]).length} registros</p>
+                </div>
+                <Download size={14} className="text-gray-300 ml-auto flex-shrink-0" />
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Panel del reporte seleccionado */}

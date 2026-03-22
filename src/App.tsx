@@ -30,6 +30,7 @@ const AdminPage        = lazy(() => import('@/pages/AdminPage'))
 const ClientesPage        = lazy(() => import('@/pages/ClientesPage'))
 const RentabilidadPage    = lazy(() => import('@/pages/RentabilidadPage'))
 const RecomendacionesPage = lazy(() => import('@/pages/RecomendacionesPage'))
+const GastosPage          = lazy(() => import('@/pages/GastosPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -107,6 +108,7 @@ function App() {
                   <Route path="/clientes" element={<ClientesPage />} />
                   <Route path="/rentabilidad" element={<RentabilidadPage />} />
                   <Route path="/recomendaciones" element={<RecomendacionesPage />} />
+                  <Route path="/gastos" element={<GastosPage />} />
                 </Route>
               </Route>
             </Route>

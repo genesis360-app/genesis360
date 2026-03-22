@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
-  BarChart2, Users, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, Layers, DollarSign, Zap, TrendingDown
+  BarChart2, Users, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, Layers, DollarSign, Zap, TrendingDown, ClipboardList
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -22,6 +22,7 @@ const navItems = [
   { to: '/reportes',        icon: BarChart2,       label: 'Reportes' },
   { to: '/rentabilidad',    icon: BarChart2,       label: 'Rentabilidad' },
   { to: '/recomendaciones', icon: Zap,             label: 'Recomendaciones' },
+  { to: '/historial',       icon: ClipboardList,   label: 'Historial',      supervisorOnly: true },
   { to: '/usuarios',        icon: Users,           label: 'Usuarios',       ownerOnly: true },
   { to: '/configuracion',   icon: Settings,        label: 'Configuración',  ownerOnly: true },
   { to: '/grupos-estados',  icon: Layers,          label: 'Grupos estados', ownerOnly: true },
@@ -61,8 +62,9 @@ export function AppLayout() {
 
       {/* Navegación */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label, badge, ownerOnly }) => {
+        {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly }: any) => {
           if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN') return null
+          if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
           return (
             <NavLink
               key={to}

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { UserPlus, Trash2, Shield, User, Mail, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { logActividad } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import toast from 'react-hot-toast'
@@ -73,6 +74,7 @@ export default function UsuariosPage() {
       if (userError) throw userError
 
       toast.success(`Usuario creado. Pedile que confirme su email: ${invEmail}`)
+      logActividad({ entidad: 'usuario', entidad_id: signUpData.user.id, entidad_nombre: invEmail.split('@')[0], accion: 'crear', valor_nuevo: invRol, pagina: '/usuarios' })
       setInvEmail(''); setInvPassword(''); setShowInvitar(false)
       qc.invalidateQueries({ queryKey: ['usuarios'] })
       qc.invalidateQueries({ queryKey: ['plan-limits'] })
@@ -84,9 +86,10 @@ export default function UsuariosPage() {
   }
 
   const updateRol = useMutation({
-    mutationFn: async ({ userId, rol }: { userId: string; rol: UserRole }) => {
+    mutationFn: async ({ userId, rol, rolAnterior, nombreUsuario }: { userId: string; rol: UserRole; rolAnterior?: string; nombreUsuario?: string }) => {
       const { error } = await supabase.from('users').update({ rol }).eq('id', userId)
       if (error) throw error
+      logActividad({ entidad: 'usuario', entidad_id: userId, entidad_nombre: nombreUsuario, accion: 'editar', campo: 'rol', valor_anterior: rolAnterior ?? null, valor_nuevo: rol, pagina: '/usuarios' })
     },
     onSuccess: () => { toast.success('Rol actualizado'); qc.invalidateQueries({ queryKey: ['usuarios'] }) },
     onError: () => toast.error('Error al actualizar rol'),
@@ -95,8 +98,10 @@ export default function UsuariosPage() {
   const desactivar = useMutation({
     mutationFn: async (userId: string) => {
       if (userId === user?.id) throw new Error('No podés desactivar tu propio usuario')
+      const u = (usuarios as any[]).find(x => x.id === userId)
       const { error } = await supabase.from('users').update({ activo: false }).eq('id', userId)
       if (error) throw error
+      logActividad({ entidad: 'usuario', entidad_id: userId, entidad_nombre: u?.nombre_display, accion: 'eliminar', pagina: '/usuarios' })
     },
     onSuccess: () => {
       toast.success('Usuario desactivado')
@@ -239,7 +244,7 @@ export default function UsuariosPage() {
                   {canManage && u.activo && (
                     <div className="flex items-center gap-2">
                       <select value={u.rol}
-                        onChange={e => updateRol.mutate({ userId: u.id, rol: e.target.value as UserRole })}
+                        onChange={e => updateRol.mutate({ userId: u.id, rol: e.target.value as UserRole, rolAnterior: u.rol, nombreUsuario: u.nombre_display })}
                         className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent">
                         {(Object.entries(ROLES) as [UserRole, any][])
                           .filter(([r]) => r !== 'OWNER')

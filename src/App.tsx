@@ -31,6 +31,7 @@ const ClientesPage        = lazy(() => import('@/pages/ClientesPage'))
 const RentabilidadPage    = lazy(() => import('@/pages/RentabilidadPage'))
 const RecomendacionesPage = lazy(() => import('@/pages/RecomendacionesPage'))
 const GastosPage          = lazy(() => import('@/pages/GastosPage'))
+const ImportarMasterPage  = lazy(() => import('@/pages/ImportarMasterPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -109,6 +110,7 @@ function App() {
                   <Route path="/rentabilidad" element={<RentabilidadPage />} />
                   <Route path="/recomendaciones" element={<RecomendacionesPage />} />
                   <Route path="/gastos" element={<GastosPage />} />
+                  <Route path="/configuracion/importar" element={<ImportarMasterPage />} />
                 </Route>
               </Route>
             </Route>

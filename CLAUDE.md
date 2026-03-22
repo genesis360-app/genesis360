@@ -135,22 +135,33 @@ src/
 
 ### Próximo backlog priorizado
 
-**Branding centralizado**
-- [ ] Agregar colores de `BRAND.color` a `tailwind.config.js` como `primary`/`accent`
-- [ ] Reemplazar todos los `text-[#1E3A5F]` / `bg-[#2E75B6]` por `text-primary` / `bg-accent`
-- [ ] Con esto, cambiar nombre+colores en `src/config/brand.ts` + `tailwind.config.js` rebrandea toda la app
+**Branding centralizado** ✅ completo (v0.16.0)
+- [x] Agregar colores de `BRAND.color` a `tailwind.config.js` como `primary`/`accent`
+- [x] Reemplazar todos los `text-[#1E3A5F]` / `bg-[#2E75B6]` por `text-primary` / `bg-accent`
+- [x] Con esto, cambiar nombre+colores en `src/config/brand.ts` + `tailwind.config.js` rebrandea toda la app
+  - Actualmente: Genesis360 (violeta eléctrico `#7B00FF` + negro `#0D0D0D`). Para volver a Stokio azul, ver comentarios en `src/config/brand.ts`.
 
-**Export / Import de data master**
-- [ ] **Export**: agregar a ReportesPage tabs para exportar en Excel — categorías, proveedores, ubicaciones, estados, motivos (además de productos)
-- [ ] **Import upsert**: al importar productos por Excel, si el SKU ya existe → actualizar precios y campos (hoy los ignora). Comportamiento deseado: insert si no existe, update si existe.
-- [ ] **Import data master**: importar categorías, proveedores y ubicaciones desde Excel (crear si no existe, ignorar duplicados por nombre)
-- [ ] **Moneda en Excel de productos**: agregar columnas `precio_costo_moneda` (ARS/USD) y `precio_venta_moneda` al export/import
+**Export / Import de data master** ✅ completo (v0.17.0 + v0.18.1)
+- [x] **Export**: agregar a ReportesPage tabs para exportar en Excel — categorías, proveedores, ubicaciones, estados, motivos (además de productos)
+- [x] **Import upsert**: al importar productos por Excel, si el SKU ya existe → actualizar precios y campos. Modo default: 'ambos' (insert + update).
+- [x] **Import data master**: importar categorías, proveedores y ubicaciones desde Excel — en Configuración → Importar (`/configuracion/importar`)
+- [x] **Moneda en Excel de productos**: columnas `precio_costo_moneda` (ARS/USD) y `precio_venta_moneda` al export/import
 
-**Módulo de clientes**
-- [ ] Historial de compras por cliente, recurrencia, ticket promedio
+**Módulo de clientes** ✅ mejorado (v0.19.0)
+- [x] Historial de compras por cliente, recurrencia, ticket promedio, días desde última compra
 
-**Módulo de gastos**
-- [ ] Registrar egresos del negocio con categoría y medio de pago
+**Módulo de gastos** ✅ completo (v0.18.0)
+- [x] Registrar egresos del negocio con categoría, medio de pago, fecha, notas. Stats + gráfico por categoría.
+
+**Import inventario masivo** ✅ completo (v0.19.0)
+- [x] Tab "Inventario" en Inventario → Importar: carga masiva de `inventario_lineas` + `movimientos_stock` desde Excel
+
+### Próximo backlog
+
+**Integración Mercado Pago producción**
+- [ ] Completar flujo de suscripción en ambiente productivo
+
+**Ideas futuras / roadmap largo plazo**
 
 ### Ideas futuras
 - Generador de cupones + aplicar cupón en ventas

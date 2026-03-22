@@ -175,6 +175,8 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 | v0.16.0 | Branding centralizado (tailwind.config.js + CSS vars) + rebrand Genesis360 | 2026-03 |
 | v0.17.0 | Export/Import data master + moneda en Excel de productos | 2026-03 |
 | v0.18.0 | Módulo de gastos (egresos del negocio con categorías, filtros y stats) | 2026-03 |
+| v0.18.1 | Importar datos maestros movido a Configuración → Importar | 2026-03 |
+| v0.19.0 | Tab 'Inventario' en importar + reorden menú + Configuración ownerOnly + clientes mejorado | 2026-03 |
 
 ### Crear release
 ```bash

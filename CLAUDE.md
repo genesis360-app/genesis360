@@ -163,6 +163,21 @@ src/
 
 ### Próximo backlog
 
+**Historial de actividad / Audit log** — página `/historial`
+- Tabla `actividad_log` en Supabase: `id, tenant_id, usuario_id, entidad (producto/inventario/venta/config/etc), entidad_id, accion (crear/editar/eliminar), campo_modificado, valor_anterior, valor_nuevo, created_at`
+- Triggers en Supabase (o inserts desde el frontend) para capturar cambios en:
+  - `inventario_lineas`: cambio de ubicación, estado, lote, vencimiento, LPN, series
+  - `productos`: cambio de precio, categoría, proveedor, activo/inactivo
+  - `ventas`: cambio de estado (pendiente → reservada → despachada → facturada)
+  - `categorias`, `proveedores`, `ubicaciones`, `estados_inventario`, `motivos`: crear/editar/eliminar
+  - `users`: cambio de rol
+  - `gastos`: crear/editar/eliminar
+- Página `/historial` con:
+  - Filtros: fecha, usuario, entidad, tipo de acción
+  - Timeline visual: quién hizo qué, cuándo, en qué página, valor anterior → valor nuevo
+  - Exportable a Excel
+- ownerOnly: solo OWNER/ADMIN pueden ver el historial completo; otros usuarios solo ven sus propias acciones
+
 **Integración Mercado Pago producción** ✅ completo (v0.21.0)
 - [x] `crear-suscripcion` llama a `POST /preapproval` de MP con `external_reference=tenant_id`
 - [x] `SuscripcionPage` usa `supabase.functions.invoke` en vez de URL directa

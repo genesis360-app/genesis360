@@ -150,11 +150,28 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     .sort((a, b) => b.cantidad - a.cantidad)
     .slice(0, 10)
 
-  // Ventas por medio de pago
+  // Ventas por medio de pago — medio_pago se guarda como JSON string
   const ventasPorMedio: Record<string, number> = {}
   ventasPeriodo.forEach((v: any) => {
-    const medio = v.medio_pago ?? 'Sin especificar'
-    ventasPorMedio[medio] = (ventasPorMedio[medio] ?? 0) + v.total
+    if (!v.medio_pago) {
+      ventasPorMedio['Sin especificar'] = (ventasPorMedio['Sin especificar'] ?? 0) + v.total
+      return
+    }
+    try {
+      const arr = JSON.parse(v.medio_pago) as { tipo: string; monto: number }[]
+      if (Array.isArray(arr)) {
+        // Si hay monto por tipo, usarlo; si no, dividir en partes iguales
+        const totalArr = arr.reduce((s, p) => s + (p.monto || 0), 0)
+        arr.forEach(p => {
+          const tipo = p.tipo || 'Sin especificar'
+          const monto = totalArr > 0 ? (p.monto || 0) : v.total / arr.length
+          ventasPorMedio[tipo] = (ventasPorMedio[tipo] ?? 0) + monto
+        })
+        return
+      }
+    } catch {}
+    // Fallback para registros legacy con string plano
+    ventasPorMedio[v.medio_pago] = (ventasPorMedio[v.medio_pago] ?? 0) + v.total
   })
   const dataMediosPago = Object.entries(ventasPorMedio).map(([name, value]) => ({ name, value }))
 

@@ -121,7 +121,8 @@ export default function MovimientosPage() {
         .select('*, estados_inventario(nombre,color), ubicaciones(nombre), inventario_series(id,nro_serie,activo)')
         .eq('producto_id', selectedProduct!.id)
         .eq('activo', true)
-        .order('created_at', { ascending: false })
+        .order('prioridad', { ascending: true })
+        .order('created_at', { ascending: true })
 
       // Para productos sin series filtramos cantidad > 0
       // Para productos con series no filtramos cantidad porque puede ser 0
@@ -946,9 +947,12 @@ export default function MovimientosPage() {
                                 : `${l.cantidad} u.`}
                             </span>
                           </div>
-                          {/* Fila secundaria: LPN en gris pequeño + lote + vencimiento */}
+                          {/* Fila secundaria: LPN en gris pequeño + lote + vencimiento + prioridad */}
                           <div className="flex gap-3 mt-1 text-xs text-gray-400">
                             <span className="font-mono">{l.lpn}</span>
+                            {(l.prioridad ?? 0) > 0 && (
+                              <span className="bg-gray-100 text-gray-500 px-1 rounded font-mono">P#{l.prioridad}</span>
+                            )}
                             {l.nro_lote && <span>🏷 {l.nro_lote}</span>}
                             {l.fecha_vencimiento && <span>📅 {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}
                             {(l.cantidad_reservada ?? 0) > 0 && (

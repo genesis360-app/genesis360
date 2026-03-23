@@ -249,14 +249,16 @@ CREATE TABLE inventario_lineas (
   nro_lote           TEXT,
   fecha_vencimiento  DATE,
   precio_costo_snapshot DECIMAL(14,2),
+  prioridad          INT NOT NULL DEFAULT 0,
   activo             BOOLEAN DEFAULT TRUE,
   created_at         TIMESTAMPTZ DEFAULT NOW(),
   updated_at         TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE inventario_lineas ENABLE ROW LEVEL SECURITY;
 
-CREATE INDEX idx_lineas_tenant   ON inventario_lineas(tenant_id);
-CREATE INDEX idx_lineas_producto ON inventario_lineas(producto_id);
+CREATE INDEX idx_lineas_tenant    ON inventario_lineas(tenant_id);
+CREATE INDEX idx_lineas_producto  ON inventario_lineas(producto_id);
+CREATE INDEX idx_lineas_prioridad ON inventario_lineas(tenant_id, producto_id, prioridad);
 
 -- ============================================================
 -- 12. INVENTARIO SERIES

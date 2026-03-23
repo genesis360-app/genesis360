@@ -418,7 +418,7 @@ export default function VentasPage() {
           if (estado === 'reservada') {
             const { data: lineas } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0).order('cantidad', { ascending: false })
+              .eq('activo', true).gt('cantidad', 0).order('prioridad', { ascending: true })
             let restante = cant
             for (const linea of lineas ?? []) {
               if (restante <= 0) break
@@ -433,7 +433,7 @@ export default function VentasPage() {
           } else if (estado === 'despachada') {
             const { data: lineas } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0).order('cantidad', { ascending: false })
+              .eq('activo', true).gt('cantidad', 0).order('prioridad', { ascending: true })
             let restante = cant
             for (const linea of lineas ?? []) {
               if (restante <= 0) break
@@ -534,7 +534,7 @@ export default function VentasPage() {
             const { data: lineas } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-              .order('cantidad', { ascending: false })
+              .order('prioridad', { ascending: true })
             let restante = item.cantidad
             for (const linea of lineas ?? []) {
               if (restante <= 0) break
@@ -559,11 +559,11 @@ export default function VentasPage() {
             await supabase.from('inventario_series')
               .update({ activo: false, reservado: false }).in('id', serieIds)
           } else {
-            // Rebajar de líneas, priorizando las reservadas
+            // Rebajar de líneas por prioridad (menor prioridad = se rebaja primero)
             const { data: lineas } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-              .order('cantidad_reservada', { ascending: false })
+              .order('prioridad', { ascending: true })
             let restante = item.cantidad
             for (const linea of lineas ?? []) {
               if (restante <= 0) break

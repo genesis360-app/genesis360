@@ -33,6 +33,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     // Tomar solo los primeros 10 chars para evitar desfase de timezone
     fecha_vencimiento: linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : '',
     cantidad: String(linea.cantidad ?? 0),
+    prioridad: String(linea.prioridad ?? 0),
   })
 
   // Mover stock parcial
@@ -104,6 +105,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         proveedor_id: editForm.proveedor_id || null,
         nro_lote: editForm.nro_lote || null,
         fecha_vencimiento: editForm.fecha_vencimiento || null,
+        prioridad: parseInt(editForm.prioridad) || 0,
         ...(!tieneSeries ? { cantidad: cantNueva } : {}),
       }).eq('id', linea.id)
       if (error) throw error
@@ -138,6 +140,9 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       const oldVenc = linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : ''
       if ((editForm.fecha_vencimiento || '') !== oldVenc)
         logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'fecha_vencimiento', valor_anterior: oldVenc || null, valor_nuevo: editForm.fecha_vencimiento || null, pagina: '/inventario' })
+      const newPrioridad = parseInt(editForm.prioridad) || 0
+      if (newPrioridad !== (linea.prioridad ?? 0))
+        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'prioridad', valor_anterior: String(linea.prioridad ?? 0), valor_nuevo: String(newPrioridad), pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('LPN actualizado'); invalidar(); onClose() },
     onError: (e: Error) => toast.error(e.message),
@@ -330,6 +335,16 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     )}
                   </div>
                 )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Prioridad de rebaje
+                  <span className="ml-1 text-gray-400 font-normal">(menor número = se rebaja primero)</span>
+                </label>
+                <input type="number" min="0" value={editForm.prioridad}
+                  onChange={e => setEditForm(p => ({ ...p, prioridad: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">

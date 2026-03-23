@@ -49,7 +49,8 @@ export default function InventarioPage() {
         .select('*, estados_inventario(nombre,color), ubicaciones(nombre), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
-        .order('created_at', { ascending: false })
+        .order('prioridad', { ascending: true })
+        .order('created_at', { ascending: true })
       if (error) throw error
       const map: Record<string, any[]> = {}
       for (const l of data ?? []) {
@@ -286,7 +287,12 @@ export default function InventarioPage() {
                             <div key={l.id} className="bg-white rounded-xl border border-gray-100 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
                               {/* LPN */}
                               <div className="col-span-1">
-                                <span className="font-mono text-xs text-primary font-semibold">{l.lpn}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono text-xs text-primary font-semibold">{l.lpn}</span>
+                                  {(l.prioridad ?? 0) > 0 && (
+                                    <span className="text-xs bg-gray-100 text-gray-500 px-1 rounded font-mono" title="Prioridad de rebaje">#{l.prioridad}</span>
+                                  )}
+                                </div>
                                 {l.proveedor_id && <p className="text-xs text-gray-400 truncate">{l.proveedores?.nombre}</p>}
                               </div>
 

@@ -118,10 +118,9 @@ export default function MovimientosPage() {
     queryFn: async () => {
       const tieneSeries = (selectedProduct as any).tiene_series
       let q = supabase.from('inventario_lineas')
-        .select('*, estados_inventario(nombre,color), ubicaciones(nombre), inventario_series(id,nro_serie,activo)')
+        .select('*, estados_inventario(nombre,color), ubicaciones(nombre,prioridad), inventario_series(id,nro_serie,activo)')
         .eq('producto_id', selectedProduct!.id)
         .eq('activo', true)
-        .order('prioridad', { ascending: true })
         .order('created_at', { ascending: true })
 
       // Para productos sin series filtramos cantidad > 0
@@ -129,7 +128,8 @@ export default function MovimientosPage() {
       if (!tieneSeries) q = q.gt('cantidad', 0)
 
       const { data } = await q
-      return data ?? []
+      // Ordenar por prioridad de ubicación ASC (menor = se rebaja primero); sin ubicación va al final
+      return (data ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
     },
     enabled: !!selectedProduct && modal === 'rebaje',
   })
@@ -947,11 +947,11 @@ export default function MovimientosPage() {
                                 : `${l.cantidad} u.`}
                             </span>
                           </div>
-                          {/* Fila secundaria: LPN en gris pequeño + lote + vencimiento + prioridad */}
+                          {/* Fila secundaria: LPN en gris pequeño + lote + vencimiento + prioridad ubicación */}
                           <div className="flex gap-3 mt-1 text-xs text-gray-400">
                             <span className="font-mono">{l.lpn}</span>
-                            {(l.prioridad ?? 0) > 0 && (
-                              <span className="bg-gray-100 text-gray-500 px-1 rounded font-mono">P#{l.prioridad}</span>
+                            {(l.ubicaciones?.prioridad ?? 0) > 0 && (
+                              <span className="bg-blue-50 text-blue-500 px-1 rounded font-mono">P{l.ubicaciones.prioridad}</span>
                             )}
                             {l.nro_lote && <span>🏷 {l.nro_lote}</span>}
                             {l.fecha_vencimiento && <span>📅 {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}

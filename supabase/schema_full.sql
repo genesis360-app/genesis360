@@ -135,6 +135,7 @@ CREATE TABLE ubicaciones (
   tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   nombre      TEXT NOT NULL,
   descripcion TEXT,
+  prioridad   INT NOT NULL DEFAULT 0,
   activo      BOOLEAN DEFAULT TRUE,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
@@ -249,7 +250,6 @@ CREATE TABLE inventario_lineas (
   nro_lote           TEXT,
   fecha_vencimiento  DATE,
   precio_costo_snapshot DECIMAL(14,2),
-  prioridad          INT NOT NULL DEFAULT 0,
   activo             BOOLEAN DEFAULT TRUE,
   created_at         TIMESTAMPTZ DEFAULT NOW(),
   updated_at         TIMESTAMPTZ DEFAULT NOW()
@@ -257,8 +257,8 @@ CREATE TABLE inventario_lineas (
 ALTER TABLE inventario_lineas ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX idx_lineas_tenant    ON inventario_lineas(tenant_id);
-CREATE INDEX idx_lineas_producto  ON inventario_lineas(producto_id);
-CREATE INDEX idx_lineas_prioridad ON inventario_lineas(tenant_id, producto_id, prioridad);
+CREATE INDEX idx_lineas_producto   ON inventario_lineas(producto_id);
+CREATE INDEX idx_ubicaciones_prioridad ON ubicaciones(tenant_id, prioridad);
 
 -- ============================================================
 -- 12. INVENTARIO SERIES

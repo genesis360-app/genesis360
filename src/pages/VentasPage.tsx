@@ -416,11 +416,12 @@ export default function VentasPage() {
 
         if (!item.tiene_series) {
           if (estado === 'reservada') {
-            const { data: lineas } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0).order('prioridad', { ascending: true })
+            const { data: lineasRaw } = await supabase.from('inventario_lineas')
+              .select('id, cantidad, cantidad_reservada, ubicaciones(prioridad)').eq('producto_id', item.producto_id)
+              .eq('activo', true).gt('cantidad', 0)
+            const lineas = (lineasRaw ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
             let restante = cant
-            for (const linea of lineas ?? []) {
+            for (const linea of lineas) {
               if (restante <= 0) break
               const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
               const areservar = Math.min(disponible, restante)
@@ -431,11 +432,12 @@ export default function VentasPage() {
               }
             }
           } else if (estado === 'despachada') {
-            const { data: lineas } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0).order('prioridad', { ascending: true })
+            const { data: lineasRaw } = await supabase.from('inventario_lineas')
+              .select('id, cantidad, cantidad_reservada, ubicaciones(prioridad)').eq('producto_id', item.producto_id)
+              .eq('activo', true).gt('cantidad', 0)
+            const lineas = (lineasRaw ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
             let restante = cant
-            for (const linea of lineas ?? []) {
+            for (const linea of lineas) {
               if (restante <= 0) break
               const rebajar = Math.min(linea.cantidad, restante)
               const nuevaCant = linea.cantidad - rebajar
@@ -531,12 +533,12 @@ export default function VentasPage() {
             const serieIds = (item.venta_series ?? []).map((s: any) => s.serie_id)
             await supabase.from('inventario_series').update({ reservado: true }).in('id', serieIds)
           } else {
-            const { data: lineas } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada')
+            const { data: lineasRaw } = await supabase.from('inventario_lineas')
+              .select('id, cantidad, cantidad_reservada, ubicaciones(prioridad)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-              .order('prioridad', { ascending: true })
+            const lineas = (lineasRaw ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
             let restante = item.cantidad
-            for (const linea of lineas ?? []) {
+            for (const linea of lineas) {
               if (restante <= 0) break
               const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
               const areservar = Math.min(disponible, restante)
@@ -559,13 +561,13 @@ export default function VentasPage() {
             await supabase.from('inventario_series')
               .update({ activo: false, reservado: false }).in('id', serieIds)
           } else {
-            // Rebajar de líneas por prioridad (menor prioridad = se rebaja primero)
-            const { data: lineas } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada')
+            // Rebajar de líneas por prioridad de ubicación (menor prioridad = se rebaja primero)
+            const { data: lineasRaw } = await supabase.from('inventario_lineas')
+              .select('id, cantidad, cantidad_reservada, ubicaciones(prioridad)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-              .order('prioridad', { ascending: true })
+            const lineas = (lineasRaw ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
             let restante = item.cantidad
-            for (const linea of lineas ?? []) {
+            for (const linea of lineas) {
               if (restante <= 0) break
               const rebajar = Math.min(linea.cantidad, restante)
               const nuevaCant = linea.cantidad - rebajar

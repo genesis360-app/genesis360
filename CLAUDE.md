@@ -223,8 +223,8 @@ src/
 
 **Inventario:**
 - [ ] Pestaña "Proyección de inventario": stock actual vs tasa de salida → días estimados de cobertura
-- [ ] **Prioridad de posiciones**: agregar campo `prioridad` (INT) en `inventario_lineas` — cuando hay múltiples LPNs con mismo SKU+lote+vencimiento, rebaja/reserva de menor a mayor prioridad
-- [ ] **Regla FEFO**: cuando `fecha_vencimiento` está activo en el producto, ignorar prioridad y rebaja/reserva por fecha de vencimiento más próxima primero
+- [x] **Prioridad de posiciones** ✅: campo `prioridad` (INT, default 0) en `ubicaciones` — todos los LPNs de una posición heredan su prioridad. Rebaja/reserva de menor a mayor prioridad. LPNs sin ubicación van al final (999). Migración 010 aplicada.
+- [ ] **Regla FEFO**: cuando `fecha_vencimiento` está activo en el producto, ignorar prioridad de ubicación y rebaja/reserva por fecha de vencimiento más próxima primero
 - [ ] **Guardar `linea_id` en `venta_items`**: actualmente nunca se escribe — sin esto no se puede trazar qué LPN origen corresponde a cada ítem de venta
 
 **Ventas:**
@@ -387,7 +387,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **El stock físico solo disminuye** cuando una venta pasa a `estado = 'despachada'`. Hasta ese momento el stock está "reservado" pero no consumido.
 - **`linea_id` en `venta_items`**: columna existe en schema pero **nunca se escribe desde el frontend**. Esto impide trazar qué LPN origen corresponde a cada ítem de venta. Es una deuda técnica conocida.
 - **Toda la lógica de stock es manual en el frontend** (no hay triggers en `venta_items`). Si se agrega lógica de reserva real, debe coordinarse con la actualización de `cantidad_reservada` en la tabla `inventario_lineas`.
-- **Prioridad de posiciones para rebaje/reserva** (backlog): agregar campo `prioridad` (INT, default 0) en `inventario_lineas`. Cuando hay múltiples LPNs con el mismo SKU+lote+vencimiento, se rebaja/reserva de menor a mayor prioridad. Excepción: si el producto tiene `fecha_vencimiento` activo, la regla FEFO (earliest expiry first) tiene precedencia sobre la prioridad manual.
+- **Prioridad de posiciones para rebaje/reserva** ✅ (migración 010): campo `prioridad` (INT, default 0) en `ubicaciones` (NO en `inventario_lineas`). Todos los LPNs de una ubicación heredan su prioridad. El operario configura la prioridad en Config → Ubicaciones. Sort client-side en VentasPage y MovimientosPage: `ubicaciones?.prioridad ?? 999`. LPNs sin ubicación van al final. FEFO (backlog) tendrá precedencia cuando `fecha_vencimiento` esté activo en el producto.
 
 ### Ventas
 - **`numero` en `ventas`**: campo INT NOT NULL sin default en el schema original. Generado por trigger `set_venta_numero` (BEFORE INSERT) que hace `MAX(numero)+1` por tenant. **Nunca** enviar `numero` en el INSERT desde el frontend — lo asigna el trigger.

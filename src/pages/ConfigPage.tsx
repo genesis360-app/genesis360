@@ -357,21 +357,40 @@ export default function ConfigPage() {
   // Ubicaciones
   const { data: ubicaciones = [], isLoading: loadingUbic } = useQuery({
     queryKey: ['ubicaciones', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).order('nombre'); return (data ?? []) as Item[] },
+    queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).order('prioridad').order('nombre'); return (data ?? []) },
     enabled: !!tenant,
   })
-  const addUbicacion = async (nombre: string, descripcion?: string) => {
-    const { error } = await supabase.from('ubicaciones').insert({ tenant_id: tenant!.id, nombre, descripcion })
-    if (error) toast.error(error.message); else { toast.success('Ubicación agregada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }); logActividad({ entidad: 'ubicacion', entidad_nombre: nombre, accion: 'crear', pagina: '/configuracion' }) }
+  const [newUbicNombre, setNewUbicNombre] = useState('')
+  const [newUbicDesc, setNewUbicDesc] = useState('')
+  const [newUbicPrioridad, setNewUbicPrioridad] = useState('0')
+  const [editUbicId, setEditUbicId] = useState<string | null>(null)
+  const [editUbicNombre, setEditUbicNombre] = useState('')
+  const [editUbicDesc, setEditUbicDesc] = useState('')
+  const [editUbicPrioridad, setEditUbicPrioridad] = useState('0')
+  const [ubicSearch, setUbicSearch] = useState('')
+
+  const addUbicacion = async () => {
+    if (!newUbicNombre.trim()) return
+    const { error } = await supabase.from('ubicaciones').insert({ tenant_id: tenant!.id, nombre: newUbicNombre.trim(), descripcion: newUbicDesc || null, prioridad: parseInt(newUbicPrioridad) || 0 })
+    if (error) { toast.error(error.message); return }
+    toast.success('Ubicación agregada')
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+    logActividad({ entidad: 'ubicacion', entidad_nombre: newUbicNombre.trim(), accion: 'crear', pagina: '/configuracion' })
+    setNewUbicNombre(''); setNewUbicDesc(''); setNewUbicPrioridad('0')
   }
-  const updateUbicacion = async (id: string, nombre: string, descripcion?: string) => {
-    const old = (ubicaciones as Item[]).find(u => u.id === id)
-    const { error } = await supabase.from('ubicaciones').update({ nombre, descripcion }).eq('id', id)
-    if (error) toast.error(error.message); else { toast.success('Actualizada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }); logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
+  const startEditUbic = (u: any) => { setEditUbicId(u.id); setEditUbicNombre(u.nombre); setEditUbicDesc(u.descripcion ?? ''); setEditUbicPrioridad(String(u.prioridad ?? 0)) }
+  const saveUbicacion = async (id: string) => {
+    const old = (ubicaciones as any[]).find(u => u.id === id)
+    const { error } = await supabase.from('ubicaciones').update({ nombre: editUbicNombre.trim(), descripcion: editUbicDesc || null, prioridad: parseInt(editUbicPrioridad) || 0 }).eq('id', id)
+    if (error) { toast.error(error.message); return }
+    toast.success('Actualizada')
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+    logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: editUbicNombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: editUbicNombre, pagina: '/configuracion' })
+    setEditUbicId(null)
   }
   const deleteUbicacion = async (id: string) => {
     if (!confirm('¿Eliminar esta ubicación?')) return
-    const old = (ubicaciones as Item[]).find(u => u.id === id)
+    const old = (ubicaciones as any[]).find(u => u.id === id)
     const { error } = await supabase.from('ubicaciones').delete().eq('id', id)
     if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }); logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
@@ -654,12 +673,77 @@ export default function ConfigPage() {
 
       {tab === 'ubicaciones' && (
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-1">
             <MapPin size={18} className="text-accent" />
             <h2 className="font-semibold text-gray-700">Ubicaciones</h2>
             <span className="ml-auto text-xs text-gray-400">{ubicaciones.length} cargadas</span>
           </div>
-          <ListaABM items={ubicaciones} loading={loadingUbic} withDescription onAdd={addUbicacion} onUpdate={updateUbicacion} onDelete={deleteUbicacion} />
+          <p className="text-xs text-gray-400 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero (0 tiene precedencia).</p>
+
+          {/* Agregar nueva */}
+          <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-2">
+            <div className="flex gap-2">
+              <input type="text" placeholder="Nombre de la ubicación" value={newUbicNombre}
+                onChange={e => setNewUbicNombre(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addUbicacion()}
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              <input type="number" min="0" placeholder="Prioridad" value={newUbicPrioridad}
+                onChange={e => setNewUbicPrioridad(e.target.value)}
+                className="w-24 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              <button onClick={addUbicacion} disabled={!newUbicNombre.trim()}
+                className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                <Plus size={15} /> Agregar
+              </button>
+            </div>
+            <input type="text" placeholder="Descripción (opcional)" value={newUbicDesc}
+              onChange={e => setNewUbicDesc(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
+          </div>
+
+          {/* Buscador */}
+          <div className="relative mb-3">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" placeholder="Buscar ubicación..." value={ubicSearch}
+              onChange={e => setUbicSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
+          </div>
+
+          {/* Lista */}
+          {loadingUbic ? <p className="text-sm text-gray-400 text-center py-4">Cargando...</p> : (
+            <div className="space-y-2">
+              {(ubicaciones as any[])
+                .filter(u => !ubicSearch.trim() || u.nombre.toLowerCase().includes(ubicSearch.toLowerCase()))
+                .map((u: any) => (
+                  <div key={u.id} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2.5">
+                    {editUbicId === u.id ? (
+                      <>
+                        <input type="text" value={editUbicNombre} onChange={e => setEditUbicNombre(e.target.value)}
+                          className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-accent" />
+                        <input type="text" value={editUbicDesc} onChange={e => setEditUbicDesc(e.target.value)}
+                          placeholder="Descripción" className="w-32 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-accent" />
+                        <input type="number" min="0" value={editUbicPrioridad} onChange={e => setEditUbicPrioridad(e.target.value)}
+                          className="w-16 px-2 py-1 border border-gray-200 rounded text-sm text-center focus:outline-none focus:border-accent" title="Prioridad" />
+                        <button onClick={() => saveUbicacion(u.id)} className="text-green-600 hover:text-green-700 p-1"><Check size={15} /></button>
+                        <button onClick={() => setEditUbicId(null)} className="text-gray-400 hover:text-gray-600 p-1"><X size={15} /></button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-800">{u.nombre}</span>
+                          {u.descripcion && <span className="ml-2 text-xs text-gray-400">{u.descripcion}</span>}
+                        </div>
+                        {(u.prioridad ?? 0) > 0 && (
+                          <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-mono" title="Prioridad de rebaje">P{u.prioridad}</span>
+                        )}
+                        <button onClick={() => startEditUbic(u)} className="text-gray-400 hover:text-accent p-1"><Pencil size={14} /></button>
+                        <button onClick={() => deleteUbicacion(u.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              {ubicaciones.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No hay ubicaciones cargadas.</p>}
+            </div>
+          )}
         </div>
       )}
 

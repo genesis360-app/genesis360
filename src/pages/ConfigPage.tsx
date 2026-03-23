@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronRight, Play } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -9,7 +9,7 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos'
+type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
 const COLORES = [
@@ -561,6 +561,73 @@ export default function ConfigPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // Aging Profiles
+  const { data: agingProfiles = [], isLoading: loadingAging } = useQuery({
+    queryKey: ['aging_profiles', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('aging_profiles').select('*').eq('tenant_id', tenant!.id).order('nombre'); return data ?? [] },
+    enabled: !!tenant,
+  })
+  const { data: agingReglas = [] } = useQuery({
+    queryKey: ['aging_profile_reglas', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('aging_profile_reglas').select('*, estados_inventario(nombre,color)').eq('tenant_id', tenant!.id).order('dias'); return data ?? [] },
+    enabled: !!tenant,
+  })
+  const [agingExpanded, setAgingExpanded] = useState<Set<string>>(new Set())
+  const [newAgingNombre, setNewAgingNombre] = useState('')
+  const [editAgingId, setEditAgingId] = useState<string | null>(null)
+  const [editAgingNombre, setEditAgingNombre] = useState('')
+  const [addRuleProfileId, setAddRuleProfileId] = useState<string | null>(null)
+  const [addRuleEstadoId, setAddRuleEstadoId] = useState('')
+  const [addRuleDias, setAddRuleDias] = useState('')
+  const [processingAging, setProcessingAging] = useState(false)
+
+  const toggleAgingExpand = (id: string) => setAgingExpanded(prev => {
+    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
+  })
+  const addAgingProfile = async () => {
+    if (!newAgingNombre.trim()) return
+    const { error } = await supabase.from('aging_profiles').insert({ tenant_id: tenant!.id, nombre: newAgingNombre.trim() })
+    if (error) { toast.error(error.message); return }
+    toast.success('Aging profile creado'); qc.invalidateQueries({ queryKey: ['aging_profiles'] }); setNewAgingNombre('')
+  }
+  const saveAgingProfile = async (id: string) => {
+    if (!editAgingNombre.trim()) return
+    const { error } = await supabase.from('aging_profiles').update({ nombre: editAgingNombre.trim() }).eq('id', id)
+    if (error) { toast.error(error.message); return }
+    toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['aging_profiles'] }); setEditAgingId(null)
+  }
+  const deleteAgingProfile = async (id: string) => {
+    if (!confirm('¿Eliminar este aging profile? También se eliminarán sus reglas.')) return
+    const { error } = await supabase.from('aging_profiles').delete().eq('id', id)
+    if (error) { toast.error('No se puede eliminar, tiene productos asociados'); return }
+    toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['aging_profiles'] }); qc.invalidateQueries({ queryKey: ['aging_profile_reglas'] })
+  }
+  const addAgingRegla = async (profileId: string) => {
+    if (!addRuleEstadoId || addRuleDias === '') return
+    const { error } = await supabase.from('aging_profile_reglas').insert({ profile_id: profileId, tenant_id: tenant!.id, estado_id: addRuleEstadoId, dias: parseInt(addRuleDias) })
+    if (error) { toast.error(error.message); return }
+    toast.success('Regla agregada'); qc.invalidateQueries({ queryKey: ['aging_profile_reglas'] }); setAddRuleProfileId(null); setAddRuleEstadoId(''); setAddRuleDias('')
+  }
+  const deleteAgingRegla = async (id: string) => {
+    const { error } = await supabase.from('aging_profile_reglas').delete().eq('id', id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['aging_profile_reglas'] })
+  }
+  const processAging = async () => {
+    setProcessingAging(true)
+    try {
+      const { data, error } = await supabase.rpc('process_aging_profiles')
+      if (error) throw error
+      const cambios = (data as any)?.cambios ?? 0
+      toast.success(cambios > 0 ? `${cambios} estado${cambios !== 1 ? 's' : ''} actualizado${cambios !== 1 ? 's' : ''} automáticamente` : 'Sin cambios pendientes')
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al procesar aging')
+    } finally {
+      setProcessingAging(false)
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+    }
+  }
+
   const setGrupoDefault = useMutation({
     mutationFn: async (gid: string) => {
       await supabase.from('grupos_estados').update({ es_default: false }).eq('tenant_id', tenant!.id)
@@ -587,6 +654,7 @@ export default function ConfigPage() {
     { id: 'motivos' as Tab, label: 'Motivos', icon: MessageSquare },
     { id: 'combos' as Tab, label: 'Combos', icon: Gift },
     { id: 'grupos' as Tab, label: 'Grupos de estados', icon: Layers },
+    { id: 'aging' as Tab, label: 'Aging Profiles', icon: Timer },
   ]
 
   return (
@@ -991,6 +1059,133 @@ export default function ConfigPage() {
                         <button onClick={() => { if (confirm('¿Eliminar este grupo?')) deleteGrupo.mutate(grupo.id) }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
                       </div>
                     </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'aging' && (
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <div className="flex items-center gap-2 mb-1">
+            <Timer size={18} className="text-accent" />
+            <h2 className="font-semibold text-gray-700">Aging Profiles</h2>
+            <span className="ml-auto text-xs text-gray-400">{agingProfiles.length} perfiles</span>
+            <button onClick={processAging} disabled={processingAging}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-medium rounded-lg transition-all disabled:opacity-50">
+              <Play size={12} /> {processingAging ? 'Procesando...' : 'Procesar aging ahora'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">
+            Define reglas automáticas de cambio de estado según los días restantes hasta vencimiento.
+            La regla con el menor umbral que cubra los días restantes es la que se aplica.
+            Ej: con DISPONIBLE/365, PRÓX. VENCER/90, VENCIDO/0 → ítem con 50 días → "PRÓX. VENCER".
+          </p>
+
+          <div className="bg-gray-50 rounded-xl p-4 mb-4">
+            <div className="flex gap-2">
+              <input type="text" value={newAgingNombre} onChange={e => setNewAgingNombre(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addAgingProfile()}
+                placeholder="Nombre del aging profile (ej: DISP-365)"
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              <button onClick={addAgingProfile} disabled={!newAgingNombre.trim()}
+                className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                <Plus size={15} /> Agregar
+              </button>
+            </div>
+          </div>
+
+          {loadingAging ? <p className="text-sm text-gray-400 text-center py-4">Cargando...</p> : (
+            <div className="space-y-3">
+              {agingProfiles.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-4">No hay aging profiles. Creá uno para empezar.</p>
+              )}
+              {(agingProfiles as any[]).map((ap: any) => {
+                const reglas = (agingReglas as any[]).filter((r: any) => r.profile_id === ap.id).sort((a: any, b: any) => b.dias - a.dias)
+                const expanded = agingExpanded.has(ap.id)
+                return (
+                  <div key={ap.id} className="border border-gray-100 rounded-xl overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 cursor-pointer select-none"
+                      onClick={() => { if (editAgingId !== ap.id) toggleAgingExpand(ap.id) }}>
+                      <span className="text-gray-400">{expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+                      {editAgingId === ap.id ? (
+                        <>
+                          <input type="text" value={editAgingNombre} onChange={e => setEditAgingNombre(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                            className="flex-1 px-2 py-1 border border-gray-200 rounded text-sm focus:outline-none focus:border-accent" />
+                          <button onClick={e => { e.stopPropagation(); saveAgingProfile(ap.id) }} className="text-green-600 hover:text-green-700 p-1"><Check size={14} /></button>
+                          <button onClick={e => { e.stopPropagation(); setEditAgingId(null) }} className="text-gray-400 p-1"><X size={14} /></button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex-1 text-sm font-semibold text-gray-800">{ap.nombre}</span>
+                          <span className="text-xs text-gray-400 mr-1">{reglas.length} regla{reglas.length !== 1 ? 's' : ''}</span>
+                          <button onClick={e => { e.stopPropagation(); setEditAgingId(ap.id); setEditAgingNombre(ap.nombre) }} className="text-gray-400 hover:text-accent p-1"><Pencil size={13} /></button>
+                          <button onClick={e => { e.stopPropagation(); deleteAgingProfile(ap.id) }} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={13} /></button>
+                        </>
+                      )}
+                    </div>
+
+                    {expanded && (
+                      <div className="p-4 space-y-3">
+                        {reglas.length === 0 && (
+                          <p className="text-xs text-gray-400 text-center py-2">Sin reglas. Agregá al menos una para activar el aging.</p>
+                        )}
+                        {reglas.length > 0 && (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-xs text-gray-400 border-b border-gray-100">
+                                <th className="text-left pb-2 font-medium">Estado de inventario</th>
+                                <th className="text-center pb-2 font-medium w-36">Días hasta vencimiento ≤</th>
+                                <th className="w-8" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {reglas.map((r: any) => (
+                                <tr key={r.id} className="border-b border-gray-50 last:border-0">
+                                  <td className="py-2 pr-4">
+                                    <span className="inline-flex items-center gap-1.5">
+                                      {r.estados_inventario?.color && (
+                                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: r.estados_inventario.color }} />
+                                      )}
+                                      <span className="text-gray-700">{r.estados_inventario?.nombre ?? '—'}</span>
+                                    </span>
+                                  </td>
+                                  <td className="py-2 text-center font-mono text-gray-600">{r.dias}</td>
+                                  <td className="py-2 text-right">
+                                    <button onClick={() => deleteAgingRegla(r.id)} className="text-gray-300 hover:text-red-500 p-1 transition-colors"><Trash2 size={13} /></button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                        {addRuleProfileId === ap.id ? (
+                          <div className="flex gap-2 mt-1 items-center">
+                            <select value={addRuleEstadoId} onChange={e => setAddRuleEstadoId(e.target.value)}
+                              className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
+                              <option value="">— Estado —</option>
+                              {(estados as any[]).map((e: any) => (
+                                <option key={e.id} value={e.id}>{e.nombre}</option>
+                              ))}
+                            </select>
+                            <input type="number" min="0" value={addRuleDias} onChange={e => setAddRuleDias(e.target.value)}
+                              placeholder="Días" className="w-24 px-2 py-1.5 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:border-accent" />
+                            <button onClick={() => addAgingRegla(ap.id)} disabled={!addRuleEstadoId || addRuleDias === ''}
+                              className="p-1.5 bg-accent text-white rounded-lg disabled:opacity-40"><Check size={14} /></button>
+                            <button onClick={() => { setAddRuleProfileId(null); setAddRuleEstadoId(''); setAddRuleDias('') }}
+                              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg"><X size={14} /></button>
+                          </div>
+                        ) : (
+                          <button onClick={() => { setAddRuleProfileId(ap.id); setAddRuleEstadoId(''); setAddRuleDias('') }}
+                            className="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 font-medium mt-1">
+                            <Plus size={13} /> Agregar regla
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )
               })}

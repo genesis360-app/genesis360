@@ -36,7 +36,7 @@ export default function ProductoFormPage() {
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
     stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false,
-    regla_inventario: '',
+    regla_inventario: '', aging_profile_id: '',
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -88,6 +88,15 @@ export default function ProductoFormPage() {
     enabled: !!tenant,
   })
 
+  const { data: agingProfiles = [] } = useQuery({
+    queryKey: ['aging_profiles', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('aging_profiles').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
   const { data: productoData } = useQuery({
     queryKey: ['producto', id],
     queryFn: async () => {
@@ -113,6 +122,7 @@ export default function ProductoFormPage() {
         tiene_lote: productoData.tiene_lote ?? false,
         tiene_vencimiento: productoData.tiene_vencimiento ?? false,
         regla_inventario: productoData.regla_inventario ?? '',
+        aging_profile_id: productoData.aging_profile_id ?? '',
       })
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
       setLoaded(true)
@@ -172,6 +182,7 @@ export default function ProductoFormPage() {
         tiene_lote: form.tiene_lote,
         tiene_vencimiento: form.tiene_vencimiento,
         regla_inventario: form.regla_inventario || null,
+        aging_profile_id: form.aging_profile_id || null,
       }
       if (isEditing) {
         const { error } = await supabase.from('productos').update(payload).eq('id', id)
@@ -243,6 +254,7 @@ export default function ProductoFormPage() {
         tiene_lote: form.tiene_lote,
         tiene_vencimiento: form.tiene_vencimiento,
         regla_inventario: form.regla_inventario || null,
+        aging_profile_id: form.aging_profile_id || null,
       }
       const { data: newProd, error } = await supabase.from('productos').insert(payload).select().single()
       if (error) throw error
@@ -642,6 +654,23 @@ export default function ProductoFormPage() {
                     ))}
                   </select>
                 </div>
+                {agingProfiles.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Aging Profile
+                      <span className="ml-1 text-gray-400 font-normal">(requiere fecha de vencimiento activa)</span>
+                    </label>
+                    <select value={form.aging_profile_id}
+                      onChange={e => setForm(p => ({ ...p, aging_profile_id: e.target.value }))}
+                      disabled={!form.tiene_vencimiento}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:bg-gray-50">
+                      <option value="">— Sin aging profile —</option>
+                      {(agingProfiles as any[]).map((ap: any) => (
+                        <option key={ap.id} value={ap.id}>{ap.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 {[
                   { key: 'tiene_series', label: 'Control por número de serie', desc: 'Cada unidad tiene su propio N° de serie' },
                   { key: 'tiene_lote', label: 'Control por lote', desc: 'El stock se agrupa por número de lote' },

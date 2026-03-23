@@ -112,8 +112,10 @@ curl -s -X POST "https://api.supabase.com/v1/projects/jjffnbrdjchquexdfgwq/datab
 | 007 | `007_precio_moneda.sql` | Columnas precio_costo_moneda / precio_venta_moneda en productos | ✅ | ✅ |
 | 008 | `008_gastos.sql` | Tabla gastos con RLS | ✅ | ✅ |
 | 009 | `009_actividad_log.sql` | Tabla audit log con RLS (INSERT todos, SELECT owner/supervisor/admin) | ✅ | ✅ |
-| 010 | `010_inventario_prioridad.sql` | Mover `prioridad` de `inventario_lineas` a `ubicaciones` | ✅ | ⏳ PROD al deployar |
-| 011 | `011_reglas_inventario.sql` | `regla_inventario` en `tenants` (default FIFO) y `productos` (nullable override) | ✅ | ⏳ PROD al deployar |
+| 010 | `010_inventario_prioridad.sql` | Mover `prioridad` de `inventario_lineas` a `ubicaciones` | ✅ | ✅ |
+| 011 | `011_reglas_inventario.sql` | `regla_inventario` en `tenants` (default FIFO) y `productos` (nullable override) | ✅ | ✅ |
+| 012 | `012_ubicacion_disponible_surtido.sql` | `disponible_surtido` en `ubicaciones` — filtro de surtido en ventas | ✅ | ✅ |
+| 013 | `013_aging_profiles.sql` | Tablas aging_profiles + reglas + función `process_aging_profiles()` | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -200,6 +202,7 @@ Seguimos SemVer pre-launch: `v0.X.Y`
 | v0.22.0 | Historial de actividad (audit log): tabla actividad_log, logActividad() en 6 módulos, HistorialPage con timeline/filtros/export | 2026-03 |
 | v0.23.0 | Walkthrough interactivo 11 slides (auto-launch + re-trigger desde sidebar) + fix etiquetas medios de pago en métricas | 2026-03 |
 | v0.24.0 | Keyboard shortcuts + fix historial caja FK + audit log caja + tipo comercio unificado + banner ubicación + precio tachado carrito + dot live caja | 2026-03 |
+| v0.25.0 | Prioridad ubicaciones + reglas FIFO/FEFO/LEFO/LIFO/Manual + disponible_surtido + aging profiles | 2026-03 |
 
 ### Crear release
 ```bash

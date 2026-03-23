@@ -1,20 +1,11 @@
 import { BRAND } from '@/config/brand'
+import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Package, Building2, Globe, Phone, Mail, Lock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
-
-const TIPOS_COMERCIO = [
-  'Almacén', 'Bazar / Decoración', 'Carnicería', 'Casa de repuestos',
-  'Construcción / Materiales', 'Deportes', 'Despensa', 'Electrónica / Tecnología',
-  'Farmacia', 'Ferretería', 'Fiambrería / Rotisería', 'Indumentaria / Ropa',
-  'Juguetería', 'Kiosco', 'Librería / Papelería', 'Mini-mercado',
-  'Mueblería', 'Panadería / Confitería', 'Perfumería / Cosmética', 'Textil / Telas',
-  'Verdulería / Frutería', 'Veterinaria', 'Vivero / Plantas', 'Zapatería',
-  'Otro',
-]
 
 const PAISES = [
   { code: 'AR', label: 'Argentina' },

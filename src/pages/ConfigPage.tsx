@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff } from 'lucide-react'
+import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -287,13 +288,22 @@ export default function ConfigPage() {
   const qc = useQueryClient()
   const canEdit = user?.rol === 'OWNER'
 
-  const [bizForm, setBizForm] = useState({ nombre: tenant?.nombre ?? '', tipo_comercio: tenant?.tipo_comercio ?? '' })
+  const [bizForm, setBizForm] = useState({ nombre: tenant?.nombre ?? '' })
   const [savingBiz, setSavingBiz] = useState(false)
+
+  // Tipo de comercio: select + campo libre si es 'Otro'
+  const _currentTipo = tenant?.tipo_comercio ?? ''
+  const _enLista = TIPOS_COMERCIO.includes(_currentTipo)
+  const [bizTipoSelect, setBizTipoSelect] = useState(_enLista ? _currentTipo : (_currentTipo ? 'Otro' : ''))
+  const [bizTipoPersonalizado, setBizTipoPersonalizado] = useState(_enLista ? '' : _currentTipo)
 
   const handleSaveBiz = async () => {
     setSavingBiz(true)
+    const tipoFinal = bizTipoSelect === 'Otro' && bizTipoPersonalizado.trim()
+      ? bizTipoPersonalizado.trim()
+      : bizTipoSelect
     const { data, error } = await supabase.from('tenants')
-      .update({ nombre: bizForm.nombre, tipo_comercio: bizForm.tipo_comercio })
+      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal })
       .eq('id', tenant!.id).select().single()
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Datos actualizados') }
@@ -584,9 +594,21 @@ export default function ConfigPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de comercio</label>
-            <input type="text" value={bizForm.tipo_comercio} disabled={!canEdit}
-              onChange={e => setBizForm(p => ({ ...p, tipo_comercio: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50" />
+            <select value={bizTipoSelect} disabled={!canEdit}
+              onChange={e => setBizTipoSelect(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50">
+              <option value="">Seleccioná...</option>
+              {TIPOS_COMERCIO.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            {bizTipoSelect === 'Otro' && canEdit && (
+              <input type="text" value={bizTipoPersonalizado}
+                onChange={e => setBizTipoPersonalizado(e.target.value)}
+                placeholder="Describí tu tipo de comercio"
+                className="mt-2 w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+            )}
+            {bizTipoSelect === 'Otro' && !canEdit && bizTipoPersonalizado && (
+              <p className="mt-1 text-sm text-gray-600 px-1">{bizTipoPersonalizado}</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plan actual</label>

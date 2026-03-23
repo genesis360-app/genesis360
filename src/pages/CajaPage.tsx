@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BRAND } from '@/config/brand'
 import { logActividad } from '@/lib/actividadLog'
+import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History,
   Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock
@@ -79,7 +80,7 @@ export default function CajaPage() {
     queryKey: ['historial-sesiones', cajaId],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('*, cajas(nombre), users(nombre_display), cerrado_por:cerrado_por_id(nombre_display)')
+        .select('*, cajas(nombre), abrio:usuario_id(nombre_display), cerrado_por:cerrado_por_id(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'cerrada')
         .order('cerrada_at', { ascending: false })
@@ -206,6 +207,23 @@ export default function CajaPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // Keyboard shortcuts para modales
+  useModalKeyboard({ isOpen: showMovimiento, onClose: () => { setShowMovimiento(false); setMovConcepto(''); setMovMonto('') }, onConfirm: () => { if (!agregarMovimiento.isPending) agregarMovimiento.mutate() } })
+  useModalKeyboard({ isOpen: showCierre, onClose: () => { setShowCierre(false); setMontoRealCierre('') }, onConfirm: () => { if (!cerrarCaja.isPending) cerrarCaja.mutate() } })
+  useModalKeyboard({ isOpen: showApertura, onClose: () => setShowApertura(false), onConfirm: () => { if (!abrirCaja.isPending) abrirCaja.mutate() } })
+  useModalKeyboard({ isOpen: showNuevaCaja, onClose: () => setShowNuevaCaja(false), onConfirm: () => { if (!crearCaja.isPending) crearCaja.mutate() } })
+
+  // Atajos de teclado de página: Shift+I = ingreso, Shift+O = egreso (solo con caja abierta)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!sesionActiva || tab !== 'caja') return
+      if (e.shiftKey && e.key === 'I') { e.preventDefault(); setMovTipo('ingreso'); setShowMovimiento(true) }
+      if (e.shiftKey && e.key === 'O') { e.preventDefault(); setMovTipo('egreso'); setShowMovimiento(true) }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [sesionActiva, tab])
+
   const imprimirCierre = (sesion: any) => {
     const doc = new jsPDF()
     doc.setFillColor(30, 58, 95)
@@ -222,7 +240,7 @@ export default function CajaPage() {
     doc.text(`Negocio: ${tenant?.nombre}`, 14, 42)
     doc.text(`Apertura: ${new Date(sesion.abierta_at).toLocaleString('es-AR')}`, 14, 49)
     doc.text(`Cierre: ${new Date(sesion.cerrada_at).toLocaleString('es-AR')}`, 14, 56)
-    const abrioNombre = sesion.users?.nombre_display ?? '—'
+    const abrioNombre = sesion.abrio?.nombre_display ?? '—'
     const cerroNombre = sesion.cerrado_por?.nombre_display ?? abrioNombre
     doc.text(`Abrió: ${abrioNombre}`, 14, 63)
     doc.text(`Cerró: ${cerroNombre}`, 14, 70)
@@ -440,7 +458,7 @@ export default function CajaPage() {
           ) : historialSesiones.map((s: any) => {
             const isExpanded = sesionExpandida === s.id
             const dif = s.diferencia_cierre
-            const cerroNombre = s.cerrado_por?.nombre_display ?? s.users?.nombre_display ?? '—'
+            const cerroNombre = s.cerrado_por?.nombre_display ?? s.abrio?.nombre_display ?? '—'
             return (
               <div key={s.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-4">

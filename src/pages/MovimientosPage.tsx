@@ -699,6 +699,12 @@ export default function MovimientosPage() {
                           <span className="ml-2 text-xs text-blue-500 font-normal">← ubicación del producto</span>
                         )}
                       </label>
+                      {selectedProduct && (selectedProduct as any).ubicacion_id && form.ubicacionId !== (selectedProduct as any).ubicacion_id && form.ubicacionId !== '' && (
+                        <div className="mb-1.5 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                          <span>⚠️</span>
+                          <span>Cambiaste la ubicación preseleccionada del producto</span>
+                        </div>
+                      )}
                       <select value={form.ubicacionId} onChange={e => setForm(p => ({ ...p, ubicacionId: e.target.value }))}
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
                         <option value="">Sin ubicación</option>

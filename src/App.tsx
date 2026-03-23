@@ -16,7 +16,6 @@ const DashboardPage    = lazy(() => import('@/pages/DashboardPage'))
 const InventarioPage   = lazy(() => import('@/pages/InventarioPage'))
 const ProductoFormPage = lazy(() => import('@/pages/ProductoFormPage'))
 const ImportarProductosPage = lazy(() => import('@/pages/ImportarProductosPage'))
-const GruposEstadosPage    = lazy(() => import('@/pages/GruposEstadosPage'))
 const CajaPage             = lazy(() => import('@/pages/CajaPage'))
 const MetricasPage         = lazy(() => import('@/pages/MetricasPage'))
 const MovimientosPage  = lazy(() => import('@/pages/MovimientosPage'))
@@ -104,7 +103,7 @@ function App() {
                   <Route path="/reportes" element={<ReportesPage />} />
                   <Route path="/usuarios" element={<UsuariosPage />} />
                   <Route path="/configuracion" element={<ConfigPage />} />
-                  <Route path="/grupos-estados" element={<GruposEstadosPage />} />
+                  <Route path="/grupos-estados" element={<Navigate to="/configuracion" replace />} />
                   <Route path="/caja" element={<CajaPage />} />
                   <Route path="/metricas" element={<MetricasPage />} />
                   <Route path="/clientes" element={<ClientesPage />} />

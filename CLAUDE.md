@@ -193,7 +193,12 @@ src/
 - [x] `handleVerificarPago` verifica webhook primero, hace fallback manual si no llegó aún
 - [ ] **Pendiente manual**: configurar URL del webhook en el dashboard de MP apuntando a `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook`
 
-### Próximo backlog — relevamiento 2026-03-22
+### Próximo backlog — relevamiento 2026-03-22 + 2026-03-23
+
+**Bugs (alta prioridad):**
+- [ ] Dashboard: panel "stock crítico" lleva a `/alertas`, debería llevar a `/movimientos`
+- [ ] Config: al crear combo aparece "Could not find the table 'public.combos'" — migración 005 probablemente no aplicada en PROD
+- [ ] Caja: cierre de caja no se registra en audit log (`logActividad`) — solo aparece en la tab de CajaPage
 
 **Fixes/mejoras rápidas (alta prioridad):**
 - [ ] Tipo de comercio "Otro" en OnboardingPage → mostrar campo de texto libre para capturar tipo personalizado
@@ -202,23 +207,52 @@ src/
 - [ ] Ventas: señalizar visualmente cuando hay DOS niveles de descuento activos (producto + total) para que no confunda
 - [ ] Indicador "live" en menú/header: punto verde/rojo mostrando si la caja está abierta o cerrada
 
+**Dashboard:**
+- [ ] Productos sin movimiento → mostrar lista desplegable con nombre del producto + días totales sin movimiento
+- [ ] Sugerencia de pedido: estimar días de stock restante por producto según volumen de ventas + sugerir cantidad a pedir para que dure el mes
+
 **Métricas — refactor (media prioridad):**
 - [ ] Rango de fechas personalizado (desde/hasta) además de presets 7d/30d/90d/mes
 - [ ] Gasto total del período cruzado con ventas → ganancia neta en un solo KPI
 - [ ] Ticket promedio por orden
-- [ ] Filtro por producto(s) específico(s)
+- [ ] Filtro por producto(s) específico(s) y por categoría
+- [ ] Margen de ganancia: mostrar margen total de todas las ventas + filtros por categoría/producto
+- [ ] Rentabilidad = ventas − (costo + gastos) como KPI principal con insights si el margen es bajo
+- [ ] Campo "margen objetivo" configurable que mejore los insights automáticos
 - [ ] Métricas de inventario: ingresos de órdenes, egresos venta vs otros motivos, movimientos de ubicación
+
+**Inventario:**
+- [ ] Pestaña "Proyección de inventario": stock actual vs tasa de salida → días estimados de cobertura
+- [ ] **Prioridad de posiciones**: agregar campo `prioridad` (INT) en `inventario_lineas` — cuando hay múltiples LPNs con mismo SKU+lote+vencimiento, rebaja/reserva de menor a mayor prioridad
+- [ ] **Regla FEFO**: cuando `fecha_vencimiento` está activo en el producto, ignorar prioridad y rebaja/reserva por fecha de vencimiento más próxima primero
+- [ ] **Guardar `linea_id` en `venta_items`**: actualmente nunca se escribe — sin esto no se puede trazar qué LPN origen corresponde a cada ítem de venta
+
+**Ventas:**
+- [ ] Mostrar de qué LPN baja el stock al registrar una venta (para todos los productos, no solo con series)
+- [ ] Vista de productos tipo galería (imagen + título + precio, estilo mercado libre) como alternativa al autocomplete
+- [ ] Pestaña "Proyección de ventas"
+
+**Gastos:**
+- [ ] Al pagar en efectivo: elegir de qué caja sale el dinero (validar saldo suficiente; permitir mix entre 2+ cajas)
 
 **Caja — integración con ventas (alta complejidad):**
 - [ ] Ventas automáticamente generan movimiento de caja (sin entrada manual)
 - [ ] Bloquear creación de ventas si la caja está cerrada
+- [ ] Motivos predefinidos para ingreso/egreso de caja (también configurables en ConfigPage)
 - [ ] Mover módulo de movimientos manuales de caja hacia Gastos
 
 **Usuarios — invitación real:**
 - [ ] Flujo de invitación por email: el dueño ingresa el email, el usuario recibe link y se auto-registra sin password temporal
 
+**Clientes:**
+- [ ] Carga masiva de clientes en bulk (CSV/Excel)
+
 **Sidebar:**
 - [ ] Colapsable/expandible en desktop (no solo mobile)
+
+**Config:**
+- [ ] Combos: descuento puede ser en % **o** monto fijo en $ o USD (además del actual % solamente)
+- [ ] Motivos de caja: sección separada en ConfigPage para motivos de ingreso/egreso de caja (distinto de motivos de stock)
 
 **Add-ons / cobro por uso (importante para revenue):**
 - [ ] Límite de movimientos por plan (`max_movimientos` en tabla `planes`/`tenants`)
@@ -292,6 +326,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **`SubscriptionGuard`**: siempre en el mismo archivo que `AuthGuard` (`src/components/AuthGuard.tsx`), nunca en archivo separado.
 - **Rutas**: antes de cualquier `navigate()` a una ruta nueva, verificar que existe en `App.tsx`. Error real: `navigate('/inventario/producto/:id')` en lugar de `/inventario/:id/editar` mandaba al wildcard `*`.
 - **Nombre de la app**: siempre `BRAND.name` desde `src/config/brand.ts`, nunca hardcodeado.
+- **Roles en navItems**: `ownerOnly: true` → solo OWNER y ADMIN; `supervisorOnly: true` → OWNER, SUPERVISOR y ADMIN. El render en AppLayout filtra con ambas props. CAJERO solo ve el resto.
+- **Audit log (logActividad)**: fire-and-forget, nunca bloquea el flujo. Llamar sin `await`. Si el usuario no está autenticado, la función retorna silenciosamente. No lanzar errores desde ahí.
 
 ### Git / Deploy
 - **Claude Code NUNCA hace push a `main`**. Todo va a `dev`. Para pasar a `main`: crear PR con gh CLI y mergearlo (ver WORKFLOW.md).
@@ -344,6 +380,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ### Movimientos de stock
 - **`linea_id` en `movimientos_stock`**: columna FK a `inventario_lineas` agregada. Permite mostrar en el detalle del movimiento: LPN, lote, vencimiento, precio de costo, ubicación, proveedor y series. Siempre guardar `linea_id` al insertar movimientos de ingreso y rebaje.
+
+### Reserva de inventario (estado actual al 2026-03-23)
+- **`cantidad_reservada`** en `inventario_lineas`: cuántas unidades de ese LPN están comprometidas para ventas pendientes.
+- **`reservado`** (boolean) en `inventario_series`: si una serie específica está comprometida.
+- **El stock físico solo disminuye** cuando una venta pasa a `estado = 'despachada'`. Hasta ese momento el stock está "reservado" pero no consumido.
+- **`linea_id` en `venta_items`**: columna existe en schema pero **nunca se escribe desde el frontend**. Esto impide trazar qué LPN origen corresponde a cada ítem de venta. Es una deuda técnica conocida.
+- **Toda la lógica de stock es manual en el frontend** (no hay triggers en `venta_items`). Si se agrega lógica de reserva real, debe coordinarse con la actualización de `cantidad_reservada` en la tabla `inventario_lineas`.
+- **Prioridad de posiciones para rebaje/reserva** (backlog): agregar campo `prioridad` (INT, default 0) en `inventario_lineas`. Cuando hay múltiples LPNs con el mismo SKU+lote+vencimiento, se rebaja/reserva de menor a mayor prioridad. Excepción: si el producto tiene `fecha_vencimiento` activo, la regla FEFO (earliest expiry first) tiene precedencia sobre la prioridad manual.
 
 ### Ventas
 - **`numero` en `ventas`**: campo INT NOT NULL sin default en el schema original. Generado por trigger `set_venta_numero` (BEFORE INSERT) que hace `MAX(numero)+1` por tenant. **Nunca** enviar `numero` en el INSERT desde el frontend — lo asigna el trigger.

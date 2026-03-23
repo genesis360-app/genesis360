@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff } from 'lucide-react'
+import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos'
+type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
 const COLORES = [
@@ -287,13 +288,22 @@ export default function ConfigPage() {
   const qc = useQueryClient()
   const canEdit = user?.rol === 'OWNER'
 
-  const [bizForm, setBizForm] = useState({ nombre: tenant?.nombre ?? '', tipo_comercio: tenant?.tipo_comercio ?? '' })
+  const [bizForm, setBizForm] = useState({ nombre: tenant?.nombre ?? '' })
   const [savingBiz, setSavingBiz] = useState(false)
+
+  // Tipo de comercio: select + campo libre si es 'Otro'
+  const _currentTipo = tenant?.tipo_comercio ?? ''
+  const _enLista = TIPOS_COMERCIO.includes(_currentTipo)
+  const [bizTipoSelect, setBizTipoSelect] = useState(_enLista ? _currentTipo : (_currentTipo ? 'Otro' : ''))
+  const [bizTipoPersonalizado, setBizTipoPersonalizado] = useState(_enLista ? '' : _currentTipo)
 
   const handleSaveBiz = async () => {
     setSavingBiz(true)
+    const tipoFinal = bizTipoSelect === 'Otro' && bizTipoPersonalizado.trim()
+      ? bizTipoPersonalizado.trim()
+      : bizTipoSelect
     const { data, error } = await supabase.from('tenants')
-      .update({ nombre: bizForm.nombre, tipo_comercio: bizForm.tipo_comercio })
+      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal })
       .eq('id', tenant!.id).select().single()
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Datos actualizados') }
@@ -469,6 +479,76 @@ export default function ConfigPage() {
     else { toast.success('Combo eliminado'); qc.invalidateQueries({ queryKey: ['combos'] }); logActividad({ entidad: 'combo', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
+  // Grupos de estados
+  interface GrupoItem { estado_id: string }
+  interface Grupo { id: string; nombre: string; descripcion?: string; es_default: boolean; activo: boolean; grupo_estado_items: GrupoItem[] }
+  interface EstadoSimple { id: string; nombre: string; color: string }
+
+  const [grupoEditId, setGrupoEditId] = useState<string | null>(null)
+  const [grupoShowForm, setGrupoShowForm] = useState(false)
+  const [grupoForm, setGrupoForm] = useState({ nombre: '', descripcion: '', es_default: false, estadosIds: [] as string[] })
+
+  const { data: grupos = [], isLoading: loadingGrupos } = useQuery({
+    queryKey: ['grupos_estados', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('grupos_estados')
+        .select('*, grupo_estado_items(estado_id)')
+        .eq('tenant_id', tenant!.id)
+        .order('es_default', { ascending: false }).order('nombre')
+      if (error) throw error
+      return (data ?? []) as Grupo[]
+    },
+    enabled: !!tenant && tab === 'grupos',
+  })
+
+  const resetGrupoForm = () => {
+    setGrupoForm({ nombre: '', descripcion: '', es_default: false, estadosIds: [] })
+    setGrupoEditId(null); setGrupoShowForm(false)
+  }
+  const startEditGrupo = (g: Grupo) => {
+    setGrupoForm({ nombre: g.nombre, descripcion: g.descripcion ?? '', es_default: g.es_default, estadosIds: g.grupo_estado_items.map(i => i.estado_id) })
+    setGrupoEditId(g.id); setGrupoShowForm(true)
+  }
+  const toggleGrupoEstado = (eid: string) =>
+    setGrupoForm(p => ({ ...p, estadosIds: p.estadosIds.includes(eid) ? p.estadosIds.filter(id => id !== eid) : [...p.estadosIds, eid] }))
+
+  const saveGrupo = useMutation({
+    mutationFn: async () => {
+      if (!grupoForm.nombre.trim()) throw new Error('El nombre es obligatorio')
+      if (grupoForm.estadosIds.length === 0) throw new Error('Seleccioná al menos un estado')
+      if (grupoForm.es_default) await supabase.from('grupos_estados').update({ es_default: false }).eq('tenant_id', tenant!.id)
+      if (grupoEditId) {
+        const { error } = await supabase.from('grupos_estados').update({ nombre: grupoForm.nombre.trim(), descripcion: grupoForm.descripcion || null, es_default: grupoForm.es_default }).eq('id', grupoEditId)
+        if (error) throw error
+        await supabase.from('grupo_estado_items').delete().eq('grupo_id', grupoEditId)
+        await supabase.from('grupo_estado_items').insert(grupoForm.estadosIds.map(eid => ({ grupo_id: grupoEditId, estado_id: eid })))
+      } else {
+        const { data: g, error } = await supabase.from('grupos_estados').insert({ tenant_id: tenant!.id, nombre: grupoForm.nombre.trim(), descripcion: grupoForm.descripcion || null, es_default: grupoForm.es_default }).select().single()
+        if (error) throw error
+        await supabase.from('grupo_estado_items').insert(grupoForm.estadosIds.map(eid => ({ grupo_id: g.id, estado_id: eid })))
+      }
+    },
+    onSuccess: () => { toast.success(grupoEditId ? 'Grupo actualizado' : 'Grupo creado'); qc.invalidateQueries({ queryKey: ['grupos_estados'] }); resetGrupoForm() },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const setGrupoDefault = useMutation({
+    mutationFn: async (gid: string) => {
+      await supabase.from('grupos_estados').update({ es_default: false }).eq('tenant_id', tenant!.id)
+      await supabase.from('grupos_estados').update({ es_default: true }).eq('id', gid)
+    },
+    onSuccess: () => { toast.success('Grupo default actualizado'); qc.invalidateQueries({ queryKey: ['grupos_estados'] }) },
+  })
+
+  const deleteGrupo = useMutation({
+    mutationFn: async (gid: string) => {
+      const { error } = await supabase.from('grupos_estados').delete().eq('id', gid)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Grupo eliminado'); qc.invalidateQueries({ queryKey: ['grupos_estados'] }) },
+    onError: () => toast.error('Error al eliminar'),
+  })
+
   const tabs = [
     { id: 'negocio' as Tab, label: 'Mi negocio', icon: Building2 },
     { id: 'categorias' as Tab, label: 'Categorías', icon: Tag },
@@ -477,6 +557,7 @@ export default function ConfigPage() {
     { id: 'estados' as Tab, label: 'Estados', icon: CircleDot },
     { id: 'motivos' as Tab, label: 'Motivos', icon: MessageSquare },
     { id: 'combos' as Tab, label: 'Combos', icon: Gift },
+    { id: 'grupos' as Tab, label: 'Grupos de estados', icon: Layers },
   ]
 
   return (
@@ -513,9 +594,21 @@ export default function ConfigPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de comercio</label>
-            <input type="text" value={bizForm.tipo_comercio} disabled={!canEdit}
-              onChange={e => setBizForm(p => ({ ...p, tipo_comercio: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50" />
+            <select value={bizTipoSelect} disabled={!canEdit}
+              onChange={e => setBizTipoSelect(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50">
+              <option value="">Seleccioná...</option>
+              {TIPOS_COMERCIO.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            {bizTipoSelect === 'Otro' && canEdit && (
+              <input type="text" value={bizTipoPersonalizado}
+                onChange={e => setBizTipoPersonalizado(e.target.value)}
+                placeholder="Describí tu tipo de comercio"
+                className="mt-2 w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+            )}
+            {bizTipoSelect === 'Otro' && !canEdit && bizTipoPersonalizado && (
+              <p className="mt-1 text-sm text-gray-600 px-1">{bizTipoPersonalizado}</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plan actual</label>
@@ -666,6 +759,129 @@ export default function ConfigPage() {
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'grupos' && (
+        <div className="space-y-4">
+          {(estados as EstadoSimple[]).length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700">
+              ⚠️ Primero creá estados en la pestaña <strong>Estados</strong> para poder armar grupos.
+            </div>
+          )}
+
+          {!grupoShowForm && (
+            <div className="flex justify-end">
+              <button onClick={() => setGrupoShowForm(true)}
+                className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+                <Plus size={16} /> Nuevo grupo
+              </button>
+            </div>
+          )}
+
+          {grupoShowForm && (
+            <div className="bg-white rounded-xl p-5 shadow-sm border border-accent/30 space-y-4">
+              <h2 className="font-semibold text-gray-700">{grupoEditId ? 'Editar grupo' : 'Nuevo grupo'}</h2>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                  <input type="text" value={grupoForm.nombre} onChange={e => setGrupoForm(p => ({ ...p, nombre: e.target.value }))}
+                    placeholder="Ej: Disponible para venta"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción (opcional)</label>
+                  <input type="text" value={grupoForm.descripcion} onChange={e => setGrupoForm(p => ({ ...p, descripcion: e.target.value }))}
+                    placeholder="Ej: Estados vendibles"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Estados incluidos *
+                  <span className="text-gray-400 font-normal ml-1">({grupoForm.estadosIds.length} seleccionado{grupoForm.estadosIds.length !== 1 ? 's' : ''})</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {(estados as EstadoSimple[]).map(e => {
+                    const selected = grupoForm.estadosIds.includes(e.id)
+                    return (
+                      <button key={e.id} type="button" onClick={() => toggleGrupoEstado(e.id)}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
+                          ${selected ? 'border-accent bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
+                        <span className="truncate">{e.nombre}</span>
+                        {selected && <Check size={13} className="text-accent ml-auto flex-shrink-0" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <label className="flex items-center gap-3 cursor-pointer p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <div className="relative">
+                  <input type="checkbox" checked={grupoForm.es_default} onChange={e => setGrupoForm(p => ({ ...p, es_default: e.target.checked }))} className="sr-only" />
+                  <div className={`w-10 h-5 rounded-full transition-colors ${grupoForm.es_default ? 'bg-amber-500' : 'bg-gray-300'}`}>
+                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${grupoForm.es_default ? 'translate-x-5' : ''}`} />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-amber-800">Filtro por defecto</p>
+                  <p className="text-xs text-amber-600">Aparecerá preseleccionado en Rebaje y Ventas</p>
+                </div>
+              </label>
+              <div className="flex gap-3 justify-end">
+                <button onClick={resetGrupoForm} className="px-5 py-2.5 border-2 border-gray-200 text-gray-600 font-semibold rounded-xl hover:border-gray-300 text-sm">Cancelar</button>
+                <button onClick={() => saveGrupo.mutate()} disabled={saveGrupo.isPending}
+                  className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
+                  {saveGrupo.isPending ? 'Guardando...' : grupoEditId ? 'Guardar cambios' : 'Crear grupo'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {loadingGrupos ? (
+            <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
+          ) : grupos.length === 0 && !grupoShowForm ? (
+            <div className="bg-white rounded-xl p-10 shadow-sm border border-gray-100 text-center text-gray-400">
+              <Layers size={36} className="mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No hay grupos creados</p>
+              <p className="text-sm mt-1">Creá un grupo para usarlo como filtro rápido en Rebaje y Ventas</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {grupos.map(grupo => {
+                const estadosGrupo = grupo.grupo_estado_items
+                  .map(i => (estados as EstadoSimple[]).find(e => e.id === i.estado_id))
+                  .filter(Boolean) as EstadoSimple[]
+                return (
+                  <div key={grupo.id} className={`bg-white rounded-xl p-4 shadow-sm border transition-all ${grupo.es_default ? 'border-amber-300 bg-amber-50/30' : 'border-gray-100'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-gray-800">{grupo.nombre}</h3>
+                          {grupo.es_default && <span className="flex items-center gap-1 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium"><Star size={10} /> Default</span>}
+                        </div>
+                        {grupo.descripcion && <p className="text-xs text-gray-400 mt-0.5">{grupo.descripcion}</p>}
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {estadosGrupo.length === 0
+                            ? <span className="text-xs text-gray-400 italic">Sin estados asignados</span>
+                            : estadosGrupo.map(e => (
+                              <span key={e.id} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium text-white" style={{ backgroundColor: e.color }}>{e.nombre}</span>
+                            ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {!grupo.es_default && (
+                          <button onClick={() => setGrupoDefault.mutate(grupo.id)} title="Marcar como default" className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"><StarOff size={15} /></button>
+                        )}
+                        <button onClick={() => startEditGrupo(grupo)} className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"><Pencil size={15} /></button>
+                        <button onClick={() => { if (confirm('¿Eliminar este grupo?')) deleteGrupo.mutate(grupo.id) }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

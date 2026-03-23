@@ -46,10 +46,10 @@ export default function InventarioPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('inventario_lineas')
-        .select('*, estados_inventario(nombre,color), ubicaciones(nombre), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado)')
+        .select('*, estados_inventario(nombre,color), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: true })
       if (error) throw error
       const map: Record<string, any[]> = {}
       for (const l of data ?? []) {
@@ -286,7 +286,12 @@ export default function InventarioPage() {
                             <div key={l.id} className="bg-white rounded-xl border border-gray-100 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
                               {/* LPN */}
                               <div className="col-span-1">
-                                <span className="font-mono text-xs text-primary font-semibold">{l.lpn}</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono text-xs text-primary font-semibold">{l.lpn}</span>
+                                  {(l.ubicaciones?.prioridad ?? 0) > 0 && (
+                                    <span className="text-xs bg-blue-50 text-blue-500 px-1 rounded font-mono" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
+                                  )}
+                                </div>
                                 {l.proveedor_id && <p className="text-xs text-gray-400 truncate">{l.proveedores?.nombre}</p>}
                               </div>
 

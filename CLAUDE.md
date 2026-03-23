@@ -1,284 +1,78 @@
 # Stokio — Contexto para Claude Code
 
-## Visión del producto
-Stokio no es un "sistema de gestión". Es **el cerebro del negocio físico**.
-No muestra datos → **dice qué hacer**.
-Posicionamiento: "La herramienta que te dice cómo ganar más plata con tu negocio"
+## Producto
+"El cerebro del negocio físico" — no muestra datos, dice qué hacer.
 
-## Stack técnico
-- **Frontend**: React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui
-- **Backend**: Supabase (PostgreSQL + Auth + RLS + Edge Functions + Storage)
-- **Deploy**: Vercel (frontend) + Supabase (backend)
-- **Pagos**: Mercado Pago (suscripciones)
-- **Librerías clave**: recharts, jspdf, jspdf-autotable, xlsx, @zxing/library
+## Stack
+- Frontend: React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui
+- Backend: Supabase (PostgreSQL + Auth + RLS + Edge Functions + Storage)
+- Deploy: Vercel (frontend) + Supabase (backend) · Pagos: Mercado Pago
+- Librerías: recharts, jspdf, jspdf-autotable, xlsx, @zxing/library
 
-## Git / Deploy workflow
-- **`main` = producción**. Claude Code **NUNCA** hace push directo a `main`.
-- Todo desarrollo va en la rama `dev`. Cuando está listo → PR hacia `main`.
-- Ver `WORKFLOW.md` para el flujo completo.
+## Git / Deploy
+- `main` = producción. Claude Code **NUNCA** hace push a `main`.
+- Todo en `dev` → PR → merge a `main`. Ver `WORKFLOW.md`.
+- GH_TOKEN en Windows Credential Manager (git credential fill). No está en `.env.local`.
+- Co-Authored-By: siempre `GNO <gaston.otranto@gmail.com>` en todos los commits.
 
 ## Supabase
-- **PROD**: `https://jjffnbrdjchquexdfgwq.supabase.co` — NO tocar directamente
-- **DEV**: `https://gcmhzdedrkmmzfzfveig.supabase.co` — para desarrollo y tests
-- Tenant de desarrollo: `5f05f3eb-6757-4f60-b9d2-8853fdfae806`
-- Usuario dueño: `48a4eca2-0152-4a6c-bfae-9a1a0778d12b` (rol OWNER)
-
-## Migraciones de schema
-- **Siempre crear un archivo** en `supabase/migrations/NNN_descripcion.sql` (numeración secuencial, idempotente)
-- **Aplicar en DEV primero**, verificar, luego aplicar en PROD solo al momento del deploy a `main`
-- **Claude Code NO aplica en PROD** salvo que el usuario lo pida explícitamente en ese momento
-- Actualizar siempre `supabase/schema_full.sql` junto con cada migration
-- Ver historial y comandos en `WORKFLOW.md`
+- **PROD**: `jjffnbrdjchquexdfgwq` — NO tocar directamente
+- **DEV**: `gcmhzdedrkmmzfzfveig` · Tenant dev: `5f05f3eb-6757-4f60-b9d2-8853fdfae806`
+- Migrations: crear `supabase/migrations/NNN_*.sql` → aplicar en DEV → actualizar `schema_full.sql` → commit → aplicar en PROD solo al deployar
 
 ## Arquitectura multi-tenant
 - Todas las tablas tienen `tenant_id` con RLS habilitado
 - Patrón RLS: `tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid())`
-- Función `is_admin()` con SECURITY DEFINER para evitar recursión infinita
-- Roles: OWNER, SUPERVISOR, CAJERO, ADMIN (superadmin global)
+- `is_admin()` con SECURITY DEFINER para rol ADMIN global
+- Roles: OWNER, SUPERVISOR, CAJERO, ADMIN
 
 ## Estructura del proyecto
 ```
 src/
-├── config/brand.ts          # ← FUENTE ÚNICA de nombre/marca (cambiar acá si cambia "Stokio")
-├── lib/supabase.ts          # Cliente Supabase + interfaces TypeScript
-├── store/authStore.ts       # Zustand: user, tenant, loadUserData
+├── config/
+│   ├── brand.ts          # FUENTE ÚNICA de nombre/marca/colores
+│   └── tiposComercio.ts  # Lista compartida tipos de comercio (Onboarding + Config)
+├── lib/
+│   ├── supabase.ts       # Cliente + interfaces TypeScript
+│   ├── actividadLog.ts   # logActividad() fire-and-forget
+│   └── rebajeSort.ts     # getRebajeSort() — lógica FIFO/FEFO/LEFO/LIFO/Manual
+├── store/authStore.ts    # Zustand: user, tenant, loadUserData
 ├── hooks/
 │   ├── useAlertas.ts
 │   ├── useGruposEstados.ts
-│   └── usePlanLimits.ts
-├── lib/
-│   └── actividadLog.ts      # Helper logActividad() fire-and-forget para audit log
+│   ├── usePlanLimits.ts
+│   ├── useCotizacion.ts  # hook global — no estado local por página
+│   └── useModalKeyboard.ts  # ESC=cerrar / Enter=confirmar en modales
 ├── components/
-│   ├── AuthGuard.tsx        # AuthGuard + SubscriptionGuard (ambos en el mismo archivo)
-│   ├── PlanLimitModal.tsx
-│   ├── LpnAccionesModal.tsx # Modal de acciones sobre LPNs
-│   ├── Walkthrough.tsx      # Tour guiado interactivo (11 slides, auto-launch 1ra vez)
+│   ├── AuthGuard.tsx     # AuthGuard + SubscriptionGuard (mismo archivo, nunca separar)
+│   ├── LpnAccionesModal.tsx
+│   ├── Walkthrough.tsx   # Tour 11 slides, auto-launch 1ra vez, re-triggerable
 │   └── layout/AppLayout.tsx
 └── pages/
-    ├── LandingPage.tsx      # Página pública de marketing
-    ├── LoginPage.tsx
-    ├── OnboardingPage.tsx   # Registro de nuevo negocio
-    ├── DashboardPage.tsx    # Tabs: "General" / "Métricas"
-    ├── InventarioPage.tsx   # Con LpnAccionesModal integrado
-    ├── MovimientosPage.tsx  # Ingreso y rebaje con motivos predefinidos
-    ├── VentasPage.tsx       # Carrito + checkout + historial
-    ├── AlertasPage.tsx
-    ├── MetricasPage.tsx     # Métricas y rotación de stock
-    ├── ReportesPage.tsx     # Exportación Excel y PDF
-    ├── CajaPage.tsx         # Apertura/cierre de caja
-    ├── UsuariosPage.tsx
-    ├── ConfigPage.tsx       # Categorías, proveedores, ubicaciones, estados, motivos, combos
-    ├── GruposEstadosPage.tsx
-    ├── ProductoFormPage.tsx
-    ├── ImportarProductosPage.tsx
-    ├── HistorialPage.tsx    # Audit log — timeline filtrable, export Excel (SUPERVISOR+ only)
-    ├── SuscripcionPage.tsx  # Checkout Mercado Pago
-    └── AdminPage.tsx        # Panel superadmin (solo rol ADMIN)
+    ├── LandingPage.tsx / LoginPage.tsx / OnboardingPage.tsx
+    ├── DashboardPage.tsx        # Tabs: General / Métricas
+    ├── InventarioPage.tsx       # LpnAccionesModal integrado; badge P{N} = prioridad ubicación
+    ├── MovimientosPage.tsx      # Ingreso/rebaje; banner amarillo si cambia ubicación
+    ├── VentasPage.tsx           # Carrito + checkout; precio tachado + badge doble descuento
+    ├── AlertasPage.tsx / MetricasPage.tsx / ReportesPage.tsx
+    ├── CajaPage.tsx             # Shortcuts: Shift+I ingreso / Shift+O egreso
+    ├── UsuariosPage.tsx / AdminPage.tsx / HistorialPage.tsx
+    ├── ConfigPage.tsx           # Tabs: negocio, categorías, proveedores, ubicaciones,
+    │                            #   estados, motivos, combos, grupos (grupos movido acá)
+    ├── ProductoFormPage.tsx     # Incluye campo regla_inventario override por SKU
+    ├── ImportarProductosPage.tsx / SuscripcionPage.tsx
+    └── GruposEstadosPage.tsx    # → redirige a /configuracion (tab integrada)
 ```
 
-## Convenciones importantes
-- **Nunca** hardcodear el nombre de la app — siempre usar `BRAND.name` de `src/config/brand.ts`
-- **Nunca** poner `SubscriptionGuard` en archivo separado — está en `AuthGuard.tsx`
-- RLS policies: siempre usar subquery, nunca funciones que puedan causar recursión
-- Triggers de Supabase recalculan `stock_actual` automáticamente — nunca actualizar manualmente
-- Atributos de tracking (serie, lote, vencimiento) son obligatorios si el producto los tiene activados
-- **`logActividad()`**: llamar sin await (fire-and-forget) desde cualquier mutación. Está en `src/lib/actividadLog.ts`. Nunca lanzar errores desde ahí.
-- **`medio_pago`** en `ventas` se guarda como JSON string (`[{"tipo":"Efectivo","monto":1500}]`). Para mostrarlo usar `formatMedioPago()` (en VentasPage). Para agregarlo en métricas, parsearlo con `JSON.parse()`.
-- **Walkthrough**: flag de "visto" en localStorage, key construida como `${BRAND.name.toLowerCase()}_walkthrough_v1`. No reiniciar al cambiar de ruta.
-
-## Módulos pendientes de desarrollar (roadmap)
-### Grupo 2 ✅ completo
-- [x] Carga masiva productos CSV/Excel
-- [x] Filtros por grupo de estados
-- [x] Rotación de stock y métricas
-- [x] Medios de pago mixtos en ventas
-- [x] Precio en USD con cotización dólar
-
-### Grupo 3 (en progreso)
-- [x] Escáner de código de barras en ventas
-- [x] QR por producto
-- [x] Emails transaccionales (Resend) — bienvenida, confirmación de venta, alertas de stock
-- [ ] Integración completa Mercado Pago producción
-
-### Grupo 4 — IA aplicada al negocio
-- [x] Crear producto desde foto: Claude Vision + barcode lookup (UPC/EAN)
-  - Edge Function `scan-product`: imagen → Claude Haiku → extrae nombre/descripción/unidad/barcode
-  - Si hay código de barras → lookup en Open Food Facts (tiene prioridad sobre Claude)
-  - Botón "✨ Completar desde foto" en ProductoFormPage (solo al crear)
-  - **Requiere créditos en console.anthropic.com** (ANTHROPIC_API_KEY ya configurado en DEV y PROD)
-
-### Backlog — mejoras UX/funcionales
-
-**Config**
-- [x] Filtro en motivos: solo rebaje / solo ingreso / ambos
-- [x] Buscador en todas las pestañas de config (categorías, proveedores, ubicaciones, estados, motivos)
-
-**Dashboard**
-- [x] Bug: "Ingresos" muestra unidades en vez de monto en $
-- [x] Mover Métricas al Dashboard como segunda pestaña ("General" / "Métricas")
-
-**Productos**
-- [x] Combos: regla de precio por volumen — producto + cantidad + descuento %
-  - Definidos en ConfigPage pestaña "Combos"
-  - Detección automática en el carrito: banner ámbar con botón "Aplicar"
-  - Al aplicar: split en filas (N combos × cant + resto sin descuento)
-
-**Ventas**
-- [x] Permitir escribir cantidad de unidades directamente (no solo +/-)
-- [x] Cálculo de vuelto/faltante: actualizar solo al presionar Enter, no mientras se escribe
-- [x] Medir descuentos en $ por producto y verlos en el detalle
-- [x] Separar unidades para descuentos parciales (ej: 3 con 10% desc + 1 sin descuento)
-
-**Movimientos**
-- [x] Sacar opción de cambiar precio de compra al ingresar nuevo inventario
-
-**Caja**
-- [x] Al cierre: ingresar monto final real y registrar diferencia (sobre/faltante) con quién cerró
-- [x] Mostrar balance total (ingresos/egresos) y permitir agregar dinero extra con aclaración (ej: caja fuerte, adelanto proveedor)
-- [x] Historial de caja: abrir cada cierre y ver detalle completo de ingresos y egresos
-
-**Métricas**
-- [x] Corregir: faltan productos en el detalle de "sin movimiento en el período"
-
-### Próximo backlog priorizado
-
-**Branding centralizado** ✅ completo (v0.16.0)
-- [x] Agregar colores de `BRAND.color` a `tailwind.config.js` como `primary`/`accent`
-- [x] Reemplazar todos los `text-[#1E3A5F]` / `bg-[#2E75B6]` por `text-primary` / `bg-accent`
-- [x] Con esto, cambiar nombre+colores en `src/config/brand.ts` + `tailwind.config.js` rebrandea toda la app
-  - Actualmente: Genesis360 (violeta eléctrico `#7B00FF` + negro `#0D0D0D`). Para volver a Stokio azul, ver comentarios en `src/config/brand.ts`.
-
-**Export / Import de data master** ✅ completo (v0.17.0 + v0.18.1)
-- [x] **Export**: agregar a ReportesPage tabs para exportar en Excel — categorías, proveedores, ubicaciones, estados, motivos (además de productos)
-- [x] **Import upsert**: al importar productos por Excel, si el SKU ya existe → actualizar precios y campos. Modo default: 'ambos' (insert + update).
-- [x] **Import data master**: importar categorías, proveedores y ubicaciones desde Excel — en Configuración → Importar (`/configuracion/importar`)
-- [x] **Moneda en Excel de productos**: columnas `precio_costo_moneda` (ARS/USD) y `precio_venta_moneda` al export/import
-
-**Módulo de clientes** ✅ mejorado (v0.19.0)
-- [x] Historial de compras por cliente, recurrencia, ticket promedio, días desde última compra
-
-**Módulo de gastos** ✅ completo (v0.18.0)
-- [x] Registrar egresos del negocio con categoría, medio de pago, fecha, notas. Stats + gráfico por categoría.
-
-**Import inventario masivo** ✅ completo (v0.19.0)
-- [x] Tab "Inventario" en Inventario → Importar: carga masiva de `inventario_lineas` + `movimientos_stock` desde Excel
-
-**Fixes y calidad (v0.20.0)**
-- [x] Bucket storage `productos` creado en DEV (faltaba al configurar el proyecto DEV)
-- [x] Bug: import inventario con `fecha_vencimiento` en formato DD-MM-YYYY daba 0 líneas cargadas
-- [x] Botones de acción primaria unificados en `bg-accent` — export `BTN` en `brand.ts` como fuente única
-
-**Historial de actividad / Audit log** ✅ completo (v0.22.0)
-- [x] Tabla `actividad_log` con RLS: INSERT todos los usuarios del tenant, SELECT solo OWNER/SUPERVISOR/ADMIN
-- [x] Helper `logActividad()` fire-and-forget en `src/lib/actividadLog.ts`
-- [x] Logging integrado en: LpnAccionesModal, VentasPage, ConfigPage, ProductoFormPage, UsuariosPage, GastosPage
-- [x] Página `/historial`: timeline agrupado por día, filtros, descripciones en lenguaje humano, export Excel
-- [x] Menú lateral: item "Historial" con `supervisorOnly` (SUPERVISOR, OWNER, ADMIN)
-- [x] Migración `009_actividad_log.sql` aplicada en DEV (pendiente PROD al deployar)
-
-**Walkthrough interactivo** ✅ completo (v0.23.0)
-- [x] Componente `src/components/Walkthrough.tsx` — 11 slides con barra de progreso, dots, tip por slide
-- [x] Auto-lanza en el primer login (localStorage flag por marca)
-- [x] Re-triggerable desde "Tour guiado" en el sidebar
-- [x] Cubre: Productos, Movimientos, Ventas, Caja, Gastos, Métricas, Historial, Configuración, Usuarios
-
-**Fix métricas — medios de pago** ✅ (v0.23.0)
-- [x] `medio_pago` se parsea como JSON correctamente; labels muestran "Efectivo", "Tarjeta", etc.
-- [x] Soporte para ventas con múltiples medios de pago (distribución proporcional por monto)
-
-**Integración Mercado Pago producción** ✅ completo (v0.21.0)
-- [x] `crear-suscripcion` llama a `POST /preapproval` de MP con `external_reference=tenant_id`
-- [x] `SuscripcionPage` usa `supabase.functions.invoke` en vez de URL directa
-- [x] Webhook `mp-webhook` activa tenant automáticamente via `external_reference`
-- [x] `handleVerificarPago` verifica webhook primero, hace fallback manual si no llegó aún
-- [ ] **Pendiente manual**: configurar URL del webhook en el dashboard de MP apuntando a `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook`
-
-### Próximo backlog — relevamiento 2026-03-22 + 2026-03-23
-
-**Bugs (alta prioridad):**
-- [ ] Dashboard: panel "stock crítico" lleva a `/alertas`, debería llevar a `/movimientos`
-- [ ] Config: al crear combo aparece "Could not find the table 'public.combos'" — migración 005 probablemente no aplicada en PROD
-- [ ] Caja: cierre de caja no se registra en audit log (`logActividad`) — solo aparece en la tab de CajaPage
-
-**Fixes/mejoras rápidas (alta prioridad):**
-- [ ] Tipo de comercio "Otro" en OnboardingPage → mostrar campo de texto libre para capturar tipo personalizado
-- [ ] Alerta visual (warning amarillo) en MovimientosPage al cambiar la ubicación preseleccionada del producto
-- [ ] Ventas: mostrar precio tachado por producto en el CARRITO activo (ya está en detalle/ticket, falta en el armar venta)
-- [ ] Ventas: señalizar visualmente cuando hay DOS niveles de descuento activos (producto + total) para que no confunda
-- [ ] Indicador "live" en menú/header: punto verde/rojo mostrando si la caja está abierta o cerrada
-
-**Dashboard:**
-- [ ] Productos sin movimiento → mostrar lista desplegable con nombre del producto + días totales sin movimiento
-- [ ] Sugerencia de pedido: estimar días de stock restante por producto según volumen de ventas + sugerir cantidad a pedir para que dure el mes
-
-**Métricas — refactor (media prioridad):**
-- [ ] Rango de fechas personalizado (desde/hasta) además de presets 7d/30d/90d/mes
-- [ ] Gasto total del período cruzado con ventas → ganancia neta en un solo KPI
-- [ ] Ticket promedio por orden
-- [ ] Filtro por producto(s) específico(s) y por categoría
-- [ ] Margen de ganancia: mostrar margen total de todas las ventas + filtros por categoría/producto
-- [ ] Rentabilidad = ventas − (costo + gastos) como KPI principal con insights si el margen es bajo
-- [ ] Campo "margen objetivo" configurable que mejore los insights automáticos
-- [ ] Métricas de inventario: ingresos de órdenes, egresos venta vs otros motivos, movimientos de ubicación
-
-**Inventario:**
-- [ ] Pestaña "Proyección de inventario": stock actual vs tasa de salida → días estimados de cobertura
-- [ ] **Prioridad de posiciones**: agregar campo `prioridad` (INT) en `inventario_lineas` — cuando hay múltiples LPNs con mismo SKU+lote+vencimiento, rebaja/reserva de menor a mayor prioridad
-- [ ] **Regla FEFO**: cuando `fecha_vencimiento` está activo en el producto, ignorar prioridad y rebaja/reserva por fecha de vencimiento más próxima primero
-- [ ] **Guardar `linea_id` en `venta_items`**: actualmente nunca se escribe — sin esto no se puede trazar qué LPN origen corresponde a cada ítem de venta
-
-**Ventas:**
-- [ ] Mostrar de qué LPN baja el stock al registrar una venta (para todos los productos, no solo con series)
-- [ ] Vista de productos tipo galería (imagen + título + precio, estilo mercado libre) como alternativa al autocomplete
-- [ ] Pestaña "Proyección de ventas"
-
-**Gastos:**
-- [ ] Al pagar en efectivo: elegir de qué caja sale el dinero (validar saldo suficiente; permitir mix entre 2+ cajas)
-
-**Caja — integración con ventas (alta complejidad):**
-- [ ] Ventas automáticamente generan movimiento de caja (sin entrada manual)
-- [ ] Bloquear creación de ventas si la caja está cerrada
-- [ ] Motivos predefinidos para ingreso/egreso de caja (también configurables en ConfigPage)
-- [ ] Mover módulo de movimientos manuales de caja hacia Gastos
-
-**Usuarios — invitación real:**
-- [ ] Flujo de invitación por email: el dueño ingresa el email, el usuario recibe link y se auto-registra sin password temporal
-
-**Clientes:**
-- [ ] Carga masiva de clientes en bulk (CSV/Excel)
-
-**Sidebar:**
-- [ ] Colapsable/expandible en desktop (no solo mobile)
-
-**Config:**
-- [ ] Combos: descuento puede ser en % **o** monto fijo en $ o USD (además del actual % solamente)
-- [ ] Motivos de caja: sección separada en ConfigPage para motivos de ingreso/egreso de caja (distinto de motivos de stock)
-
-**Add-ons / cobro por uso (importante para revenue):**
-- [ ] Límite de movimientos por plan (`max_movimientos` en tabla `planes`/`tenants`)
-- [ ] Add-ons: comprar capacidad extra sin cambiar de plan (ej: +1.000 productos por $5/mes)
-
-**Ideas futuras / roadmap largo plazo**
-
-### Ideas futuras
-- Generador de cupones + aplicar cupón en ventas
-- Ubicación del local (para expansión multi-sucursal y logística)
-- Dashboard inteligente con insights automáticos ("estás perdiendo $X por stock muerto")
-- Motor de recomendaciones accionables
-- Clasificación automática de productos (estrella/problema/oportunidad)
-- Modo "Dueño ocupado" — resumen diario por WhatsApp
-- IA tipo chat para consultas de negocio
-- Benchmark vs otros negocios del rubro
-- Automatizaciones (reposición automática, alertas de precio)
-- Gamificación ("score de salud del negocio")
-- Tema claro/oscuro
-- Configuración de idioma (multilengua)
-
-## UX Principles (no negociables)
-1. **Cero complejidad** — lenguaje humano, no técnico
-2. **Todo visual** — colores semáforo, cards grandes, gráficos simples
-3. **Interactivo** — botones accionables, no solo ver datos
-4. **Mobile-first** — la mayoría de los dueños de kioscos/ferreterías usan el celular
+## Convenciones
+- Nombre app: siempre `BRAND.name` de `src/config/brand.ts`, nunca hardcodeado
+- `logActividad()`: sin await (fire-and-forget). Nunca lanzar errores. En `src/lib/actividadLog.ts`
+- `SubscriptionGuard`: siempre en `AuthGuard.tsx`, nunca en archivo separado
+- `medio_pago` en `ventas`: JSON string `[{"tipo":"Efectivo","monto":1500}]`. Mostrar con `formatMedioPago()`. Parsear con `JSON.parse()` para métricas
+- Triggers recalculan `stock_actual` automáticamente — nunca actualizar manualmente
+- `ownerOnly: true` → OWNER+ADMIN; `supervisorOnly: true` → OWNER+SUPERVISOR+ADMIN
+- Walkthrough flag en localStorage: `${BRAND.name.toLowerCase()}_walkthrough_v1`
+- Rutas: verificar que existen en `App.tsx` antes de `navigate()`
 
 ## Planes y límites
 | Plan | Usuarios | Productos | Precio |
@@ -288,111 +82,124 @@ src/
 | Pro | 10 | 5.000 | $9.900/mes |
 | Enterprise | ∞ | ∞ | A consultar |
 
-## Variables de entorno necesarias
+## Variables de entorno
 ```
-VITE_SUPABASE_URL
-VITE_SUPABASE_ANON_KEY
-VITE_MP_PUBLIC_KEY
-VITE_MP_PLAN_BASICO
-VITE_MP_PLAN_PRO
-VITE_APP_URL
+VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY / VITE_MP_PUBLIC_KEY
+VITE_MP_PLAN_BASICO / VITE_MP_PLAN_PRO / VITE_APP_URL
 MP_ACCESS_TOKEN (solo Edge Functions)
 ```
 
 ## Deploy
-- **Producción**: https://stokio-tau.vercel.app
-- **Repo**: https://github.com/tongas86/stokio
-- Push a `main` → deploy automático en Vercel
+- Producción: https://stokio-tau.vercel.app · Repo: https://github.com/tongas86/stokio
+- `vercel.json` obligatorio para SPA routing (`rewrites` a `/index.html`)
+- SW pantalla blanca: `navigator.serviceWorker.getRegistrations().then(r=>r.forEach(sw=>sw.unregister())).then(()=>location.reload())`
+- Preview `dev`: desactivar Vercel Authentication en Settings → Deployment Protection
 
-## Decisiones de arquitectura tomadas
+## Decisiones de arquitectura
 
 ### Auth / Onboarding
-- **Google OAuth → OnboardingPage**: Cuando un usuario entra por OAuth, ya tiene sesión en Supabase Auth pero NO tiene registro en `users` ni `tenants`. El flujo correcto:
-  1. `loadUserData` no encuentra registro en `users` → pone `needsOnboarding: true`
-  2. `AuthGuard` detecta `needsOnboarding` → redirige a `/onboarding` (NO a `/login`)
-  3. `OnboardingPage` detecta sesión existente con `supabase.auth.getSession()` → salta el paso de cuenta, va directo al paso de negocio
-  4. Al guardar, NO llama `signUp()` — usa el `userId` de la sesión existente
-  5. **Crítico**: llamar `await loadUserData(userId)` ANTES de `navigate('/dashboard')` para actualizar el authStore; si no, `AuthGuard` vuelve a redirigir
-- **RLS SELECT-after-INSERT bug**: Después de hacer INSERT en `tenants`, un SELECT inmediato falla con 406 porque RLS requiere que el usuario ya esté en la tabla `users`. Solución: generar el UUID en el cliente con `crypto.randomUUID()` y nunca hacer SELECT del tenant recién insertado.
+- **Google OAuth**: `loadUserData` no encuentra `users` → `needsOnboarding:true` → `AuthGuard` redirige a `/onboarding` (no a `/login`). `OnboardingPage` detecta sesión existente → salta paso de cuenta. Al guardar, NO llama `signUp()`. Llamar `await loadUserData(userId)` ANTES de `navigate('/dashboard')`.
+- **RLS SELECT-after-INSERT**: generar UUID en cliente con `crypto.randomUUID()` y nunca hacer SELECT del tenant recién insertado (406 si el user no está en `users` aún).
 
 ### RLS / Supabase
-- **Patrón de políticas**: siempre subquery `tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid())`, nunca llamar funciones dentro de políticas de tablas que ya participan en la query (causa recursión infinita).
-- **`is_admin()`**: función con `SECURITY DEFINER` para el rol ADMIN (superadmin global). Única excepción al patrón anterior.
-- **Triggers de stock**: `stock_actual` en productos se recalcula automáticamente vía triggers en cada movimiento. **Nunca** actualizar `stock_actual` manualmente desde el frontend.
-- **Orden del schema**: al aplicar `schema_full.sql` en un proyecto nuevo, el orden importa: tablas helper → `planes` → `tenants` → `users` → funciones que referencian `users` → resto de tablas → triggers → RLS policies.
-
-### Frontend
-- **Cotización USD**: hook global `useCotizacion` (en el sidebar), no estado local por página. Cualquier feature que muestre precios en USD debe importar este hook.
-- **`SubscriptionGuard`**: siempre en el mismo archivo que `AuthGuard` (`src/components/AuthGuard.tsx`), nunca en archivo separado.
-- **Rutas**: antes de cualquier `navigate()` a una ruta nueva, verificar que existe en `App.tsx`. Error real: `navigate('/inventario/producto/:id')` en lugar de `/inventario/:id/editar` mandaba al wildcard `*`.
-- **Nombre de la app**: siempre `BRAND.name` desde `src/config/brand.ts`, nunca hardcodeado.
-- **Roles en navItems**: `ownerOnly: true` → solo OWNER y ADMIN; `supervisorOnly: true` → OWNER, SUPERVISOR y ADMIN. El render en AppLayout filtra con ambas props. CAJERO solo ve el resto.
-- **Audit log (logActividad)**: fire-and-forget, nunca bloquea el flujo. Llamar sin `await`. Si el usuario no está autenticado, la función retorna silenciosamente. No lanzar errores desde ahí.
-
-### Git / Deploy
-- **Claude Code NUNCA hace push a `main`**. Todo va a `dev`. Para pasar a `main`: crear PR con gh CLI y mergearlo (ver WORKFLOW.md).
-- **PR workflow**: `gh pr create --base main --head dev` → `gh pr merge N --merge`. GH_TOKEN en `.env.local`.
-- **GitHub Free**: branch protection no disponible para repos privados vía API. No intentar configurarlo.
-- **Vercel envs**: variables de producción apuntan a Supabase PROD; variables de preview apuntan a Supabase DEV. Configurado manualmente en el dashboard de Vercel.
-- **Co-Authored-By**: siempre `GNO <gaston.otranto@gmail.com>` en todos los commits.
-
-### Migraciones
-- **Flujo**: crear `supabase/migrations/NNN_*.sql` → aplicar en DEV → commit → aplicar en PROD solo al deployar a `main`.
-- **Claude Code no aplica en PROD** sin pedido explícito del usuario en el momento del deploy.
-- **Exception histórica**: migrations 001–004 se aplicaron en PROD directamente (antes de formalizar el flujo).
+- Políticas: siempre subquery, nunca funciones dentro de políticas que participan en la query.
+- Orden del schema: tablas helper → `planes` → `tenants` → `users` → funciones → resto → triggers → RLS.
 
 ### Mercado Pago
-- **Suscripciones**: modelo preapproval (no pagos únicos). `preapproval_plan_id` determina el plan.
-- **Webhook**: Edge Function `mp-webhook` recibe eventos `subscription_preapproval` y `payment`. Mapea `preapproval_plan_id` → `max_users`/`max_productos` usando `MP_PLAN_LIMITS` (variables de entorno `MP_PLAN_BASICO` / `MP_PLAN_PRO`).
-- **`external_reference`**: se usa para pasar el `tenant_id` a MP y recuperarlo en el webhook.
-- **Edge Functions**: deploy con `npx supabase functions deploy <nombre> --project-ref <ref>`. No requiere Docker.
-
-### Supabase DEV
-- Proyecto ref: `gcmhzdedrkmmzfzfveig`
-- Creado y configurado completamente vía Management API (PAT guardado en `.env.local`)
-- Schema aplicado desde `supabase/schema_full.sql`
-- Google OAuth habilitado y configurado (callback URL registrado en Google Cloud Console)
-
-### Vercel / Deploy
-- **`vercel.json` es obligatorio** para SPA routing. Sin él, Vercel devuelve 404 en rutas directas como `/dashboard`. Contenido mínimo: `{ "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }`
-- **Service worker (PWA)**: cuando hay un nuevo deploy, el SW puede servir el `index.html` viejo con hashes de assets que ya no existen → pantalla en blanco. Fix: en la Console del browser ejecutar `navigator.serviceWorker.getRegistrations().then(r => r.forEach(sw => sw.unregister())).then(() => location.reload())`
-- **Preview deployments (rama `dev`)**: Vercel tiene "Deployment Protection" activado por defecto — cualquier visitante necesita estar logueado en Vercel. Desactivar en Settings → Deployment Protection → "Vercel Authentication" para que el link de preview sea accesible públicamente.
-
-### Emails transaccionales (Resend)
-- **Edge Function**: `send-email` — única función con 3 tipos: `welcome`, `venta_confirmada`, `alerta_stock`
-- **FROM**: `onboarding@resend.dev` (temporal). **Cambiar a `noreply@stokio.com`** en [supabase/functions/send-email/index.ts](supabase/functions/send-email/index.ts) línea `const FROM = ...` una vez verificado el dominio en Resend.
-- **Dominio pendiente**: `stokio.com` — no tiene registrador aún. Cuando se compre, verificar en Resend y actualizar FROM.
-- **Todos los emails son fire-and-forget** (no bloquean el flujo del usuario).
-- **Triggers**: bienvenida → OnboardingPage post-insert; venta_confirmada → VentasPage al despachar; alerta_stock → VentasPage al despachar si stock < mínimo.
-- **Destinatario**: el usuario autenticado en ese momento (`supabase.auth.getUser()`). Con dominio propio se puede expandir a notificar al OWNER siempre.
-
-### Mercado Pago
-- **Planes creados**: Básico `f57914521a98415290aedf3fafa4bf98` ($4.900/mes), Pro `fe790716c9294035b6ee8fe50375fc63` ($9.900/mes)
-- **Webhooks MP**: modo prueba → DEV Supabase (`gcmhzdedrkmmzfzfveig`), modo productivo → PROD Supabase (`jjffnbrdjchquexdfgwq`)
-- **Flujo suscripción**: `init_point` se construye directo en el frontend (`SuscripcionPage`) sin llamar al backend — URL pública de MP. `handleVerificarPago` activa el tenant al volver de MP y aplica límites del plan (guardados en `sessionStorage` antes del redirect).
-- **`crear-suscripcion` Edge Function**: simplificada, devuelve `init_point` a partir de los secrets `MP_PLAN_BASICO`/`MP_PLAN_PRO`. Ya no llama a `/preapproval` de MP (incompatible con test accounts).
+- Modelo preapproval. `external_reference=tenant_id` para identificar en webhook.
+- Webhook `mp-webhook`: mapea `preapproval_plan_id` → límites vía `MP_PLAN_LIMITS`.
+- Planes: Básico `f57914521a98415290aedf3fafa4bf98`, Pro `fe790716c9294035b6ee8fe50375fc63`
+- `init_point` construido en frontend (SuscripcionPage) sin llamar al backend.
+- **⚠ Pendiente manual**: configurar webhook en MP apuntando a `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook`
 
 ### IA — scan-product
-- **Edge Function `scan-product`**: recibe imagen base64 → Claude Haiku extrae nombre/descripción/unidad/barcode → si hay barcode, lookup en Open Food Facts
-- **ANTHROPIC_API_KEY**: configurado en DEV y PROD. **Requiere créditos cargados** en console.anthropic.com para funcionar.
-- **Modelo**: `claude-haiku-4-5-20251001` (rápido y barato ~$0.0003/imagen)
-- **Open Food Facts**: API pública, sin key. URL: `https://world.openfoodfacts.org/api/v0/product/{barcode}.json`
+- Edge Function `scan-product`: imagen base64 → Claude Haiku → si hay barcode → Open Food Facts
+- Modelo: `claude-haiku-4-5-20251001` (~$0.0003/imagen). **Requiere créditos en console.anthropic.com**
+- Open Food Facts: `https://world.openfoodfacts.org/api/v0/product/{barcode}.json`
+
+### Emails transaccionales (Resend)
+- Edge Function `send-email`: 3 tipos: `welcome`, `venta_confirmada`, `alerta_stock`. Fire-and-forget.
+- FROM temporal: `onboarding@resend.dev`. **Cambiar a `noreply@stokio.com`** cuando se compre el dominio.
 
 ### Movimientos de stock
-- **`linea_id` en `movimientos_stock`**: columna FK a `inventario_lineas` agregada. Permite mostrar en el detalle del movimiento: LPN, lote, vencimiento, precio de costo, ubicación, proveedor y series. Siempre guardar `linea_id` al insertar movimientos de ingreso y rebaje.
+- `linea_id` en `movimientos_stock`: FK a `inventario_lineas`. Siempre guardar al insertar ingresos/rebajes.
 
-### Reserva de inventario (estado actual al 2026-03-23)
-- **`cantidad_reservada`** en `inventario_lineas`: cuántas unidades de ese LPN están comprometidas para ventas pendientes.
-- **`reservado`** (boolean) en `inventario_series`: si una serie específica está comprometida.
-- **El stock físico solo disminuye** cuando una venta pasa a `estado = 'despachada'`. Hasta ese momento el stock está "reservado" pero no consumido.
-- **`linea_id` en `venta_items`**: columna existe en schema pero **nunca se escribe desde el frontend**. Esto impide trazar qué LPN origen corresponde a cada ítem de venta. Es una deuda técnica conocida.
-- **Toda la lógica de stock es manual en el frontend** (no hay triggers en `venta_items`). Si se agrega lógica de reserva real, debe coordinarse con la actualización de `cantidad_reservada` en la tabla `inventario_lineas`.
-- **Prioridad de posiciones para rebaje/reserva** (backlog): agregar campo `prioridad` (INT, default 0) en `inventario_lineas`. Cuando hay múltiples LPNs con el mismo SKU+lote+vencimiento, se rebaja/reserva de menor a mayor prioridad. Excepción: si el producto tiene `fecha_vencimiento` activo, la regla FEFO (earliest expiry first) tiene precedencia sobre la prioridad manual.
+### Reserva de inventario
+- `cantidad_reservada` en `inventario_lineas`: unidades comprometidas para ventas pendientes.
+- `reservado` (boolean) en `inventario_series`: serie comprometida.
+- Stock físico solo disminuye al pasar venta a `estado='despachada'`.
+- `linea_id` en `venta_items`: existe en schema pero **nunca se escribe** (deuda técnica — trazabilidad LPN→venta pendiente).
+- Toda la lógica de stock es manual en el frontend (no hay triggers en `venta_items`).
+
+### Reglas de selección de inventario (migración 011)
+- `tenants.regla_inventario` (default `FIFO`) + `productos.regla_inventario` nullable (override por SKU).
+- Jerarquía: **SKU > negocio > FIFO** (hardcoded fallback).
+- Helper: `src/lib/rebajeSort.ts` → `getRebajeSort(reglaProducto, reglaTenant, tieneVencimiento)`
+- Reglas: `FIFO` (created_at ASC) · `LIFO` (created_at DESC) · `FEFO` (fecha_vencimiento ASC) · `LEFO` (fecha_vencimiento DESC) · `Manual` (ubicaciones.prioridad ASC)
+- FEFO/LEFO ignoran prioridad de ubicación. Si el SKU no tiene `tiene_vencimiento=true` → fallback a FIFO.
+- FIFO/LIFO/Manual: sort primario = `ubicaciones.prioridad ASC` (menor = primero; sin ubicación = 999).
+- Config UI: ConfigPage → Mi negocio (regla del negocio). ProductoFormPage → Tracking (override por SKU).
+
+### Prioridad de posiciones (migración 010)
+- `prioridad INT DEFAULT 0` en `ubicaciones` (NO en `inventario_lineas`).
+- Todos los LPNs de una ubicación heredan su prioridad automáticamente.
+- Config UI: ConfigPage → Ubicaciones.
+- Sort client-side en VentasPage y MovimientosPage vía `getRebajeSort()`.
 
 ### Ventas
-- **`numero` en `ventas`**: campo INT NOT NULL sin default en el schema original. Generado por trigger `set_venta_numero` (BEFORE INSERT) que hace `MAX(numero)+1` por tenant. **Nunca** enviar `numero` en el INSERT desde el frontend — lo asigna el trigger.
-- **Combos**: reglas de precio por volumen en tabla `combos` (producto_id, cantidad, descuento_pct). El frontend detecta en el carrito y aplica con split de filas. No afectan stock, solo precio.
+- `numero` en `ventas`: generado por trigger `set_venta_numero` (BEFORE INSERT, MAX+1 por tenant). **Nunca** enviar `numero` en INSERT.
+- Combos: tabla `combos` (producto_id, cantidad, descuento_pct). Detección en carrito, split de filas. No afectan stock.
+- Indicador live caja: `useQuery` en AppLayout con refetch 60s → punto verde/rojo en nav.
 
 ### Hooks / Compactación
-- **PostCompact hook** configurado en `.claude/settings.local.json`: inyecta contexto recordando actualizar CLAUDE.md después de cada compactación.
-- **Limitación**: no existe un evento de hook para "contexto al 80%". El hook solo corre después de que la compactación ya ocurrió. La compactación debe ejecutarse manualmente con `/compact`.
+- PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
+- Compactar manualmente con `/compact` cuando el contexto esté pesado.
+
+## Backlog pendiente
+
+### Bug
+- [ ] Dashboard: "stock crítico" lleva a `/alertas`, debería ir a `/movimientos`
+
+### Dashboard
+- [ ] Productos sin movimiento → lista desplegable (nombre + días sin movimiento)
+- [ ] Sugerencia de pedido: días de stock restante + cantidad sugerida para el mes
+
+### Inventario
+- [ ] Proyección de inventario: días de cobertura por producto
+- [ ] Regla FEFO como override automático cuando `tiene_vencimiento=true` (ignora regla configurada)
+- [ ] Guardar `linea_id` en `venta_items` (trazabilidad LPN→venta)
+- [ ] Mostrar LPN origen al registrar venta
+
+### Métricas
+- [ ] Rango de fechas personalizado (desde/hasta)
+- [ ] Ganancia neta = ventas − (costo + gastos) como KPI principal
+- [ ] Ticket promedio por orden
+- [ ] Filtro por producto(s) / categoría
+- [ ] Margen de ganancia con filtros
+- [ ] Campo "margen objetivo" configurable
+- [ ] Métricas de inventario: órdenes, motivos, ubicaciones
+
+### Ventas
+- [ ] Vista productos tipo galería (imagen + título + precio)
+- [ ] Proyección de ventas
+
+### Caja — integración
+- [ ] Ventas auto-generan movimiento de caja
+- [ ] Bloquear ventas con caja cerrada
+- [ ] Motivos predefinidos para ingreso/egreso de caja (en ConfigPage)
+- [ ] Gastos: al pagar en efectivo elegir de qué caja sale
+
+### UX / Config
+- [ ] `useModalKeyboard` wiring pendiente en: MovimientosPage, VentasPage, GastosPage, UsuariosPage
+- [ ] Combos: descuento en % o monto fijo $ o USD
+- [ ] Motivos de caja: sección separada en ConfigPage
+- [ ] Sidebar colapsable en desktop
+- [ ] Invitación por email real (link auto-registro)
+- [ ] Carga masiva clientes en bulk (CSV/Excel)
+
+### Revenue
+- [ ] Límite de movimientos por plan (`max_movimientos`)
+- [ ] Add-ons: comprar capacidad extra sin cambiar de plan
+
+### Ideas futuras
+Cupones, multi-sucursal, insights automáticos, motor recomendaciones, WhatsApp diario, IA chat, benchmark por rubro, gamificación, tema oscuro, multilengua.

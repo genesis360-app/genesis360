@@ -34,6 +34,7 @@ export interface Tenant {
   logo_url?: string
   cotizacion_usd?: number
   cotizacion_usd_updated_at?: string
+  regla_inventario: string
   created_at: string
 }
 
@@ -101,6 +102,10 @@ export interface Producto {
   unidad_medida: string
   codigo_barras?: string
   imagen_url?: string
+  tiene_series?: boolean
+  tiene_lote?: boolean
+  tiene_vencimiento?: boolean
+  regla_inventario?: string | null
   activo: boolean
   created_at: string
   updated_at: string

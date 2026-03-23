@@ -132,13 +132,14 @@ ALTER TABLE proveedores ENABLE ROW LEVEL SECURITY;
 -- 6. UBICACIONES
 -- ============================================================
 CREATE TABLE ubicaciones (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  nombre      TEXT NOT NULL,
-  descripcion TEXT,
-  prioridad   INT NOT NULL DEFAULT 0,
-  activo      BOOLEAN DEFAULT TRUE,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre              TEXT NOT NULL,
+  descripcion         TEXT,
+  prioridad           INT NOT NULL DEFAULT 0,
+  disponible_surtido  BOOLEAN NOT NULL DEFAULT TRUE,
+  activo              BOOLEAN DEFAULT TRUE,
+  created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE ubicaciones ENABLE ROW LEVEL SECURITY;
 

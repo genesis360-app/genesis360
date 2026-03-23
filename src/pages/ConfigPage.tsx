@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -396,6 +396,14 @@ export default function ConfigPage() {
     const { error } = await supabase.from('ubicaciones').delete().eq('id', id)
     if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }); logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
+  const toggleUbicSurtido = async (u: any) => {
+    const nuevo = !u.disponible_surtido
+    const { error } = await supabase.from('ubicaciones').update({ disponible_surtido: nuevo }).eq('id', u.id)
+    if (error) { toast.error(error.message); return }
+    toast.success(nuevo ? 'Disponible para surtido' : 'Excluida del surtido')
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+    logActividad({ entidad: 'ubicacion', entidad_id: u.id, entidad_nombre: u.nombre, accion: 'editar', campo: 'disponible_surtido', valor_anterior: String(u.disponible_surtido), valor_nuevo: String(nuevo), pagina: '/configuracion' })
+  }
 
   // Estados de inventario
   const { data: estados = [], isLoading: loadingEstados } = useQuery({
@@ -691,7 +699,7 @@ export default function ConfigPage() {
             <h2 className="font-semibold text-gray-700">Ubicaciones</h2>
             <span className="ml-auto text-xs text-gray-400">{ubicaciones.length} cargadas</span>
           </div>
-          <p className="text-xs text-gray-400 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero (0 tiene precedencia).</p>
+          <p className="text-xs text-gray-400 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero. El ícono <ShoppingCart size={11} className="inline" /> indica si la ubicación es elegible para surtir ventas (líneas sin ubicación siempre quedan excluidas).</p>
 
           {/* Agregar nueva */}
           <div className="bg-gray-50 rounded-xl p-4 mb-4 space-y-2">
@@ -742,12 +750,19 @@ export default function ConfigPage() {
                     ) : (
                       <>
                         <div className="flex-1 min-w-0">
-                          <span className="text-sm font-medium text-gray-800">{u.nombre}</span>
+                          <span className={`text-sm font-medium ${u.disponible_surtido ? 'text-gray-800' : 'text-gray-400'}`}>{u.nombre}</span>
                           {u.descripcion && <span className="ml-2 text-xs text-gray-400">{u.descripcion}</span>}
+                          {!u.disponible_surtido && <span className="ml-2 text-xs text-red-400">No disponible para surtido</span>}
                         </div>
                         {(u.prioridad ?? 0) > 0 && (
                           <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-mono" title="Prioridad de rebaje">P{u.prioridad}</span>
                         )}
+                        <button
+                          onClick={() => toggleUbicSurtido(u)}
+                          title={u.disponible_surtido ? 'Habilitada para surtido — click para deshabilitar' : 'Excluida del surtido — click para habilitar'}
+                          className={`p-1 transition-colors ${u.disponible_surtido ? 'text-green-500 hover:text-gray-400' : 'text-gray-300 hover:text-green-500'}`}>
+                          <ShoppingCart size={14} />
+                        </button>
                         <button onClick={() => startEditUbic(u)} className="text-gray-400 hover:text-accent p-1"><Pencil size={14} /></button>
                         <button onClick={() => deleteUbicacion(u.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
                       </>

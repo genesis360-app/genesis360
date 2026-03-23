@@ -101,12 +101,13 @@ export default function VentasPage() {
       // Calcular stock disponible por producto según el grupo activo
       const productoIds = prods.map((p: any) => p.id)
 
-      // Traer líneas activas de estos productos
+      // Traer líneas activas de estos productos con ubicación disponible para surtido
       let lineasQuery = supabase.from('inventario_lineas')
-        .select('producto_id, cantidad, cantidad_reservada, estado_id, inventario_series(id, activo, reservado)')
+        .select('producto_id, cantidad, cantidad_reservada, estado_id, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .in('producto_id', productoIds)
+        .not('ubicacion_id', 'is', null)
 
       // Si hay filtro de grupo, filtrar por estado
       if (estadosFiltro.length > 0) {
@@ -115,9 +116,10 @@ export default function VentasPage() {
 
       const { data: lineas } = await lineasQuery
 
-      // Calcular stock disponible por producto (excluyendo reservados)
+      // Calcular stock disponible por producto (solo líneas con ubicación disponible para surtido)
       const stockMap: Record<string, number> = {}
       for (const linea of lineas ?? []) {
+        if ((linea.ubicaciones as any)?.disponible_surtido === false) continue
         const pid = linea.producto_id
         if (!stockMap[pid]) stockMap[pid] = 0
 
@@ -202,19 +204,22 @@ export default function VentasPage() {
       const estadosFiltro = grupoActivo?.estado_ids ?? []
 
       let lineasQuery = supabase.from('inventario_lineas')
-        .select('id, lpn, estado_id, inventario_series(id, nro_serie, activo, reservado)')
+        .select('id, lpn, estado_id, ubicaciones(disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
         .eq('producto_id', p.id).eq('activo', true)
+        .not('ubicacion_id', 'is', null)
 
       if (estadosFiltro.length > 0) {
         lineasQuery = lineasQuery.in('estado_id', estadosFiltro)
       }
 
       const { data: lineas } = await lineasQuery
-      seriesDisp = (lineas ?? []).flatMap((l: any) =>
-        (l.inventario_series ?? [])
-          .filter((s: any) => s.activo && !s.reservado)
-          .map((s: any) => ({ ...s, lpn: l.lpn, linea_id: l.id }))
-      )
+      seriesDisp = (lineas ?? [])
+        .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+        .flatMap((l: any) =>
+          (l.inventario_series ?? [])
+            .filter((s: any) => s.activo && !s.reservado)
+            .map((s: any) => ({ ...s, lpn: l.lpn, linea_id: l.id }))
+        )
     }
 
     const newItem: CartItem = {
@@ -423,9 +428,9 @@ export default function VentasPage() {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
           if (estado === 'reservada') {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad)').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0)
-            const lineas = (lineasRaw ?? []).sort(sortLineas)
+              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
+              .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
             let restante = cant
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -439,9 +444,9 @@ export default function VentasPage() {
             }
           } else if (estado === 'despachada') {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad)').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0)
-            const lineas = (lineasRaw ?? []).sort(sortLineas)
+              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
+              .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
             let restante = cant
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -542,9 +547,9 @@ export default function VentasPage() {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad)')
-              .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-            const lineas = (lineasRaw ?? []).sort(sortLineas)
+              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+              .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
             let restante = item.cantidad
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -572,9 +577,9 @@ export default function VentasPage() {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad)')
-              .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-            const lineas = (lineasRaw ?? []).sort(sortLineas)
+              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+              .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
             let restante = item.cantidad
             for (const linea of lineas) {
               if (restante <= 0) break

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BRAND } from '@/config/brand'
+import { logActividad } from '@/lib/actividadLog'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History,
   Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock
@@ -150,6 +151,13 @@ export default function CajaPage() {
       if (error) throw error
     },
     onSuccess: () => {
+      logActividad({
+        entidad: 'caja', entidad_id: sesionActiva?.id,
+        entidad_nombre: cajaActual?.nombre ?? 'Caja',
+        accion: 'cerrar',
+        valor_nuevo: `Saldo: ${formatMoneda(saldoActual)}${diferencia !== null ? ` | Diferencia: ${formatMoneda(diferencia)}` : ''}`,
+        pagina: '/caja',
+      })
       toast.success('Caja cerrada')
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
       qc.invalidateQueries({ queryKey: ['historial-sesiones'] })

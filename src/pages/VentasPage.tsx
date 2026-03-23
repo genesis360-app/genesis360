@@ -810,6 +810,21 @@ export default function VentasPage() {
                         </p>
                       </div>
 
+                      {/* Precio tachado cuando hay descuento */}
+                      {item.descuento > 0 && (() => {
+                        const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+                        const precioOriginal = item.precio_unitario * cant
+                        const precioFinal = getItemSubtotal(item)
+                        return (
+                          <p className="text-xs text-gray-400 mt-1">
+                            Precio lista:{' '}
+                            <span className="line-through">${precioOriginal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                            {' '}→{' '}
+                            <span className="text-green-600 font-medium">${precioFinal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                          </p>
+                        )
+                      })()}
+
                       {/* Sugerencia de combo */}
                       {!item.tiene_series && (() => {
                         const combo = findCombo(item.producto_id, item.cantidad, item.descuento)
@@ -955,6 +970,12 @@ export default function VentasPage() {
               {/* Descuento general con toggle % / $ */}
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Descuento general</label>
+                {descTotalVal > 0 && cart.some(i => i.descuento > 0) && (
+                  <div className="mb-1.5 flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                    <span>⚠️</span>
+                    <span>Hay descuentos por producto <strong>y</strong> descuento general activos</span>
+                  </div>
+                )}
                 <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden">
                   <input type="number" min="0" value={descuentoTotal}
                     onChange={e => setDescuentoTotal(e.target.value)}

@@ -3,13 +3,15 @@ import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
-  BarChart2, Users, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, Layers, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle
+  BarChart2, Users, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
 import { CotizacionWidget } from '@/components/CotizacionWidget'
 import { Walkthrough, useWalkthrough } from '@/components/Walkthrough'
 import { differenceInDays } from 'date-fns'
+import { useQuery } from '@tanstack/react-query'
+import { supabase } from '@/lib/supabase'
 
 const navItems = [
   { to: '/dashboard',       icon: LayoutDashboard, label: 'Dashboard' },
@@ -26,7 +28,6 @@ const navItems = [
   { to: '/historial',       icon: ClipboardList,   label: 'Historial',      supervisorOnly: true },
   { to: '/usuarios',        icon: Users,           label: 'Usuarios',       ownerOnly: true },
   { to: '/configuracion',   icon: Settings,        label: 'Configuración',  ownerOnly: true },
-  { to: '/grupos-estados',  icon: Layers,          label: 'Grupos estados', ownerOnly: true },
 ]
 
 export function AppLayout() {
@@ -41,6 +42,18 @@ export function AppLayout() {
   useEffect(() => {
     if (!visto) setWalkthroughOpen(true)
   }, [])
+
+  const { data: cajaAbierta = false } = useQuery({
+    queryKey: ['caja-status', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id').eq('tenant_id', tenant!.id).eq('estado', 'abierta').limit(1)
+      return (data ?? []).length > 0
+    },
+    enabled: !!tenant,
+    refetchInterval: 60000,
+    staleTime: 30000,
+  })
 
   const trialDaysLeft = tenant
     ? differenceInDays(new Date(tenant.trial_ends_at), new Date())
@@ -87,6 +100,9 @@ export function AppLayout() {
             >
               <Icon size={18} />
               <span className="flex-1">{label}</span>
+              {to === '/caja' && (
+                <span className={`w-2 h-2 rounded-full ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} title={cajaAbierta ? 'Caja abierta' : 'Caja cerrada'} />
+              )}
               {badge && alertCount > 0 && (
                 <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                   {alertCount > 9 ? '9+' : alertCount}

@@ -7,8 +7,13 @@ import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
 const TIPOS_COMERCIO = [
-  'Ferretería', 'Kiosco', 'Despensa', 'Mini-mercado',
-  'Farmacia', 'Librería', 'Almacén', 'Otro',
+  'Almacén', 'Bazar / Decoración', 'Carnicería', 'Casa de repuestos',
+  'Construcción / Materiales', 'Deportes', 'Despensa', 'Electrónica / Tecnología',
+  'Farmacia', 'Ferretería', 'Fiambrería / Rotisería', 'Indumentaria / Ropa',
+  'Juguetería', 'Kiosco', 'Librería / Papelería', 'Mini-mercado',
+  'Mueblería', 'Panadería / Confitería', 'Perfumería / Cosmética', 'Textil / Telas',
+  'Verdulería / Frutería', 'Veterinaria', 'Vivero / Plantas', 'Zapatería',
+  'Otro',
 ]
 
 const PAISES = [
@@ -30,6 +35,7 @@ export default function OnboardingPage() {
   const [bizData, setBizData] = useState({
     nombre: '', tipo_comercio: '', pais: 'AR', telefono: '',
   })
+  const [tipoPersonalizado, setTipoPersonalizado] = useState('')
 
   // Si el usuario ya tiene sesión (ej: vino de Google OAuth), saltear paso de cuenta
   const [existingAuthUser, setExistingAuthUser] = useState<{ id: string; email: string; name: string } | null>(null)
@@ -83,12 +89,15 @@ export default function OnboardingPage() {
 
       // 2. Crear tenant (UUID generado en cliente para evitar problema de RLS en SELECT post-insert)
       const tenantId = crypto.randomUUID()
+      const tipoFinal = bizData.tipo_comercio === 'Otro' && tipoPersonalizado.trim()
+        ? tipoPersonalizado.trim()
+        : bizData.tipo_comercio
       const { error: tenantError } = await supabase
         .from('tenants')
         .insert({
           id: tenantId,
           nombre: bizData.nombre,
-          tipo_comercio: bizData.tipo_comercio,
+          tipo_comercio: tipoFinal,
           pais: bizData.pais,
           subscription_status: 'trial',
           max_users: 2,
@@ -230,6 +239,14 @@ export default function OnboardingPage() {
                   <option value="">Seleccioná...</option>
                   {TIPOS_COMERCIO.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+                {bizData.tipo_comercio === 'Otro' && (
+                  <input
+                    type="text" value={tipoPersonalizado}
+                    onChange={e => setTipoPersonalizado(e.target.value)}
+                    placeholder="Describí tu tipo de comercio"
+                    className="mt-2 w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  />
+                )}
               </div>
 
               <div>

@@ -106,6 +106,8 @@ curl -s -X POST "https://api.supabase.com/v1/projects/jjffnbrdjchquexdfgwq/datab
 | 004 | `004_caja_cierre_real.sql` | Caja: conteo real al cierre, diferencia, cerrado_por | ✅ | ✅ |
 | 005 | `005_combos.sql` | Tabla combos (reglas de precio por volumen) | ✅ | ✅ |
 | 006 | `006_ventas_numero_trigger.sql` | Trigger para auto-generar número de venta por tenant | ✅ | ✅ |
+| 007 | `007_precio_moneda.sql` | Columnas precio_costo_moneda / precio_venta_moneda en productos | ✅ | ✅ |
+| 008 | `008_gastos.sql` | Tabla gastos con RLS | ✅ | ✅ |
 | 009 | `009_actividad_log.sql` | Tabla audit log con RLS (INSERT todos, SELECT owner/supervisor/admin) | ✅ | ✅ |
 
 ### NUNCA

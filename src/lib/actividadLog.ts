@@ -13,8 +13,9 @@ export type EntidadLog =
   | 'usuario'
   | 'gasto'
   | 'combo'
+  | 'caja'
 
-export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado'
+export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar'
 
 interface LogParams {
   entidad: EntidadLog

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
+import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -296,6 +297,7 @@ export default function ConfigPage() {
   const _enLista = TIPOS_COMERCIO.includes(_currentTipo)
   const [bizTipoSelect, setBizTipoSelect] = useState(_enLista ? _currentTipo : (_currentTipo ? 'Otro' : ''))
   const [bizTipoPersonalizado, setBizTipoPersonalizado] = useState(_enLista ? '' : _currentTipo)
+  const [bizRegla, setBizRegla] = useState(tenant?.regla_inventario ?? 'FIFO')
 
   const handleSaveBiz = async () => {
     setSavingBiz(true)
@@ -303,7 +305,7 @@ export default function ConfigPage() {
       ? bizTipoPersonalizado.trim()
       : bizTipoSelect
     const { data, error } = await supabase.from('tenants')
-      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal })
+      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla })
       .eq('id', tenant!.id).select().single()
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Datos actualizados') }
@@ -628,6 +630,17 @@ export default function ConfigPage() {
             {bizTipoSelect === 'Otro' && !canEdit && bizTipoPersonalizado && (
               <p className="mt-1 text-sm text-gray-600 px-1">{bizTipoPersonalizado}</p>
             )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Regla de inventario</label>
+            <select value={bizRegla} disabled={!canEdit}
+              onChange={e => setBizRegla(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50">
+              {REGLAS_INVENTARIO.map(r => (
+                <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">Define cómo se selecciona el stock al rebajar. Se puede sobreescribir por producto.</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plan actual</label>

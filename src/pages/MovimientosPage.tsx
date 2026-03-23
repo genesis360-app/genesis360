@@ -7,6 +7,7 @@ import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import toast from 'react-hot-toast'
 import type { Producto } from '@/lib/supabase'
+import { getRebajeSort } from '@/lib/rebajeSort'
 
 type ModalType = 'ingreso' | 'rebaje' | null
 
@@ -128,8 +129,13 @@ export default function MovimientosPage() {
       if (!tieneSeries) q = q.gt('cantidad', 0)
 
       const { data } = await q
-      // Ordenar por prioridad de ubicación ASC (menor = se rebaja primero); sin ubicación va al final
-      return (data ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
+      // Ordenar según regla del producto o del negocio
+      const sortFn = getRebajeSort(
+        (selectedProduct as any).regla_inventario,
+        tenant!.regla_inventario,
+        (selectedProduct as any).tiene_vencimiento ?? false
+      )
+      return (data ?? []).sort(sortFn)
     },
     enabled: !!selectedProduct && modal === 'rebaje',
   })

@@ -61,6 +61,7 @@ CREATE TABLE tenants (
   logo_url                  TEXT,
   cotizacion_usd            DECIMAL(14,2),
   cotizacion_usd_updated_at TIMESTAMPTZ,
+  regla_inventario          TEXT NOT NULL DEFAULT 'FIFO',
   created_at                TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
@@ -218,6 +219,7 @@ CREATE TABLE productos (
   tiene_series     BOOLEAN DEFAULT FALSE,
   tiene_lote       BOOLEAN DEFAULT FALSE,
   tiene_vencimiento BOOLEAN DEFAULT FALSE,
+  regla_inventario  TEXT,
   activo           BOOLEAN DEFAULT TRUE,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW(),

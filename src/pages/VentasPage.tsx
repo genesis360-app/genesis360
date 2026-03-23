@@ -4,6 +4,7 @@ import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCar
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
+import { getRebajeSort } from '@/lib/rebajeSort'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import toast from 'react-hot-toast'
@@ -33,6 +34,8 @@ interface CartItem {
   descuento: number
   descuento_tipo: DescTipo
   tiene_series: boolean
+  tiene_vencimiento: boolean
+  regla_inventario?: string | null
   linea_id?: string
   series_seleccionadas: string[]
   series_disponibles: any[]
@@ -85,7 +88,7 @@ export default function VentasPage() {
 
       // Buscar productos
       let prodQuery = supabase.from('productos')
-        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, stock_actual, unidad_medida')
+        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('nombre')
         .limit(20)
@@ -224,6 +227,8 @@ export default function VentasPage() {
       descuento: 0,
       descuento_tipo: 'pct',
       tiene_series: p.tiene_series,
+      tiene_vencimiento: p.tiene_vencimiento ?? false,
+      regla_inventario: p.regla_inventario ?? null,
       series_seleccionadas: [],
       series_disponibles: seriesDisp,
     }
@@ -234,7 +239,7 @@ export default function VentasPage() {
     setScannerOpen(false)
     // Buscar por codigo_barras o SKU exacto
     const { data: prods } = await supabase.from('productos')
-      .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, stock_actual, unidad_medida, codigo_barras')
+      .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras')
       .eq('tenant_id', tenant!.id).eq('activo', true)
       .or(`codigo_barras.eq.${code},sku.eq.${code}`)
       .limit(1)
@@ -415,11 +420,12 @@ export default function VentasPage() {
         }
 
         if (!item.tiene_series) {
+          const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
           if (estado === 'reservada') {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, ubicaciones(prioridad)').eq('producto_id', item.producto_id)
+              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad)').eq('producto_id', item.producto_id)
               .eq('activo', true).gt('cantidad', 0)
-            const lineas = (lineasRaw ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
+            const lineas = (lineasRaw ?? []).sort(sortLineas)
             let restante = cant
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -433,9 +439,9 @@ export default function VentasPage() {
             }
           } else if (estado === 'despachada') {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, ubicaciones(prioridad)').eq('producto_id', item.producto_id)
+              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad)').eq('producto_id', item.producto_id)
               .eq('activo', true).gt('cantidad', 0)
-            const lineas = (lineasRaw ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
+            const lineas = (lineasRaw ?? []).sort(sortLineas)
             let restante = cant
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -523,7 +529,7 @@ export default function VentasPage() {
       if (!venta) throw new Error('Venta no encontrada')
 
       const { data: items } = await supabase.from('venta_items')
-        .select('*, venta_series(serie_id), productos(tiene_series)')
+        .select('*, venta_series(serie_id), productos(tiene_series, tiene_vencimiento, regla_inventario)')
         .eq('venta_id', ventaId)
 
       if (nuevoEstado === 'reservada') {
@@ -533,10 +539,12 @@ export default function VentasPage() {
             const serieIds = (item.venta_series ?? []).map((s: any) => s.serie_id)
             await supabase.from('inventario_series').update({ reservado: true }).in('id', serieIds)
           } else {
+            const prod = item.productos as any
+            const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, ubicaciones(prioridad)')
+              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-            const lineas = (lineasRaw ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
+            const lineas = (lineasRaw ?? []).sort(sortLineas)
             let restante = item.cantidad
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -561,11 +569,12 @@ export default function VentasPage() {
             await supabase.from('inventario_series')
               .update({ activo: false, reservado: false }).in('id', serieIds)
           } else {
-            // Rebajar de líneas por prioridad de ubicación (menor prioridad = se rebaja primero)
+            const prod = item.productos as any
+            const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, ubicaciones(prioridad)')
+              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-            const lineas = (lineasRaw ?? []).sort((a: any, b: any) => (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999))
+            const lineas = (lineasRaw ?? []).sort(sortLineas)
             let restante = item.cantidad
             for (const linea of lineas) {
               if (restante <= 0) break

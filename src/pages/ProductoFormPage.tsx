@@ -8,6 +8,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
+import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { ProductoQR } from '@/components/ProductoQR'
 import toast from 'react-hot-toast'
 
@@ -35,6 +36,7 @@ export default function ProductoFormPage() {
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
     stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false,
+    regla_inventario: '',
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -110,6 +112,7 @@ export default function ProductoFormPage() {
         tiene_series: productoData.tiene_series ?? false,
         tiene_lote: productoData.tiene_lote ?? false,
         tiene_vencimiento: productoData.tiene_vencimiento ?? false,
+        regla_inventario: productoData.regla_inventario ?? '',
       })
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
       setLoaded(true)
@@ -168,6 +171,7 @@ export default function ProductoFormPage() {
         tiene_series: form.tiene_series,
         tiene_lote: form.tiene_lote,
         tiene_vencimiento: form.tiene_vencimiento,
+        regla_inventario: form.regla_inventario || null,
       }
       if (isEditing) {
         const { error } = await supabase.from('productos').update(payload).eq('id', id)
@@ -238,6 +242,7 @@ export default function ProductoFormPage() {
         tiene_series: form.tiene_series,
         tiene_lote: form.tiene_lote,
         tiene_vencimiento: form.tiene_vencimiento,
+        regla_inventario: form.regla_inventario || null,
       }
       const { data: newProd, error } = await supabase.from('productos').insert(payload).select().single()
       if (error) throw error
@@ -623,6 +628,20 @@ export default function ProductoFormPage() {
               <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
                 <h2 className="font-semibold text-gray-700">Tracking de inventario</h2>
                 <p className="text-xs text-gray-400">Activá los atributos que aplican a este producto</p>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Regla de inventario
+                    <span className="ml-1 text-gray-400 font-normal">(vacío = usar la regla del negocio)</span>
+                  </label>
+                  <select value={form.regla_inventario}
+                    onChange={e => setForm(p => ({ ...p, regla_inventario: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
+                    <option value="">— Usar regla del negocio —</option>
+                    {REGLAS_INVENTARIO.map(r => (
+                      <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
+                    ))}
+                  </select>
+                </div>
                 {[
                   { key: 'tiene_series', label: 'Control por número de serie', desc: 'Cada unidad tiene su propio N° de serie' },
                   { key: 'tiene_lote', label: 'Control por lote', desc: 'El stock se agrupa por número de lote' },

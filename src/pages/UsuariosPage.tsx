@@ -8,11 +8,12 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import toast from 'react-hot-toast'
 
-type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO'
+type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'RRHH'
 const ROLES: Record<UserRole, { label: string; desc: string; color: string }> = {
   OWNER:      { label: 'Dueño',      desc: 'Acceso completo',           color: 'bg-purple-100 text-purple-700' },
   SUPERVISOR: { label: 'Supervisor', desc: 'Inventario y movimientos',  color: 'bg-blue-100 text-blue-700'   },
   CAJERO:     { label: 'Cajero',     desc: 'Solo ventas y rebajes',     color: 'bg-green-100 text-green-700' },
+  RRHH:       { label: 'RRHH',       desc: 'Gestión de empleados',      color: 'bg-amber-100 text-amber-700' },
 }
 
 export default function UsuariosPage() {

@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
-  BarChart2, Users, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle
+  BarChart2, Users, Users2, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -26,6 +26,7 @@ const navItems = [
   { to: '/rentabilidad',    icon: BarChart2,       label: 'Rentabilidad' },
   { to: '/recomendaciones', icon: Zap,             label: 'Recomendaciones' },
   { to: '/historial',       icon: ClipboardList,   label: 'Historial',      supervisorOnly: true },
+  { to: '/rrhh',            icon: Users2,          label: 'RRHH',           ownerOnly: true },
   { to: '/usuarios',        icon: Users,           label: 'Usuarios',       ownerOnly: true },
   { to: '/configuracion',   icon: Settings,        label: 'Configuración',  ownerOnly: true },
 ]

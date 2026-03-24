@@ -24,7 +24,6 @@ export default function UsuariosPage() {
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [invEmail, setInvEmail] = useState('')
   const [invRol, setInvRol] = useState<UserRole>('CAJERO')
-  const [invPassword, setInvPassword] = useState('')
   const [saving, setSaving] = useState(false)
 
   const { data: usuarios = [], isLoading } = useQuery({
@@ -40,47 +39,22 @@ export default function UsuariosPage() {
 
   const handleInvitar = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!invEmail.trim() || !invPassword.trim()) {
-      toast.error('Completá email y contraseña'); return
-    }
-    if (invPassword.length < 8) {
-      toast.error('La contraseña debe tener al menos 8 caracteres'); return
-    }
+    if (!invEmail.trim()) { toast.error('Ingresá el email del usuario'); return }
     setSaving(true)
     try {
-      // Crear usuario en Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.admin
-        ? { data: null, error: { message: 'Use server-side for admin' } }
-        : await supabase.auth.signUp({
-            email: invEmail.trim(),
-            password: invPassword,
-            options: { data: { full_name: invEmail.split('@')[0] } }
-          })
-
-      // Como no tenemos service_role en el front, usamos signUp y luego insertamos el perfil
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: invEmail.trim(),
-        password: invPassword,
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { email: invEmail.trim(), rol: invRol, tenant_id: tenant!.id },
       })
-      if (signUpError) throw signUpError
-      if (!signUpData.user) throw new Error('No se pudo crear el usuario')
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
 
-      const { error: userError } = await supabase.from('users').insert({
-        id: signUpData.user.id,
-        tenant_id: tenant!.id,
-        rol: invRol,
-        nombre_display: invEmail.split('@')[0],
-        activo: true,
-      })
-      if (userError) throw userError
-
-      toast.success(`Usuario creado. Pedile que confirme su email: ${invEmail}`)
-      logActividad({ entidad: 'usuario', entidad_id: signUpData.user.id, entidad_nombre: invEmail.split('@')[0], accion: 'crear', valor_nuevo: invRol, pagina: '/usuarios' })
-      setInvEmail(''); setInvPassword(''); setShowInvitar(false)
+      toast.success(`Invitación enviada a ${invEmail}. El usuario recibirá un link para crear su contraseña.`)
+      logActividad({ entidad: 'usuario', entidad_nombre: invEmail.split('@')[0], accion: 'crear', valor_nuevo: invRol, pagina: '/usuarios' })
+      setInvEmail(''); setShowInvitar(false)
       qc.invalidateQueries({ queryKey: ['usuarios'] })
       qc.invalidateQueries({ queryKey: ['plan-limits'] })
     } catch (err: any) {
-      toast.error(err.message ?? 'Error al crear usuario')
+      toast.error(err.message ?? 'Error al enviar la invitación')
     } finally {
       setSaving(false)
     }
@@ -166,21 +140,13 @@ export default function UsuariosPage() {
       {showInvitar && (
         <form onSubmit={handleInvitar} className="bg-white rounded-xl p-5 shadow-sm border border-accent/30 space-y-4">
           <h2 className="font-semibold text-gray-700">Nuevo usuario</h2>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-              <div className="relative">
-                <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)}
-                  placeholder="usuario@email.com" required
-                  className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña temporal *</label>
-              <input type="password" value={invPassword} onChange={e => setInvPassword(e.target.value)}
-                placeholder="Mínimo 8 caracteres" required minLength={8}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+            <div className="relative">
+              <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)}
+                placeholder="usuario@email.com" required
+                className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
             </div>
           </div>
           <div>
@@ -198,9 +164,9 @@ export default function UsuariosPage() {
                 ))}
             </div>
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 flex items-start gap-2">
-            <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
-            El usuario recibirá un email de confirmación. Compartile también la contraseña temporal para que pueda ingresar.
+          <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-xs text-blue-700 flex items-start gap-2">
+            <Mail size={13} className="mt-0.5 flex-shrink-0" />
+            El usuario recibirá un email con un link para crear su contraseña. No necesitás compartirle ninguna contraseña manualmente.
           </div>
           <div className="flex gap-3 justify-end">
             <button type="button" onClick={() => setShowInvitar(false)}
@@ -209,7 +175,7 @@ export default function UsuariosPage() {
             </button>
             <button type="submit" disabled={saving}
               className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl text-sm disabled:opacity-50">
-              {saving ? 'Creando...' : 'Crear usuario'}
+              {saving ? 'Enviando...' : 'Enviar invitación'}
             </button>
           </div>
         </form>

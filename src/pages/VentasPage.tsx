@@ -24,6 +24,14 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
 
 const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
 
+function calcularEfectivo(mediosPago: MedioPagoItem[], total: number): number {
+  const efectivos = mediosPago.filter(m => m.tipo === 'Efectivo')
+  if (efectivos.length === 0) return 0
+  const hayOtros = mediosPago.some(m => m.tipo && m.tipo !== 'Efectivo')
+  if (efectivos.length === 1 && !efectivos[0].monto && !hayOtros) return total
+  return efectivos.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+}
+
 interface CartItem {
   producto_id: string
   nombre: string
@@ -63,6 +71,22 @@ export default function VentasPage() {
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
+
+  // Caja abierta
+  const { data: sesionesAbiertas = [] } = useQuery({
+    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, caja_id, cajas(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'abierta')
+      return data ?? []
+    },
+    enabled: !!tenant,
+    refetchInterval: 60_000,
+  })
+  const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
+  const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
 
   // Historial
   const [searchHistorial, setSearchHistorial] = useState('')
@@ -368,6 +392,17 @@ export default function VentasPage() {
       toast.error(`El monto pagado ($${totalAsignado.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) es menor al total. No se puede reservar ni despachar con pago incompleto.`)
       return
     }
+    const montoEfectivoCaja = calcularEfectivo(mediosPago, total)
+    if (estado === 'despachada' && montoEfectivoCaja > 0) {
+      if (sesionesAbiertas.length === 0) {
+        toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas en efectivo.')
+        return
+      }
+      if (sesionesAbiertas.length > 1 && !cajaSeleccionadaId) {
+        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar el efectivo.')
+        return
+      }
+    }
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     try {
@@ -511,6 +546,16 @@ export default function VentasPage() {
       }
 
       logActividad({ entidad: 'venta', entidad_id: venta.id, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'crear', valor_nuevo: estado, pagina: '/ventas' })
+      if (estado === 'despachada' && montoEfectivoCaja > 0 && sesionCajaId) {
+        void supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id,
+          sesion_id: sesionCajaId,
+          tipo: 'ingreso',
+          concepto: `Venta #${venta.numero}`,
+          monto: montoEfectivoCaja,
+          usuario_id: user?.id,
+        }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
+      }
       const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })) })
@@ -614,6 +659,24 @@ export default function VentasPage() {
         await supabase.from('ventas')
           .update({ estado: 'despachada', despachado_at: new Date().toISOString() })
           .eq('id', ventaId)
+        // Registrar efectivo en caja si hay sesión abierta
+        const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
+        if (_sesionId && venta.medio_pago) {
+          try {
+            const mediosArr = JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[]
+            const _efectivo = mediosArr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
+            if (_efectivo > 0) {
+              await supabase.from('caja_movimientos').insert({
+                tenant_id: tenant!.id,
+                sesion_id: _sesionId,
+                tipo: 'ingreso',
+                concepto: `Venta #${venta.numero}`,
+                monto: _efectivo,
+                usuario_id: user?.id,
+              })
+            }
+          } catch {}
+        }
 
       } else if (nuevoEstado === 'cancelada') {
         // Liberar reservas
@@ -654,6 +717,7 @@ export default function VentasPage() {
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['alertas'] })
       qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
       setVentaDetalle(null)
     },
     onError: (e: any) => toast.error(e.message),
@@ -1048,6 +1112,33 @@ export default function VentasPage() {
                   <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
 
+                {/* Estado de caja para efectivo */}
+                {(() => {
+                  const efectivo = calcularEfectivo(mediosPago, total)
+                  if (efectivo === 0) return null
+                  if (sesionesAbiertas.length === 0) return (
+                    <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                      <span>⚠️</span><span>Sin caja abierta — el efectivo no se registrará</span>
+                    </div>
+                  )
+                  if (sesionesAbiertas.length > 1) return (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Registrar efectivo en:</label>
+                      <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                        <option value="">— Seleccioná una caja —</option>
+                        {(sesionesAbiertas as any[]).map(s => (
+                          <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                  return (
+                    <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
+                      <span>✓</span><span>Efectivo → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja'}</span>
+                    </div>
+                  )
+                })()}
                 <div className="space-y-2 pt-1">
                   <button onClick={() => registrarVenta('reservada')} disabled={saving}
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">

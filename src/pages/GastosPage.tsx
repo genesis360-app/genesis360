@@ -37,7 +37,7 @@ function formatFecha(f: string) {
 }
 
 export default function GastosPage() {
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
 
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -50,6 +50,21 @@ export default function GastosPage() {
     return d.toISOString().split('T')[0]
   })
   const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0])
+
+  const { data: sesionesAbiertas = [] } = useQuery({
+    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, caja_id, cajas(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'abierta')
+      return data ?? []
+    },
+    enabled: !!tenant,
+    refetchInterval: 60_000,
+  })
+  const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
+  const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
 
   const { data: gastos = [], isLoading } = useQuery({
     queryKey: ['gastos', tenant?.id, fechaDesde, fechaHasta],
@@ -105,7 +120,7 @@ export default function GastosPage() {
     setModalAbierto(true)
   }
 
-  const cerrarModal = () => { setModalAbierto(false); setEditandoId(null); setForm(FORM_VACIO) }
+  const cerrarModal = () => { setModalAbierto(false); setEditandoId(null); setForm(FORM_VACIO); setCajaSeleccionadaId(null) }
 
   // ── Guardar ──────────────────────────────────────────────────────────────
   const guardar = async () => {
@@ -135,6 +150,16 @@ export default function GastosPage() {
         if (error) throw error
         toast.success('Gasto registrado')
         logActividad({ entidad: 'gasto', entidad_nombre: form.descripcion.trim(), accion: 'crear', valor_nuevo: `$${monto}`, pagina: '/gastos' })
+        if (form.medio_pago === 'Efectivo' && sesionCajaId) {
+          void supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id,
+            sesion_id: sesionCajaId,
+            tipo: 'egreso',
+            concepto: `Gasto: ${form.descripcion.trim()}`,
+            monto,
+            usuario_id: user?.id,
+          }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
+        }
       }
 
       qc.invalidateQueries({ queryKey: ['gastos'] })
@@ -439,6 +464,31 @@ export default function GastosPage() {
               </div>
             </div>
 
+            {/* Estado de caja para efectivo (solo gastos nuevos) */}
+            {!editandoId && form.medio_pago === 'Efectivo' && (
+              <div className="px-5 pb-3">
+                {sesionesAbiertas.length === 0 ? (
+                  <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                    <span>⚠️</span><span>Sin caja abierta — el egreso no se registrará en caja</span>
+                  </div>
+                ) : sesionesAbiertas.length > 1 ? (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Registrar egreso en caja:</label>
+                    <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
+                      className="w-full appearance-none border border-gray-200 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white">
+                      <option value="">— Seleccioná una caja —</option>
+                      {(sesionesAbiertas as any[]).map(s => (
+                        <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
+                    <span>✓</span><span>Egreso en efectivo → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja'}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="px-5 pb-5 flex gap-3">
               <button onClick={cerrarModal}
                 className="flex-1 border border-gray-200 text-gray-600 font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-all text-sm">

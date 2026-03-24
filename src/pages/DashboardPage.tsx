@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Package, AlertTriangle, ArrowDown, TrendingUp, TrendingDown,
   ShoppingCart, DollarSign, CheckCircle, Zap, ChevronRight, Clock, BarChart2,
-  ChevronDown, ChevronUp, Truck,
+  ChevronDown, ChevronUp, Truck, Hourglass,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -47,6 +47,7 @@ export default function DashboardPage() {
   const { score, recomendaciones } = useRecomendaciones()
   const [tab, setTab] = useState<'general' | 'metricas'>('general')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
+  const [coberturaExpanded, setCoberturaExpanded] = useState(false)
 
   const { data: stats } = useQuery({
     queryKey: ['dashboard-stats', tenant?.id],
@@ -106,10 +107,25 @@ export default function DashboardPage() {
           return { id: p.id, nombre: (p as any).nombre, sku: (p as any).sku, stock_actual: p.stock_actual, stock_minimo: p.stock_minimo, diasCobertura, sugerido }
         })
 
+      // Proyección de cobertura: productos con stock > mínimo y velocidad de venta > 0
+      // Muestra cuántos días de stock quedan antes de llegar al mínimo
+      const proyeccionCobertura = prods
+        .filter(p => p.stock_actual > p.stock_minimo && (velocidadMap[p.id] ?? 0) > 0)
+        .map(p => {
+          const vendido30d = velocidadMap[p.id]
+          const promDiario = vendido30d / 30
+          // Días hasta llegar al stock_minimo (no hasta 0)
+          const diasHastaCritico = Math.floor((p.stock_actual - p.stock_minimo) / promDiario)
+          return { id: p.id, nombre: (p as any).nombre, sku: (p as any).sku, stock_actual: p.stock_actual, stock_minimo: p.stock_minimo, vendido30d, diasHastaCritico }
+        })
+        .sort((a, b) => a.diasHastaCritico - b.diasHastaCritico)
+        .slice(0, 10)
+
       return {
         totalProductos, stockCritico, valorInventario, alertasActivas,
         ingresosHoy, cantIngresosHoy, rebajesHoy, totalVentasMes, cantVentasMes,
         totalVentasMesAnt, cantStockMuerto, valorStockMuerto, prodsInactivos, prodsCriticos,
+        proyeccionCobertura,
       }
     },
     enabled: !!tenant,
@@ -538,6 +554,59 @@ export default function DashboardPage() {
           {(stats?.prodsCriticos?.length ?? 0) > 8 && (
             <div className="px-5 py-2 text-xs text-gray-400 text-center border-t border-gray-50">
               +{stats!.prodsCriticos.length - 8} más con stock crítico
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Proyección de cobertura */}
+      {(stats?.proyeccionCobertura?.length ?? 0) > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <button
+            onClick={() => setCoberturaExpanded(v => !v)}
+            className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <Hourglass size={15} className="text-blue-500" />
+              <span className="font-semibold text-gray-700 text-sm">Proyección de stock</span>
+              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                {stats!.proyeccionCobertura.length} productos con stock decreciente
+              </span>
+            </div>
+            {coberturaExpanded
+              ? <ChevronUp size={15} className="text-gray-400 flex-shrink-0" />
+              : <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />}
+          </button>
+          {coberturaExpanded && (
+            <div className="border-t border-gray-100 divide-y divide-gray-50">
+              <div className="px-5 py-2 grid grid-cols-4 gap-3 text-xs text-gray-400 font-medium uppercase tracking-wide">
+                <span className="col-span-2">Producto</span>
+                <span className="text-right">Stock / Mín.</span>
+                <span className="text-right">Días restantes</span>
+              </div>
+              {stats!.proyeccionCobertura.map((p: any) => {
+                const nivel = p.diasHastaCritico <= 7 ? 'red' : p.diasHastaCritico <= 14 ? 'amber' : 'green'
+                return (
+                  <div key={p.id} className="px-5 py-2.5 grid grid-cols-4 gap-3 items-center text-sm">
+                    <div className="col-span-2 min-w-0">
+                      <p className="font-medium text-gray-800 truncate">{p.nombre}</p>
+                      <p className="text-xs text-gray-400 font-mono">{p.sku}</p>
+                    </div>
+                    <p className="text-right text-gray-600">{p.stock_actual} / {p.stock_minimo}</p>
+                    <div className="text-right">
+                      <span className={`inline-block font-semibold px-2 py-0.5 rounded-full text-xs
+                        ${nivel === 'red'   ? 'bg-red-100 text-red-600' :
+                          nivel === 'amber' ? 'bg-amber-100 text-amber-600' :
+                                             'bg-green-100 text-green-700'}`}>
+                        {p.diasHastaCritico}d
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="px-5 py-2 text-xs text-gray-400 text-center">
+                Días estimados hasta alcanzar el stock mínimo · basado en ventas de los últimos 30 días
+              </div>
             </div>
           )}
         </div>

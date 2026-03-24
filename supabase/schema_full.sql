@@ -222,6 +222,7 @@ CREATE TABLE productos (
   tiene_vencimiento BOOLEAN DEFAULT FALSE,
   regla_inventario  TEXT,
   aging_profile_id  UUID,  -- FK → aging_profiles (se agrega FK después de crear la tabla)
+  margen_objetivo   DECIMAL(5,2),
   activo            BOOLEAN DEFAULT TRUE,
   created_at        TIMESTAMPTZ DEFAULT NOW(),
   updated_at        TIMESTAMPTZ DEFAULT NOW(),

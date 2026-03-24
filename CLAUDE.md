@@ -205,5 +205,15 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [ ] Add-ons: comprar capacidad extra sin cambiar de plan
 - [ ] Revisar matriz de funcionalidades por plan: qué features están habilitadas en Free/Básico/Pro/Enterprise (actualmente solo se limitan usuarios y productos)
 
+### RRHH — Módulo completo (Phases 2–5)
+- [ ] **Phase 2A — Nómina**: `rrhh_salarios` + `rrhh_conceptos`; plantilla semi-automática; pagar nómina → egreso automático en Caja
+- [ ] **Phase 2B — Vacaciones**: solicitudes con flujo aprobación; saldo anual + remanente configurable; días hábiles
+- [ ] **Phase 2C — Cumpleaños automáticos**: Edge Function scheduler (email mensual + alerta dashboard)
+- [ ] **Phase 3A — Asistencia**: `rrhh_asistencia` (entrada/salida/estado/motivo); registro manual o QR futuro
+- [ ] **Phase 3B — Dashboard RRHH**: KPIs ausentismo, vacaciones, nómina próxima; reportes Excel/PDF
+- [ ] **Phase 4A — Documentos empleado**: Storage bucket `empleados`; contratos, DNI, carnet de salud
+- [ ] **Phase 4B — Capacitaciones**: `rrhh_capacitaciones` + registro asistencia + certificados
+- [ ] **Phase 5 — Supervisor Self-Service**: dashboard restringido a su equipo; aprobar vacaciones subordinados; árbol jerárquico en RLS
+
 ### Ideas futuras
 Cupones, multi-sucursal, insights automáticos, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

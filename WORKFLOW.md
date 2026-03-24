@@ -68,6 +68,7 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 011 | `011_reglas_inventario.sql` | `regla_inventario` en tenants y productos | ✅ | ✅ |
 | 012 | `012_ubicacion_disponible_surtido.sql` | `disponible_surtido` en ubicaciones | ✅ | ✅ |
 | 013 | `013_aging_profiles.sql` | Aging profiles + reglas + función `process_aging_profiles()` | ✅ | ✅ |
+| 014 | `014_rrhh_empleados.sql` | RRHH Phase 1: empleados, puestos, departamentos + rol RRHH + `is_rrhh()` | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -106,6 +107,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.23.0 | Walkthrough interactivo 11 slides + fix medios de pago en métricas | 2026-03 |
 | v0.24.0 | Keyboard shortcuts + fix historial caja + dot live caja + tipo comercio unificado | 2026-03 |
 | v0.25.0 | Prioridad ubicaciones + reglas FIFO/FEFO/LEFO/LIFO/Manual + disponible_surtido + aging profiles | 2026-03 |
+| v0.26.0 | RRHH Phase 1: empleados, puestos, departamentos, cumpleaños + rol RRHH | 2026-03 |
 
 ---
 

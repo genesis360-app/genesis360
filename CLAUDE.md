@@ -164,6 +164,13 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - Rol `RRHH`: acceso delegado. Helper `is_rrhh()` SECURITY DEFINER. UNIQUE(tenant_id, dni_rut).
 - Fases 2–5 en ROADMAP.md.
 
+### Dashboard + Métricas (v0.28.0)
+- **Dashboard sin movimiento**: prods inactivos se obtienen del query principal (productos select incluye `nombre, sku`). `rebajesRecientes` selecciona `producto_id, cantidad` → `velocidadMap`. `prodsInactivos` y `prodsCriticos` retornados en stats.
+- **Sugerencia de pedido**: `prodsCriticos = prods.filter(stock_actual <= stock_minimo)`. `diasCobertura = floor(stock_actual / (vendido30d/30))`. `sugerido = vendido30d > 0 ? ceil(vendido30d*1.2) - stock_actual : stock_minimo*2 - stock_actual`.
+- **Ganancia neta**: `costoVentas = sum(rankingProductos[p].costo * cantidad)`. `gananciaNeta = totalVentas - costoVentas - gastosTotal`. Query `gastos` usa campo `fecha` (date string), no `created_at`.
+- **Rango personalizado**: tipo `Periodo = '7d'|'30d'|'90d'|'mes'|'custom'`. `getFechaDesde()` y `getFechaHasta()` manejan `custom`. Query ventas agrega `.lte('created_at', getFechaHasta())` solo para custom.
+- **Filtro categoría**: `categoriaFiltro: string | null` en estado. `rankingProductos` incluye `categoria_id`. Filtra `topProductos`, `sinMovimiento` y `margenProductos`.
+
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
 - Compactar manualmente con `/compact` cuando el contexto esté pesado.
@@ -172,23 +179,13 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ## Backlog pendiente
 
-### Bugs
-- [ ] Dashboard: "stock crítico" lleva a `/alertas`, debería ir a `/movimientos`
-
-### Dashboard
-- [ ] Productos sin movimiento → lista desplegable (nombre + días sin movimiento)
-- [ ] Sugerencia de pedido: días de cobertura + cantidad sugerida para el mes
-
 ### Inventario
 - [ ] Guardar `linea_id` en `venta_items` (trazabilidad LPN→venta) — deuda técnica
 - [ ] Mostrar LPN origen al registrar venta
 - [ ] Proyección de cobertura: días de stock restante por producto
 
 ### Métricas
-- [ ] Rango de fechas personalizado (desde/hasta)
-- [ ] Ganancia neta = ventas − (costo + gastos) como KPI principal
-- [ ] Ticket promedio por orden · Filtro por producto/categoría
-- [ ] Margen de ganancia con filtros · Campo "margen objetivo" configurable
+- [ ] Margen objetivo: campo configurable por producto con insights automáticos
 - [ ] Métricas de inventario: órdenes, motivos, ubicaciones
 
 ### Ventas

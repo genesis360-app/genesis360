@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Package, AlertTriangle, ArrowDown, TrendingUp, TrendingDown,
   ShoppingCart, DollarSign, CheckCircle, Zap, ChevronRight, Clock, BarChart2,
+  ChevronDown, ChevronUp, Truck,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -45,6 +46,7 @@ export default function DashboardPage() {
   const { tenant } = useAuthStore()
   const { score, recomendaciones } = useRecomendaciones()
   const [tab, setTab] = useState<'general' | 'metricas'>('general')
+  const [sinMovExpanded, setSinMovExpanded] = useState(false)
 
   const { data: stats } = useQuery({
     queryKey: ['dashboard-stats', tenant?.id],
@@ -57,12 +59,12 @@ export default function DashboardPage() {
       const hace30dias   = new Date(Date.now() - 30 * 86400000).toISOString()
 
       const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes] = await Promise.all([
-        supabase.from('productos').select('id, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
+        supabase.from('productos').select('id, nombre, sku, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
         supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
         supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes),
         supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt),
-        supabase.from('movimientos_stock').select('producto_id').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias),
+        supabase.from('movimientos_stock').select('producto_id, cantidad').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias),
       ])
 
       const prods            = productos.data ?? []
@@ -79,16 +81,35 @@ export default function DashboardPage() {
       const cantVentasMes    = ventasMes.data?.length ?? 0
       const totalVentasMesAnt = (ventasMesAnt.data ?? []).reduce((a, v) => a + (v.total ?? 0), 0)
 
+      // Velocidad de ventas en últimos 30d
+      const velocidadMap: Record<string, number> = {}
+      ;(rebajesRecientes.data ?? []).forEach((r: any) => {
+        velocidadMap[r.producto_id] = (velocidadMap[r.producto_id] ?? 0) + r.cantidad
+      })
+
       // Stock muerto: productos con stock > 0 sin ningún rebaje en 30 días
       const vendidosSet      = new Set((rebajesRecientes.data ?? []).map((r: any) => r.producto_id))
       const prodsInactivos   = prods.filter(p => p.stock_actual > 0 && !vendidosSet.has(p.id))
       const cantStockMuerto  = prodsInactivos.length
       const valorStockMuerto = prodsInactivos.reduce((acc, p) => acc + p.precio_costo * p.stock_actual, 0)
 
+      // Sugerencia de pedido: stock crítico con velocidad y cantidad sugerida
+      const prodsCriticos = prods
+        .filter(p => p.stock_actual <= p.stock_minimo)
+        .map(p => {
+          const vendido30d = velocidadMap[p.id] ?? 0
+          const promDiario = vendido30d / 30
+          const diasCobertura = promDiario > 0 ? Math.floor(p.stock_actual / promDiario) : null
+          const sugerido = vendido30d > 0
+            ? Math.max(0, Math.ceil(vendido30d * 1.2) - p.stock_actual)
+            : Math.max(1, p.stock_minimo * 2 - p.stock_actual)
+          return { id: p.id, nombre: (p as any).nombre, sku: (p as any).sku, stock_actual: p.stock_actual, stock_minimo: p.stock_minimo, diasCobertura, sugerido }
+        })
+
       return {
         totalProductos, stockCritico, valorInventario, alertasActivas,
         ingresosHoy, cantIngresosHoy, rebajesHoy, totalVentasMes, cantVentasMes,
-        totalVentasMesAnt, cantStockMuerto, valorStockMuerto,
+        totalVentasMesAnt, cantStockMuerto, valorStockMuerto, prodsInactivos, prodsCriticos,
       }
     },
     enabled: !!tenant,
@@ -282,7 +303,7 @@ export default function DashboardPage() {
           )}
         </Link>
 
-        <Link to="/alertas" className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all">
+        <Link to="/movimientos" className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all">
           <div className="flex items-start justify-between mb-3">
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-amber-50 text-amber-500">
               <Package size={20} />
@@ -340,6 +361,48 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Productos sin movimiento — expandable */}
+      {(stats?.cantStockMuerto ?? 0) > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <button
+            onClick={() => setSinMovExpanded(v => !v)}
+            className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <Clock size={15} className="text-amber-500" />
+              <span className="font-semibold text-gray-700 text-sm">
+                {stats!.cantStockMuerto} producto{stats!.cantStockMuerto !== 1 ? 's' : ''} sin movimiento en 30 días
+              </span>
+              <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                ${(stats?.valorStockMuerto ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} inmovilizados
+              </span>
+            </div>
+            {sinMovExpanded
+              ? <ChevronUp size={15} className="text-gray-400 flex-shrink-0" />
+              : <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />}
+          </button>
+          {sinMovExpanded && (
+            <div className="border-t border-gray-100">
+              {(stats?.prodsInactivos ?? []).slice(0, 10).map((p: any) => (
+                <div key={p.id} className="px-5 py-2.5 flex items-center justify-between text-sm border-b border-gray-50 last:border-0">
+                  <div>
+                    <span className="font-medium text-gray-700">{p.nombre}</span>
+                    <span className="text-xs text-gray-400 font-mono ml-2">{p.sku}</span>
+                  </div>
+                  <span className="text-xs text-gray-400">{p.stock_actual} en stock · ${(p.stock_actual * p.precio_costo).toLocaleString('es-AR', { maximumFractionDigits: 0 })} inmovilizados</span>
+                </div>
+              ))}
+              {(stats?.prodsInactivos?.length ?? 0) > 10 && (
+                <div className="px-5 py-2 text-xs text-gray-400 text-center">
+                  +{(stats?.prodsInactivos?.length ?? 0) - 10} más —{' '}
+                  <Link to="/metricas" className="text-accent hover:underline">Ver en Métricas</Link>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Score de Salud + Recomendaciones urgentes */}
       {score && (
@@ -435,6 +498,50 @@ export default function DashboardPage() {
           })}
         </div>
       </div>
+
+      {/* Sugerencia de pedido */}
+      {(stats?.prodsCriticos?.length ?? 0) > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+            <Truck size={16} className="text-blue-500" />
+            <h2 className="font-semibold text-gray-700">Sugerencia de pedido</h2>
+            <span className="ml-auto text-xs text-gray-400">{stats!.prodsCriticos.length} productos con stock crítico</span>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {stats!.prodsCriticos.slice(0, 8).map((p: any) => (
+              <div key={p.id} className="px-5 py-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{p.nombre}</p>
+                  <p className="text-xs text-gray-400 font-mono">{p.sku}</p>
+                </div>
+                <div className="flex items-center gap-5 flex-shrink-0 text-right text-sm">
+                  <div>
+                    <p className="text-xs text-gray-400">Stock / Mín.</p>
+                    <p className="font-semibold text-red-500">{p.stock_actual} / {p.stock_minimo}</p>
+                  </div>
+                  {p.diasCobertura !== null && (
+                    <div>
+                      <p className="text-xs text-gray-400">Cobertura</p>
+                      <p className={`font-semibold ${p.diasCobertura <= 3 ? 'text-red-500' : p.diasCobertura <= 7 ? 'text-amber-500' : 'text-gray-600'}`}>
+                        {p.diasCobertura}d
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-gray-400">Pedir</p>
+                    <p className="font-bold text-primary">{p.sugerido} u.</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {(stats?.prodsCriticos?.length ?? 0) > 8 && (
+            <div className="px-5 py-2 text-xs text-gray-400 text-center border-t border-gray-50">
+              +{stats!.prodsCriticos.length - 8} más con stock crítico
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Bottom grid */}
       <div className="grid lg:grid-cols-2 gap-6">

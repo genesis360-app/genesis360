@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   TrendingUp, TrendingDown, ShoppingCart, Package,
-  DollarSign, BarChart2, Clock, AlertTriangle, Award, Minus
+  DollarSign, BarChart2, Clock, AlertTriangle, Award, Minus, Filter,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { BRAND } from '@/config/brand'
 
-type Periodo = '7d' | '30d' | '90d' | 'mes'
+type Periodo = '7d' | '30d' | '90d' | 'mes' | 'custom'
 
 const COLORES = [BRAND.color.primary, BRAND.color.accent, '#7DB9E8', '#22c55e', '#f97316', '#8b5cf6', '#ef4444', '#eab308']
 
@@ -40,14 +40,25 @@ function StatCard({ label, value, sub, icon: Icon, color, trend }: any) {
 export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = {}) {
   const { tenant } = useAuthStore()
   const [periodo, setPeriodo] = useState<Periodo>('30d')
+  const [fechaDesdeCustom, setFechaDesdeCustom] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0]
+  })
+  const [fechaHastaCustom, setFechaHastaCustom] = useState(() => new Date().toISOString().split('T')[0])
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null)
 
   const getFechaDesde = () => {
+    if (periodo === 'custom') return new Date(fechaDesdeCustom + 'T00:00:00').toISOString()
     const d = new Date()
     if (periodo === '7d') d.setDate(d.getDate() - 7)
     else if (periodo === '30d') d.setDate(d.getDate() - 30)
     else if (periodo === '90d') d.setDate(d.getDate() - 90)
     else { d.setDate(1) } // mes actual
     return d.toISOString()
+  }
+
+  const getFechaHasta = () => {
+    if (periodo === 'custom') return new Date(fechaHastaCustom + 'T23:59:59').toISOString()
+    return new Date().toISOString()
   }
 
   const getFechaDesdeAnterior = () => {
@@ -66,21 +77,23 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
   }
 
   const { data: ventasPeriodo = [] } = useQuery({
-    queryKey: ['metricas-ventas', tenant?.id, periodo],
+    queryKey: ['metricas-ventas', tenant?.id, periodo, fechaDesdeCustom, fechaHastaCustom],
     queryFn: async () => {
-      const { data } = await supabase.from('ventas')
-        .select('*, venta_items(producto_id, cantidad, subtotal, precio_unitario, descuento, productos(nombre, sku, precio_costo))')
+      let q = supabase.from('ventas')
+        .select('*, venta_items(producto_id, cantidad, subtotal, precio_unitario, descuento, productos(nombre, sku, precio_costo, categoria_id))')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', getFechaDesde())
         .order('created_at')
+      if (periodo === 'custom') q = q.lte('created_at', getFechaHasta())
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant,
   })
 
   const { data: ventasAnteriores = [] } = useQuery({
-    queryKey: ['metricas-ventas-ant', tenant?.id, periodo],
+    queryKey: ['metricas-ventas-ant', tenant?.id, periodo, fechaDesdeCustom, fechaHastaCustom],
     queryFn: async () => {
       const { data } = await supabase.from('ventas')
         .select('total')
@@ -97,9 +110,31 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     queryKey: ['metricas-productos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('productos')
-        .select('id, nombre, sku, precio_costo, precio_venta, stock_actual, updated_at')
+        .select('id, nombre, sku, precio_costo, precio_venta, stock_actual, updated_at, categoria_id')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['categorias', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categorias')
+        .select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  const { data: gastosTotal = 0 } = useQuery({
+    queryKey: ['metricas-gastos', tenant?.id, periodo, fechaDesdeCustom, fechaHastaCustom],
+    queryFn: async () => {
+      const fechaDesdeStr = getFechaDesde().split('T')[0]
+      let q = supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', fechaDesdeStr)
+      if (periodo === 'custom') q = q.lte('fecha', fechaHastaCustom)
+      const { data } = await q
+      return (data ?? []).reduce((a, g: any) => a + Number(g.monto), 0)
     },
     enabled: !!tenant,
   })
@@ -129,7 +164,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
   const varTicket = ticketAnt > 0 ? ((ticketPromedio - ticketAnt) / ticketAnt) * 100 : 0
 
   // Productos más vendidos
-  const rankingProductos: Record<string, { nombre: string; sku: string; cantidad: number; total: number; costo: number }> = {}
+  const rankingProductos: Record<string, { nombre: string; sku: string; cantidad: number; total: number; costo: number; categoria_id: string | null }> = {}
   ventasPeriodo.forEach((v: any) => {
     ;(v.venta_items ?? []).forEach((item: any) => {
       const pid = item.producto_id ?? item.productos?.sku
@@ -140,6 +175,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
           sku: item.productos?.sku ?? '',
           cantidad: 0, total: 0,
           costo: item.productos?.precio_costo ?? 0,
+          categoria_id: item.productos?.categoria_id ?? null,
         }
       }
       rankingProductos[pid].cantidad += item.cantidad ?? 0
@@ -147,6 +183,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     })
   })
   const topProductos = Object.values(rankingProductos)
+    .filter(p => !categoriaFiltro || p.categoria_id === categoriaFiltro)
     .sort((a, b) => b.cantidad - a.cantidad)
     .slice(0, 10)
 
@@ -194,7 +231,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
   // Productos sin movimiento (nunca vendidos o no vendidos en el período)
   const productosVendidosIds = new Set(Object.keys(rankingProductos))
   const sinMovimiento = productos
-    .filter((p: any) => !productosVendidosIds.has(p.id) && p.stock_actual > 0)
+    .filter((p: any) => !productosVendidosIds.has(p.id) && p.stock_actual > 0 && (!categoriaFiltro || p.categoria_id === categoriaFiltro))
     .map((p: any) => ({
       ...p,
       ultimaVenta: ultimaVentaMap[p.id] ?? null,
@@ -215,11 +252,16 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     }))
     .sort((a, b) => b.margen - a.margen)
 
+  // Costo de ventas y ganancia neta
+  const costoVentas = Object.values(rankingProductos).reduce((a, p) => a + p.costo * p.cantidad, 0)
+  const gananciaNeta = totalVentas - costoVentas - gastosTotal
+
   const PERIODOS = [
     { id: '7d', label: '7 días' },
     { id: '30d', label: '30 días' },
     { id: '90d', label: '90 días' },
     { id: 'mes', label: 'Este mes' },
+    { id: 'custom', label: 'Personalizado' },
   ]
 
   return (
@@ -233,15 +275,70 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         </div>
       )}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div />
-        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-          {PERIODOS.map(p => (
-            <button key={p.id} onClick={() => setPeriodo(p.id as Periodo)}
-              className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all
-                ${periodo === p.id ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              {p.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          {(categorias as any[]).length > 0 && (
+            <div className="relative">
+              <Filter size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <select
+                value={categoriaFiltro ?? ''}
+                onChange={e => setCategoriaFiltro(e.target.value || null)}
+                className="pl-7 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">Todas las categorías</option>
+                {(categorias as any[]).map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+            {PERIODOS.map(p => (
+              <button key={p.id} onClick={() => setPeriodo(p.id as Periodo)}
+                className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all
+                  ${periodo === p.id ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {periodo === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input type="date" value={fechaDesdeCustom} onChange={e => setFechaDesdeCustom(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary" />
+              <span className="text-gray-400 text-sm">→</span>
+              <input type="date" value={fechaHastaCustom} onChange={e => setFechaHastaCustom(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Resultado del período */}
+      <div className="bg-gradient-to-br from-primary to-accent rounded-xl p-5 text-white">
+        <p className="text-blue-200 text-xs font-medium mb-4 uppercase tracking-wide">Resultado del período</p>
+        <div className="grid grid-cols-3 gap-6">
+          <div>
+            <p className="text-blue-200 text-xs mb-1">Ventas</p>
+            <p className="text-2xl font-bold">{formatMoneda(totalVentas)}</p>
+            <p className="text-blue-300 text-xs mt-0.5">{ventasPeriodo.length} órdenes</p>
+          </div>
+          <div>
+            <p className="text-blue-200 text-xs mb-1">− Costo + Gastos</p>
+            <p className="text-2xl font-bold">{formatMoneda(costoVentas + gastosTotal)}</p>
+            <p className="text-blue-300 text-xs mt-0.5">{formatMoneda(costoVentas)} costo · {formatMoneda(gastosTotal)} gastos</p>
+          </div>
+          <div>
+            <p className="text-blue-200 text-xs mb-1">= Ganancia neta</p>
+            <p className={`text-2xl font-bold ${gananciaNeta >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+              {formatMoneda(gananciaNeta)}
+            </p>
+            {totalVentas > 0 && (
+              <p className="text-blue-300 text-xs mt-0.5">
+                {((gananciaNeta / totalVentas) * 100).toFixed(1)}% de margen neto
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

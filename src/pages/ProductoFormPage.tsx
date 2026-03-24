@@ -36,7 +36,7 @@ export default function ProductoFormPage() {
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
     stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false,
-    regla_inventario: '', aging_profile_id: '',
+    regla_inventario: '', aging_profile_id: '', margen_objetivo: '',
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -123,6 +123,7 @@ export default function ProductoFormPage() {
         tiene_vencimiento: productoData.tiene_vencimiento ?? false,
         regla_inventario: productoData.regla_inventario ?? '',
         aging_profile_id: productoData.aging_profile_id ?? '',
+        margen_objetivo: productoData.margen_objetivo != null ? productoData.margen_objetivo.toString() : '',
       })
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
       setLoaded(true)
@@ -183,6 +184,7 @@ export default function ProductoFormPage() {
         tiene_vencimiento: form.tiene_vencimiento,
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
+        margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
       }
       if (isEditing) {
         const { error } = await supabase.from('productos').update(payload).eq('id', id)
@@ -255,6 +257,7 @@ export default function ProductoFormPage() {
         tiene_vencimiento: form.tiene_vencimiento,
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
+        margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
       }
       const { data: newProd, error } = await supabase.from('productos').insert(payload).select().single()
       if (error) throw error
@@ -553,12 +556,37 @@ export default function ProductoFormPage() {
               {margen !== null && (
                 <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
                   ${parseFloat(margen) >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
-                  Margen de ganancia: <span className="font-bold">{margen}%</span>
-                  <span className="text-xs opacity-70 ml-1">
+                  Margen actual: <span className="font-bold">{margen}%</span>
+                  {form.margen_objetivo !== '' && (() => {
+                    const obj = parseFloat(form.margen_objetivo)
+                    const actual = parseFloat(margen)
+                    const ok = actual >= obj
+                    return (
+                      <span className={`text-xs ml-auto font-semibold ${ok ? 'text-green-600' : 'text-red-500'}`}>
+                        {ok ? '▲' : '▼'} Objetivo: {obj}%
+                      </span>
+                    )
+                  })()}
+                  <span className="text-xs opacity-70">
                     (ganancia: ${(parseFloat(form.precio_venta) - parseFloat(form.precio_costo)).toFixed(2)})
                   </span>
                 </div>
               )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Margen objetivo</label>
+                  <p className="text-xs text-gray-400 mb-1">Alerta en Métricas si el margen cae debajo</p>
+                  <div className="relative">
+                    <input type="number" min="0" max="100" step="0.1" disabled={!canEdit}
+                      value={form.margen_objetivo}
+                      onChange={e => setForm(p => ({ ...p, margen_objetivo: e.target.value }))}
+                      className="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50"
+                      placeholder="Ej: 30" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                  </div>
+                </div>
+                <div /> {/* spacer */}
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Stock mínimo</label>

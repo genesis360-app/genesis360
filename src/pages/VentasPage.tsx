@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -45,6 +45,8 @@ interface CartItem {
   tiene_vencimiento: boolean
   regla_inventario?: string | null
   linea_id?: string
+  lpn?: string
+  imagen_url?: string
   series_seleccionadas: string[]
   series_disponibles: any[]
 }
@@ -98,9 +100,10 @@ export default function VentasPage() {
 
   // Foco en buscador de productos
   const [searchFocused, setSearchFocused] = useState(false)
+  const [viewMode, setViewMode] = useState<'lista' | 'galeria'>('lista')
 
   const { data: productosBusqueda = [] } = useQuery({
-    queryKey: ['productos-venta', tenant?.id, productoSearch, ventaGrupoId],
+    queryKey: ['productos-venta', tenant?.id, productoSearch, ventaGrupoId, viewMode],
     queryFn: async () => {
       // Determinar estados del grupo activo
       const grupoActivo = ventaGrupoId === 'todos'
@@ -112,10 +115,10 @@ export default function VentasPage() {
 
       // Buscar productos
       let prodQuery = supabase.from('productos')
-        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida')
+        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('nombre')
-        .limit(20)
+        .limit(viewMode === 'galeria' ? 60 : 20)
       if (productoSearch.length > 0)
         prodQuery = prodQuery.or(`nombre.ilike.%${productoSearch}%,sku.ilike.%${productoSearch}%`)
       const { data: prods } = await prodQuery
@@ -246,6 +249,25 @@ export default function VentasPage() {
         )
     }
 
+    // Para productos sin series: pre-fetch primera línea disponible (LPN + linea_id)
+    let primaryLpn: string | undefined
+    let primaryLineaId: string | undefined
+    if (!p.tiene_series) {
+      const sortLineas = getRebajeSort(p.regla_inventario, tenant!.regla_inventario, p.tiene_vencimiento ?? false)
+      const grupoActivo2 = ventaGrupoId === 'todos' ? null : ventaGrupoId ? grupos.find(g => g.id === ventaGrupoId) : grupoDefault
+      const estadosFiltro2 = grupoActivo2?.estado_ids ?? []
+      let lq = supabase.from('inventario_lineas')
+        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+      if (estadosFiltro2.length > 0) lq = lq.in('estado_id', estadosFiltro2)
+      const { data: lineasRaw2 } = await lq
+      const sortedLineas = (lineasRaw2 ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+      if (sortedLineas.length > 0) {
+        primaryLpn = (sortedLineas[0] as any).lpn
+        primaryLineaId = (sortedLineas[0] as any).id
+      }
+    }
+
     const newItem: CartItem = {
       producto_id: p.id,
       nombre: p.nombre,
@@ -258,6 +280,9 @@ export default function VentasPage() {
       tiene_series: p.tiene_series,
       tiene_vencimiento: p.tiene_vencimiento ?? false,
       regla_inventario: p.regla_inventario ?? null,
+      linea_id: primaryLineaId,
+      lpn: primaryLpn,
+      imagen_url: p.imagen_url,
       series_seleccionadas: [],
       series_disponibles: seriesDisp,
     }
@@ -428,10 +453,25 @@ export default function VentasPage() {
         const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
         const itemSubtotal = getItemSubtotal(item)
 
+        // Calcular linea_id para trazabilidad LPN→venta
+        let ventaItemLineaId: string | null = null
+        if (item.tiene_series && item.series_seleccionadas.length > 0) {
+          const firstSerie = item.series_disponibles.find((s: any) => s.id === item.series_seleccionadas[0])
+          ventaItemLineaId = firstSerie?.linea_id ?? null
+          const allSameLinea = item.series_seleccionadas.every(sid => {
+            const s = item.series_disponibles.find((d: any) => d.id === sid)
+            return s?.linea_id === ventaItemLineaId
+          })
+          if (!allSameLinea) ventaItemLineaId = null
+        } else {
+          ventaItemLineaId = item.linea_id ?? null
+        }
+
         const { data: ventaItem, error: itemError } = await supabase.from('venta_items').insert({
           tenant_id: tenant!.id,
           venta_id: venta.id,
           producto_id: item.producto_id,
+          linea_id: ventaItemLineaId,
           cantidad: cant,
           precio_unitario: item.precio_unitario,
           precio_costo_historico: item.precio_costo || null,
@@ -781,7 +821,7 @@ export default function VentasPage() {
                   ))}
                 </div>
               )}
-              <div className="relative flex gap-2">
+              <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input type="text" value={productoSearch} onChange={e => setProductoSearch(e.target.value)}
@@ -789,6 +829,29 @@ export default function VentasPage() {
                     onFocus={() => setSearchFocused(true)}
                     onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
                     className="w-full pl-8 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  {viewMode === 'lista' && productosBusqueda.length > 0 && searchFocused && (
+                    <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
+                      {(productosBusqueda as any[]).map(p => (
+                        <button key={p.id} onClick={() => agregarProducto(p)}
+                          className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0 flex items-center justify-between">
+                          <div>
+                            <span className="font-medium">{p.nombre}</span>
+                            <span className="text-gray-400 ml-2 text-xs font-mono">{p.sku}</span>
+                            {p.tiene_series && <span className="ml-2 text-xs bg-purple-100 text-purple-600 px-1 rounded">series</span>}
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold text-primary">${p.precio_venta?.toLocaleString('es-AR')}</p>
+                            <p className="text-xs text-gray-400">
+                              {p.stock_filtrado
+                                ? <span className="text-blue-600 font-medium">{p.stock_disponible} disp. en grupo</span>
+                                : `${p.stock_actual} en stock`
+                              }
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -798,30 +861,44 @@ export default function VentasPage() {
                 >
                   <Camera size={17} />
                 </button>
-                {productosBusqueda.length > 0 && searchFocused && (
-                  <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
-                    {(productosBusqueda as any[]).map(p => (
-                      <button key={p.id} onClick={() => agregarProducto(p)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0 flex items-center justify-between">
-                        <div>
-                          <span className="font-medium">{p.nombre}</span>
-                          <span className="text-gray-400 ml-2 text-xs font-mono">{p.sku}</span>
-                          {p.tiene_series && <span className="ml-2 text-xs bg-purple-100 text-purple-600 px-1 rounded">series</span>}
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold text-primary">${p.precio_venta?.toLocaleString('es-AR')}</p>
-                          <p className="text-xs text-gray-400">
-                            {p.stock_filtrado
-                              ? <span className="text-blue-600 font-medium">{p.stock_disponible} disp. en grupo</span>
-                              : `${p.stock_actual} en stock`
-                            }
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setViewMode(v => v === 'lista' ? 'galeria' : 'lista')}
+                  className={`px-3 py-2.5 border rounded-xl transition-colors flex-shrink-0
+                    ${viewMode === 'galeria' ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-accent'}`}
+                  title={viewMode === 'lista' ? 'Vista galería' : 'Vista lista'}
+                >
+                  {viewMode === 'lista' ? <LayoutGrid size={17} /> : <List size={17} />}
+                </button>
               </div>
+
+              {/* Galería de productos */}
+              {viewMode === 'galeria' && productosBusqueda.length > 0 && (
+                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">
+                  {(productosBusqueda as any[]).map(p => (
+                    <button key={p.id} onClick={() => agregarProducto(p)}
+                      className="flex flex-col items-center text-center p-2.5 border border-gray-200 rounded-xl hover:border-accent hover:shadow-sm transition-all bg-white">
+                      <div className="w-full aspect-square bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden mb-2">
+                        {p.imagen_url
+                          ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover rounded-lg" />
+                          : <Package size={22} className="text-gray-300" />
+                        }
+                      </div>
+                      <p className="text-xs font-medium text-gray-800 line-clamp-2 leading-tight w-full">{p.nombre}</p>
+                      <p className="text-xs text-gray-400 font-mono mt-0.5 truncate w-full">{p.sku}</p>
+                      <p className="text-sm font-bold text-primary mt-1">${p.precio_venta?.toLocaleString('es-AR')}</p>
+                      <p className="text-xs mt-0.5">
+                        {p.stock_filtrado
+                          ? <span className="text-blue-600 font-medium">{p.stock_disponible} disp.</span>
+                          : <span className={`${(p.stock_disponible ?? p.stock_actual) <= 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                              {p.stock_disponible ?? p.stock_actual} stock
+                            </span>
+                        }
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Carrito */}
@@ -836,7 +913,14 @@ export default function VentasPage() {
                       <div className="flex items-start gap-3">
                         <div className="flex-1">
                           <p className="font-medium text-gray-800">{item.nombre}</p>
-                          <p className="text-xs text-gray-400 font-mono">{item.sku}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-gray-400 font-mono">{item.sku}</span>
+                            {!item.tiene_series && item.lpn && (
+                              <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                {item.lpn}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="flex items-center gap-1">
                           {!item.tiene_series && item.cantidad > 1 && (
@@ -941,6 +1025,22 @@ export default function VentasPage() {
                               })}
                             </div>
                           )}
+                          {item.series_seleccionadas.length > 0 && (() => {
+                            const lpns = [...new Set(item.series_seleccionadas.map(sid => {
+                              const s = item.series_disponibles.find((d: any) => d.id === sid)
+                              return s?.lpn as string | undefined
+                            }).filter(Boolean))] as string[]
+                            if (lpns.length === 0) return null
+                            return (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {lpns.map(lpn => (
+                                  <span key={lpn} className="text-xs font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                    {lpn}
+                                  </span>
+                                ))}
+                              </div>
+                            )
+                          })()}
                         </div>
                       )}
                     </div>

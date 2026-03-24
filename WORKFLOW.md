@@ -110,6 +110,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.25.0 | Prioridad ubicaciones + FIFO/FEFO/LEFO/LIFO/Manual + disponible_surtido + aging profiles | 2026-03 |
 | v0.26.0 | RRHH Phase 1: empleados, puestos, departamentos, cumpleaños + rol RRHH | 2026-03 |
 | v0.27.0 | Integración caja ↔ ventas ↔ gastos (efectivo auto-registra en caja_movimientos) | 2026-03 |
+| v0.28.0 | Dashboard: sin movimiento expandable + sugerencia pedido · Métricas: ganancia neta + rango custom + filtro categoría | 2026-03 |
 
 ---
 

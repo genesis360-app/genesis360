@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   TrendingUp, TrendingDown, ShoppingCart, Package,
   DollarSign, BarChart2, Clock, AlertTriangle, Award, Minus, Filter,
+  Target, ArrowUpDown, MapPin,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -110,7 +111,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     queryKey: ['metricas-productos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('productos')
-        .select('id, nombre, sku, precio_costo, precio_venta, stock_actual, updated_at, categoria_id')
+        .select('id, nombre, sku, precio_costo, precio_venta, stock_actual, updated_at, categoria_id, margen_objetivo')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },
@@ -135,6 +136,33 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
       if (periodo === 'custom') q = q.lte('fecha', fechaHastaCustom)
       const { data } = await q
       return (data ?? []).reduce((a, g: any) => a + Number(g.monto), 0)
+    },
+    enabled: !!tenant,
+  })
+
+  // Movimientos de inventario en el período
+  const { data: movimientosPeriodo = [] } = useQuery({
+    queryKey: ['metricas-movimientos', tenant?.id, periodo, fechaDesdeCustom, fechaHastaCustom],
+    queryFn: async () => {
+      let q = supabase.from('movimientos_stock')
+        .select('tipo, motivo, cantidad')
+        .eq('tenant_id', tenant!.id)
+        .gte('created_at', getFechaDesde())
+      if (periodo === 'custom') q = q.lte('created_at', getFechaHasta())
+      const { data } = await q
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  // Stock por ubicación
+  const { data: stockUbicaciones = [] } = useQuery({
+    queryKey: ['metricas-stock-ubicaciones', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('inventario_lineas')
+        .select('cantidad, ubicacion_id, ubicaciones(nombre), productos(precio_costo)')
+        .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
+      return data ?? []
     },
     enabled: !!tenant,
   })
@@ -255,6 +283,50 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
   // Costo de ventas y ganancia neta
   const costoVentas = Object.values(rankingProductos).reduce((a, p) => a + p.costo * p.cantidad, 0)
   const gananciaNeta = totalVentas - costoVentas - gastosTotal
+
+  // Insights de margen objetivo
+  const insightsMargen = (productos as any[])
+    .filter(p => p.margen_objetivo != null && p.precio_costo > 0 && p.precio_venta > 0)
+    .map(p => {
+      const margenActual = ((p.precio_venta - p.precio_costo) / p.precio_venta) * 100
+      return {
+        id: p.id, nombre: p.nombre, sku: p.sku,
+        margenActual: Math.round(margenActual * 10) / 10,
+        margenObjetivo: p.margen_objetivo as number,
+        diff: Math.round((margenActual - p.margen_objetivo) * 10) / 10,
+        bajandoObjetivo: margenActual < p.margen_objetivo,
+      }
+    })
+    .sort((a, b) => a.diff - b.diff) // peores primero
+
+  // Métricas de movimientos
+  const totalIngresos = movimientosPeriodo.filter((m: any) => m.tipo === 'ingreso').reduce((a: number, m: any) => a + m.cantidad, 0)
+  const totalRebajes = movimientosPeriodo.filter((m: any) => m.tipo === 'rebaje').reduce((a: number, m: any) => a + m.cantidad, 0)
+  const motivosMap: Record<string, { count: number; cantidad: number }> = {}
+  movimientosPeriodo.forEach((m: any) => {
+    const key = m.motivo || 'Sin motivo'
+    if (!motivosMap[key]) motivosMap[key] = { count: 0, cantidad: 0 }
+    motivosMap[key].count++
+    motivosMap[key].cantidad += m.cantidad ?? 0
+  })
+  const topMotivos = Object.entries(motivosMap)
+    .map(([motivo, d]) => ({ motivo, ...d }))
+    .sort((a, b) => b.cantidad - a.cantidad)
+    .slice(0, 8)
+
+  // Stock por ubicación
+  const ubicacionMap: Record<string, { nombre: string; valor: number; unidades: number }> = {}
+  ;(stockUbicaciones as any[]).forEach(l => {
+    const nombre = (l.ubicaciones as any)?.nombre ?? 'Sin ubicación'
+    const costo = (l.productos as any)?.precio_costo ?? 0
+    if (!ubicacionMap[nombre]) ubicacionMap[nombre] = { nombre, valor: 0, unidades: 0 }
+    ubicacionMap[nombre].valor += l.cantidad * costo
+    ubicacionMap[nombre].unidades += l.cantidad
+  })
+  const stockPorUbicacion = Object.values(ubicacionMap)
+    .sort((a, b) => b.valor - a.valor)
+    .slice(0, 8)
+  const maxValorUbicacion = stockPorUbicacion[0]?.valor ?? 1
 
   const PERIODOS = [
     { id: '7d', label: '7 días' },
@@ -462,6 +534,127 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
               ))}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Insights de margen objetivo */}
+      {insightsMargen.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+            <Target size={18} className="text-purple-500" />
+            <h2 className="font-semibold text-gray-700">Insights de margen objetivo</h2>
+            <span className="ml-auto text-xs text-gray-400">{insightsMargen.length} productos con objetivo definido</span>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {insightsMargen.slice(0, 10).map((p, i) => (
+              <div key={i} className="px-5 py-3 flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${p.bajandoObjetivo ? 'bg-red-400' : 'bg-green-400'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{p.nombre}</p>
+                  <p className="text-xs text-gray-400 font-mono">{p.sku}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className={`text-sm font-bold ${p.bajandoObjetivo ? 'text-red-500' : 'text-green-600'}`}>
+                    {p.margenActual}%
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    obj: {p.margenObjetivo}%
+                    {' '}<span className={`font-medium ${p.bajandoObjetivo ? 'text-red-400' : 'text-green-500'}`}>
+                      ({p.diff >= 0 ? '+' : ''}{p.diff}pp)
+                    </span>
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+          {insightsMargen.filter(p => p.bajandoObjetivo).length > 0 && (
+            <div className="px-5 py-3 bg-red-50 border-t border-red-100 text-xs text-red-600 flex items-center gap-2">
+              <AlertTriangle size={13} />
+              {insightsMargen.filter(p => p.bajandoObjetivo).length} producto(s) por debajo de su objetivo de margen
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Métricas de inventario */}
+      <div>
+        <h2 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+          <ArrowUpDown size={18} className="text-primary" /> Métricas de inventario
+        </h2>
+        <div className="grid lg:grid-cols-2 gap-6">
+          {/* Movimientos del período */}
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="font-semibold text-gray-700 mb-4 text-sm">Movimientos en el período</h3>
+            {movimientosPeriodo.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">Sin movimientos en este período</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4 mb-5">
+                  <div className="bg-green-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-green-700">{totalIngresos.toLocaleString('es-AR')}</p>
+                    <p className="text-xs text-green-600 mt-1">Unidades ingresadas</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {movimientosPeriodo.filter((m: any) => m.tipo === 'ingreso').length} órdenes
+                    </p>
+                  </div>
+                  <div className="bg-orange-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-orange-600">{totalRebajes.toLocaleString('es-AR')}</p>
+                    <p className="text-xs text-orange-500 mt-1">Unidades rebajadas</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {movimientosPeriodo.filter((m: any) => m.tipo === 'rebaje').length} órdenes
+                    </p>
+                  </div>
+                </div>
+                {topMotivos.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Top motivos</p>
+                    <div className="space-y-2">
+                      {topMotivos.map((m, i) => (
+                        <div key={i}>
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="text-gray-600 truncate max-w-48">{m.motivo}</span>
+                            <span className="text-gray-500 font-medium ml-2 flex-shrink-0">{m.cantidad} u.</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-primary rounded-full"
+                              style={{ width: `${Math.min((m.cantidad / (topMotivos[0]?.cantidad || 1)) * 100, 100)}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Stock por ubicación */}
+          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="font-semibold text-gray-700 mb-4 text-sm flex items-center gap-2">
+              <MapPin size={14} className="text-gray-400" /> Stock por ubicación
+            </h3>
+            {stockPorUbicacion.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">Sin datos de ubicaciones</p>
+            ) : (
+              <div className="space-y-3">
+                {stockPorUbicacion.map((u, i) => (
+                  <div key={i}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-gray-600 truncate max-w-40">{u.nombre}</span>
+                      <div className="text-right flex-shrink-0 ml-2">
+                        <span className="font-semibold text-gray-700">{formatMoneda(u.valor)}</span>
+                        <span className="text-gray-400 ml-1">· {u.unidades.toLocaleString('es-AR')} u.</span>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-accent"
+                        style={{ width: `${Math.min((u.valor / maxValorUbicacion) * 100, 100)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

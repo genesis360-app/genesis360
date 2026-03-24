@@ -102,6 +102,16 @@ export default function CajaPage() {
     enabled: !!sesionExpandida,
   })
 
+  const { data: motivosCaja = [] } = useQuery({
+    queryKey: ['motivos-caja', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('motivos_movimiento')
+        .select('id, nombre').eq('tenant_id', tenant!.id).eq('tipo', 'caja').eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
   // Calcular totales de la sesión actual
   const totalIngresos = movimientos.filter((m: any) => m.tipo === 'ingreso').reduce((a: number, m: any) => a + m.monto, 0)
   const totalEgresos = movimientos.filter((m: any) => m.tipo === 'egreso').reduce((a: number, m: any) => a + m.monto, 0)
@@ -612,6 +622,20 @@ export default function CajaPage() {
                 <input type="text" value={movConcepto} onChange={e => setMovConcepto(e.target.value)} autoFocus
                   placeholder="Ej: Pago a proveedor, Cobro efectivo..."
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                {(motivosCaja as any[]).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {(motivosCaja as any[]).map((m: any) => (
+                      <button key={m.id} type="button"
+                        onClick={() => setMovConcepto(m.nombre)}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-all
+                          ${movConcepto === m.nombre
+                            ? 'bg-accent text-white border-accent'
+                            : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-accent hover:text-accent'}`}>
+                        {m.nombre}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Monto</label>

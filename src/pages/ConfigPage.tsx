@@ -184,16 +184,21 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
   const [editNombre, setEditNombre] = useState('')
   const [editTipo, setEditTipo] = useState('ambos')
   const [saving, setSaving] = useState(false)
-  const [filterTipo, setFilterTipo] = useState<'todos' | 'ingreso' | 'rebaje' | 'ambos'>('todos')
+  const [filterTipo, setFilterTipo] = useState<'todos' | 'ingreso' | 'rebaje' | 'ambos' | 'caja'>('todos')
   const [search, setSearch] = useState('')
 
   const TIPOS = [
     { value: 'ingreso', label: 'Solo ingreso' },
     { value: 'rebaje', label: 'Solo rebaje' },
     { value: 'ambos', label: 'Ambos' },
+    { value: 'caja', label: 'Caja' },
   ]
   const tipoLabel = (tipo: string) => TIPOS.find(t => t.value === tipo)?.label ?? tipo
-  const tipoColor = (tipo: string) => tipo === 'ingreso' ? 'bg-green-100 text-green-700' : tipo === 'rebaje' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+  const tipoColor = (tipo: string) =>
+    tipo === 'ingreso' ? 'bg-green-100 text-green-700' :
+    tipo === 'rebaje'  ? 'bg-orange-100 text-orange-700' :
+    tipo === 'caja'    ? 'bg-purple-100 text-purple-700' :
+                         'bg-blue-100 text-blue-700'
 
   const handleAdd = async () => {
     if (!newNombre.trim()) return
@@ -234,11 +239,11 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
 
       {/* Filtro por tipo */}
       <div className="flex gap-1">
-        {(['todos', 'ingreso', 'rebaje', 'ambos'] as const).map(t => (
+        {(['todos', 'ingreso', 'rebaje', 'ambos', 'caja'] as const).map(t => (
           <button key={t} onClick={() => setFilterTipo(t)}
             className={`px-3 py-1 rounded-lg text-xs font-medium transition-all capitalize
               ${filterTipo === t ? 'bg-primary text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-            {t === 'todos' ? 'Todos' : t === 'ingreso' ? 'Solo ingreso' : t === 'rebaje' ? 'Solo rebaje' : 'Ambos'}
+            {t === 'todos' ? 'Todos' : t === 'ingreso' ? 'Solo ingreso' : t === 'rebaje' ? 'Solo rebaje' : t === 'caja' ? 'Caja' : 'Ambos'}
           </button>
         ))}
       </div>

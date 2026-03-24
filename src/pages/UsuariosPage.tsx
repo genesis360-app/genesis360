@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
+import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 
 type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'RRHH'
@@ -59,6 +60,12 @@ export default function UsuariosPage() {
       setSaving(false)
     }
   }
+
+  useModalKeyboard({
+    isOpen: showInvitar,
+    onClose: () => setShowInvitar(false),
+    onConfirm: () => { if (!saving) handleInvitar({ preventDefault: () => {} } as React.FormEvent) },
+  })
 
   const updateRol = useMutation({
     mutationFn: async ({ userId, rol, rolAnterior, nombreUsuario }: { userId: string; rol: UserRole; rolAnterior?: string; nombreUsuario?: string }) => {

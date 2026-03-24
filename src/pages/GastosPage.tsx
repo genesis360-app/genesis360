@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X, Chevr
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
+import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 
 const CATEGORIAS_GASTO = [
@@ -121,6 +122,8 @@ export default function GastosPage() {
   }
 
   const cerrarModal = () => { setModalAbierto(false); setEditandoId(null); setForm(FORM_VACIO); setCajaSeleccionadaId(null) }
+
+  useModalKeyboard({ isOpen: modalAbierto, onClose: cerrarModal, onConfirm: () => { if (!guardando) guardar() } })
 
   // ── Guardar ──────────────────────────────────────────────────────────────
   const guardar = async () => {

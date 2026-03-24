@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useCotizacion } from '@/hooks/useCotizacion'
+import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 import type { Producto } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
@@ -301,6 +302,15 @@ export default function MovimientosPage() {
     setRebajeSearch('')
     setRebajeGrupoId(null)
   }
+
+  useModalKeyboard({
+    isOpen: modal !== null,
+    onClose: closeModal,
+    onConfirm: () => {
+      if (modal === 'ingreso' && !ingresoMutation.isPending) ingresoMutation.mutate()
+      if (modal === 'rebaje' && !rebajeMutation.isPending) rebajeMutation.mutate()
+    },
+  })
 
   const filtered = movimientos.filter(m => {
     if (!search) return true

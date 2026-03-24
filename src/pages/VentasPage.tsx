@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { useCotizacion } from '@/hooks/useCotizacion'
+import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import toast from 'react-hot-toast'
@@ -99,6 +100,9 @@ export default function VentasPage() {
 
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
+
+  useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => setSeriesModal(null), onConfirm: () => setSeriesModal(null) })
+  useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => setVentaDetalle(null) })
 
   // Foco en buscador de productos
   const [searchFocused, setSearchFocused] = useState(false)

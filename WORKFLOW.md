@@ -51,6 +51,8 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 
 **Claude Code no aplica migraciones en PROD** salvo pedido explícito del usuario.
 
+> `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
+
 ### Historial de migrations
 
 | # | Archivo | Descripción | DEV | PROD |
@@ -63,12 +65,12 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 006 | `006_ventas_numero_trigger.sql` | Trigger auto-número de venta por tenant | ✅ | ✅ |
 | 007 | `007_precio_moneda.sql` | precio_costo_moneda / precio_venta_moneda en productos | ✅ | ✅ |
 | 008 | `008_gastos.sql` | Tabla gastos con RLS | ✅ | ✅ |
-| 009 | `009_actividad_log.sql` | Audit log con RLS (INSERT todos, SELECT owner/supervisor/admin) | ✅ | ✅ |
-| 010 | `010_inventario_prioridad.sql` | Prioridad en `ubicaciones` (no en lineas) | ✅ | ✅ |
+| 009 | `009_actividad_log.sql` | Audit log con RLS | ✅ | ✅ |
+| 010 | `010_inventario_prioridad.sql` | Prioridad en `ubicaciones` | ✅ | ✅ |
 | 011 | `011_reglas_inventario.sql` | `regla_inventario` en tenants y productos | ✅ | ✅ |
 | 012 | `012_ubicacion_disponible_surtido.sql` | `disponible_surtido` en ubicaciones | ✅ | ✅ |
-| 013 | `013_aging_profiles.sql` | Aging profiles + reglas + función `process_aging_profiles()` | ✅ | ✅ |
-| 014 | `014_rrhh_empleados.sql` | RRHH Phase 1: empleados, puestos, departamentos + rol RRHH + `is_rrhh()` | ✅ | ✅ |
+| 013 | `013_aging_profiles.sql` | Aging profiles + reglas + `process_aging_profiles()` | ✅ | ✅ |
+| 014 | `014_rrhh_empleados.sql` | RRHH Phase 1: empleados, puestos, departamentos + `is_rrhh()` | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -92,21 +94,20 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 
 | Versión | Descripción | Fecha |
 |---------|-------------|-------|
-| v0.12.0 | Búsquedas, config, movimientos, descuentos en ventas, fix métricas | 2026-03 |
-| v0.13.0 | Combos, separar unidades, vuelto al Enter, fix número de venta | 2026-03 |
-| v0.14.0 | Emails transaccionales (Resend), fix trigger ventas | 2026-03 |
+| v0.12.0 | Búsquedas, config, movimientos, descuentos en ventas | 2026-03 |
+| v0.13.0 | Combos, separar unidades, vuelto al Enter | 2026-03 |
+| v0.14.0 | Emails transaccionales (Resend) | 2026-03 |
 | v0.15.0 | Crear producto desde foto (Claude Vision + Open Food Facts) | 2026-03 |
-| v0.16.0 | Branding centralizado + rebrand Genesis360 | 2026-03 |
+| v0.16.0 | Branding centralizado + rebrand | 2026-03 |
 | v0.17.0 | Export/Import data master + moneda en Excel | 2026-03 |
 | v0.18.0 | Módulo de gastos del negocio | 2026-03 |
-| v0.18.1 | Import movido a Configuración → Importar | 2026-03 |
 | v0.19.0 | Tab inventario en importar + reorden menú + clientes mejorado | 2026-03 |
 | v0.20.0 | Fix bucket storage + fix fecha import + botones unificados | 2026-03 |
-| v0.21.0 | BTN unificados + MP producción con external_reference | 2026-03 |
-| v0.22.0 | Historial de actividad (audit log) + HistorialPage | 2026-03 |
-| v0.23.0 | Walkthrough interactivo 11 slides + fix medios de pago en métricas | 2026-03 |
-| v0.24.0 | Keyboard shortcuts + fix historial caja + dot live caja + tipo comercio unificado | 2026-03 |
-| v0.25.0 | Prioridad ubicaciones + reglas FIFO/FEFO/LEFO/LIFO/Manual + disponible_surtido + aging profiles | 2026-03 |
+| v0.21.0 | MP producción con external_reference + webhook | 2026-03 |
+| v0.22.0 | Historial de actividad (audit log) | 2026-03 |
+| v0.23.0 | Walkthrough interactivo 11 slides | 2026-03 |
+| v0.24.0 | Keyboard shortcuts + fix historial caja + dot live caja | 2026-03 |
+| v0.25.0 | Prioridad ubicaciones + FIFO/FEFO/LEFO/LIFO/Manual + disponible_surtido + aging profiles | 2026-03 |
 | v0.26.0 | RRHH Phase 1: empleados, puestos, departamentos, cumpleaños + rol RRHH | 2026-03 |
 | v0.27.0 | Integración caja ↔ ventas ↔ gastos (efectivo auto-registra en caja_movimientos) | 2026-03 |
 

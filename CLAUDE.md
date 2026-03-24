@@ -189,10 +189,11 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [ ] Vista productos tipo galería (imagen + título + precio)
 
 ### Caja — integración
-- [ ] Ventas auto-generan movimiento de caja
-- [ ] Bloquear ventas con caja cerrada
+- [x] Ventas despachadas con efectivo → ingreso automático en `caja_movimientos` ✅ v0.27.0
+- [x] Bloquear venta despachada si no hay caja abierta y pago es efectivo ✅ v0.27.0
+- [x] Gastos en efectivo → egreso automático en `caja_movimientos` ✅ v0.27.0
 - [ ] Motivos predefinidos para ingreso/egreso de caja
-- [ ] Gastos: al pagar en efectivo elegir de qué caja sale
+- [ ] Ventas no-efectivo (tarjeta, MP, transferencia) también registradas en caja como ingreso informativo
 
 ### UX / Config
 - [ ] `useModalKeyboard` wiring pendiente en: MovimientosPage, VentasPage, GastosPage, UsuariosPage

@@ -171,6 +171,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Rango personalizado**: tipo `Periodo = '7d'|'30d'|'90d'|'mes'|'custom'`. `getFechaDesde()` y `getFechaHasta()` manejan `custom`. Query ventas agrega `.lte('created_at', getFechaHasta())` solo para custom.
 - **Filtro categoría**: `categoriaFiltro: string | null` en estado. `rankingProductos` incluye `categoria_id`. Filtra `topProductos`, `sinMovimiento` y `margenProductos`.
 
+### Ventas + Métricas (v0.29.0)
+- **Trazabilidad LPN→venta**: `linea_id` en `venta_items` (columna ya existía en schema). Non-series: pre-fetch linea primaria en `agregarProducto` usando `getRebajeSort` → guarda en `CartItem.linea_id`. Series: `linea_id` del primer serie seleccionado (null si múltiples lineas).
+- **LPN en carrito**: badge azul junto al SKU para non-series; LPNs únicos (deduplicados desde `series_disponibles`) debajo de chips de series seleccionadas.
+- **Vista galería ventas**: toggle lista/galería (LayoutGrid/List). Galería: grid 2-3 col con imagen, nombre, SKU, precio, stock. limit 60 en galería. `viewMode` en queryKey para refetch al cambiar.
+- **Margen objetivo**: `productos.margen_objetivo DECIMAL(5,2)` nullable (migración 015). Campo en ProductoFormPage con indicador ▲/▼ tiempo real.
+- **Insights margen**: `insightsMargen = productos.filter(margen_objetivo != null).map(calcularDesvioPP)`. Solo aparece si hay productos con objetivo. Ordenado por `diff ASC` (peores primero).
+- **Métricas inventario**: query `movimientos_stock` por tipo/motivo en período → `motivosMap` con count/cantidad. Query `inventario_lineas` join `ubicaciones`+`productos` → `ubicacionMap` con valor (cantidad × precio_costo).
+
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
 - Compactar manualmente con `/compact` cuando el contexto esté pesado.
@@ -180,16 +188,11 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ## Backlog pendiente
 
 ### Inventario
-- [ ] Guardar `linea_id` en `venta_items` (trazabilidad LPN→venta) — deuda técnica
-- [ ] Mostrar LPN origen al registrar venta
 - [ ] Proyección de cobertura: días de stock restante por producto
-
-### Métricas
-- [ ] Margen objetivo: campo configurable por producto con insights automáticos
-- [ ] Métricas de inventario: órdenes, motivos, ubicaciones
+- [ ] **Bug #19**: Importar inventario falla para productos con series (ImportarProductosPage)
 
 ### Ventas
-- [ ] Vista productos tipo galería (imagen + título + precio)
+- [ ] Mostrar LPN origen al confirmar venta (en el ticket/historial)
 
 ### Caja
 - [ ] Motivos predefinidos para ingreso/egreso (configurables en Config)

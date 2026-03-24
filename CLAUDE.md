@@ -1,5 +1,7 @@
 # Stokio — Contexto para Claude Code
 
+**⚠️ Para entender el roadmap completo, ver [ROADMAP.md](ROADMAP.md)**
+
 ## Producto
 "El cerebro del negocio físico" — no muestra datos, dice qué hacer.
 
@@ -23,8 +25,10 @@
 ## Arquitectura multi-tenant
 - Todas las tablas tienen `tenant_id` con RLS habilitado
 - Patrón RLS: `tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid())`
-- `is_admin()` con SECURITY DEFINER para rol ADMIN global
-- Roles: OWNER, SUPERVISOR, CAJERO, ADMIN
+- Helper functions SECURITY DEFINER:
+  - `is_admin()` → rol ADMIN (global, no tenant-specific)
+  - `is_rrhh()` → rol RRHH o OWNER (delegación RRHH)
+- Roles: OWNER, SUPERVISOR, CAJERO, ADMIN, RRHH
 
 ## Estructura del proyecto
 ```
@@ -51,6 +55,7 @@ src/
     ├── InventarioPage.tsx       # LpnAccionesModal; badge P{N} = prioridad ubicación
     ├── MovimientosPage.tsx      # Ingreso/rebaje; banner amarillo si cambia ubicación
     ├── VentasPage.tsx           # Carrito + checkout; precio tachado + badge doble descuento
+    ├── RrhhPage.tsx             # Gestión de empleados, puestos, departamentos, cumppleaños
     ├── AlertasPage.tsx / MetricasPage.tsx / ReportesPage.tsx
     ├── CajaPage.tsx             # Shortcuts: Shift+I ingreso / Shift+O egreso
     ├── UsuariosPage.tsx / AdminPage.tsx / HistorialPage.tsx
@@ -198,6 +203,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ### Revenue
 - [ ] Límite de movimientos por plan (`max_movimientos`)
 - [ ] Add-ons: comprar capacidad extra sin cambiar de plan
+- [ ] Revisar matriz de funcionalidades por plan: qué features están habilitadas en Free/Básico/Pro/Enterprise (actualmente solo se limitan usuarios y productos)
 
 ### Ideas futuras
 Cupones, multi-sucursal, insights automáticos, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

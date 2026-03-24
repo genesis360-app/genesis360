@@ -112,6 +112,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.27.0 | Integración caja ↔ ventas ↔ gastos (efectivo auto-registra en caja_movimientos) | 2026-03 |
 | v0.28.0 | Dashboard: sin movimiento expandable + sugerencia pedido · Métricas: ganancia neta + rango custom + filtro categoría | 2026-03 |
 | v0.29.0 | Trazabilidad LPN→venta (linea_id en venta_items) · LPN en carrito · Vista galería ventas · Margen objetivo por SKU · Insights margen + Métricas inventario | 2026-03 |
+| v0.30.0 | Fix importar serializados · Proyección cobertura stock · LPN en ticket · Motivos caja · Invitación por email (EF invite-user) · Importación masiva clientes | 2026-03 (en dev) |
 
 ---
 

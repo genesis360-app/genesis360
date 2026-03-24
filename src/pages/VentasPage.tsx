@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { useCotizacion } from '@/hooks/useCotizacion'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import toast from 'react-hot-toast'
@@ -55,6 +56,7 @@ export default function VentasPage() {
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
+  const { cotizacion: cotizacionUSD } = useCotizacion()
   const [tab, setTab] = useState<Tab>('nueva')
   const [ventaGrupoId, setVentaGrupoId] = useState<string | null>(null)
 
@@ -317,30 +319,50 @@ export default function VentasPage() {
     queryKey: ['combos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('combos')
-        .select('id, nombre, producto_id, cantidad, descuento_pct')
+        .select('id, nombre, producto_id, cantidad, descuento_pct, descuento_tipo, descuento_monto')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       return data ?? []
     },
     enabled: !!tenant,
   })
 
-  const findCombo = (productoId: string, cantidad: number, descActual: number) => {
+  const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
-      .filter(c => c.producto_id === productoId && cantidad >= c.cantidad && descActual !== c.descuento_pct)
+      .filter(c => {
+        if (c.producto_id !== productoId || cantidad < c.cantidad) return false
+        const tipo = c.descuento_tipo ?? 'pct'
+        // No re-sugerir si ya está aplicado
+        if (tipo === 'pct' && item.descuento_tipo === 'pct' && item.descuento === c.descuento_pct) return false
+        if (tipo === 'monto_ars' && item.descuento_tipo === 'monto' && item.descuento === c.descuento_monto) return false
+        if (tipo === 'monto_usd' && item.descuento_tipo === 'monto' && item.descuento === Math.round(c.descuento_monto * (cotizacionUSD || 1))) return false
+        return true
+      })
       .sort((a, b) => b.cantidad - a.cantidad)[0] ?? null
+  }
+
+  const comboDescLabel = (combo: any) => {
+    const tipo = combo.descuento_tipo ?? 'pct'
+    if (tipo === 'pct') return `${combo.descuento_pct}% off`
+    if (tipo === 'monto_usd') return `USD ${combo.descuento_monto} off`
+    return `$${combo.descuento_monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} off`
   }
 
   const aplicarCombo = (idx: number, combo: any) => {
     const item = cart[idx]
     const comboUnits = Math.floor(item.cantidad / combo.cantidad) * combo.cantidad
     const remainder = item.cantidad % combo.cantidad
+    const tipo = combo.descuento_tipo ?? 'pct'
+    const descuento = tipo === 'pct' ? combo.descuento_pct
+      : tipo === 'monto_usd' ? Math.round(combo.descuento_monto * (cotizacionUSD || 1))
+      : combo.descuento_monto
+    const descuento_tipo: DescTipo = tipo === 'pct' ? 'pct' : 'monto'
     const rows: CartItem[] = []
     if (comboUnits > 0)
-      rows.push({ ...item, cantidad: comboUnits, descuento: combo.descuento_pct, descuento_tipo: 'pct' })
+      rows.push({ ...item, cantidad: comboUnits, descuento, descuento_tipo })
     if (remainder > 0)
       rows.push({ ...item, cantidad: remainder, descuento: 0, descuento_tipo: 'pct' })
     setCart(prev => [...prev.slice(0, idx), ...rows, ...prev.slice(idx + 1)])
-    toast.success(`Combo aplicado: ${comboUnits} und. con ${combo.descuento_pct}% off${remainder > 0 ? ` + ${remainder} sin descuento` : ''}`)
+    toast.success(`Combo aplicado: ${comboUnits} uds. con ${comboDescLabel(combo)}${remainder > 0 ? ` + ${remainder} sin descuento` : ''}`)
   }
 
   const splitItem = (idx: number) => {
@@ -991,12 +1013,12 @@ export default function VentasPage() {
 
                       {/* Sugerencia de combo */}
                       {!item.tiene_series && (() => {
-                        const combo = findCombo(item.producto_id, item.cantidad, item.descuento)
+                        const combo = findCombo(item.producto_id, item.cantidad, item)
                         if (!combo) return null
                         return (
                           <div className="mt-1.5 flex items-center gap-2 text-xs bg-amber-50 text-amber-700 rounded-lg px-3 py-1.5 border border-amber-200">
                             <Gift size={12} />
-                            <span className="flex-1">Combo: {combo.cantidad}× con {combo.descuento_pct}% off disponible</span>
+                            <span className="flex-1">Combo: {combo.cantidad}× con {comboDescLabel(combo)} disponible</span>
                             <button onClick={() => aplicarCombo(idx, combo)}
                               className="font-semibold hover:underline text-amber-800">
                               Aplicar

@@ -455,7 +455,7 @@ export default function ConfigPage() {
   }
 
   // Combos
-  const [comboForm, setComboForm] = useState({ nombre: '', producto_id: '', cantidad: '2', descuento_pct: '0' })
+  const [comboForm, setComboForm] = useState({ nombre: '', producto_id: '', cantidad: '2', descuento_tipo: 'pct', descuento_valor: '0' })
   const [savingCombo, setSavingCombo] = useState(false)
 
   const { data: productosAll = [] } = useQuery({
@@ -481,25 +481,30 @@ export default function ConfigPage() {
   })
 
   const addCombo = async () => {
+    if (!comboForm.nombre.trim()) { toast.error('Ingresá un nombre'); return }
     if (!comboForm.producto_id) { toast.error('Seleccioná un producto'); return }
     const cantidad = parseInt(comboForm.cantidad)
     if (!cantidad || cantidad < 2) { toast.error('La cantidad mínima es 2'); return }
-    const descuento = parseFloat(comboForm.descuento_pct)
-    if (isNaN(descuento) || descuento < 0 || descuento > 100) { toast.error('Descuento inválido'); return }
-    if (!comboForm.nombre.trim()) { toast.error('Ingresá un nombre'); return }
+    const valor = parseFloat(comboForm.descuento_valor)
+    if (isNaN(valor) || valor < 0) { toast.error('Valor de descuento inválido'); return }
+    if (comboForm.descuento_tipo === 'pct' && valor > 100) { toast.error('El porcentaje no puede superar 100'); return }
+    const descuento_pct = comboForm.descuento_tipo === 'pct' ? valor : 0
+    const descuento_monto = comboForm.descuento_tipo !== 'pct' ? valor : 0
     setSavingCombo(true)
     const { error } = await supabase.from('combos').insert({
       tenant_id: tenant!.id,
       nombre: comboForm.nombre.trim(),
       producto_id: comboForm.producto_id,
       cantidad,
-      descuento_pct: descuento,
+      descuento_pct,
+      descuento_tipo: comboForm.descuento_tipo,
+      descuento_monto,
     })
     if (error) toast.error(error.message)
     else {
       toast.success('Combo creado')
       logActividad({ entidad: 'combo', entidad_nombre: comboForm.nombre.trim(), accion: 'crear', pagina: '/configuracion' })
-      setComboForm({ nombre: '', producto_id: '', cantidad: '2', descuento_pct: '0' })
+      setComboForm({ nombre: '', producto_id: '', cantidad: '2', descuento_tipo: 'pct', descuento_valor: '0' })
       qc.invalidateQueries({ queryKey: ['combos'] })
     }
     setSavingCombo(false)
@@ -908,9 +913,21 @@ export default function ConfigPage() {
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Descuento %</label>
-                <input type="number" min="0" max="100" step="0.5" value={comboForm.descuento_pct}
-                  onChange={e => setComboForm(p => ({ ...p, descuento_pct: e.target.value }))}
+                <label className="block text-xs text-gray-500 mb-1">Tipo de descuento</label>
+                <select value={comboForm.descuento_tipo} onChange={e => setComboForm(p => ({ ...p, descuento_tipo: e.target.value, descuento_valor: '0' }))}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
+                  <option value="pct">Porcentaje (%)</option>
+                  <option value="monto_ars">Monto fijo ($)</option>
+                  <option value="monto_usd">Monto fijo (USD)</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs text-gray-500 mb-1">
+                  {comboForm.descuento_tipo === 'pct' ? 'Descuento (%)' : comboForm.descuento_tipo === 'monto_usd' ? 'Descuento (USD)' : 'Descuento ($)'}
+                </label>
+                <input type="number" min="0" max={comboForm.descuento_tipo === 'pct' ? '100' : undefined} step={comboForm.descuento_tipo === 'pct' ? '0.5' : '1'}
+                  value={comboForm.descuento_valor}
+                  onChange={e => setComboForm(p => ({ ...p, descuento_valor: e.target.value }))}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
             </div>
@@ -935,7 +952,12 @@ export default function ConfigPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800">{c.nombre}</p>
                     <p className="text-xs text-gray-400 truncate">
-                      {c.productos?.nombre} · {c.cantidad} unidades · {c.descuento_pct}% off
+                      {c.productos?.nombre} · {c.cantidad} uds ·{' '}
+                      {(c.descuento_tipo ?? 'pct') === 'pct'
+                        ? `${c.descuento_pct}% off`
+                        : (c.descuento_tipo === 'monto_usd'
+                          ? `USD ${c.descuento_monto} off`
+                          : `$${c.descuento_monto} off`)}
                     </p>
                   </div>
                   <button onClick={() => deleteCombo(c.id)}

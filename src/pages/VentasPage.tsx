@@ -190,7 +190,7 @@ export default function VentasPage() {
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado],
     queryFn: async () => {
-      let q = supabase.from('ventas').select('*, venta_items(id, cantidad, precio_unitario, descuento, subtotal, productos(nombre,sku))')
+      let q = supabase.from('ventas').select('*, venta_items(id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,tiene_series), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
       if (filterEstado) q = q.eq('estado', filterEstado)
       const { data, error } = await q
@@ -1347,23 +1347,39 @@ export default function VentasPage() {
             )}
 
             <div className="space-y-2 mb-4">
-              {(ventaDetalle.venta_items ?? []).map((item: any) => (
-                <div key={item.id} className="flex justify-between text-sm bg-gray-50 rounded-xl px-3 py-2">
-                  <div>
-                    <p className="font-medium">{item.productos?.nombre}</p>
-                    <p className="text-xs text-gray-400">{item.cantidad} × ${item.precio_unitario?.toLocaleString('es-AR')}</p>
-                    {item.descuento > 0 && (() => {
-                      const descMonto = (item.precio_unitario * item.cantidad) - item.subtotal
-                      return (
-                        <p className="text-xs text-green-600 font-medium">
-                          Descuento {item.descuento}% · −${descMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-                        </p>
-                      )
-                    })()}
+              {(ventaDetalle.venta_items ?? []).map((item: any) => {
+                const nrosSerie = (item.venta_series ?? [])
+                  .map((vs: any) => vs.inventario_series?.nro_serie)
+                  .filter(Boolean)
+                const lpn = item.inventario_lineas?.lpn
+                return (
+                  <div key={item.id} className="flex justify-between text-sm bg-gray-50 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="font-medium">{item.productos?.nombre}</p>
+                      <p className="text-xs text-gray-400">{item.cantidad} × ${item.precio_unitario?.toLocaleString('es-AR')}</p>
+                      {item.descuento > 0 && (() => {
+                        const descMonto = (item.precio_unitario * item.cantidad) - item.subtotal
+                        return (
+                          <p className="text-xs text-green-600 font-medium">
+                            Descuento {item.descuento}% · −${descMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                          </p>
+                        )
+                      })()}
+                      {nrosSerie.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {nrosSerie.map((s: string) => (
+                            <span key={s} className="text-xs font-mono text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">{s}</span>
+                          ))}
+                        </div>
+                      )}
+                      {nrosSerie.length === 0 && lpn && (
+                        <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-1 inline-block">LPN: {lpn}</span>
+                      )}
+                    </div>
+                    <p className="font-semibold">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
                   </div>
-                  <p className="font-semibold">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             <div className="border-t border-gray-100 pt-3 mb-4 space-y-1 text-sm">
@@ -1385,16 +1401,22 @@ export default function VentasPage() {
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  const items = (ventaDetalle.venta_items ?? []).map((item: any) => ({
-                    nombre: item.productos?.nombre ?? '',
-                    cantidad: item.cantidad,
-                    precio_unitario: item.precio_unitario,
-                    descuento: item.descuento ?? 0,
-                    descuento_tipo: 'pct' as DescTipo,
-                    subtotal: item.subtotal,
-                    tiene_series: false,
-                    series_seleccionadas: [],
-                  }))
+                  const items = (ventaDetalle.venta_items ?? []).map((item: any) => {
+                    const nrosSerie = (item.venta_series ?? [])
+                      .map((vs: any) => vs.inventario_series?.nro_serie)
+                      .filter(Boolean)
+                    return {
+                      nombre: item.productos?.nombre ?? '',
+                      cantidad: item.cantidad,
+                      precio_unitario: item.precio_unitario,
+                      descuento: item.descuento ?? 0,
+                      descuento_tipo: 'pct' as DescTipo,
+                      subtotal: item.subtotal,
+                      tiene_series: nrosSerie.length > 0,
+                      series_seleccionadas: nrosSerie,
+                      lpn: item.inventario_lineas?.lpn ?? null,
+                    }
+                  })
                   setTicketVenta({ ...ventaDetalle, items })
                 }}
                 className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-600 font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-all text-sm">
@@ -1482,6 +1504,14 @@ export default function VentasPage() {
                         <span className="text-green-600 text-xs ml-1">
                           -{item.descuento_tipo === 'pct' ? `${item.descuento}%` : `$${item.descuento}`}
                         </span>
+                      )}
+                      {item.tiene_series && (item.series_seleccionadas ?? []).length > 0 && (
+                        <p className="text-xs text-gray-400 font-mono mt-0.5 truncate">
+                          S/N: {(item.series_seleccionadas as string[]).join(', ')}
+                        </p>
+                      )}
+                      {!item.tiene_series && item.lpn && (
+                        <p className="text-xs text-gray-400 font-mono mt-0.5">LPN: {item.lpn}</p>
                       )}
                     </div>
                     <div className="text-right whitespace-nowrap">

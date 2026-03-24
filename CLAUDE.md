@@ -179,6 +179,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Insights margen**: `insightsMargen = productos.filter(margen_objetivo != null).map(calcularDesvioPP)`. Solo aparece si hay productos con objetivo. Ordenado por `diff ASC` (peores primero).
 - **Métricas inventario**: query `movimientos_stock` por tipo/motivo en período → `motivosMap` con count/cantidad. Query `inventario_lineas` join `ubicaciones`+`productos` → `ubicacionMap` con valor (cantidad × precio_costo).
 
+### Fixes + Features en dev (pendiente → v0.30.0)
+- **Bug #19 fix**: ImportarProductosPage — productos con `tiene_series`: necesita columna `numeros_serie` (separados por coma) en el Excel. `productosMap` incluye `tiene_series`. Se inserta en `inventario_series` por cada número de serie; cantidad = len(series).
+- **Proyección de cobertura**: DashboardPage — `proyeccionCobertura` = prods con stock > mínimo y velocidad > 0, ordenados por `diasHastaCritico ASC`. Semáforo rojo ≤7d / ámbar ≤14d / verde >14d. Sección colapsable después de "Sugerencia de pedido".
+- **LPN en historial/ticket**: VentasPage query historial incluye `inventario_lineas(lpn)` y `venta_series(inventario_series(nro_serie))`. Modal detalle: badge azul LPN o chips violeta series. Ticket: S/N o LPN bajo nombre del item.
+- **Motivos predefinidos caja**: `motivos_movimiento` con `tipo='caja'` (badge violeta en ConfigPage). CajaPage modal muestra chips; click pre-llena el campo Concepto.
+- **Invitación por email**: EF `invite-user` — usa `supabase.auth.admin.inviteUserByEmail`; pre-crea perfil en `users` para saltear onboarding. UsuariosPage sin campo contraseña.
+- **Importación masiva clientes**: ClientesPage — botón Importar + modal (drag-drop/click, plantilla, preview tabla, detecta duplicados por nombre case-insensitive).
+
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
 - Compactar manualmente con `/compact` cuando el contexto esté pesado.
@@ -187,22 +195,11 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ## Backlog pendiente
 
-### Inventario
-- [ ] Proyección de cobertura: días de stock restante por producto
-- [ ] **Bug #19**: Importar inventario falla para productos con series (ImportarProductosPage)
-
-### Ventas
-- [ ] Mostrar LPN origen al confirmar venta (en el ticket/historial)
-
-### Caja
-- [ ] Motivos predefinidos para ingreso/egreso (configurables en Config)
-- [ ] Ventas no-efectivo registradas en caja como ingreso informativo (opcional)
-
 ### UX / Config
 - [ ] `useModalKeyboard` wiring pendiente en: MovimientosPage, VentasPage, GastosPage, UsuariosPage
-- [ ] Combos: descuento en % o monto fijo $ o USD
+- [ ] Combos: descuento en % o monto fijo $ o USD ← **siguiente**
 - [ ] Sidebar colapsable en desktop
-- [ ] Invitación por email real · Carga masiva clientes (CSV/Excel)
+- [ ] Caja: ventas no-efectivo registradas como ingreso informativo (opcional)
 
 ### Revenue
 - [ ] Límite de movimientos por plan (`max_movimientos`)

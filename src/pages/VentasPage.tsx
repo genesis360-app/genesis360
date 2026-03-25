@@ -622,6 +622,21 @@ export default function VentasPage() {
           usuario_id: user?.id,
         }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
       }
+      // Registros informativos para medios no-efectivo (no afectan saldo)
+      const totalNoCash = total - montoEfectivoCaja
+      if (estado === 'despachada' && sesionCajaId && totalNoCash > 0.01) {
+        const tiposNoCash = [...new Set(
+          mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo' && m.tipo !== '').map(m => m.tipo)
+        )].join(' + ')
+        void supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id,
+          sesion_id: sesionCajaId,
+          tipo: 'ingreso_informativo',
+          concepto: `[${tiposNoCash || 'No efectivo'}] Venta #${venta.numero}`,
+          monto: totalNoCash,
+          usuario_id: user?.id,
+        })
+      }
       const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })) })

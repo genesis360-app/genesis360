@@ -5,7 +5,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History,
-  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock
+  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -430,16 +430,19 @@ export default function CajaPage() {
                 ) : (
                   <div className="divide-y divide-gray-50 max-h-64 overflow-y-auto">
                     {movimientos.map((m: any) => (
-                      <div key={m.id} className="px-4 py-3 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-gray-800">{m.concepto}</p>
-                          <p className="text-xs text-gray-400">
-                            {new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                            {m.users?.nombre_display && ` · ${m.users.nombre_display}`}
-                          </p>
+                      <div key={m.id} className={`px-4 py-3 flex items-center justify-between ${m.tipo === 'ingreso_informativo' ? 'opacity-60' : ''}`}>
+                        <div className="flex items-start gap-2 min-w-0">
+                          {m.tipo === 'ingreso_informativo' && <Info size={13} className="text-blue-400 mt-0.5 flex-shrink-0" />}
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{m.concepto}</p>
+                            <p className="text-xs text-gray-400">
+                              {new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                              {m.users?.nombre_display && ` · ${m.users.nombre_display}`}
+                            </p>
+                          </div>
                         </div>
-                        <span className={`font-bold text-sm ${m.tipo === 'ingreso' ? 'text-green-600' : 'text-red-500'}`}>
-                          {m.tipo === 'ingreso' ? '+' : '-'}{formatMoneda(m.monto)}
+                        <span className={`font-bold text-sm flex-shrink-0 ml-3 ${m.tipo === 'ingreso' ? 'text-green-600' : m.tipo === 'egreso' ? 'text-red-500' : 'text-blue-400'}`}>
+                          {m.tipo === 'ingreso' ? '+' : m.tipo === 'egreso' ? '-' : '~'}{formatMoneda(m.monto)}
                         </span>
                       </div>
                     ))}
@@ -533,16 +536,19 @@ export default function CajaPage() {
                     ) : (
                       <div className="divide-y divide-gray-50">
                         {movimientosDetalle.map((m: any) => (
-                          <div key={m.id} className="px-4 py-2.5 flex items-center justify-between">
-                            <div>
-                              <p className="text-sm text-gray-800">{m.concepto}</p>
-                              <p className="text-xs text-gray-400">
-                                {new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
-                                {m.users?.nombre_display && ` · ${m.users.nombre_display}`}
-                              </p>
+                          <div key={m.id} className={`px-4 py-2.5 flex items-center justify-between ${m.tipo === 'ingreso_informativo' ? 'opacity-60' : ''}`}>
+                            <div className="flex items-start gap-2 min-w-0">
+                              {m.tipo === 'ingreso_informativo' && <Info size={13} className="text-blue-400 mt-0.5 flex-shrink-0" />}
+                              <div className="min-w-0">
+                                <p className="text-sm text-gray-800 truncate">{m.concepto}</p>
+                                <p className="text-xs text-gray-400">
+                                  {new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                                  {m.users?.nombre_display && ` · ${m.users.nombre_display}`}
+                                </p>
+                              </div>
                             </div>
-                            <span className={`font-bold text-sm ${m.tipo === 'ingreso' ? 'text-green-600' : 'text-red-500'}`}>
-                              {m.tipo === 'ingreso' ? '+' : '-'}{formatMoneda(m.monto)}
+                            <span className={`font-bold text-sm flex-shrink-0 ml-3 ${m.tipo === 'ingreso' ? 'text-green-600' : m.tipo === 'egreso' ? 'text-red-500' : 'text-blue-400'}`}>
+                              {m.tipo === 'ingreso' ? '+' : m.tipo === 'egreso' ? '-' : '~'}{formatMoneda(m.monto)}
                             </span>
                           </div>
                         ))}

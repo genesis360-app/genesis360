@@ -35,6 +35,8 @@ export interface Tenant {
   cotizacion_usd?: number
   cotizacion_usd_updated_at?: string
   regla_inventario: string
+  marketplace_activo?: boolean
+  marketplace_webhook_url?: string
   created_at: string
 }
 
@@ -106,6 +108,10 @@ export interface Producto {
   tiene_lote?: boolean
   tiene_vencimiento?: boolean
   regla_inventario?: string | null
+  publicado_marketplace?: boolean
+  precio_marketplace?: number | null
+  stock_reservado_marketplace?: number
+  descripcion_marketplace?: string | null
   activo: boolean
   created_at: string
   updated_at: string

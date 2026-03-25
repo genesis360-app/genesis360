@@ -179,13 +179,17 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Insights margen**: `insightsMargen = productos.filter(margen_objetivo != null).map(calcularDesvioPP)`. Solo aparece si hay productos con objetivo. Ordenado por `diff ASC` (peores primero).
 - **Métricas inventario**: query `movimientos_stock` por tipo/motivo en período → `motivosMap` con count/cantidad. Query `inventario_lineas` join `ubicaciones`+`productos` → `ubicacionMap` con valor (cantidad × precio_costo).
 
-### Fixes + Features en dev (pendiente → v0.30.0)
-- **Bug #19 fix**: ImportarProductosPage — productos con `tiene_series`: necesita columna `numeros_serie` (separados por coma) en el Excel. `productosMap` incluye `tiene_series`. Se inserta en `inventario_series` por cada número de serie; cantidad = len(series).
-- **Proyección de cobertura**: DashboardPage — `proyeccionCobertura` = prods con stock > mínimo y velocidad > 0, ordenados por `diasHastaCritico ASC`. Semáforo rojo ≤7d / ámbar ≤14d / verde >14d. Sección colapsable después de "Sugerencia de pedido".
-- **LPN en historial/ticket**: VentasPage query historial incluye `inventario_lineas(lpn)` y `venta_series(inventario_series(nro_serie))`. Modal detalle: badge azul LPN o chips violeta series. Ticket: S/N o LPN bajo nombre del item.
-- **Motivos predefinidos caja**: `motivos_movimiento` con `tipo='caja'` (badge violeta en ConfigPage). CajaPage modal muestra chips; click pre-llena el campo Concepto.
-- **Invitación por email**: EF `invite-user` — usa `supabase.auth.admin.inviteUserByEmail`; pre-crea perfil en `users` para saltear onboarding. UsuariosPage sin campo contraseña.
-- **Importación masiva clientes**: ClientesPage — botón Importar + modal (drag-drop/click, plantilla, preview tabla, detecta duplicados por nombre case-insensitive).
+### v0.30.0 — Sprint UX (deployado a PROD via PR #20)
+- **Bug #19 fix**: ImportarProductosPage — `numeros_serie` en Excel → inserta `inventario_series`, cantidad = len(series).
+- **Proyección de cobertura**: DashboardPage — semáforo rojo ≤7d / ámbar ≤14d / verde >14d, colapsable.
+- **LPN en historial/ticket**: historial incluye `inventario_lineas(lpn)` + `venta_series(nro_serie)`. Modal y ticket muestran LPN/S/N.
+- **Motivos predefinidos caja**: `tipo='caja'` en `motivos_movimiento`. CajaPage chips pre-llenan Concepto.
+- **Invitación por email**: EF `invite-user` → `admin.inviteUserByEmail` + pre-crea `users`. Sin campo contraseña.
+- **Importación masiva clientes**: drag-drop/click, preview, duplicados por nombre case-insensitive.
+- **Combos multi-tipo**: `descuento_tipo` (`pct`/`monto_ars`/`monto_usd`) + `descuento_monto` (migración 016). VentasPage convierte USD→ARS vía `cotizacionUSD`.
+- **Sidebar colapsable**: ChevronLeft/Right, `w-16` modo colapsado, localStorage. Mobile no afectado.
+- **useModalKeyboard**: wired en MovimientosPage, GastosPage, UsuariosPage, VentasPage (seriesModal + ventaDetalle).
+- **Caja ingresos informativos**: pagos no-efectivo de ventas → `tipo='ingreso_informativo'` (no afecta saldo). CajaPage muestra en azul con `~` e icono `Info`.
 
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
@@ -196,10 +200,6 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ## Backlog pendiente
 
 ### UX / Config
-- [ ] `useModalKeyboard` wiring pendiente en: MovimientosPage, VentasPage, GastosPage, UsuariosPage
-- [ ] Combos: descuento en % o monto fijo $ o USD ← **siguiente**
-- [ ] Sidebar colapsable en desktop
-- [ ] Caja: ventas no-efectivo registradas como ingreso informativo (opcional)
 
 ### Revenue
 - [ ] Límite de movimientos por plan (`max_movimientos`)

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -37,7 +37,11 @@ export default function ProductoFormPage() {
     stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false,
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '',
+    // Marketplace
+    publicado_marketplace: false, precio_marketplace: '', stock_reservado_marketplace: '0',
+    descripcion_marketplace: '',
   })
+  const [showMarketplace, setShowMarketplace] = useState(false)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
@@ -124,7 +128,12 @@ export default function ProductoFormPage() {
         regla_inventario: productoData.regla_inventario ?? '',
         aging_profile_id: productoData.aging_profile_id ?? '',
         margen_objetivo: productoData.margen_objetivo != null ? productoData.margen_objetivo.toString() : '',
+        publicado_marketplace: productoData.publicado_marketplace ?? false,
+        precio_marketplace: productoData.precio_marketplace != null ? productoData.precio_marketplace.toString() : '',
+        stock_reservado_marketplace: (productoData.stock_reservado_marketplace ?? 0).toString(),
+        descripcion_marketplace: productoData.descripcion_marketplace ?? '',
       })
+      if (productoData.publicado_marketplace) setShowMarketplace(true)
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
       setLoaded(true)
     }
@@ -185,6 +194,10 @@ export default function ProductoFormPage() {
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
+        publicado_marketplace: form.publicado_marketplace,
+        precio_marketplace: form.precio_marketplace !== '' ? parseFloat(form.precio_marketplace) : null,
+        stock_reservado_marketplace: parseInt(form.stock_reservado_marketplace) || 0,
+        descripcion_marketplace: form.descripcion_marketplace.trim() || null,
       }
       if (isEditing) {
         const { error } = await supabase.from('productos').update(payload).eq('id', id)
@@ -722,6 +735,99 @@ export default function ProductoFormPage() {
             )}
           </div>
         </div>
+
+        {/* Marketplace — solo visible si tenant.marketplace_activo */}
+        {canEdit && tenant?.marketplace_activo && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowMarketplace(v => !v)}
+              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <ShoppingBag size={16} className="text-violet-500" />
+                <span className="font-semibold text-gray-700 dark:text-gray-300">Marketplace</span>
+                {form.publicado_marketplace && (
+                  <span className="ml-1 px-2 py-0.5 text-xs font-medium bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 rounded-full">Publicado</span>
+                )}
+              </div>
+              {showMarketplace ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+            </button>
+
+            {showMarketplace && (
+              <div className="px-5 pb-5 space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
+                {/* Toggle publicar */}
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Publicar en marketplace</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">Visible para compradores del marketplace externo</p>
+                  </div>
+                  <div className="relative ml-4 flex-shrink-0">
+                    <input type="checkbox" checked={form.publicado_marketplace}
+                      onChange={e => setForm(p => ({ ...p, publicado_marketplace: e.target.checked }))} className="sr-only" />
+                    <div className={`w-11 h-6 rounded-full transition-colors ${form.publicado_marketplace ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.publicado_marketplace ? 'translate-x-5' : ''}`} />
+                    </div>
+                  </div>
+                </label>
+
+                {form.publicado_marketplace && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Precio marketplace
+                          <span className="ml-1 text-xs text-gray-400 font-normal">(vacío = usar precio de venta)</span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm font-medium">$</span>
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={form.precio_marketplace}
+                            onChange={e => setForm(p => ({ ...p, precio_marketplace: e.target.value }))}
+                            placeholder={form.precio_venta || '0.00'}
+                            className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Stock reservado
+                          <span className="ml-1 text-xs text-gray-400 font-normal">(destinado al marketplace)</span>
+                        </label>
+                        <input
+                          type="number" min="0"
+                          value={form.stock_reservado_marketplace}
+                          onChange={e => setForm(p => ({ ...p, stock_reservado_marketplace: e.target.value }))}
+                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400"
+                        />
+                        {form.stock_reservado_marketplace !== '0' && form.stock_reservado_marketplace !== '' && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                            Stock disponible en marketplace: {Math.max(0, parseInt(form.stock_actual || '0') - parseInt(form.stock_reservado_marketplace || '0'))} u.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Descripción pública
+                        <span className="ml-1 text-xs text-gray-400 font-normal">(opcional — si está vacía se usa la descripción interna)</span>
+                      </label>
+                      <textarea
+                        value={form.descripcion_marketplace}
+                        onChange={e => setForm(p => ({ ...p, descripcion_marketplace: e.target.value }))}
+                        rows={3}
+                        placeholder="Descripción orientada al comprador externo..."
+                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400 resize-none"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {canEdit && (
           <div className="flex gap-3 justify-end">

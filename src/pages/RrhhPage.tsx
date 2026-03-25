@@ -4,8 +4,10 @@ import {
   Plus, Trash2, Edit, Search, Users2,
   Building2, Briefcase, Calendar, ChevronDown, Heart, AlertTriangle,
   DollarSign, CreditCard, ChevronRight, CheckCircle, Clock,
-  Plane, ClipboardList, Check, X,
+  Plane, ClipboardList, Check, X, LayoutDashboard, FileSpreadsheet,
+  UserCheck, UserX, TrendingUp, Download,
 } from 'lucide-react'
+import { utils as xlsxUtils, writeFile as xlsxWriteFile } from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -13,7 +15,7 @@ import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-type Tab = 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia'
+type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia'
 type FormMode = 'crear' | 'editar' | null
 
 interface Concepto {
@@ -181,6 +183,9 @@ export default function RrhhPage() {
   const [newItem, setNewItem] = useState<{ descripcion: string; tipo: 'HABER' | 'DESCUENTO'; monto: string; concepto_id: string }>({ descripcion: '', tipo: 'HABER', monto: '', concepto_id: '' })
   const [cajaSessionId, setCajaSessionId] = useState<string>('')
 
+  // Dashboard state
+  const [dashMes, setDashMes] = useState(() => format(new Date(), 'yyyy-MM'))
+
   // Vacaciones state
   const [vacAnio, setVacAnio] = useState(() => new Date().getFullYear())
   const [showVacForm, setShowVacForm] = useState(false)
@@ -289,6 +294,51 @@ export default function RrhhPage() {
       return data ?? []
     },
     enabled: !!tenant && activeTab === 'nomina',
+  })
+
+  // Dashboard queries
+  const { data: dashAsist = [] } = useQuery({
+    queryKey: ['rrhh_dash_asist', tenant?.id, dashMes],
+    queryFn: async () => {
+      const [y, m] = dashMes.split('-').map(Number)
+      const { data, error } = await supabase.from('rrhh_asistencia')
+        .select('estado, empleado_id')
+        .eq('tenant_id', tenant!.id)
+        .gte('fecha', `${dashMes}-01`)
+        .lte('fecha', format(new Date(y, m, 0), 'yyyy-MM-dd'))
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && activeTab === 'dashboard',
+  })
+
+  const { data: dashVac = [] } = useQuery({
+    queryKey: ['rrhh_dash_vac', tenant?.id, new Date().getFullYear()],
+    queryFn: async () => {
+      const anio = new Date().getFullYear()
+      const { data, error } = await supabase.from('rrhh_vacaciones_solicitud')
+        .select('estado, dias_habiles, empleado_id')
+        .eq('tenant_id', tenant!.id)
+        .gte('desde', `${anio}-01-01`)
+        .lte('desde', `${anio}-12-31`)
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && activeTab === 'dashboard',
+  })
+
+  const { data: dashNomina = [] } = useQuery({
+    queryKey: ['rrhh_dash_nomina', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('rrhh_salarios')
+        .select('periodo, neto, pagado, empleado_id')
+        .eq('tenant_id', tenant!.id)
+        .order('periodo', { ascending: false })
+        .limit(200)
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && activeTab === 'dashboard',
   })
 
   // Vacaciones queries
@@ -731,6 +781,56 @@ export default function RrhhPage() {
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
 
+  // ─── Exports ─────────────────────────────────────────────────────────────────
+  const exportAsistenciaMes = async () => {
+    const [y, m] = dashMes.split('-').map(Number)
+    const desde = `${dashMes}-01`
+    const hasta = format(new Date(y, m, 0), 'yyyy-MM-dd')
+    const { data, error } = await supabase.from('rrhh_asistencia')
+      .select('fecha, estado, hora_entrada, hora_salida, motivo, empleado:empleados(dni_rut)')
+      .eq('tenant_id', tenant!.id)
+      .gte('fecha', desde)
+      .lte('fecha', hasta)
+      .order('fecha')
+    if (error) { toast.error('Error al exportar'); return }
+    const rows = (data ?? []).map((a: any) => ({
+      Fecha: a.fecha,
+      Empleado: a.empleado?.dni_rut ?? '',
+      Estado: a.estado,
+      'Hora entrada': a.hora_entrada ?? '',
+      'Hora salida': a.hora_salida ?? '',
+      Motivo: a.motivo ?? '',
+    }))
+    const ws = xlsxUtils.json_to_sheet(rows)
+    const wb = xlsxUtils.book_new()
+    xlsxUtils.book_append_sheet(wb, ws, 'Asistencia')
+    xlsxWriteFile(wb, `asistencia_${dashMes}.xlsx`)
+    toast.success('Excel descargado')
+  }
+
+  const exportNominaHistorica = async () => {
+    const { data, error } = await supabase.from('rrhh_salarios')
+      .select('periodo, basico, total_haberes, total_descuentos, neto, pagado, fecha_pago, empleado:empleados(dni_rut)')
+      .eq('tenant_id', tenant!.id)
+      .order('periodo', { ascending: false })
+    if (error) { toast.error('Error al exportar'); return }
+    const rows = (data ?? []).map((s: any) => ({
+      Período: s.periodo?.slice(0, 7) ?? '',
+      Empleado: s.empleado?.dni_rut ?? '',
+      Básico: s.basico,
+      'Total haberes': s.total_haberes,
+      'Total descuentos': s.total_descuentos,
+      Neto: s.neto,
+      Estado: s.pagado ? 'Pagado' : 'Pendiente',
+      'Fecha pago': s.fecha_pago ? format(new Date(s.fecha_pago), 'dd/MM/yyyy HH:mm', { locale: es }) : '',
+    }))
+    const ws = xlsxUtils.json_to_sheet(rows)
+    const wb = xlsxUtils.book_new()
+    xlsxUtils.book_append_sheet(wb, ws, 'Nómina')
+    xlsxWriteFile(wb, `nomina_historica.xlsx`)
+    toast.success('Excel descargado')
+  }
+
   const resetForm = () => {
     setFormMode(null)
     setSelectedEmpleado(null)
@@ -811,7 +911,7 @@ export default function RrhhPage() {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-8 border-b border-gray-200 dark:border-gray-700 flex-wrap">
-        {(['empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia'] as Tab[]).map((tab) => (
+        {(['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia'] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => { setActiveTab(tab); resetForm() }}
@@ -821,6 +921,7 @@ export default function RrhhPage() {
                 : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
+            {tab === 'dashboard'    && <span className="flex items-center gap-1"><LayoutDashboard size={14}/>Dashboard</span>}
             {tab === 'empleados'    && 'Empleados'}
             {tab === 'puestos'      && 'Puestos'}
             {tab === 'departamentos' && 'Departamentos'}
@@ -1560,6 +1661,212 @@ export default function RrhhPage() {
 
         </div>
       )}
+
+      {/* DASHBOARD TAB */}
+      {activeTab === 'dashboard' && (() => {
+        const activos = empleados.filter(e => e.activo)
+        const hoy = new Date()
+        const nuevosEsteMes = activos.filter(e => {
+          const fi = new Date(e.fecha_ingreso)
+          return fi.getMonth() === hoy.getMonth() && fi.getFullYear() === hoy.getFullYear()
+        })
+
+        // Asistencia del mes seleccionado
+        const totalAsist = dashAsist.length
+        const presentes  = dashAsist.filter(a => a.estado === 'presente').length
+        const tardanzas  = dashAsist.filter(a => a.estado === 'tardanza').length
+        const ausentes   = dashAsist.filter(a => a.estado === 'ausente').length
+        const licencias  = dashAsist.filter(a => a.estado === 'licencia').length
+        const pctPresencia = totalAsist > 0 ? Math.round(((presentes + tardanzas) / totalAsist) * 100) : null
+
+        // Vacaciones año actual
+        const vacPendientes = dashVac.filter(v => v.estado === 'pendiente').length
+        const vacAprobadas  = dashVac.filter(v => v.estado === 'aprobada').length
+        const diasVacUsados = dashVac.filter(v => v.estado === 'aprobada').reduce((s, v) => s + (v.dias_habiles ?? 0), 0)
+
+        // Nómina
+        const periodos = [...new Set(dashNomina.map(s => s.periodo?.slice(0, 7)))].sort().reverse()
+        const ultimoPeriodo = periodos[0]
+        const nominaUltimo  = dashNomina.filter(s => s.periodo?.slice(0, 7) === ultimoPeriodo)
+        const nominaPendiente = nominaUltimo.filter(s => !s.pagado).length
+        const nominaNetoPendiente = nominaUltimo.filter(s => !s.pagado).reduce((sum, s) => sum + (s.neto ?? 0), 0)
+
+        // Breakdown por departamento
+        const deptMap: Record<string, number> = {}
+        activos.forEach(e => {
+          const nombre = e.departamento?.nombre ?? 'Sin departamento'
+          deptMap[nombre] = (deptMap[nombre] ?? 0) + 1
+        })
+
+        return (
+          <div className="space-y-6">
+            {/* Selector mes */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Mes de referencia (asistencia):</label>
+              <input type="month" value={dashMes} onChange={e => setDashMes(e.target.value)}
+                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm" />
+            </div>
+
+            {/* KPIs Empleados */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Empleados</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                  <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-1">
+                    <Users2 size={18}/><span className="text-xs font-medium uppercase">Activos</span>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{activos.length}</p>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-1">
+                    <UserCheck size={18}/><span className="text-xs font-medium uppercase">Nuevos este mes</span>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{nuevosEsteMes.length}</p>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                  <div className="flex items-center gap-2 text-red-500 dark:text-red-400 mb-1">
+                    <Heart size={18}/><span className="text-xs font-medium uppercase">Cumpleaños este mes</span>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{cumpleanosMes.length}</p>
+                  {cumpleanosMes.length > 0 && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+                      {cumpleanosMes.map(e => e.dni_rut).join(', ')}
+                    </p>
+                  )}
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                  <div className="flex items-center gap-2 text-purple-600 dark:text-purple-400 mb-1">
+                    <Building2 size={18}/><span className="text-xs font-medium uppercase">Departamentos</span>
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{departamentos.filter(d => d.activo).length}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* KPIs Asistencia */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+                Asistencia — {dashMes}
+              </h3>
+              {totalAsist === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500 italic">Sin registros para este mes</p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 md:col-span-1">
+                    <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-1">
+                      <TrendingUp size={18}/><span className="text-xs font-medium uppercase">Presencia</span>
+                    </div>
+                    <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                      {pctPresencia !== null ? `${pctPresencia}%` : '—'}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{totalAsist} registros</p>
+                  </div>
+                  {([
+                    { label: 'Presentes', count: presentes, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/20' },
+                    { label: 'Tardanzas', count: tardanzas, color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
+                    { label: 'Ausentes',  count: ausentes,  color: 'text-red-600 dark:text-red-400',    bg: 'bg-red-50 dark:bg-red-900/20' },
+                    { label: 'Licencias', count: licencias, color: 'text-blue-600 dark:text-blue-400',  bg: 'bg-blue-50 dark:bg-blue-900/20' },
+                  ] as const).map(item => (
+                    <div key={item.label} className={`rounded-lg border border-gray-200 dark:border-gray-700 p-4 ${item.bg}`}>
+                      <p className={`text-xs font-medium uppercase mb-1 ${item.color}`}>{item.label}</p>
+                      <p className="text-3xl font-bold text-gray-900 dark:text-white">{item.count}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* KPIs Vacaciones */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+                Vacaciones — {new Date().getFullYear()}
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                  <p className="text-xs font-medium uppercase text-yellow-600 dark:text-yellow-400 mb-1">Pendientes aprobación</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{vacPendientes}</p>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                  <p className="text-xs font-medium uppercase text-green-600 dark:text-green-400 mb-1">Aprobadas</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{vacAprobadas}</p>
+                </div>
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                  <p className="text-xs font-medium uppercase text-blue-600 dark:text-blue-400 mb-1">Días hábiles usados</p>
+                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{diasVacUsados}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* KPIs Nómina */}
+            {ultimoPeriodo && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+                  Nómina — último período ({ultimoPeriodo})
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                    <p className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400 mb-1">Liquidaciones</p>
+                    <p className="text-3xl font-bold text-gray-900 dark:text-white">{nominaUltimo.length}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{nominaUltimo.filter(s => s.pagado).length} pagadas</p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                    <p className="text-xs font-medium uppercase text-orange-600 dark:text-orange-400 mb-1">Pendientes de pago</p>
+                    <p className="text-3xl font-bold text-gray-900 dark:text-white">{nominaPendiente}</p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                    <p className="text-xs font-medium uppercase text-orange-600 dark:text-orange-400 mb-1">Monto pendiente</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {nominaNetoPendiente.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Breakdown por departamento */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Empleados por departamento</h3>
+              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {Object.entries(deptMap).sort((a, b) => b[1] - a[1]).map(([nombre, count]) => (
+                    <div key={nombre} className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">{nombre}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 rounded-full bg-blue-500 dark:bg-blue-400" style={{ width: `${Math.max(20, (count / activos.length) * 120)}px` }}/>
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 w-6 text-right">{count}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {activos.length === 0 && (
+                    <p className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500 italic">Sin empleados activos</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Exportar reportes */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Exportar reportes</h3>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={exportAsistenciaMes}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                  <FileSpreadsheet size={16} className="text-green-600 dark:text-green-400"/>
+                  Asistencia {dashMes}
+                  <Download size={14} className="text-gray-400"/>
+                </button>
+                <button onClick={exportNominaHistorica}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                  <FileSpreadsheet size={16} className="text-green-600 dark:text-green-400"/>
+                  Nómina histórica
+                  <Download size={14} className="text-gray-400"/>
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* VACACIONES TAB */}
       {activeTab === 'vacaciones' && (

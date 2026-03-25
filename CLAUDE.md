@@ -213,6 +213,17 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - Catálogo de conceptos CRUD colapsable dentro de la tab.
   - `actividadLog`: + `nomina` en EntidadLog, + `pagar` en AccionLog.
 
+### v0.34.0 — RRHH Phase 3B Dashboard (en dev)
+- **Tab Dashboard** en RrhhPage (primera tab, con `LayoutDashboard` icon). Seleccionable mes de referencia.
+- **KPIs empleados**: total activos, nuevos este mes, cumpleaños del mes, cantidad de departamentos.
+- **KPIs asistencia**: % presencia, presentes/tardanzas/ausentes/licencias del mes seleccionado.
+- **KPIs vacaciones**: pendientes de aprobación, aprobadas, días hábiles usados en el año.
+- **KPIs nómina**: último período, liquidaciones totales/pagadas, pendientes de pago + monto.
+- **Breakdown por departamento**: barra proporcional + count por cada departamento.
+- **Exportar reportes Excel**: Asistencia mensual (`asistencia_YYYY-MM.xlsx`) + Nómina histórica (`nomina_historica.xlsx`) usando `xlsx` library.
+- Queries: `dashAsist`, `dashVac`, `dashNomina` (enabled solo cuando tab='dashboard').
+- Funciones: `exportAsistenciaMes()`, `exportNominaHistorica()` (on-demand, query fresca).
+
 ### v0.33.0 — RRHH Phase 2B Vacaciones + Phase 3A Asistencia (en dev)
 - **RRHH Phase 2B — Vacaciones** (migración 018):
   - `rrhh_vacaciones_solicitud`: estado `pendiente/aprobada/rechazada`, dias_habiles calculados (excluye fines de semana), aprobado_por + aprobado_at.
@@ -226,6 +237,15 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - UI tab "Asistencia": filtro mes + empleado, tabla con badges por estado, CRUD completo.
   - `actividadLog`: + `vacacion` y `asistencia` en EntidadLog.
 - `calcularDiasHabilesFrontend(desde, hasta)`: helper frontend, excluye sábado y domingo.
+
+### Marketplace (migración 020)
+- **Campos en `productos`**: `publicado_marketplace BOOLEAN`, `precio_marketplace DECIMAL(12,2)`, `stock_reservado_marketplace INT`, `descripcion_marketplace TEXT`.
+- **Campos en `tenants`**: `marketplace_activo BOOLEAN`, `marketplace_webhook_url TEXT`.
+- **Edge Function `marketplace-api`** (pública, sin JWT): `GET ?tenant_id=uuid` → devuelve productos con `publicado_marketplace=true`. Stock disponible = `stock_actual - stock_reservado_marketplace - suma(cantidad_reservada en inventario_lineas)`. Rate limiting 60 req/min por IP en memoria del isolate. CORS abierto.
+- **Edge Function `marketplace-webhook`**: recibe `{ producto_id }` (autenticado desde frontend o como DB Webhook). Busca `marketplace_webhook_url` en tenant → envía POST con `{ tenant_id, producto_id, sku, nombre, stock_disponible, timestamp }`. Timeout 10s. Fire-and-forget desde el frontend.
+- **UI en ProductoFormPage**: sección "Marketplace" colapsable (auto-abre si el producto ya está publicado). Solo visible si `tenant.marketplace_activo = true`. Toggle publicar + precio marketplace + stock reservado + descripción pública.
+- **Activar marketplace**: desde Supabase Dashboard o SQL: `UPDATE tenants SET marketplace_activo = true WHERE id = '<tenant_id>'`.
+- **Configurar webhook externo**: `UPDATE tenants SET marketplace_webhook_url = '<url>' WHERE id = '<tenant_id>'`.
 
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
@@ -243,11 +263,11 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [ ] Revisar matriz de funcionalidades por plan (actualmente solo se limitan usuarios y productos)
 
 ### RRHH — Phases 2–5 (ver ROADMAP.md)
-- [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, en dev)
-- [x] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente (migración 018, en dev)
+- [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, PROD)
+- [x] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente (migración 018, PROD)
 - [ ] Phase 2C — Cumpleaños automáticos: Edge Function scheduler
-- [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, en dev)
-- [ ] Phase 3B — Dashboard RRHH: KPIs + reportes Excel/PDF
+- [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, PROD)
+- [x] Phase 3B — Dashboard RRHH: KPIs empleados/asistencia/vacaciones/nómina + breakdown depts + exportar Excel (dev, pendiente deploy)
 - [ ] Phase 4A — Documentos empleado: Storage bucket `empleados`
 - [ ] Phase 4B — Capacitaciones + certificados
 - [ ] Phase 5 — Supervisor Self-Service: dashboard restringido + árbol jerárquico RLS

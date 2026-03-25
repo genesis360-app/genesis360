@@ -319,7 +319,7 @@ export default function DashboardPage() {
           )}
         </Link>
 
-        <Link to="/movimientos" className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all">
+        <Link to="/alertas" className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-all">
           <div className="flex items-start justify-between mb-3">
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-amber-50 text-amber-500">
               <Package size={20} />
@@ -356,9 +356,9 @@ export default function DashboardPage() {
               {trendVentas >= 0 ? '+' : ''}${Math.abs(stats.totalVentasMes - stats.totalVentasMesAnt).toLocaleString('es-AR', { maximumFractionDigits: 0 })} vs mes anterior
             </p>
           )}
-          <Link to="/metricas" className="inline-block mt-3 text-xs text-blue-300 hover:text-white transition-colors">
+          <button onClick={() => setTab('metricas')} className="inline-block mt-3 text-xs text-blue-300 hover:text-white transition-colors">
             Ver métricas completas →
-          </Link>
+          </button>
         </div>
 
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
@@ -412,7 +412,7 @@ export default function DashboardPage() {
               {(stats?.prodsInactivos?.length ?? 0) > 10 && (
                 <div className="px-5 py-2 text-xs text-gray-400 text-center">
                   +{(stats?.prodsInactivos?.length ?? 0) - 10} más —{' '}
-                  <Link to="/metricas" className="text-accent hover:underline">Ver en Métricas</Link>
+                  <button onClick={() => setTab('metricas')} className="text-accent hover:underline">Ver en Métricas</button>
                 </div>
               )}
             </div>
@@ -503,12 +503,17 @@ export default function DashboardPage() {
                     <p className="text-xs text-gray-500 mt-0.5">{insight.impacto}</p>
                   </div>
                 </div>
-                <Link
-                  to={insight.link}
-                  className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary whitespace-nowrap flex-shrink-0 transition-colors"
-                >
-                  {insight.accion} <ChevronRight size={13} />
-                </Link>
+                {insight.link === '/metricas' ? (
+                  <button onClick={() => setTab('metricas')}
+                    className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary whitespace-nowrap flex-shrink-0 transition-colors">
+                    {insight.accion} <ChevronRight size={13} />
+                  </button>
+                ) : (
+                  <Link to={insight.link}
+                    className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary whitespace-nowrap flex-shrink-0 transition-colors">
+                    {insight.accion} <ChevronRight size={13} />
+                  </Link>
+                )}
               </div>
             )
           })}
@@ -620,7 +625,7 @@ export default function DashboardPage() {
             <h2 className="font-semibold text-gray-700 flex items-center gap-2">
               <ShoppingCart size={16} className="text-accent" /> Top productos este mes
             </h2>
-            <Link to="/metricas" className="text-xs text-accent hover:underline">Ver más →</Link>
+            <button onClick={() => setTab('metricas')} className="text-xs text-accent hover:underline">Ver más →</button>
           </div>
           {topProductos.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">Sin ventas este mes</p>

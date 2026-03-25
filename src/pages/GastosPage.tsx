@@ -130,6 +130,11 @@ export default function GastosPage() {
     if (!form.descripcion.trim()) { toast.error('La descripción es requerida'); return }
     const monto = parseFloat(form.monto.replace(',', '.'))
     if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    // Bloquear si efectivo y no hay caja abierta (solo gastos nuevos)
+    if (!editandoId && form.medio_pago === 'Efectivo' && !sesionCajaId) {
+      toast.error('No hay caja abierta. Abrí una caja antes de registrar gastos en efectivo.')
+      return
+    }
 
     setGuardando(true)
     try {

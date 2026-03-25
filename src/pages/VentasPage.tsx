@@ -100,8 +100,9 @@ export default function VentasPage() {
 
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
+  const [seriesBusqueda, setSeriesBusqueda] = useState('')
 
-  useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => setSeriesModal(null), onConfirm: () => setSeriesModal(null) })
+  useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
   useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => setVentaDetalle(null) })
 
   // Foco en buscador de productos
@@ -874,18 +875,27 @@ export default function VentasPage() {
                     <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
                       {(productosBusqueda as any[]).map(p => (
                         <button key={p.id} onClick={() => agregarProducto(p)}
-                          className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0 flex items-center justify-between">
-                          <div>
-                            <span className="font-medium">{p.nombre}</span>
-                            <span className="text-gray-400 ml-2 text-xs font-mono">{p.sku}</span>
-                            {p.tiene_series && <span className="ml-2 text-xs bg-purple-100 text-purple-600 px-1 rounded">series</span>}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0 flex items-center gap-3">
+                          {/* Imagen pequeña */}
+                          <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                            {p.imagen_url
+                              ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover" />
+                              : <Package size={14} className="text-gray-300" />
+                            }
                           </div>
-                          <div className="text-right">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="font-medium truncate">{p.nombre}</span>
+                              <span className="text-gray-400 text-xs font-mono flex-shrink-0">{p.sku}</span>
+                              {p.tiene_series && <span className="text-xs bg-purple-100 text-purple-600 px-1 rounded flex-shrink-0">series</span>}
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
                             <p className="font-semibold text-primary">${p.precio_venta?.toLocaleString('es-AR')}</p>
                             <p className="text-xs text-gray-400">
                               {p.stock_filtrado
-                                ? <span className="text-blue-600 font-medium">{p.stock_disponible} disp. en grupo</span>
-                                : `${p.stock_actual} en stock`
+                                ? <span className="text-blue-600 font-medium">{p.stock_disponible} disp.</span>
+                                : `${p.stock_actual} stock`
                               }
                             </p>
                           </div>
@@ -915,10 +925,10 @@ export default function VentasPage() {
 
               {/* Galería de productos */}
               {viewMode === 'galeria' && productosBusqueda.length > 0 && (
-                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">
+                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[28rem] overflow-y-auto pr-1">
                   {(productosBusqueda as any[]).map(p => (
                     <button key={p.id} onClick={() => agregarProducto(p)}
-                      className="flex flex-col items-center text-center p-2.5 border border-gray-200 rounded-xl hover:border-accent hover:shadow-sm transition-all bg-white">
+                      className="flex flex-col items-center text-center p-2.5 border border-gray-200 rounded-xl hover:border-accent hover:shadow-sm transition-all bg-white h-full">
                       <div className="w-full aspect-square bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden mb-2">
                         {p.imagen_url
                           ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover rounded-lg" />
@@ -1640,12 +1650,26 @@ export default function VentasPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-primary">Seleccionar series</h2>
-              <button onClick={() => setSeriesModal(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+              <button onClick={() => { setSeriesModal(null); setSeriesBusqueda('') }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            {/* Buscador */}
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar N/S o LPN..."
+                value={seriesBusqueda}
+                onChange={e => setSeriesBusqueda(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent"
+                autoFocus
+              />
             </div>
             <div className="space-y-1 max-h-60 overflow-y-auto mb-4">
               {seriesModal.lineas.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-4">No hay series disponibles</p>
-              ) : seriesModal.lineas.map((s: any) => {
+              ) : seriesModal.lineas
+                  .filter((s: any) => !seriesBusqueda || s.nro_serie?.toLowerCase().includes(seriesBusqueda.toLowerCase()) || s.lpn?.toLowerCase().includes(seriesBusqueda.toLowerCase()))
+                  .map((s: any) => {
                 const selected = cart[seriesModal.itemIdx]?.series_seleccionadas.includes(s.id)
                 return (
                   <label key={s.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 rounded-lg cursor-pointer">
@@ -1664,7 +1688,7 @@ export default function VentasPage() {
                 )
               })}
             </div>
-            <button onClick={() => setSeriesModal(null)}
+            <button onClick={() => { setSeriesModal(null); setSeriesBusqueda('') }}
               className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
               Confirmar ({cart[seriesModal.itemIdx]?.series_seleccionadas.length} seleccionadas)
             </button>

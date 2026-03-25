@@ -183,6 +183,7 @@ export default function CajaPage() {
       if (!movConcepto.trim()) throw new Error('Ingresá un concepto')
       const monto = parseFloat(movMonto)
       if (!monto || monto <= 0) throw new Error('Ingresá un monto válido')
+      if (movTipo === 'egreso' && monto > saldoActual) throw new Error(`Saldo insuficiente. Saldo actual: $${saldoActual.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`)
       const { error } = await supabase.from('caja_movimientos').insert({
         tenant_id: tenant!.id,
         sesion_id: sesionActiva.id,

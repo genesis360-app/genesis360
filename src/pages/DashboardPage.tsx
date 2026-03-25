@@ -247,11 +247,11 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
-            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
           </div>
           <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
             <button onClick={() => setTab('general')}
-              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
               General
             </button>
             <button onClick={() => setTab('metricas')}
@@ -272,7 +272,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary capitalize">{fecha}</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">{tenant?.nombre}</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
         </div>
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
           <button onClick={() => setTab('general')}
@@ -280,7 +280,7 @@ export default function DashboardPage() {
             General
           </button>
           <button onClick={() => setTab('metricas')}
-            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
             Métricas
           </button>
         </div>
@@ -294,7 +294,7 @@ export default function DashboardPage() {
             <Package size={20} />
           </div>
           <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{(stats?.totalProductos ?? 0).toLocaleString()}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">Total productos</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Total productos</p>
         </Link>
 
         <Link to="/alertas" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
@@ -305,7 +305,7 @@ export default function DashboardPage() {
             <span className={`w-2.5 h-2.5 rounded-full mt-1 ${SEMAFORO_COLOR[sem.alertas]}`} />
           </div>
           <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats?.alertasActivas ?? 0}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">Alertas activas</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Alertas activas</p>
         </Link>
 
         <Link to="/movimientos" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
@@ -313,9 +313,9 @@ export default function DashboardPage() {
             <ArrowDown size={20} />
           </div>
           <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">${(stats?.ingresosHoy ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">Ingresos (7d)</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Ingresos (7d)</p>
           {(stats?.cantIngresosHoy ?? 0) > 0 && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">{stats!.cantIngresosHoy} unidades</p>
+            <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5">{stats!.cantIngresosHoy} unidades</p>
           )}
         </Link>
 
@@ -327,7 +327,7 @@ export default function DashboardPage() {
             <span className={`w-2.5 h-2.5 rounded-full mt-1 ${SEMAFORO_COLOR[sem.stock]}`} />
           </div>
           <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats?.stockCritico ?? 0}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">Stock crítico</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Stock crítico</p>
         </Link>
       </div>
 
@@ -369,7 +369,7 @@ export default function DashboardPage() {
           <p className="text-3xl font-bold text-primary">
             ${(stats?.valorInventario ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">Precio costo × stock actual</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">Precio costo × stock actual</p>
           {(stats?.cantStockMuerto ?? 0) > 0 && (
             <p className="text-xs text-amber-500 mt-1">
               ⚠ ${(stats?.valorStockMuerto ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} en stock sin movimiento
@@ -395,8 +395,8 @@ export default function DashboardPage() {
               </span>
             </div>
             {sinMovExpanded
-              ? <ChevronUp size={15} className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 flex-shrink-0" />
-              : <ChevronDown size={15} className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 flex-shrink-0" />}
+              ? <ChevronUp size={15} className="text-gray-400 dark:text-gray-400 flex-shrink-0" />
+              : <ChevronDown size={15} className="text-gray-400 dark:text-gray-400 flex-shrink-0" />}
           </button>
           {sinMovExpanded && (
             <div className="border-t border-gray-100 dark:border-gray-700">
@@ -404,13 +404,13 @@ export default function DashboardPage() {
                 <div key={p.id} className="px-5 py-2.5 flex items-center justify-between text-sm border-b border-gray-50 dark:border-gray-700 last:border-0">
                   <div>
                     <span className="font-medium text-gray-700 dark:text-gray-300">{p.nombre}</span>
-                    <span className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 font-mono ml-2">{p.sku}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-400 font-mono ml-2">{p.sku}</span>
                   </div>
-                  <span className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">{p.stock_actual} en stock · ${(p.stock_actual * p.precio_costo).toLocaleString('es-AR', { maximumFractionDigits: 0 })} inmovilizados</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-400">{p.stock_actual} en stock · ${(p.stock_actual * p.precio_costo).toLocaleString('es-AR', { maximumFractionDigits: 0 })} inmovilizados</span>
                 </div>
               ))}
               {(stats?.prodsInactivos?.length ?? 0) > 10 && (
-                <div className="px-5 py-2 text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 text-center">
+                <div className="px-5 py-2 text-xs text-gray-400 dark:text-gray-400 text-center">
                   +{(stats?.prodsInactivos?.length ?? 0) - 10} más —{' '}
                   <button onClick={() => setTab('metricas')} className="text-accent hover:underline">Ver en Métricas</button>
                 </div>
@@ -445,7 +445,7 @@ export default function DashboardPage() {
               <p className={`text-sm font-medium ${score.total >= 70 ? 'text-green-600 dark:text-green-400' : score.total >= 40 ? 'text-amber-500 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>
                 {score.total >= 70 ? 'Negocio saludable' : score.total >= 40 ? 'Puede mejorar' : 'Necesita atención'}
               </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">Ver análisis completo →</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5">Ver análisis completo →</p>
             </div>
           </Link>
 
@@ -468,7 +468,7 @@ export default function DashboardPage() {
                     r.tipo === 'success' ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
                   {r.impacto}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-2 flex items-center gap-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1">
                   {r.accion} <ChevronRight size={11} />
                 </p>
               </Link>
@@ -500,7 +500,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm leading-tight">{insight.titulo}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">{insight.impacto}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{insight.impacto}</p>
                   </div>
                 </div>
                 {insight.link === '/metricas' ? (
@@ -526,30 +526,30 @@ export default function DashboardPage() {
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
             <Truck size={16} className="text-blue-500 dark:text-blue-400" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Sugerencia de pedido</h2>
-            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">{stats!.prodsCriticos.length} productos con stock crítico</span>
+            <span className="ml-auto text-xs text-gray-400 dark:text-gray-400">{stats!.prodsCriticos.length} productos con stock crítico</span>
           </div>
           <div className="divide-y divide-gray-50 dark:divide-gray-700">
             {stats!.prodsCriticos.slice(0, 8).map((p: any) => (
               <div key={p.id} className="px-5 py-3 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 font-mono">{p.sku}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-400 font-mono">{p.sku}</p>
                 </div>
                 <div className="flex items-center gap-5 flex-shrink-0 text-right text-sm">
                   <div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Stock / Mín.</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-400">Stock / Mín.</p>
                     <p className="font-semibold text-red-500 dark:text-red-400">{p.stock_actual} / {p.stock_minimo}</p>
                   </div>
                   {p.diasCobertura !== null && (
                     <div>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Cobertura</p>
-                      <p className={`font-semibold ${p.diasCobertura <= 3 ? 'text-red-500 dark:text-red-400' : p.diasCobertura <= 7 ? 'text-amber-500 dark:text-amber-400' : 'text-gray-600 dark:text-gray-400 dark:text-gray-500'}`}>
+                      <p className="text-xs text-gray-400 dark:text-gray-400">Cobertura</p>
+                      <p className={`font-semibold ${p.diasCobertura <= 3 ? 'text-red-500 dark:text-red-400' : p.diasCobertura <= 7 ? 'text-amber-500 dark:text-amber-400' : 'text-gray-600 dark:text-gray-400'}`}>
                         {p.diasCobertura}d
                       </p>
                     </div>
                   )}
                   <div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Pedir</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-400">Pedir</p>
                     <p className="font-bold text-primary">{p.sugerido} u.</p>
                   </div>
                 </div>
@@ -557,7 +557,7 @@ export default function DashboardPage() {
             ))}
           </div>
           {(stats?.prodsCriticos?.length ?? 0) > 8 && (
-            <div className="px-5 py-2 text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 text-center border-t border-gray-50 dark:border-gray-700">
+            <div className="px-5 py-2 text-xs text-gray-400 dark:text-gray-400 text-center border-t border-gray-50 dark:border-gray-700">
               +{stats!.prodsCriticos.length - 8} más con stock crítico
             </div>
           )}
@@ -579,12 +579,12 @@ export default function DashboardPage() {
               </span>
             </div>
             {coberturaExpanded
-              ? <ChevronUp size={15} className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 flex-shrink-0" />
-              : <ChevronDown size={15} className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 flex-shrink-0" />}
+              ? <ChevronUp size={15} className="text-gray-400 dark:text-gray-400 flex-shrink-0" />
+              : <ChevronDown size={15} className="text-gray-400 dark:text-gray-400 flex-shrink-0" />}
           </button>
           {coberturaExpanded && (
             <div className="border-t border-gray-100 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700">
-              <div className="px-5 py-2 grid grid-cols-4 gap-3 text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide">
+              <div className="px-5 py-2 grid grid-cols-4 gap-3 text-xs text-gray-400 dark:text-gray-400 font-medium uppercase tracking-wide">
                 <span className="col-span-2">Producto</span>
                 <span className="text-right">Stock / Mín.</span>
                 <span className="text-right">Días restantes</span>
@@ -595,9 +595,9 @@ export default function DashboardPage() {
                   <div key={p.id} className="px-5 py-2.5 grid grid-cols-4 gap-3 items-center text-sm">
                     <div className="col-span-2 min-w-0">
                       <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 font-mono">{p.sku}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-400 font-mono">{p.sku}</p>
                     </div>
-                    <p className="text-right text-gray-600 dark:text-gray-400 dark:text-gray-500">{p.stock_actual} / {p.stock_minimo}</p>
+                    <p className="text-right text-gray-600 dark:text-gray-400">{p.stock_actual} / {p.stock_minimo}</p>
                     <div className="text-right">
                       <span className={`inline-block font-semibold px-2 py-0.5 rounded-full text-xs
                         ${nivel === 'red'   ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' :
@@ -609,7 +609,7 @@ export default function DashboardPage() {
                   </div>
                 )
               })}
-              <div className="px-5 py-2 text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 text-center">
+              <div className="px-5 py-2 text-xs text-gray-400 dark:text-gray-400 text-center">
                 Días estimados hasta alcanzar el stock mínimo · basado en ventas de los últimos 30 días
               </div>
             </div>
@@ -628,14 +628,14 @@ export default function DashboardPage() {
             <button onClick={() => setTab('metricas')} className="text-xs text-accent hover:underline">Ver más →</button>
           </div>
           {topProductos.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 py-4 text-center">Sin ventas este mes</p>
+            <p className="text-sm text-gray-400 dark:text-gray-400 py-4 text-center">Sin ventas este mes</p>
           ) : (
             <div className="space-y-2">
               {topProductos.map((p: any, i: number) => (
                 <div key={i} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold
-                      ${i === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500'}`}>
+                      ${i === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
                       {i + 1}
                     </span>
                     <span className="text-gray-700 dark:text-gray-300 truncate max-w-[160px]">{p.nombre}</span>
@@ -653,7 +653,7 @@ export default function DashboardPage() {
             <Link to="/movimientos" className="text-xs text-accent hover:underline">Ver todos →</Link>
           </div>
           {movRecientes.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 py-4 text-center">Sin movimientos aún</p>
+            <p className="text-sm text-gray-400 dark:text-gray-400 py-4 text-center">Sin movimientos aún</p>
           ) : (
             <div className="space-y-2">
               {movRecientes.map((m: any) => (
@@ -662,7 +662,7 @@ export default function DashboardPage() {
                     <span className={`w-2 h-2 rounded-full ${m.tipo === 'ingreso' ? 'bg-green-50 dark:bg-green-900/200' : 'bg-blue-50 dark:bg-blue-900/200'}`} />
                     <span className="text-gray-700 dark:text-gray-300 truncate max-w-[160px]">{m.productos?.nombre}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                  <div className="flex items-center gap-2 text-gray-400 dark:text-gray-400">
                     <span className={`font-medium ${m.tipo === 'ingreso' ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
                       {m.tipo === 'ingreso' ? '+' : '-'}{m.cantidad}
                     </span>

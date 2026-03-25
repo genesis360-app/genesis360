@@ -247,11 +247,11 @@ export default function ClientesPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary">Clientes</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">{clientes.length} registrado{clientes.length !== 1 ? 's' : ''}</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{clientes.length} registrado{clientes.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }}
-            className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
+            className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
             <Upload size={16} /> Importar
           </button>
           <button onClick={() => abrirModal()}
@@ -269,7 +269,7 @@ export default function ClientesPage() {
               <div className="w-9 h-9 rounded-xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
                 <TrendingUp size={18} className="text-green-600 dark:text-green-400" />
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Total facturado</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Total facturado</p>
             </div>
             <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(totalFacturado)}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{clientesConCompras} cliente{clientesConCompras !== 1 ? 's' : ''} con compras</p>
@@ -280,7 +280,7 @@ export default function ClientesPage() {
               <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center">
                 <ShoppingCart size={18} className="text-accent" />
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Ticket promedio</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Ticket promedio</p>
             </div>
             <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(ticketGlobal)}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{totalCompras} compra{totalCompras !== 1 ? 's' : ''} en total</p>
@@ -291,7 +291,7 @@ export default function ClientesPage() {
               <div className="w-9 h-9 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 flex items-center justify-center">
                 <Award size={18} className="text-yellow-600" />
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Mejor cliente</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Mejor cliente</p>
             </div>
             {topCliente ? (
               <>
@@ -383,7 +383,7 @@ export default function ClientesPage() {
                 {/* Historial expandido */}
                 {isExpanded && (
                   <div className="border-t border-gray-100 bg-gray-50 dark:bg-gray-700 px-4 py-4">
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase mb-3 flex items-center gap-1.5">
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-3 flex items-center gap-1.5">
                       <ShoppingCart size={12} /> Historial de compras
                     </p>
                     {/* Mini stats del cliente */}
@@ -408,7 +408,7 @@ export default function ClientesPage() {
                     ) : (
                       <div className="space-y-2">
                         {historial.map((v: any) => {
-                          const est = ESTADOS[v.estado] ?? { label: v.estado, color: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500' }
+                          const est = ESTADOS[v.estado] ?? { label: v.estado, color: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' }
                           const items = v.venta_items ?? []
                           return (
                             <div key={v.id} className="bg-white dark:bg-gray-800 rounded-xl p-3 border border-gray-100">
@@ -485,7 +485,7 @@ export default function ClientesPage() {
             </div>
             <div className="px-5 pb-5 flex gap-3">
               <button onClick={() => setModalOpen(false)}
-                className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
+                className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
                 Cancelar
               </button>
               <button onClick={guardar} disabled={saving}
@@ -505,7 +505,7 @@ export default function ClientesPage() {
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
                 <FileSpreadsheet size={18} className="text-accent" /> Importar clientes
               </h2>
-              <button onClick={() => setShowImport(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500"><X size={20} /></button>
+              <button onClick={() => setShowImport(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
             <div className="p-6 space-y-4">
@@ -559,7 +559,7 @@ export default function ClientesPage() {
                   <div className="border border-gray-100 rounded-xl overflow-hidden">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-gray-50 dark:bg-gray-700 text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                        <tr className="bg-gray-50 dark:bg-gray-700 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                           <th className="px-3 py-2 text-left">Nombre</th>
                           <th className="px-3 py-2 text-left hidden sm:table-cell">Teléfono</th>
                           <th className="px-3 py-2 text-left hidden sm:table-cell">Email</th>
@@ -570,8 +570,8 @@ export default function ClientesPage() {
                         {filasImport.slice(0, 50).map(f => (
                           <tr key={f.idx} className={f.estado === 'error' ? 'bg-red-50 dark:bg-red-900/20' : f.estado === 'duplicado' ? 'bg-amber-50 dark:bg-amber-900/20/50' : ''}>
                             <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{f.nombre || <span className="text-gray-400 dark:text-gray-500 italic">—</span>}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 dark:text-gray-500 hidden sm:table-cell">{f.telefono ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 dark:text-gray-500 hidden sm:table-cell">{f.email ?? '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.telefono ?? '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.email ?? '—'}</td>
                             <td className="px-3 py-2">
                               {f.estado === 'nuevo' && <span className="text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full">Nuevo</span>}
                               {f.estado === 'duplicado' && <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full">Existe</span>}
@@ -588,7 +588,7 @@ export default function ClientesPage() {
 
                   <div className="flex gap-3 justify-end">
                     <button onClick={() => setFilasImport([])}
-                      className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
+                      className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
                       Limpiar
                     </button>
                     <button onClick={confirmarImport} disabled={importando || filasImport.filter(f => f.estado === 'nuevo').length === 0}
@@ -606,7 +606,7 @@ export default function ClientesPage() {
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>
                   <FileSpreadsheet size={32} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Arrastrá o hacé click para subir tu Excel</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click para subir tu Excel</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Columnas: nombre, telefono, email, notas</p>
                 </div>
               )}

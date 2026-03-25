@@ -22,7 +22,7 @@ export function PlanLimitModal({ tipo, limits, onClose }: Props) {
           <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
             <Icon size={20} className="text-orange-600" />
           </div>
-          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500">
+          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400">
             <X size={20} />
           </button>
         </div>
@@ -30,14 +30,14 @@ export function PlanLimitModal({ tipo, limits, onClose }: Props) {
         <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1">
           Límite de {esUsuario ? 'usuarios' : 'productos'} alcanzado
         </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           Tu plan actual permite hasta <strong>{maximo === 999 ? 'ilimitados' : maximo}</strong> {esUsuario ? 'usuarios' : 'productos'}.
           Ya tenés <strong>{actual}</strong> activos.
         </p>
 
         {/* Barra de progreso */}
         <div className="mb-5">
-          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">
+          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
             <span>{actual} usados</span>
             <span>{maximo === 999 ? '∞' : maximo} máximo</span>
           </div>
@@ -59,7 +59,7 @@ export function PlanLimitModal({ tipo, limits, onClose }: Props) {
           </Link>
           <button
             onClick={onClose}
-            className="w-full border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all text-sm"
+            className="w-full border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all text-sm"
           >
             Cancelar
           </button>

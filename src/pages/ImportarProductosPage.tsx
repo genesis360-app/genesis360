@@ -439,22 +439,22 @@ export default function ImportarProductosPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
+          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
         </button>
         <div>
           <h1 className="text-2xl font-bold text-primary">Importar</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Cargá productos o stock desde Excel</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Cargá productos o stock desde Excel</p>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 w-fit">
         <button onClick={() => setTab('productos')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'productos' ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'productos' ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
           Productos
         </button>
         <button onClick={() => setTab('inventario')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'inventario' ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300'}`}>
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'inventario' ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
           <Boxes size={14} /> Inventario
         </button>
       </div>
@@ -478,7 +478,7 @@ export default function ImportarProductosPage() {
             <div className="space-y-4">
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent" /> Plantilla</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-3">Descargá, completá y subí.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Descargá, completá y subí.</p>
                 <button onClick={descargarPlantillaProductos} className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
                   <Download size={15} /> Descargar plantilla
                 </button>
@@ -490,7 +490,7 @@ export default function ImportarProductosPage() {
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivoProductos(f) }}>
                   <FileSpreadsheet size={28} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Arrastrá o hacé click</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
                 </div>
                 <input ref={fileRefProd} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivoProductos(f) }} />
@@ -518,20 +518,20 @@ export default function ImportarProductosPage() {
               ) : (
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-green-600 dark:text-green-400">{nuevosProd}</p><p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Nuevos</p></div>
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{existentesProd}</p><p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Existentes</p></div>
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorProd}</p><p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Con errores</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-green-600 dark:text-green-400">{nuevosProd}</p><p className="text-xs text-gray-500 dark:text-gray-400">Nuevos</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{existentesProd}</p><p className="text-xs text-gray-500 dark:text-gray-400">Existentes</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorProd}</p><p className="text-xs text-gray-500 dark:text-gray-400">Con errores</p></div>
                   </div>
                   <div className="overflow-x-auto max-h-96">
                     <table className="w-full text-xs">
                       <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700"><tr className="border-b border-gray-100">
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Estado</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Nombre</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">SKU</th>
-                        <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Costo</th>
-                        <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Venta</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Categoría</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Errores</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Nombre</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">SKU</th>
+                        <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Costo</th>
+                        <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Venta</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Categoría</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Errores</th>
                       </tr></thead>
                       <tbody>
                         {filasProducto.map(f => (
@@ -542,10 +542,10 @@ export default function ImportarProductosPage() {
                                 : <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle size={12} /> Nuevo</span>}
                             </td>
                             <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100 max-w-32 truncate">{f.nombre || <span className="text-red-400 italic">vacío</span>}</td>
-                            <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400 dark:text-gray-500">{f.sku}</td>
-                            <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400 dark:text-gray-500">{f.precio_costo > 0 ? `${f.precio_costo_moneda === 'USD' ? 'USD ' : '$'}${f.precio_costo.toLocaleString()}` : '—'}</td>
-                            <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400 dark:text-gray-500">{f.precio_venta > 0 ? `${f.precio_venta_moneda === 'USD' ? 'USD ' : '$'}${f.precio_venta.toLocaleString()}` : '—'}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 dark:text-gray-500">{f.categoria ?? '—'}</td>
+                            <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400">{f.sku}</td>
+                            <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{f.precio_costo > 0 ? `${f.precio_costo_moneda === 'USD' ? 'USD ' : '$'}${f.precio_costo.toLocaleString()}` : '—'}</td>
+                            <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{f.precio_venta > 0 ? `${f.precio_venta_moneda === 'USD' ? 'USD ' : '$'}${f.precio_venta.toLocaleString()}` : '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.categoria ?? '—'}</td>
                             <td className="px-3 py-2 text-red-500">{f.errores.join(', ') || '—'}</td>
                           </tr>
                         ))}
@@ -590,7 +590,7 @@ export default function ImportarProductosPage() {
             <div className="space-y-4">
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent" /> Plantilla</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-3">Completá una fila por línea de inventario a cargar.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Completá una fila por línea de inventario a cargar.</p>
                 <button onClick={descargarPlantillaInventario} className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
                   <Download size={15} /> Descargar plantilla
                 </button>
@@ -602,7 +602,7 @@ export default function ImportarProductosPage() {
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivoInventario(f) }}>
                   <Boxes size={28} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Arrastrá o hacé click</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
                 </div>
                 <input ref={fileRefInv} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivoInventario(f) }} />
@@ -618,20 +618,20 @@ export default function ImportarProductosPage() {
               ) : (
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-green-600 dark:text-green-400">{okInv}</p><p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Líneas a cargar</p></div>
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorInv}</p><p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Con errores</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-green-600 dark:text-green-400">{okInv}</p><p className="text-xs text-gray-500 dark:text-gray-400">Líneas a cargar</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorInv}</p><p className="text-xs text-gray-500 dark:text-gray-400">Con errores</p></div>
                   </div>
                   <div className="overflow-x-auto max-h-96">
                     <table className="w-full text-xs">
                       <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700"><tr className="border-b border-gray-100">
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Estado</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">SKU</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Producto</th>
-                        <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Cantidad</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Ubicación</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Estado inv.</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Lote</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Errores</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">SKU</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Producto</th>
+                        <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Cantidad</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Ubicación</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado inv.</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Lote</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Errores</th>
                       </tr></thead>
                       <tbody>
                         {filasInventario.map(f => (
@@ -641,12 +641,12 @@ export default function ImportarProductosPage() {
                                 ? <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
                                 : <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle size={12} /> OK</span>}
                             </td>
-                            <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400 dark:text-gray-500">{f.sku}</td>
+                            <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400">{f.sku}</td>
                             <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100 max-w-32 truncate">{f.producto_nombre}</td>
                             <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-semibold">{f.cantidad}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 dark:text-gray-500">{f.ubicacion ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 dark:text-gray-500">{f.estado ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 dark:text-gray-500">{f.nro_lote ?? '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.ubicacion ?? '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.estado ?? '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.nro_lote ?? '—'}</td>
                             <td className="px-3 py-2 text-red-500">{f.errores.join(', ') || '—'}</td>
                           </tr>
                         ))}

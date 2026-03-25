@@ -276,11 +276,11 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
             <p className="font-bold text-primary font-mono">{linea.lpn}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500">{producto.nombre} · {producto.sku}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500"><X size={20} /></button>
+          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
         </div>
 
         {/* Info rápida */}
-        <div className="px-5 py-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-100 flex flex-wrap gap-3 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+        <div className="px-5 py-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-100 flex flex-wrap gap-3 text-xs text-gray-600 dark:text-gray-400">
           <span className="flex items-center gap-1">
             <Package size={12} />
             {tieneSeries ? `${seriesActivas.length} u. (series)` : `${linea.cantidad} u.`}
@@ -300,7 +300,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-all border-b-2
-                ${tab === id ? 'border-accent text-primary' : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500'}
+                ${tab === id ? 'border-accent text-primary' : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400'}
                 ${id === 'eliminar' ? 'text-red-400 hover:text-red-600 dark:text-red-400' : ''}`}>
               <Icon size={14} /> {label}
             </button>
@@ -313,13 +313,13 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">Nombre del LPN</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nombre del LPN</label>
                   <input type="text" value={editForm.lpn} onChange={e => setEditForm(p => ({ ...p, lpn: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:border-accent" />
                 </div>
                 {!tieneSeries && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">Cantidad</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Cantidad</label>
                     <input type="number" min="0" value={editForm.cantidad}
                       onChange={e => setEditForm(p => ({ ...p, cantidad: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
@@ -334,7 +334,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">Estado</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Estado</label>
                   <select value={editForm.estado_id} onChange={e => setEditForm(p => ({ ...p, estado_id: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                     <option value="">Sin estado</option>
@@ -342,7 +342,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">Ubicación</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ubicación</label>
                   <select value={editForm.ubicacion_id} onChange={e => setEditForm(p => ({ ...p, ubicacion_id: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                     <option value="">Sin ubicación</option>
@@ -353,7 +353,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">Proveedor</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Proveedor</label>
                   <select value={editForm.proveedor_id} onChange={e => setEditForm(p => ({ ...p, proveedor_id: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                     <option value="">Sin proveedor</option>
@@ -362,7 +362,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 </div>
                 {producto.tiene_lote && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                       Nro. lote <span className="text-red-500">*</span>
                     </label>
                     <input type="text" value={editForm.nro_lote} onChange={e => setEditForm(p => ({ ...p, nro_lote: e.target.value }))}
@@ -375,7 +375,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
               {producto.tiene_vencimiento && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                     Fecha de vencimiento <span className="text-red-500">*</span>
                   </label>
                   <input type="date" value={editForm.fecha_vencimiento} onChange={e => setEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
@@ -404,7 +404,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
               ) : (
                 <>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                       Cantidad a mover (disponible: {linea.cantidad - (linea.cantidad_reservada ?? 0)})
                     </label>
                     <input type="number" min="1" max={linea.cantidad - (linea.cantidad_reservada ?? 0)}
@@ -412,7 +412,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="0" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">Ubicación destino</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ubicación destino</label>
                     <select value={ubicDestino} onChange={e => setUbicDestino(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                       <option value="">Seleccioná ubicación...</option>
@@ -420,7 +420,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     </select>
                   </div>
                   {cantMover && ubicDestino && (
-                    <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500 space-y-1">
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 text-xs text-gray-600 dark:text-gray-400 space-y-1">
                       <p>LPN original: <span className="font-semibold">{linea.cantidad - parseInt(cantMover)} u.</span></p>
                       <p>Nuevo LPN: <span className="font-semibold">{cantMover} u.</span> en {(ubicaciones as any[]).find(u => u.id === ubicDestino)?.nombre}</p>
                     </div>
@@ -439,7 +439,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
             <div className="space-y-3">
               {/* Agregar serie */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">Agregar serie nueva</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Agregar serie nueva</label>
                 <div className="flex gap-2">
                   <input type="text" value={newSerie} onChange={e => setNewSerie(e.target.value)}
                     placeholder="Nro. de serie"
@@ -453,7 +453,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
               </div>
 
               <div className="border-t border-gray-100 pt-3">
-                <p className="text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-2">Series activas ({seriesActivas.length})</p>
+                <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Series activas ({seriesActivas.length})</p>
                 <div className="space-y-1.5 max-h-56 overflow-y-auto">
                   {seriesActivas.map((s: any) => (
                     <div key={s.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">

@@ -153,7 +153,7 @@ export default function OnboardingPage() {
                     : 'bg-gray-200 text-gray-400 dark:text-gray-500'}`}>
                   {i + 1}
                 </div>
-                <span className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{s}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">{s}</span>
                 {i < 1 && <div className="flex-1 h-px bg-gray-200" />}
               </div>
             ))}
@@ -269,7 +269,7 @@ export default function OnboardingPage() {
 
               <div className="flex gap-3">
                 <button type="button" onClick={() => setStep('account')}
-                  className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold py-3 rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all">
+                  className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-3 rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all">
                   Atrás
                 </button>
                 <button type="submit" disabled={loading}
@@ -280,7 +280,7 @@ export default function OnboardingPage() {
             </form>
           )}
 
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-4">
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
             ¿Ya tenés cuenta?{' '}
             <Link to="/login" className="text-accent font-medium hover:underline">Iniciá sesión</Link>
           </p>

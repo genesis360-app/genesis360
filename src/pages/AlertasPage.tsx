@@ -68,7 +68,7 @@ export default function AlertasPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary">Alertas</h1>
-        <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">{totalAlertas} alerta{totalAlertas !== 1 ? 's' : ''} activa{totalAlertas !== 1 ? 's' : ''}</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{totalAlertas} alerta{totalAlertas !== 1 ? 's' : ''} activa{totalAlertas !== 1 ? 's' : ''}</p>
       </div>
 
       {isLoadingAll ? (
@@ -78,7 +78,7 @@ export default function AlertasPage() {
       ) : totalAlertas === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center shadow-sm border border-gray-100 dark:border-gray-700">
           <CheckCircle size={40} className="text-green-400 dark:text-green-400 mx-auto mb-3" />
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500">¡Todo en orden! No hay alertas activas.</p>
+          <p className="text-gray-500 dark:text-gray-400">¡Todo en orden! No hay alertas activas.</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -86,7 +86,7 @@ export default function AlertasPage() {
           {/* Reservas sin despachar */}
           {reservasViejas.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
                 <Clock size={14} />
                 Reservas sin despachar (+{RESERVAS_DIAS_LIMITE} días)
               </h2>
@@ -99,9 +99,9 @@ export default function AlertasPage() {
                     <div className="min-w-0">
                       <p className="font-semibold text-gray-800 dark:text-gray-100">
                         Venta #{v.numero}
-                        {v.cliente_nombre && <span className="font-normal text-gray-500 dark:text-gray-400 dark:text-gray-500"> — {v.cliente_nombre}</span>}
+                        {v.cliente_nombre && <span className="font-normal text-gray-500 dark:text-gray-400"> — {v.cliente_nombre}</span>}
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
                         Reservada hace{' '}
                         <span className="text-amber-600 dark:text-amber-400 font-medium">
                           {formatDistanceToNow(new Date(v.created_at), { locale: es })}
@@ -125,7 +125,7 @@ export default function AlertasPage() {
           {/* Alertas de stock */}
           {alertas.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
                 <AlertTriangle size={14} />
                 Stock bajo mínimo
               </h2>
@@ -137,7 +137,7 @@ export default function AlertasPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-800 dark:text-gray-100">{(a as any).productos?.nombre}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
                         SKU: {(a as any).productos?.sku} •
                         Stock actual: <span className="text-red-600 dark:text-red-400 font-medium">{(a as any).productos?.stock_actual}</span> •
                         Mínimo: {(a as any).productos?.stock_minimo}
@@ -153,7 +153,7 @@ export default function AlertasPage() {
                     </Link>
                     <button
                       onClick={() => resolver.mutate(a.id)}
-                      className="text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                      className="text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
                     >
                       Resolver
                     </button>

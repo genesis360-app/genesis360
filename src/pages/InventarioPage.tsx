@@ -115,7 +115,7 @@ export default function InventarioPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Inventario</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">{productos.length} productos registrados</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{productos.length} productos registrados</p>
         </div>
         <div className="flex gap-2">
           <Link to="/inventario/importar"
@@ -143,7 +143,7 @@ export default function InventarioPage() {
           <Package size={15} className={limits.pct_productos >= 90 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'} />
           <div className="flex-1">
             <div className="flex justify-between text-xs mb-1">
-              <span className={limits.pct_productos >= 90 ? 'text-orange-700 font-medium' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500'}>
+              <span className={limits.pct_productos >= 90 ? 'text-orange-700 font-medium' : 'text-gray-500 dark:text-gray-400'}>
                 {limits.productos_actuales} de {limits.max_productos} productos
               </span>
               <span className={limits.pct_productos >= 90 ? 'text-orange-600' : 'text-gray-400 dark:text-gray-500'}>
@@ -184,7 +184,7 @@ export default function InventarioPage() {
         </div>
         <button
           onClick={() => setScannerOpen(true)}
-          className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-accent transition-colors bg-white dark:bg-gray-800"
+          className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent transition-colors bg-white dark:bg-gray-800"
           title="Escanear código de barras"
         >
           <Camera size={17} />
@@ -273,7 +273,7 @@ export default function InventarioPage() {
                         <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Sin líneas de inventario. Registrá un ingreso para este producto.</p>
                       ) : (
                         <div className="space-y-2">
-                          <div className="grid grid-cols-7 gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 px-3 mb-1">
+                          <div className="grid grid-cols-7 gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1">
                             <span className="col-span-1">LPN</span>
                             <span className="col-span-1 text-right">Cantidad</span>
                             <span className="col-span-1">Estado</span>
@@ -343,7 +343,7 @@ export default function InventarioPage() {
                               {/* Ubicación */}
                               <div className="col-span-1">
                                 {l.ubicaciones?.nombre ? (
-                                  <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+                                  <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
                                     <MapPin size={11} /> {l.ubicaciones.nombre}
                                   </span>
                                 ) : <span className="text-xs text-gray-300">—</span>}
@@ -352,7 +352,7 @@ export default function InventarioPage() {
                               {/* Lote / Vencimiento */}
                               <div className="col-span-1">
                                 {l.nro_lote && (
-                                  <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+                                  <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
                                     <Tag size={11} /> {l.nro_lote}
                                   </span>
                                 )}

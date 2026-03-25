@@ -63,7 +63,7 @@ export default function LoginPage() {
               <div className="w-full border-t border-gray-200 dark:border-gray-700" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-3 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">o ingresá con tu email</span>
+              <span className="px-3 bg-white dark:bg-gray-800 text-gray-400 dark:text-gray-400">o ingresá con tu email</span>
             </div>
           </div>
 
@@ -72,7 +72,7 @@ export default function LoginPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
               <div className="relative">
-                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500" />
+                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
                 <input
                   type="email"
                   value={email}
@@ -87,7 +87,7 @@ export default function LoginPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contraseña</label>
               <div className="relative">
-                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500" />
+                <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
                 <input
                   type="password"
                   value={password}
@@ -108,7 +108,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-6">
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
             ¿No tenés cuenta?{' '}
             <Link to="/onboarding" className="text-accent font-medium hover:underline">
               Registrá tu negocio

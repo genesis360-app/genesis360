@@ -83,7 +83,7 @@ export default function SuscripcionPage() {
             <>
               <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
               <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Pago aprobado!</h1>
-              <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6">Tu suscripción está siendo procesada. En unos segundos tu cuenta quedará activa.</p>
+              <p className="text-gray-500 dark:text-gray-400 mb-6">Tu suscripción está siendo procesada. En unos segundos tu cuenta quedará activa.</p>
               <button onClick={handleVerificarPago} disabled={loading === 'verificando'}
                 className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
                 {loading === 'verificando'
@@ -95,7 +95,7 @@ export default function SuscripcionPage() {
             <>
               <Clock size={48} className="text-yellow-500 mx-auto mb-4" />
               <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Pago pendiente</h1>
-              <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6">Tu pago está siendo procesado. Te avisaremos por email cuando se confirme.</p>
+              <p className="text-gray-500 dark:text-gray-400 mb-6">Tu pago está siendo procesado. Te avisaremos por email cuando se confirme.</p>
               <Link to="/dashboard" className="w-full block text-center bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
                 Volver al dashboard
               </Link>
@@ -104,7 +104,7 @@ export default function SuscripcionPage() {
             <>
               <XCircle size={48} className="text-red-500 mx-auto mb-4" />
               <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Pago no completado</h1>
-              <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6">No se procesó el pago. Podés intentarlo de nuevo.</p>
+              <p className="text-gray-500 dark:text-gray-400 mb-6">No se procesó el pago. Podés intentarlo de nuevo.</p>
               <button onClick={() => window.location.href = '/suscripcion'}
                 className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
                 Intentar de nuevo
@@ -182,7 +182,7 @@ export default function SuscripcionPage() {
                   {plan.features.map(f => (
                     <li key={f} className="flex items-start gap-2 text-sm">
                       <Check size={15} className={`flex-shrink-0 mt-0.5 ${plan.destacado ? 'text-green-500' : 'text-green-400'}`} />
-                      <span className={plan.destacado ? 'text-gray-600 dark:text-gray-400 dark:text-gray-500' : 'text-blue-100'}>{f}</span>
+                      <span className={plan.destacado ? 'text-gray-600 dark:text-gray-400' : 'text-blue-100'}>{f}</span>
                     </li>
                   ))}
                   {plan.noIncluye.map(f => (

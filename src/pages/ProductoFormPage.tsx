@@ -330,11 +330,11 @@ export default function ProductoFormPage() {
       )}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
+          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-primary">{isEditing ? 'Editar producto' : 'Nuevo producto'}</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">{isEditing ? 'Modificá los datos del producto' : 'Completá los datos del nuevo producto'}</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{isEditing ? 'Modificá los datos del producto' : 'Completá los datos del nuevo producto'}</p>
         </div>
         {!isEditing && canEdit && (
           <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all
@@ -401,7 +401,7 @@ export default function ProductoFormPage() {
                     {!isEditing && (
                       <button type="button" onClick={() => setForm(p => ({ ...p, sku: generateSKU(form.nombre) }))}
                         title="Generar SKU automático"
-                        className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-primary transition-colors">
+                        className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-primary transition-colors">
                         <RefreshCw size={16} />
                       </button>
                     )}
@@ -638,7 +638,7 @@ export default function ProductoFormPage() {
                 )}
               </div>
               {canEdit && (
-                <label className="flex items-center justify-center gap-2 w-full border border-gray-200 dark:border-gray-700 rounded-xl py-2.5 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
+                <label className="flex items-center justify-center gap-2 w-full border border-gray-200 dark:border-gray-700 rounded-xl py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
                   <Upload size={15} />
                   {imagePreview || existingImageUrl ? 'Cambiar imagen' : 'Subir imagen'}
                   <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
@@ -669,7 +669,7 @@ export default function ProductoFormPage() {
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300">Tracking de inventario</h2>
                 <p className="text-xs text-gray-400 dark:text-gray-500">Activá los atributos que aplican a este producto</p>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                     Regla de inventario
                     <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal">(vacío = usar la regla del negocio)</span>
                   </label>
@@ -684,7 +684,7 @@ export default function ProductoFormPage() {
                 </div>
                 {agingProfiles.length > 0 && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                       Aging Profile
                       <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal">(requiere fecha de vencimiento activa)</span>
                     </label>
@@ -726,7 +726,7 @@ export default function ProductoFormPage() {
         {canEdit && (
           <div className="flex gap-3 justify-end">
             <button type="button" onClick={() => navigate('/inventario')}
-              className="px-6 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all">
+              className="px-6 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all">
               Cancelar
             </button>
             <button type="submit" disabled={saving}

@@ -57,7 +57,7 @@ function RecomendacionCard({ r }: { r: Recomendacion }) {
                   <CatIcon size={10} /> {cat.label}
                 </span>
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 leading-relaxed">{r.descripcion}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{r.descripcion}</p>
               {r.impacto && (
                 <p className={`text-xs font-semibold mt-2 ${style.iconColor}`}>{r.impacto}</p>
               )}
@@ -146,7 +146,7 @@ export default function RecomendacionesPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Motor de Recomendaciones</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Lo que Stokio detectó en tu negocio</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Lo que Stokio detectó en tu negocio</p>
         </div>
       </div>
 
@@ -167,7 +167,7 @@ export default function RecomendacionesPage() {
                     return (
                       <div key={d.label}>
                         <div className="flex justify-between text-xs mb-1">
-                          <span className="text-gray-600 dark:text-gray-400 dark:text-gray-500">{d.label}</span>
+                          <span className="text-gray-600 dark:text-gray-400">{d.label}</span>
                           <span className="font-semibold text-gray-700 dark:text-gray-300">{d.valor}/{d.max}</span>
                         </div>
                         <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -193,7 +193,7 @@ export default function RecomendacionesPage() {
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border
                   ${filtroTipo === f.key
                     ? `${f.color} border-transparent shadow-sm`
-                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:border-gray-600'
+                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:border-gray-600'
                   }`}
               >
                 {f.label}

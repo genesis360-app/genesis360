@@ -83,7 +83,7 @@ const SLIDES: Slide[] = [
   },
   {
     icon: Settings,
-    color: 'text-gray-500 dark:text-gray-400 dark:text-gray-500',
+    color: 'text-gray-500 dark:text-gray-400',
     titulo: 'Configuración — a tu medida',
     descripcion: 'Creá categorías, proveedores, ubicaciones y estados de inventario según cómo funciona tu negocio. Todo se puede personalizar.',
     tip: 'Completá la configuración antes de cargar productos para que todo quede organizado desde el inicio.',
@@ -149,7 +149,7 @@ export function Walkthrough({ open, onClose }: Props) {
 
         {/* Botón cerrar */}
         <button onClick={handleClose}
-          className="absolute top-4 right-4 p-1.5 text-gray-300 hover:text-gray-500 dark:text-gray-400 dark:text-gray-500 transition-colors z-10">
+          className="absolute top-4 right-4 p-1.5 text-gray-300 hover:text-gray-500 dark:text-gray-400 transition-colors z-10">
           <X size={18} />
         </button>
 
@@ -160,7 +160,7 @@ export function Walkthrough({ open, onClose }: Props) {
           </div>
 
           <h2 className="text-xl font-bold text-primary mb-3">{slide.titulo}</h2>
-          <p className="text-gray-600 dark:text-gray-400 dark:text-gray-500 text-sm leading-relaxed">{slide.descripcion}</p>
+          <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{slide.descripcion}</p>
 
           {slide.tip && (
             <div className="mt-4 bg-accent/5 border border-accent/20 rounded-xl px-4 py-2.5 text-xs text-accent/80 text-left w-full">
@@ -186,7 +186,7 @@ export function Walkthrough({ open, onClose }: Props) {
           </button>
 
           <button onClick={handleClose}
-            className="flex-1 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500 transition-colors">
+            className="flex-1 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 transition-colors">
             Omitir tour
           </button>
 

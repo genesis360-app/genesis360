@@ -140,11 +140,11 @@ export default function ImportarMasterPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/configuracion')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
+          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
         </button>
         <div>
           <h1 className="text-2xl font-bold text-primary">Importar datos maestros</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Cargá categorías, proveedores o ubicaciones desde Excel</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Cargá categorías, proveedores o ubicaciones desde Excel</p>
         </div>
       </div>
 
@@ -206,7 +206,7 @@ export default function ImportarMasterPage() {
               onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f, tipoMaster) }}
             >
               <FileSpreadsheet size={28} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Arrastrá o hacé click</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
             </div>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
@@ -226,11 +226,11 @@ export default function ImportarMasterPage() {
               <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
                 <div className="px-4 py-3 text-center">
                   <p className="text-2xl font-bold text-green-600 dark:text-green-400">{nuevosMaster}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Nuevos</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Nuevos</p>
                 </div>
                 <div className="px-4 py-3 text-center">
                   <p className="text-2xl font-bold text-gray-400 dark:text-gray-500">{existentesMaster}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Ya existen (se ignoran)</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Ya existen (se ignoran)</p>
                 </div>
               </div>
 
@@ -238,10 +238,10 @@ export default function ImportarMasterPage() {
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700">
                     <tr className="border-b border-gray-100">
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Estado</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Nombre</th>
+                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado</th>
+                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Nombre</th>
                       {MASTER_CONFIG[tipoMaster].extraCols.map(c => (
-                        <th key={c} className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 capitalize">{c}</th>
+                        <th key={c} className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 capitalize">{c}</th>
                       ))}
                     </tr>
                   </thead>
@@ -259,7 +259,7 @@ export default function ImportarMasterPage() {
                         </td>
                         <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{fila.nombre}</td>
                         {MASTER_CONFIG[tipoMaster].extraCols.map(c => (
-                          <td key={c} className="px-3 py-2 text-gray-500 dark:text-gray-400 dark:text-gray-500">{fila.extra[c] || '—'}</td>
+                          <td key={c} className="px-3 py-2 text-gray-500 dark:text-gray-400">{fila.extra[c] || '—'}</td>
                         ))}
                       </tr>
                     ))}

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Plus, Trash2, Edit, Search, Mail, Phone, MapPin, Users2,
+  Plus, Trash2, Edit, Search, Users2,
   Building2, Briefcase, Calendar, ChevronDown, Heart, AlertTriangle,
+  DollarSign, CreditCard, ChevronRight, CheckCircle, Clock,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -11,8 +12,42 @@ import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-type Tab = 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos'
+type Tab = 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina'
 type FormMode = 'crear' | 'editar' | null
+
+interface Concepto {
+  id: string
+  tenant_id: string
+  nombre: string
+  tipo: 'HABER' | 'DESCUENTO'
+  activo: boolean
+}
+
+interface Salario {
+  id: string
+  tenant_id: string
+  empleado_id: string
+  periodo: string
+  basico: number
+  total_haberes: number
+  total_descuentos: number
+  neto: number
+  pagado: boolean
+  fecha_pago: string | null
+  caja_movimiento_id: string | null
+  notas: string | null
+  empleado?: Empleado
+}
+
+interface SalarioItem {
+  id: string
+  tenant_id: string
+  salario_id: string
+  concepto_id: string | null
+  descripcion: string
+  tipo: 'HABER' | 'DESCUENTO'
+  monto: number
+}
 
 interface Empleado {
   id: string
@@ -85,6 +120,16 @@ export default function RrhhPage() {
   const [puestoForm, setPuestoForm] = useState<Partial<Puesto>>({ nombre: '', activo: true })
   const [deptForm, setDeptForm] = useState<Partial<Departamento>>({ nombre: '', activo: true })
 
+  // Nómina state
+  const [nominaMes, setNominaMes] = useState(() => String(new Date().getMonth() + 1).padStart(2, '0'))
+  const [nominaAnio, setNominaAnio] = useState(() => String(new Date().getFullYear()))
+  const [expandedSalario, setExpandedSalario] = useState<string | null>(null)
+  const [showConceptoForm, setShowConceptoForm] = useState(false)
+  const [editingConcepto, setEditingConcepto] = useState<Concepto | null>(null)
+  const [conceptoForm, setConceptoForm] = useState<{ nombre: string; tipo: 'HABER' | 'DESCUENTO' }>({ nombre: '', tipo: 'HABER' })
+  const [newItem, setNewItem] = useState<{ descripcion: string; tipo: 'HABER' | 'DESCUENTO'; monto: string; concepto_id: string }>({ descripcion: '', tipo: 'HABER', monto: '', concepto_id: '' })
+  const [cajaSessionId, setCajaSessionId] = useState<string>('')
+
   // Queries
   const { data: empleados = [], isLoading: loadingEmpleados } = useQuery({
     queryKey: ['empleados', tenant?.id],
@@ -123,6 +168,59 @@ export default function RrhhPage() {
       return (data ?? []) as Departamento[]
     },
     enabled: !!tenant,
+  })
+
+  // Nómina queries
+  const nominaPeriodo = `${nominaAnio}-${nominaMes}-01`
+
+  const { data: conceptos = [] } = useQuery({
+    queryKey: ['rrhh_conceptos', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('rrhh_conceptos')
+        .select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('tipo').order('nombre')
+      if (error) throw error
+      return (data ?? []) as Concepto[]
+    },
+    enabled: !!tenant,
+  })
+
+  const { data: salarios = [], isLoading: loadingSalarios, refetch: refetchSalarios } = useQuery({
+    queryKey: ['rrhh_salarios', tenant?.id, nominaPeriodo],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('rrhh_salarios')
+        .select('*, empleado:empleados(*)')
+        .eq('tenant_id', tenant!.id)
+        .eq('periodo', nominaPeriodo)
+        .order('created_at')
+      if (error) throw error
+      return (data ?? []) as Salario[]
+    },
+    enabled: !!tenant && activeTab === 'nomina',
+  })
+
+  const { data: salarioItems = [], refetch: refetchItems } = useQuery({
+    queryKey: ['rrhh_salario_items', expandedSalario],
+    queryFn: async () => {
+      if (!expandedSalario) return []
+      const { data, error } = await supabase.from('rrhh_salario_items')
+        .select('*').eq('salario_id', expandedSalario).order('tipo').order('descripcion')
+      if (error) throw error
+      return (data ?? []) as SalarioItem[]
+    },
+    enabled: !!expandedSalario,
+  })
+
+  const { data: cajaSesiones = [] } = useQuery({
+    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('caja_sesiones')
+        .select('id, caja_id, abierta_at, cajas(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'abierta')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && activeTab === 'nomina',
   })
 
   const { data: supervisores = [] } = useQuery({
@@ -276,6 +374,131 @@ export default function RrhhPage() {
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
 
+  // ─── Nómina mutations ───────────────────────────────────────────────────────
+  const saveConcepto = useMutation({
+    mutationFn: async (data: { nombre: string; tipo: 'HABER' | 'DESCUENTO' }) => {
+      if (editingConcepto) {
+        const { error } = await supabase.from('rrhh_conceptos').update(data).eq('id', editingConcepto.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('rrhh_conceptos').insert({ tenant_id: tenant!.id, ...data })
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      toast.success(editingConcepto ? 'Concepto actualizado' : 'Concepto creado')
+      qc.invalidateQueries({ queryKey: ['rrhh_conceptos'] })
+      setShowConceptoForm(false)
+      setEditingConcepto(null)
+      setConceptoForm({ nombre: '', tipo: 'HABER' })
+    },
+    onError: (err: any) => toast.error(err.message ?? 'Error al guardar concepto'),
+  })
+
+  const deleteConcepto = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('rrhh_conceptos').update({ activo: false }).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Concepto eliminado'); qc.invalidateQueries({ queryKey: ['rrhh_conceptos'] }) },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
+  const crearLiquidacion = useMutation({
+    mutationFn: async (emp: Empleado) => {
+      const id = crypto.randomUUID()
+      const basico = emp.salario_bruto ?? 0
+      const { error } = await supabase.from('rrhh_salarios').insert({
+        id,
+        tenant_id: tenant!.id,
+        empleado_id: emp.id,
+        periodo: nominaPeriodo,
+        basico,
+        total_haberes: basico,
+        total_descuentos: 0,
+        neto: basico,
+      })
+      if (error) throw error
+      // Insert item de sueldo base
+      if (basico > 0) {
+        await supabase.from('rrhh_salario_items').insert({
+          tenant_id: tenant!.id,
+          salario_id: id,
+          descripcion: 'Sueldo básico',
+          tipo: 'HABER',
+          monto: basico,
+        })
+      }
+      logActividad({ entidad: 'nomina', entidad_id: id, entidad_nombre: emp.dni_rut, accion: 'crear', pagina: '/rrhh' })
+    },
+    onSuccess: () => { toast.success('Liquidación creada'); refetchSalarios() },
+    onError: (err: any) => toast.error(err.message ?? 'Error al crear liquidación'),
+  })
+
+  const generarNominaMes = useMutation({
+    mutationFn: async () => {
+      const activos = empleados.filter((e) => e.activo)
+      const yaExisten = new Set(salarios.map((s) => s.empleado_id))
+      const faltantes = activos.filter((e) => !yaExisten.has(e.id))
+      for (const emp of faltantes) {
+        await crearLiquidacion.mutateAsync(emp)
+      }
+      return faltantes.length
+    },
+    onSuccess: (n) => toast.success(`${n} liquidaciones generadas`),
+    onError: (err: any) => toast.error(err.message ?? 'Error al generar nómina'),
+  })
+
+  const addSalarioItem = useMutation({
+    mutationFn: async ({ salarioId, item }: { salarioId: string; item: typeof newItem }) => {
+      if (!item.descripcion.trim() || !item.monto) throw new Error('Descripción y monto son requeridos')
+      const { error } = await supabase.from('rrhh_salario_items').insert({
+        tenant_id: tenant!.id,
+        salario_id: salarioId,
+        concepto_id: item.concepto_id || null,
+        descripcion: item.descripcion,
+        tipo: item.tipo,
+        monto: parseFloat(item.monto),
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      setNewItem({ descripcion: '', tipo: 'HABER', monto: '', concepto_id: '' })
+      refetchItems()
+      refetchSalarios()
+    },
+    onError: (err: any) => toast.error(err.message ?? 'Error al agregar concepto'),
+  })
+
+  const removeItem = useMutation({
+    mutationFn: async (itemId: string) => {
+      const { error } = await supabase.from('rrhh_salario_items').delete().eq('id', itemId)
+      if (error) throw error
+    },
+    onSuccess: () => { refetchItems(); refetchSalarios() },
+    onError: (err: any) => toast.error(err.message ?? 'Error al eliminar'),
+  })
+
+  const pagarNomina = useMutation({
+    mutationFn: async (salarioId: string) => {
+      if (!cajaSessionId) throw new Error('Seleccioná una sesión de caja')
+      const { data, error } = await supabase.rpc('pagar_nomina_empleado', {
+        p_salario_id: salarioId,
+        p_sesion_id: cajaSessionId,
+      })
+      if (error) throw error
+      return data
+    },
+    onSuccess: (_, salarioId) => {
+      toast.success('Nómina pagada')
+      const sal = salarios.find((s) => s.id === salarioId)
+      logActividad({ entidad: 'nomina', entidad_id: salarioId, entidad_nombre: sal?.empleado?.dni_rut ?? '', accion: 'pagar', pagina: '/rrhh' })
+      refetchSalarios()
+      qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas'] })
+    },
+    onError: (err: any) => toast.error(err.message ?? 'Error al pagar nómina'),
+  })
+
   const resetForm = () => {
     setFormMode(null)
     setSelectedEmpleado(null)
@@ -337,7 +560,7 @@ export default function RrhhPage() {
 
   if (user?.rol !== 'OWNER' && user?.rol !== 'RRHH') {
     return (
-      <div className="p-8 text-center text-gray-500 dark:text-gray-400 dark:text-gray-500">
+      <div className="p-8 text-center text-gray-500 dark:text-gray-400">
         No tienes permisos para acceder a este módulo
       </div>
     )
@@ -351,28 +574,26 @@ export default function RrhhPage() {
           <Users2 size={32} className="text-blue-600 dark:text-blue-400" />
           Gestión de Empleados
         </h1>
-        <p className="text-gray-600 dark:text-gray-400 dark:text-gray-500 mt-2">Administra tu equipo de trabajo</p>
+        <p className="text-gray-600 dark:text-gray-400 mt-2">Administra tu equipo de trabajo</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-8 border-b border-gray-200 dark:border-gray-700">
-        {(['empleados', 'puestos', 'departamentos', 'cumpleanos'] as Tab[]).map((tab) => (
+      <div className="flex gap-2 mb-8 border-b border-gray-200 dark:border-gray-700 flex-wrap">
+        {(['empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina'] as Tab[]).map((tab) => (
           <button
             key={tab}
-            onClick={() => {
-              setActiveTab(tab)
-              resetForm()
-            }}
+            onClick={() => { setActiveTab(tab); resetForm() }}
             className={`px-4 py-3 font-medium border-b-2 transition ${
               activeTab === tab
                 ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
-            {tab === 'empleados' && 'Empleados'}
-            {tab === 'puestos' && 'Puestos'}
+            {tab === 'empleados'    && 'Empleados'}
+            {tab === 'puestos'      && 'Puestos'}
             {tab === 'departamentos' && 'Departamentos'}
-            {tab === 'cumpleanos' && '🎂 Cumpleaños'}
+            {tab === 'cumpleanos'   && '🎂 Cumpleaños'}
+            {tab === 'nomina'       && <span className="flex items-center gap-1"><DollarSign size={14}/>Nómina</span>}
           </button>
         ))}
       </div>
@@ -580,7 +801,7 @@ export default function RrhhPage() {
           {loadingEmpleados ? (
             <div className="text-center py-8">Cargando...</div>
           ) : filteredEmpleados.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 dark:text-gray-400 dark:text-gray-500">No hay empleados registrados</div>
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">No hay empleados registrados</div>
           ) : (
             <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
               <table className="w-full">
@@ -599,10 +820,10 @@ export default function RrhhPage() {
                   {filteredEmpleados.map((emp) => (
                     <tr key={emp.id} className={!emp.activo ? 'bg-gray-50 dark:bg-gray-700 opacity-60' : ''}>
                       <td className="px-4 py-3 text-sm font-medium">{emp.dni_rut}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{emp.tel_personal || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{emp.puesto?.nombre || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{emp.departamento?.nombre || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{format(new Date(emp.fecha_ingreso), 'dd/MM/yyyy', { locale: es })}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{emp.tel_personal || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{emp.puesto?.nombre || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{emp.departamento?.nombre || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{format(new Date(emp.fecha_ingreso), 'dd/MM/yyyy', { locale: es })}</td>
                       <td className="px-4 py-3 text-sm">
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${emp.activo ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                           {emp.activo ? 'Activo' : 'Inactivo'}
@@ -711,8 +932,8 @@ export default function RrhhPage() {
                 <div className="flex justify-between items-start">
                   <div>
                     <h4 className="font-semibold text-gray-900 dark:text-white">{p.nombre}</h4>
-                    {p.descripcion && <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{p.descripcion}</p>}
-                    {p.salario_base_sugerido && <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Salario sugerido: ${p.salario_base_sugerido}</p>}
+                    {p.descripcion && <p className="text-sm text-gray-600 dark:text-gray-400">{p.descripcion}</p>}
+                    {p.salario_base_sugerido && <p className="text-sm text-gray-500 dark:text-gray-400">Salario sugerido: ${p.salario_base_sugerido}</p>}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -811,7 +1032,7 @@ export default function RrhhPage() {
                 <div className="flex justify-between items-start">
                   <div>
                     <h4 className="font-semibold text-gray-900 dark:text-white">{d.nombre}</h4>
-                    {d.descripcion && <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{d.descripcion}</p>}
+                    {d.descripcion && <p className="text-sm text-gray-600 dark:text-gray-400">{d.descripcion}</p>}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -839,12 +1060,279 @@ export default function RrhhPage() {
         </div>
       )}
 
+      {/* NÓMINA TAB */}
+      {activeTab === 'nomina' && (
+        <div className="space-y-6">
+
+          {/* Selector de período */}
+          <div className="flex flex-wrap items-center gap-3">
+            <select value={nominaMes} onChange={(e) => setNominaMes(e.target.value)}
+              className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
+              {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+                <option key={m} value={m}>
+                  {new Date(2000, i).toLocaleString('es', { month: 'long' }).charAt(0).toUpperCase() +
+                   new Date(2000, i).toLocaleString('es', { month: 'long' }).slice(1)}
+                </option>
+              ))}
+            </select>
+            <input type="number" value={nominaAnio} onChange={(e) => setNominaAnio(e.target.value)}
+              className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm w-24" />
+            <button
+              onClick={() => generarNominaMes.mutate()}
+              disabled={generarNominaMes.isPending || empleados.filter(e => e.activo).length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+            >
+              <Plus size={16} /> Generar nómina del mes
+            </button>
+
+            {/* Selector caja */}
+            {cajaSesiones.length > 0 && (
+              <div className="flex items-center gap-2">
+                <CreditCard size={16} className="text-gray-500 dark:text-gray-400" />
+                <select value={cajaSessionId} onChange={(e) => setCajaSessionId(e.target.value)}
+                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Seleccionar caja...</option>
+                  {cajaSesiones.map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {cajaSesiones.length === 0 && (
+              <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <AlertTriangle size={14}/> Sin caja abierta — no se podrá pagar
+              </span>
+            )}
+          </div>
+
+          {/* Resumen del período */}
+          {salarios.length > 0 && (
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: 'Total haberes', val: salarios.reduce((a, s) => a + s.total_haberes, 0), color: 'text-green-600 dark:text-green-400' },
+                { label: 'Total descuentos', val: salarios.reduce((a, s) => a + s.total_descuentos, 0), color: 'text-red-600 dark:text-red-400' },
+                { label: 'Total neto', val: salarios.reduce((a, s) => a + s.neto, 0), color: 'text-blue-600 dark:text-blue-400' },
+              ].map(({ label, val, color }) => (
+                <div key={label} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</p>
+                  <p className={`text-xl font-bold ${color}`}>${val.toLocaleString('es-AR')}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tabla de liquidaciones */}
+          {loadingSalarios ? (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">Cargando...</div>
+          ) : salarios.length === 0 ? (
+            <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+              <DollarSign size={40} className="mx-auto mb-3 opacity-40" />
+              <p>No hay liquidaciones para este período.</p>
+              <p className="text-sm mt-1">Hacé clic en "Generar nómina del mes" para crear una por cada empleado activo.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {salarios.map((sal) => {
+                const isExpanded = expandedSalario === sal.id
+                return (
+                  <div key={sal.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    {/* Fila resumen */}
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <button onClick={() => setExpandedSalario(isExpanded ? null : sal.id)}
+                        className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
+                        {isExpanded ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 dark:text-white text-sm">{sal.empleado?.dni_rut ?? sal.empleado_id}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{sal.empleado?.puesto?.nombre ?? ''}</p>
+                      </div>
+                      <div className="text-right hidden sm:block">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Haberes</p>
+                        <p className="text-sm font-medium text-green-600 dark:text-green-400">${sal.total_haberes.toLocaleString('es-AR')}</p>
+                      </div>
+                      <div className="text-right hidden sm:block">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Descuentos</p>
+                        <p className="text-sm font-medium text-red-600 dark:text-red-400">${sal.total_descuentos.toLocaleString('es-AR')}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Neto</p>
+                        <p className="text-base font-bold text-gray-900 dark:text-white">${sal.neto.toLocaleString('es-AR')}</p>
+                      </div>
+                      <div className="ml-2">
+                        {sal.pagado ? (
+                          <span className="flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-medium">
+                            <CheckCircle size={12}/> Pagado
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-xs font-medium">
+                            <Clock size={12}/> Pendiente
+                          </span>
+                        )}
+                      </div>
+                      {!sal.pagado && (
+                        <button
+                          onClick={() => { if (!cajaSessionId) { toast.error('Seleccioná una sesión de caja'); return; } pagarNomina.mutate(sal.id) }}
+                          disabled={pagarNomina.isPending || !cajaSesiones.length}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          <DollarSign size={13}/> Pagar
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Items expandidos */}
+                    {isExpanded && (
+                      <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 px-4 py-4">
+                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Conceptos</p>
+
+                        {/* Lista items */}
+                        <div className="space-y-1.5 mb-4">
+                          {salarioItems.filter(i => i.salario_id === sal.id).map((item) => (
+                            <div key={item.id} className="flex items-center gap-2 text-sm">
+                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${item.tipo === 'HABER' ? 'bg-green-400' : 'bg-red-400'}`}/>
+                              <span className="flex-1 text-gray-700 dark:text-gray-300">{item.descripcion}</span>
+                              <span className={`font-medium ${item.tipo === 'HABER' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                {item.tipo === 'DESCUENTO' ? '-' : '+'}${item.monto.toLocaleString('es-AR')}
+                              </span>
+                              {!sal.pagado && (
+                                <button onClick={() => removeItem.mutate(item.id)}
+                                  className="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400">
+                                  <Trash2 size={13}/>
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          {salarioItems.filter(i => i.salario_id === sal.id).length === 0 && (
+                            <p className="text-sm text-gray-400 dark:text-gray-500 italic">Sin conceptos. Agregá sueldo básico u otros conceptos.</p>
+                          )}
+                        </div>
+
+                        {/* Agregar item (solo si no pagado) */}
+                        {!sal.pagado && (
+                          <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-200 dark:border-gray-600">
+                            <select value={newItem.concepto_id}
+                              onChange={(e) => {
+                                const c = conceptos.find(c => c.id === e.target.value)
+                                setNewItem({ ...newItem, concepto_id: e.target.value, descripcion: c?.nombre ?? newItem.descripcion, tipo: c?.tipo ?? newItem.tipo })
+                              }}
+                              className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm flex-1 min-w-32">
+                              <option value="">Concepto libre...</option>
+                              {conceptos.map(c => <option key={c.id} value={c.id}>{c.nombre} ({c.tipo})</option>)}
+                            </select>
+                            <input type="text" placeholder="Descripción" value={newItem.descripcion}
+                              onChange={(e) => setNewItem({ ...newItem, descripcion: e.target.value })}
+                              className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm flex-1 min-w-32" />
+                            <select value={newItem.tipo} onChange={(e) => setNewItem({ ...newItem, tipo: e.target.value as 'HABER' | 'DESCUENTO' })}
+                              className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm">
+                              <option value="HABER">Haber</option>
+                              <option value="DESCUENTO">Descuento</option>
+                            </select>
+                            <input type="number" placeholder="Monto" value={newItem.monto}
+                              onChange={(e) => setNewItem({ ...newItem, monto: e.target.value })}
+                              className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm w-28" />
+                            <button
+                              onClick={() => addSalarioItem.mutate({ salarioId: sal.id, item: newItem })}
+                              disabled={addSalarioItem.isPending}
+                              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+                              Agregar
+                            </button>
+                          </div>
+                        )}
+
+                        {sal.pagado && sal.fecha_pago && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+                            Pagado el {format(new Date(sal.fecha_pago), "dd/MM/yyyy HH:mm", { locale: es })}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Empleados sin liquidación */}
+          {(() => {
+            const conLiq = new Set(salarios.map(s => s.empleado_id))
+            const sinLiq = empleados.filter(e => e.activo && !conLiq.has(e.id))
+            if (sinLiq.length === 0) return null
+            return (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Sin liquidación este mes ({sinLiq.length})</p>
+                <div className="flex flex-wrap gap-2">
+                  {sinLiq.map(emp => (
+                    <button key={emp.id}
+                      onClick={() => crearLiquidacion.mutate(emp)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <Plus size={13}/> {emp.dni_rut}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Catálogo de conceptos */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button onClick={() => setShowConceptoForm(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+              <span className="flex items-center gap-2"><Briefcase size={15}/> Catálogo de conceptos</span>
+              <ChevronDown size={16} className={showConceptoForm ? 'rotate-180' : ''} />
+            </button>
+            {showConceptoForm && (
+              <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-4">
+                {/* Form */}
+                <div className="flex gap-2">
+                  <input type="text" placeholder="Nombre del concepto"
+                    value={conceptoForm.nombre} onChange={(e) => setConceptoForm({ ...conceptoForm, nombre: e.target.value })}
+                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm flex-1" />
+                  <select value={conceptoForm.tipo} onChange={(e) => setConceptoForm({ ...conceptoForm, tipo: e.target.value as 'HABER' | 'DESCUENTO' })}
+                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
+                    <option value="HABER">Haber</option>
+                    <option value="DESCUENTO">Descuento</option>
+                  </select>
+                  <button onClick={() => saveConcepto.mutate(conceptoForm)} disabled={saveConcepto.isPending || !conceptoForm.nombre.trim()}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+                    {editingConcepto ? 'Actualizar' : 'Agregar'}
+                  </button>
+                  {editingConcepto && (
+                    <button onClick={() => { setEditingConcepto(null); setConceptoForm({ nombre: '', tipo: 'HABER' }) }}
+                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+                {/* Lista */}
+                <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {conceptos.map(c => (
+                    <div key={c.id} className="flex items-center gap-3 py-2">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.tipo === 'HABER' ? 'bg-green-400' : 'bg-red-400'}`}/>
+                      <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">{c.nombre}</span>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.tipo === 'HABER' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
+                        {c.tipo}
+                      </span>
+                      <button onClick={() => { setEditingConcepto(c); setConceptoForm({ nombre: c.nombre, tipo: c.tipo }) }}
+                        className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"><Edit size={14}/></button>
+                      <button onClick={() => { if (confirm('¿Eliminar concepto?')) deleteConcepto.mutate(c.id) }}
+                        className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"><Trash2 size={14}/></button>
+                    </div>
+                  ))}
+                  {conceptos.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 py-2 italic">Sin conceptos. Agregá haberes o descuentos frecuentes.</p>}
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
+
       {/* CUMPLEANOS TAB */}
       {activeTab === 'cumpleanos' && (
         <div>
           <div className="grid gap-4">
             {cumpleanosMes.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400 dark:text-gray-500">No hay cumpleaños este mes</div>
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">No hay cumpleaños este mes</div>
             ) : (
               cumpleanosMes.map((emp) => {
                 const today = new Date()
@@ -865,12 +1353,12 @@ export default function RrhhPage() {
                           <Heart className="text-red-500" size={24} />
                           <div>
                             <h3 className="font-semibold text-lg text-gray-900 dark:text-white">{emp.dni_rut}</h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{emp.departamento?.nombre || 'Sin departamento'}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">{emp.departamento?.nombre || 'Sin departamento'}</p>
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Próximo cumpleaños:</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Próximo cumpleaños:</p>
                         <p className="font-semibold text-gray-900 dark:text-white">
                           {format(new Date(emp.fecha_nacimiento!), 'dd MMMM', { locale: es })}
                         </p>

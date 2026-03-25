@@ -290,7 +290,7 @@ export default function CajaPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Caja</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Gestioná la caja de tu negocio</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Gestioná la caja de tu negocio</p>
         </div>
       </div>
 
@@ -303,7 +303,7 @@ export default function CajaPage() {
         ].map(({ id, label }) => (
           <button key={id} onClick={() => setTab(id as Tab)}
             className={`py-2 px-4 rounded-lg text-sm font-medium transition-all
-              ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+              ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
             {label}
           </button>
         ))}
@@ -315,7 +315,7 @@ export default function CajaPage() {
           {/* Selector de caja */}
           {cajas.length > 1 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Caja:</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Caja:</span>
               <select value={cajaId ?? ''} onChange={e => setCajaSeleccionada(e.target.value)}
                 className="border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
                 {cajas.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -326,7 +326,7 @@ export default function CajaPage() {
           {cajas.length === 0 ? (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-10 text-center shadow-sm border border-gray-100">
               <DollarSign size={36} className="text-gray-300 mx-auto mb-3" />
-              <p className="font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500">No hay cajas configuradas</p>
+              <p className="font-medium text-gray-600 dark:text-gray-400">No hay cajas configuradas</p>
               <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Creá una caja en la pestaña Configuración</p>
               <button onClick={() => setTab('configuracion')}
                 className="mt-4 text-sm text-accent hover:underline">
@@ -356,7 +356,7 @@ export default function CajaPage() {
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => setShowApertura(false)}
-                      className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold py-2.5 rounded-xl text-sm">
+                      className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                       Cancelar
                     </button>
                     <button onClick={() => abrirCaja.mutate()} disabled={abrirCaja.isPending}
@@ -491,13 +491,13 @@ export default function CajaPage() {
                         <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${
                           dif > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' :
                           dif < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' :
-                          'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500'
+                          'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                         }`}>
                           {dif > 0 ? `+${formatMoneda(dif)}` : dif < 0 ? `-${formatMoneda(Math.abs(dif))}` : 'Sin diferencia'}
                         </span>
                       )}
                       <button onClick={() => imprimirCierre(s)}
-                        className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <Printer size={13} /> PDF
                       </button>
                     </div>
@@ -584,7 +584,7 @@ export default function CajaPage() {
                   className="px-4 py-2 bg-primary text-white rounded-xl text-sm disabled:opacity-50">
                   Crear
                 </button>
-                <button onClick={() => setShowNuevaCaja(false)} className="px-3 py-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500">
+                <button onClick={() => setShowNuevaCaja(false)} className="px-3 py-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400">
                   <X size={18} />
                 </button>
               </div>
@@ -621,7 +621,7 @@ export default function CajaPage() {
                   ? <><Plus size={18} className="text-green-600 dark:text-green-400" /> Ingreso de caja</>
                   : <><Minus size={18} className="text-orange-500" /> Egreso de caja</>}
               </h2>
-              <button onClick={() => setShowMovimiento(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500"><X size={20} /></button>
+              <button onClick={() => setShowMovimiento(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
             <div className="space-y-3 mb-5">
               <div>
@@ -637,7 +637,7 @@ export default function CajaPage() {
                         className={`text-xs px-2.5 py-1 rounded-full border transition-all
                           ${movConcepto === m.nombre
                             ? 'bg-accent text-white border-accent'
-                            : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 hover:border-accent hover:text-accent'}`}>
+                            : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-accent hover:text-accent'}`}>
                         {m.nombre}
                       </button>
                     ))}
@@ -656,7 +656,7 @@ export default function CajaPage() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => setShowMovimiento(false)}
-                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold py-2.5 rounded-xl text-sm">
+                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                 Cancelar
               </button>
               <button onClick={() => agregarMovimiento.mutate()} disabled={agregarMovimiento.isPending}
@@ -675,12 +675,12 @@ export default function CajaPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-primary">Cerrar caja</h2>
               <button onClick={() => { setShowCierre(false); setMontoRealCierre('') }}
-                className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500"><X size={20} /></button>
+                className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
             {/* Resumen calculado */}
             <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400 dark:text-gray-500">Apertura</span><span className="font-medium">{formatMoneda(sesionActiva?.monto_apertura ?? 0)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Apertura</span><span className="font-medium">{formatMoneda(sesionActiva?.monto_apertura ?? 0)}</span></div>
               <div className="flex justify-between text-green-600 dark:text-green-400"><span>+ Ingresos</span><span className="font-medium">{formatMoneda(totalIngresos)}</span></div>
               <div className="flex justify-between text-red-500"><span>− Egresos</span><span className="font-medium">{formatMoneda(totalEgresos)}</span></div>
               <div className="flex justify-between border-t border-gray-200 dark:border-gray-700 pt-2 font-bold text-primary">
@@ -704,7 +704,7 @@ export default function CajaPage() {
                 <div className={`mt-2 flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg ${
                   diferencia > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' :
                   diferencia < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' :
-                  'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500'
+                  'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                 }`}>
                   {diferencia > 0
                     ? <><CheckCircle size={15} /> Sobran {formatMoneda(diferencia)}</>
@@ -724,7 +724,7 @@ export default function CajaPage() {
 
             <div className="flex gap-3">
               <button onClick={() => { setShowCierre(false); setMontoRealCierre('') }}
-                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold py-2.5 rounded-xl text-sm">
+                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                 Cancelar
               </button>
               <button onClick={() => cerrarCaja.mutate()} disabled={cerrarCaja.isPending}

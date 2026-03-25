@@ -31,7 +31,7 @@ function KpiCard({ label, value, sub, icon: Icon, color, trend }: any) {
         <Icon size={20} />
       </div>
       <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">{label}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
       {sub && (
         <p className={`text-xs mt-1 flex items-center gap-1 ${trend === 'good' ? 'text-green-600 dark:text-green-400' : trend === 'bad' ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
           {trend === 'good' && <TrendingUp size={11} />}
@@ -156,7 +156,7 @@ export default function RentabilidadPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Rentabilidad Real</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Margen y ganancia de tus ventas despachadas</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Margen y ganancia de tus ventas despachadas</p>
           </div>
         </div>
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
@@ -164,7 +164,7 @@ export default function RentabilidadPage() {
             <button
               key={p.key}
               onClick={() => setPeriodo(p.key)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${periodo === p.key ? 'bg-white dark:bg-gray-800 shadow text-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300'}`}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${periodo === p.key ? 'bg-white dark:bg-gray-800 shadow text-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}
             >
               {p.label}
             </button>
@@ -254,25 +254,25 @@ export default function RentabilidadPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">#</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Fecha</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Cliente</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Venta</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Costo</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Ganancia</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase">Margen</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">#</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Fecha</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Cliente</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Venta</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Costo</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Ganancia</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Margen</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {porVenta.map((v: any) => (
                     <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">#{v.numero ?? v.id.slice(-4)}</td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                         {new Date(v.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 dark:text-gray-500 max-w-[120px] truncate">{v.cliente ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[120px] truncate">{v.cliente ?? '—'}</td>
                       <td className="px-4 py-3 text-right font-medium text-gray-800 dark:text-gray-100">{formatMoneda(v.total)}</td>
-                      <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400 dark:text-gray-500">{v.costo ? formatMoneda(v.costo) : '—'}</td>
+                      <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{v.costo ? formatMoneda(v.costo) : '—'}</td>
                       <td className={`px-4 py-3 text-right font-semibold ${v.ganancia === null ? 'text-gray-300' : v.ganancia >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                         {v.ganancia !== null ? formatMoneda(v.ganancia) : '—'}
                       </td>

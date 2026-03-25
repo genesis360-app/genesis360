@@ -166,7 +166,7 @@ export function AppLayout() {
     )
   }
 
-  const headerBtnCls = 'p-2 rounded-lg text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 transition-all'
+  const headerBtnCls = 'p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 transition-all'
 
   return (
     <div className="flex h-screen bg-brand-bg dark:bg-gray-950 overflow-hidden">
@@ -205,7 +205,7 @@ export function AppLayout() {
           {/* Brand + user info */}
           <div className="min-w-0">
             <p className="font-bold text-primary dark:text-blue-400 leading-tight">{BRAND.name}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 truncate">
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
               {user?.nombre_display}{user?.rol ? ` · ${user.rol.charAt(0) + user.rol.slice(1).toLowerCase()}` : ''}
             </p>
           </div>

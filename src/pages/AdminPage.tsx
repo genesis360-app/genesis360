@@ -16,7 +16,7 @@ const STATUS_CONFIG: Record<SubscriptionStatus, { label: string; color: string; 
   trial:     { label: 'Trial',    color: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-100 dark:bg-yellow-900/30', icon: Clock },
   active:    { label: 'Activo',   color: 'text-green-700 dark:text-green-400',  bg: 'bg-green-100 dark:bg-green-900/30',  icon: CheckCircle },
   inactive:  { label: 'Inactivo', color: 'text-red-700 dark:text-red-400',    bg: 'bg-red-100 dark:bg-red-900/30',    icon: XCircle },
-  cancelled: { label: 'Cancelado',color: 'text-gray-600 dark:text-gray-400 dark:text-gray-500',   bg: 'bg-gray-100 dark:bg-gray-700',   icon: XCircle },
+  cancelled: { label: 'Cancelado',color: 'text-gray-600 dark:text-gray-400',   bg: 'bg-gray-100 dark:bg-gray-700',   icon: XCircle },
 }
 
 interface TenantRow {
@@ -39,7 +39,7 @@ function StatCard({ label, value, icon: Icon, color }: { label: string; value: n
         <Icon size={20} />
       </div>
       <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">{label}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
     </div>
   )
 }
@@ -141,10 +141,10 @@ export default function AdminPage() {
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
             <Shield size={24} /> Panel de Administración
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Vista global de todos los tenants de {BRAND.name}</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Vista global de todos los tenants de {BRAND.name}</p>
         </div>
         <button onClick={() => refetch()}
-          className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
+          className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
           <RefreshCw size={15} /> Actualizar
         </button>
       </div>
@@ -191,7 +191,7 @@ export default function AdminPage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-400">
             <Building2 size={40} className="mb-3 opacity-30" />
             <p>No se encontraron tenants</p>
           </div>
@@ -220,8 +220,8 @@ export default function AdminPage() {
                     <tr key={t.id} className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                       <td className="px-4 py-3">
                         <p className="font-semibold text-gray-800 dark:text-gray-100">{t.nombre}</p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">{t.tipo_comercio ?? '—'} · {t.pais}</p>
-                        <p className="text-xs text-gray-300 dark:text-gray-600 dark:text-gray-400 dark:text-gray-500 font-mono mt-0.5">{t.id.slice(0, 8)}...</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-400">{t.tipo_comercio ?? '—'} · {t.pais}</p>
+                        <p className="text-xs text-gray-300 dark:text-gray-600 dark:text-gray-400 font-mono mt-0.5">{t.id.slice(0, 8)}...</p>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${st.bg} ${st.color}`}>
@@ -233,23 +233,23 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className="font-semibold text-gray-700 dark:text-gray-300">{t._user_count}</span>
-                        <span className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 text-xs">/{t.max_users === 999 ? '∞' : t.max_users}</span>
+                        <span className="text-gray-400 dark:text-gray-400 text-xs">/{t.max_users === 999 ? '∞' : t.max_users}</span>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className="font-semibold text-gray-700 dark:text-gray-300">{t._product_count}</span>
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
                         {t.subscription_status === 'trial' ? (
-                          <span className={`text-xs font-medium ${trialVencido ? 'text-red-500' : diasTrial <= 2 ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500'}`}>
+                          <span className={`text-xs font-medium ${trialVencido ? 'text-red-500' : diasTrial <= 2 ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`}>
                             {trialVencido ? `Venció hace ${Math.abs(diasTrial)}d` : `${diasTrial}d restantes`}
                           </span>
                         ) : (
-                          <span className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                          <span className="text-xs text-gray-400 dark:text-gray-400">
                             {new Date(t.trial_ends_at).toLocaleDateString('es-AR')}
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 hidden md:table-cell text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                      <td className="px-4 py-3 hidden md:table-cell text-xs text-gray-400 dark:text-gray-400">
                         {new Date(t.created_at).toLocaleDateString('es-AR')}
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -274,9 +274,9 @@ export default function AdminPage() {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h2 className="text-lg font-bold text-primary">Editar tenant</h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">{editTenant.nombre}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{editTenant.nombre}</p>
               </div>
-              <button onClick={() => setEditTenant(null)} className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
+              <button onClick={() => setEditTenant(null)} className="text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 <X size={20} />
               </button>
             </div>
@@ -301,7 +301,7 @@ export default function AdminPage() {
                   {[1, 2, 5, 10, 999].map(n => (
                     <button key={n} onClick={() => setEditForm(p => ({ ...p, max_users: n }))}
                       className={`flex-1 py-2 rounded-xl border-2 text-sm font-medium transition-all
-                        ${editForm.max_users === n ? 'border-accent bg-blue-50 dark:bg-blue-900/20 text-primary' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-gray-500'}`}>
+                        ${editForm.max_users === n ? 'border-accent bg-blue-50 dark:bg-blue-900/20 text-primary' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'}`}>
                       {n === 999 ? '∞' : n}
                     </button>
                   ))}
@@ -317,7 +317,7 @@ export default function AdminPage() {
                   onChange={e => setEditForm(p => ({ ...p, trial_days: parseInt(e.target.value) || 0 }))}
                   className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent"
                   placeholder="0 = sin cambio" />
-                <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">
+                <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">
                   Trial actual vence: {new Date(editTenant.trial_ends_at).toLocaleDateString('es-AR')}
                   {editForm.trial_days > 0 && (
                     <span className="text-green-600 dark:text-green-400 ml-1">
@@ -328,7 +328,7 @@ export default function AdminPage() {
               </div>
 
               {/* Info del tenant */}
-              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-1 text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-1 text-xs text-gray-500 dark:text-gray-400">
                 <p>ID: <span className="font-mono">{editTenant.id}</span></p>
                 <p>Usuarios activos: <span className="font-semibold">{editTenant._user_count}</span></p>
                 <p>Productos activos: <span className="font-semibold">{editTenant._product_count}</span></p>
@@ -338,7 +338,7 @@ export default function AdminPage() {
 
             <div className="flex gap-3 mt-5">
               <button onClick={() => setEditTenant(null)}
-                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600 text-sm">
+                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600 text-sm">
                 Cancelar
               </button>
               <button onClick={() => updateTenant.mutate()} disabled={updateTenant.isPending}

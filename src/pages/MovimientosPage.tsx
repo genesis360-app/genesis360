@@ -330,7 +330,7 @@ export default function MovimientosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Movimientos de Stock</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Registro de ingresos y rebajes</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Registro de ingresos y rebajes</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setModal('ingreso')}
@@ -366,13 +366,13 @@ export default function MovimientosPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50 dark:bg-gray-700">
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Fecha</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Producto</th>
-                  <th className="text-center px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Tipo</th>
-                  <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Cantidad</th>
-                  <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 hidden md:table-cell">Stock prev.</th>
-                  <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 hidden md:table-cell">Stock nuevo</th>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 hidden lg:table-cell">Motivo</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Fecha</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Producto</th>
+                  <th className="text-center px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Tipo</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Cantidad</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock prev.</th>
+                  <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock nuevo</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden lg:table-cell">Motivo</th>
                   <th className="px-4 py-3 w-8" />
                 </tr>
               </thead>
@@ -380,7 +380,7 @@ export default function MovimientosPage() {
                 {filtered.map((m: any) => (
                   <tr key={m.id} onClick={() => setMovDetalle(m)}
                     className="border-b border-gray-50 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 dark:text-gray-500 text-xs">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">
                       {new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
                     </td>
                     <td className="px-4 py-3">
@@ -397,7 +397,7 @@ export default function MovimientosPage() {
                     <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{m.cantidad}</td>
                     <td className="px-4 py-3 text-right text-gray-400 dark:text-gray-500 hidden md:table-cell">{m.stock_antes}</td>
                     <td className="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300 hidden md:table-cell">{m.stock_despues}</td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 dark:text-gray-500 text-xs hidden lg:table-cell">{m.motivo ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">{m.motivo ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-300"><ChevronRight size={14} /></td>
                   </tr>
                 ))}
@@ -427,12 +427,12 @@ export default function MovimientosPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-800 dark:text-gray-100 capitalize">{movDetalle.tipo}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
                       {new Date(movDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' })}
                     </p>
                   </div>
                 </div>
-                <button onClick={() => setMovDetalle(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500">
+                <button onClick={() => setMovDetalle(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400">
                   <X size={20} />
                 </button>
               </div>
@@ -456,7 +456,7 @@ export default function MovimientosPage() {
                 <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 flex items-center justify-between">
                   <div className="text-center">
                     <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Stock anterior</p>
-                    <p className="text-2xl font-bold text-gray-500 dark:text-gray-400 dark:text-gray-500">{movDetalle.stock_antes}</p>
+                    <p className="text-2xl font-bold text-gray-500 dark:text-gray-400">{movDetalle.stock_antes}</p>
                   </div>
                   <div className="flex flex-col items-center gap-1">
                     <span className={`text-sm font-bold px-3 py-1 rounded-full
@@ -606,7 +606,7 @@ export default function MovimientosPage() {
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
                 <ArrowDown size={20} className="text-green-600 dark:text-green-400" /> Ingreso de stock
               </h2>
-              <button onClick={closeModal} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500"><X size={20} /></button>
+              <button onClick={closeModal} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
             {/* Buscar producto */}
@@ -616,14 +616,14 @@ export default function MovimientosPage() {
                 <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-accent/30 rounded-xl px-4 py-3">
                   <div>
                     <p className="font-medium text-gray-800 dark:text-gray-100">{selectedProduct.nombre}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">SKU: {selectedProduct.sku} | Stock: {(selectedProduct as any).stock_actual}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">SKU: {selectedProduct.sku} | Stock: {(selectedProduct as any).stock_actual}</p>
                     <div className="flex gap-1 mt-1 flex-wrap">
                       {(selectedProduct as any).tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1.5 py-0.5 rounded">Nº serie</span>}
                       {(selectedProduct as any).tiene_lote && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">Lote</span>}
                       {(selectedProduct as any).tiene_vencimiento && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">Vencimiento</span>}
                     </div>
                   </div>
-                  <button onClick={() => setSelectedProduct(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500 text-xs">Cambiar</button>
+                  <button onClick={() => setSelectedProduct(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 text-xs">Cambiar</button>
                 </div>
               ) : (
                 <div className="relative">
@@ -819,7 +819,7 @@ export default function MovimientosPage() {
             )}
 
             <div className="flex gap-3">
-              <button onClick={closeModal} className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600">Cancelar</button>
+              <button onClick={closeModal} className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600">Cancelar</button>
               <button onClick={() => ingresoMutation.mutate()}
                 disabled={!selectedProduct || ingresoMutation.isPending}
                 className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
@@ -838,7 +838,7 @@ export default function MovimientosPage() {
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
                 <ArrowUp size={20} /> Rebaje de stock
               </h2>
-              <button onClick={closeModal} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500"><X size={20} /></button>
+              <button onClick={closeModal} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
             {/* Buscar producto */}
@@ -848,7 +848,7 @@ export default function MovimientosPage() {
                 <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-accent/30 rounded-xl px-4 py-3">
                   <div>
                     <p className="font-medium text-gray-800 dark:text-gray-100">{selectedProduct.nombre}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Stock total: {(selectedProduct as any).stock_actual}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Stock total: {(selectedProduct as any).stock_actual}</p>
                     <div className="flex gap-1 mt-1 flex-wrap">
                       {(selectedProduct as any).tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1.5 py-0.5 rounded">Nº serie</span>}
                       {(selectedProduct as any).tiene_lote && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">Lote</span>}
@@ -896,13 +896,13 @@ export default function MovimientosPage() {
                   {grupos.length > 0 && (
                     <div className="mb-2 flex items-center gap-2 flex-wrap">
                       <Layers size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                      <span className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Filtrar por grupo:</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">Filtrar por grupo:</span>
                       <button
                         onClick={() => setRebajeGrupoId(null)}
                         className={`text-xs px-2.5 py-1 rounded-full border transition-all
                           ${rebajeGrupoId === null && estadosDefault.length === 0
                             ? 'bg-primary text-white border-primary'
-                            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:border-gray-600'}`}>
+                            : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:border-gray-600'}`}>
                         Todos
                       </button>
                       {grupos.map(g => (
@@ -911,7 +911,7 @@ export default function MovimientosPage() {
                           className={`text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1
                             ${rebajeGrupoId === g.id || (rebajeGrupoId === null && g.es_default)
                               ? 'bg-primary text-white border-primary'
-                              : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:border-gray-600'}`}>
+                              : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:border-gray-600'}`}>
                           {g.nombre}
                           {g.es_default && rebajeGrupoId === null && <span className="text-yellow-300">★</span>}
                         </button>
@@ -971,7 +971,7 @@ export default function MovimientosPage() {
                                 <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">📍 {l.ubicaciones.nombre}</span>
                               )}
                               {!l.estados_inventario && !l.ubicaciones && (
-                                <span className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Sin estado/ubicación</span>
+                                <span className="text-sm text-gray-500 dark:text-gray-400">Sin estado/ubicación</span>
                               )}
                             </div>
                             <span className="font-bold text-gray-800 dark:text-gray-100">
@@ -1067,7 +1067,7 @@ export default function MovimientosPage() {
             )}
 
             <div className="flex gap-3">
-              <button onClick={closeModal} className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600">Cancelar</button>
+              <button onClick={closeModal} className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600">Cancelar</button>
               <button onClick={() => rebajeMutation.mutate()}
                 disabled={!selectedProduct || !rebajeLinea || rebajeMutation.isPending}
                 className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">

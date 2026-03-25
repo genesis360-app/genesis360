@@ -196,7 +196,7 @@ export default function GastosPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary">Gastos</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Registrá los egresos de tu negocio</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Registrá los egresos de tu negocio</p>
         </div>
         <button onClick={abrirNuevo}
           className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
@@ -207,10 +207,10 @@ export default function GastosPage() {
       {/* Filtros */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm">
-          <Calendar size={15} className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500" />
+          <Calendar size={15} className="text-gray-400 dark:text-gray-400" />
           <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
             className="outline-none text-gray-700 dark:text-gray-300 bg-transparent" />
-          <span className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">→</span>
+          <span className="text-gray-400 dark:text-gray-400">→</span>
           <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
             className="outline-none text-gray-700 dark:text-gray-300 bg-transparent" />
         </div>
@@ -222,13 +222,13 @@ export default function GastosPage() {
               <option value="">Todas las categorías</option>
               {categoriasUnicas.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 pointer-events-none" />
+            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400 pointer-events-none" />
           </div>
         )}
 
         {filtroCategoria && (
           <button onClick={() => setFiltroCategoria('')}
-            className="flex items-center gap-1 text-sm text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+            className="flex items-center gap-1 text-sm text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
             <X size={14} /> Limpiar filtro
           </button>
         )}
@@ -241,10 +241,10 @@ export default function GastosPage() {
             <div className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
               <TrendingDown size={18} className="text-red-500 dark:text-red-400" />
             </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Total período</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Total período</p>
           </div>
           <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(totalPeriodo)}</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">{cantPeriodo} gasto{cantPeriodo !== 1 ? 's' : ''}</p>
+          <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">{cantPeriodo} gasto{cantPeriodo !== 1 ? 's' : ''}</p>
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
@@ -252,15 +252,15 @@ export default function GastosPage() {
             <div className="w-9 h-9 rounded-xl bg-orange-50 dark:bg-amber-900/20 flex items-center justify-center">
               <Receipt size={18} className="text-orange-500 dark:text-amber-400" />
             </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Mayor gasto</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Mayor gasto</p>
           </div>
           {mayorGasto ? (
             <>
               <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(Number(mayorGasto.monto))}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1 truncate">{mayorGasto.descripcion}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 mt-1 truncate">{mayorGasto.descripcion}</p>
             </>
           ) : (
-            <p className="text-2xl font-bold text-gray-300 dark:text-gray-600 dark:text-gray-400 dark:text-gray-500">—</p>
+            <p className="text-2xl font-bold text-gray-300 dark:text-gray-600 dark:text-gray-400">—</p>
           )}
         </div>
 
@@ -269,15 +269,15 @@ export default function GastosPage() {
             <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
               <Filter size={18} className="text-accent" />
             </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Mayor categoría</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Mayor categoría</p>
           </div>
           {categoriasOrdenadas.length > 0 ? (
             <>
               <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(categoriasOrdenadas[0][1])}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1 truncate">{categoriasOrdenadas[0][0]}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 mt-1 truncate">{categoriasOrdenadas[0][0]}</p>
             </>
           ) : (
-            <p className="text-2xl font-bold text-gray-300 dark:text-gray-600 dark:text-gray-400 dark:text-gray-500">—</p>
+            <p className="text-2xl font-bold text-gray-300 dark:text-gray-600 dark:text-gray-400">—</p>
           )}
         </div>
       </div>
@@ -308,11 +308,11 @@ export default function GastosPage() {
       {/* Lista de gastos */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
         {isLoading ? (
-          <div className="flex items-center justify-center py-12 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
+          <div className="flex items-center justify-center py-12 text-gray-400 dark:text-gray-400">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
           </div>
         ) : gastosFiltrados.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-14 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
+          <div className="flex flex-col items-center justify-center py-14 text-gray-400 dark:text-gray-400">
             <Receipt size={36} className="mb-3 opacity-30" />
             <p className="font-medium text-sm">No hay gastos en este período</p>
             <button onClick={abrirNuevo} className="mt-3 text-accent text-sm font-medium hover:underline">
@@ -335,10 +335,10 @@ export default function GastosPage() {
               <tbody>
                 {gastosFiltrados.map((g: any) => (
                   <tr key={g.id} className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50/50 dark:hover:bg-gray-700/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 dark:text-gray-500 whitespace-nowrap">{formatFecha(g.fecha)}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatFecha(g.fecha)}</td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-gray-800 dark:text-gray-100">{g.descripcion}</p>
-                      {g.notas && <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">{g.notas}</p>}
+                      {g.notas && <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5">{g.notas}</p>}
                     </td>
                     <td className="px-4 py-3">
                       {g.categoria ? (
@@ -346,19 +346,19 @@ export default function GastosPage() {
                           {g.categoria}
                         </span>
                       ) : (
-                        <span className="text-gray-300 dark:text-gray-600 dark:text-gray-400 dark:text-gray-500 text-xs">—</span>
+                        <span className="text-gray-300 dark:text-gray-600 dark:text-gray-400 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">{g.medio_pago ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-sm">{g.medio_pago ?? '—'}</td>
                     <td className="px-4 py-3 text-right font-semibold text-red-600 dark:text-red-400">{formatMoneda(Number(g.monto))}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 justify-end">
                         <button onClick={() => abrirEdicion(g)}
-                          className="p-1.5 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                          className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                           <Pencil size={14} />
                         </button>
                         <button onClick={() => eliminar(g.id)}
-                          className="p-1.5 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                          className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -384,7 +384,7 @@ export default function GastosPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
               <h2 className="font-semibold text-gray-800 dark:text-gray-100">{editandoId ? 'Editar gasto' : 'Nuevo gasto'}</h2>
-              <button onClick={cerrarModal} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
+              <button onClick={cerrarModal} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-400 dark:text-gray-400">
                 <X size={18} />
               </button>
             </div>
@@ -440,7 +440,7 @@ export default function GastosPage() {
                     <option value="">Sin categoría</option>
                     {CATEGORIAS_GASTO.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 pointer-events-none" />
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400 pointer-events-none" />
                 </div>
               </div>
 
@@ -455,7 +455,7 @@ export default function GastosPage() {
                   >
                     {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 pointer-events-none" />
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400 pointer-events-none" />
                 </div>
               </div>
 
@@ -481,7 +481,7 @@ export default function GastosPage() {
                   </div>
                 ) : sesionesAbiertas.length > 1 ? (
                   <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">Registrar egreso en caja:</label>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar egreso en caja:</label>
                     <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
                       className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700">
                       <option value="">— Seleccioná una caja —</option>

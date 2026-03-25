@@ -25,7 +25,7 @@ function StatCard({ label, value, sub, icon: Icon, color, trend }: any) {
         <Icon size={20} />
       </div>
       <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">{label}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
       {sub && (
         <p className={`text-xs mt-1 flex items-center gap-1 ${trend === 'up' ? 'text-green-600 dark:text-green-400' : trend === 'down' ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
           {trend === 'up' && <TrendingUp size={11} />}
@@ -342,7 +342,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-primary">Métricas</h1>
-            <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Análisis de ventas y rotación de stock</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Análisis de ventas y rotación de stock</p>
           </div>
         </div>
       )}
@@ -369,7 +369,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
             {PERIODOS.map(p => (
               <button key={p.id} onClick={() => setPeriodo(p.id as Periodo)}
                 className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all
-                  ${periodo === p.id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300'}`}>
+                  ${periodo === p.id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
                 {p.label}
               </button>
             ))}
@@ -494,7 +494,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
               {topProductos.map((p, i) => (
                 <div key={i} className="px-5 py-3 flex items-center gap-3">
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
-                    ${i === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600' : i === 1 ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500'}`}>
+                    ${i === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600' : i === 1 ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500'}`}>
                     {i + 1}
                   </span>
                   <div className="flex-1 min-w-0">
@@ -521,7 +521,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
               {margenProductos.slice(0, 6).map((p, i) => (
                 <div key={i}>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-600 dark:text-gray-400 dark:text-gray-500 truncate max-w-48">{p.nombre}</span>
+                    <span className="text-gray-600 dark:text-gray-400 truncate max-w-48">{p.nombre}</span>
                     <span className={`font-bold ${p.margen >= 30 ? 'text-green-600 dark:text-green-400' : p.margen >= 15 ? 'text-yellow-600' : 'text-red-500'}`}>
                       {p.margen}%
                     </span>
@@ -607,13 +607,13 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
                 </div>
                 {topMotivos.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-2">Top motivos</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Top motivos</p>
                     <div className="space-y-2">
                       {topMotivos.map((m, i) => (
                         <div key={i}>
                           <div className="flex justify-between text-xs mb-0.5">
-                            <span className="text-gray-600 dark:text-gray-400 dark:text-gray-500 truncate max-w-48">{m.motivo}</span>
-                            <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium ml-2 flex-shrink-0">{m.cantidad} u.</span>
+                            <span className="text-gray-600 dark:text-gray-400 truncate max-w-48">{m.motivo}</span>
+                            <span className="text-gray-500 dark:text-gray-400 font-medium ml-2 flex-shrink-0">{m.cantidad} u.</span>
                           </div>
                           <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                             <div className="h-full bg-primary rounded-full"
@@ -640,7 +640,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
                 {stockPorUbicacion.map((u, i) => (
                   <div key={i}>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-gray-600 dark:text-gray-400 dark:text-gray-500 truncate max-w-40">{u.nombre}</span>
+                      <span className="text-gray-600 dark:text-gray-400 truncate max-w-40">{u.nombre}</span>
                       <div className="text-right flex-shrink-0 ml-2">
                         <span className="font-semibold text-gray-700 dark:text-gray-300">{formatMoneda(u.valor)}</span>
                         <span className="text-gray-400 dark:text-gray-500 ml-1">· {u.unidades.toLocaleString('es-AR')} u.</span>
@@ -672,10 +672,10 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50 dark:bg-gray-700">
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Producto</th>
-                  <th className="text-right px-5 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Stock actual</th>
-                  <th className="text-right px-5 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Valor en stock</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 hidden md:table-cell">Última venta</th>
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 dark:text-gray-400">Producto</th>
+                  <th className="text-right px-5 py-3 font-semibold text-gray-600 dark:text-gray-400">Stock actual</th>
+                  <th className="text-right px-5 py-3 font-semibold text-gray-600 dark:text-gray-400">Valor en stock</th>
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Última venta</th>
                 </tr>
               </thead>
               <tbody>
@@ -686,7 +686,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
                       <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{p.sku}</p>
                     </td>
                     <td className="px-5 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">{p.stock_actual}</td>
-                    <td className="px-5 py-3 text-right text-gray-500 dark:text-gray-400 dark:text-gray-500">{formatMoneda(p.stock_actual * p.precio_costo)}</td>
+                    <td className="px-5 py-3 text-right text-gray-500 dark:text-gray-400">{formatMoneda(p.stock_actual * p.precio_costo)}</td>
                     <td className="px-5 py-3 hidden md:table-cell">
                       {p.ultimaVenta
                         ? <span className="text-xs text-orange-500">{new Date(p.ultimaVenta).toLocaleDateString('es-AR')}</span>

@@ -139,7 +139,7 @@ export default function GruposEstadosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Grupos de estados</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
             Agrupá estados para usarlos como filtros rápidos en Rebaje y Ventas
           </p>
         </div>
@@ -221,7 +221,7 @@ export default function GruposEstadosPage() {
 
           <div className="flex gap-3 justify-end">
             <button onClick={resetForm}
-              className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 text-sm">
+              className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 text-sm">
               Cancelar
             </button>
             <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}

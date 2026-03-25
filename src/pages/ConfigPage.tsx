@@ -242,7 +242,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
         {(['todos', 'ingreso', 'rebaje', 'ambos', 'caja'] as const).map(t => (
           <button key={t} onClick={() => setFilterTipo(t)}
             className={`px-3 py-1 rounded-lg text-xs font-medium transition-all capitalize
-              ${filterTipo === t ? 'bg-primary text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
+              ${filterTipo === t ? 'bg-primary text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200'}`}>
             {t === 'todos' ? 'Todos' : t === 'ingreso' ? 'Solo ingreso' : t === 'rebaje' ? 'Solo rebaje' : t === 'caja' ? 'Caja' : 'Ambos'}
           </button>
         ))}
@@ -672,7 +672,7 @@ export default function ConfigPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Configuración</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Administrá los datos de tu negocio</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Administrá los datos de tu negocio</p>
         </div>
         <Link to="/configuracion/importar"
           className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all">
@@ -684,7 +684,7 @@ export default function ConfigPage() {
         {tabs.map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex-shrink-0 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all
-              ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300'}`}>
+              ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
             <Icon size={15} /><span className="hidden sm:inline">{label}</span>
           </button>
         ))}
@@ -714,7 +714,7 @@ export default function ConfigPage() {
                 className="mt-2 w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
             )}
             {bizTipoSelect === 'Otro' && !canEdit && bizTipoPersonalizado && (
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500 px-1">{bizTipoPersonalizado}</p>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 px-1">{bizTipoPersonalizado}</p>
             )}
           </div>
           <div>
@@ -733,7 +733,7 @@ export default function ConfigPage() {
             <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl text-sm">
               <span className="font-medium text-primary capitalize">{tenant?.subscription_status}</span>
               {tenant?.subscription_status === 'trial' && (
-                <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500 ml-2">— vence {new Date(tenant.trial_ends_at).toLocaleDateString('es-AR')}</span>
+                <span className="text-gray-500 dark:text-gray-400 ml-2">— vence {new Date(tenant.trial_ends_at).toLocaleDateString('es-AR')}</span>
               )}
             </div>
           </div>
@@ -823,7 +823,7 @@ export default function ConfigPage() {
                         <input type="number" min="0" value={editUbicPrioridad} onChange={e => setEditUbicPrioridad(e.target.value)}
                           className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent" title="Prioridad" />
                         <button onClick={() => saveUbicacion(u.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:text-green-400 p-1"><Check size={15} /></button>
-                        <button onClick={() => setEditUbicId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500 p-1"><X size={15} /></button>
+                        <button onClick={() => setEditUbicId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 p-1"><X size={15} /></button>
                       </>
                     ) : (
                       <>
@@ -907,13 +907,13 @@ export default function ConfigPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">Cantidad mínima</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cantidad mínima</label>
                 <input type="number" min="2" value={comboForm.cantidad}
                   onChange={e => setComboForm(p => ({ ...p, cantidad: e.target.value }))}
                   className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">Tipo de descuento</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo de descuento</label>
                 <select value={comboForm.descuento_tipo} onChange={e => setComboForm(p => ({ ...p, descuento_tipo: e.target.value, descuento_valor: '0' }))}
                   className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
                   <option value="pct">Porcentaje (%)</option>
@@ -922,7 +922,7 @@ export default function ConfigPage() {
                 </select>
               </div>
               <div className="col-span-2">
-                <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                   {comboForm.descuento_tipo === 'pct' ? 'Descuento (%)' : comboForm.descuento_tipo === 'monto_usd' ? 'Descuento (USD)' : 'Descuento ($)'}
                 </label>
                 <input type="number" min="0" max={comboForm.descuento_tipo === 'pct' ? '100' : undefined} step={comboForm.descuento_tipo === 'pct' ? '0.5' : '1'}
@@ -1038,7 +1038,7 @@ export default function ConfigPage() {
                 </div>
               </label>
               <div className="flex gap-3 justify-end">
-                <button onClick={resetGrupoForm} className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 text-sm">Cancelar</button>
+                <button onClick={resetGrupoForm} className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 text-sm">Cancelar</button>
                 <button onClick={() => saveGrupo.mutate()} disabled={saveGrupo.isPending}
                   className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
                   {saveGrupo.isPending ? 'Guardando...' : grupoEditId ? 'Guardar cambios' : 'Crear grupo'}
@@ -1180,7 +1180,7 @@ export default function ConfigPage() {
                                       <span className="text-gray-700 dark:text-gray-300">{r.estados_inventario?.nombre ?? '—'}</span>
                                     </span>
                                   </td>
-                                  <td className="py-2 text-center font-mono text-gray-600 dark:text-gray-400 dark:text-gray-500">{r.dias}</td>
+                                  <td className="py-2 text-center font-mono text-gray-600 dark:text-gray-400">{r.dias}</td>
                                   <td className="py-2 text-right">
                                     <button onClick={() => deleteAgingRegla(r.id)} className="text-gray-300 hover:text-red-500 p-1 transition-colors"><Trash2 size={13} /></button>
                                   </td>
@@ -1203,7 +1203,7 @@ export default function ConfigPage() {
                             <button onClick={() => addAgingRegla(ap.id)} disabled={!addRuleEstadoId || addRuleDias === ''}
                               className="p-1.5 bg-accent text-white rounded-lg disabled:opacity-40"><Check size={14} /></button>
                             <button onClick={() => { setAddRuleProfileId(null); setAddRuleEstadoId(''); setAddRuleDias('') }}
-                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500 rounded-lg"><X size={14} /></button>
+                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 rounded-lg"><X size={14} /></button>
                           </div>
                         ) : (
                           <button onClick={() => { setAddRuleProfileId(ap.id); setAddRuleEstadoId(''); setAddRuleDias('') }}

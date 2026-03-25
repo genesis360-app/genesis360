@@ -816,7 +816,7 @@ export default function VentasPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Ventas</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Registrá y gestioná tus ventas</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Registrá y gestioná tus ventas</p>
         </div>
       </div>
 
@@ -825,7 +825,7 @@ export default function VentasPage() {
         {[{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }].map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id as Tab)}
             className={`flex items-center gap-2 py-2 px-4 rounded-lg text-sm font-medium transition-all
-              ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-gray-300'}`}>
+              ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
             <Icon size={15} />{label}
           </button>
         ))}
@@ -844,10 +844,10 @@ export default function VentasPage() {
               {grupos.length > 0 && (
                 <div className="mb-3 flex items-center gap-2 flex-wrap">
                   <Layers size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
-                  <span className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Ver stock de:</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Ver stock de:</span>
                   <button onClick={() => setVentaGrupoId('todos')}
                     className={`text-xs px-2.5 py-1 rounded-full border transition-all
-                      ${ventaGrupoId === 'todos' ? 'bg-primary text-white border-primary' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:border-gray-600'}`}>
+                      ${ventaGrupoId === 'todos' ? 'bg-primary text-white border-primary' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:border-gray-600'}`}>
                     Todos
                   </button>
                   {grupos.map(g => (
@@ -856,7 +856,7 @@ export default function VentasPage() {
                       className={`text-xs px-2.5 py-1 rounded-full border transition-all flex items-center gap-1
                         ${ventaGrupoId === g.id || (ventaGrupoId === null && g.es_default)
                           ? 'bg-primary text-white border-primary'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:border-gray-600'}`}>
+                          : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:border-gray-600'}`}>
                       {g.nombre}
                       {g.es_default && ventaGrupoId === null && <span className="text-yellow-300">★</span>}
                     </button>
@@ -907,7 +907,7 @@ export default function VentasPage() {
                 <button
                   type="button"
                   onClick={() => setScannerOpen(true)}
-                  className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-accent transition-colors flex-shrink-0"
+                  className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent transition-colors flex-shrink-0"
                   title="Escanear código de barras"
                 >
                   <Camera size={17} />
@@ -916,7 +916,7 @@ export default function VentasPage() {
                   type="button"
                   onClick={() => setViewMode(v => v === 'lista' ? 'galeria' : 'lista')}
                   className={`px-3 py-2.5 border rounded-xl transition-colors flex-shrink-0
-                    ${viewMode === 'galeria' ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-accent'}`}
+                    ${viewMode === 'galeria' ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-accent'}`}
                   title={viewMode === 'lista' ? 'Vista galería' : 'Vista lista'}
                 >
                   {viewMode === 'lista' ? <LayoutGrid size={17} /> : <List size={17} />}
@@ -989,14 +989,14 @@ export default function VentasPage() {
                         {!item.tiene_series && (
                           <div className="flex items-center gap-1">
                             <button onClick={() => updateItem(idx, 'cantidad', Math.max(1, item.cantidad - 1))}
-                              className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
+                              className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
                             <input
                               type="number" min="1" value={item.cantidad}
                               onChange={e => updateItem(idx, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
                               className="w-12 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
                             />
                             <button onClick={() => updateItem(idx, 'cantidad', item.cantidad + 1)}
-                              className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50">+</button>
+                              className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">+</button>
                           </div>
                         )}
 
@@ -1014,7 +1014,7 @@ export default function VentasPage() {
                             onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
                             className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none" placeholder="0" />
                           <button onClick={() => updateItem(idx, 'descuento_tipo', item.descuento_tipo === 'pct' ? 'monto' : 'pct')}
-                            className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 dark:text-gray-500 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors">
+                            className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors">
                             {item.descuento_tipo === 'pct' ? '%' : '$'}
                           </button>
                         </div>
@@ -1200,7 +1200,7 @@ export default function VentasPage() {
               )}
               {/* Descuento general con toggle % / $ */}
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">Descuento general</label>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento general</label>
                 {descTotalVal > 0 && cart.some(i => i.descuento > 0) && (
                   <div className="mb-1.5 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-lg px-2.5 py-1.5">
                     <span>⚠️</span>
@@ -1213,7 +1213,7 @@ export default function VentasPage() {
                     placeholder="0"
                     className="flex-1 px-3 py-2.5 text-sm focus:outline-none" />
                   <button onClick={() => setDescuentoTotalTipo(t => t === 'pct' ? 'monto' : 'pct')}
-                    className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-400 dark:text-gray-500 text-sm font-bold border-l border-gray-200 dark:border-gray-700 transition-colors min-w-10">
+                    className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-400 text-sm font-bold border-l border-gray-200 dark:border-gray-700 transition-colors min-w-10">
                     {descuentoTotalTipo === 'pct' ? '%' : '$'}
                   </button>
                 </div>
@@ -1235,7 +1235,7 @@ export default function VentasPage() {
                   const descItemsTotal = subtotalSinDesc - subtotal
                   return (
                     <>
-                      <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                      <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400">
                         <span>Precio lista</span>
                         <span>${subtotalSinDesc.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
@@ -1245,7 +1245,7 @@ export default function VentasPage() {
                           <span>−${descItemsTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                         </div>
                       )}
-                      <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">
+                      <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
                         <span>Subtotal</span>
                         <span>${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
@@ -1274,7 +1274,7 @@ export default function VentasPage() {
                   )
                   if (sesionesAbiertas.length > 1) return (
                     <div>
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-1">Registrar efectivo en:</label>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar efectivo en:</label>
                       <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
                         className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
                         <option value="">— Seleccioná una caja —</option>
@@ -1300,7 +1300,7 @@ export default function VentasPage() {
                     <Zap size={16} /> Venta directa (despacho inmediato)
                   </button>
                   <button onClick={() => registrarVenta('pendiente')} disabled={saving}
-                    className="w-full border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all disabled:opacity-50">
+                    className="w-full border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all disabled:opacity-50">
                     Registrar sin reservar
                   </button>
                 </div>
@@ -1357,7 +1357,7 @@ export default function VentasPage() {
                       </div>
                       <div className="flex gap-1 mt-1 flex-wrap">
                         {(v.venta_items ?? []).map((item: any) => (
-                          <span key={item.id} className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 px-1.5 py-0.5 rounded">
+                          <span key={item.id} className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded">
                             {item.cantidad}× {item.productos?.nombre}
                           </span>
                         ))}
@@ -1387,11 +1387,11 @@ export default function VentasPage() {
                   </span>
                 </div>
               </div>
-              <button onClick={() => setVentaDetalle(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500"><X size={20} /></button>
+              <button onClick={() => setVentaDetalle(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
             {ventaDetalle.cliente_nombre && (
-              <div className="mb-3 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">
+              <div className="mb-3 text-sm text-gray-600 dark:text-gray-400">
                 <span className="font-medium">Cliente:</span> {ventaDetalle.cliente_nombre}
                 {ventaDetalle.cliente_telefono && ` · ${ventaDetalle.cliente_telefono}`}
               </div>
@@ -1444,8 +1444,8 @@ export default function VentasPage() {
                 <span>Total</span>
                 <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
-              {ventaDetalle.medio_pago && <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500">Medio de pago: {formatMedioPago(ventaDetalle.medio_pago)}</p>}
-              {ventaDetalle.notas && <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500">Notas: {ventaDetalle.notas}</p>}
+              {ventaDetalle.medio_pago && <p className="text-gray-500 dark:text-gray-400">Medio de pago: {formatMedioPago(ventaDetalle.medio_pago)}</p>}
+              {ventaDetalle.notas && <p className="text-gray-500 dark:text-gray-400">Notas: {ventaDetalle.notas}</p>}
             </div>
 
             {/* Acciones según estado */}
@@ -1470,7 +1470,7 @@ export default function VentasPage() {
                   })
                   setTicketVenta({ ...ventaDetalle, items })
                 }}
-                className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
+                className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
                 <Printer size={15} /> Ver / Imprimir ticket
               </button>
               {ventaDetalle.estado === 'pendiente' && (
@@ -1513,7 +1513,7 @@ export default function VentasPage() {
                   setVentaDetalle(null)
                   qc.invalidateQueries({ queryKey: ['ventas'] })
                 }}
-                  className="w-full border-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 dark:text-gray-500 font-semibold py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:border-red-200 hover:text-red-500 transition-all text-sm">
+                  className="w-full border-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-semibold py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:border-red-200 hover:text-red-500 transition-all text-sm">
                   Eliminar venta
                 </button>
               )}
@@ -1533,11 +1533,11 @@ export default function VentasPage() {
                   dateStyle: 'full', timeStyle: 'short'
                 })}
               </p>
-              <p className="text-sm font-mono text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1">Venta #{ticketVenta.numero ?? '—'}</p>
+              <p className="text-sm font-mono text-gray-500 dark:text-gray-400 mt-1">Venta #{ticketVenta.numero ?? '—'}</p>
             </div>
 
             {ticketVenta.cliente_nombre && (
-              <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-3">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
                 <span className="font-medium">Cliente:</span> {ticketVenta.cliente_nombre}
               </p>
             )}
@@ -1592,7 +1592,7 @@ export default function VentasPage() {
                       <span className="line-through">${precioLista.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
                     <span>Subtotal</span>
                     <span>${ticketVenta.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
@@ -1632,7 +1632,7 @@ export default function VentasPage() {
 
             <div className="flex gap-2 mt-4">
               <button onClick={() => window.print()}
-                className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <Printer size={15} /> Imprimir
               </button>
               <button onClick={() => setTicketVenta(null)}
@@ -1650,7 +1650,7 @@ export default function VentasPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-primary">Seleccionar series</h2>
-              <button onClick={() => { setSeriesModal(null); setSeriesBusqueda('') }} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500"><X size={20} /></button>
+              <button onClick={() => { setSeriesModal(null); setSeriesBusqueda('') }} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
             {/* Buscador */}
             <div className="relative mb-3">

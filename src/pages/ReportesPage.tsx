@@ -376,7 +376,7 @@ export default function ReportesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary">Reportes</h1>
-        <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Exportá tus datos en Excel o PDF</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Exportá tus datos en Excel o PDF</p>
       </div>
 
       {/* Grid de reportes */}
@@ -392,7 +392,7 @@ export default function ReportesPage() {
                 <Icon size={20} />
               </div>
               <p className="font-semibold text-gray-800 dark:text-gray-100">{r.titulo}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1 leading-relaxed">{r.descripcion}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-400 mt-1 leading-relaxed">{r.descripcion}</p>
             </button>
           )
         })}
@@ -412,9 +412,9 @@ export default function ReportesPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{m.label}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">{(m.datos as any[]).length} registros</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-400">{(m.datos as any[]).length} registros</p>
                 </div>
-                <Download size={14} className="text-gray-300 dark:text-gray-600 dark:text-gray-400 dark:text-gray-500 ml-auto flex-shrink-0" />
+                <Download size={14} className="text-gray-300 dark:text-gray-600 dark:text-gray-400 ml-auto flex-shrink-0" />
               </button>
             )
           })}
@@ -432,7 +432,7 @@ export default function ReportesPage() {
               </div>
               <div>
                 <h2 className="font-semibold text-gray-800 dark:text-gray-100">{reporteSeleccionado.titulo}</h2>
-                <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">{datos.length} registros</p>
+                <p className="text-xs text-gray-400 dark:text-gray-400">{datos.length} registros</p>
               </div>
             </div>
 
@@ -440,10 +440,10 @@ export default function ReportesPage() {
               {/* Filtro de fechas */}
               {necesitaFechas && (
                 <div className="flex items-center gap-2 text-sm">
-                  <Calendar size={14} className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500" />
+                  <Calendar size={14} className="text-gray-400 dark:text-gray-400" />
                   <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
                     className="border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent" />
-                  <span className="text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">→</span>
+                  <span className="text-gray-400 dark:text-gray-400">→</span>
                   <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
                     className="border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent" />
                 </div>
@@ -465,11 +465,11 @@ export default function ReportesPage() {
           {reporteActivo === 'valorizado' && (
             <div className="grid grid-cols-2 divide-x divide-gray-100 dark:divide-gray-700 border-b border-gray-100 dark:border-gray-700">
               <div className="px-5 py-3 text-center">
-                <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Valor total a costo</p>
+                <p className="text-xs text-gray-400 dark:text-gray-400">Valor total a costo</p>
                 <p className="text-xl font-bold text-primary">{formatMoneda(totalesReporte.valorizado.costo)}</p>
               </div>
               <div className="px-5 py-3 text-center">
-                <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Valor total a precio de venta</p>
+                <p className="text-xs text-gray-400 dark:text-gray-400">Valor total a precio de venta</p>
                 <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatMoneda(totalesReporte.valorizado.venta)}</p>
               </div>
             </div>
@@ -477,11 +477,11 @@ export default function ReportesPage() {
           {reporteActivo === 'ventas' && (
             <div className="grid grid-cols-2 divide-x divide-gray-100 dark:divide-gray-700 border-b border-gray-100 dark:border-gray-700">
               <div className="px-5 py-3 text-center">
-                <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Ventas en el período</p>
+                <p className="text-xs text-gray-400 dark:text-gray-400">Ventas en el período</p>
                 <p className="text-xl font-bold text-primary">{totalesReporte.ventas.cantidad}</p>
               </div>
               <div className="px-5 py-3 text-center">
-                <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">Total facturado</p>
+                <p className="text-xs text-gray-400 dark:text-gray-400">Total facturado</p>
                 <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatMoneda(totalesReporte.ventas.total)}</p>
               </div>
             </div>
@@ -489,7 +489,7 @@ export default function ReportesPage() {
 
           {/* Tabla preview */}
           {datos.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-gray-400">
               <BarChart2 size={36} className="mb-2 opacity-30" />
               <p className="text-sm">No hay datos para este reporte</p>
             </div>
@@ -518,7 +518,7 @@ export default function ReportesPage() {
                 </tbody>
               </table>
               {datos.length > 50 && (
-                <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 text-center py-2">
+                <p className="text-xs text-gray-400 dark:text-gray-400 text-center py-2">
                   Mostrando 50 de {datos.length} registros. Exportá para ver todos.
                 </p>
               )}

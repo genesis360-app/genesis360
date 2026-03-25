@@ -104,7 +104,7 @@ export default function UsuariosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Usuarios</h1>
-          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Gestioná el equipo de tu negocio</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Gestioná el equipo de tu negocio</p>
         </div>
         {canManage && !showInvitar && (
           <button
@@ -128,10 +128,10 @@ export default function UsuariosPage() {
           <User size={15} className={limits.pct_usuarios >= 90 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'} />
           <div className="flex-1">
             <div className="flex justify-between text-xs mb-1">
-              <span className={limits.pct_usuarios >= 90 ? 'text-orange-700 font-medium' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500'}>
+              <span className={limits.pct_usuarios >= 90 ? 'text-orange-700 font-medium' : 'text-gray-500 dark:text-gray-400'}>
                 {limits.usuarios_actuales} de {limits.max_usuarios} usuarios
               </span>
-              <span className={limits.pct_usuarios >= 90 ? 'text-orange-600' : 'text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500'}>
+              <span className={limits.pct_usuarios >= 90 ? 'text-orange-600' : 'text-gray-400 dark:text-gray-400'}>
                 {limits.pct_usuarios}%
               </span>
             </div>
@@ -150,7 +150,7 @@ export default function UsuariosPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email *</label>
             <div className="relative">
-              <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500" />
+              <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
               <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)}
                 placeholder="usuario@email.com" required
                 className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent" />
@@ -166,7 +166,7 @@ export default function UsuariosPage() {
                     className={`px-3 py-2.5 rounded-xl border-2 text-left transition-all
                       ${invRol === rol ? 'border-accent bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'}`}>
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{cfg.label}</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-0.5">{cfg.desc}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5">{cfg.desc}</p>
                   </button>
                 ))}
             </div>
@@ -177,7 +177,7 @@ export default function UsuariosPage() {
           </div>
           <div className="flex gap-3 justify-end">
             <button type="button" onClick={() => setShowInvitar(false)}
-              className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold rounded-xl text-sm hover:border-gray-300 dark:hover:border-gray-500">
+              className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl text-sm hover:border-gray-300 dark:hover:border-gray-500">
               Cancelar
             </button>
             <button type="submit" disabled={saving}
@@ -207,7 +207,7 @@ export default function UsuariosPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{u.nombre_display ?? u.id.slice(0, 8)}</p>
-                      {esMiUsuario && <span className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500">(vos)</span>}
+                      {esMiUsuario && <span className="text-xs text-gray-400 dark:text-gray-400">(vos)</span>}
                       {!u.activo && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">Inactivo</span>}
                     </div>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rolCfg.color}`}>
@@ -228,7 +228,7 @@ export default function UsuariosPage() {
                       </select>
                       {!esMiUsuario && (
                         <button onClick={() => { if (confirm(`¿Desactivar a ${u.nombre_display}?`)) desactivar.mutate(u.id) }}
-                          className="p-1.5 text-gray-400 dark:text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                          className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                           <Trash2 size={15} />
                         </button>
                       )}

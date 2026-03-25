@@ -213,6 +213,17 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - Catálogo de conceptos CRUD colapsable dentro de la tab.
   - `actividadLog`: + `nomina` en EntidadLog, + `pagar` en AccionLog.
 
+### v0.34.0 — RRHH Phase 3B Dashboard (en dev)
+- **Tab Dashboard** en RrhhPage (primera tab, con `LayoutDashboard` icon). Seleccionable mes de referencia.
+- **KPIs empleados**: total activos, nuevos este mes, cumpleaños del mes, cantidad de departamentos.
+- **KPIs asistencia**: % presencia, presentes/tardanzas/ausentes/licencias del mes seleccionado.
+- **KPIs vacaciones**: pendientes de aprobación, aprobadas, días hábiles usados en el año.
+- **KPIs nómina**: último período, liquidaciones totales/pagadas, pendientes de pago + monto.
+- **Breakdown por departamento**: barra proporcional + count por cada departamento.
+- **Exportar reportes Excel**: Asistencia mensual (`asistencia_YYYY-MM.xlsx`) + Nómina histórica (`nomina_historica.xlsx`) usando `xlsx` library.
+- Queries: `dashAsist`, `dashVac`, `dashNomina` (enabled solo cuando tab='dashboard').
+- Funciones: `exportAsistenciaMes()`, `exportNominaHistorica()` (on-demand, query fresca).
+
 ### v0.33.0 — RRHH Phase 2B Vacaciones + Phase 3A Asistencia (en dev)
 - **RRHH Phase 2B — Vacaciones** (migración 018):
   - `rrhh_vacaciones_solicitud`: estado `pendiente/aprobada/rechazada`, dias_habiles calculados (excluye fines de semana), aprobado_por + aprobado_at.
@@ -247,6 +258,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente (migración 018, en dev)
 - [ ] Phase 2C — Cumpleaños automáticos: Edge Function scheduler
 - [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, en dev)
+- [x] Phase 3B — Dashboard RRHH: KPIs empleados/asistencia/vacaciones/nómina + breakdown depts + exportar Excel (en dev)
 - [ ] Phase 3B — Dashboard RRHH: KPIs + reportes Excel/PDF
 - [ ] Phase 4A — Documentos empleado: Storage bucket `empleados`
 - [ ] Phase 4B — Capacitaciones + certificados

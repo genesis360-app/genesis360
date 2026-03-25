@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
-  BarChart2, Users, Users2, Settings, LogOut, Menu, X, ChevronRight, ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle
+  BarChart2, Users, Users2, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft, ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -33,7 +33,15 @@ const navItems = [
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true')
   const [walkthroughOpen, setWalkthroughOpen] = useState(false)
+
+  const toggleCollapse = () => {
+    setSidebarCollapsed(v => {
+      localStorage.setItem('sidebar-collapsed', String(!v))
+      return !v
+    })
+  }
   const { user, tenant, signOut } = useAuthStore()
   const { count: alertCount } = useAlertas()
   const { visto } = useWalkthrough()
@@ -66,87 +74,116 @@ export function AppLayout() {
     navigate('/login')
   }
 
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-accent/20">
-        <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center">
-          <Package size={18} className="text-white" />
+  const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => {
+    const collapsed = !mobile && sidebarCollapsed
+    return (
+      <div className="flex flex-col h-full">
+        {/* Logo + toggle */}
+        <div className={`flex items-center border-b border-accent/20 ${collapsed ? 'justify-center px-2 py-5' : 'gap-3 px-6 py-5'}`}>
+          <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center flex-shrink-0">
+            <Package size={18} className="text-white" />
+          </div>
+          {!collapsed && <span className="text-white font-bold text-xl tracking-tight flex-1">{BRAND.name}</span>}
+          {!mobile && (
+            <button onClick={toggleCollapse} title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+              className="text-blue-300 hover:text-white transition-colors ml-auto">
+              {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+          )}
         </div>
-        <span className="text-white font-bold text-xl tracking-tight">{BRAND.name}</span>
-      </div>
 
-      {/* Nombre del negocio */}
-      <div className="px-6 py-3 border-b border-accent/20">
-        <p className="text-accent text-xs font-medium uppercase tracking-wider">Negocio</p>
-        <p className="text-white text-sm font-semibold truncate">{tenant?.nombre}</p>
-      </div>
+        {/* Nombre del negocio */}
+        {!collapsed && (
+          <div className="px-6 py-3 border-b border-accent/20">
+            <p className="text-accent text-xs font-medium uppercase tracking-wider">Negocio</p>
+            <p className="text-white text-sm font-semibold truncate">{tenant?.nombre}</p>
+          </div>
+        )}
 
-      {/* Navegación */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly }: any) => {
-          if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN') return null
-          if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
-          return (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
-                ${isActive
-                  ? 'bg-accent text-white'
-                  : 'text-blue-100 hover:bg-accent/30 hover:text-white'}`
-              }
-            >
-              <Icon size={18} />
-              <span className="flex-1">{label}</span>
-              {to === '/caja' && (
-                <span className={`w-2 h-2 rounded-full ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} title={cajaAbierta ? 'Caja abierta' : 'Caja cerrada'} />
-              )}
-              {badge && alertCount > 0 && (
-                <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                  {alertCount > 9 ? '9+' : alertCount}
-                </span>
-              )}
-            </NavLink>
-          )
-        })}
-      </nav>
+        {/* Navegación */}
+        <nav className={`flex-1 py-4 space-y-1 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-3'}`}>
+          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly }: any) => {
+            if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN') return null
+            if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                onClick={() => setSidebarOpen(false)}
+                title={collapsed ? label : undefined}
+                className={({ isActive }) =>
+                  `flex items-center rounded-lg text-sm font-medium transition-all
+                  ${collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'}
+                  ${isActive
+                    ? 'bg-accent text-white'
+                    : 'text-blue-100 hover:bg-accent/30 hover:text-white'}`
+                }
+              >
+                <div className="relative flex-shrink-0">
+                  <Icon size={18} />
+                  {to === '/caja' && collapsed && (
+                    <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-primary ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} />
+                  )}
+                  {badge && alertCount > 0 && collapsed && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none" style={{ fontSize: 9 }}>
+                      {alertCount > 9 ? '9+' : alertCount}
+                    </span>
+                  )}
+                </div>
+                {!collapsed && <span className="flex-1">{label}</span>}
+                {!collapsed && to === '/caja' && (
+                  <span className={`w-2 h-2 rounded-full ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} title={cajaAbierta ? 'Caja abierta' : 'Caja cerrada'} />
+                )}
+                {!collapsed && badge && alertCount > 0 && (
+                  <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {alertCount > 9 ? '9+' : alertCount}
+                  </span>
+                )}
+              </NavLink>
+            )
+          })}
+        </nav>
 
-      {/* Cotización USD */}
-      <CotizacionWidget />
+        {/* Cotización USD */}
+        {!collapsed && <CotizacionWidget />}
 
-      {/* Usuario y logout */}
-      <div className="px-3 py-3 border-t border-accent/20 space-y-1">
-        <div className="px-3 py-2">
-          <p className="text-white text-sm font-medium truncate">{user?.nombre_display}</p>
-          <p className="text-blue-300 text-xs capitalize">{user?.rol?.toLowerCase()}</p>
+        {/* Usuario y logout */}
+        <div className={`py-3 border-t border-accent/20 space-y-1 ${collapsed ? 'px-1.5' : 'px-3'}`}>
+          {!collapsed && (
+            <div className="px-3 py-2">
+              <p className="text-white text-sm font-medium truncate">{user?.nombre_display}</p>
+              <p className="text-blue-300 text-xs capitalize">{user?.rol?.toLowerCase()}</p>
+            </div>
+          )}
+          <button
+            onClick={() => setWalkthroughOpen(true)}
+            title={collapsed ? 'Tour guiado' : undefined}
+            className={`flex items-center rounded-lg text-sm font-medium text-blue-100 hover:bg-accent/30 hover:text-white transition-all w-full
+              ${collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'}`}
+          >
+            <HelpCircle size={18} />
+            {!collapsed && 'Tour guiado'}
+          </button>
+          <button
+            onClick={handleSignOut}
+            title={collapsed ? 'Cerrar sesión' : undefined}
+            className={`flex items-center rounded-lg text-sm font-medium text-blue-100 hover:bg-red-500/20 hover:text-red-300 transition-all w-full
+              ${collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'}`}
+          >
+            <LogOut size={18} />
+            {!collapsed && 'Cerrar sesión'}
+          </button>
         </div>
-        <button
-          onClick={() => setWalkthroughOpen(true)}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-blue-100 hover:bg-accent/30 hover:text-white transition-all w-full"
-        >
-          <HelpCircle size={18} />
-          Tour guiado
-        </button>
-        <button
-          onClick={handleSignOut}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-blue-100 hover:bg-red-500/20 hover:text-red-300 transition-all w-full"
-        >
-          <LogOut size={18} />
-          Cerrar sesión
-        </button>
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="flex h-screen bg-brand-bg overflow-hidden">
       <Walkthrough open={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
 
       {/* Sidebar desktop */}
-      <aside className="hidden lg:flex w-64 flex-col bg-primary flex-shrink-0">
+      <aside className={`hidden lg:flex flex-col bg-primary flex-shrink-0 transition-all duration-200 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
         <SidebarContent />
       </aside>
 
@@ -161,7 +198,7 @@ export function AppLayout() {
             >
               <X size={20} />
             </button>
-            <SidebarContent />
+            <SidebarContent mobile />
           </aside>
         </div>
       )}

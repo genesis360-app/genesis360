@@ -60,6 +60,7 @@ interface FilaInventario {
   sku: string
   producto_nombre: string   // resuelto al procesar
   producto_id: string       // resuelto al procesar
+  tiene_series: boolean
   cantidad: number
   precio_costo?: number
   ubicacion?: string
@@ -69,6 +70,7 @@ interface FilaInventario {
   fecha_vencimiento?: string
   lpn?: string
   motivo?: string
+  numeros_serie?: string[]  // solo para productos serializados
   estadoFilaImport: 'ok' | 'error'
   errores: string[]
 }
@@ -120,7 +122,7 @@ export default function ImportarProductosPage() {
   const { data: productosMap = {} } = useQuery({
     queryKey: ['productos-sku-map', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('productos').select('id, nombre, sku, precio_costo, stock_actual').eq('tenant_id', tenant!.id).eq('activo', true)
+      const { data } = await supabase.from('productos').select('id, nombre, sku, precio_costo, stock_actual, tiene_series').eq('tenant_id', tenant!.id).eq('activo', true)
       const map: Record<string, any> = {}
       ;(data ?? []).forEach(p => { map[p.sku.toUpperCase()] = p })
       return map
@@ -253,19 +255,20 @@ export default function ImportarProductosPage() {
 
   const descargarPlantillaInventario = () => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['sku','cantidad','precio_costo','ubicacion','estado','proveedor','nro_lote','fecha_vencimiento','lpn','motivo'],
-      ['TORN-0001',100,150,'Depósito A','Disponible','Proveedor A','L-2024-001','2025-12-31','','Carga inicial'],
-      ['PINT-0001',20,'','Estante 2','','','','','',''],
+      ['sku','cantidad','precio_costo','ubicacion','estado','proveedor','nro_lote','fecha_vencimiento','lpn','motivo','numeros_serie'],
+      ['TORN-0001',100,150,'Depósito A','Disponible','Proveedor A','L-2024-001','2025-12-31','','Carga inicial',''],
+      ['PINT-0001',20,'','Estante 2','','','','','','',''],
+      ['CELULAR-001','','','Depósito B','','','','','','Carga inicial','SN-0001,SN-0002,SN-0003'],
     ])
     const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-    ;['A','B','C','D','E','F','G','H','I','J'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
-    ws['!cols'] = [{ wch:15 },{ wch:12 },{ wch:14 },{ wch:15 },{ wch:15 },{ wch:15 },{ wch:15 },{ wch:18 },{ wch:15 },{ wch:20 }]
+    ;['A','B','C','D','E','F','G','H','I','J','K'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
+    ws['!cols'] = [{ wch:15 },{ wch:12 },{ wch:14 },{ wch:15 },{ wch:15 },{ wch:15 },{ wch:15 },{ wch:18 },{ wch:15 },{ wch:20 },{ wch:35 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Inventario')
     const wsRef = XLSX.utils.aoa_to_sheet([
       ['Campo','Requerido','Notas'],
       ['sku','SÍ','Debe existir en el catálogo de productos'],
-      ['cantidad','SÍ','Cantidad a ingresar. Entero positivo.'],
+      ['cantidad','SÍ (no serializado)','Cantidad a ingresar. Ignorado para productos con series (se usa la cantidad de numeros_serie).'],
       ['precio_costo','no','Precio de costo del ingreso. Si vacío, usa el del producto.'],
       ['ubicacion','no','Nombre de la ubicación. Debe existir en Configuración.'],
       ['estado','no','Estado del inventario. Debe existir en Configuración.'],
@@ -274,8 +277,9 @@ export default function ImportarProductosPage() {
       ['fecha_vencimiento','no','Formato YYYY-MM-DD. Ej: 2025-12-31'],
       ['lpn','no','Identificador del bulto. Se autogenera si está vacío.'],
       ['motivo','no','Motivo del ingreso. Ej: Carga inicial, Reposición, etc.'],
+      ['numeros_serie','SÍ (serializado)','Solo para productos con series. Separar con coma. Ej: SN-001,SN-002,SN-003. La cantidad se ignora y se usa la cantidad de series listadas.'],
     ])
-    wsRef['!cols'] = [{ wch:20 },{ wch:12 },{ wch:60 }]
+    wsRef['!cols'] = [{ wch:20 },{ wch:18 },{ wch:75 }]
     XLSX.utils.book_append_sheet(wb, wsRef, 'Referencia')
     XLSX.writeFile(wb, 'plantilla_inventario.xlsx')
   }
@@ -295,16 +299,31 @@ export default function ImportarProductosPage() {
           const cantidad = parseInt(String(row.cantidad || '0')) || 0
           const producto = productosMap[sku]
 
+          const tieneSeries = producto?.tiene_series ?? false
+          // Parsear números de serie (separados por coma/punto y coma)
+          const numerosSerieRaw = String(row.numeros_serie || '').trim()
+          const numerosSerie = numerosSerieRaw
+            ? numerosSerieRaw.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+            : []
+
           if (!sku) errores.push('SKU requerido')
           else if (!producto) errores.push(`SKU "${sku}" no existe`)
-          if (cantidad <= 0) errores.push('Cantidad debe ser mayor a 0')
+
+          if (tieneSeries) {
+            if (numerosSerie.length === 0) errores.push('Producto serializado: completá la columna numeros_serie (ej: SN001,SN002)')
+          } else {
+            if (cantidad <= 0) errores.push('Cantidad debe ser mayor a 0')
+          }
+
+          const cantidadFinal = tieneSeries ? numerosSerie.length : cantidad
 
           return {
             idx,
             sku,
             producto_nombre: producto?.nombre ?? '—',
             producto_id: producto?.id ?? '',
-            cantidad,
+            tiene_series: tieneSeries,
+            cantidad: cantidadFinal,
             precio_costo: parseFloat(String(row.precio_costo || '').replace(',', '.')) || undefined,
             ubicacion: String(row.ubicacion || '').trim() || undefined,
             estado: String(row.estado || '').trim() || undefined,
@@ -313,6 +332,7 @@ export default function ImportarProductosPage() {
             fecha_vencimiento: parseFecha(row.fecha_vencimiento),
             lpn: String(row.lpn || '').trim() || undefined,
             motivo: String(row.motivo || '').trim() || undefined,
+            numeros_serie: tieneSeries ? numerosSerie : undefined,
             estadoFilaImport: errores.length > 0 ? 'error' : 'ok',
             errores,
           }
@@ -363,7 +383,22 @@ export default function ImportarProductosPage() {
         }).select().single()
         if (lineaErr) throw lineaErr
 
-        // 2. Registrar movimiento
+        // 2. Si es serializado: insertar cada número de serie
+        if (fila.tiene_series && fila.numeros_serie && fila.numeros_serie.length > 0) {
+          const seriesPayload = fila.numeros_serie.map(nro_serie => ({
+            tenant_id: tenant!.id,
+            producto_id: fila.producto_id,
+            linea_id: linea.id,
+            nro_serie,
+            estado_id,
+            reservado: false,
+            activo: true,
+          }))
+          const { error: seriesErr } = await supabase.from('inventario_series').insert(seriesPayload)
+          if (seriesErr) throw seriesErr
+        }
+
+        // 3. Registrar movimiento
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id,
           producto_id: fila.producto_id,

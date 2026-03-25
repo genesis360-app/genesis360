@@ -171,6 +171,37 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Rango personalizado**: tipo `Periodo = '7d'|'30d'|'90d'|'mes'|'custom'`. `getFechaDesde()` y `getFechaHasta()` manejan `custom`. Query ventas agrega `.lte('created_at', getFechaHasta())` solo para custom.
 - **Filtro categoría**: `categoriaFiltro: string | null` en estado. `rankingProductos` incluye `categoria_id`. Filtra `topProductos`, `sinMovimiento` y `margenProductos`.
 
+### Ventas + Métricas (v0.29.0)
+- **Trazabilidad LPN→venta**: `linea_id` en `venta_items` (columna ya existía en schema). Non-series: pre-fetch linea primaria en `agregarProducto` usando `getRebajeSort` → guarda en `CartItem.linea_id`. Series: `linea_id` del primer serie seleccionado (null si múltiples lineas).
+- **LPN en carrito**: badge azul junto al SKU para non-series; LPNs únicos (deduplicados desde `series_disponibles`) debajo de chips de series seleccionadas.
+- **Vista galería ventas**: toggle lista/galería (LayoutGrid/List). Galería: grid 2-3 col con imagen, nombre, SKU, precio, stock. limit 60 en galería. `viewMode` en queryKey para refetch al cambiar.
+- **Margen objetivo**: `productos.margen_objetivo DECIMAL(5,2)` nullable (migración 015). Campo en ProductoFormPage con indicador ▲/▼ tiempo real.
+- **Insights margen**: `insightsMargen = productos.filter(margen_objetivo != null).map(calcularDesvioPP)`. Solo aparece si hay productos con objetivo. Ordenado por `diff ASC` (peores primero).
+- **Métricas inventario**: query `movimientos_stock` por tipo/motivo en período → `motivosMap` con count/cantidad. Query `inventario_lineas` join `ubicaciones`+`productos` → `ubicacionMap` con valor (cantidad × precio_costo).
+
+### v0.30.0 — Sprint UX (incluido en v0.31.0 deploy)
+- **Bug #19 fix**: ImportarProductosPage — `numeros_serie` en Excel → inserta `inventario_series`, cantidad = len(series).
+- **Proyección de cobertura**: DashboardPage — semáforo rojo ≤7d / ámbar ≤14d / verde >14d, colapsable.
+- **LPN en historial/ticket**: historial incluye `inventario_lineas(lpn)` + `venta_series(nro_serie)`. Modal y ticket muestran LPN/S/N.
+- **Motivos predefinidos caja**: `tipo='caja'` en `motivos_movimiento`. CajaPage chips pre-llenan Concepto.
+- **Invitación por email**: EF `invite-user` → `admin.inviteUserByEmail` + pre-crea `users`. Sin campo contraseña.
+- **Importación masiva clientes**: drag-drop/click, preview, duplicados por nombre case-insensitive.
+- **Combos multi-tipo**: `descuento_tipo` (`pct`/`monto_ars`/`monto_usd`) + `descuento_monto` (migración 016). VentasPage convierte USD→ARS vía `cotizacionUSD`.
+- **Sidebar colapsable**: ChevronLeft/Right, `w-16` modo colapsado, localStorage. Mobile no afectado.
+- **useModalKeyboard**: wired en MovimientosPage, GastosPage, UsuariosPage, VentasPage (seriesModal + ventaDetalle).
+- **Caja ingresos informativos**: pagos no-efectivo de ventas → `tipo='ingreso_informativo'` (no afecta saldo). CajaPage muestra en azul con `~` e icono `Info`.
+
+### v0.31.0 — Header, dark mode, UX fixes (deployado a PROD via PR #20)
+- **Header universal**: `darkMode:'class'` en Tailwind + toggle Moon/Sun en header. Header visible siempre (no solo mobile): brand name + user/rol a la izquierda; Moon/Sun, LifeBuoy (soporte), HelpCircle (tour), LogOut a la derecha. Tour y logout removidos del sidebar.
+- **Dashboard fixes**: Stock Crítico → `/alertas`. Links "Ver métricas" usan `setTab('metricas')` (no navegan a `/metricas`) → pestañas persisten. Insights con link `/metricas` también usan `setTab`.
+- **Ventas lista view**: imagen miniatura (w-8) a la izquierda en dropdown de búsqueda.
+- **Ventas galería**: `max-h-[28rem]`, cards `h-full` para altura uniforme.
+- **Modal series**: buscador de N/S y LPN en el modal de selección de series.
+- **Caja egreso**: bloquea si monto > saldoActual.
+- **Gastos caja cerrada**: bloquea nuevo gasto en efectivo si no hay sesión de caja abierta.
+- **Movimientos UX**: búsqueda limita a 5 resultados; label Cantidad muestra UoM; motivos predefinidos → text field oculto salvo "Otro"; mensaje "Sin datos de línea" distingue linea_id null vs linea eliminada.
+- **Reportes fixes**: Stock actual agrega N° Lote + Vencimiento + expande por series serializadas; Ventas parsea JSON de medio_pago; Estados exporta correctamente (quitado filtro activo).
+
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
 - Compactar manualmente con `/compact` cuando el contexto esté pesado.
@@ -179,27 +210,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ## Backlog pendiente
 
-### Inventario
-- [ ] Guardar `linea_id` en `venta_items` (trazabilidad LPN→venta) — deuda técnica
-- [ ] Mostrar LPN origen al registrar venta
-- [ ] Proyección de cobertura: días de stock restante por producto
-
-### Métricas
-- [ ] Margen objetivo: campo configurable por producto con insights automáticos
-- [ ] Métricas de inventario: órdenes, motivos, ubicaciones
-
-### Ventas
-- [ ] Vista productos tipo galería (imagen + título + precio)
-
-### Caja
-- [ ] Motivos predefinidos para ingreso/egreso (configurables en Config)
-- [ ] Ventas no-efectivo registradas en caja como ingreso informativo (opcional)
-
 ### UX / Config
-- [ ] `useModalKeyboard` wiring pendiente en: MovimientosPage, VentasPage, GastosPage, UsuariosPage
-- [ ] Combos: descuento en % o monto fijo $ o USD
-- [ ] Sidebar colapsable en desktop
-- [ ] Invitación por email real · Carga masiva clientes (CSV/Excel)
 
 ### Revenue
 - [ ] Límite de movimientos por plan (`max_movimientos`)

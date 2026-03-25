@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X, Chevr
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
+import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 
 const CATEGORIAS_GASTO = [
@@ -122,11 +123,18 @@ export default function GastosPage() {
 
   const cerrarModal = () => { setModalAbierto(false); setEditandoId(null); setForm(FORM_VACIO); setCajaSeleccionadaId(null) }
 
+  useModalKeyboard({ isOpen: modalAbierto, onClose: cerrarModal, onConfirm: () => { if (!guardando) guardar() } })
+
   // ── Guardar ──────────────────────────────────────────────────────────────
   const guardar = async () => {
     if (!form.descripcion.trim()) { toast.error('La descripción es requerida'); return }
     const monto = parseFloat(form.monto.replace(',', '.'))
     if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    // Bloquear si efectivo y no hay caja abierta (solo gastos nuevos)
+    if (!editandoId && form.medio_pago === 'Efectivo' && !sesionCajaId) {
+      toast.error('No hay caja abierta. Abrí una caja antes de registrar gastos en efectivo.')
+      return
+    }
 
     setGuardando(true)
     try {

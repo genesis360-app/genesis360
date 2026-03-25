@@ -71,6 +71,8 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 012 | `012_ubicacion_disponible_surtido.sql` | `disponible_surtido` en ubicaciones | ✅ | ✅ |
 | 013 | `013_aging_profiles.sql` | Aging profiles + reglas + `process_aging_profiles()` | ✅ | ✅ |
 | 014 | `014_rrhh_empleados.sql` | RRHH Phase 1: empleados, puestos, departamentos + `is_rrhh()` | ✅ | ✅ |
+| 015 | `015_margen_objetivo.sql` | `productos.margen_objetivo DECIMAL(5,2)` nullable | ✅ | ✅ |
+| 016 | `016_combos_descuento_tipo.sql` | `combos.descuento_tipo TEXT` + `descuento_monto DECIMAL(12,2)` | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -111,6 +113,9 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.26.0 | RRHH Phase 1: empleados, puestos, departamentos, cumpleaños + rol RRHH | 2026-03 |
 | v0.27.0 | Integración caja ↔ ventas ↔ gastos (efectivo auto-registra en caja_movimientos) | 2026-03 |
 | v0.28.0 | Dashboard: sin movimiento expandable + sugerencia pedido · Métricas: ganancia neta + rango custom + filtro categoría | 2026-03 |
+| v0.29.0 | Trazabilidad LPN→venta (linea_id en venta_items) · LPN en carrito · Vista galería ventas · Margen objetivo por SKU · Insights margen + Métricas inventario | 2026-03 |
+| v0.30.0 | Fix importar serializados · Proyección cobertura stock · LPN en ticket · Motivos caja · Invitación por email (EF invite-user) · Importación masiva clientes · Combos multi-tipo · Sidebar colapsable · useModalKeyboard wiring · Caja ingresos informativos | 2026-03 (incluido en v0.31.0) |
+| v0.31.0 | Header universal (user/rol + dark mode + ayuda + logout) · Dashboard: Stock Crítico→Alertas + links métricas con setTab · Ventas: imagen en lista + galería mejorada + buscador series · Caja: bloqueo egreso > saldo · Gastos: bloqueo si caja cerrada · Movimientos UX (búsqueda, UoM, motivos, trazabilidad) · Reportes: stock con lote/vencimiento/series + medio_pago parseado + estados fix | 2026-03 |
 
 ---
 

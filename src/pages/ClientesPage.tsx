@@ -1,12 +1,24 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Users, Plus, Search, Phone, Mail, FileText, X,
-  ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award
+  ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
+  Upload, Download, CheckCircle, XCircle, FileSpreadsheet,
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
+
+interface FilaCliente {
+  idx: number
+  nombre: string
+  telefono?: string
+  email?: string
+  notas?: string
+  estado: 'nuevo' | 'duplicado' | 'error'
+  errores: string[]
+}
 
 function formatMoneda(v: number) {
   return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
@@ -44,6 +56,13 @@ export default function ClientesPage() {
   const [form, setForm] = useState<ClienteForm>(FORM_VACIO)
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  // Import state
+  const fileRefImport = useRef<HTMLInputElement>(null)
+  const [showImport, setShowImport] = useState(false)
+  const [filasImport, setFilasImport] = useState<FilaCliente[]>([])
+  const [importando, setImportando] = useState(false)
+  const [resultadoImport, setResultadoImport] = useState<{ creados: number; errores: number } | null>(null)
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: clientes = [], isLoading } = useQuery({
@@ -152,6 +171,75 @@ export default function ClientesPage() {
     qc.invalidateQueries({ queryKey: ['clientes-stats'] })
   }
 
+  // ── Importación masiva ───────────────────────────────────────────────────
+  const descargarPlantilla = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['nombre', 'telefono', 'email', 'notas'],
+      ['Juan Pérez', '+54 11 1234-5678', 'juan@email.com', 'Cliente frecuente'],
+      ['María García', '', 'maria@empresa.com', ''],
+    ])
+    const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
+    ;['A', 'B', 'C', 'D'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
+    ws['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 28 }, { wch: 35 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
+    XLSX.writeFile(wb, 'plantilla_clientes.xlsx')
+  }
+
+  const procesarArchivo = (file: File) => {
+    setResultadoImport(null)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
+        const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
+        if (!rows.length) { toast.error('El archivo está vacío'); return }
+
+        const nombresActuales = new Set((clientes as any[]).map(c => c.nombre.toLowerCase()))
+
+        const filas: FilaCliente[] = rows.map((row, idx) => {
+          const errores: string[] = []
+          const nombre = String(row.nombre || '').trim()
+          if (!nombre) errores.push('Nombre requerido')
+          const isDuplicado = nombresActuales.has(nombre.toLowerCase())
+          return {
+            idx,
+            nombre,
+            telefono: String(row.telefono || '').trim() || undefined,
+            email: String(row.email || '').trim() || undefined,
+            notas: String(row.notas || '').trim() || undefined,
+            estado: errores.length > 0 ? 'error' : isDuplicado ? 'duplicado' : 'nuevo',
+            errores,
+          }
+        })
+        setFilasImport(filas)
+      } catch { toast.error('Error al leer el archivo.') }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  const confirmarImport = async () => {
+    setImportando(true)
+    let creados = 0, errores = 0
+    for (const fila of filasImport.filter(f => f.estado === 'nuevo')) {
+      try {
+        const { error } = await supabase.from('clientes').insert({
+          tenant_id: tenant!.id,
+          nombre: fila.nombre,
+          telefono: fila.telefono ?? null,
+          email: fila.email ?? null,
+          notas: fila.notas ?? null,
+        })
+        if (error) throw error
+        creados++
+      } catch { errores++ }
+    }
+    qc.invalidateQueries({ queryKey: ['clientes'] })
+    setResultadoImport({ creados, errores })
+    setImportando(false)
+    toast.success(`${creados} clientes importados`)
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -161,10 +249,16 @@ export default function ClientesPage() {
           <h1 className="text-2xl font-bold text-primary">Clientes</h1>
           <p className="text-gray-500 text-sm mt-0.5">{clientes.length} registrado{clientes.length !== 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => abrirModal()}
-          className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
-          <Plus size={18} /> Nuevo cliente
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }}
+            className="flex items-center gap-2 border border-gray-200 text-gray-600 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 transition-all">
+            <Upload size={16} /> Importar
+          </button>
+          <button onClick={() => abrirModal()}
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
+            <Plus size={18} /> Nuevo cliente
+          </button>
+        </div>
       </div>
 
       {/* Stats cards */}
@@ -398,6 +492,124 @@ export default function ClientesPage() {
                 className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
                 {saving ? 'Guardando...' : editId ? 'Guardar cambios' : 'Crear cliente'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal importación masiva */}
+      {showImport && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
+                <FileSpreadsheet size={18} className="text-accent" /> Importar clientes
+              </h2>
+              <button onClick={() => setShowImport(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Resultado */}
+              {resultadoImport && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+                  <CheckCircle size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-semibold text-green-800">Importación completada</p>
+                    <p className="text-sm text-green-700 mt-0.5">{resultadoImport.creados} creados · {resultadoImport.errores} errores</p>
+                    <button onClick={() => setShowImport(false)} className="mt-2 text-sm text-green-700 font-medium hover:underline">Cerrar →</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Acciones */}
+              {!resultadoImport && (
+                <div className="flex gap-3 flex-wrap">
+                  <button onClick={descargarPlantilla}
+                    className="flex items-center gap-2 border border-accent text-accent font-medium px-4 py-2 rounded-xl hover:bg-accent/5 text-sm transition-all">
+                    <Download size={14} /> Descargar plantilla
+                  </button>
+                  <button onClick={() => fileRefImport.current?.click()}
+                    className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2 rounded-xl text-sm transition-all">
+                    <Upload size={14} /> Cargar archivo
+                  </button>
+                  <input ref={fileRefImport} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivo(f); e.target.value = '' }} />
+                </div>
+              )}
+
+              {/* Vista previa */}
+              {filasImport.length > 0 && !resultadoImport && (
+                <>
+                  <div className="flex items-center gap-3 text-sm flex-wrap">
+                    <span className="text-green-600 font-medium flex items-center gap-1">
+                      <CheckCircle size={14} /> {filasImport.filter(f => f.estado === 'nuevo').length} nuevos
+                    </span>
+                    {filasImport.filter(f => f.estado === 'duplicado').length > 0 && (
+                      <span className="text-amber-600 font-medium">
+                        ⚠ {filasImport.filter(f => f.estado === 'duplicado').length} duplicados (se omitirán)
+                      </span>
+                    )}
+                    {filasImport.filter(f => f.estado === 'error').length > 0 && (
+                      <span className="text-red-600 font-medium flex items-center gap-1">
+                        <XCircle size={14} /> {filasImport.filter(f => f.estado === 'error').length} con errores
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="border border-gray-100 rounded-xl overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                          <th className="px-3 py-2 text-left">Nombre</th>
+                          <th className="px-3 py-2 text-left hidden sm:table-cell">Teléfono</th>
+                          <th className="px-3 py-2 text-left hidden sm:table-cell">Email</th>
+                          <th className="px-3 py-2 text-left">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {filasImport.slice(0, 50).map(f => (
+                          <tr key={f.idx} className={f.estado === 'error' ? 'bg-red-50' : f.estado === 'duplicado' ? 'bg-amber-50/50' : ''}>
+                            <td className="px-3 py-2 font-medium text-gray-800">{f.nombre || <span className="text-gray-400 italic">—</span>}</td>
+                            <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.telefono ?? '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 hidden sm:table-cell">{f.email ?? '—'}</td>
+                            <td className="px-3 py-2">
+                              {f.estado === 'nuevo' && <span className="text-xs text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full">Nuevo</span>}
+                              {f.estado === 'duplicado' && <span className="text-xs text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">Existe</span>}
+                              {f.estado === 'error' && <span className="text-xs text-red-600 bg-red-100 px-1.5 py-0.5 rounded-full">{f.errores[0]}</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {filasImport.length > 50 && (
+                      <p className="text-xs text-gray-400 text-center py-2">Mostrando 50 de {filasImport.length} filas</p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 justify-end">
+                    <button onClick={() => setFilasImport([])}
+                      className="border border-gray-200 text-gray-600 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm">
+                      Limpiar
+                    </button>
+                    <button onClick={confirmarImport} disabled={importando || filasImport.filter(f => f.estado === 'nuevo').length === 0}
+                      className="bg-accent hover:bg-accent/90 text-white font-semibold px-5 py-2.5 rounded-xl text-sm disabled:opacity-50 transition-all">
+                      {importando ? 'Importando...' : `Importar ${filasImport.filter(f => f.estado === 'nuevo').length} clientes`}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {filasImport.length === 0 && !resultadoImport && (
+                <div
+                  className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
+                  onClick={() => fileRefImport.current?.click()}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>
+                  <FileSpreadsheet size={32} className="text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-500">Arrastrá o hacé click para subir tu Excel</p>
+                  <p className="text-xs text-gray-400 mt-1">Columnas: nombre, telefono, email, notas</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

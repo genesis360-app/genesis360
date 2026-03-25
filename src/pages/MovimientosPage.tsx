@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useCotizacion } from '@/hooks/useCotizacion'
+import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 import type { Producto } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
@@ -56,6 +57,8 @@ export default function MovimientosPage() {
   const [rebajeGrupoId, setRebajeGrupoId] = useState<string | null>(null)
   const [movDetalle, setMovDetalle] = useState<any | null>(null)
   const [searchFocused, setSearchFocused] = useState(false)
+  const [ingresoMotivoSelect, setIngresoMotivoSelect] = useState('')
+  const [rebajeMotivoSelect, setRebajeMotivoSelect] = useState('')
 
   const { data: movimientos = [], isLoading } = useQuery({
     queryKey: ['movimientos', tenant?.id],
@@ -77,7 +80,7 @@ export default function MovimientosPage() {
     queryFn: async () => {
       let q = supabase.from('productos')
         .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
-        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(12)
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(5)
       if (form.productoSearch.length > 0)
         q = q.or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%`)
       const { data } = await q
@@ -300,7 +303,18 @@ export default function MovimientosPage() {
     setRebajeCantidad(''); setRebajeMotivo(''); setRebajeSeries([])
     setRebajeSearch('')
     setRebajeGrupoId(null)
+    setIngresoMotivoSelect('')
+    setRebajeMotivoSelect('')
   }
+
+  useModalKeyboard({
+    isOpen: modal !== null,
+    onClose: closeModal,
+    onConfirm: () => {
+      if (modal === 'ingreso' && !ingresoMutation.isPending) ingresoMutation.mutate()
+      if (modal === 'rebaje' && !rebajeMutation.isPending) rebajeMutation.mutate()
+    },
+  })
 
   const filtered = movimientos.filter(m => {
     if (!search) return true
@@ -550,7 +564,11 @@ export default function MovimientosPage() {
                     </>
                   ) : (
                     <div className="col-span-2">
-                      <p className="text-xs text-amber-500 italic">Sin datos de línea — movimiento registrado antes del sistema de trazabilidad</p>
+                      <p className="text-xs text-amber-500 italic">
+                        {movDetalle.linea_id
+                          ? 'La línea de inventario asociada ya no está disponible'
+                          : 'Sin línea asociada — movimiento registrado antes del sistema de trazabilidad'}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -681,7 +699,11 @@ export default function MovimientosPage() {
                   </div>
                 ) : (
                   <div className="mb-3">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Cantidad{(selectedProduct as any)?.unidad_medida && (
+                        <span className="ml-1 font-normal text-gray-400">({(selectedProduct as any).unidad_medida})</span>
+                      )}
+                    </label>
                     <input type="number" min="1" value={form.cantidad} onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
                       className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
                   </div>
@@ -759,35 +781,40 @@ export default function MovimientosPage() {
 
 
                 <div className="mb-5">
-				  <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
-				  {motivos.filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ambos').length > 0 ? (
-					<div className="space-y-2">
-					  <select
-						onChange={e => {
-						  if (e.target.value === '__otro__') {
-							setForm(p => ({ ...p, motivo: '' }))
-						  } else {
-							setForm(p => ({ ...p, motivo: e.target.value }))
-						  }
-						}}
-						className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
-						<option value="">Seleccioná un motivo...</option>
-						{(motivos as any[])
-						  .filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ambos')
-						  .map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
-						<option value="__otro__">Otro (escribir)</option>
-					  </select>
-					  <input type="text" value={form.motivo}
-						onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
-						placeholder="Escribí el motivo..."
-						className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
-					</div>
-				  ) : (
-					<input type="text" value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
-					  placeholder="Ej: Compra a proveedor"
-					  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
-				  )}
-				</div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
+                  {motivos.filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ambos').length > 0 ? (
+                    <div className="space-y-2">
+                      <select
+                        value={ingresoMotivoSelect}
+                        onChange={e => {
+                          const val = e.target.value
+                          setIngresoMotivoSelect(val)
+                          if (val === '__otro__') {
+                            setForm(p => ({ ...p, motivo: '' }))
+                          } else {
+                            setForm(p => ({ ...p, motivo: val }))
+                          }
+                        }}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
+                        <option value="">Seleccioná un motivo...</option>
+                        {(motivos as any[])
+                          .filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ambos')
+                          .map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                        <option value="__otro__">Otro (escribir)</option>
+                      </select>
+                      {ingresoMotivoSelect === '__otro__' && (
+                        <input type="text" value={form.motivo}
+                          onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
+                          placeholder="Escribí el motivo..."
+                          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                      )}
+                    </div>
+                  ) : (
+                    <input type="text" value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
+                      placeholder="Ej: Compra a proveedor"
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  )}
+                </div>
               </>
             )}
 
@@ -1000,35 +1027,40 @@ export default function MovimientosPage() {
                     )}
 
                     <div className="mb-5">
-					  <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
-					  {motivos.filter((m: any) => m.tipo === 'rebaje' || m.tipo === 'ambos').length > 0 ? (
-						<div className="space-y-2">
-						  <select
-							onChange={e => {
-							  if (e.target.value === '__otro__') {
-								setRebajeMotivo('')
-							  } else {
-								setRebajeMotivo(e.target.value)
-							  }
-							}}
-							className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
-							<option value="">Seleccioná un motivo...</option>
-							{(motivos as any[])
-							  .filter((m: any) => m.tipo === 'rebaje' || m.tipo === 'ambos')
-							  .map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
-							<option value="__otro__">Otro (escribir)</option>
-						  </select>
-						  <input type="text" value={rebajeMotivo}
-							onChange={e => setRebajeMotivo(e.target.value)}
-							placeholder="Escribí el motivo..."
-							className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
-						</div>
-					  ) : (
-						<input type="text" value={rebajeMotivo} onChange={e => setRebajeMotivo(e.target.value)}
-						  placeholder="Ej: Venta, pérdida, consumo..."
-						  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
-					  )}
-					</div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Motivo</label>
+                      {motivos.filter((m: any) => m.tipo === 'rebaje' || m.tipo === 'ambos').length > 0 ? (
+                        <div className="space-y-2">
+                          <select
+                            value={rebajeMotivoSelect}
+                            onChange={e => {
+                              const val = e.target.value
+                              setRebajeMotivoSelect(val)
+                              if (val === '__otro__') {
+                                setRebajeMotivo('')
+                              } else {
+                                setRebajeMotivo(val)
+                              }
+                            }}
+                            className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent">
+                            <option value="">Seleccioná un motivo...</option>
+                            {(motivos as any[])
+                              .filter((m: any) => m.tipo === 'rebaje' || m.tipo === 'ambos')
+                              .map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                            <option value="__otro__">Otro (escribir)</option>
+                          </select>
+                          {rebajeMotivoSelect === '__otro__' && (
+                            <input type="text" value={rebajeMotivo}
+                              onChange={e => setRebajeMotivo(e.target.value)}
+                              placeholder="Escribí el motivo..."
+                              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                          )}
+                        </div>
+                      ) : (
+                        <input type="text" value={rebajeMotivo} onChange={e => setRebajeMotivo(e.target.value)}
+                          placeholder="Ej: Venta, pérdida, consumo..."
+                          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                      )}
+                    </div>
                   </>
                 )}
               </>

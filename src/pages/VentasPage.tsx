@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { useCotizacion } from '@/hooks/useCotizacion'
+import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import toast from 'react-hot-toast'
@@ -55,6 +57,7 @@ export default function VentasPage() {
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
+  const { cotizacion: cotizacionUSD } = useCotizacion()
   const [tab, setTab] = useState<Tab>('nueva')
   const [ventaGrupoId, setVentaGrupoId] = useState<string | null>(null)
 
@@ -97,6 +100,10 @@ export default function VentasPage() {
 
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
+  const [seriesBusqueda, setSeriesBusqueda] = useState('')
+
+  useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
+  useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => setVentaDetalle(null) })
 
   // Foco en buscador de productos
   const [searchFocused, setSearchFocused] = useState(false)
@@ -190,7 +197,7 @@ export default function VentasPage() {
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado],
     queryFn: async () => {
-      let q = supabase.from('ventas').select('*, venta_items(id, cantidad, precio_unitario, descuento, subtotal, productos(nombre,sku))')
+      let q = supabase.from('ventas').select('*, venta_items(id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,tiene_series), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
       if (filterEstado) q = q.eq('estado', filterEstado)
       const { data, error } = await q
@@ -317,30 +324,50 @@ export default function VentasPage() {
     queryKey: ['combos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('combos')
-        .select('id, nombre, producto_id, cantidad, descuento_pct')
+        .select('id, nombre, producto_id, cantidad, descuento_pct, descuento_tipo, descuento_monto')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       return data ?? []
     },
     enabled: !!tenant,
   })
 
-  const findCombo = (productoId: string, cantidad: number, descActual: number) => {
+  const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
-      .filter(c => c.producto_id === productoId && cantidad >= c.cantidad && descActual !== c.descuento_pct)
+      .filter(c => {
+        if (c.producto_id !== productoId || cantidad < c.cantidad) return false
+        const tipo = c.descuento_tipo ?? 'pct'
+        // No re-sugerir si ya está aplicado
+        if (tipo === 'pct' && item.descuento_tipo === 'pct' && item.descuento === c.descuento_pct) return false
+        if (tipo === 'monto_ars' && item.descuento_tipo === 'monto' && item.descuento === c.descuento_monto) return false
+        if (tipo === 'monto_usd' && item.descuento_tipo === 'monto' && item.descuento === Math.round(c.descuento_monto * (cotizacionUSD || 1))) return false
+        return true
+      })
       .sort((a, b) => b.cantidad - a.cantidad)[0] ?? null
+  }
+
+  const comboDescLabel = (combo: any) => {
+    const tipo = combo.descuento_tipo ?? 'pct'
+    if (tipo === 'pct') return `${combo.descuento_pct}% off`
+    if (tipo === 'monto_usd') return `USD ${combo.descuento_monto} off`
+    return `$${combo.descuento_monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} off`
   }
 
   const aplicarCombo = (idx: number, combo: any) => {
     const item = cart[idx]
     const comboUnits = Math.floor(item.cantidad / combo.cantidad) * combo.cantidad
     const remainder = item.cantidad % combo.cantidad
+    const tipo = combo.descuento_tipo ?? 'pct'
+    const descuento = tipo === 'pct' ? combo.descuento_pct
+      : tipo === 'monto_usd' ? Math.round(combo.descuento_monto * (cotizacionUSD || 1))
+      : combo.descuento_monto
+    const descuento_tipo: DescTipo = tipo === 'pct' ? 'pct' : 'monto'
     const rows: CartItem[] = []
     if (comboUnits > 0)
-      rows.push({ ...item, cantidad: comboUnits, descuento: combo.descuento_pct, descuento_tipo: 'pct' })
+      rows.push({ ...item, cantidad: comboUnits, descuento, descuento_tipo })
     if (remainder > 0)
       rows.push({ ...item, cantidad: remainder, descuento: 0, descuento_tipo: 'pct' })
     setCart(prev => [...prev.slice(0, idx), ...rows, ...prev.slice(idx + 1)])
-    toast.success(`Combo aplicado: ${comboUnits} und. con ${combo.descuento_pct}% off${remainder > 0 ? ` + ${remainder} sin descuento` : ''}`)
+    toast.success(`Combo aplicado: ${comboUnits} uds. con ${comboDescLabel(combo)}${remainder > 0 ? ` + ${remainder} sin descuento` : ''}`)
   }
 
   const splitItem = (idx: number) => {
@@ -596,6 +623,21 @@ export default function VentasPage() {
           usuario_id: user?.id,
         }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
       }
+      // Registros informativos para medios no-efectivo (no afectan saldo)
+      const totalNoCash = total - montoEfectivoCaja
+      if (estado === 'despachada' && sesionCajaId && totalNoCash > 0.01) {
+        const tiposNoCash = [...new Set(
+          mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo' && m.tipo !== '').map(m => m.tipo)
+        )].join(' + ')
+        void supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id,
+          sesion_id: sesionCajaId,
+          tipo: 'ingreso_informativo',
+          concepto: `[${tiposNoCash || 'No efectivo'}] Venta #${venta.numero}`,
+          monto: totalNoCash,
+          usuario_id: user?.id,
+        })
+      }
       const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })) })
@@ -833,18 +875,27 @@ export default function VentasPage() {
                     <div className="absolute top-full mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
                       {(productosBusqueda as any[]).map(p => (
                         <button key={p.id} onClick={() => agregarProducto(p)}
-                          className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0 flex items-center justify-between">
-                          <div>
-                            <span className="font-medium">{p.nombre}</span>
-                            <span className="text-gray-400 ml-2 text-xs font-mono">{p.sku}</span>
-                            {p.tiene_series && <span className="ml-2 text-xs bg-purple-100 text-purple-600 px-1 rounded">series</span>}
+                          className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm border-b border-gray-50 last:border-0 flex items-center gap-3">
+                          {/* Imagen pequeña */}
+                          <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                            {p.imagen_url
+                              ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover" />
+                              : <Package size={14} className="text-gray-300" />
+                            }
                           </div>
-                          <div className="text-right">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className="font-medium truncate">{p.nombre}</span>
+                              <span className="text-gray-400 text-xs font-mono flex-shrink-0">{p.sku}</span>
+                              {p.tiene_series && <span className="text-xs bg-purple-100 text-purple-600 px-1 rounded flex-shrink-0">series</span>}
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
                             <p className="font-semibold text-primary">${p.precio_venta?.toLocaleString('es-AR')}</p>
                             <p className="text-xs text-gray-400">
                               {p.stock_filtrado
-                                ? <span className="text-blue-600 font-medium">{p.stock_disponible} disp. en grupo</span>
-                                : `${p.stock_actual} en stock`
+                                ? <span className="text-blue-600 font-medium">{p.stock_disponible} disp.</span>
+                                : `${p.stock_actual} stock`
                               }
                             </p>
                           </div>
@@ -874,10 +925,10 @@ export default function VentasPage() {
 
               {/* Galería de productos */}
               {viewMode === 'galeria' && productosBusqueda.length > 0 && (
-                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">
+                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[28rem] overflow-y-auto pr-1">
                   {(productosBusqueda as any[]).map(p => (
                     <button key={p.id} onClick={() => agregarProducto(p)}
-                      className="flex flex-col items-center text-center p-2.5 border border-gray-200 rounded-xl hover:border-accent hover:shadow-sm transition-all bg-white">
+                      className="flex flex-col items-center text-center p-2.5 border border-gray-200 rounded-xl hover:border-accent hover:shadow-sm transition-all bg-white h-full">
                       <div className="w-full aspect-square bg-gray-50 rounded-lg flex items-center justify-center overflow-hidden mb-2">
                         {p.imagen_url
                           ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover rounded-lg" />
@@ -991,12 +1042,12 @@ export default function VentasPage() {
 
                       {/* Sugerencia de combo */}
                       {!item.tiene_series && (() => {
-                        const combo = findCombo(item.producto_id, item.cantidad, item.descuento)
+                        const combo = findCombo(item.producto_id, item.cantidad, item)
                         if (!combo) return null
                         return (
                           <div className="mt-1.5 flex items-center gap-2 text-xs bg-amber-50 text-amber-700 rounded-lg px-3 py-1.5 border border-amber-200">
                             <Gift size={12} />
-                            <span className="flex-1">Combo: {combo.cantidad}× con {combo.descuento_pct}% off disponible</span>
+                            <span className="flex-1">Combo: {combo.cantidad}× con {comboDescLabel(combo)} disponible</span>
                             <button onClick={() => aplicarCombo(idx, combo)}
                               className="font-semibold hover:underline text-amber-800">
                               Aplicar
@@ -1347,23 +1398,39 @@ export default function VentasPage() {
             )}
 
             <div className="space-y-2 mb-4">
-              {(ventaDetalle.venta_items ?? []).map((item: any) => (
-                <div key={item.id} className="flex justify-between text-sm bg-gray-50 rounded-xl px-3 py-2">
-                  <div>
-                    <p className="font-medium">{item.productos?.nombre}</p>
-                    <p className="text-xs text-gray-400">{item.cantidad} × ${item.precio_unitario?.toLocaleString('es-AR')}</p>
-                    {item.descuento > 0 && (() => {
-                      const descMonto = (item.precio_unitario * item.cantidad) - item.subtotal
-                      return (
-                        <p className="text-xs text-green-600 font-medium">
-                          Descuento {item.descuento}% · −${descMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-                        </p>
-                      )
-                    })()}
+              {(ventaDetalle.venta_items ?? []).map((item: any) => {
+                const nrosSerie = (item.venta_series ?? [])
+                  .map((vs: any) => vs.inventario_series?.nro_serie)
+                  .filter(Boolean)
+                const lpn = item.inventario_lineas?.lpn
+                return (
+                  <div key={item.id} className="flex justify-between text-sm bg-gray-50 rounded-xl px-3 py-2">
+                    <div>
+                      <p className="font-medium">{item.productos?.nombre}</p>
+                      <p className="text-xs text-gray-400">{item.cantidad} × ${item.precio_unitario?.toLocaleString('es-AR')}</p>
+                      {item.descuento > 0 && (() => {
+                        const descMonto = (item.precio_unitario * item.cantidad) - item.subtotal
+                        return (
+                          <p className="text-xs text-green-600 font-medium">
+                            Descuento {item.descuento}% · −${descMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                          </p>
+                        )
+                      })()}
+                      {nrosSerie.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {nrosSerie.map((s: string) => (
+                            <span key={s} className="text-xs font-mono text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">{s}</span>
+                          ))}
+                        </div>
+                      )}
+                      {nrosSerie.length === 0 && lpn && (
+                        <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-1 inline-block">LPN: {lpn}</span>
+                      )}
+                    </div>
+                    <p className="font-semibold">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
                   </div>
-                  <p className="font-semibold">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
-                </div>
-              ))}
+                )
+              })}
             </div>
 
             <div className="border-t border-gray-100 pt-3 mb-4 space-y-1 text-sm">
@@ -1385,16 +1452,22 @@ export default function VentasPage() {
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  const items = (ventaDetalle.venta_items ?? []).map((item: any) => ({
-                    nombre: item.productos?.nombre ?? '',
-                    cantidad: item.cantidad,
-                    precio_unitario: item.precio_unitario,
-                    descuento: item.descuento ?? 0,
-                    descuento_tipo: 'pct' as DescTipo,
-                    subtotal: item.subtotal,
-                    tiene_series: false,
-                    series_seleccionadas: [],
-                  }))
+                  const items = (ventaDetalle.venta_items ?? []).map((item: any) => {
+                    const nrosSerie = (item.venta_series ?? [])
+                      .map((vs: any) => vs.inventario_series?.nro_serie)
+                      .filter(Boolean)
+                    return {
+                      nombre: item.productos?.nombre ?? '',
+                      cantidad: item.cantidad,
+                      precio_unitario: item.precio_unitario,
+                      descuento: item.descuento ?? 0,
+                      descuento_tipo: 'pct' as DescTipo,
+                      subtotal: item.subtotal,
+                      tiene_series: nrosSerie.length > 0,
+                      series_seleccionadas: nrosSerie,
+                      lpn: item.inventario_lineas?.lpn ?? null,
+                    }
+                  })
                   setTicketVenta({ ...ventaDetalle, items })
                 }}
                 className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-600 font-medium py-2.5 rounded-xl hover:bg-gray-50 transition-all text-sm">
@@ -1483,6 +1556,14 @@ export default function VentasPage() {
                           -{item.descuento_tipo === 'pct' ? `${item.descuento}%` : `$${item.descuento}`}
                         </span>
                       )}
+                      {item.tiene_series && (item.series_seleccionadas ?? []).length > 0 && (
+                        <p className="text-xs text-gray-400 font-mono mt-0.5 truncate">
+                          S/N: {(item.series_seleccionadas as string[]).join(', ')}
+                        </p>
+                      )}
+                      {!item.tiene_series && item.lpn && (
+                        <p className="text-xs text-gray-400 font-mono mt-0.5">LPN: {item.lpn}</p>
+                      )}
                     </div>
                     <div className="text-right whitespace-nowrap">
                       {item.descuento > 0 && (
@@ -1569,12 +1650,26 @@ export default function VentasPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-primary">Seleccionar series</h2>
-              <button onClick={() => setSeriesModal(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+              <button onClick={() => { setSeriesModal(null); setSeriesBusqueda('') }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            {/* Buscador */}
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar N/S o LPN..."
+                value={seriesBusqueda}
+                onChange={e => setSeriesBusqueda(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent"
+                autoFocus
+              />
             </div>
             <div className="space-y-1 max-h-60 overflow-y-auto mb-4">
               {seriesModal.lineas.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-4">No hay series disponibles</p>
-              ) : seriesModal.lineas.map((s: any) => {
+              ) : seriesModal.lineas
+                  .filter((s: any) => !seriesBusqueda || s.nro_serie?.toLowerCase().includes(seriesBusqueda.toLowerCase()) || s.lpn?.toLowerCase().includes(seriesBusqueda.toLowerCase()))
+                  .map((s: any) => {
                 const selected = cart[seriesModal.itemIdx]?.series_seleccionadas.includes(s.id)
                 return (
                   <label key={s.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 rounded-lg cursor-pointer">
@@ -1593,7 +1688,7 @@ export default function VentasPage() {
                 )
               })}
             </div>
-            <button onClick={() => setSeriesModal(null)}
+            <button onClick={() => { setSeriesModal(null); setSeriesBusqueda('') }}
               className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
               Confirmar ({cart[seriesModal.itemIdx]?.series_seleccionadas.length} seleccionadas)
             </button>

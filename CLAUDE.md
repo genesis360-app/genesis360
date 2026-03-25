@@ -213,6 +213,20 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - Catálogo de conceptos CRUD colapsable dentro de la tab.
   - `actividadLog`: + `nomina` en EntidadLog, + `pagar` en AccionLog.
 
+### v0.33.0 — RRHH Phase 2B Vacaciones + Phase 3A Asistencia (en dev)
+- **RRHH Phase 2B — Vacaciones** (migración 018):
+  - `rrhh_vacaciones_solicitud`: estado `pendiente/aprobada/rechazada`, dias_habiles calculados (excluye fines de semana), aprobado_por + aprobado_at.
+  - `rrhh_vacaciones_saldo`: días totales asignados × año + remanente anterior + días usados. UNIQUE(tenant+empleado+anio).
+  - `aprobar_vacacion(p_solicitud_id, p_user_id)` SECURITY DEFINER: upsert saldo + marca aprobada.
+  - `rechazar_vacacion(p_solicitud_id, p_user_id)` SECURITY DEFINER: marca rechazada.
+  - `calcular_dias_habiles(desde, hasta)` SQL: usa `generate_series` excluyendo DOW 0 y 6.
+  - UI tab "Vacaciones" en RrhhPage: selector año, nueva solicitud con preview días hábiles, lista con aprobar/rechazar, saldos colapsables por empleado (editar dias_totales + remanente).
+- **RRHH Phase 3A — Asistencia** (migración 019):
+  - `rrhh_asistencia`: UNIQUE(tenant+empleado+fecha). Estados: presente/ausente/tardanza/licencia. Campos: hora_entrada, hora_salida, motivo.
+  - UI tab "Asistencia": filtro mes + empleado, tabla con badges por estado, CRUD completo.
+  - `actividadLog`: + `vacacion` y `asistencia` en EntidadLog.
+- `calcularDiasHabilesFrontend(desde, hasta)`: helper frontend, excluye sábado y domingo.
+
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
 - Compactar manualmente con `/compact` cuando el contexto esté pesado.
@@ -230,9 +244,9 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ### RRHH — Phases 2–5 (ver ROADMAP.md)
 - [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, en dev)
-- [ ] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente
+- [x] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente (migración 018, en dev)
 - [ ] Phase 2C — Cumpleaños automáticos: Edge Function scheduler
-- [ ] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo)
+- [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, en dev)
 - [ ] Phase 3B — Dashboard RRHH: KPIs + reportes Excel/PDF
 - [ ] Phase 4A — Documentos empleado: Storage bucket `empleados`
 - [ ] Phase 4B — Capacitaciones + certificados

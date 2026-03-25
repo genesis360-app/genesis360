@@ -16,6 +16,8 @@ export type EntidadLog =
   | 'caja'
   | 'empleado'
   | 'nomina'
+  | 'vacacion'
+  | 'asistencia'
 
 export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar'
 

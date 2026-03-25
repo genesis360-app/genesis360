@@ -3,7 +3,9 @@ import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
-  BarChart2, Users, Users2, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft, ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle
+  BarChart2, Users, Users2, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
+  ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle,
+  Moon, Sun, LifeBuoy
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -35,6 +37,7 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true')
   const [walkthroughOpen, setWalkthroughOpen] = useState(false)
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark-mode') === 'true')
 
   const toggleCollapse = () => {
     setSidebarCollapsed(v => {
@@ -42,6 +45,19 @@ export function AppLayout() {
       return !v
     })
   }
+
+  useEffect(() => {
+    if (darkMode) document.documentElement.classList.add('dark')
+    else document.documentElement.classList.remove('dark')
+  }, [darkMode])
+
+  const toggleDarkMode = () => {
+    setDarkMode(v => {
+      localStorage.setItem('dark-mode', String(!v))
+      return !v
+    })
+  }
+
   const { user, tenant, signOut } = useAuthStore()
   const { count: alertCount } = useAlertas()
   const { visto } = useWalkthrough()
@@ -146,40 +162,14 @@ export function AppLayout() {
 
         {/* Cotización USD */}
         {!collapsed && <CotizacionWidget />}
-
-        {/* Usuario y logout */}
-        <div className={`py-3 border-t border-accent/20 space-y-1 ${collapsed ? 'px-1.5' : 'px-3'}`}>
-          {!collapsed && (
-            <div className="px-3 py-2">
-              <p className="text-white text-sm font-medium truncate">{user?.nombre_display}</p>
-              <p className="text-blue-300 text-xs capitalize">{user?.rol?.toLowerCase()}</p>
-            </div>
-          )}
-          <button
-            onClick={() => setWalkthroughOpen(true)}
-            title={collapsed ? 'Tour guiado' : undefined}
-            className={`flex items-center rounded-lg text-sm font-medium text-blue-100 hover:bg-accent/30 hover:text-white transition-all w-full
-              ${collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'}`}
-          >
-            <HelpCircle size={18} />
-            {!collapsed && 'Tour guiado'}
-          </button>
-          <button
-            onClick={handleSignOut}
-            title={collapsed ? 'Cerrar sesión' : undefined}
-            className={`flex items-center rounded-lg text-sm font-medium text-blue-100 hover:bg-red-500/20 hover:text-red-300 transition-all w-full
-              ${collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'}`}
-          >
-            <LogOut size={18} />
-            {!collapsed && 'Cerrar sesión'}
-          </button>
-        </div>
       </div>
     )
   }
 
+  const headerBtnCls = 'p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 transition-all'
+
   return (
-    <div className="flex h-screen bg-brand-bg overflow-hidden">
+    <div className="flex h-screen bg-brand-bg dark:bg-gray-950 overflow-hidden">
       <Walkthrough open={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
 
       {/* Sidebar desktop */}
@@ -205,12 +195,43 @@ export function AppLayout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar mobile */}
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shadow-sm">
-          <button onClick={() => setSidebarOpen(true)} className="text-primary">
+        {/* Top bar — universal (mobile + desktop) */}
+        <header className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm flex-shrink-0">
+          {/* Hamburger (mobile) */}
+          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-primary dark:text-blue-400">
             <Menu size={22} />
           </button>
-          <span className="font-bold text-primary">{BRAND.name}</span>
+
+          {/* Brand + user info */}
+          <div className="min-w-0">
+            <p className="font-bold text-primary dark:text-blue-400 leading-tight">{BRAND.name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+              {user?.nombre_display}{user?.rol ? ` · ${user.rol.charAt(0) + user.rol.slice(1).toLowerCase()}` : ''}
+            </p>
+          </div>
+
+          {/* Spacer */}
+          <div className="ml-auto flex items-center gap-0.5">
+            {/* Tema oscuro/claro */}
+            <button onClick={toggleDarkMode} title={darkMode ? 'Modo claro' : 'Modo oscuro'} className={headerBtnCls}>
+              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+
+            {/* Ayuda */}
+            <a href="mailto:soporte@stokio.com" title="Soporte / Ayuda" className={headerBtnCls}>
+              <LifeBuoy size={18} />
+            </a>
+
+            {/* Tour guiado */}
+            <button onClick={() => setWalkthroughOpen(true)} title="Tour guiado" className={headerBtnCls}>
+              <HelpCircle size={18} />
+            </button>
+
+            {/* Cerrar sesión */}
+            <button onClick={handleSignOut} title="Cerrar sesión" className={`${headerBtnCls} hover:!text-red-500 hover:!bg-red-50 dark:hover:!bg-red-900/20`}>
+              <LogOut size={18} />
+            </button>
+          </div>
         </header>
 
         {/* Trial banner */}
@@ -232,7 +253,7 @@ export function AppLayout() {
         )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 dark:bg-gray-950">
           <Outlet />
         </main>
       </div>

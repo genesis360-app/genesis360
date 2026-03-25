@@ -179,7 +179,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Insights margen**: `insightsMargen = productos.filter(margen_objetivo != null).map(calcularDesvioPP)`. Solo aparece si hay productos con objetivo. Ordenado por `diff ASC` (peores primero).
 - **Métricas inventario**: query `movimientos_stock` por tipo/motivo en período → `motivosMap` con count/cantidad. Query `inventario_lineas` join `ubicaciones`+`productos` → `ubicacionMap` con valor (cantidad × precio_costo).
 
-### v0.30.0 — Sprint UX (deployado a PROD via PR #20)
+### v0.30.0 — Sprint UX (incluido en v0.31.0 deploy)
 - **Bug #19 fix**: ImportarProductosPage — `numeros_serie` en Excel → inserta `inventario_series`, cantidad = len(series).
 - **Proyección de cobertura**: DashboardPage — semáforo rojo ≤7d / ámbar ≤14d / verde >14d, colapsable.
 - **LPN en historial/ticket**: historial incluye `inventario_lineas(lpn)` + `venta_series(nro_serie)`. Modal y ticket muestran LPN/S/N.
@@ -191,7 +191,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **useModalKeyboard**: wired en MovimientosPage, GastosPage, UsuariosPage, VentasPage (seriesModal + ventaDetalle).
 - **Caja ingresos informativos**: pagos no-efectivo de ventas → `tipo='ingreso_informativo'` (no afecta saldo). CajaPage muestra en azul con `~` e icono `Info`.
 
-### En dev (pendiente → v0.31.0)
+### v0.31.0 — Header, dark mode, UX fixes (deployado a PROD via PR #20)
 - **Header universal**: `darkMode:'class'` en Tailwind + toggle Moon/Sun en header. Header visible siempre (no solo mobile): brand name + user/rol a la izquierda; Moon/Sun, LifeBuoy (soporte), HelpCircle (tour), LogOut a la derecha. Tour y logout removidos del sidebar.
 - **Dashboard fixes**: Stock Crítico → `/alertas`. Links "Ver métricas" usan `setTab('metricas')` (no navegan a `/metricas`) → pestañas persisten. Insights con link `/metricas` también usan `setTab`.
 - **Ventas lista view**: imagen miniatura (w-8) a la izquierda en dropdown de búsqueda.
@@ -199,6 +199,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Modal series**: buscador de N/S y LPN en el modal de selección de series.
 - **Caja egreso**: bloquea si monto > saldoActual.
 - **Gastos caja cerrada**: bloquea nuevo gasto en efectivo si no hay sesión de caja abierta.
+- **Movimientos UX**: búsqueda limita a 5 resultados; label Cantidad muestra UoM; motivos predefinidos → text field oculto salvo "Otro"; mensaje "Sin datos de línea" distingue linea_id null vs linea eliminada.
+- **Reportes fixes**: Stock actual agrega N° Lote + Vencimiento + expande por series serializadas; Ventas parsea JSON de medio_pago; Estados exporta correctamente (quitado filtro activo).
 
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.

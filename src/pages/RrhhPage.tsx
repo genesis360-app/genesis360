@@ -337,7 +337,7 @@ export default function RrhhPage() {
 
   if (user?.rol !== 'OWNER' && user?.rol !== 'RRHH') {
     return (
-      <div className="p-8 text-center text-gray-500">
+      <div className="p-8 text-center text-gray-500 dark:text-gray-400 dark:text-gray-500">
         No tienes permisos para acceder a este módulo
       </div>
     )
@@ -347,15 +347,15 @@ export default function RrhhPage() {
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-          <Users2 size={32} className="text-blue-600" />
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+          <Users2 size={32} className="text-blue-600 dark:text-blue-400" />
           Gestión de Empleados
         </h1>
-        <p className="text-gray-600 mt-2">Administra tu equipo de trabajo</p>
+        <p className="text-gray-600 dark:text-gray-400 dark:text-gray-500 mt-2">Administra tu equipo de trabajo</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-8 border-b border-gray-200">
+      <div className="flex gap-2 mb-8 border-b border-gray-200 dark:border-gray-700">
         {(['empleados', 'puestos', 'departamentos', 'cumpleanos'] as Tab[]).map((tab) => (
           <button
             key={tab}
@@ -365,8 +365,8 @@ export default function RrhhPage() {
             }}
             className={`px-4 py-3 font-medium border-b-2 transition ${
               activeTab === tab
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-800'
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
             {tab === 'empleados' && 'Empleados'}
@@ -382,13 +382,13 @@ export default function RrhhPage() {
         <div>
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-3 flex-1">
-              <Search size={20} className="text-gray-400" />
+              <Search size={20} className="text-gray-400 dark:text-gray-500" />
               <input
                 type="text"
                 placeholder="Buscar por DNI o estado..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg flex-1"
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg flex-1"
               />
             </div>
             <button
@@ -406,8 +406,8 @@ export default function RrhhPage() {
           {/* Form Modal - Crear/Editar Empleado */}
           {formMode && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-                <h2 className="text-2xl font-bold mb-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+                <h2 className="text-2xl font-bold dark:text-white mb-6">
                   {formMode === 'crear' ? 'Nuevo Empleado' : 'Editar Empleado'}
                 </h2>
 
@@ -418,12 +418,12 @@ export default function RrhhPage() {
                     placeholder="DNI/RUT *"
                     value={formData.dni_rut ?? ''}
                     onChange={(e) => setFormData({ ...formData, dni_rut: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   />
                   <select
                     value={formData.tipo_doc ?? 'DNI'}
                     onChange={(e) => setFormData({ ...formData, tipo_doc: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   >
                     <option value="DNI">DNI</option>
                     <option value="RUT">RUT</option>
@@ -437,21 +437,21 @@ export default function RrhhPage() {
                     placeholder="Teléfono personal"
                     value={formData.tel_personal ?? ''}
                     onChange={(e) => setFormData({ ...formData, tel_personal: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   />
                   <input
                     type="email"
                     placeholder="Email personal"
                     value={formData.email_personal ?? ''}
                     onChange={(e) => setFormData({ ...formData, email_personal: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   />
 
                   {/* Personales */}
                   <select
                     value={formData.genero ?? 'OTRO'}
                     onChange={(e) => setFormData({ ...formData, genero: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   >
                     <option value="OTRO">Género - Prefiero no especificar</option>
                     <option value="M">Masculino</option>
@@ -462,7 +462,7 @@ export default function RrhhPage() {
                     placeholder="Fecha de nacimiento"
                     value={formData.fecha_nacimiento ?? ''}
                     onChange={(e) => setFormData({ ...formData, fecha_nacimiento: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   />
 
                   <input
@@ -470,7 +470,7 @@ export default function RrhhPage() {
                     placeholder="Dirección"
                     value={formData.direccion ?? ''}
                     onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg col-span-2"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg col-span-2"
                   />
 
                   <input
@@ -478,7 +478,7 @@ export default function RrhhPage() {
                     placeholder="Teléfono emergencia (FON)"
                     value={formData.fon ?? ''}
                     onChange={(e) => setFormData({ ...formData, fon: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg col-span-2"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg col-span-2"
                   />
 
                   {/* Laboral */}
@@ -487,20 +487,20 @@ export default function RrhhPage() {
                     placeholder="Fecha ingreso *"
                     value={formData.fecha_ingreso ?? ''}
                     onChange={(e) => setFormData({ ...formData, fecha_ingreso: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   />
                   <input
                     type="date"
                     placeholder="Fecha egreso"
                     value={formData.fecha_egreso ?? ''}
                     onChange={(e) => setFormData({ ...formData, fecha_egreso: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   />
 
                   <select
                     value={formData.puesto_id ?? ''}
                     onChange={(e) => setFormData({ ...formData, puesto_id: e.target.value || null })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   >
                     <option value="">Selecciona puesto...</option>
                     {puestos.filter((p) => p.activo).map((p) => (
@@ -513,7 +513,7 @@ export default function RrhhPage() {
                   <select
                     value={formData.departamento_id ?? ''}
                     onChange={(e) => setFormData({ ...formData, departamento_id: e.target.value || null })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   >
                     <option value="">Selecciona departamento...</option>
                     {departamentos.filter((d) => d.activo).map((d) => (
@@ -526,7 +526,7 @@ export default function RrhhPage() {
                   <select
                     value={formData.supervisor_id ?? ''}
                     onChange={(e) => setFormData({ ...formData, supervisor_id: e.target.value || null })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg col-span-2"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg col-span-2"
                   >
                     <option value="">Selecciona supervisor...</option>
                     {supervisores.map((s) => (
@@ -539,7 +539,7 @@ export default function RrhhPage() {
                   <select
                     value={formData.tipo_contrato ?? 'INDEFINIDO'}
                     onChange={(e) => setFormData({ ...formData, tipo_contrato: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   >
                     <option value="INDEFINIDO">Indefinido</option>
                     <option value="PLAZO_FIJO">Plazo fijo</option>
@@ -552,7 +552,7 @@ export default function RrhhPage() {
                     placeholder="Salario bruto"
                     value={formData.salario_bruto ?? ''}
                     onChange={(e) => setFormData({ ...formData, salario_bruto: e.target.value ? parseFloat(e.target.value) : null })}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   />
                 </div>
 
@@ -561,13 +561,13 @@ export default function RrhhPage() {
                   <button
                     onClick={handleGuardarEmpleado}
                     disabled={saveEmpleado.isPending}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-700 dark:hover:bg-blue-600"
                   >
                     {saveEmpleado.isPending ? 'Guardando...' : 'Guardar'}
                   </button>
                   <button
                     onClick={resetForm}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:text-gray-300"
                   >
                     Cancelar
                   </button>
@@ -580,44 +580,44 @@ export default function RrhhPage() {
           {loadingEmpleados ? (
             <div className="text-center py-8">Cargando...</div>
           ) : filteredEmpleados.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No hay empleados registrados</div>
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400 dark:text-gray-500">No hay empleados registrados</div>
           ) : (
-            <div className="overflow-x-auto border border-gray-200 rounded-lg">
+            <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">DNI</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Teléfono</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Puesto</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Departamento</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Ingreso</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Estado</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Acciones</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">DNI</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Teléfono</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Puesto</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Departamento</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Ingreso</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Estado</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {filteredEmpleados.map((emp) => (
-                    <tr key={emp.id} className={!emp.activo ? 'bg-gray-50 opacity-60' : ''}>
+                    <tr key={emp.id} className={!emp.activo ? 'bg-gray-50 dark:bg-gray-700 opacity-60' : ''}>
                       <td className="px-4 py-3 text-sm font-medium">{emp.dni_rut}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{emp.tel_personal || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{emp.puesto?.nombre || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{emp.departamento?.nombre || '-'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{format(new Date(emp.fecha_ingreso), 'dd/MM/yyyy', { locale: es })}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{emp.tel_personal || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{emp.puesto?.nombre || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{emp.departamento?.nombre || '-'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{format(new Date(emp.fecha_ingreso), 'dd/MM/yyyy', { locale: es })}</td>
                       <td className="px-4 py-3 text-sm">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${emp.activo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${emp.activo ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                           {emp.activo ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm flex gap-2">
                         <button
                           onClick={() => handleEditEmpleado(emp)}
-                          className="text-blue-600 hover:text-blue-800"
+                          className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:text-blue-400"
                         >
                           <Edit size={16} />
                         </button>
                         <button
                           onClick={() => toggleEmpleadoActivo.mutate(emp.id)}
-                          className={`${emp.activo ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'}`}
+                          className={`${emp.activo ? 'text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400' : 'text-green-600 dark:text-green-400 hover:text-green-800 dark:text-green-400'}`}
                         >
                           {emp.activo ? <Trash2 size={16} /> : '✓'}
                         </button>
@@ -649,7 +649,7 @@ export default function RrhhPage() {
 
           {/* Form modal inline */}
           {editingPuesto === null && puestoForm.nombre === '' ? null : (
-            <div className="bg-white p-6 rounded-lg border border-gray-200 mb-6">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700 mb-6">
               <h3 className="text-lg font-semibold mb-4">{editingPuesto ? 'Editar Puesto' : 'Crear Puesto'}</h3>
               <div className="grid grid-cols-2 gap-4">
                 <input
@@ -657,7 +657,7 @@ export default function RrhhPage() {
                   placeholder="Nombre del puesto"
                   value={puestoForm.nombre ?? ''}
                   onChange={(e) => setPuestoForm({ ...puestoForm, nombre: e.target.value })}
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                 />
                 <input
                   type="number"
@@ -666,14 +666,14 @@ export default function RrhhPage() {
                   onChange={(e) =>
                     setPuestoForm({ ...puestoForm, salario_base_sugerido: e.target.value ? parseFloat(e.target.value) : null })
                   }
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                 />
                 <input
                   type="text"
                   placeholder="Descripción"
                   value={puestoForm.descripcion ?? ''}
                   onChange={(e) => setPuestoForm({ ...puestoForm, descripcion: e.target.value })}
-                  className="px-4 py-2 border border-gray-300 rounded-lg col-span-2"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg col-span-2"
                 />
                 <label className="flex items-center gap-2">
                   <input
@@ -696,7 +696,7 @@ export default function RrhhPage() {
                     setEditingPuesto(null)
                     setPuestoForm({ nombre: '', activo: true })
                   }}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
                 >
                   Cancelar
                 </button>
@@ -707,12 +707,12 @@ export default function RrhhPage() {
           {/* Lista de puestos */}
           <div className="grid gap-4">
             {puestos.map((p) => (
-              <div key={p.id} className={`p-4 border rounded-lg ${!p.activo ? 'bg-gray-50' : 'bg-white'}`}>
+              <div key={p.id} className={`p-4 border rounded-lg ${!p.activo ? 'bg-gray-50 dark:bg-gray-700' : 'bg-white dark:bg-gray-800'}`}>
                 <div className="flex justify-between items-start">
                   <div>
-                    <h4 className="font-semibold text-gray-900">{p.nombre}</h4>
-                    {p.descripcion && <p className="text-sm text-gray-600">{p.descripcion}</p>}
-                    {p.salario_base_sugerido && <p className="text-sm text-gray-500">Salario sugerido: ${p.salario_base_sugerido}</p>}
+                    <h4 className="font-semibold text-gray-900 dark:text-white">{p.nombre}</h4>
+                    {p.descripcion && <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{p.descripcion}</p>}
+                    {p.salario_base_sugerido && <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Salario sugerido: ${p.salario_base_sugerido}</p>}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -720,7 +720,7 @@ export default function RrhhPage() {
                         setEditingPuesto(p)
                         setPuestoForm(p)
                       }}
-                      className="text-blue-600 hover:text-blue-800"
+                      className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:text-blue-400"
                     >
                       <Edit size={18} />
                     </button>
@@ -728,7 +728,7 @@ export default function RrhhPage() {
                       onClick={() => {
                         if (confirm('¿Estás seguro?')) deletePuesto.mutate(p.id)
                       }}
-                      className="text-red-600 hover:text-red-800"
+                      className="text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -758,7 +758,7 @@ export default function RrhhPage() {
 
           {/* Form modal inline */}
           {editingDepartamento === null && deptForm.nombre === '' ? null : (
-            <div className="bg-white p-6 rounded-lg border border-gray-200 mb-6">
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700 mb-6">
               <h3 className="text-lg font-semibold mb-4">{editingDepartamento ? 'Editar Departamento' : 'Crear Departamento'}</h3>
               <div className="grid grid-cols-1 gap-4">
                 <input
@@ -766,14 +766,14 @@ export default function RrhhPage() {
                   placeholder="Nombre del departamento"
                   value={deptForm.nombre ?? ''}
                   onChange={(e) => setDeptForm({ ...deptForm, nombre: e.target.value })}
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                 />
                 <input
                   type="text"
                   placeholder="Descripción"
                   value={deptForm.descripcion ?? ''}
                   onChange={(e) => setDeptForm({ ...deptForm, descripcion: e.target.value })}
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                 />
                 <label className="flex items-center gap-2">
                   <input
@@ -796,7 +796,7 @@ export default function RrhhPage() {
                     setEditingDepartamento(null)
                     setDeptForm({ nombre: '', activo: true })
                   }}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
                 >
                   Cancelar
                 </button>
@@ -807,11 +807,11 @@ export default function RrhhPage() {
           {/* Lista de departamentos */}
           <div className="grid gap-4">
             {departamentos.map((d) => (
-              <div key={d.id} className={`p-4 border rounded-lg ${!d.activo ? 'bg-gray-50' : 'bg-white'}`}>
+              <div key={d.id} className={`p-4 border rounded-lg ${!d.activo ? 'bg-gray-50 dark:bg-gray-700' : 'bg-white dark:bg-gray-800'}`}>
                 <div className="flex justify-between items-start">
                   <div>
-                    <h4 className="font-semibold text-gray-900">{d.nombre}</h4>
-                    {d.descripcion && <p className="text-sm text-gray-600">{d.descripcion}</p>}
+                    <h4 className="font-semibold text-gray-900 dark:text-white">{d.nombre}</h4>
+                    {d.descripcion && <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{d.descripcion}</p>}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -819,7 +819,7 @@ export default function RrhhPage() {
                         setEditingDepartamento(d)
                         setDeptForm(d)
                       }}
-                      className="text-blue-600 hover:text-blue-800"
+                      className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:text-blue-400"
                     >
                       <Edit size={18} />
                     </button>
@@ -827,7 +827,7 @@ export default function RrhhPage() {
                       onClick={() => {
                         if (confirm('¿Estás seguro?')) deleteDepartamento.mutate(d.id)
                       }}
-                      className="text-red-600 hover:text-red-800"
+                      className="text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400"
                     >
                       <Trash2 size={18} />
                     </button>
@@ -844,7 +844,7 @@ export default function RrhhPage() {
         <div>
           <div className="grid gap-4">
             {cumpleanosMes.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">No hay cumpleaños este mes</div>
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400 dark:text-gray-500">No hay cumpleaños este mes</div>
             ) : (
               cumpleanosMes.map((emp) => {
                 const today = new Date()
@@ -853,25 +853,25 @@ export default function RrhhPage() {
                   new Date(birthDate.getFullYear(), birthDate.getMonth(), birthDate.getDate()),
                   today
                 )
-                let badgeColor = 'bg-gray-100 text-gray-700'
-                if (daysToNext === 0) badgeColor = 'bg-red-100 text-red-700'
-                else if (daysToNext <= 7) badgeColor = 'bg-yellow-100 text-yellow-700'
+                let badgeColor = 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                if (daysToNext === 0) badgeColor = 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                else if (daysToNext <= 7) badgeColor = 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
 
                 return (
-                  <div key={emp.id} className="p-6 border border-gray-200 rounded-lg bg-white hover:shadow-md transition">
+                  <div key={emp.id} className="p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 hover:shadow-md transition">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
                           <Heart className="text-red-500" size={24} />
                           <div>
-                            <h3 className="font-semibold text-lg text-gray-900">{emp.dni_rut}</h3>
-                            <p className="text-sm text-gray-600">{emp.departamento?.nombre || 'Sin departamento'}</p>
+                            <h3 className="font-semibold text-lg text-gray-900 dark:text-white">{emp.dni_rut}</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500">{emp.departamento?.nombre || 'Sin departamento'}</p>
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-gray-500">Próximo cumpleaños:</p>
-                        <p className="font-semibold text-gray-900">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Próximo cumpleaños:</p>
+                        <p className="font-semibold text-gray-900 dark:text-white">
                           {format(new Date(emp.fecha_nacimiento!), 'dd MMMM', { locale: es })}
                         </p>
                         <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm font-medium ${badgeColor}`}>

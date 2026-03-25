@@ -329,17 +329,17 @@ export default function ProductoFormPage() {
         <PlanLimitModal tipo="producto" limits={limits} onClose={() => setShowLimitModal(false)} />
       )}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <ArrowLeft size={20} className="text-gray-600" />
+        <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-primary">{isEditing ? 'Editar producto' : 'Nuevo producto'}</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{isEditing ? 'Modificá los datos del producto' : 'Completá los datos del nuevo producto'}</p>
+          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">{isEditing ? 'Modificá los datos del producto' : 'Completá los datos del nuevo producto'}</p>
         </div>
         {!isEditing && canEdit && (
           <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all
             ${scanning
-              ? 'bg-purple-100 text-purple-400 cursor-not-allowed'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-400 cursor-not-allowed'
               : 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 shadow-sm'}`}>
             {scanning
               ? <><RefreshCw size={15} className="animate-spin" /> Analizando...</>
@@ -355,11 +355,11 @@ export default function ProductoFormPage() {
               <QrCode size={15} /> QR
             </button>
             <button type="button" onClick={handleDuplicate} disabled={saving}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-primary border border-gray-200 rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50">
+              className="flex items-center gap-2 px-3 py-2 text-sm text-primary border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all disabled:opacity-50">
               <Copy size={15} /> Duplicar
             </button>
             <button type="button" onClick={handleDelete}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 border border-red-200 rounded-xl hover:bg-red-50 transition-all">
+              className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 border border-red-200 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all">
               Eliminar
             </button>
           </div>
@@ -367,7 +367,7 @@ export default function ProductoFormPage() {
       </div>
 
       {scanResult && (
-        <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 text-sm text-purple-700">
+        <div className="flex items-center gap-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 rounded-xl px-4 py-3 text-sm text-purple-700">
           <Sparkles size={15} className="flex-shrink-0" />
           <span>{scanResult}. Revisá y completá los campos restantes.</span>
           <button type="button" onClick={() => setScanResult(null)} className="ml-auto text-purple-400 hover:text-purple-600">
@@ -381,71 +381,71 @@ export default function ProductoFormPage() {
           <div className="lg:col-span-2 space-y-5">
 
             {/* Datos básicos */}
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
-              <h2 className="font-semibold text-gray-700">Datos básicos</h2>
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Datos básicos</h2>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre <span className="text-red-500">*</span></label>
                 <input type="text" value={form.nombre} disabled={!canEdit}
                   onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))}
                   placeholder="Ej: Tornillo hexagonal 1/4"
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:bg-gray-50" />
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:bg-gray-50 dark:bg-gray-700" />
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">SKU <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SKU <span className="text-red-500">*</span></label>
                   <div className="flex gap-2">
                     <input type="text" value={form.sku} disabled={!canEdit}
                       onChange={e => setForm(p => ({ ...p, sku: e.target.value.toUpperCase() }))}
                       placeholder="TORN-0001"
-                      className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50" />
+                      className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
                     {!isEditing && (
                       <button type="button" onClick={() => setForm(p => ({ ...p, sku: generateSKU(form.nombre) }))}
                         title="Generar SKU automático"
-                        className="px-3 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500 hover:text-primary transition-colors">
+                        className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-primary transition-colors">
                         <RefreshCw size={16} />
                       </button>
                     )}
                   </div>
                 </div>
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Código de barras</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código de barras</label>
                   <input type="text" value={form.codigo_barras} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, codigo_barras: e.target.value }))}
                     placeholder="7791234567890"
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción</label>
                 <textarea value={form.descripcion} disabled={!canEdit} rows={2}
                   onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
                   placeholder="Descripción opcional..."
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent resize-none disabled:bg-gray-50" />
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none disabled:bg-gray-50 dark:bg-gray-700" />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
                   <select value={form.categoria_id} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, categoria_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="">Sin categoría</option>
                     {(categorias as any[]).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proveedor</label>
                   <select value={form.proveedor_id} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, proveedor_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="">Sin proveedor</option>
                     {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ubicación</label>
                   <select value={form.ubicacion_id} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, ubicacion_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="">Sin ubicación</option>
                     {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                   </select>
@@ -454,18 +454,18 @@ export default function ProductoFormPage() {
             </div>
 
             {/* Precios y stock */}
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-gray-700">Precios y stock</h2>
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Precios y stock</h2>
                 {cotizacionNum > 0 ? (
-                  <div className="flex items-center gap-1.5 bg-blue-50 px-2.5 py-1 rounded-lg">
+                  <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1 rounded-lg">
                     <DollarSign size={12} className="text-blue-400" />
-                    <span className="text-xs text-blue-600 font-medium">
+                    <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
                       $1 USD = ${cotizacionNum.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS
                     </span>
                   </div>
                 ) : (
-                  <span className="text-xs text-gray-400">Sin cotización USD (configurar en el menú lateral)</span>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">Sin cotización USD (configurar en el menú lateral)</span>
                 )}
               </div>
               {(() => {
@@ -484,7 +484,7 @@ export default function ProductoFormPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="text-sm font-medium text-gray-700">Precio de costo</label>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de costo</label>
                         {cotizNum > 0 && canEdit && (
                           <button type="button" onClick={toggleCosto}
                             className="text-xs text-accent hover:underline">
@@ -493,7 +493,7 @@ export default function ProductoFormPage() {
                         )}
                       </div>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm font-medium">
                           {usdModoCosto ? 'USD' : '$'}
                         </span>
                         <input type="number" min="0" step="0.01" disabled={!canEdit}
@@ -506,10 +506,10 @@ export default function ProductoFormPage() {
                               setForm(p => ({ ...p, precio_costo: e.target.value }))
                             }
                           }}
-                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50" placeholder="0.00" />
+                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
                       </div>
                       {cotizNum > 0 && (parseFloat(form.precio_costo) || 0) > 0 && (
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                           {usdModoCosto
                             ? `= $${(parseFloat(form.precio_costo) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
                             : `≈ USD ${((parseFloat(form.precio_costo) || 0) / cotizNum).toFixed(2)}`}
@@ -518,7 +518,7 @@ export default function ProductoFormPage() {
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="text-sm font-medium text-gray-700">Precio de venta</label>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de venta</label>
                         {cotizNum > 0 && canEdit && (
                           <button type="button" onClick={toggleVenta}
                             className="text-xs text-accent hover:underline">
@@ -527,7 +527,7 @@ export default function ProductoFormPage() {
                         )}
                       </div>
                       <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm font-medium">
                           {usdModoVenta ? 'USD' : '$'}
                         </span>
                         <input type="number" min="0" step="0.01" disabled={!canEdit}
@@ -540,10 +540,10 @@ export default function ProductoFormPage() {
                               setForm(p => ({ ...p, precio_venta: e.target.value }))
                             }
                           }}
-                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50" placeholder="0.00" />
+                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
                       </div>
                       {cotizNum > 0 && (parseFloat(form.precio_venta) || 0) > 0 && (
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                           {usdModoVenta
                             ? `= $${(parseFloat(form.precio_venta) || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
                             : `≈ USD ${((parseFloat(form.precio_venta) || 0) / cotizNum).toFixed(2)}`}
@@ -555,14 +555,14 @@ export default function ProductoFormPage() {
               })()}
               {margen !== null && (
                 <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
-                  ${parseFloat(margen) >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+                  ${parseFloat(margen) >= 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
                   Margen actual: <span className="font-bold">{margen}%</span>
                   {form.margen_objetivo !== '' && (() => {
                     const obj = parseFloat(form.margen_objetivo)
                     const actual = parseFloat(margen)
                     const ok = actual >= obj
                     return (
-                      <span className={`text-xs ml-auto font-semibold ${ok ? 'text-green-600' : 'text-red-500'}`}>
+                      <span className={`text-xs ml-auto font-semibold ${ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                         {ok ? '▲' : '▼'} Objetivo: {obj}%
                       </span>
                     )
@@ -574,39 +574,39 @@ export default function ProductoFormPage() {
               )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Margen objetivo</label>
-                  <p className="text-xs text-gray-400 mb-1">Alerta en Métricas si el margen cae debajo</p>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Margen objetivo</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta en Métricas si el margen cae debajo</p>
                   <div className="relative">
                     <input type="number" min="0" max="100" step="0.1" disabled={!canEdit}
                       value={form.margen_objetivo}
                       onChange={e => setForm(p => ({ ...p, margen_objetivo: e.target.value }))}
-                      className="w-full pl-4 pr-10 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50"
+                      className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700"
                       placeholder="Ej: 30" />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">%</span>
                   </div>
                 </div>
                 <div /> {/* spacer */}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock mínimo</label>
-                  <p className="text-xs text-gray-400 mb-1">Alerta cuando el stock baje de este valor</p>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stock mínimo</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta cuando el stock baje de este valor</p>
                   <input type="number" min="0" value={form.stock_minimo} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, stock_minimo: e.target.value }))}
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50" placeholder="0" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Unidad de medida</label>
-                  <p className="text-xs text-gray-400 mb-1">Cómo se mide este producto</p>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unidad de medida</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cómo se mide este producto</p>
                   <select value={form.unidad_medida} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, unidad_medida: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
                     {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
               </div>
               {!isEditing && (
-                <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700">
+                <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700 dark:text-blue-400">
                   <span>💡</span>
                   <span>Para ingresar stock, usá <strong>Movimientos → Ingreso</strong> una vez creado el producto.</span>
                 </div>
@@ -616,66 +616,66 @@ export default function ProductoFormPage() {
 
           {/* Columna imagen + estado */}
           <div className="space-y-5">
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
-              <h2 className="font-semibold text-gray-700">Imagen</h2>
-              <div className="aspect-square rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50 relative">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Imagen</h2>
+              <div className="aspect-square rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-700 relative">
                 {imagePreview || existingImageUrl ? (
                   <>
                     <img src={imagePreview ?? existingImageUrl!} alt="Preview" className="w-full h-full object-cover" />
                     {canEdit && (
                       <button type="button"
                         onClick={() => { setImageFile(null); setImagePreview(null); setExistingImageUrl(null) }}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600">
+                        className="absolute top-2 right-2 bg-red-50 dark:bg-red-900/200 text-white rounded-full p-1 hover:bg-red-600">
                         <X size={14} />
                       </button>
                     )}
                   </>
                 ) : (
-                  <div className="text-center text-gray-400">
+                  <div className="text-center text-gray-400 dark:text-gray-500">
                     <Package size={32} className="mx-auto mb-2 opacity-40" />
                     <p className="text-xs">Sin imagen</p>
                   </div>
                 )}
               </div>
               {canEdit && (
-                <label className="flex items-center justify-center gap-2 w-full border border-gray-200 rounded-xl py-2.5 text-sm text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors">
+                <label className="flex items-center justify-center gap-2 w-full border border-gray-200 dark:border-gray-700 rounded-xl py-2.5 text-sm text-gray-600 dark:text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
                   <Upload size={15} />
                   {imagePreview || existingImageUrl ? 'Cambiar imagen' : 'Subir imagen'}
                   <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
                 </label>
               )}
-              <p className="text-xs text-gray-400 text-center">JPG, PNG o WEBP. Máx 2MB</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 text-center">JPG, PNG o WEBP. Máx 2MB</p>
             </div>
 
             {isEditing && canEdit && (
-              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-700 mb-3">Estado</h2>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3">Estado</h2>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <div className="relative">
                     <input type="checkbox" checked={form.activo}
                       onChange={e => setForm(p => ({ ...p, activo: e.target.checked }))} className="sr-only" />
-                    <div className={`w-11 h-6 rounded-full transition-colors ${form.activo ? 'bg-green-500' : 'bg-gray-300'}`}>
-                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.activo ? 'translate-x-5' : ''}`} />
+                    <div className={`w-11 h-6 rounded-full transition-colors ${form.activo ? 'bg-green-50 dark:bg-green-900/200' : 'bg-gray-300'}`}>
+                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.activo ? 'translate-x-5' : ''}`} />
                     </div>
                   </div>
-                  <span className="text-sm text-gray-700">{form.activo ? 'Activo' : 'Inactivo'}</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{form.activo ? 'Activo' : 'Inactivo'}</span>
                 </label>
               </div>
             )}
 
             {/* Atributos de tracking */}
             {canEdit && (
-              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
-                <h2 className="font-semibold text-gray-700">Tracking de inventario</h2>
-                <p className="text-xs text-gray-400">Activá los atributos que aplican a este producto</p>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Tracking de inventario</h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Activá los atributos que aplican a este producto</p>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">
                     Regla de inventario
-                    <span className="ml-1 text-gray-400 font-normal">(vacío = usar la regla del negocio)</span>
+                    <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal">(vacío = usar la regla del negocio)</span>
                   </label>
                   <select value={form.regla_inventario}
                     onChange={e => setForm(p => ({ ...p, regla_inventario: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                     <option value="">— Usar regla del negocio —</option>
                     {REGLAS_INVENTARIO.map(r => (
                       <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
@@ -684,14 +684,14 @@ export default function ProductoFormPage() {
                 </div>
                 {agingProfiles.length > 0 && (
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-500 mb-1">
                       Aging Profile
-                      <span className="ml-1 text-gray-400 font-normal">(requiere fecha de vencimiento activa)</span>
+                      <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal">(requiere fecha de vencimiento activa)</span>
                     </label>
                     <select value={form.aging_profile_id}
                       onChange={e => setForm(p => ({ ...p, aging_profile_id: e.target.value }))}
                       disabled={!form.tiene_vencimiento}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:bg-gray-50">
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:bg-gray-50 dark:bg-gray-700">
                       <option value="">— Sin aging profile —</option>
                       {(agingProfiles as any[]).map((ap: any) => (
                         <option key={ap.id} value={ap.id}>{ap.nombre}</option>
@@ -709,12 +709,12 @@ export default function ProductoFormPage() {
                       <input type="checkbox" checked={(form as any)[key]}
                         onChange={e => setForm(p => ({ ...p, [key]: e.target.checked }))} className="sr-only" />
                       <div className={`w-10 h-5 rounded-full transition-colors ${(form as any)[key] ? 'bg-accent' : 'bg-gray-300'}`}>
-                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${(form as any)[key] ? 'translate-x-5' : ''}`} />
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${(form as any)[key] ? 'translate-x-5' : ''}`} />
                       </div>
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-700">{label}</p>
-                      <p className="text-xs text-gray-400">{desc}</p>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">{desc}</p>
                     </div>
                   </label>
                 ))}
@@ -726,7 +726,7 @@ export default function ProductoFormPage() {
         {canEdit && (
           <div className="flex gap-3 justify-end">
             <button type="button" onClick={() => navigate('/inventario')}
-              className="px-6 py-2.5 border-2 border-gray-200 text-gray-600 font-semibold rounded-xl hover:border-gray-300 transition-all">
+              className="px-6 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 dark:text-gray-500 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all">
               Cancelar
             </button>
             <button type="submit" disabled={saving}

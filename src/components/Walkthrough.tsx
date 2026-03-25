@@ -83,7 +83,7 @@ const SLIDES: Slide[] = [
   },
   {
     icon: Settings,
-    color: 'text-gray-500',
+    color: 'text-gray-500 dark:text-gray-400 dark:text-gray-500',
     titulo: 'Configuración — a tu medida',
     descripcion: 'Creá categorías, proveedores, ubicaciones y estados de inventario según cómo funciona tu negocio. Todo se puede personalizar.',
     tip: 'Completá la configuración antes de cargar productos para que todo quede organizado desde el inicio.',
@@ -137,10 +137,10 @@ export function Walkthrough({ open, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden">
 
         {/* Barra de progreso */}
-        <div className="h-1 bg-gray-100">
+        <div className="h-1 bg-gray-100 dark:bg-gray-700">
           <div
             className="h-1 bg-accent transition-all duration-300"
             style={{ width: `${((paso + 1) / SLIDES.length) * 100}%` }}
@@ -149,18 +149,18 @@ export function Walkthrough({ open, onClose }: Props) {
 
         {/* Botón cerrar */}
         <button onClick={handleClose}
-          className="absolute top-4 right-4 p-1.5 text-gray-300 hover:text-gray-500 transition-colors z-10">
+          className="absolute top-4 right-4 p-1.5 text-gray-300 hover:text-gray-500 dark:text-gray-400 dark:text-gray-500 transition-colors z-10">
           <X size={18} />
         </button>
 
         {/* Contenido */}
         <div className="px-8 pt-8 pb-6 text-center min-h-[280px] flex flex-col items-center justify-center">
-          <div className={`w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-4 ${slide.color}`}>
+          <div className={`w-14 h-14 rounded-2xl bg-gray-50 dark:bg-gray-700 flex items-center justify-center mb-4 ${slide.color}`}>
             <Icon size={28} />
           </div>
 
           <h2 className="text-xl font-bold text-primary mb-3">{slide.titulo}</h2>
-          <p className="text-gray-600 text-sm leading-relaxed">{slide.descripcion}</p>
+          <p className="text-gray-600 dark:text-gray-400 dark:text-gray-500 text-sm leading-relaxed">{slide.descripcion}</p>
 
           {slide.tip && (
             <div className="mt-4 bg-accent/5 border border-accent/20 rounded-xl px-4 py-2.5 text-xs text-accent/80 text-left w-full">
@@ -181,12 +181,12 @@ export function Walkthrough({ open, onClose }: Props) {
         {/* Navegación */}
         <div className="flex items-center gap-3 px-8 pb-7 pt-2">
           <button onClick={prev} disabled={paso === 0}
-            className="p-2 rounded-xl border border-gray-200 text-gray-400 hover:bg-gray-50 disabled:opacity-0 transition-all">
+            className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-0 transition-all">
             <ChevronLeft size={18} />
           </button>
 
           <button onClick={handleClose}
-            className="flex-1 text-sm text-gray-400 hover:text-gray-600 transition-colors">
+            className="flex-1 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 dark:text-gray-500 transition-colors">
             Omitir tour
           </button>
 

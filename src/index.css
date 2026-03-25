@@ -14,3 +14,37 @@
 
 * { box-sizing: border-box; }
 body { font-family: 'Inter', system-ui, sans-serif; }
+
+/* ─── Dark mode — overrides globales ─────────────────────────────────────────
+   Cubre form controls automáticamente sin necesidad de dark: por elemento.
+   El resto (cards, tablas, texto) se maneja con dark: en cada componente.
+   ─────────────────────────────────────────────────────────────────────────── */
+.dark body {
+  background-color: rgb(3 7 18); /* gray-950 */
+  color: rgb(243 244 246);       /* gray-100 */
+}
+
+/* Inputs, selects, textareas */
+.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+.dark select,
+.dark textarea {
+  background-color: rgb(55 65 81);  /* gray-700 */
+  color: rgb(243 244 246);          /* gray-100 */
+  border-color: rgb(75 85 99);      /* gray-600 */
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgb(156 163 175); /* gray-400 */
+}
+
+.dark select option {
+  background-color: rgb(55 65 81);
+  color: rgb(243 244 246);
+}
+
+/* Scrollbar en dark mode */
+.dark ::-webkit-scrollbar { width: 8px; height: 8px; }
+.dark ::-webkit-scrollbar-track { background: rgb(31 41 55); }  /* gray-800 */
+.dark ::-webkit-scrollbar-thumb { background: rgb(75 85 99); border-radius: 4px; } /* gray-600 */
+.dark ::-webkit-scrollbar-thumb:hover { background: rgb(107 114 128); } /* gray-500 */

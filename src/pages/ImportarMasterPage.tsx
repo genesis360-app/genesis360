@@ -139,24 +139,24 @@ export default function ImportarMasterPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/configuracion')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <ArrowLeft size={20} className="text-gray-600" />
+        <button onClick={() => navigate('/configuracion')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400 dark:text-gray-500" />
         </button>
         <div>
           <h1 className="text-2xl font-bold text-primary">Importar datos maestros</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Cargá categorías, proveedores o ubicaciones desde Excel</p>
+          <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm mt-0.5">Cargá categorías, proveedores o ubicaciones desde Excel</p>
         </div>
       </div>
 
       {resultado && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-          <CheckCircle size={20} className="text-green-600 mt-0.5 flex-shrink-0" />
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+          <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="font-semibold text-green-800">Importación completada</p>
-            <p className="text-sm text-green-700 mt-0.5">
+            <p className="font-semibold text-green-800 dark:text-green-400">Importación completada</p>
+            <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
               {resultado.creados} creado{resultado.creados !== 1 ? 's' : ''} · {resultado.ignorados} ignorado{resultado.ignorados !== 1 ? 's' : ''} (ya existían) · {resultado.errores} error{resultado.errores !== 1 ? 'es' : ''}
             </p>
-            <button onClick={() => navigate('/configuracion')} className="mt-2 text-sm text-green-700 font-medium hover:underline">
+            <button onClick={() => navigate('/configuracion')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">
               Volver a Configuración →
             </button>
           </div>
@@ -166,17 +166,17 @@ export default function ImportarMasterPage() {
       <div className="grid lg:grid-cols-3 gap-5">
         <div className="space-y-4">
           {/* Selector de tipo */}
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 mb-3">¿Qué querés importar?</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3">¿Qué querés importar?</h2>
             <div className="space-y-2">
               {(Object.entries(MASTER_CONFIG) as [TipoMaster, typeof MASTER_CONFIG[TipoMaster]][]).map(([tipo, cfg]) => {
                 const Icon = cfg.icon
                 return (
-                  <label key={tipo} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                  <label key={tipo} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <input type="radio" name="tipoMaster" value={tipo} checked={tipoMaster === tipo}
                       onChange={() => cambiarTipo(tipo)} />
                     <Icon size={15} className="text-accent" />
-                    <span className="text-sm font-medium text-gray-700">{cfg.label}</span>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{cfg.label}</span>
                   </label>
                 )
               })}
@@ -184,8 +184,8 @@ export default function ImportarMasterPage() {
           </div>
 
           {/* Plantilla */}
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
               <FileSpreadsheet size={16} className="text-accent" /> Plantilla
             </h2>
             <button onClick={() => descargarPlantilla(tipoMaster)}
@@ -195,71 +195,71 @@ export default function ImportarMasterPage() {
           </div>
 
           {/* Upload */}
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
               <Upload size={16} className="text-accent" /> Subir archivo
             </h2>
             <div
-              className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
+              className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
               onClick={() => fileRef.current?.click()}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f, tipoMaster) }}
             >
               <FileSpreadsheet size={28} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">Arrastrá o hacé click</p>
-              <p className="text-xs text-gray-400 mt-1">.xlsx, .xls, .csv</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">Arrastrá o hacé click</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
             </div>
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
-            <p className="text-xs text-gray-400 mt-2 text-center">Los duplicados (mismo nombre) se ignoran</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">Los duplicados (mismo nombre) se ignoran</p>
           </div>
         </div>
 
         {/* Preview */}
         <div className="lg:col-span-2">
           {filas.length === 0 ? (
-            <div className="bg-white rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400 dark:text-gray-500">
               <FileSpreadsheet size={40} className="mx-auto mb-3 opacity-30" />
               <p className="font-medium">Subí un archivo para ver la previsualización</p>
             </div>
           ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
                 <div className="px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-green-600">{nuevosMaster}</p>
-                  <p className="text-xs text-gray-500">Nuevos</p>
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">{nuevosMaster}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Nuevos</p>
                 </div>
                 <div className="px-4 py-3 text-center">
-                  <p className="text-2xl font-bold text-gray-400">{existentesMaster}</p>
-                  <p className="text-xs text-gray-500">Ya existen (se ignoran)</p>
+                  <p className="text-2xl font-bold text-gray-400 dark:text-gray-500">{existentesMaster}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Ya existen (se ignoran)</p>
                 </div>
               </div>
 
               <div className="overflow-x-auto max-h-96">
                 <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-gray-50">
+                  <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700">
                     <tr className="border-b border-gray-100">
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Estado</th>
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600">Nombre</th>
+                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Estado</th>
+                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500">Nombre</th>
                       {MASTER_CONFIG[tipoMaster].extraCols.map(c => (
-                        <th key={c} className="text-left px-3 py-2 font-semibold text-gray-600 capitalize">{c}</th>
+                        <th key={c} className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400 dark:text-gray-500 capitalize">{c}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {filas.map(fila => (
-                      <tr key={fila.idx} className={`border-b border-gray-50 ${fila.errores.length > 0 ? 'bg-red-50' : fila.estado === 'existente' ? 'bg-gray-50' : ''}`}>
+                      <tr key={fila.idx} className={`border-b border-gray-50 ${fila.errores.length > 0 ? 'bg-red-50 dark:bg-red-900/20' : fila.estado === 'existente' ? 'bg-gray-50 dark:bg-gray-700' : ''}`}>
                         <td className="px-3 py-2">
                           {fila.errores.length > 0 ? (
                             <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
                           ) : fila.estado === 'existente' ? (
-                            <span className="flex items-center gap-1 text-gray-400"><RefreshCw size={12} /> Existe</span>
+                            <span className="flex items-center gap-1 text-gray-400 dark:text-gray-500"><RefreshCw size={12} /> Existe</span>
                           ) : (
-                            <span className="flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Nuevo</span>
+                            <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle size={12} /> Nuevo</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 font-medium text-gray-800">{fila.nombre}</td>
+                        <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{fila.nombre}</td>
                         {MASTER_CONFIG[tipoMaster].extraCols.map(c => (
-                          <td key={c} className="px-3 py-2 text-gray-500">{fila.extra[c] || '—'}</td>
+                          <td key={c} className="px-3 py-2 text-gray-500 dark:text-gray-400 dark:text-gray-500">{fila.extra[c] || '—'}</td>
                         ))}
                       </tr>
                     ))}
@@ -267,7 +267,7 @@ export default function ImportarMasterPage() {
                 </table>
               </div>
 
-              <div className="p-4 border-t border-gray-100 bg-gray-50">
+              <div className="p-4 border-t border-gray-100 bg-gray-50 dark:bg-gray-700">
                 <button
                   onClick={confirmarImportacion}
                   disabled={importando || nuevosMaster === 0}

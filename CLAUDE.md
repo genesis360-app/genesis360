@@ -191,6 +191,15 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **useModalKeyboard**: wired en MovimientosPage, GastosPage, UsuariosPage, VentasPage (seriesModal + ventaDetalle).
 - **Caja ingresos informativos**: pagos no-efectivo de ventas → `tipo='ingreso_informativo'` (no afecta saldo). CajaPage muestra en azul con `~` e icono `Info`.
 
+### En dev (pendiente → v0.31.0)
+- **Header universal**: `darkMode:'class'` en Tailwind + toggle Moon/Sun en header. Header visible siempre (no solo mobile): brand name + user/rol a la izquierda; Moon/Sun, LifeBuoy (soporte), HelpCircle (tour), LogOut a la derecha. Tour y logout removidos del sidebar.
+- **Dashboard fixes**: Stock Crítico → `/alertas`. Links "Ver métricas" usan `setTab('metricas')` (no navegan a `/metricas`) → pestañas persisten. Insights con link `/metricas` también usan `setTab`.
+- **Ventas lista view**: imagen miniatura (w-8) a la izquierda en dropdown de búsqueda.
+- **Ventas galería**: `max-h-[28rem]`, cards `h-full` para altura uniforme.
+- **Modal series**: buscador de N/S y LPN en el modal de selección de series.
+- **Caja egreso**: bloquea si monto > saldoActual.
+- **Gastos caja cerrada**: bloquea nuevo gasto en efectivo si no hay sesión de caja abierta.
+
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
 - Compactar manualmente con `/compact` cuando el contexto esté pesado.

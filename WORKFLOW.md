@@ -113,6 +113,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.28.0 | Dashboard: sin movimiento expandable + sugerencia pedido · Métricas: ganancia neta + rango custom + filtro categoría | 2026-03 |
 | v0.29.0 | Trazabilidad LPN→venta (linea_id en venta_items) · LPN en carrito · Vista galería ventas · Margen objetivo por SKU · Insights margen + Métricas inventario | 2026-03 |
 | v0.30.0 | Fix importar serializados · Proyección cobertura stock · LPN en ticket · Motivos caja · Invitación por email (EF invite-user) · Importación masiva clientes · Combos multi-tipo · Sidebar colapsable · useModalKeyboard wiring · Caja ingresos informativos | 2026-03 (PR #20) |
+| v0.31.0 | Header universal (user/rol + dark mode + ayuda + logout) · Dashboard: Stock Crítico→Alertas + links métricas con setTab · Ventas: imagen en lista + galería mejorada + buscador series · Caja: bloqueo egreso > saldo · Gastos: bloqueo si caja cerrada | 2026-03 (en dev) |
 
 ---
 

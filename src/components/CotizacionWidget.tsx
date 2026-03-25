@@ -86,13 +86,13 @@ export function CotizacionWidget() {
             </button>
 
             {showMenu && (
-              <div className="absolute bottom-full right-0 mb-1 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-[60] w-36">
-                <p className="text-xs text-gray-400 px-3 py-1">Obtener automático:</p>
+              <div className="absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 py-1 z-[60] w-36">
+                <p className="text-xs text-gray-400 dark:text-gray-500 px-3 py-1">Obtener automático:</p>
                 {TIPOS_DOLAR.map(t => (
                   <button
                     key={t.casa}
                     onClick={() => { fetchDesdeApi(t.casa); setShowMenu(false) }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
                     {t.label}
                   </button>

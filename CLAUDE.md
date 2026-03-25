@@ -202,6 +202,31 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Movimientos UX**: búsqueda limita a 5 resultados; label Cantidad muestra UoM; motivos predefinidos → text field oculto salvo "Otro"; mensaje "Sin datos de línea" distingue linea_id null vs linea eliminada.
 - **Reportes fixes**: Stock actual agrega N° Lote + Vencimiento + expande por series serializadas; Ventas parsea JSON de medio_pago; Estados exporta correctamente (quitado filtro activo).
 
+### v0.32.0 — Dark mode completo + RRHH Phase 2A Nómina (en dev)
+- **Dark mode completo**: `index.css` overrides globales (inputs/selects/textareas/scrollbar). 30+ archivos (páginas + componentes) con `dark:bg-*`, `dark:text-*`, `dark:border-*`, `dark:hover:*` y variantes de estado (red/amber/green/blue).
+- **RRHH Phase 2A — Nómina** (migración 017):
+  - `rrhh_conceptos`: catálogo de haberes/descuentos reutilizables por tenant. RLS + índices.
+  - `rrhh_salarios`: liquidación por empleado × periodo (DATE YYYY-MM-01). UNIQUE(tenant+empleado+periodo). Campos: basico, total_haberes, total_descuentos, neto, pagado, fecha_pago, caja_movimiento_id.
+  - `rrhh_salario_items`: líneas de detalle. Trigger `fn_recalcular_salario` recalcula totals en padre tras INSERT/UPDATE/DELETE.
+  - `pagar_nomina_empleado(p_salario_id, p_sesion_id)` SECURITY DEFINER: valida sesión caja abierta → inserta egreso en `caja_movimientos` → marca `pagado=TRUE`.
+  - UI tab "Nómina" en RrhhPage: selector mes/año, generar nómina mes (crea borrador para todos los activos), resumen período, tabla expandible por empleado con ítems, botón Pagar con selector caja.
+  - Catálogo de conceptos CRUD colapsable dentro de la tab.
+  - `actividadLog`: + `nomina` en EntidadLog, + `pagar` en AccionLog.
+
+### v0.33.0 — RRHH Phase 2B Vacaciones + Phase 3A Asistencia (en dev)
+- **RRHH Phase 2B — Vacaciones** (migración 018):
+  - `rrhh_vacaciones_solicitud`: estado `pendiente/aprobada/rechazada`, dias_habiles calculados (excluye fines de semana), aprobado_por + aprobado_at.
+  - `rrhh_vacaciones_saldo`: días totales asignados × año + remanente anterior + días usados. UNIQUE(tenant+empleado+anio).
+  - `aprobar_vacacion(p_solicitud_id, p_user_id)` SECURITY DEFINER: upsert saldo + marca aprobada.
+  - `rechazar_vacacion(p_solicitud_id, p_user_id)` SECURITY DEFINER: marca rechazada.
+  - `calcular_dias_habiles(desde, hasta)` SQL: usa `generate_series` excluyendo DOW 0 y 6.
+  - UI tab "Vacaciones" en RrhhPage: selector año, nueva solicitud con preview días hábiles, lista con aprobar/rechazar, saldos colapsables por empleado (editar dias_totales + remanente).
+- **RRHH Phase 3A — Asistencia** (migración 019):
+  - `rrhh_asistencia`: UNIQUE(tenant+empleado+fecha). Estados: presente/ausente/tardanza/licencia. Campos: hora_entrada, hora_salida, motivo.
+  - UI tab "Asistencia": filtro mes + empleado, tabla con badges por estado, CRUD completo.
+  - `actividadLog`: + `vacacion` y `asistencia` en EntidadLog.
+- `calcularDiasHabilesFrontend(desde, hasta)`: helper frontend, excluye sábado y domingo.
+
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
 - Compactar manualmente con `/compact` cuando el contexto esté pesado.
@@ -218,10 +243,10 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [ ] Revisar matriz de funcionalidades por plan (actualmente solo se limitan usuarios y productos)
 
 ### RRHH — Phases 2–5 (ver ROADMAP.md)
-- [ ] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos`; pagar → egreso automático en Caja
-- [ ] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente
+- [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, en dev)
+- [x] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente (migración 018, en dev)
 - [ ] Phase 2C — Cumpleaños automáticos: Edge Function scheduler
-- [ ] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo)
+- [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, en dev)
 - [ ] Phase 3B — Dashboard RRHH: KPIs + reportes Excel/PDF
 - [ ] Phase 4A — Documentos empleado: Storage bucket `empleados`
 - [ ] Phase 4B — Capacitaciones + certificados

@@ -438,23 +438,23 @@ export default function ImportarProductosPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <ArrowLeft size={20} className="text-gray-600" />
+        <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+          <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
         </button>
         <div>
           <h1 className="text-2xl font-bold text-primary">Importar</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Cargá productos o stock desde Excel</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Cargá productos o stock desde Excel</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 w-fit">
         <button onClick={() => setTab('productos')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'productos' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'productos' ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
           Productos
         </button>
         <button onClick={() => setTab('inventario')}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'inventario' ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'inventario' ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
           <Boxes size={14} /> Inventario
         </button>
       </div>
@@ -463,46 +463,46 @@ export default function ImportarProductosPage() {
       {tab === 'productos' && (
         <>
           {resultadoProd && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-              <CheckCircle size={20} className="text-green-600 mt-0.5 flex-shrink-0" />
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+              <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
               <div>
-                <p className="font-semibold text-green-800">Importación completada</p>
-                <p className="text-sm text-green-700 mt-0.5">
+                <p className="font-semibold text-green-800 dark:text-green-400">Importación completada</p>
+                <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
                   {resultadoProd.creados} creados · {resultadoProd.actualizados} actualizados · {resultadoProd.errores} errores
                 </p>
-                <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 font-medium hover:underline">Ver inventario →</button>
+                <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
               </div>
             </div>
           )}
           <div className="grid lg:grid-cols-3 gap-5">
             <div className="space-y-4">
-              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent" /> Plantilla</h2>
-                <p className="text-xs text-gray-500 mb-3">Descargá, completá y subí.</p>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent" /> Plantilla</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Descargá, completá y subí.</p>
                 <button onClick={descargarPlantillaProductos} className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
                   <Download size={15} /> Descargar plantilla
                 </button>
               </div>
-              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent" /> Subir archivo</h2>
-                <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent" /> Subir archivo</h2>
+                <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
                   onClick={() => fileRefProd.current?.click()}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivoProductos(f) }}>
                   <FileSpreadsheet size={28} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Arrastrá o hacé click</p>
-                  <p className="text-xs text-gray-400 mt-1">.xlsx, .xls, .csv</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
                 </div>
                 <input ref={fileRefProd} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivoProductos(f) }} />
               </div>
               {filasProducto.length > 0 && existentesProd > 0 && (
-                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                  <h2 className="font-semibold text-gray-700 mb-3">Si el SKU ya existe</h2>
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+                  <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3">Si el SKU ya existe</h2>
                   <div className="space-y-2">
                     {([{ val:'crear', label:'Solo crear nuevos', desc:'Ignorar existentes' },{ val:'actualizar', label:'Solo actualizar', desc:'Ignorar nuevos' },{ val:'ambos', label:'Crear y actualizar', desc:'Procesar todos' }] as { val: ModoSKU; label: string; desc: string }[]).map(({ val, label, desc }) => (
-                      <label key={val} className="flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                      <label key={val} className="flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <input type="radio" name="modo" value={val} checked={modo === val} onChange={() => setModo(val)} className="mt-0.5" />
-                        <div><p className="text-sm font-medium text-gray-700">{label}</p><p className="text-xs text-gray-400">{desc}</p></div>
+                        <div><p className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</p><p className="text-xs text-gray-400 dark:text-gray-500">{desc}</p></div>
                       </label>
                     ))}
                   </div>
@@ -511,54 +511,54 @@ export default function ImportarProductosPage() {
             </div>
             <div className="lg:col-span-2">
               {filasProducto.length === 0 ? (
-                <div className="bg-white rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400">
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400 dark:text-gray-500">
                   <FileSpreadsheet size={40} className="mx-auto mb-3 opacity-30" />
                   <p className="font-medium">Subí un archivo para ver la previsualización</p>
                 </div>
               ) : (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-green-600">{nuevosProd}</p><p className="text-xs text-gray-500">Nuevos</p></div>
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-blue-600">{existentesProd}</p><p className="text-xs text-gray-500">Existentes</p></div>
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorProd}</p><p className="text-xs text-gray-500">Con errores</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-green-600 dark:text-green-400">{nuevosProd}</p><p className="text-xs text-gray-500 dark:text-gray-400">Nuevos</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{existentesProd}</p><p className="text-xs text-gray-500 dark:text-gray-400">Existentes</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorProd}</p><p className="text-xs text-gray-500 dark:text-gray-400">Con errores</p></div>
                   </div>
                   <div className="overflow-x-auto max-h-96">
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-gray-50"><tr className="border-b border-gray-100">
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Estado</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Nombre</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">SKU</th>
-                        <th className="text-right px-3 py-2 font-semibold text-gray-600">Costo</th>
-                        <th className="text-right px-3 py-2 font-semibold text-gray-600">Venta</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Categoría</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Errores</th>
+                      <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700"><tr className="border-b border-gray-100">
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Nombre</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">SKU</th>
+                        <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Costo</th>
+                        <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Venta</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Categoría</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Errores</th>
                       </tr></thead>
                       <tbody>
                         {filasProducto.map(f => (
-                          <tr key={f.idx} className={`border-b border-gray-50 ${f.errores.length > 0 ? 'bg-red-50' : f.estado === 'existente' ? 'bg-blue-50/40' : ''}`}>
+                          <tr key={f.idx} className={`border-b border-gray-50 ${f.errores.length > 0 ? 'bg-red-50 dark:bg-red-900/20' : f.estado === 'existente' ? 'bg-blue-50 dark:bg-blue-900/20/40' : ''}`}>
                             <td className="px-3 py-2">
                               {f.errores.length > 0 ? <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
-                                : f.estado === 'existente' ? <span className="flex items-center gap-1 text-blue-600"><RefreshCw size={12} /> Existe</span>
-                                : <span className="flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Nuevo</span>}
+                                : f.estado === 'existente' ? <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400"><RefreshCw size={12} /> Existe</span>
+                                : <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle size={12} /> Nuevo</span>}
                             </td>
-                            <td className="px-3 py-2 font-medium text-gray-800 max-w-32 truncate">{f.nombre || <span className="text-red-400 italic">vacío</span>}</td>
-                            <td className="px-3 py-2 font-mono text-gray-600">{f.sku}</td>
-                            <td className="px-3 py-2 text-right text-gray-600">{f.precio_costo > 0 ? `${f.precio_costo_moneda === 'USD' ? 'USD ' : '$'}${f.precio_costo.toLocaleString()}` : '—'}</td>
-                            <td className="px-3 py-2 text-right text-gray-600">{f.precio_venta > 0 ? `${f.precio_venta_moneda === 'USD' ? 'USD ' : '$'}${f.precio_venta.toLocaleString()}` : '—'}</td>
-                            <td className="px-3 py-2 text-gray-500">{f.categoria ?? '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100 max-w-32 truncate">{f.nombre || <span className="text-red-400 italic">vacío</span>}</td>
+                            <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400">{f.sku}</td>
+                            <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{f.precio_costo > 0 ? `${f.precio_costo_moneda === 'USD' ? 'USD ' : '$'}${f.precio_costo.toLocaleString()}` : '—'}</td>
+                            <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{f.precio_venta > 0 ? `${f.precio_venta_moneda === 'USD' ? 'USD ' : '$'}${f.precio_venta.toLocaleString()}` : '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.categoria ?? '—'}</td>
                             <td className="px-3 py-2 text-red-500">{f.errores.join(', ') || '—'}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <div className="p-4 border-t border-gray-100 bg-gray-50">
+                  <div className="p-4 border-t border-gray-100 bg-gray-50 dark:bg-gray-700">
                     <button onClick={confirmarProductos} disabled={importandoProd || (nuevosProd === 0 && existentesProd === 0)}
                       className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                       {importandoProd ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Importando...</>
                         : <><Upload size={16} /> Confirmar ({modo === 'crear' ? nuevosProd : modo === 'actualizar' ? existentesProd : nuevosProd + existentesProd} productos)</>}
                     </button>
-                    {errorProd > 0 && <p className="text-xs text-gray-400 text-center mt-2 flex items-center justify-center gap-1"><AlertTriangle size={11} /> Las filas con errores serán ignoradas</p>}
+                    {errorProd > 0 && <p className="text-xs text-gray-400 dark:text-gray-500 text-center mt-2 flex items-center justify-center gap-1"><AlertTriangle size={11} /> Las filas con errores serán ignoradas</p>}
                   </div>
                 </div>
               )}
@@ -571,39 +571,39 @@ export default function ImportarProductosPage() {
       {tab === 'inventario' && (
         <>
           {resultadoInv && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
-              <CheckCircle size={20} className="text-green-600 mt-0.5 flex-shrink-0" />
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+              <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
               <div>
-                <p className="font-semibold text-green-800">Carga completada</p>
-                <p className="text-sm text-green-700 mt-0.5">{resultadoInv.cargados} línea{resultadoInv.cargados !== 1 ? 's' : ''} cargada{resultadoInv.cargados !== 1 ? 's' : ''} · {resultadoInv.errores} errores</p>
-                <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 font-medium hover:underline">Ver inventario →</button>
+                <p className="font-semibold text-green-800 dark:text-green-400">Carga completada</p>
+                <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">{resultadoInv.cargados} línea{resultadoInv.cargados !== 1 ? 's' : ''} cargada{resultadoInv.cargados !== 1 ? 's' : ''} · {resultadoInv.errores} errores</p>
+                <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
               </div>
             </div>
           )}
 
           {/* Info box */}
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-700">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-400">
             <strong>Carga masiva de inventario</strong> — Cada fila crea una línea de stock (LPN) y registra un movimiento de ingreso. Los SKUs deben existir previamente en el catálogo de productos.
           </div>
 
           <div className="grid lg:grid-cols-3 gap-5">
             <div className="space-y-4">
-              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent" /> Plantilla</h2>
-                <p className="text-xs text-gray-500 mb-3">Completá una fila por línea de inventario a cargar.</p>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent" /> Plantilla</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Completá una fila por línea de inventario a cargar.</p>
                 <button onClick={descargarPlantillaInventario} className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
                   <Download size={15} /> Descargar plantilla
                 </button>
               </div>
-              <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-700 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent" /> Subir archivo</h2>
-                <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent" /> Subir archivo</h2>
+                <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
                   onClick={() => fileRefInv.current?.click()}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivoInventario(f) }}>
                   <Boxes size={28} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">Arrastrá o hacé click</p>
-                  <p className="text-xs text-gray-400 mt-1">.xlsx, .xls, .csv</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">.xlsx, .xls, .csv</p>
                 </div>
                 <input ref={fileRefInv} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) procesarArchivoInventario(f) }} />
               </div>
@@ -611,55 +611,55 @@ export default function ImportarProductosPage() {
 
             <div className="lg:col-span-2">
               {filasInventario.length === 0 ? (
-                <div className="bg-white rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400">
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-12 shadow-sm border border-gray-100 text-center text-gray-400 dark:text-gray-500">
                   <Boxes size={40} className="mx-auto mb-3 opacity-30" />
                   <p className="font-medium">Subí un archivo para ver la previsualización</p>
                 </div>
               ) : (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-green-600">{okInv}</p><p className="text-xs text-gray-500">Líneas a cargar</p></div>
-                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorInv}</p><p className="text-xs text-gray-500">Con errores</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-green-600 dark:text-green-400">{okInv}</p><p className="text-xs text-gray-500 dark:text-gray-400">Líneas a cargar</p></div>
+                    <div className="px-4 py-3 text-center"><p className="text-2xl font-bold text-red-500">{errorInv}</p><p className="text-xs text-gray-500 dark:text-gray-400">Con errores</p></div>
                   </div>
                   <div className="overflow-x-auto max-h-96">
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-gray-50"><tr className="border-b border-gray-100">
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Estado</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">SKU</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Producto</th>
-                        <th className="text-right px-3 py-2 font-semibold text-gray-600">Cantidad</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Ubicación</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Estado inv.</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Lote</th>
-                        <th className="text-left px-3 py-2 font-semibold text-gray-600">Errores</th>
+                      <thead className="sticky top-0 bg-gray-50 dark:bg-gray-700"><tr className="border-b border-gray-100">
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">SKU</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Producto</th>
+                        <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Cantidad</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Ubicación</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Estado inv.</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Lote</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Errores</th>
                       </tr></thead>
                       <tbody>
                         {filasInventario.map(f => (
-                          <tr key={f.idx} className={`border-b border-gray-50 ${f.estadoFilaImport === 'error' ? 'bg-red-50' : ''}`}>
+                          <tr key={f.idx} className={`border-b border-gray-50 ${f.estadoFilaImport === 'error' ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
                             <td className="px-3 py-2">
                               {f.estadoFilaImport === 'error'
                                 ? <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
-                                : <span className="flex items-center gap-1 text-green-600"><CheckCircle size={12} /> OK</span>}
+                                : <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle size={12} /> OK</span>}
                             </td>
-                            <td className="px-3 py-2 font-mono text-gray-600">{f.sku}</td>
-                            <td className="px-3 py-2 font-medium text-gray-800 max-w-32 truncate">{f.producto_nombre}</td>
-                            <td className="px-3 py-2 text-right text-gray-700 font-semibold">{f.cantidad}</td>
-                            <td className="px-3 py-2 text-gray-500">{f.ubicacion ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-500">{f.estado ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-500">{f.nro_lote ?? '—'}</td>
+                            <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400">{f.sku}</td>
+                            <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100 max-w-32 truncate">{f.producto_nombre}</td>
+                            <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-semibold">{f.cantidad}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.ubicacion ?? '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.estado ?? '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.nro_lote ?? '—'}</td>
                             <td className="px-3 py-2 text-red-500">{f.errores.join(', ') || '—'}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  <div className="p-4 border-t border-gray-100 bg-gray-50">
+                  <div className="p-4 border-t border-gray-100 bg-gray-50 dark:bg-gray-700">
                     <button onClick={confirmarInventario} disabled={importandoInv || okInv === 0}
                       className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                       {importandoInv ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" /> Cargando...</>
                         : <><Boxes size={16} /> Cargar {okInv} línea{okInv !== 1 ? 's' : ''} al inventario</>}
                     </button>
-                    {errorInv > 0 && <p className="text-xs text-gray-400 text-center mt-2 flex items-center justify-center gap-1"><AlertTriangle size={11} /> Las filas con errores serán ignoradas</p>}
+                    {errorInv > 0 && <p className="text-xs text-gray-400 dark:text-gray-500 text-center mt-2 flex items-center justify-center gap-1"><AlertTriangle size={11} /> Las filas con errores serán ignoradas</p>}
                   </div>
                 </div>
               )}

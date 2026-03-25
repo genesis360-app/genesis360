@@ -115,7 +115,7 @@ export default function InventarioPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Inventario</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{productos.length} productos registrados</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{productos.length} productos registrados</p>
         </div>
         <div className="flex gap-2">
           <Link to="/inventario/importar"
@@ -139,14 +139,14 @@ export default function InventarioPage() {
       {/* Barra de uso del plan */}
       {limits && limits.max_productos < 9999 && (
         <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm
-          ${limits.pct_productos >= 90 ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-gray-200'}`}>
-          <Package size={15} className={limits.pct_productos >= 90 ? 'text-orange-500' : 'text-gray-400'} />
+          ${limits.pct_productos >= 90 ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-700'}`}>
+          <Package size={15} className={limits.pct_productos >= 90 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'} />
           <div className="flex-1">
             <div className="flex justify-between text-xs mb-1">
-              <span className={limits.pct_productos >= 90 ? 'text-orange-700 font-medium' : 'text-gray-500'}>
+              <span className={limits.pct_productos >= 90 ? 'text-orange-700 font-medium' : 'text-gray-500 dark:text-gray-400'}>
                 {limits.productos_actuales} de {limits.max_productos} productos
               </span>
-              <span className={limits.pct_productos >= 90 ? 'text-orange-600' : 'text-gray-400'}>
+              <span className={limits.pct_productos >= 90 ? 'text-orange-600' : 'text-gray-400 dark:text-gray-500'}>
                 {limits.pct_productos}%
               </span>
             </div>
@@ -165,10 +165,10 @@ export default function InventarioPage() {
       )}
 
       {stockCritico > 0 && (
-        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 cursor-pointer hover:bg-red-100 transition-all"
+        <div className="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl px-4 py-3 cursor-pointer hover:bg-red-100 dark:bg-red-900/30 transition-all"
           onClick={() => setFilterAlerta(!filterAlerta)}>
           <AlertTriangle size={18} className="text-red-500" />
-          <p className="text-red-700 text-sm font-medium">
+          <p className="text-red-700 dark:text-red-400 text-sm font-medium">
             {stockCritico} producto{stockCritico !== 1 ? 's' : ''} con stock crítico
             {filterAlerta ? ' — click para ver todos' : ' — click para filtrar'}
           </p>
@@ -177,27 +177,27 @@ export default function InventarioPage() {
 
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por nombre, SKU o código..."
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-accent bg-white" />
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
         </div>
         <button
           onClick={() => setScannerOpen(true)}
-          className="px-3 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 text-gray-500 hover:text-accent transition-colors bg-white"
+          className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent transition-colors bg-white dark:bg-gray-800"
           title="Escanear código de barras"
         >
           <Camera size={17} />
         </button>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+          <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
             <Package size={40} className="mb-3 opacity-50" />
             <p className="font-medium">{search ? 'No se encontraron productos' : 'No hay productos aún'}</p>
             {!search && <Link to="/inventario/nuevo" className="mt-3 text-accent text-sm hover:underline">Agregá tu primer producto →</Link>}
@@ -215,36 +215,36 @@ export default function InventarioPage() {
                 <div key={p.id}>
                   {/* Fila del producto */}
                   <div
-                    className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors ${expanded ? 'bg-blue-50/50' : ''}`}
+                    className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors ${expanded ? 'bg-blue-50 dark:bg-blue-900/20/50' : ''}`}
                     onClick={() => setExpandedId(expanded ? null : p.id)}
                   >
-                    <div className="w-5 flex-shrink-0 text-gray-400">
+                    <div className="w-5 flex-shrink-0 text-gray-400 dark:text-gray-500">
                       {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     </div>
 
                     {(p as any).imagen_url ? (
                       <img src={(p as any).imagen_url} alt={p.nombre} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
                     ) : (
-                      <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Package size={16} className="text-gray-400" />
+                      <div className="w-9 h-9 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <Package size={16} className="text-gray-400 dark:text-gray-500" />
                       </div>
                     )}
 
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-800 truncate">{p.nombre}</p>
-                      <p className="text-xs text-gray-400 font-mono">{(p as any).sku}</p>
+                      <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{(p as any).sku}</p>
                     </div>
 
-                    <div className="hidden md:block text-xs text-gray-400">
+                    <div className="hidden md:block text-xs text-gray-400 dark:text-gray-500">
                       {(p as any).categorias?.nombre ?? '—'}
                     </div>
 
                     <div className="hidden sm:block text-right flex-shrink-0">
-                      <p className="text-sm font-medium text-gray-700">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
                         ${((p as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                       </p>
                       {cotizacion > 0 && (p as any).precio_venta > 0 && (
-                        <p className="text-xs text-gray-400">
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
                           USD {((p as any).precio_venta / cotizacion).toFixed(2)}
                         </p>
                       )}
@@ -252,11 +252,11 @@ export default function InventarioPage() {
 
                     <div className="text-right flex-shrink-0">
                       <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-lg text-xs
-                        ${critico ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
+                        ${critico ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
                         {critico && <AlertTriangle size={11} />}
                         {stockTotal} {(p as any).unidad_medida}
                       </span>
-                      <p className="text-xs text-gray-400 mt-0.5">{lineas.length} línea{lineas.length !== 1 ? 's' : ''}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{lineas.length} línea{lineas.length !== 1 ? 's' : ''}</p>
                     </div>
 
                     <Link to={`/inventario/${p.id}/editar`}
@@ -268,12 +268,12 @@ export default function InventarioPage() {
 
                   {/* Líneas expandidas */}
                   {expanded && (
-                    <div className="bg-gray-50 border-t border-gray-100 px-4 py-3">
+                    <div className="bg-gray-50 dark:bg-gray-700 border-t border-gray-100 px-4 py-3">
                       {lineas.length === 0 ? (
-                        <p className="text-sm text-gray-400 text-center py-2">Sin líneas de inventario. Registrá un ingreso para este producto.</p>
+                        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Sin líneas de inventario. Registrá un ingreso para este producto.</p>
                       ) : (
                         <div className="space-y-2">
-                          <div className="grid grid-cols-7 gap-2 text-xs font-semibold text-gray-500 px-3 mb-1">
+                          <div className="grid grid-cols-7 gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1">
                             <span className="col-span-1">LPN</span>
                             <span className="col-span-1 text-right">Cantidad</span>
                             <span className="col-span-1">Estado</span>
@@ -283,23 +283,23 @@ export default function InventarioPage() {
                             <span className="col-span-1 text-center">Acciones</span>
                           </div>
                           {lineas.map((l: any) => (
-                            <div key={l.id} className="bg-white rounded-xl border border-gray-100 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
+                            <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
                               {/* LPN */}
                               <div className="col-span-1">
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-mono text-xs text-primary font-semibold">{l.lpn}</span>
                                   {(l.ubicaciones?.prioridad ?? 0) > 0 && (
-                                    <span className="text-xs bg-blue-50 text-blue-500 px-1 rounded font-mono" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
+                                    <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded font-mono" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
                                   )}
                                 </div>
-                                {l.proveedor_id && <p className="text-xs text-gray-400 truncate">{l.proveedores?.nombre}</p>}
+                                {l.proveedor_id && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{l.proveedores?.nombre}</p>}
                               </div>
 
                               {/* Cantidad */}
                               <div className="col-span-1 text-right">
                                 {tieneSeries ? (
                                   <div>
-                                    <span className="font-semibold text-gray-800">
+                                    <span className="font-semibold text-gray-800 dark:text-gray-100">
                                       {(l.inventario_series ?? []).filter((s: any) => s.activo).length} u.
                                     </span>
                                     {(l.inventario_series ?? []).filter((s: any) => s.activo && s.reservado).length > 0 && (
@@ -310,14 +310,14 @@ export default function InventarioPage() {
                                   </div>
                                 ) : (
                                   <div>
-                                    <span className="font-semibold text-gray-800">{l.cantidad} {(p as any).unidad_medida}</span>
+                                    <span className="font-semibold text-gray-800 dark:text-gray-100">{l.cantidad} {(p as any).unidad_medida}</span>
                                     {(l.cantidad_reservada ?? 0) > 0 && (
                                       <p className="text-xs text-orange-500 font-medium">
                                         {l.cantidad_reservada} reservada(s)
                                       </p>
                                     )}
                                     {(l.cantidad_reservada ?? 0) > 0 && (
-                                      <p className="text-xs text-green-600">
+                                      <p className="text-xs text-green-600 dark:text-green-400">
                                         {l.cantidad - l.cantidad_reservada} disponible(s)
                                       </p>
                                     )}
@@ -330,7 +330,7 @@ export default function InventarioPage() {
                                 <select
                                   value={l.estado_id ?? ''}
                                   onChange={e => cambiarEstadoLinea.mutate({ lineaId: l.id, estadoId: e.target.value })}
-                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 w-full focus:outline-none focus:border-accent bg-white"
+                                  className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 w-full focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
                                   style={{ color: l.estados_inventario?.color ?? '#6b7280', fontWeight: 500 }}
                                 >
                                   <option value="">Sin estado</option>
@@ -343,7 +343,7 @@ export default function InventarioPage() {
                               {/* Ubicación */}
                               <div className="col-span-1">
                                 {l.ubicaciones?.nombre ? (
-                                  <span className="inline-flex items-center gap-1 text-xs text-gray-600">
+                                  <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
                                     <MapPin size={11} /> {l.ubicaciones.nombre}
                                   </span>
                                 ) : <span className="text-xs text-gray-300">—</span>}
@@ -352,12 +352,12 @@ export default function InventarioPage() {
                               {/* Lote / Vencimiento */}
                               <div className="col-span-1">
                                 {l.nro_lote && (
-                                  <span className="inline-flex items-center gap-1 text-xs text-gray-600">
+                                  <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
                                     <Tag size={11} /> {l.nro_lote}
                                   </span>
                                 )}
                                 {l.fecha_vencimiento && (
-                                  <p className="text-xs text-gray-400">{new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</p>
+                                  <p className="text-xs text-gray-400 dark:text-gray-500">{new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</p>
                                 )}
                                 {!l.nro_lote && !l.fecha_vencimiento && <span className="text-xs text-gray-300">—</span>}
                               </div>
@@ -367,7 +367,7 @@ export default function InventarioPage() {
                                 {tieneSeries ? (
                                   <div className="space-y-0.5">
                                     {(l.inventario_series ?? []).filter((s: any) => s.activo).map((s: any) => (
-                                      <span key={s.id} className="inline-flex items-center gap-1 text-xs bg-gray-100 px-1.5 py-0.5 rounded font-mono block">
+                                      <span key={s.id} className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded font-mono block">
                                         <Hash size={9} />{s.nro_serie}
                                       </span>
                                     ))}
@@ -379,7 +379,7 @@ export default function InventarioPage() {
                               <div className="col-span-1 flex justify-center">
                                 <button
                                   onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: p }) }}
-                                  className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"
+                                  className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"
                                   title="Acciones sobre este LPN">
                                   <Settings2 size={15} />
                                 </button>

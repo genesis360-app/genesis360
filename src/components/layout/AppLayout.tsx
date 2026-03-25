@@ -141,7 +141,7 @@ export function AppLayout() {
                     <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-primary ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} />
                   )}
                   {badge && alertCount > 0 && collapsed && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none" style={{ fontSize: 9 }}>
+                    <span className="absolute -top-1 -right-1 bg-red-50 dark:bg-red-900/200 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none" style={{ fontSize: 9 }}>
                       {alertCount > 9 ? '9+' : alertCount}
                     </span>
                   )}
@@ -151,7 +151,7 @@ export function AppLayout() {
                   <span className={`w-2 h-2 rounded-full ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} title={cajaAbierta ? 'Caja abierta' : 'Caja cerrada'} />
                 )}
                 {!collapsed && badge && alertCount > 0 && (
-                  <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  <span className="bg-red-50 dark:bg-red-900/200 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                     {alertCount > 9 ? '9+' : alertCount}
                   </span>
                 )}
@@ -166,7 +166,7 @@ export function AppLayout() {
     )
   }
 
-  const headerBtnCls = 'p-2 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 transition-all'
+  const headerBtnCls = 'p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 transition-all'
 
   return (
     <div className="flex h-screen bg-brand-bg dark:bg-gray-950 overflow-hidden">
@@ -236,8 +236,8 @@ export function AppLayout() {
 
         {/* Trial banner */}
         {showTrialBanner && (
-          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between">
-            <p className="text-amber-800 text-sm">
+          <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 px-4 py-2 flex items-center justify-between">
+            <p className="text-amber-800 dark:text-amber-400 text-sm">
               <span className="font-semibold">Período de prueba:</span>{' '}
               {trialDaysLeft === 0
                 ? 'Vence hoy'
@@ -245,7 +245,7 @@ export function AppLayout() {
             </p>
             <NavLink
               to="/suscripcion"
-              className="flex items-center gap-1 text-amber-700 text-sm font-medium hover:text-amber-900"
+              className="flex items-center gap-1 text-amber-700 dark:text-amber-400 text-sm font-medium hover:text-amber-900"
             >
               Activar plan <ChevronRight size={14} />
             </NavLink>

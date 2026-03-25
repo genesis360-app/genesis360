@@ -45,9 +45,9 @@ const ENTIDAD_LABELS: Record<string, string> = {
 }
 
 const ACCION_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  crear:         { label: 'Creó',         color: 'text-green-700',  bg: 'bg-green-100' },
-  editar:        { label: 'Editó',         color: 'text-blue-700',   bg: 'bg-blue-100'  },
-  eliminar:      { label: 'Eliminó',       color: 'text-red-700',    bg: 'bg-red-100'   },
+  crear:         { label: 'Creó',         color: 'text-green-700 dark:text-green-400',  bg: 'bg-green-100 dark:bg-green-900/30' },
+  editar:        { label: 'Editó',         color: 'text-blue-700 dark:text-blue-400',   bg: 'bg-blue-100 dark:bg-blue-900/30'  },
+  eliminar:      { label: 'Eliminó',       color: 'text-red-700 dark:text-red-400',    bg: 'bg-red-100 dark:bg-red-900/30'   },
   cambio_estado: { label: 'Cambió estado', color: 'text-purple-700', bg: 'bg-purple-100'},
 }
 
@@ -162,8 +162,8 @@ export default function HistorialPage() {
 
   if (!puedeVer) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-500">
-        <ClipboardList size={48} className="mb-4 text-gray-300" />
+      <div className="flex flex-col items-center justify-center py-20 text-gray-500 dark:text-gray-400">
+        <ClipboardList size={48} className="mb-4 text-gray-300 dark:text-gray-600 dark:text-gray-400" />
         <p className="text-lg font-medium">Sin acceso</p>
         <p className="text-sm mt-1">Esta sección es solo para supervisores y dueños.</p>
       </div>
@@ -178,12 +178,12 @@ export default function HistorialPage() {
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
             <ClipboardList size={22} /> Historial de actividad
           </h1>
-          <p className="text-gray-500 text-sm mt-0.5">Todo lo que pasó en tu negocio — quién, qué, cuándo</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Todo lo que pasó en tu negocio — quién, qué, cuándo</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowFiltros(!showFiltros)}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl border-2 transition-all
-              ${showFiltros || hayFiltros ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              ${showFiltros || hayFiltros ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
             <Filter size={15} /> Filtros {hayFiltros && '●'}
           </button>
           <button onClick={exportarExcel}
@@ -195,51 +195,51 @@ export default function HistorialPage() {
 
       {/* Panel de filtros */}
       {showFiltros && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-4 shadow-sm">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Buscar nombre</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Buscar nombre</label>
               <input type="text" placeholder="Nombre de la entidad..." value={filtros.buscar}
                 onChange={e => { setFiltros(f => ({ ...f, buscar: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo</label>
               <select value={filtros.entidad} onChange={e => { setFiltros(f => ({ ...f, entidad: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                 <option value="">Todos</option>
                 {Object.entries(ENTIDAD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Acción</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Acción</label>
               <select value={filtros.accion} onChange={e => { setFiltros(f => ({ ...f, accion: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                 <option value="">Todas</option>
                 {Object.entries(ACCION_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Usuario</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Usuario</label>
               <select value={filtros.usuario_id} onChange={e => { setFiltros(f => ({ ...f, usuario_id: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                 <option value="">Todos</option>
                 {(usuarios as any[]).map(u => <option key={u.usuario_id} value={u.usuario_id}>{u.usuario_nombre}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Desde</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Desde</label>
               <input type="date" value={filtros.desde} onChange={e => { setFiltros(f => ({ ...f, desde: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Hasta</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Hasta</label>
               <input type="date" value={filtros.hasta} onChange={e => { setFiltros(f => ({ ...f, hasta: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
             </div>
           </div>
           {hayFiltros && (
-            <button onClick={limpiar} className="mt-3 flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-500 transition-colors">
+            <button onClick={limpiar} className="mt-3 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 transition-colors">
               <X size={12} /> Limpiar filtros
             </button>
           )}
@@ -248,9 +248,9 @@ export default function HistorialPage() {
 
       {/* Timeline */}
       {isLoading ? (
-        <div className="text-center py-16 text-gray-400">Cargando historial...</div>
+        <div className="text-center py-16 text-gray-400 dark:text-gray-500">Cargando historial...</div>
       ) : (logs as any[]).length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
           <ClipboardList size={44} className="mb-3 text-gray-200" />
           <p className="font-medium">Sin actividad registrada</p>
           <p className="text-sm mt-1">Las acciones aparecerán aquí a medida que se realicen.</p>
@@ -259,27 +259,27 @@ export default function HistorialPage() {
         <div className="space-y-6">
           {Object.entries(grouped).map(([dia, items]) => (
             <div key={dia}>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-1">
+              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">
                 {format(parseISO(dia), "EEEE d 'de' MMMM", { locale: es })}
               </p>
               <div className="space-y-2">
                 {items.map((log: any) => {
-                  const accionInfo = ACCION_LABELS[log.accion] ?? { label: log.accion, color: 'text-gray-700', bg: 'bg-gray-100' }
+                  const accionInfo = ACCION_LABELS[log.accion] ?? { label: log.accion, color: 'text-gray-700 dark:text-gray-300', bg: 'bg-gray-100 dark:bg-gray-700' }
                   const EntidadIcon = ENTIDAD_ICONS[log.entidad] ?? ClipboardList
                   return (
-                    <div key={log.id} className="bg-white rounded-xl border border-gray-100 p-3.5 hover:shadow-sm transition-shadow">
+                    <div key={log.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 p-3.5 hover:shadow-sm transition-shadow">
                       <div className="flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <EntidadIcon size={15} className="text-gray-500" />
+                        <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <EntidadIcon size={15} className="text-gray-500 dark:text-gray-400" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-800">{describir(log)}</p>
+                          <p className="text-sm text-gray-800 dark:text-gray-100">{describir(log)}</p>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${accionInfo.bg} ${accionInfo.color}`}>
                               {accionInfo.label}
                             </span>
                             {log.usuario_nombre && (
-                              <span className="text-xs text-gray-400 flex items-center gap-1">
+                              <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
                                 <User size={10} /> {log.usuario_nombre}
                               </span>
                             )}
@@ -288,7 +288,7 @@ export default function HistorialPage() {
                             )}
                           </div>
                         </div>
-                        <span className="text-xs text-gray-400 flex-shrink-0">
+                        <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
                           {format(parseISO(log.created_at), 'HH:mm')}
                         </span>
                       </div>
@@ -305,12 +305,12 @@ export default function HistorialPage() {
       {(logs as any[]).length > 0 && (
         <div className="flex items-center justify-between pt-2">
           <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-            className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 transition-all">
+            className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40 transition-all">
             ← Anterior
           </button>
-          <span className="text-sm text-gray-500">Página {page + 1}</span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">Página {page + 1}</span>
           <button onClick={() => setPage(p => p + 1)} disabled={(logs as any[]).length < PAGE_SIZE}
-            className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-xl hover:bg-gray-50 disabled:opacity-40 transition-all">
+            className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40 transition-all">
             Siguiente →
           </button>
         </div>

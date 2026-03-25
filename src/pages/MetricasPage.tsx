@@ -20,14 +20,14 @@ function formatMoneda(v: number) {
 
 function StatCard({ label, value, sub, icon: Icon, color, trend }: any) {
   return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
       <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 ${color}`}>
         <Icon size={20} />
       </div>
-      <p className="text-2xl font-bold text-gray-800">{value}</p>
-      <p className="text-sm text-gray-500 mt-0.5">{label}</p>
+      <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
       {sub && (
-        <p className={`text-xs mt-1 flex items-center gap-1 ${trend === 'up' ? 'text-green-600' : trend === 'down' ? 'text-red-500' : 'text-gray-400'}`}>
+        <p className={`text-xs mt-1 flex items-center gap-1 ${trend === 'up' ? 'text-green-600 dark:text-green-400' : trend === 'down' ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
           {trend === 'up' && <TrendingUp size={11} />}
           {trend === 'down' && <TrendingDown size={11} />}
           {trend === 'neutral' && <Minus size={11} />}
@@ -342,7 +342,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-primary">Métricas</h1>
-            <p className="text-gray-500 text-sm mt-0.5">Análisis de ventas y rotación de stock</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Análisis de ventas y rotación de stock</p>
           </div>
         </div>
       )}
@@ -350,11 +350,11 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         <div className="flex items-center gap-2">
           {(categorias as any[]).length > 0 && (
             <div className="relative">
-              <Filter size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <Filter size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" />
               <select
                 value={categoriaFiltro ?? ''}
                 onChange={e => setCategoriaFiltro(e.target.value || null)}
-                className="pl-7 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-primary"
+                className="pl-7 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <option value="">Todas las categorías</option>
                 {(categorias as any[]).map((c: any) => (
@@ -365,11 +365,11 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
             {PERIODOS.map(p => (
               <button key={p.id} onClick={() => setPeriodo(p.id as Periodo)}
                 className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all
-                  ${periodo === p.id ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                  ${periodo === p.id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
                 {p.label}
               </button>
             ))}
@@ -377,10 +377,10 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
           {periodo === 'custom' && (
             <div className="flex items-center gap-2">
               <input type="date" value={fechaDesdeCustom} onChange={e => setFechaDesdeCustom(e.target.value)}
-                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary" />
-              <span className="text-gray-400 text-sm">→</span>
+                className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary" />
+              <span className="text-gray-400 dark:text-gray-500 text-sm">→</span>
               <input type="date" value={fechaHastaCustom} onChange={e => setFechaHastaCustom(e.target.value)}
-                className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary" />
+                className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
           )}
         </div>
@@ -417,19 +417,19 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
       {/* Stats principales */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Ventas totales" icon={DollarSign} color="bg-blue-50 text-blue-600"
+          label="Ventas totales" icon={DollarSign} color="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
           value={formatMoneda(totalVentas)}
           sub={`${varVentas >= 0 ? '+' : ''}${varVentas.toFixed(1)}% vs período anterior`}
           trend={varVentas > 0 ? 'up' : varVentas < 0 ? 'down' : 'neutral'}
         />
         <StatCard
-          label="Nº de ventas" icon={ShoppingCart} color="bg-green-50 text-green-600"
+          label="Nº de ventas" icon={ShoppingCart} color="bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400"
           value={ventasPeriodo.length}
           sub={`${ventasAnteriores.length} en período anterior`}
           trend={ventasPeriodo.length >= ventasAnteriores.length ? 'up' : 'down'}
         />
         <StatCard
-          label="Ticket promedio" icon={TrendingUp} color="bg-purple-50 text-purple-600"
+          label="Ticket promedio" icon={TrendingUp} color="bg-purple-50 dark:bg-purple-900/20 text-purple-600"
           value={formatMoneda(ticketPromedio)}
           sub={`${varTicket >= 0 ? '+' : ''}${varTicket.toFixed(1)}% vs anterior`}
           trend={varTicket > 0 ? 'up' : varTicket < 0 ? 'down' : 'neutral'}
@@ -444,10 +444,10 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Gráfico ventas por día */}
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h2 className="font-semibold text-gray-700 mb-4">Ventas por día</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+          <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4">Ventas por día</h2>
           {dataGrafico.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Sin ventas en este período</div>
+            <div className="flex items-center justify-center h-40 text-gray-400 dark:text-gray-500 text-sm">Sin ventas en este período</div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={dataGrafico}>
@@ -461,10 +461,10 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         </div>
 
         {/* Medios de pago */}
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h2 className="font-semibold text-gray-700 mb-4">Ventas por medio de pago</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+          <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4">Ventas por medio de pago</h2>
           {dataMediosPago.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Sin datos</div>
+            <div className="flex items-center justify-center h-40 text-gray-400 dark:text-gray-500 text-sm">Sin datos</div>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -482,28 +482,28 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Top productos */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
             <Award size={18} className="text-yellow-500" />
-            <h2 className="font-semibold text-gray-700">Productos más vendidos</h2>
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Productos más vendidos</h2>
           </div>
           {topProductos.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">Sin ventas en este período</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin ventas en este período</p>
           ) : (
             <div className="divide-y divide-gray-50">
               {topProductos.map((p, i) => (
                 <div key={i} className="px-5 py-3 flex items-center gap-3">
                   <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0
-                    ${i === 0 ? 'bg-yellow-100 text-yellow-600' : i === 1 ? 'bg-gray-100 text-gray-600' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-gray-50 text-gray-400'}`}>
+                    ${i === 0 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600' : i === 1 ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500'}`}>
                     {i + 1}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{p.nombre}</p>
-                    <p className="text-xs text-gray-400 font-mono">{p.sku}</p>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{p.sku}</p>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="text-sm font-bold text-primary">{p.cantidad} u.</p>
-                    <p className="text-xs text-gray-400">{formatMoneda(p.total)}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{formatMoneda(p.total)}</p>
                   </div>
                 </div>
               ))}
@@ -512,22 +512,22 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         </div>
 
         {/* Margen por producto */}
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h2 className="font-semibold text-gray-700 mb-4">Margen de ganancia (top vendidos)</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+          <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4">Margen de ganancia (top vendidos)</h2>
           {margenProductos.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">Sin datos suficientes</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin datos suficientes</p>
           ) : (
             <div className="space-y-3">
               {margenProductos.slice(0, 6).map((p, i) => (
                 <div key={i}>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-600 truncate max-w-48">{p.nombre}</span>
-                    <span className={`font-bold ${p.margen >= 30 ? 'text-green-600' : p.margen >= 15 ? 'text-yellow-600' : 'text-red-500'}`}>
+                    <span className="text-gray-600 dark:text-gray-400 truncate max-w-48">{p.nombre}</span>
+                    <span className={`font-bold ${p.margen >= 30 ? 'text-green-600 dark:text-green-400' : p.margen >= 15 ? 'text-yellow-600' : 'text-red-500'}`}>
                       {p.margen}%
                     </span>
                   </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${p.margen >= 30 ? 'bg-green-500' : p.margen >= 15 ? 'bg-yellow-500' : 'bg-red-400'}`}
+                  <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full ${p.margen >= 30 ? 'bg-green-50 dark:bg-green-900/200' : p.margen >= 15 ? 'bg-yellow-50 dark:bg-yellow-900/200' : 'bg-red-400'}`}
                       style={{ width: `${Math.min(p.margen, 100)}%` }} />
                   </div>
                 </div>
@@ -539,25 +539,25 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
 
       {/* Insights de margen objetivo */}
       {insightsMargen.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
             <Target size={18} className="text-purple-500" />
-            <h2 className="font-semibold text-gray-700">Insights de margen objetivo</h2>
-            <span className="ml-auto text-xs text-gray-400">{insightsMargen.length} productos con objetivo definido</span>
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Insights de margen objetivo</h2>
+            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{insightsMargen.length} productos con objetivo definido</span>
           </div>
           <div className="divide-y divide-gray-50">
             {insightsMargen.slice(0, 10).map((p, i) => (
               <div key={i} className="px-5 py-3 flex items-center gap-3">
                 <div className={`w-2 h-2 rounded-full flex-shrink-0 ${p.bajandoObjetivo ? 'bg-red-400' : 'bg-green-400'}`} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{p.nombre}</p>
-                  <p className="text-xs text-gray-400 font-mono">{p.sku}</p>
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{p.sku}</p>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <p className={`text-sm font-bold ${p.bajandoObjetivo ? 'text-red-500' : 'text-green-600'}`}>
+                  <p className={`text-sm font-bold ${p.bajandoObjetivo ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
                     {p.margenActual}%
                   </p>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
                     obj: {p.margenObjetivo}%
                     {' '}<span className={`font-medium ${p.bajandoObjetivo ? 'text-red-400' : 'text-green-500'}`}>
                       ({p.diff >= 0 ? '+' : ''}{p.diff}pp)
@@ -568,7 +568,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
             ))}
           </div>
           {insightsMargen.filter(p => p.bajandoObjetivo).length > 0 && (
-            <div className="px-5 py-3 bg-red-50 border-t border-red-100 text-xs text-red-600 flex items-center gap-2">
+            <div className="px-5 py-3 bg-red-50 dark:bg-red-900/20 border-t border-red-100 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
               <AlertTriangle size={13} />
               {insightsMargen.filter(p => p.bajandoObjetivo).length} producto(s) por debajo de su objetivo de margen
             </div>
@@ -578,44 +578,44 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
 
       {/* Métricas de inventario */}
       <div>
-        <h2 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
           <ArrowUpDown size={18} className="text-primary" /> Métricas de inventario
         </h2>
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Movimientos del período */}
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <h3 className="font-semibold text-gray-700 mb-4 text-sm">Movimientos en el período</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-4 text-sm">Movimientos en el período</h3>
             {movimientosPeriodo.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">Sin movimientos en este período</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">Sin movimientos en este período</p>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-4 mb-5">
-                  <div className="bg-green-50 rounded-xl p-4 text-center">
-                    <p className="text-2xl font-bold text-green-700">{totalIngresos.toLocaleString('es-AR')}</p>
-                    <p className="text-xs text-green-600 mt-1">Unidades ingresadas</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                  <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-green-700 dark:text-green-400">{totalIngresos.toLocaleString('es-AR')}</p>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">Unidades ingresadas</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                       {movimientosPeriodo.filter((m: any) => m.tipo === 'ingreso').length} órdenes
                     </p>
                   </div>
                   <div className="bg-orange-50 rounded-xl p-4 text-center">
                     <p className="text-2xl font-bold text-orange-600">{totalRebajes.toLocaleString('es-AR')}</p>
                     <p className="text-xs text-orange-500 mt-1">Unidades rebajadas</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                       {movimientosPeriodo.filter((m: any) => m.tipo === 'rebaje').length} órdenes
                     </p>
                   </div>
                 </div>
                 {topMotivos.length > 0 && (
                   <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">Top motivos</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Top motivos</p>
                     <div className="space-y-2">
                       {topMotivos.map((m, i) => (
                         <div key={i}>
                           <div className="flex justify-between text-xs mb-0.5">
-                            <span className="text-gray-600 truncate max-w-48">{m.motivo}</span>
-                            <span className="text-gray-500 font-medium ml-2 flex-shrink-0">{m.cantidad} u.</span>
+                            <span className="text-gray-600 dark:text-gray-400 truncate max-w-48">{m.motivo}</span>
+                            <span className="text-gray-500 dark:text-gray-400 font-medium ml-2 flex-shrink-0">{m.cantidad} u.</span>
                           </div>
-                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                             <div className="h-full bg-primary rounded-full"
                               style={{ width: `${Math.min((m.cantidad / (topMotivos[0]?.cantidad || 1)) * 100, 100)}%` }} />
                           </div>
@@ -629,24 +629,24 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
           </div>
 
           {/* Stock por ubicación */}
-          <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <h3 className="font-semibold text-gray-700 mb-4 text-sm flex items-center gap-2">
-              <MapPin size={14} className="text-gray-400" /> Stock por ubicación
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-4 text-sm flex items-center gap-2">
+              <MapPin size={14} className="text-gray-400 dark:text-gray-500" /> Stock por ubicación
             </h3>
             {stockPorUbicacion.length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">Sin datos de ubicaciones</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">Sin datos de ubicaciones</p>
             ) : (
               <div className="space-y-3">
                 {stockPorUbicacion.map((u, i) => (
                   <div key={i}>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-gray-600 truncate max-w-40">{u.nombre}</span>
+                      <span className="text-gray-600 dark:text-gray-400 truncate max-w-40">{u.nombre}</span>
                       <div className="text-right flex-shrink-0 ml-2">
-                        <span className="font-semibold text-gray-700">{formatMoneda(u.valor)}</span>
-                        <span className="text-gray-400 ml-1">· {u.unidades.toLocaleString('es-AR')} u.</span>
+                        <span className="font-semibold text-gray-700 dark:text-gray-300">{formatMoneda(u.valor)}</span>
+                        <span className="text-gray-400 dark:text-gray-500 ml-1">· {u.unidades.toLocaleString('es-AR')} u.</span>
                       </div>
                     </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                       <div className="h-full rounded-full bg-accent"
                         style={{ width: `${Math.min((u.valor / maxValorUbicacion) * 100, 100)}%` }} />
                     </div>
@@ -659,34 +659,34 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
       </div>
 
       {/* Productos sin movimiento */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
           <Clock size={18} className="text-orange-500" />
-          <h2 className="font-semibold text-gray-700">Productos sin movimiento en el período</h2>
-          <span className="ml-auto text-xs text-gray-400">{sinMovimiento.length} productos</span>
+          <h2 className="font-semibold text-gray-700 dark:text-gray-300">Productos sin movimiento en el período</h2>
+          <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{sinMovimiento.length} productos</span>
         </div>
         {sinMovimiento.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">¡Todos los productos tuvieron movimiento!</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">¡Todos los productos tuvieron movimiento!</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600">Producto</th>
-                  <th className="text-right px-5 py-3 font-semibold text-gray-600">Stock actual</th>
-                  <th className="text-right px-5 py-3 font-semibold text-gray-600">Valor en stock</th>
-                  <th className="text-left px-5 py-3 font-semibold text-gray-600 hidden md:table-cell">Última venta</th>
+                <tr className="border-b border-gray-100 bg-gray-50 dark:bg-gray-700">
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 dark:text-gray-400">Producto</th>
+                  <th className="text-right px-5 py-3 font-semibold text-gray-600 dark:text-gray-400">Stock actual</th>
+                  <th className="text-right px-5 py-3 font-semibold text-gray-600 dark:text-gray-400">Valor en stock</th>
+                  <th className="text-left px-5 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Última venta</th>
                 </tr>
               </thead>
               <tbody>
                 {sinMovimiento.slice(0, 20).map((p: any) => (
-                  <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="px-5 py-3">
-                      <p className="font-medium text-gray-800">{p.nombre}</p>
-                      <p className="text-xs text-gray-400 font-mono">{p.sku}</p>
+                      <p className="font-medium text-gray-800 dark:text-gray-100">{p.nombre}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{p.sku}</p>
                     </td>
-                    <td className="px-5 py-3 text-right font-semibold text-gray-700">{p.stock_actual}</td>
-                    <td className="px-5 py-3 text-right text-gray-500">{formatMoneda(p.stock_actual * p.precio_costo)}</td>
+                    <td className="px-5 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">{p.stock_actual}</td>
+                    <td className="px-5 py-3 text-right text-gray-500 dark:text-gray-400">{formatMoneda(p.stock_actual * p.precio_costo)}</td>
                     <td className="px-5 py-3 hidden md:table-cell">
                       {p.ultimaVenta
                         ? <span className="text-xs text-orange-500">{new Date(p.ultimaVenta).toLocaleDateString('es-AR')}</span>
@@ -697,7 +697,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
               </tbody>
             </table>
             {sinMovimiento.length > 20 && (
-              <p className="text-xs text-gray-400 text-center py-2">Mostrando 20 de {sinMovimiento.length}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">Mostrando 20 de {sinMovimiento.length}</p>
             )}
           </div>
         )}

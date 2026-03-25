@@ -26,14 +26,14 @@ function getFechaDesde(periodo: Periodo) {
 
 function KpiCard({ label, value, sub, icon: Icon, color, trend }: any) {
   return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
       <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 ${color}`}>
         <Icon size={20} />
       </div>
-      <p className="text-2xl font-bold text-gray-800">{value}</p>
-      <p className="text-sm text-gray-500 mt-0.5">{label}</p>
+      <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
       {sub && (
-        <p className={`text-xs mt-1 flex items-center gap-1 ${trend === 'good' ? 'text-green-600' : trend === 'bad' ? 'text-red-500' : 'text-gray-400'}`}>
+        <p className={`text-xs mt-1 flex items-center gap-1 ${trend === 'good' ? 'text-green-600 dark:text-green-400' : trend === 'bad' ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
           {trend === 'good' && <TrendingUp size={11} />}
           {trend === 'bad' && <TrendingDown size={11} />}
           {sub}
@@ -151,20 +151,20 @@ export default function RentabilidadPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-            <TrendingUp size={20} className="text-green-600" />
+          <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
+            <TrendingUp size={20} className="text-green-600 dark:text-green-400" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Rentabilidad Real</h1>
-            <p className="text-sm text-gray-500">Margen y ganancia de tus ventas despachadas</p>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Rentabilidad Real</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Margen y ganancia de tus ventas despachadas</p>
           </div>
         </div>
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+        <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
           {PERIODOS.map(p => (
             <button
               key={p.key}
               onClick={() => setPeriodo(p.key)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${periodo === p.key ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${periodo === p.key ? 'bg-white dark:bg-gray-800 shadow text-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}
             >
               {p.label}
             </button>
@@ -173,9 +173,9 @@ export default function RentabilidadPage() {
       </div>
 
       {isLoading ? (
-        <p className="text-center text-gray-400 py-16">Cargando...</p>
+        <p className="text-center text-gray-400 dark:text-gray-500 py-16">Cargando...</p>
       ) : ventas.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
+        <div className="text-center py-16 text-gray-400 dark:text-gray-500">
           <ShoppingCart size={40} className="mx-auto mb-3 opacity-30" />
           <p className="font-medium">Sin ventas despachadas en este período</p>
         </div>
@@ -183,7 +183,7 @@ export default function RentabilidadPage() {
         <>
           {/* Aviso si no hay datos de costo */}
           {sinDatos && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-700">
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-700 dark:text-amber-400">
               <strong>Sin datos de costo disponibles.</strong> Para ver la rentabilidad, ingresá el precio de compra al registrar movimientos de ingreso de stock.
             </div>
           )}
@@ -195,7 +195,7 @@ export default function RentabilidadPage() {
               value={formatMoneda(kpis.totalVentas)}
               sub={`${kpis.totalVentasCount} ventas despachadas`}
               icon={ShoppingCart}
-              color="bg-blue-100 text-blue-600"
+              color="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
             />
             <KpiCard
               label="Costo total"
@@ -209,7 +209,7 @@ export default function RentabilidadPage() {
               value={kpis.gananciaTotal !== null ? formatMoneda(kpis.gananciaTotal) : '—'}
               sub={kpis.gananciaTotal !== null ? (kpis.gananciaTotal >= 0 ? 'Ganancia' : 'Pérdida') : 'Ingresá costos'}
               icon={DollarSign}
-              color="bg-green-100 text-green-600"
+              color="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
               trend={kpis.gananciaTotal !== null ? (kpis.gananciaTotal >= 0 ? 'good' : 'bad') : undefined}
             />
             <KpiCard
@@ -224,8 +224,8 @@ export default function RentabilidadPage() {
 
           {/* Gráfico por producto */}
           {!sinDatos && porProducto.some(p => p.ganancia !== null) && (
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
-              <h2 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
                 <Award size={16} /> Top productos por ganancia
               </h2>
               <ResponsiveContainer width="100%" height={200}>
@@ -244,39 +244,39 @@ export default function RentabilidadPage() {
           )}
 
           {/* Tabla por venta */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-4 border-b border-gray-100">
-              <h2 className="font-semibold text-gray-700 flex items-center gap-2">
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                 <ShoppingCart size={16} /> Detalle por venta
               </h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">#</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Cliente</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Venta</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Costo</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Ganancia</th>
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Margen</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">#</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Fecha</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Cliente</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Venta</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Costo</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Ganancia</th>
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Margen</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {porVenta.map((v: any) => (
-                    <tr key={v.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium text-gray-700">#{v.numero ?? v.id.slice(-4)}</td>
-                      <td className="px-4 py-3 text-gray-500">
+                    <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">#{v.numero ?? v.id.slice(-4)}</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
                         {new Date(v.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 max-w-[120px] truncate">{v.cliente ?? '—'}</td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-800">{formatMoneda(v.total)}</td>
-                      <td className="px-4 py-3 text-right text-gray-500">{v.costo ? formatMoneda(v.costo) : '—'}</td>
-                      <td className={`px-4 py-3 text-right font-semibold ${v.ganancia === null ? 'text-gray-300' : v.ganancia >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[120px] truncate">{v.cliente ?? '—'}</td>
+                      <td className="px-4 py-3 text-right font-medium text-gray-800 dark:text-gray-100">{formatMoneda(v.total)}</td>
+                      <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{v.costo ? formatMoneda(v.costo) : '—'}</td>
+                      <td className={`px-4 py-3 text-right font-semibold ${v.ganancia === null ? 'text-gray-300' : v.ganancia >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                         {v.ganancia !== null ? formatMoneda(v.ganancia) : '—'}
                       </td>
-                      <td className={`px-4 py-3 text-right font-medium ${v.margen === null ? 'text-gray-300' : v.margen >= 20 ? 'text-green-600' : v.margen >= 10 ? 'text-amber-600' : 'text-red-500'}`}>
+                      <td className={`px-4 py-3 text-right font-medium ${v.margen === null ? 'text-gray-300' : v.margen >= 20 ? 'text-green-600 dark:text-green-400' : v.margen >= 10 ? 'text-amber-600 dark:text-amber-400' : 'text-red-500'}`}>
                         {v.margen !== null ? formatPct(v.margen) : '—'}
                       </td>
                     </tr>

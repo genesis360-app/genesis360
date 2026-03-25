@@ -67,7 +67,7 @@ export default function ReportesPage() {
     queryKey: ['reporte-lineas', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('inventario_lineas')
-        .select('*, estados_inventario(nombre), ubicaciones(nombre), productos(nombre, sku, precio_costo, precio_venta)')
+        .select('*, estados_inventario(nombre), ubicaciones(nombre), productos(nombre, sku, precio_costo, precio_venta, tiene_series), inventario_series(nro_serie, activo)')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       return data ?? []
     },
@@ -105,7 +105,7 @@ export default function ReportesPage() {
   })
   const { data: masterEstados = [] } = useQuery({
     queryKey: ['reporte-master-estados', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('estados_inventario').select('nombre, color, es_default').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
+    queryFn: async () => { const { data } = await supabase.from('estados_inventario').select('nombre, color, es_default').eq('tenant_id', tenant!.id).order('nombre'); return data ?? [] },
     enabled: !!tenant,
   })
   const { data: masterMotivos = [] } = useQuery({
@@ -132,16 +132,24 @@ export default function ReportesPage() {
   // ── Datos procesados ─────────────────────────────────────────────────────────
 
   const datosPorReporte = {
-    stock: lineas.map((l: any) => ({
-      Producto: l.productos?.nombre ?? '',
-      SKU: l.productos?.sku ?? '',
-      LPN: l.lpn,
-      Cantidad: l.cantidad,
-      Estado: l.estados_inventario?.nombre ?? '',
-      Ubicación: l.ubicaciones?.nombre ?? '',
-      'Precio costo': l.productos?.precio_costo ?? 0,
-      'Precio venta': l.productos?.precio_venta ?? 0,
-    })),
+    stock: lineas.flatMap((l: any) => {
+      const series = (l.inventario_series ?? []).filter((s: any) => s.activo !== false)
+      const base = {
+        Producto: l.productos?.nombre ?? '',
+        SKU: l.productos?.sku ?? '',
+        LPN: l.lpn ?? '',
+        'N° Lote': l.nro_lote ?? '',
+        Vencimiento: l.fecha_vencimiento ? formatFecha(l.fecha_vencimiento) : '',
+        Estado: l.estados_inventario?.nombre ?? '',
+        Ubicación: l.ubicaciones?.nombre ?? '',
+        'Precio costo': l.productos?.precio_costo ?? 0,
+        'Precio venta': l.productos?.precio_venta ?? 0,
+      }
+      if (series.length > 0) {
+        return series.map((s: any) => ({ ...base, 'N° Serie': s.nro_serie, Cantidad: 1 }))
+      }
+      return [{ ...base, 'N° Serie': '', Cantidad: l.cantidad }]
+    }),
 
     movimientos: movimientos.map((m: any) => ({
       Fecha: formatFecha(m.created_at),
@@ -163,7 +171,15 @@ export default function ReportesPage() {
       Subtotal: v.subtotal,
       Descuento: v.descuento_total,
       Total: v.total,
-      'Medio de pago': v.medio_pago ?? '',
+      'Medio de pago': (() => {
+        try {
+          const mp = v.medio_pago
+          if (!mp) return ''
+          const parsed = typeof mp === 'string' ? JSON.parse(mp) : mp
+          if (Array.isArray(parsed)) return parsed.map((m: any) => m.tipo || '').filter(Boolean).join(' + ')
+          return String(mp)
+        } catch { return String(v.medio_pago ?? '') }
+      })(),
     })),
 
     criticos: productos

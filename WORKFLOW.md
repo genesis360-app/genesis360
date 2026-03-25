@@ -119,7 +119,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.29.0 | Trazabilidad LPN→venta (linea_id en venta_items) · LPN en carrito · Vista galería ventas · Margen objetivo por SKU · Insights margen + Métricas inventario | 2026-03 |
 | v0.30.0 | Fix importar serializados · Proyección cobertura stock · LPN en ticket · Motivos caja · Invitación por email (EF invite-user) · Importación masiva clientes · Combos multi-tipo · Sidebar colapsable · useModalKeyboard wiring · Caja ingresos informativos | 2026-03 (incluido en v0.31.0) |
 | v0.31.0 | Header universal (user/rol + dark mode + ayuda + logout) · Dashboard: Stock Crítico→Alertas + links métricas con setTab · Ventas: imagen en lista + galería mejorada + buscador series · Caja: bloqueo egreso > saldo · Gastos: bloqueo si caja cerrada · Movimientos UX (búsqueda, UoM, motivos, trazabilidad) · Reportes: stock con lote/vencimiento/series + medio_pago parseado + estados fix | 2026-03 |
-| v0.32.0 | Dark mode completo (31 archivos + global CSS) · RRHH Phase 2A Nómina (conceptos, liquidaciones, pagar→caja, trigger neto) | 2026-03 (en dev) |
+| v0.32.0 | Dark mode completo (31 archivos + global CSS) · RRHH Phase 2A Nómina (conceptos, liquidaciones, pagar→caja, trigger neto) | 2026-03 (incluido en v0.33.0) |
 | v0.33.0 | RRHH Phase 2B Vacaciones (solicitudes + saldos + aprobar/rechazar) · RRHH Phase 3A Asistencia (presente/ausente/tardanza/licencia) | 2026-03 |
 | v0.34.0 | RRHH Phase 3B Dashboard (KPIs empleados/asistencia/vacaciones/nómina · breakdown depts · exportar Excel) | 2026-03 (en dev) |
 

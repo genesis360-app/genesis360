@@ -254,12 +254,11 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [ ] Revisar matriz de funcionalidades por plan (actualmente solo se limitan usuarios y productos)
 
 ### RRHH — Phases 2–5 (ver ROADMAP.md)
-- [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, en dev)
-- [x] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente (migración 018, en dev)
+- [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, PROD)
+- [x] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente (migración 018, PROD)
 - [ ] Phase 2C — Cumpleaños automáticos: Edge Function scheduler
-- [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, en dev)
-- [x] Phase 3B — Dashboard RRHH: KPIs empleados/asistencia/vacaciones/nómina + breakdown depts + exportar Excel (en dev)
-- [ ] Phase 3B — Dashboard RRHH: KPIs + reportes Excel/PDF
+- [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, PROD)
+- [x] Phase 3B — Dashboard RRHH: KPIs empleados/asistencia/vacaciones/nómina + breakdown depts + exportar Excel (dev, pendiente deploy)
 - [ ] Phase 4A — Documentos empleado: Storage bucket `empleados`
 - [ ] Phase 4B — Capacitaciones + certificados
 - [ ] Phase 5 — Supervisor Self-Service: dashboard restringido + árbol jerárquico RLS

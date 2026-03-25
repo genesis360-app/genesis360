@@ -202,6 +202,17 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Movimientos UX**: búsqueda limita a 5 resultados; label Cantidad muestra UoM; motivos predefinidos → text field oculto salvo "Otro"; mensaje "Sin datos de línea" distingue linea_id null vs linea eliminada.
 - **Reportes fixes**: Stock actual agrega N° Lote + Vencimiento + expande por series serializadas; Ventas parsea JSON de medio_pago; Estados exporta correctamente (quitado filtro activo).
 
+### v0.32.0 — Dark mode completo + RRHH Phase 2A Nómina (en dev)
+- **Dark mode completo**: `index.css` overrides globales (inputs/selects/textareas/scrollbar). 30+ archivos (páginas + componentes) con `dark:bg-*`, `dark:text-*`, `dark:border-*`, `dark:hover:*` y variantes de estado (red/amber/green/blue).
+- **RRHH Phase 2A — Nómina** (migración 017):
+  - `rrhh_conceptos`: catálogo de haberes/descuentos reutilizables por tenant. RLS + índices.
+  - `rrhh_salarios`: liquidación por empleado × periodo (DATE YYYY-MM-01). UNIQUE(tenant+empleado+periodo). Campos: basico, total_haberes, total_descuentos, neto, pagado, fecha_pago, caja_movimiento_id.
+  - `rrhh_salario_items`: líneas de detalle. Trigger `fn_recalcular_salario` recalcula totals en padre tras INSERT/UPDATE/DELETE.
+  - `pagar_nomina_empleado(p_salario_id, p_sesion_id)` SECURITY DEFINER: valida sesión caja abierta → inserta egreso en `caja_movimientos` → marca `pagado=TRUE`.
+  - UI tab "Nómina" en RrhhPage: selector mes/año, generar nómina mes (crea borrador para todos los activos), resumen período, tabla expandible por empleado con ítems, botón Pagar con selector caja.
+  - Catálogo de conceptos CRUD colapsable dentro de la tab.
+  - `actividadLog`: + `nomina` en EntidadLog, + `pagar` en AccionLog.
+
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
 - Compactar manualmente con `/compact` cuando el contexto esté pesado.
@@ -218,7 +229,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [ ] Revisar matriz de funcionalidades por plan (actualmente solo se limitan usuarios y productos)
 
 ### RRHH — Phases 2–5 (ver ROADMAP.md)
-- [ ] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos`; pagar → egreso automático en Caja
+- [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, en dev)
 - [ ] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente
 - [ ] Phase 2C — Cumpleaños automáticos: Edge Function scheduler
 - [ ] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo)

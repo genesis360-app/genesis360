@@ -79,6 +79,8 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 020 | `020_marketplace.sql` | Marketplace: campos en productos + tenants (marketplace_activo, webhook_url) | ✅ | ✅ |
 | 021 | `021_movimientos_limite.sql` | Revenue: addon_movimientos en tenants (límite movimientos por plan) | ✅ | ✅ |
 | 022 | `022_rrhh_nombre_documentos.sql` | RRHH Phase 2C+4A: nombre+apellido en empleados · rrhh_documentos · Storage bucket empleados | ✅ | ✅ |
+| 023 | `023_rrhh_capacitaciones.sql` | RRHH Phase 4B: rrhh_capacitaciones (nombre, fechas, horas, proveedor, estado, certificado_path) | ✅ | ⏳ |
+| 024 | `024_supervisor_rls.sql` | RRHH Phase 5: get_supervisor_team_ids() + RLS SUPERVISOR en asistencia/vacaciones/empleados | ✅ | ⏳ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -129,6 +131,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.36.0 | Revenue: límite movimientos por plan (Free=200 · Básico=2.000 · Pro=∞) · banner uso en MovimientosPage · bloqueo al alcanzar límite · add-ons +500 movs en SuscripcionPage · migration 021 | 2026-03 |
 | v0.37.0 | Matriz de funcionalidades por plan: FEATURES_POR_PLAN · UpgradePrompt · candados sidebar · bloqueo Básico+ (Reportes/Historial/Métricas) · bloqueo Pro+ (Importar/RRHH) | 2026-03 |
 | v0.38.0 | RRHH Phase 2C+4A: nombre+apellido empleados · EF birthday-notifications · GH Actions cron · rrhh_documentos + Storage bucket empleados · tab Documentos · trial=Pro completo · migration 022 | 2026-03 |
+| v0.39.0 | RRHH Phase 4B+5: Capacitaciones (rrhh_capacitaciones + tab Capacitaciones + cert upload) · Supervisor Self-Service (tab Mi Equipo, KPIs, aprobar vacaciones) · Árbol Organizacional · migrations 023+024 | 2026-03 (en dev) |
 
 ---
 

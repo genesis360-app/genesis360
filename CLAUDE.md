@@ -284,8 +284,20 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Storage bucket `empleados`** (privado, 10 MB max): path = `{empleado_id}/{timestamp}.{ext}`. URL firmada temporal (300s) para descarga.
 - **Tab Documentos** en RrhhPage: filtro por empleado, form upload (select, input file), lista con Ver (signed URL) y Eliminar.
 - **Trial = Pro completo**: `usePlanLimits` detecta `subscription_status='trial'` con `trial_ends_at` futuro → usa `FEATURES_POR_PLAN['pro']` en lugar del plan real.
-- **⚠ Pendiente deploy EF**: `supabase functions deploy birthday-notifications --project-ref jjffnbrdjchquexdfgwq`
-- **⚠ Pendiente secrets GitHub**: `SUPABASE_URL` + `SUPABASE_ANON_KEY` en Settings → Secrets del repo
+- EF deployada en PROD ✅. GitHub Actions secrets configurados ✅.
+
+### RRHH Phase 4B (migración 023)
+- **`rrhh_capacitaciones`**: tenant_id, empleado_id, nombre, descripcion, fecha_inicio, fecha_fin, horas, proveedor, estado (planificada/en_curso/completada/cancelada), resultado, certificado_path, created_by. RLS tenant.
+- **certificado_path**: reutiliza bucket `empleados`; path = `{empleado_id}/cap_{timestamp}.{ext}`. URL firmada (300s) para ver.
+- **Tab Capacitaciones** en RrhhPage: filtro por empleado + estado, form crear/editar, lista con badge de estado, botón Ver Cert, edit, delete.
+
+### RRHH Phase 5 — Supervisor Self-Service (migración 024)
+- **`get_supervisor_team_ids()`** SECURITY DEFINER STABLE: devuelve IDs de empleados donde `supervisor_id = auth.uid()`.
+- **RLS SUPERVISOR** (PERMISSIVE, se suman a políticas existentes): `rrhh_asistencia`, `rrhh_vacaciones_solicitud`, `rrhh_vacaciones_saldo`, `empleados` (FOR SELECT) — solo acceden a su equipo.
+- **Tab "Mi Equipo"** en RrhhPage: visible para SUPERVISOR (default tab) y OWNER/RRHH. SUPERVISOR ve KPIs asistencia hoy (presentes/ausentes/sin registrar) + vacaciones pendientes del equipo con botones Aprobar/Rechazar.
+- **Árbol Organizacional**: sección en tab "equipo" visible para todos los roles. Agrupa empleados por supervisor_id. Sin supervisor = sección "Sin supervisor asignado". Cada supervisor muestra su equipo con indentación y borde izquierdo azul.
+- **Tabs por rol**: SUPERVISOR ve solo `equipo, asistencia, vacaciones, cumpleanos`. OWNER/RRHH ven todos los tabs.
+- **esSupervisor / esRrhhAdmin**: variables booleanas derivadas de `user?.rol` usadas para filtrar tabs y lógica.
 
 ## Backlog pendiente
 
@@ -304,13 +316,13 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, PROD)
 - [x] Phase 3B — Dashboard RRHH: KPIs empleados/asistencia/vacaciones/nómina + breakdown depts + exportar Excel (PROD v0.35.0)
 - [x] Phase 4A — Documentos empleado: `rrhh_documentos` + Storage bucket `empleados` + tab UI (migración 022, PROD)
-- [ ] Phase 4B — Capacitaciones + certificados
-- [ ] Phase 5 — Supervisor Self-Service: dashboard restringido + árbol jerárquico RLS
+- [x] Phase 4B — Capacitaciones: `rrhh_capacitaciones` + tab Capacitaciones + cert upload al bucket `empleados` (migración 023, en dev)
+- [x] Phase 5 — Supervisor Self-Service: tab Mi Equipo + KPIs asistencia/vacaciones hoy + aprobar vacaciones + árbol organizacional + RLS `get_supervisor_team_ids()` (migración 024, en dev)
 
 ### Marketplace
 - [x] Migration 020: campos marketplace en productos + tenants (PROD v0.35.0)
-- [x] EF marketplace-api: GET público con rate limiting (pendiente deploy CLI)
-- [x] EF marketplace-webhook: notificación externa (pendiente deploy CLI)
+- [x] EF marketplace-api: GET público con rate limiting (PROD ✅)
+- [x] EF marketplace-webhook: notificación externa (PROD ✅)
 - [x] UI ProductoFormPage: sección colapsable (solo si marketplace_activo)
 - [ ] Activar por tenant: `UPDATE tenants SET marketplace_activo = true WHERE id = '...'`
 - [ ] Deploy EFs con Supabase CLI

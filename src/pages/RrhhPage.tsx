@@ -6,6 +6,7 @@ import {
   DollarSign, CreditCard, ChevronRight, CheckCircle, Clock,
   Plane, ClipboardList, Check, X, LayoutDashboard, FileSpreadsheet,
   UserCheck, UserX, TrendingUp, Download, Paperclip, FolderOpen, File,
+  BookOpen, Award, Network,
 } from 'lucide-react'
 import { utils as xlsxUtils, writeFile as xlsxWriteFile } from 'xlsx'
 import { supabase } from '@/lib/supabase'
@@ -17,7 +18,7 @@ import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia' | 'documentos'
+type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia' | 'documentos' | 'capacitaciones' | 'equipo'
 type FormMode = 'crear' | 'editar' | null
 
 interface Concepto {
@@ -169,11 +170,28 @@ interface Documento {
   empleado?: { nombre: string; apellido: string | null; dni_rut: string }
 }
 
+interface Capacitacion {
+  id: string
+  tenant_id: string
+  empleado_id: string
+  nombre: string
+  descripcion: string | null
+  fecha_inicio: string | null
+  fecha_fin: string | null
+  horas: number | null
+  proveedor: string | null
+  estado: 'planificada' | 'en_curso' | 'completada' | 'cancelada'
+  resultado: string | null
+  certificado_path: string | null
+  created_at: string
+  empleado?: { nombre: string; apellido: string | null; dni_rut: string }
+}
+
 export default function RrhhPage() {
   const { limits } = usePlanLimits()
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
-  const [activeTab, setActiveTab] = useState<Tab>('empleados')
+  const [activeTab, setActiveTab] = useState<Tab>(() => user?.rol === 'SUPERVISOR' ? 'equipo' : 'empleados')
   const [formMode, setFormMode] = useState<FormMode>(null)
   const [selectedEmpleado, setSelectedEmpleado] = useState<Empleado | null>(null)
   const [editingPuesto, setEditingPuesto] = useState<Puesto | null>(null)
@@ -233,6 +251,21 @@ export default function RrhhPage() {
     empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null,
   })
   const [showDocForm, setShowDocForm] = useState(false)
+
+  // Capacitaciones state
+  const [capFiltroEmpleado, setCapFiltroEmpleado] = useState('')
+  const [capFiltroEstado, setCapFiltroEstado] = useState('')
+  const [showCapForm, setShowCapForm] = useState(false)
+  const [editingCap, setEditingCap] = useState<Capacitacion | null>(null)
+  const [capUploading, setCapUploading] = useState(false)
+  const [capForm, setCapForm] = useState<{
+    empleado_id: string; nombre: string; descripcion: string
+    fecha_inicio: string; fecha_fin: string; horas: string
+    proveedor: string; estado: string; resultado: string; certFile: File | null
+  }>({
+    empleado_id: '', nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '',
+    horas: '', proveedor: '', estado: 'planificada', resultado: '', certFile: null,
+  })
 
   // Queries
   const { data: empleados = [], isLoading: loadingEmpleados } = useQuery({
@@ -828,7 +861,7 @@ export default function RrhhPage() {
     if (error) { toast.error('Error al exportar'); return }
     const rows = (data ?? []).map((a: any) => ({
       Fecha: a.fecha,
-      Empleado: [a.empleado?.nombre, a.empleado?.apellido].filter(Boolean).join(' ') || a.empleado?.dni_rut ?? '',
+      Empleado: ([a.empleado?.nombre, a.empleado?.apellido].filter(Boolean).join(' ') || a.empleado?.dni_rut) ?? '',
       Estado: a.estado,
       'Hora entrada': a.hora_entrada ?? '',
       'Hora salida': a.hora_salida ?? '',
@@ -849,7 +882,7 @@ export default function RrhhPage() {
     if (error) { toast.error('Error al exportar'); return }
     const rows = (data ?? []).map((s: any) => ({
       Período: s.periodo?.slice(0, 7) ?? '',
-      Empleado: [s.empleado?.nombre, s.empleado?.apellido].filter(Boolean).join(' ') || s.empleado?.dni_rut ?? '',
+      Empleado: ([s.empleado?.nombre, s.empleado?.apellido].filter(Boolean).join(' ') || s.empleado?.dni_rut) ?? '',
       Básico: s.basico,
       'Total haberes': s.total_haberes,
       'Total descuentos': s.total_descuentos,
@@ -970,6 +1003,154 @@ export default function RrhhPage() {
     else toast.error('No se pudo obtener el link')
   }
 
+  // Capacitaciones queries & mutations
+  const { data: capacitaciones = [], refetch: refetchCapacitaciones } = useQuery({
+    queryKey: ['rrhh-capacitaciones', tenant?.id, capFiltroEmpleado, capFiltroEstado],
+    queryFn: async () => {
+      let q = supabase.from('rrhh_capacitaciones')
+        .select('*, empleado:empleados(nombre, apellido, dni_rut)')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at', { ascending: false })
+      if (capFiltroEmpleado) q = q.eq('empleado_id', capFiltroEmpleado)
+      if (capFiltroEstado) q = q.eq('estado', capFiltroEstado)
+      const { data, error } = await q
+      if (error) throw error
+      return data as Capacitacion[]
+    },
+    enabled: !!tenant && activeTab === 'capacitaciones',
+  })
+
+  const saveCapacitacion = async () => {
+    if (!capForm.empleado_id || !capForm.nombre.trim()) {
+      toast.error('Seleccioná empleado y completá el nombre')
+      return
+    }
+    setCapUploading(true)
+    try {
+      let certPath: string | null = editingCap?.certificado_path ?? null
+      if (capForm.certFile) {
+        const ext = capForm.certFile.name.split('.').pop()
+        certPath = `${capForm.empleado_id}/cap_${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage.from('empleados').upload(certPath, capForm.certFile)
+        if (upErr) throw upErr
+      }
+      const payload = {
+        tenant_id: tenant!.id,
+        empleado_id: capForm.empleado_id,
+        nombre: capForm.nombre.trim(),
+        descripcion: capForm.descripcion || null,
+        fecha_inicio: capForm.fecha_inicio || null,
+        fecha_fin: capForm.fecha_fin || null,
+        horas: capForm.horas ? parseFloat(capForm.horas) : null,
+        proveedor: capForm.proveedor || null,
+        estado: capForm.estado,
+        resultado: capForm.resultado || null,
+        certificado_path: certPath,
+        created_by: user?.id ?? null,
+      }
+      if (editingCap) {
+        const { error } = await supabase.from('rrhh_capacitaciones').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingCap.id)
+        if (error) throw error
+        toast.success('Capacitación actualizada')
+      } else {
+        const { error } = await supabase.from('rrhh_capacitaciones').insert(payload)
+        if (error) throw error
+        toast.success('Capacitación guardada')
+      }
+      setShowCapForm(false)
+      setEditingCap(null)
+      setCapForm({ empleado_id: '', nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '', horas: '', proveedor: '', estado: 'planificada', resultado: '', certFile: null })
+      refetchCapacitaciones()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setCapUploading(false)
+    }
+  }
+
+  const deleteCapacitacion = useMutation({
+    mutationFn: async (cap: Capacitacion) => {
+      if (cap.certificado_path) await supabase.storage.from('empleados').remove([cap.certificado_path])
+      const { error } = await supabase.from('rrhh_capacitaciones').delete().eq('id', cap.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Capacitación eliminada'); refetchCapacitaciones() },
+    onError: (err: any) => toast.error(err.message),
+  })
+
+  const startEditCap = (cap: Capacitacion) => {
+    setEditingCap(cap)
+    setCapForm({
+      empleado_id: cap.empleado_id,
+      nombre: cap.nombre,
+      descripcion: cap.descripcion ?? '',
+      fecha_inicio: cap.fecha_inicio ?? '',
+      fecha_fin: cap.fecha_fin ?? '',
+      horas: cap.horas != null ? String(cap.horas) : '',
+      proveedor: cap.proveedor ?? '',
+      estado: cap.estado,
+      resultado: cap.resultado ?? '',
+      certFile: null,
+    })
+    setShowCapForm(true)
+  }
+
+  // Equipo (Phase 5): equipo del supervisor actual
+  const teamEmpleados = empleados.filter((e) => e.supervisor_id === user?.id && e.activo)
+
+  // Query: asistencia hoy del equipo (para tab equipo)
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const { data: teamAsistHoy = [] } = useQuery({
+    queryKey: ['rrhh-team-asist-hoy', tenant?.id, user?.id, todayStr],
+    queryFn: async () => {
+      if (!teamEmpleados.length) return []
+      const ids = teamEmpleados.map((e) => e.id)
+      const { data, error } = await supabase.from('rrhh_asistencia')
+        .select('empleado_id, estado')
+        .eq('tenant_id', tenant!.id)
+        .eq('fecha', todayStr)
+        .in('empleado_id', ids)
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && activeTab === 'equipo' && teamEmpleados.length > 0,
+  })
+
+  const { data: teamVacPendientes = [] } = useQuery({
+    queryKey: ['rrhh-team-vac-pendientes', tenant?.id, user?.id],
+    queryFn: async () => {
+      if (!teamEmpleados.length) return []
+      const ids = teamEmpleados.map((e) => e.id)
+      const { data, error } = await supabase.from('rrhh_vacaciones_solicitud')
+        .select('*, empleado:empleados(nombre, apellido, dni_rut)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'pendiente')
+        .in('empleado_id', ids)
+        .order('desde')
+      if (error) throw error
+      return (data ?? []) as VacacionSolicitud[]
+    },
+    enabled: !!tenant && activeTab === 'equipo' && teamEmpleados.length > 0,
+  })
+
+  const aprobarVacEquipo = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc('aprobar_vacacion', { p_solicitud_id: id, p_user_id: user!.id })
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Vacación aprobada'); qc.invalidateQueries({ queryKey: ['rrhh-team-vac-pendientes'] }) },
+    onError: (err: any) => toast.error(err.message),
+  })
+
+  const rechazarVacEquipo = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc('rechazar_vacacion', { p_solicitud_id: id, p_user_id: user!.id })
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Vacación rechazada'); qc.invalidateQueries({ queryKey: ['rrhh-team-vac-pendientes'] }) },
+    onError: (err: any) => toast.error(err.message),
+  })
+
   const proximoCumpleanos = (fechaNacimiento: string) => {
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const birth = new Date(fechaNacimiento)
@@ -1004,7 +1185,10 @@ export default function RrhhPage() {
 
   if (limits && !limits.puede_rrhh) return <UpgradePrompt feature="rrhh" />
 
-  if (user?.rol !== 'OWNER' && user?.rol !== 'RRHH') {
+  const esSupervisor = user?.rol === 'SUPERVISOR'
+  const esRrhhAdmin = user?.rol === 'OWNER' || user?.rol === 'RRHH'
+
+  if (!esRrhhAdmin && !esSupervisor) {
     return (
       <div className="p-8 text-center text-gray-500 dark:text-gray-400">
         No tienes permisos para acceder a este módulo
@@ -1025,7 +1209,10 @@ export default function RrhhPage() {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-8 border-b border-gray-200 dark:border-gray-700 flex-wrap">
-        {(['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'documentos'] as Tab[]).map((tab) => (
+        {(esSupervisor
+          ? (['equipo', 'asistencia', 'vacaciones', 'cumpleanos'] as Tab[])
+          : (['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'capacitaciones', 'documentos', 'equipo'] as Tab[])
+        ).map((tab) => (
           <button
             key={tab}
             onClick={() => { setActiveTab(tab); resetForm() }}
@@ -1035,15 +1222,17 @@ export default function RrhhPage() {
                 : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
-            {tab === 'dashboard'    && <span className="flex items-center gap-1"><LayoutDashboard size={14}/>Dashboard</span>}
-            {tab === 'empleados'    && 'Empleados'}
-            {tab === 'puestos'      && 'Puestos'}
-            {tab === 'departamentos' && 'Departamentos'}
-            {tab === 'cumpleanos'   && '🎂 Cumpleaños'}
-            {tab === 'nomina'       && <span className="flex items-center gap-1"><DollarSign size={14}/>Nómina</span>}
-            {tab === 'vacaciones'   && <span className="flex items-center gap-1"><Plane size={14}/>Vacaciones</span>}
-            {tab === 'asistencia'   && <span className="flex items-center gap-1"><ClipboardList size={14}/>Asistencia</span>}
-            {tab === 'documentos'   && <span className="flex items-center gap-1"><Paperclip size={14}/>Documentos</span>}
+            {tab === 'dashboard'      && <span className="flex items-center gap-1"><LayoutDashboard size={14}/>Dashboard</span>}
+            {tab === 'empleados'      && 'Empleados'}
+            {tab === 'puestos'        && 'Puestos'}
+            {tab === 'departamentos'  && 'Departamentos'}
+            {tab === 'cumpleanos'     && '🎂 Cumpleaños'}
+            {tab === 'nomina'         && <span className="flex items-center gap-1"><DollarSign size={14}/>Nómina</span>}
+            {tab === 'vacaciones'     && <span className="flex items-center gap-1"><Plane size={14}/>Vacaciones</span>}
+            {tab === 'asistencia'     && <span className="flex items-center gap-1"><ClipboardList size={14}/>Asistencia</span>}
+            {tab === 'documentos'     && <span className="flex items-center gap-1"><Paperclip size={14}/>Documentos</span>}
+            {tab === 'capacitaciones' && <span className="flex items-center gap-1"><BookOpen size={14}/>Capacitaciones</span>}
+            {tab === 'equipo'         && <span className="flex items-center gap-1"><Network size={14}/>Mi Equipo</span>}
           </button>
         ))}
       </div>
@@ -2547,6 +2736,421 @@ export default function RrhhPage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* CAPACITACIONES TAB */}
+      {activeTab === 'capacitaciones' && (
+        <div>
+          <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
+            <div className="flex flex-wrap gap-3">
+              <select
+                value={capFiltroEmpleado}
+                onChange={(e) => setCapFiltroEmpleado(e.target.value)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+              >
+                <option value="">Todos los empleados</option>
+                {empleados.filter((e) => e.activo).map((e) => (
+                  <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>
+                ))}
+              </select>
+              <select
+                value={capFiltroEstado}
+                onChange={(e) => setCapFiltroEstado(e.target.value)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+              >
+                <option value="">Todos los estados</option>
+                <option value="planificada">Planificada</option>
+                <option value="en_curso">En curso</option>
+                <option value="completada">Completada</option>
+                <option value="cancelada">Cancelada</option>
+              </select>
+            </div>
+            <button
+              onClick={() => { setEditingCap(null); setCapForm({ empleado_id: '', nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '', horas: '', proveedor: '', estado: 'planificada', resultado: '', certFile: null }); setShowCapForm(true) }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+            >
+              <Plus size={16} /> Nueva capacitación
+            </button>
+          </div>
+
+          {showCapForm && (
+            <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 mb-6">
+              <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
+                {editingCap ? 'Editar capacitación' : 'Nueva capacitación'}
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <select
+                    value={capForm.empleado_id}
+                    onChange={(e) => setCapForm({ ...capForm, empleado_id: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  >
+                    <option value="">Seleccioná empleado *</option>
+                    {empleados.filter((e) => e.activo).map((e) => (
+                      <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <input
+                    type="text"
+                    placeholder="Nombre de la capacitación *"
+                    value={capForm.nombre}
+                    onChange={(e) => setCapForm({ ...capForm, nombre: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  />
+                </div>
+                <input
+                  type="date"
+                  placeholder="Fecha inicio"
+                  value={capForm.fecha_inicio}
+                  onChange={(e) => setCapForm({ ...capForm, fecha_inicio: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+                <input
+                  type="date"
+                  placeholder="Fecha fin"
+                  value={capForm.fecha_fin}
+                  onChange={(e) => setCapForm({ ...capForm, fecha_fin: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+                <input
+                  type="number"
+                  placeholder="Horas (ej: 8)"
+                  value={capForm.horas}
+                  onChange={(e) => setCapForm({ ...capForm, horas: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Proveedor / institución"
+                  value={capForm.proveedor}
+                  onChange={(e) => setCapForm({ ...capForm, proveedor: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+                <select
+                  value={capForm.estado}
+                  onChange={(e) => setCapForm({ ...capForm, estado: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="planificada">Planificada</option>
+                  <option value="en_curso">En curso</option>
+                  <option value="completada">Completada</option>
+                  <option value="cancelada">Cancelada</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Resultado / calificación"
+                  value={capForm.resultado}
+                  onChange={(e) => setCapForm({ ...capForm, resultado: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+                <div className="sm:col-span-2">
+                  <textarea
+                    placeholder="Descripción (opcional)"
+                    value={capForm.descripcion}
+                    onChange={(e) => setCapForm({ ...capForm, descripcion: e.target.value })}
+                    rows={2}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white resize-none"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
+                    <Award size={14} /> Certificado (PDF/imagen)
+                  </label>
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={(e) => setCapForm({ ...capForm, certFile: e.target.files?.[0] ?? null })}
+                    className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100"
+                  />
+                  {editingCap?.certificado_path && !capForm.certFile && (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Certificado ya cargado</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={saveCapacitacion}
+                  disabled={capUploading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+                >
+                  {capUploading ? 'Guardando...' : 'Guardar'}
+                </button>
+                <button
+                  onClick={() => { setShowCapForm(false); setEditingCap(null) }}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {capacitaciones.length === 0 ? (
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+              <BookOpen size={40} className="mx-auto mb-3 opacity-40" />
+              <p>No hay capacitaciones registradas</p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {capacitaciones.map((cap) => {
+                const badgeColor =
+                  cap.estado === 'completada' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                  cap.estado === 'en_curso'   ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                  cap.estado === 'cancelada'  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                                                'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                const estadoLabel =
+                  cap.estado === 'completada' ? 'Completada' :
+                  cap.estado === 'en_curso'   ? 'En curso' :
+                  cap.estado === 'cancelada'  ? 'Cancelada' : 'Planificada'
+                return (
+                  <div key={cap.id} className="flex items-start gap-4 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <BookOpen size={22} className="text-blue-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <p className="font-medium text-gray-900 dark:text-white text-sm">{cap.nombre}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeColor}`}>{estadoLabel}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {nombreEmpleado(cap.empleado)}
+                        {cap.proveedor && ` · ${cap.proveedor}`}
+                        {cap.horas && ` · ${cap.horas}h`}
+                        {cap.fecha_inicio && ` · ${format(new Date(cap.fecha_inicio + 'T00:00:00'), 'dd/MM/yyyy')}`}
+                        {cap.fecha_fin && ` → ${format(new Date(cap.fecha_fin + 'T00:00:00'), 'dd/MM/yyyy')}`}
+                      </p>
+                      {cap.resultado && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Resultado: {cap.resultado}</p>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {cap.certificado_path && (
+                        <button
+                          onClick={() => getDocUrl(cap.certificado_path!)}
+                          className="px-3 py-1.5 text-xs bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg hover:bg-green-100 flex items-center gap-1"
+                        >
+                          <Award size={12} /> Cert.
+                        </button>
+                      )}
+                      <button
+                        onClick={() => startEditCap(cap)}
+                        className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                      >
+                        <Edit size={15} />
+                      </button>
+                      <button
+                        onClick={() => { if (confirm('¿Eliminar esta capacitación?')) deleteCapacitacion.mutate(cap) }}
+                        className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* EQUIPO TAB — Supervisor Self-Service + Org Tree */}
+      {activeTab === 'equipo' && (
+        <div className="space-y-8">
+          {/* Vista SUPERVISOR: Mi Equipo */}
+          {esSupervisor && (
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <Network size={20} className="text-blue-500" /> Mi Equipo
+                <span className="text-sm font-normal text-gray-500 dark:text-gray-400">({teamEmpleados.length} personas)</span>
+              </h2>
+
+              {/* KPIs rápidos */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+                {(() => {
+                  const asistHoyMap = Object.fromEntries(teamAsistHoy.map((a: any) => [a.empleado_id, a.estado]))
+                  const presentes = teamEmpleados.filter((e) => asistHoyMap[e.id] === 'presente' || asistHoyMap[e.id] === 'tardanza').length
+                  const ausentes  = teamEmpleados.filter((e) => asistHoyMap[e.id] === 'ausente' || asistHoyMap[e.id] === 'licencia').length
+                  const sinReg    = teamEmpleados.filter((e) => !asistHoyMap[e.id]).length
+                  return (
+                    <>
+                      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-center">
+                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">{presentes}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Presentes hoy</p>
+                      </div>
+                      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-center">
+                        <p className="text-2xl font-bold text-red-600 dark:text-red-400">{ausentes}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Ausentes/Licencia</p>
+                      </div>
+                      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-center">
+                        <p className="text-2xl font-bold text-gray-500 dark:text-gray-400">{sinReg}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Sin registrar</p>
+                      </div>
+                      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-center">
+                        <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{teamVacPendientes.length}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Vacaciones pendientes</p>
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+
+              {/* Tabla de equipo */}
+              <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden mb-6">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-700/50">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Empleado</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Puesto</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-700 dark:text-gray-300">Asistencia hoy</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamEmpleados.length === 0 ? (
+                      <tr><td colSpan={3} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">No tenés empleados asignados</td></tr>
+                    ) : (
+                      teamEmpleados.map((emp) => {
+                        const asistHoyMap = Object.fromEntries(teamAsistHoy.map((a: any) => [a.empleado_id, a.estado]))
+                        const estadoAsist = asistHoyMap[emp.id]
+                        const asistBadge =
+                          estadoAsist === 'presente'  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                          estadoAsist === 'tardanza'  ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
+                          estadoAsist === 'ausente'   ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                          estadoAsist === 'licencia'  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                                                       'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                        const asistLabel = estadoAsist ? estadoAsist.charAt(0).toUpperCase() + estadoAsist.slice(1) : 'Sin registrar'
+                        return (
+                          <tr key={emp.id} className="border-t border-gray-100 dark:border-gray-700">
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-gray-900 dark:text-white">{nombreEmpleado(emp)}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{emp.dni_rut}</p>
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-sm">
+                              {emp.puesto?.nombre ?? '—'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium ${asistBadge}`}>{asistLabel}</span>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Vacaciones pendientes del equipo */}
+              {teamVacPendientes.length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-3">
+                    Solicitudes de vacaciones pendientes
+                  </h3>
+                  <div className="grid gap-3">
+                    {teamVacPendientes.map((v) => (
+                      <div key={v.id} className="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                        <Plane size={18} className="text-yellow-500 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{nombreEmpleado(v.empleado)}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {format(new Date(v.desde + 'T00:00:00'), 'dd/MM/yyyy')} → {format(new Date(v.hasta + 'T00:00:00'), 'dd/MM/yyyy')} · {v.dias_habiles} días hábiles
+                          </p>
+                          {v.notas && <p className="text-xs text-gray-400 dark:text-gray-500">{v.notas}</p>}
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => aprobarVacEquipo.mutate(v.id)}
+                            className="px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 flex items-center gap-1"
+                          >
+                            <Check size={12} /> Aprobar
+                          </button>
+                          <button
+                            onClick={() => rechazarVacEquipo.mutate(v.id)}
+                            className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700 flex items-center gap-1"
+                          >
+                            <X size={12} /> Rechazar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Árbol organizacional — visible para todos */}
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Network size={20} className="text-purple-500" /> Árbol Organizacional
+            </h2>
+            {(() => {
+              const activos = empleados.filter((e) => e.activo)
+              const bySup: Record<string, typeof activos> = {}
+              activos.forEach((e) => {
+                const key = e.supervisor_id ?? '__sin_supervisor__'
+                if (!bySup[key]) bySup[key] = []
+                bySup[key].push(e)
+              })
+              // Obtener nombre del supervisor desde cualquier empleado que lo tenga
+              const supNombres: Record<string, string> = {}
+              activos.forEach((e) => {
+                if (e.supervisor_id && e.supervisor?.nombre_display) {
+                  supNombres[e.supervisor_id] = e.supervisor.nombre_display
+                }
+              })
+              const supervisorIds = Object.keys(bySup).filter((k) => k !== '__sin_supervisor__')
+              return (
+                <div className="space-y-4">
+                  {/* Sin supervisor */}
+                  {bySup['__sin_supervisor__']?.length > 0 && (
+                    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                      <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+                        <Users2 size={14} /> Sin supervisor asignado
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {bySup['__sin_supervisor__'].map((emp) => (
+                          <div key={emp.id} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                            <div className="w-7 h-7 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300 flex-shrink-0">
+                              {(emp.nombre || emp.dni_rut)[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{nombreEmpleado(emp)}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{emp.puesto?.nombre ?? emp.departamento?.nombre ?? emp.dni_rut}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Por supervisor */}
+                  {supervisorIds.map((supId) => (
+                    <div key={supId} className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                      <p className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-3 flex items-center gap-2">
+                        <UserCheck size={14} /> {supNombres[supId] ?? supId}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pl-4 border-l-2 border-blue-200 dark:border-blue-700">
+                        {bySup[supId].map((emp) => (
+                          <div key={emp.id} className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                            <div className="w-7 h-7 rounded-full bg-blue-200 dark:bg-blue-700 flex items-center justify-center text-xs font-bold text-blue-700 dark:text-blue-200 flex-shrink-0">
+                              {(emp.nombre || emp.dni_rut)[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{nombreEmpleado(emp)}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{emp.puesto?.nombre ?? emp.departamento?.nombre ?? emp.dni_rut}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {activos.length === 0 && (
+                    <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                      <Users2 size={40} className="mx-auto mb-3 opacity-40" />
+                      <p>No hay empleados activos</p>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
         </div>
       )}
     </div>

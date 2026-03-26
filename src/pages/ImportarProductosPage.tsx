@@ -5,6 +5,8 @@ import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileS
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
 
 // ── Constantes ─────────────────────────────────────────────────────────────
@@ -77,8 +79,10 @@ interface FilaInventario {
 
 // ══════════════════════════════════════════════════════════════════════════════
 export default function ImportarProductosPage() {
+  const { limits } = usePlanLimits()
   const navigate = useNavigate()
   const { tenant, user } = useAuthStore()
+
   const qc = useQueryClient()
 
   const fileRefProd = useRef<HTMLInputElement>(null)
@@ -434,6 +438,8 @@ export default function ImportarProductosPage() {
   // ─────────────────────────────────────────────────────────────────────────
   //  RENDER
   // ─────────────────────────────────────────────────────────────────────────
+  if (limits && !limits.puede_importar) return <UpgradePrompt feature="importar" />
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}

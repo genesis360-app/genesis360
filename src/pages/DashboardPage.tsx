@@ -3,13 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Package, AlertTriangle, ArrowDown, TrendingUp, TrendingDown,
   ShoppingCart, DollarSign, CheckCircle, Zap, ChevronRight, Clock, BarChart2,
-  ChevronDown, ChevronUp, Truck, Hourglass,
+  ChevronDown, ChevronUp, Truck, Hourglass, Lock,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
 import { useRecomendaciones } from '@/hooks/useRecomendaciones'
 import MetricasPage from './MetricasPage'
+import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { UpgradePrompt } from '@/components/UpgradePrompt'
 
 type InsightTipo = 'danger' | 'warning' | 'success' | 'info'
 
@@ -45,6 +47,7 @@ const SEMAFORO_COLOR: Record<string, string> = {
 export default function DashboardPage() {
   const { tenant } = useAuthStore()
   const { score, recomendaciones } = useRecomendaciones()
+  const { limits } = usePlanLimits()
   const [tab, setTab] = useState<'general' | 'metricas'>('general')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
@@ -255,12 +258,16 @@ export default function DashboardPage() {
               General
             </button>
             <button onClick={() => setTab('metricas')}
-              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white dark:bg-gray-800 text-primary shadow-sm dark:shadow-gray-900">
+              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white dark:bg-gray-800 text-primary shadow-sm dark:shadow-gray-900 flex items-center gap-1.5">
+              {limits && !limits.puede_metricas && <Lock size={12} className="text-gray-400" />}
               Métricas
             </button>
           </div>
         </div>
-        <MetricasPage hideHeader />
+        {limits && !limits.puede_metricas
+          ? <UpgradePrompt feature="metricas" />
+          : <MetricasPage hideHeader />
+        }
       </div>
     )
   }
@@ -280,7 +287,8 @@ export default function DashboardPage() {
             General
           </button>
           <button onClick={() => setTab('metricas')}
-            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1.5">
+            {limits && !limits.puede_metricas && <Lock size={12} className="text-gray-400" />}
             Métricas
           </button>
         </div>

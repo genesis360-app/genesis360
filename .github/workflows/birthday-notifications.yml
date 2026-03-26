@@ -1,0 +1,21 @@
+name: Birthday Notifications
+
+on:
+  schedule:
+    # Todos los días a las 8:00 AM UTC (5:00 AM Argentina)
+    - cron: '0 8 * * *'
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call birthday-notifications Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/birthday-notifications" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

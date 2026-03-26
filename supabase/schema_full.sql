@@ -1,5 +1,5 @@
 -- ============================================================
--- Stokio — Schema completo (actualizado 2026-03-26, migrations 001–021)
+-- Stokio — Schema completo (actualizado 2026-03-26, migrations 001–022)
 -- Aplicar en Supabase DEV con el SQL Editor
 -- ============================================================
 
@@ -916,6 +916,8 @@ CREATE TABLE IF NOT EXISTS empleados (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
+  nombre          TEXT NOT NULL DEFAULT '',
+  apellido        TEXT,
   dni_rut         TEXT NOT NULL,
   tipo_doc        TEXT CHECK (tipo_doc IN ('DNI', 'RUT', 'PASAPORTE', 'OTRO')) DEFAULT 'DNI',
   tel_personal    TEXT,
@@ -1299,3 +1301,39 @@ CREATE INDEX IF NOT EXISTS idx_productos_marketplace
 
 -- addon_movimientos: movimientos extra comprados por el tenant (se suman al límite del plan)
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS addon_movimientos INT DEFAULT 0;
+
+-- ============================================================
+-- Migration 022: RRHH nombre/apellido + documentos empleado
+-- ============================================================
+
+-- Phase 2C: nombre y apellido en empleados
+-- ALTER TABLE empleados ADD COLUMN IF NOT EXISTS nombre   TEXT NOT NULL DEFAULT '';  -- ya incluido arriba
+-- ALTER TABLE empleados ADD COLUMN IF NOT EXISTS apellido TEXT;                      -- ya incluido arriba
+
+-- Phase 4A: documentos por empleado
+CREATE TABLE IF NOT EXISTS rrhh_documentos (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID NOT NULL REFERENCES tenants(id)   ON DELETE CASCADE,
+  empleado_id  UUID NOT NULL REFERENCES empleados(id) ON DELETE CASCADE,
+  nombre       TEXT NOT NULL,
+  descripcion  TEXT,
+  tipo         TEXT CHECK (tipo IN ('contrato','certificado','cv','foto','otro')) DEFAULT 'otro',
+  storage_path TEXT NOT NULL,
+  tamanio      BIGINT,
+  mime_type    TEXT,
+  created_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE rrhh_documentos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "rrhh_documentos_tenant" ON rrhh_documentos
+  USING  (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+  WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+CREATE INDEX IF NOT EXISTS idx_rrhh_documentos_empleado ON rrhh_documentos(empleado_id);
+CREATE INDEX IF NOT EXISTS idx_rrhh_documentos_tenant   ON rrhh_documentos(tenant_id);
+
+-- Storage bucket empleados (privado, máx 10 MB)
+-- INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+-- VALUES ('empleados', 'empleados', false, 10485760, ARRAY['application/pdf',...])
+-- ON CONFLICT (id) DO NOTHING;

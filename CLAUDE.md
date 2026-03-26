@@ -275,6 +275,18 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ---
 
+### RRHH Phase 2C + 4A (migración 022)
+- **`nombre` + `apellido`** en `empleados` (NOT NULL DEFAULT ''). Helper `nombreEmpleado()` centraliza display.
+- **Tab Cumpleaños**: `proximoCumpleanos()` calcula días correctamente; card con edad; highlight para el día exacto.
+- **EF `birthday-notifications`**: GET/POST → filtra empleados activos con cumpleaños hoy (EXTRACT month+day) → inserta en `actividad_log`. No requiere JWT.
+- **GitHub Actions** `.github/workflows/birthday-notifications.yml`: cron `0 8 * * *` (8 AM UTC). Requiere secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` en repo.
+- **`rrhh_documentos`**: tenant_id, empleado_id, nombre, tipo (contrato/cert/cv/foto/otro), storage_path, tamanio, mime_type, created_by. RLS tenant.
+- **Storage bucket `empleados`** (privado, 10 MB max): path = `{empleado_id}/{timestamp}.{ext}`. URL firmada temporal (300s) para descarga.
+- **Tab Documentos** en RrhhPage: filtro por empleado, form upload (select, input file), lista con Ver (signed URL) y Eliminar.
+- **Trial = Pro completo**: `usePlanLimits` detecta `subscription_status='trial'` con `trial_ends_at` futuro → usa `FEATURES_POR_PLAN['pro']` en lugar del plan real.
+- **⚠ Pendiente deploy EF**: `supabase functions deploy birthday-notifications --project-ref jjffnbrdjchquexdfgwq`
+- **⚠ Pendiente secrets GitHub**: `SUPABASE_URL` + `SUPABASE_ANON_KEY` en Settings → Secrets del repo
+
 ## Backlog pendiente
 
 ### UX / Config
@@ -288,10 +300,10 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ### RRHH — Phases 2–5 (ver ROADMAP.md)
 - [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, PROD)
 - [x] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente (migración 018, PROD)
-- [ ] Phase 2C — Cumpleaños automáticos: Edge Function scheduler
+- [x] Phase 2C — Cumpleaños automáticos: EF `birthday-notifications` + GitHub Actions cron diario (migración 022, PROD)
 - [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, PROD)
 - [x] Phase 3B — Dashboard RRHH: KPIs empleados/asistencia/vacaciones/nómina + breakdown depts + exportar Excel (PROD v0.35.0)
-- [ ] Phase 4A — Documentos empleado: Storage bucket `empleados`
+- [x] Phase 4A — Documentos empleado: `rrhh_documentos` + Storage bucket `empleados` + tab UI (migración 022, PROD)
 - [ ] Phase 4B — Capacitaciones + certificados
 - [ ] Phase 5 — Supervisor Self-Service: dashboard restringido + árbol jerárquico RLS
 

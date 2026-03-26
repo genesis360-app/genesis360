@@ -267,10 +267,18 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] Phase 2B — Vacaciones: solicitudes con aprobación; saldo anual + remanente (migración 018, PROD)
 - [ ] Phase 2C — Cumpleaños automáticos: Edge Function scheduler
 - [x] Phase 3A — Asistencia: `rrhh_asistencia` (entrada/salida/estado/motivo) (migración 019, PROD)
-- [x] Phase 3B — Dashboard RRHH: KPIs empleados/asistencia/vacaciones/nómina + breakdown depts + exportar Excel (dev, pendiente deploy)
+- [x] Phase 3B — Dashboard RRHH: KPIs empleados/asistencia/vacaciones/nómina + breakdown depts + exportar Excel (PROD v0.35.0)
 - [ ] Phase 4A — Documentos empleado: Storage bucket `empleados`
 - [ ] Phase 4B — Capacitaciones + certificados
 - [ ] Phase 5 — Supervisor Self-Service: dashboard restringido + árbol jerárquico RLS
+
+### Marketplace
+- [x] Migration 020: campos marketplace en productos + tenants (PROD v0.35.0)
+- [x] EF marketplace-api: GET público con rate limiting (pendiente deploy CLI)
+- [x] EF marketplace-webhook: notificación externa (pendiente deploy CLI)
+- [x] UI ProductoFormPage: sección colapsable (solo si marketplace_activo)
+- [ ] Activar por tenant: `UPDATE tenants SET marketplace_activo = true WHERE id = '...'`
+- [ ] Deploy EFs con Supabase CLI
 
 ### Ideas futuras
 Cupones, multi-sucursal, insights automáticos, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

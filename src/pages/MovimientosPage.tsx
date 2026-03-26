@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, User, Clock, Package, TrendingDown, TrendingUp } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Zap } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
+import { usePlanLimits } from '@/hooks/usePlanLimits'
 import toast from 'react-hot-toast'
 import type { Producto } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
@@ -41,6 +43,7 @@ export default function MovimientosPage() {
   const { cotizacion: cotizacionNum } = useCotizacion()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
+  const { limits } = usePlanLimits()
   const [modal, setModal] = useState<ModalType>(null)
   const [search, setSearch] = useState('')
   const [selectedProduct, setSelectedProduct] = useState<Producto | null>(null)
@@ -145,6 +148,8 @@ export default function MovimientosPage() {
 
   const ingresoMutation = useMutation({
     mutationFn: async () => {
+      if (limits && !limits.puede_crear_movimiento)
+        throw new Error('Límite de movimientos del plan alcanzado. Upgradeá tu plan o comprá movimientos extra.')
       if (!selectedProduct) throw new Error('Seleccioná un producto')
       const tieneSeries = (selectedProduct as any).tiene_series
       const tieneLote = (selectedProduct as any).tiene_lote
@@ -231,6 +236,8 @@ export default function MovimientosPage() {
 
   const rebajeMutation = useMutation({
     mutationFn: async () => {
+      if (limits && !limits.puede_crear_movimiento)
+        throw new Error('Límite de movimientos del plan alcanzado. Upgradeá tu plan o comprá movimientos extra.')
       if (!selectedProduct || !rebajeLinea) throw new Error('Seleccioná producto y línea')
       const tieneSeries = (selectedProduct as any).tiene_series
 
@@ -325,6 +332,9 @@ export default function MovimientosPage() {
 
   const tieneSeries = selectedProduct && (selectedProduct as any).tiene_series
 
+  const limiteAlcanzado = limits ? !limits.puede_crear_movimiento : false
+  const limiteWarning = limits && limits.max_movimientos !== -1 && limits.pct_movimientos >= 80
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -333,16 +343,46 @@ export default function MovimientosPage() {
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Registro de ingresos y rebajes</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setModal('ingreso')}
-            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+          <button onClick={() => setModal('ingreso')} disabled={limiteAlcanzado}
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             <ArrowDown size={16} /> Ingreso
           </button>
-          <button onClick={() => setModal('rebaje')}
-            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+          <button onClick={() => setModal('rebaje')} disabled={limiteAlcanzado}
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
             <ArrowUp size={16} /> Rebaje
           </button>
         </div>
       </div>
+
+      {/* Banner uso de movimientos */}
+      {limits && limits.max_movimientos !== -1 && (
+        <div className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm ${
+          limiteAlcanzado
+            ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
+            : limiteWarning
+            ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-400'
+            : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+        }`}>
+          {limiteAlcanzado ? <AlertTriangle size={15} className="flex-shrink-0" /> : <Zap size={15} className="flex-shrink-0" />}
+          <div className="flex-1 min-w-0">
+            <span className="font-medium">
+              {limits.movimientos_mes.toLocaleString()} / {(limits.max_movimientos + (limits.addon_movimientos > 0 ? 0 : 0)).toLocaleString()} movimientos este mes
+            </span>
+            {limits.addon_movimientos > 0 && (
+              <span className="ml-2 text-xs opacity-70">(incluye {limits.addon_movimientos} extra)</span>
+            )}
+            <div className="mt-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${limiteAlcanzado ? 'bg-red-500' : limiteWarning ? 'bg-amber-400' : 'bg-accent'}`}
+                style={{ width: `${Math.min(100, limits.pct_movimientos)}%` }}
+              />
+            </div>
+          </div>
+          <Link to="/suscripcion" className="flex-shrink-0 text-xs font-medium underline underline-offset-2 hover:opacity-80">
+            {limiteAlcanzado ? 'Ampliar límite' : 'Ver plan'}
+          </Link>
+        </div>
+      )}
 
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />

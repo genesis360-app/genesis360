@@ -76,7 +76,8 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 017 | `017_rrhh_nomina.sql` | RRHH Phase 2A: rrhh_conceptos + rrhh_salarios + rrhh_salario_items + pagar_nomina_empleado() | ✅ | ✅ |
 | 018 | `018_rrhh_vacaciones.sql` | RRHH Phase 2B: rrhh_vacaciones_solicitud + rrhh_vacaciones_saldo + aprobar/rechazar_vacacion() | ✅ | ✅ |
 | 019 | `019_rrhh_asistencia.sql` | RRHH Phase 3A: rrhh_asistencia (presente/ausente/tardanza/licencia) | ✅ | ✅ |
-| 020 | `020_marketplace.sql` | Marketplace: campos en productos + tenants (marketplace_activo, webhook_url) | ⏳ | ⏳ |
+| 020 | `020_marketplace.sql` | Marketplace: campos en productos + tenants (marketplace_activo, webhook_url) | ✅ | ✅ |
+| 021 | `021_movimientos_limite.sql` | Revenue: addon_movimientos en tenants (límite movimientos por plan) | ✅ | ⏳ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -123,7 +124,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.32.0 | Dark mode completo (31 archivos + global CSS) · RRHH Phase 2A Nómina (conceptos, liquidaciones, pagar→caja, trigger neto) | 2026-03 (incluido en v0.33.0) |
 | v0.33.0 | RRHH Phase 2B Vacaciones (solicitudes + saldos + aprobar/rechazar) · RRHH Phase 3A Asistencia (presente/ausente/tardanza/licencia) | 2026-03 |
 | v0.34.0 | RRHH Phase 3B Dashboard (KPIs empleados/asistencia/vacaciones/nómina · breakdown depts · exportar Excel) | 2026-03 (en dev) |
-| v0.35.0 | Marketplace: EF marketplace-api (pública) + EF marketplace-webhook · UI publicar productos + precio/stock/descripción marketplace · migration 020 | 2026-03 (en dev) |
+| v0.35.0 | Marketplace: EF marketplace-api (pública) + EF marketplace-webhook · UI publicar productos + precio/stock/descripción marketplace · migration 020 | 2026-03 |
+| v0.36.0 | Revenue: límite movimientos por plan (Free=200 · Básico=2.000 · Pro=∞) · banner uso en MovimientosPage · bloqueo al alcanzar límite · add-ons +500 movs en SuscripcionPage · migration 021 | 2026-03 (en dev) |
 
 ---
 

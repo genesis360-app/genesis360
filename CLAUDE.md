@@ -307,7 +307,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] Límite de movimientos por plan: Free=200/mes · Básico=2.000/mes · Pro/Enterprise=∞ (v0.36.0)
 - [x] Add-ons: +500 movimientos por $990 vía email/soporte; `tenants.addon_movimientos` acumula extra (v0.36.0)
 - [x] Matriz de funcionalidades por plan: `FEATURES_POR_PLAN` en brand.ts · `UpgradePrompt` reutilizable · candados en sidebar · bloqueo en Reportes/Historial (Básico+), Métricas/Importar/RRHH (Pro+) (v0.37.0)
-- [ ] Add-on con pago automático vía MP (actualmente es manual por email)
+- [x] Add-on con pago automático vía MP: EF `mp-addon` (preference pago único) + `mp-webhook` actualizado (detecta `|addon_movimientos` → incrementa +500) · secrets PROD configurados · webhook MP registrado (v0.40.0)
 
 ### RRHH — Phases 2–5 (ver ROADMAP.md)
 - [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, PROD)

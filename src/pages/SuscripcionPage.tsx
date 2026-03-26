@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BRAND, PLANES } from '@/config/brand'
+import { BRAND, PLANES, ADDON_MOVIMIENTOS } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
+import { usePlanLimits } from '@/hooks/usePlanLimits'
 import {
   Package, Check, X, CheckCircle, XCircle, Clock,
-  ArrowRight, Shield, RefreshCw
+  ArrowRight, Shield, RefreshCw, Zap, AlertTriangle, Mail
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -18,6 +19,7 @@ export default function SuscripcionPage() {
   const { tenant, loadUserData } = useAuthStore()
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
+  const { limits } = usePlanLimits()
 
   // Resultado de pago redirigido desde MP
   const status = searchParams.get('status')
@@ -219,6 +221,63 @@ export default function SuscripcionPage() {
             )
           })}
         </div>
+
+        {/* Uso actual de movimientos */}
+        {limits && limits.max_movimientos !== -1 && (
+          <div className="mt-8 bg-white/10 rounded-2xl p-6 max-w-md mx-auto">
+            <p className="text-white font-semibold mb-3 text-center">Tu uso este mes</p>
+            <div className="flex items-center justify-between text-sm text-blue-200 mb-2">
+              <span>Movimientos</span>
+              <span className="font-medium text-white">
+                {limits.movimientos_mes.toLocaleString()} / {limits.max_movimientos.toLocaleString()}
+              </span>
+            </div>
+            <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${limits.pct_movimientos >= 100 ? 'bg-red-400' : limits.pct_movimientos >= 80 ? 'bg-amber-400' : 'bg-green-400'}`}
+                style={{ width: `${Math.min(100, limits.pct_movimientos)}%` }}
+              />
+            </div>
+            {limits.pct_movimientos >= 80 && (
+              <p className="text-amber-300 text-xs text-center mt-2 flex items-center justify-center gap-1">
+                <AlertTriangle size={12} />
+                {limits.pct_movimientos >= 100 ? 'Límite alcanzado — upgrade o comprá extra' : 'Cerca del límite — considerá ampliar'}
+              </p>
+            )}
+            {limits.addon_movimientos > 0 && (
+              <p className="text-blue-200 text-xs text-center mt-1">
+                Incluye {limits.addon_movimientos} movimientos extra comprados
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Add-ons */}
+        {limits && limits.max_movimientos !== -1 && (
+          <div className="mt-8 max-w-sm mx-auto">
+            <p className="text-white font-semibold text-center mb-4">¿Necesitás más sin cambiar de plan?</p>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 bg-accent/10 rounded-xl mb-3">
+                <Zap size={22} className="text-accent" />
+              </div>
+              <p className="font-bold text-gray-800 dark:text-gray-100 text-lg">
+                +{ADDON_MOVIMIENTOS.cantidad.toLocaleString()} movimientos
+              </p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">Pack único</p>
+              <p className="text-2xl font-bold text-primary dark:text-white mt-2">
+                ${ADDON_MOVIMIENTOS.precio.toLocaleString('es-AR')}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">pago único · válido hasta fin de mes</p>
+              <a
+                href={`mailto:${BRAND.email}?subject=Comprar add-on movimientos&body=Hola! Quiero comprar un pack de ${ADDON_MOVIMIENTOS.cantidad} movimientos extra para mi cuenta (tenant: ${tenant?.id ?? ''}). Precio: $${ADDON_MOVIMIENTOS.precio.toLocaleString('es-AR')}`}
+                className="flex items-center justify-center gap-2 w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all text-sm"
+              >
+                <Mail size={15} /> Comprar add-on
+              </a>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Respondemos en menos de 24hs</p>
+            </div>
+          </div>
+        )}
 
         {/* Garantías */}
         <div className="mt-10 flex flex-wrap justify-center gap-6 text-blue-200 text-sm">

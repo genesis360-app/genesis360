@@ -1,5 +1,5 @@
 -- ============================================================
--- Stokio — Schema completo (actualizado 2026-03-25, migrations 001–020)
+-- Stokio — Schema completo (actualizado 2026-03-26, migrations 001–021)
 -- Aplicar en Supabase DEV con el SQL Editor
 -- ============================================================
 
@@ -1292,3 +1292,10 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS marketplace_webhook_url TEXT;
 CREATE INDEX IF NOT EXISTS idx_productos_marketplace
   ON productos(tenant_id, publicado_marketplace)
   WHERE publicado_marketplace = TRUE;
+
+-- ============================================================
+-- Migration 021: Límite de movimientos por plan + add-ons
+-- ============================================================
+
+-- addon_movimientos: movimientos extra comprados por el tenant (se suman al límite del plan)
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS addon_movimientos INT DEFAULT 0;

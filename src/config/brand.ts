@@ -56,10 +56,12 @@ export const PLANES = [
     limites: {
       usuarios: 1,
       productos: 50,
+      movimientos_mes: 200,
     },
     features: [
       '1 usuario',
       'Hasta 50 productos',
+      '200 movimientos/mes',
       'Gestión de inventario',
       'Movimientos de stock',
       'Alertas de stock mínimo',
@@ -79,10 +81,12 @@ export const PLANES = [
     limites: {
       usuarios: 2,
       productos: 500,
+      movimientos_mes: 2000,
     },
     features: [
       '2 usuarios',
       'Hasta 500 productos',
+      '2.000 movimientos/mes',
       'Todo lo del plan Free',
       'Módulo de ventas',
       'Reportes básicos',
@@ -102,10 +106,12 @@ export const PLANES = [
     limites: {
       usuarios: 10,
       productos: 5000,
+      movimientos_mes: -1, // ilimitado
     },
     features: [
       'Hasta 10 usuarios',
       'Hasta 5.000 productos',
+      'Movimientos ilimitados',
       'Todo lo del plan Básico',
       'Importación masiva (CSV/Excel)',
       'Trazabilidad por serie y lote',
@@ -124,10 +130,12 @@ export const PLANES = [
     limites: {
       usuarios: -1, // ilimitado
       productos: -1,
+      movimientos_mes: -1, // ilimitado
     },
     features: [
       'Usuarios ilimitados',
       'Productos ilimitados',
+      'Movimientos ilimitados',
       'Todo lo del plan Pro',
       'Onboarding personalizado',
       'SLA garantizado',
@@ -137,3 +145,17 @@ export const PLANES = [
     noIncluye: [],
   },
 ]
+
+// Límites de movimientos por plan (para uso en usePlanLimits)
+export const MAX_MOVIMIENTOS_POR_PLAN: Record<string, number> = {
+  free:       200,
+  basico:     2000,
+  pro:        -1,   // ilimitado
+  enterprise: -1,   // ilimitado
+}
+
+// Precio y cantidad del add-on de movimientos
+export const ADDON_MOVIMIENTOS = {
+  cantidad: 500,
+  precio: 990, // ARS
+}

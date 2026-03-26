@@ -247,6 +247,15 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Activar marketplace**: desde Supabase Dashboard o SQL: `UPDATE tenants SET marketplace_activo = true WHERE id = '<tenant_id>'`.
 - **Configurar webhook externo**: `UPDATE tenants SET marketplace_webhook_url = '<url>' WHERE id = '<tenant_id>'`.
 
+### Revenue — Límites de movimientos (v0.36.0, migración 021)
+- **Límites por plan** en `brand.ts` → `MAX_MOVIMIENTOS_POR_PLAN`: Free=200 · Básico=2.000 · Pro/Enterprise=-1 (ilimitado).
+- **`tenants.addon_movimientos INT DEFAULT 0`**: movimientos extra comprados (se suman al límite del plan).
+- **`usePlanLimits`**: cuenta `movimientos_stock` del mes en curso (desde día 1 00:00:00). Expone `max_movimientos`, `movimientos_mes`, `puede_crear_movimiento`, `pct_movimientos`.
+- **MovimientosPage**: banner con barra de progreso (green/amber ≥80%/red ≥100%); botones Ingreso y Rebaje deshabilitados; bloqueo también en `mutationFn`.
+- **SuscripcionPage**: widget de uso del mes + card add-on (+500 movs $990 vía email precompletado).
+- **Activar add-on manualmente**: `UPDATE tenants SET addon_movimientos = addon_movimientos + 500 WHERE id = '...'`
+- **Pendiente**: add-on con pago automático MP; ampliar matriz por plan (funcionalidades bloqueadas por plan).
+
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
 - Compactar manualmente con `/compact` cuando el contexto esté pesado.
@@ -258,9 +267,10 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ### UX / Config
 
 ### Revenue
-- [ ] Límite de movimientos por plan (`max_movimientos`)
-- [ ] Add-ons: comprar capacidad extra sin cambiar de plan
-- [ ] Revisar matriz de funcionalidades por plan (actualmente solo se limitan usuarios y productos)
+- [x] Límite de movimientos por plan: Free=200/mes · Básico=2.000/mes · Pro/Enterprise=∞ (v0.36.0)
+- [x] Add-ons: +500 movimientos por $990 vía email/soporte; `tenants.addon_movimientos` acumula extra (v0.36.0)
+- [ ] Revisar matriz de funcionalidades por plan (actualmente solo se limitan usuarios, productos y movimientos)
+- [ ] Add-on con pago automático vía MP (actualmente es manual por email)
 
 ### RRHH — Phases 2–5 (ver ROADMAP.md)
 - [x] Phase 2A — Nómina: `rrhh_salarios` + `rrhh_conceptos` + `rrhh_salario_items`; pagar → egreso automático en Caja (migración 017, PROD)

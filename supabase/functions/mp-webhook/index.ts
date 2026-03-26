@@ -77,9 +77,24 @@ serve(async (req) => {
       console.log('Payment status:', payment.status, 'ref:', payment.external_reference)
 
       if (payment.status === 'approved' && payment.external_reference) {
-        await supabase.from('tenants').update({
-          subscription_status: 'active',
-        }).eq('id', payment.external_reference)
+        const ref: string = payment.external_reference
+
+        if (ref.endsWith('|addon_movimientos')) {
+          // Add-on de movimientos: incrementar addon_movimientos en +500
+          const tenantId = ref.replace('|addon_movimientos', '')
+          const { data: tenantRow } = await supabase.from('tenants')
+            .select('addon_movimientos').eq('id', tenantId).single()
+          const actual = tenantRow?.addon_movimientos ?? 0
+          await supabase.from('tenants').update({
+            addon_movimientos: actual + 500,
+          }).eq('id', tenantId)
+          console.log(`Tenant ${tenantId} addon_movimientos: ${actual} → ${actual + 500}`)
+        } else {
+          // Pago de suscripción normal
+          await supabase.from('tenants').update({
+            subscription_status: 'active',
+          }).eq('id', ref)
+        }
       }
     }
 

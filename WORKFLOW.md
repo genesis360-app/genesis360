@@ -126,6 +126,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.34.0 | RRHH Phase 3B Dashboard (KPIs empleados/asistencia/vacaciones/nómina · breakdown depts · exportar Excel) | 2026-03 (en dev) |
 | v0.35.0 | Marketplace: EF marketplace-api (pública) + EF marketplace-webhook · UI publicar productos + precio/stock/descripción marketplace · migration 020 | 2026-03 |
 | v0.36.0 | Revenue: límite movimientos por plan (Free=200 · Básico=2.000 · Pro=∞) · banner uso en MovimientosPage · bloqueo al alcanzar límite · add-ons +500 movs en SuscripcionPage · migration 021 | 2026-03 |
+| v0.37.0 | Matriz de funcionalidades por plan: FEATURES_POR_PLAN · UpgradePrompt · candados sidebar · bloqueo Básico+ (Reportes/Historial/Métricas) · bloqueo Pro+ (Importar/RRHH) | 2026-03 |
 
 ---
 

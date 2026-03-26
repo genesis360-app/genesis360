@@ -51,7 +51,7 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
         supabase.from('movimientos_stock').select('id', { count: 'exact', head: true })
           .eq('tenant_id', tenant!.id)
           .gte('created_at', inicioMes.toISOString()),
-        supabase.from('tenants').select('plan_id, max_users, max_productos, addon_movimientos')
+        supabase.from('tenants').select('plan_id, max_users, max_productos, addon_movimientos, subscription_status, trial_ends_at')
           .eq('id', tenant!.id).single(),
       ])
 
@@ -68,8 +68,14 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
       const productos_actuales = productos ?? 0
       const movimientosMesActual = movimientosMes ?? 0
 
-      // Feature flags: se derivan del plan
-      const features = FEATURES_POR_PLAN[planId] ?? FEATURES_POR_PLAN['free']
+      // Durante trial activo → features de Pro completo
+      const enTrialActivo =
+        tenantRow?.subscription_status === 'trial' &&
+        tenantRow?.trial_ends_at &&
+        new Date(tenantRow.trial_ends_at) >= new Date()
+
+      const featuresKey = enTrialActivo ? 'pro' : planId
+      const features = FEATURES_POR_PLAN[featuresKey] ?? FEATURES_POR_PLAN['free']
       const tiene = (f: string) => features.includes(f)
 
       return {

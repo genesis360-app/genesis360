@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
   BarChart2, Users, Users2, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
   ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle,
-  Moon, Sun, LifeBuoy, Lock
+  Moon, Sun, LifeBuoy, Lock, CreditCard
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -165,6 +165,29 @@ export function AppLayout() {
             )
           })}
         </nav>
+
+        {/* Mi Plan */}
+        <div className={`border-t border-accent/20 ${collapsed ? 'px-1.5 py-2' : 'px-3 py-2'}`}>
+          <NavLink
+            to="/suscripcion"
+            title={collapsed ? `Plan ${limits?.plan_id ?? ''}` : undefined}
+            className={({ isActive }) =>
+              `flex items-center rounded-lg text-xs font-medium transition-all
+              ${collapsed ? 'justify-center px-2 py-2' : 'gap-2 px-3 py-2'}
+              ${isActive ? 'bg-accent text-white' : 'text-blue-200 hover:bg-accent/30 hover:text-white'}`
+            }
+          >
+            <CreditCard size={15} className="flex-shrink-0" />
+            {!collapsed && (
+              <>
+                <span className="flex-1 truncate capitalize">
+                  Plan {limits?.plan_id === 'basico' ? 'Básico' : limits?.plan_id === 'pro' ? 'Pro' : limits?.plan_id === 'enterprise' ? 'Enterprise' : 'Free'}
+                </span>
+                <ChevronRight size={12} className="opacity-60" />
+              </>
+            )}
+          </NavLink>
+        </div>
 
         {/* Cotización USD */}
         {!collapsed && <CotizacionWidget />}

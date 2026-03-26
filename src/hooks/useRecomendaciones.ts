@@ -44,6 +44,8 @@ export function useRecomendaciones() {
       const hace30dias   = new Date(Date.now() - 30 * 86400000).toISOString()
       const hace3dias    = new Date(Date.now() - 3 * 86400000).toISOString()
 
+      const hace90dias = new Date(Date.now() - 90 * 86400000).toISOString()
+
       const [
         productos,
         rebajesRecientes,
@@ -52,6 +54,8 @@ export function useRecomendaciones() {
         ventaItems30d,
         reservasViejas,
         clientesConCompras,
+        ventas90d,
+        empleadosMes,
       ] = await Promise.all([
         supabase.from('productos')
           .select('id, nombre, precio_venta, precio_costo, stock_actual, stock_minimo, activo')
@@ -91,6 +95,20 @@ export function useRecomendaciones() {
           .in('estado', ['despachada', 'facturada'])
           .not('cliente_id', 'is', null)
           .gte('created_at', hace30dias),
+
+        // Ventas 90d para análisis de día de semana
+        supabase.from('ventas')
+          .select('total, created_at')
+          .eq('tenant_id', tenant!.id)
+          .in('estado', ['despachada', 'facturada'])
+          .gte('created_at', hace90dias),
+
+        // Empleados con cumpleaños (solo activos con fecha de nacimiento)
+        supabase.from('empleados')
+          .select('id, nombre, apellido, fecha_nacimiento')
+          .eq('tenant_id', tenant!.id)
+          .eq('activo', true)
+          .not('fecha_nacimiento', 'is', null),
       ])
 
       return {
@@ -101,6 +119,8 @@ export function useRecomendaciones() {
         ventaItems30d: ventaItems30d.data ?? [],
         reservasViejas: reservasViejas.data ?? [],
         clientesConCompras: clientesConCompras.data ?? [],
+        ventas90d: ventas90d.data ?? [],
+        empleadosMes: empleadosMes.data ?? [],
       }
     },
     enabled: !!tenant,
@@ -113,6 +133,7 @@ export function useRecomendaciones() {
     const {
       productos, rebajesRecientes, ventasMes, ventasMesAnt,
       ventaItems30d, reservasViejas, clientesConCompras,
+      ventas90d, empleadosMes,
     } = raw
 
     const vendidosSet    = new Set(rebajesRecientes.map((r: any) => r.producto_id))
@@ -282,6 +303,114 @@ export function useRecomendaciones() {
         impacto: `${frecuentes.length} cliente${frecuentes.length > 1 ? 's' : ''} con 3+ compras`,
         accion: 'Ver clientes',
         link: '/clientes',
+        valor: 0,
+      })
+    }
+
+    // 8. Cobertura crítica: stock que cubre < 3 días al ritmo actual
+    const velocidadVenta: Record<string, number> = {}
+    for (const item of ventaItems30d as any[]) {
+      velocidadVenta[item.producto_id] = (velocidadVenta[item.producto_id] ?? 0) + item.cantidad
+    }
+    const coberturaUrgente = productos.filter((p: any) => {
+      const vendido30d = velocidadVenta[p.id] ?? 0
+      if (vendido30d === 0 || p.stock_actual <= 0) return false
+      const diasCobertura = p.stock_actual / (vendido30d / 30)
+      return diasCobertura < 3 && p.stock_actual > p.stock_minimo // ya en stock crítico los cubre regla distinta
+    })
+    if (coberturaUrgente.length > 0) {
+      const ejemplo = (coberturaUrgente[0] as any).nombre
+      list.push({
+        id: 'cobertura-critica',
+        tipo: 'danger',
+        categoria: 'stock',
+        titulo: `${coberturaUrgente.length} producto${coberturaUrgente.length > 1 ? 's' : ''} con menos de 3 días de stock`,
+        descripcion: `${ejemplo}${coberturaUrgente.length > 1 ? ` y ${coberturaUrgente.length - 1} más tienen` : ' tiene'} stock para menos de 3 días al ritmo actual de ventas. Hacé un pedido urgente para evitar quiebres.`,
+        impacto: `Quiebre de stock en menos de 72hs`,
+        accion: 'Ver inventario',
+        link: '/inventario',
+        valor: coberturaUrgente.length * 8000,
+      })
+    }
+
+    // 9. Margen realizado bajo (últimos 30 días)
+    const itemsConCosto = (ventaItems30d as any[]).filter(i => i.precio_costo_historico > 0 && i.precio_unitario > 0)
+    if (itemsConCosto.length > 0) {
+      const totalFacturado = itemsConCosto.reduce((a, i) => a + i.precio_unitario * i.cantidad, 0)
+      const totalCosto     = itemsConCosto.reduce((a, i) => a + i.precio_costo_historico * i.cantidad, 0)
+      const margenRealizado = totalFacturado > 0 ? (totalFacturado - totalCosto) / totalFacturado * 100 : null
+      if (margenRealizado !== null && margenRealizado < 15) {
+        list.push({
+          id: 'margen-realizado-bajo',
+          tipo: 'warning',
+          categoria: 'rentabilidad',
+          titulo: `Margen realizado del mes: ${margenRealizado.toFixed(1)}%`,
+          descripcion: `El margen promedio de las ventas del último mes fue del ${margenRealizado.toFixed(1)}%. Un margen menor al 15% indica que los costos están consumiendo la mayoría del ingreso. Revisá los precios de compra o de venta.`,
+          impacto: `${(15 - margenRealizado).toFixed(1)}pp por debajo del mínimo recomendado`,
+          accion: 'Ver rentabilidad',
+          link: '/rentabilidad',
+          valor: totalFacturado * 0.15,
+        })
+      }
+    }
+
+    // 10. Día de semana con ventas bajas (últimos 90 días)
+    if (ventas90d.length >= 20) {
+      const porDia: Record<number, number[]> = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] }
+      for (const v of ventas90d as any[]) {
+        const dow = new Date(v.created_at).getDay()
+        porDia[dow].push(v.total ?? 0)
+      }
+      const promPorDia = Object.entries(porDia)
+        .filter(([, totales]) => totales.length > 0)
+        .map(([dow, totales]) => ({
+          dow: Number(dow),
+          prom: totales.reduce((a, t) => a + t, 0) / totales.length,
+          semanas: totales.length,
+        }))
+      if (promPorDia.length > 1) {
+        const promGeneral = promPorDia.reduce((a, d) => a + d.prom, 0) / promPorDia.length
+        const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+        const diasFlojos = promPorDia.filter(d => d.prom < promGeneral * 0.5 && d.semanas >= 4)
+        if (diasFlojos.length > 0) {
+          const nombresDias = diasFlojos.map(d => DIAS[d.dow]).join(', ')
+          list.push({
+            id: 'dia-flojo',
+            tipo: 'info',
+            categoria: 'ventas',
+            titulo: `${nombresDias}: día${diasFlojos.length > 1 ? 's' : ''} con ventas bajas`,
+            descripcion: `${nombresDias} ${diasFlojos.length > 1 ? 'son consistentemente' : 'es consistentemente'} el día con menos ventas (menos de la mitad del promedio diario). Considerá una promoción del día para activar esas jornadas.`,
+            impacto: `${Math.round((1 - diasFlojos[0].prom / promGeneral) * 100)}% menos que el promedio`,
+            accion: 'Ver métricas',
+            link: '/metricas',
+            valor: 0,
+          })
+        }
+      }
+    }
+
+    // 11. Cumpleaños de empleados este mes
+    const mesActual = new Date().getMonth() + 1
+    const cumpleanosMes = (empleadosMes as any[]).filter(e => {
+      if (!e.fecha_nacimiento) return false
+      const mes = new Date(e.fecha_nacimiento + 'T12:00:00').getMonth() + 1
+      return mes === mesActual
+    })
+    if (cumpleanosMes.length > 0) {
+      const nombres = cumpleanosMes
+        .map((e: any) => [e.nombre, e.apellido].filter(Boolean).join(' '))
+        .slice(0, 2)
+        .join(' y ')
+      const extra = cumpleanosMes.length > 2 ? ` y ${cumpleanosMes.length - 2} más` : ''
+      list.push({
+        id: 'cumpleanos-mes',
+        tipo: 'info',
+        categoria: 'operaciones',
+        titulo: `${cumpleanosMes.length} empleado${cumpleanosMes.length > 1 ? 's' : ''} cumplen años este mes`,
+        descripcion: `${nombres}${extra} ${cumpleanosMes.length > 1 ? 'cumplen' : 'cumple'} años este mes. Un pequeño gesto puede hacer la diferencia en el clima laboral.`,
+        impacto: `${cumpleanosMes.length} cumpleaños en ${new Date().toLocaleString('es-AR', { month: 'long' })}`,
+        accion: 'Ver RRHH',
+        link: '/rrhh',
         valor: 0,
       })
     }

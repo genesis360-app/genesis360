@@ -48,7 +48,7 @@ export default function DashboardPage() {
   const { tenant } = useAuthStore()
   const { score, recomendaciones } = useRecomendaciones()
   const { limits } = usePlanLimits()
-  const [tab, setTab] = useState<'general' | 'metricas'>('general')
+  const [tab, setTab] = useState<'general' | 'metricas' | 'insights'>('general')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
 
@@ -244,6 +244,123 @@ export default function DashboardPage() {
 
   const fecha = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
 
+  const tabButtons = (active: 'general' | 'metricas' | 'insights') => (
+    <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
+      {(['general', 'insights', 'metricas'] as const).map(t => (
+        <button key={t} onClick={() => setTab(t)}
+          className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5
+            ${active === t
+              ? 'bg-white dark:bg-gray-800 text-primary shadow-sm dark:shadow-gray-900'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+          {t === 'metricas' && limits && !limits.puede_metricas && <Lock size={12} className="text-gray-400" />}
+          {t === 'general' ? 'General' : t === 'metricas' ? 'Métricas' : 'Insights'}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (tab === 'insights') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
+          </div>
+          {tabButtons('insights')}
+        </div>
+
+        {/* Score de salud */}
+        {score && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-5">
+              <div className="relative w-20 h-20 flex-shrink-0">
+                <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="12" />
+                  <circle cx="50" cy="50" r="40" fill="none" strokeWidth="12"
+                    stroke={score.total >= 70 ? '#22c55e' : score.total >= 40 ? '#f59e0b' : '#ef4444'}
+                    strokeDasharray={`${2 * Math.PI * 40}`}
+                    strokeDashoffset={`${2 * Math.PI * 40 * (1 - score.total / 100)}`}
+                    strokeLinecap="round" />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xl font-bold text-gray-800 dark:text-gray-100">{score.total}</span>
+                </div>
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-gray-800 dark:text-gray-100 text-lg">Score de salud del negocio</p>
+                <p className={`text-sm font-medium mt-0.5 ${score.total >= 70 ? 'text-green-600 dark:text-green-400' : score.total >= 40 ? 'text-amber-500 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>
+                  {score.total >= 70 ? 'Negocio saludable' : score.total >= 40 ? 'Puede mejorar' : 'Necesita atención'}
+                </p>
+                <div className="mt-3 grid grid-cols-5 gap-2">
+                  {([
+                    { label: 'Rotación',      val: score.rotacion,     max: 20 },
+                    { label: 'Rentabilidad',  val: score.rentabilidad, max: 25 },
+                    { label: 'Reservas',      val: score.reservas,     max: 20 },
+                    { label: 'Crecimiento',   val: score.crecimiento,  max: 20 },
+                    { label: 'Datos',         val: score.datos,        max: 15 },
+                  ]).map(d => (
+                    <div key={d.label} className="text-center">
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{d.label}</p>
+                      <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full bg-accent rounded-full" style={{ width: `${(d.val / d.max) * 100}%` }} />
+                      </div>
+                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mt-1">{d.val}/{d.max}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Lista completa de recomendaciones */}
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <Zap size={16} className="text-accent" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">
+              {recomendaciones.length} insight{recomendaciones.length !== 1 ? 's' : ''} detectado{recomendaciones.length !== 1 ? 's' : ''}
+            </h2>
+          </div>
+          <div className="space-y-3">
+            {recomendaciones.map(r => {
+              const style = INSIGHT_STYLES[r.tipo]
+              const Icon  = INSIGHT_ICONS[r.tipo]
+              return (
+                <div key={r.id}
+                  className={`rounded-xl border border-gray-100 dark:border-gray-700 border-l-4 ${style.border} ${style.bg} p-4 shadow-sm dark:shadow-gray-900`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${style.iconBg}`}>
+                      <Icon size={17} className={style.iconColor} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{r.titulo}</p>
+                      <p className={`text-xs font-medium mt-0.5 ${style.iconColor}`}>{r.impacto}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">{r.descripcion}</p>
+                      <div className="mt-2.5">
+                        {r.link === '/metricas' ? (
+                          <button onClick={() => setTab('metricas')}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary transition-colors">
+                            {r.accion} <ChevronRight size={12} />
+                          </button>
+                        ) : (
+                          <Link to={r.link}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary transition-colors">
+                            {r.accion} <ChevronRight size={12} />
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (tab === 'metricas') {
     return (
       <div className="space-y-6">
@@ -252,17 +369,7 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
             <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
           </div>
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
-            <button onClick={() => setTab('general')}
-              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
-              General
-            </button>
-            <button onClick={() => setTab('metricas')}
-              className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white dark:bg-gray-800 text-primary shadow-sm dark:shadow-gray-900 flex items-center gap-1.5">
-              {limits && !limits.puede_metricas && <Lock size={12} className="text-gray-400" />}
-              Métricas
-            </button>
-          </div>
+          {tabButtons('metricas')}
         </div>
         {limits && !limits.puede_metricas
           ? <UpgradePrompt feature="metricas" />
@@ -281,17 +388,7 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-primary capitalize">{fecha}</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
         </div>
-        <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
-          <button onClick={() => setTab('general')}
-            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all bg-white dark:bg-gray-800 text-primary shadow-sm dark:shadow-gray-900">
-            General
-          </button>
-          <button onClick={() => setTab('metricas')}
-            className="py-1.5 px-4 rounded-lg text-sm font-medium transition-all text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1.5">
-            {limits && !limits.puede_metricas && <Lock size={12} className="text-gray-400" />}
-            Métricas
-          </button>
-        </div>
+        {tabButtons('general')}
       </div>
 
       {/* KPI Cards con semáforo */}

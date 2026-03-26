@@ -83,7 +83,6 @@ export default function ImportarProductosPage() {
   const navigate = useNavigate()
   const { tenant, user } = useAuthStore()
 
-  if (limits && !limits.puede_importar) return <UpgradePrompt feature="importar" />
   const qc = useQueryClient()
 
   const fileRefProd = useRef<HTMLInputElement>(null)
@@ -439,6 +438,8 @@ export default function ImportarProductosPage() {
   // ─────────────────────────────────────────────────────────────────────────
   //  RENDER
   // ─────────────────────────────────────────────────────────────────────────
+  if (limits && !limits.puede_importar) return <UpgradePrompt feature="importar" />
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}

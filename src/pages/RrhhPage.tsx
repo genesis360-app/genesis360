@@ -158,8 +158,6 @@ export default function RrhhPage() {
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
   const [activeTab, setActiveTab] = useState<Tab>('empleados')
-
-  if (limits && !limits.puede_rrhh) return <UpgradePrompt feature="rrhh" />
   const [formMode, setFormMode] = useState<FormMode>(null)
   const [selectedEmpleado, setSelectedEmpleado] = useState<Empleado | null>(null)
   const [editingPuesto, setEditingPuesto] = useState<Puesto | null>(null)
@@ -894,6 +892,8 @@ export default function RrhhPage() {
     e.dni_rut.toLowerCase().includes(searchTerm.toLowerCase()) ||
     e.activo.toString().includes(searchTerm.toLowerCase())
   )
+
+  if (limits && !limits.puede_rrhh) return <UpgradePrompt feature="rrhh" />
 
   if (user?.rol !== 'OWNER' && user?.rol !== 'RRHH') {
     return (

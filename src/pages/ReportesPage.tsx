@@ -46,7 +46,6 @@ export default function ReportesPage() {
   const { limits } = usePlanLimits()
   const { tenant } = useAuthStore()
 
-  if (limits && !limits.puede_reportes) return <UpgradePrompt feature="reportes" />
   const [reporteActivo, setReporteActivo] = useState<ReporteId | null>(null)
   const [fechaDesde, setFechaDesde] = useState(() => {
     const d = new Date(); d.setMonth(d.getMonth() - 1)
@@ -376,6 +375,8 @@ export default function ReportesPage() {
   const reporteSeleccionado = REPORTES.find(r => r.id === reporteActivo)
   const datos = reporteActivo ? datosPorReporte[reporteActivo] : []
   const necesitaFechas = reporteActivo && ['movimientos', 'ventas', 'rotacion'].includes(reporteActivo)
+
+  if (limits && !limits.puede_reportes) return <UpgradePrompt feature="reportes" />
 
   return (
     <div className="space-y-6">

@@ -88,7 +88,6 @@ export default function HistorialPage() {
   const { limits } = usePlanLimits()
   const { tenant, user } = useAuthStore()
 
-  if (limits && !limits.puede_historial) return <UpgradePrompt feature="historial" />
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VACIOS)
   const [page, setPage] = useState(0)
   const [showFiltros, setShowFiltros] = useState(false)
@@ -164,6 +163,8 @@ export default function HistorialPage() {
     if (!grouped[dia]) grouped[dia] = []
     grouped[dia].push(log)
   }
+
+  if (limits && !limits.puede_historial) return <UpgradePrompt feature="historial" />
 
   if (!puedeVer) {
     return (

@@ -267,6 +267,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Sidebar**: candado pequeño junto al label en items bloqueados (`planFeature` en navItems). Ítem sigue siendo navegable → muestra UpgradePrompt adentro.
 - **Páginas bloqueadas con early return**: `ReportesPage`, `HistorialPage`, `ImportarProductosPage`, `RrhhPage`. **Tab bloqueada**: Métricas en `DashboardPage`.
 - **Para agregar una nueva feature bloqueada**: 1) agregar a `FEATURES_POR_PLAN` y `PLAN_REQUERIDO`; 2) agregar flag en `usePlanLimits`; 3) early return con `<UpgradePrompt feature="..." />` en la página.
+- **⚠ Rules of Hooks**: el early return SIEMPRE debe ir después de que todos los hooks estén declarados (al final, justo antes del `return` principal). Nunca entre llamadas a hooks.
 
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.

@@ -132,6 +132,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.37.0 | Matriz de funcionalidades por plan: FEATURES_POR_PLAN · UpgradePrompt · candados sidebar · bloqueo Básico+ (Reportes/Historial/Métricas) · bloqueo Pro+ (Importar/RRHH) | 2026-03 |
 | v0.38.0 | RRHH Phase 2C+4A: nombre+apellido empleados · EF birthday-notifications · GH Actions cron · rrhh_documentos + Storage bucket empleados · tab Documentos · trial=Pro completo · migration 022 | 2026-03 |
 | v0.39.0 | RRHH Phase 4B+5: Capacitaciones (rrhh_capacitaciones + tab Capacitaciones + cert upload) · Supervisor Self-Service (tab Mi Equipo, KPIs, aprobar vacaciones) · Árbol Organizacional · migrations 023+024 | 2026-03 |
+| v0.40.0 | Add-on movimientos con pago automático MP: EF mp-addon + mp-webhook actualizado · secrets PROD configurados · webhook MP registrado | 2026-03 |
+| v0.41.0 | Insights automáticos (11 reglas en useRecomendaciones + tab Insights en Dashboard con score de salud) · fix acceso a Mi Plan en sidebar · infraestructura de tests (Playwright E2E + Vitest unit, 49 tests) | 2026-03 (en dev) |
 
 ---
 

@@ -1,5 +1,5 @@
 -- ============================================================
--- Stokio — Schema completo (actualizado 2026-03-26, migrations 001–022)
+-- Stokio — Schema completo (actualizado 2026-03-26, migrations 001–024)
 -- Aplicar en Supabase DEV con el SQL Editor
 -- ============================================================
 
@@ -1337,3 +1337,67 @@ CREATE INDEX IF NOT EXISTS idx_rrhh_documentos_tenant   ON rrhh_documentos(tenan
 -- INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 -- VALUES ('empleados', 'empleados', false, 10485760, ARRAY['application/pdf',...])
 -- ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- Migration 023: RRHH Phase 4B — Capacitaciones
+-- ============================================================
+CREATE TABLE IF NOT EXISTS rrhh_capacitaciones (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id)   ON DELETE CASCADE,
+  empleado_id      UUID NOT NULL REFERENCES empleados(id) ON DELETE CASCADE,
+  nombre           TEXT NOT NULL,
+  descripcion      TEXT,
+  fecha_inicio     DATE,
+  fecha_fin        DATE,
+  horas            DECIMAL(6,2),
+  proveedor        TEXT,
+  estado           TEXT CHECK (estado IN ('planificada','en_curso','completada','cancelada')) DEFAULT 'planificada',
+  resultado        TEXT,
+  certificado_path TEXT,
+  created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE rrhh_capacitaciones ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "rrhh_capacitaciones_tenant" ON rrhh_capacitaciones
+  USING  (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+  WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+CREATE INDEX IF NOT EXISTS idx_rrhh_cap_empleado ON rrhh_capacitaciones(empleado_id);
+CREATE INDEX IF NOT EXISTS idx_rrhh_cap_tenant   ON rrhh_capacitaciones(tenant_id);
+
+-- ============================================================
+-- Migration 024: RRHH Phase 5 — Supervisor Self-Service RLS
+-- ============================================================
+
+-- Función: IDs del equipo supervisado por el usuario actual
+CREATE OR REPLACE FUNCTION get_supervisor_team_ids()
+RETURNS SETOF UUID LANGUAGE sql SECURITY DEFINER STABLE AS $$
+  SELECT e.id FROM empleados e
+  WHERE e.supervisor_id = auth.uid()
+    AND e.tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid())
+    AND e.activo = true
+$$;
+
+-- SUPERVISOR puede acceder a asistencia de su equipo
+CREATE POLICY "rrhh_asistencia_supervisor" ON rrhh_asistencia
+  FOR ALL
+  USING  (empleado_id IN (SELECT get_supervisor_team_ids()))
+  WITH CHECK (empleado_id IN (SELECT get_supervisor_team_ids()));
+
+-- SUPERVISOR puede acceder a vacaciones de su equipo
+CREATE POLICY "rrhh_vac_supervisor" ON rrhh_vacaciones_solicitud
+  FOR ALL
+  USING  (empleado_id IN (SELECT get_supervisor_team_ids()))
+  WITH CHECK (empleado_id IN (SELECT get_supervisor_team_ids()));
+
+CREATE POLICY "rrhh_vacsaldo_supervisor" ON rrhh_vacaciones_saldo
+  FOR ALL
+  USING  (empleado_id IN (SELECT get_supervisor_team_ids()))
+  WITH CHECK (empleado_id IN (SELECT get_supervisor_team_ids()));
+
+-- SUPERVISOR puede leer su equipo en la tabla empleados
+CREATE POLICY "empleados_supervisor" ON empleados
+  FOR SELECT
+  USING (supervisor_id = auth.uid());

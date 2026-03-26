@@ -174,7 +174,9 @@ export default function RrhhPage() {
     activo: true,
   })
   const [puestoForm, setPuestoForm] = useState<Partial<Puesto>>({ nombre: '', activo: true })
+  const [showPuestoForm, setShowPuestoForm] = useState(false)
   const [deptForm, setDeptForm] = useState<Partial<Departamento>>({ nombre: '', activo: true })
+  const [showDeptForm, setShowDeptForm] = useState(false)
 
   // Nómina state
   const [nominaMes, setNominaMes] = useState(() => String(new Date().getMonth() + 1).padStart(2, '0'))
@@ -490,6 +492,7 @@ export default function RrhhPage() {
       qc.invalidateQueries({ queryKey: ['puestos'] })
       setEditingPuesto(null)
       setPuestoForm({ nombre: '', activo: true })
+      setShowPuestoForm(false)
     },
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
@@ -515,6 +518,7 @@ export default function RrhhPage() {
       qc.invalidateQueries({ queryKey: ['departamentos'] })
       setEditingDepartamento(null)
       setDeptForm({ nombre: '', activo: true })
+      setShowDeptForm(false)
     },
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
@@ -1200,6 +1204,7 @@ export default function RrhhPage() {
               onClick={() => {
                 setEditingPuesto(null)
                 setPuestoForm({ nombre: '', activo: true })
+                setShowPuestoForm(true)
               }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
@@ -1208,8 +1213,8 @@ export default function RrhhPage() {
             </button>
           </div>
 
-          {/* Form modal inline */}
-          {editingPuesto === null && puestoForm.nombre === '' ? null : (
+          {/* Form inline */}
+          {(showPuestoForm || editingPuesto !== null) && (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700 mb-6">
               <h3 className="text-lg font-semibold mb-4">{editingPuesto ? 'Editar Puesto' : 'Crear Puesto'}</h3>
               <div className="grid grid-cols-2 gap-4">
@@ -1256,6 +1261,7 @@ export default function RrhhPage() {
                   onClick={() => {
                     setEditingPuesto(null)
                     setPuestoForm({ nombre: '', activo: true })
+                    setShowPuestoForm(false)
                   }}
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
                 >
@@ -1280,6 +1286,7 @@ export default function RrhhPage() {
                       onClick={() => {
                         setEditingPuesto(p)
                         setPuestoForm(p)
+                        setShowPuestoForm(true)
                       }}
                       className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:text-blue-400"
                     >
@@ -1309,6 +1316,7 @@ export default function RrhhPage() {
               onClick={() => {
                 setEditingDepartamento(null)
                 setDeptForm({ nombre: '', activo: true })
+                setShowDeptForm(true)
               }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
@@ -1317,8 +1325,8 @@ export default function RrhhPage() {
             </button>
           </div>
 
-          {/* Form modal inline */}
-          {editingDepartamento === null && deptForm.nombre === '' ? null : (
+          {/* Form inline */}
+          {(showDeptForm || editingDepartamento !== null) && (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700 mb-6">
               <h3 className="text-lg font-semibold mb-4">{editingDepartamento ? 'Editar Departamento' : 'Crear Departamento'}</h3>
               <div className="grid grid-cols-1 gap-4">
@@ -1356,6 +1364,7 @@ export default function RrhhPage() {
                   onClick={() => {
                     setEditingDepartamento(null)
                     setDeptForm({ nombre: '', activo: true })
+                    setShowDeptForm(false)
                   }}
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
                 >
@@ -1379,6 +1388,7 @@ export default function RrhhPage() {
                       onClick={() => {
                         setEditingDepartamento(d)
                         setDeptForm(d)
+                        setShowDeptForm(true)
                       }}
                       className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:text-blue-400"
                     >

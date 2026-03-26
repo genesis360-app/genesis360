@@ -1,0 +1,78 @@
+name: Tests
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ─── Unit Tests (Vitest) ─────────────────────────────────────────────────
+  unit:
+    name: Unit Tests (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Correr tests unitarios
+        run: npm run test:unit -- --reporter=verbose
+
+  # ─── E2E Tests (Playwright) ──────────────────────────────────────────────
+  e2e:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    # Solo corre E2E si hay credenciales de test configuradas
+    if: vars.RUN_E2E == 'true'
+    env:
+      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+      E2E_EMAIL:    ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      # Supabase DEV para que la app se conecte correctamente
+      VITE_SUPABASE_URL:      ${{ secrets.DEV_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}
+      VITE_MP_PUBLIC_KEY:     ${{ secrets.DEV_MP_PUBLIC_KEY }}
+      VITE_APP_URL:           ${{ secrets.E2E_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar browsers Playwright
+        run: npx playwright install chromium --with-deps
+
+      - name: Build de la app
+        run: npm run build
+
+      - name: Correr tests E2E
+        run: npm run test:e2e
+
+      - name: Subir reporte de Playwright
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: tests/e2e/.report/
+          retention-days: 7
+
+      - name: Subir screenshots de fallos
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-screenshots
+          path: tests/e2e/.results/
+          retention-days: 3

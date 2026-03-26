@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import {
   Package, Check, X, CheckCircle, XCircle, Clock,
-  ArrowRight, Shield, RefreshCw, Zap, AlertTriangle, Mail
+  ArrowRight, Shield, RefreshCw, Zap, AlertTriangle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -19,10 +19,12 @@ export default function SuscripcionPage() {
   const { tenant, loadUserData } = useAuthStore()
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
+  const [loadingAddon, setLoadingAddon] = useState(false)
   const { limits } = usePlanLimits()
 
   // Resultado de pago redirigido desde MP
   const status = searchParams.get('status')
+  const paymentType = searchParams.get('type') // 'addon' | null (suscripción)
   const preapprovalId = searchParams.get('preapproval_id')
 
   const handleSuscribir = async (planId: string, mpPlanId: string) => {
@@ -74,25 +76,52 @@ export default function SuscripcionPage() {
     }
   }
 
+  const handleComprarAddon = async () => {
+    setLoadingAddon(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('mp-addon', {})
+      if (error || !data?.init_point) throw new Error(error?.message ?? 'No se obtuvo link de pago')
+      window.location.href = data.init_point
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al iniciar el pago')
+      setLoadingAddon(false)
+    }
+  }
+
   const planesConPago = PLANES.filter(p => p.precio !== null && p.precio > 0)
 
   // Pantalla de resultado de pago
   if (status) {
+    const esAddon = paymentType === 'addon'
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary to-accent flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
           {status === 'approved' ? (
-            <>
-              <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
-              <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Pago aprobado!</h1>
-              <p className="text-gray-500 dark:text-gray-400 mb-6">Tu suscripción está siendo procesada. En unos segundos tu cuenta quedará activa.</p>
-              <button onClick={handleVerificarPago} disabled={loading === 'verificando'}
-                className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
-                {loading === 'verificando'
-                  ? <><RefreshCw size={16} className="animate-spin" /> Verificando...</>
-                  : <><CheckCircle size={16} /> Ir al dashboard</>}
-              </button>
-            </>
+            esAddon ? (
+              <>
+                <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Add-on activado!</h1>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">
+                  Se agregaron <strong>+{ADDON_MOVIMIENTOS.cantidad} movimientos</strong> a tu cuenta. Ya podés usarlos.
+                </p>
+                <Link to="/dashboard"
+                  className="w-full block text-center bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all">
+                  Ir al dashboard
+                </Link>
+              </>
+            ) : (
+              <>
+                <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Pago aprobado!</h1>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">Tu suscripción está siendo procesada. En unos segundos tu cuenta quedará activa.</p>
+                <button onClick={handleVerificarPago} disabled={loading === 'verificando'}
+                  className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                  {loading === 'verificando'
+                    ? <><RefreshCw size={16} className="animate-spin" /> Verificando...</>
+                    : <><CheckCircle size={16} /> Ir al dashboard</>}
+                </button>
+              </>
+            )
           ) : status === 'pending' ? (
             <>
               <Clock size={48} className="text-yellow-500 mx-auto mb-4" />
@@ -268,13 +297,16 @@ export default function SuscripcionPage() {
                 ${ADDON_MOVIMIENTOS.precio.toLocaleString('es-AR')}
               </p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">pago único · válido hasta fin de mes</p>
-              <a
-                href={`mailto:${BRAND.email}?subject=Comprar add-on movimientos&body=Hola! Quiero comprar un pack de ${ADDON_MOVIMIENTOS.cantidad} movimientos extra para mi cuenta (tenant: ${tenant?.id ?? ''}). Precio: $${ADDON_MOVIMIENTOS.precio.toLocaleString('es-AR')}`}
-                className="flex items-center justify-center gap-2 w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all text-sm"
+              <button
+                onClick={handleComprarAddon}
+                disabled={loadingAddon}
+                className="flex items-center justify-center gap-2 w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all text-sm disabled:opacity-60"
               >
-                <Mail size={15} /> Comprar add-on
-              </a>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Respondemos en menos de 24hs</p>
+                {loadingAddon
+                  ? <><RefreshCw size={15} className="animate-spin" /> Redirigiendo...</>
+                  : <><Zap size={15} /> Pagar con Mercado Pago</>}
+              </button>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Pago único · se acredita automáticamente</p>
             </div>
           </div>
         )}

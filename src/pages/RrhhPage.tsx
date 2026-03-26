@@ -5,7 +5,7 @@ import {
   Building2, Briefcase, Calendar, ChevronDown, Heart, AlertTriangle,
   DollarSign, CreditCard, ChevronRight, CheckCircle, Clock,
   Plane, ClipboardList, Check, X, LayoutDashboard, FileSpreadsheet,
-  UserCheck, UserX, TrendingUp, Download,
+  UserCheck, UserX, TrendingUp, Download, Paperclip, FolderOpen, File,
 } from 'lucide-react'
 import { utils as xlsxUtils, writeFile as xlsxWriteFile } from 'xlsx'
 import { supabase } from '@/lib/supabase'
@@ -17,7 +17,7 @@ import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia'
+type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia' | 'documentos'
 type FormMode = 'crear' | 'editar' | null
 
 interface Concepto {
@@ -108,6 +108,8 @@ interface Empleado {
   id: string
   tenant_id: string
   user_id: string | null
+  nombre: string
+  apellido: string | null
   dni_rut: string
   tipo_doc: string
   tel_personal: string | null
@@ -153,6 +155,20 @@ interface Departamento {
   updated_at: string
 }
 
+interface Documento {
+  id: string
+  tenant_id: string
+  empleado_id: string
+  nombre: string
+  descripcion: string | null
+  tipo: 'contrato' | 'certificado' | 'cv' | 'foto' | 'otro'
+  storage_path: string
+  tamanio: number | null
+  mime_type: string | null
+  created_at: string
+  empleado?: { nombre: string; apellido: string | null; dni_rut: string }
+}
+
 export default function RrhhPage() {
   const { limits } = usePlanLimits()
   const { tenant, user } = useAuthStore()
@@ -166,6 +182,8 @@ export default function RrhhPage() {
 
   // Form state
   const [formData, setFormData] = useState<Partial<Empleado>>({
+    nombre: '',
+    apellido: '',
     dni_rut: '',
     tipo_doc: 'DNI',
     genero: 'OTRO',
@@ -207,6 +225,14 @@ export default function RrhhPage() {
     empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), hora_entrada: '', hora_salida: '', estado: 'presente', motivo: '',
   })
   const [asistFiltroEmpleado, setAsistFiltroEmpleado] = useState('')
+
+  // Documentos state
+  const [docEmpleadoFiltro, setDocEmpleadoFiltro] = useState('')
+  const [docUploading, setDocUploading] = useState(false)
+  const [docForm, setDocForm] = useState<{ empleado_id: string; nombre: string; descripcion: string; tipo: string; file: File | null }>({
+    empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null,
+  })
+  const [showDocForm, setShowDocForm] = useState(false)
 
   // Queries
   const { data: empleados = [], isLoading: loadingEmpleados } = useQuery({
@@ -419,7 +445,7 @@ export default function RrhhPage() {
         logActividad({
           entidad: 'empleado',
           entidad_id: '',
-          entidad_nombre: data.dni_rut ?? 'Nuevo empleado',
+          entidad_nombre: nombreEmpleado(data) || 'Nuevo empleado',
           accion: 'crear',
           pagina: '/rrhh',
         })
@@ -432,7 +458,7 @@ export default function RrhhPage() {
         logActividad({
           entidad: 'empleado',
           entidad_id: selectedEmpleado.id,
-          entidad_nombre: selectedEmpleado.dni_rut,
+          entidad_nombre: nombreEmpleado(selectedEmpleado),
           accion: 'editar',
           pagina: '/rrhh',
         })
@@ -458,7 +484,7 @@ export default function RrhhPage() {
       logActividad({
         entidad: 'empleado',
         entidad_id: empId,
-        entidad_nombre: emp.dni_rut,
+        entidad_nombre: nombreEmpleado(emp),
         accion: 'editar',
         campo: 'activo',
         valor_nuevo: !emp.activo ? 'Activo' : 'Inactivo',
@@ -602,7 +628,7 @@ export default function RrhhPage() {
           monto: basico,
         })
       }
-      logActividad({ entidad: 'nomina', entidad_id: id, entidad_nombre: emp.dni_rut, accion: 'crear', pagina: '/rrhh' })
+      logActividad({ entidad: 'nomina', entidad_id: id, entidad_nombre: nombreEmpleado(emp), accion: 'crear', pagina: '/rrhh' })
     },
     onSuccess: () => { toast.success('Liquidación creada'); refetchSalarios() },
     onError: (err: any) => toast.error(err.message ?? 'Error al crear liquidación'),
@@ -665,7 +691,7 @@ export default function RrhhPage() {
     onSuccess: (_, salarioId) => {
       toast.success('Nómina pagada')
       const sal = salarios.find((s) => s.id === salarioId)
-      logActividad({ entidad: 'nomina', entidad_id: salarioId, entidad_nombre: sal?.empleado?.dni_rut ?? '', accion: 'pagar', pagina: '/rrhh' })
+      logActividad({ entidad: 'nomina', entidad_id: salarioId, entidad_nombre: nombreEmpleado(sal?.empleado), accion: 'pagar', pagina: '/rrhh' })
       refetchSalarios()
       qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas'] })
     },
@@ -689,7 +715,7 @@ export default function RrhhPage() {
       })
       if (error) throw error
       const emp = empleados.find(e => e.id === form.empleado_id)
-      logActividad({ entidad: 'vacacion', entidad_nombre: emp?.dni_rut ?? '', accion: 'crear', pagina: '/rrhh' })
+      logActividad({ entidad: 'vacacion', entidad_nombre: nombreEmpleado(emp), accion: 'crear', pagina: '/rrhh' })
     },
     onSuccess: () => {
       toast.success('Solicitud creada')
@@ -794,7 +820,7 @@ export default function RrhhPage() {
     const desde = `${dashMes}-01`
     const hasta = format(new Date(y, m, 0), 'yyyy-MM-dd')
     const { data, error } = await supabase.from('rrhh_asistencia')
-      .select('fecha, estado, hora_entrada, hora_salida, motivo, empleado:empleados(dni_rut)')
+      .select('fecha, estado, hora_entrada, hora_salida, motivo, empleado:empleados(nombre, apellido, dni_rut)')
       .eq('tenant_id', tenant!.id)
       .gte('fecha', desde)
       .lte('fecha', hasta)
@@ -802,7 +828,7 @@ export default function RrhhPage() {
     if (error) { toast.error('Error al exportar'); return }
     const rows = (data ?? []).map((a: any) => ({
       Fecha: a.fecha,
-      Empleado: a.empleado?.dni_rut ?? '',
+      Empleado: [a.empleado?.nombre, a.empleado?.apellido].filter(Boolean).join(' ') || a.empleado?.dni_rut ?? '',
       Estado: a.estado,
       'Hora entrada': a.hora_entrada ?? '',
       'Hora salida': a.hora_salida ?? '',
@@ -817,13 +843,13 @@ export default function RrhhPage() {
 
   const exportNominaHistorica = async () => {
     const { data, error } = await supabase.from('rrhh_salarios')
-      .select('periodo, basico, total_haberes, total_descuentos, neto, pagado, fecha_pago, empleado:empleados(dni_rut)')
+      .select('periodo, basico, total_haberes, total_descuentos, neto, pagado, fecha_pago, empleado:empleados(nombre, apellido, dni_rut)')
       .eq('tenant_id', tenant!.id)
       .order('periodo', { ascending: false })
     if (error) { toast.error('Error al exportar'); return }
     const rows = (data ?? []).map((s: any) => ({
       Período: s.periodo?.slice(0, 7) ?? '',
-      Empleado: s.empleado?.dni_rut ?? '',
+      Empleado: [s.empleado?.nombre, s.empleado?.apellido].filter(Boolean).join(' ') || s.empleado?.dni_rut ?? '',
       Básico: s.basico,
       'Total haberes': s.total_haberes,
       'Total descuentos': s.total_descuentos,
@@ -858,6 +884,10 @@ export default function RrhhPage() {
   }
 
   const handleGuardarEmpleado = async () => {
+    if (!formData.nombre?.trim()) {
+      toast.error('Nombre es requerido')
+      return
+    }
     if (!formData.dni_rut?.trim()) {
       toast.error('DNI/RUT es requerido')
       return
@@ -869,33 +899,108 @@ export default function RrhhPage() {
     saveEmpleado.mutate(formData)
   }
 
-  // Cumppleaños - filter empleados de este mes
+  const nombreEmpleado = (emp: Partial<Empleado> | null | undefined) => {
+    if (!emp) return ''
+    return [emp.nombre, emp.apellido].filter(Boolean).join(' ') || emp.dni_rut || ''
+  }
+
+  // Documentos queries & mutations
+  const { data: documentos = [], refetch: refetchDocumentos } = useQuery({
+    queryKey: ['rrhh-documentos', tenant?.id, docEmpleadoFiltro],
+    queryFn: async () => {
+      let q = supabase.from('rrhh_documentos')
+        .select('*, empleado:empleados(nombre, apellido, dni_rut)')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at', { ascending: false })
+      if (docEmpleadoFiltro) q = q.eq('empleado_id', docEmpleadoFiltro)
+      const { data, error } = await q
+      if (error) throw error
+      return data as Documento[]
+    },
+    enabled: !!tenant && activeTab === 'documentos',
+  })
+
+  const uploadDocumento = async () => {
+    if (!docForm.file || !docForm.empleado_id || !docForm.nombre.trim()) {
+      toast.error('Completá empleado, nombre y archivo')
+      return
+    }
+    setDocUploading(true)
+    try {
+      const ext = docForm.file.name.split('.').pop()
+      const path = `${docForm.empleado_id}/${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('empleados').upload(path, docForm.file)
+      if (upErr) throw upErr
+      const { error: dbErr } = await supabase.from('rrhh_documentos').insert({
+        tenant_id: tenant!.id,
+        empleado_id: docForm.empleado_id,
+        nombre: docForm.nombre.trim(),
+        descripcion: docForm.descripcion || null,
+        tipo: docForm.tipo,
+        storage_path: path,
+        tamanio: docForm.file.size,
+        mime_type: docForm.file.type,
+        created_by: user?.id ?? null,
+      })
+      if (dbErr) throw dbErr
+      toast.success('Documento subido')
+      setShowDocForm(false)
+      setDocForm({ empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null })
+      refetchDocumentos()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setDocUploading(false)
+    }
+  }
+
+  const deleteDocumento = useMutation({
+    mutationFn: async (doc: Documento) => {
+      await supabase.storage.from('empleados').remove([doc.storage_path])
+      const { error } = await supabase.from('rrhh_documentos').delete().eq('id', doc.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Documento eliminado'); refetchDocumentos() },
+    onError: (err: any) => toast.error(err.message),
+  })
+
+  const getDocUrl = async (path: string) => {
+    const { data } = await supabase.storage.from('empleados').createSignedUrl(path, 300)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+    else toast.error('No se pudo obtener el link')
+  }
+
+  const proximoCumpleanos = (fechaNacimiento: string) => {
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const birth = new Date(fechaNacimiento)
+    const next = new Date(today.getFullYear(), birth.getMonth(), birth.getDate())
+    if (next < today) next.setFullYear(today.getFullYear() + 1)
+    return { days: differenceInDays(next, today), date: next }
+  }
+
+  // Cumpleaños - empleados activos del mes actual
   const cumpleanosMes = empleados
     .filter((e) => {
       if (!e.fecha_nacimiento || !e.activo) return false
+      const birth = new Date(e.fecha_nacimiento)
       const today = new Date()
-      const birthDate = new Date(e.fecha_nacimiento)
-      return (
-        birthDate.getMonth() === today.getMonth()
-      )
+      return birth.getMonth() === today.getMonth()
     })
     .sort((a, b) => {
-      const today = new Date()
-      const daysToA = differenceInDays(
-        new Date(a.fecha_nacimiento!),
-        today
-      )
-      const daysToB = differenceInDays(
-        new Date(b.fecha_nacimiento!),
-        today
-      )
-      return daysToA - daysToB
+      const { days: dA } = proximoCumpleanos(a.fecha_nacimiento!)
+      const { days: dB } = proximoCumpleanos(b.fecha_nacimiento!)
+      return dA - dB
     })
 
-  const filteredEmpleados = empleados.filter((e) =>
-    e.dni_rut.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.activo.toString().includes(searchTerm.toLowerCase())
-  )
+  const filteredEmpleados = empleados.filter((e) => {
+    const term = searchTerm.toLowerCase()
+    return (
+      e.dni_rut.toLowerCase().includes(term) ||
+      e.nombre.toLowerCase().includes(term) ||
+      (e.apellido ?? '').toLowerCase().includes(term) ||
+      (e.email_personal ?? '').toLowerCase().includes(term)
+    )
+  })
 
   if (limits && !limits.puede_rrhh) return <UpgradePrompt feature="rrhh" />
 
@@ -920,7 +1025,7 @@ export default function RrhhPage() {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-8 border-b border-gray-200 dark:border-gray-700 flex-wrap">
-        {(['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia'] as Tab[]).map((tab) => (
+        {(['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'documentos'] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => { setActiveTab(tab); resetForm() }}
@@ -938,6 +1043,7 @@ export default function RrhhPage() {
             {tab === 'nomina'       && <span className="flex items-center gap-1"><DollarSign size={14}/>Nómina</span>}
             {tab === 'vacaciones'   && <span className="flex items-center gap-1"><Plane size={14}/>Vacaciones</span>}
             {tab === 'asistencia'   && <span className="flex items-center gap-1"><ClipboardList size={14}/>Asistencia</span>}
+            {tab === 'documentos'   && <span className="flex items-center gap-1"><Paperclip size={14}/>Documentos</span>}
           </button>
         ))}
       </div>
@@ -977,6 +1083,22 @@ export default function RrhhPage() {
                 </h2>
 
                 <div className="grid grid-cols-2 gap-4">
+                  {/* Nombre y Apellido */}
+                  <input
+                    type="text"
+                    placeholder="Nombre *"
+                    value={formData.nombre ?? ''}
+                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Apellido"
+                    value={formData.apellido ?? ''}
+                    onChange={(e) => setFormData({ ...formData, apellido: e.target.value })}
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                  />
+
                   {/* DNI */}
                   <input
                     type="text"
@@ -1151,6 +1273,7 @@ export default function RrhhPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600">
                   <tr>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Nombre</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">DNI</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Teléfono</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Puesto</th>
@@ -1163,7 +1286,8 @@ export default function RrhhPage() {
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {filteredEmpleados.map((emp) => (
                     <tr key={emp.id} className={!emp.activo ? 'bg-gray-50 dark:bg-gray-700 opacity-60' : ''}>
-                      <td className="px-4 py-3 text-sm font-medium">{emp.dni_rut}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">{nombreEmpleado(emp)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{emp.dni_rut}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{emp.tel_personal || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{emp.puesto?.nombre || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{emp.departamento?.nombre || '-'}</td>
@@ -1493,7 +1617,7 @@ export default function RrhhPage() {
                         {isExpanded ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
                       </button>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 dark:text-white text-sm">{sal.empleado?.dni_rut ?? sal.empleado_id}</p>
+                        <p className="font-medium text-gray-900 dark:text-white text-sm">{nombreEmpleado(sal.empleado) || sal.empleado_id}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{sal.empleado?.puesto?.nombre ?? ''}</p>
                       </div>
                       <div className="text-right hidden sm:block">
@@ -1615,7 +1739,7 @@ export default function RrhhPage() {
                     <button key={emp.id}
                       onClick={() => crearLiquidacion.mutate(emp)}
                       className="flex items-center gap-1.5 px-3 py-1.5 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <Plus size={13}/> {emp.dni_rut}
+                      <Plus size={13}/> {nombreEmpleado(emp)}
                     </button>
                   ))}
                 </div>
@@ -1745,7 +1869,7 @@ export default function RrhhPage() {
                   <p className="text-3xl font-bold text-gray-900 dark:text-white">{cumpleanosMes.length}</p>
                   {cumpleanosMes.length > 0 && (
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
-                      {cumpleanosMes.map(e => e.dni_rut).join(', ')}
+                      {cumpleanosMes.map(e => nombreEmpleado(e)).join(', ')}
                     </p>
                   )}
                 </div>
@@ -1909,7 +2033,7 @@ export default function RrhhPage() {
                     <select value={vacForm.empleado_id} onChange={(e) => setVacForm({ ...vacForm, empleado_id: e.target.value })}
                       className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2">
                       <option value="">Seleccioná...</option>
-                      {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{e.dni_rut}</option>)}
+                      {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>)}
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -1967,7 +2091,7 @@ export default function RrhhPage() {
                   return (
                     <div key={sol.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-gray-900 dark:text-white">{sol.empleado?.dni_rut}</p>
+                        <p className="font-medium text-sm text-gray-900 dark:text-white">{nombreEmpleado(sol.empleado)}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {format(new Date(sol.desde + 'T00:00:00'), 'dd/MM/yyyy')} → {format(new Date(sol.hasta + 'T00:00:00'), 'dd/MM/yyyy')} · {sol.dias_habiles} días hábiles
                         </p>
@@ -2012,7 +2136,7 @@ export default function RrhhPage() {
                   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6">
                       <h3 className="font-bold text-gray-900 dark:text-white mb-4">
-                        Saldo {vacAnio} — {editingSaldo.empleado?.dni_rut ?? empleados.find(e => e.id === editingSaldo.empleado_id)?.dni_rut}
+                        Saldo {vacAnio} — {nombreEmpleado(editingSaldo.empleado ?? empleados.find(e => e.id === editingSaldo.empleado_id))}
                       </h3>
                       <div className="space-y-3">
                         <div>
@@ -2063,7 +2187,7 @@ export default function RrhhPage() {
                         const disponible = totales + remanente - usados
                         return (
                           <tr key={emp.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                            <td className="px-4 py-2 text-gray-900 dark:text-white font-medium">{emp.dni_rut}</td>
+                            <td className="px-4 py-2 text-gray-900 dark:text-white font-medium">{nombreEmpleado(emp)}</td>
                             <td className="px-3 py-2 text-center text-gray-700 dark:text-gray-300">{totales}</td>
                             <td className="px-3 py-2 text-center text-gray-700 dark:text-gray-300">{remanente}</td>
                             <td className="px-3 py-2 text-center text-gray-700 dark:text-gray-300">{usados}</td>
@@ -2102,7 +2226,7 @@ export default function RrhhPage() {
               <select value={asistFiltroEmpleado} onChange={(e) => setAsistFiltroEmpleado(e.target.value)}
                 className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm">
                 <option value="">Todos los empleados</option>
-                {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{e.dni_rut}</option>)}
+                {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>)}
               </select>
             </div>
             <button onClick={() => {
@@ -2128,7 +2252,7 @@ export default function RrhhPage() {
                       <select value={asistForm.empleado_id} onChange={(e) => setAsistForm({ ...asistForm, empleado_id: e.target.value })}
                         className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2">
                         <option value="">Seleccioná...</option>
-                        {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{e.dni_rut}</option>)}
+                        {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>)}
                       </select>
                     </div>
                   )}
@@ -2217,7 +2341,7 @@ export default function RrhhPage() {
                             <td className="px-4 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
                               {format(new Date(a.fecha + 'T00:00:00'), 'dd/MM/yyyy')}
                             </td>
-                            <td className="px-4 py-2 text-gray-900 dark:text-white font-medium">{a.empleado?.dni_rut}</td>
+                            <td className="px-4 py-2 text-gray-900 dark:text-white font-medium">{nombreEmpleado(a.empleado)}</td>
                             <td className="px-3 py-2 text-center">
                               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${estadoColor}`}>{a.estado}</span>
                             </td>
@@ -2259,35 +2383,32 @@ export default function RrhhPage() {
               <div className="text-center py-8 text-gray-500 dark:text-gray-400">No hay cumpleaños este mes</div>
             ) : (
               cumpleanosMes.map((emp) => {
-                const today = new Date()
-                const birthDate = new Date(emp.fecha_nacimiento!)
-                const daysToNext = differenceInDays(
-                  new Date(birthDate.getFullYear(), birthDate.getMonth(), birthDate.getDate()),
-                  today
-                )
+                const { days: daysToNext } = proximoCumpleanos(emp.fecha_nacimiento!)
+                const birth = new Date(emp.fecha_nacimiento!)
+                const age = new Date().getFullYear() - birth.getFullYear() + (daysToNext === 0 ? 0 : 0)
                 let badgeColor = 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
                 if (daysToNext === 0) badgeColor = 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                 else if (daysToNext <= 7) badgeColor = 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
 
                 return (
-                  <div key={emp.id} className="p-6 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 hover:shadow-md transition">
+                  <div key={emp.id} className={`p-6 border rounded-lg bg-white dark:bg-gray-800 hover:shadow-md transition ${daysToNext === 0 ? 'border-red-300 dark:border-red-700 ring-1 ring-red-200 dark:ring-red-900' : 'border-gray-200 dark:border-gray-700'}`}>
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
-                          <Heart className="text-red-500" size={24} />
+                          <Heart className={daysToNext === 0 ? 'text-red-500 animate-pulse' : 'text-red-400'} size={24} />
                           <div>
-                            <h3 className="font-semibold text-lg text-gray-900 dark:text-white">{emp.dni_rut}</h3>
-                            <p className="text-sm text-gray-600 dark:text-gray-400">{emp.departamento?.nombre || 'Sin departamento'}</p>
+                            <h3 className="font-semibold text-lg text-gray-900 dark:text-white">{nombreEmpleado(emp)}</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">{emp.dni_rut} · {emp.departamento?.nombre || 'Sin departamento'}</p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500">{emp.puesto?.nombre || 'Sin puesto'}</p>
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Próximo cumpleaños:</p>
-                        <p className="font-semibold text-gray-900 dark:text-white">
-                          {format(new Date(emp.fecha_nacimiento!), 'dd MMMM', { locale: es })}
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {format(birth, 'dd MMMM', { locale: es })} · {age} años
                         </p>
                         <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm font-medium ${badgeColor}`}>
-                          {daysToNext === 0 ? '¡Hoy!' : `En ${daysToNext} días`}
+                          {daysToNext === 0 ? '🎂 ¡Hoy!' : `En ${daysToNext} día${daysToNext !== 1 ? 's' : ''}`}
                         </span>
                       </div>
                     </div>
@@ -2296,6 +2417,136 @@ export default function RrhhPage() {
               })
             )}
           </div>
+        </div>
+      )}
+      {/* DOCUMENTOS TAB */}
+      {activeTab === 'documentos' && (
+        <div>
+          {/* Header + filtro */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
+            <select
+              value={docEmpleadoFiltro}
+              onChange={(e) => setDocEmpleadoFiltro(e.target.value)}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm"
+            >
+              <option value="">Todos los empleados</option>
+              {empleados.filter(e => e.activo).map(e => (
+                <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setShowDocForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+            >
+              <Plus size={16} /> Subir documento
+            </button>
+          </div>
+
+          {/* Formulario upload */}
+          {showDocForm && (
+            <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6">
+              <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Subir documento</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <select
+                  value={docForm.empleado_id}
+                  onChange={(e) => setDocForm({ ...docForm, empleado_id: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="">Seleccionar empleado *</option>
+                  {empleados.filter(e => e.activo).map(e => (
+                    <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>
+                  ))}
+                </select>
+                <select
+                  value={docForm.tipo}
+                  onChange={(e) => setDocForm({ ...docForm, tipo: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                >
+                  <option value="contrato">Contrato</option>
+                  <option value="certificado">Certificado</option>
+                  <option value="cv">CV / Currículum</option>
+                  <option value="foto">Foto</option>
+                  <option value="otro">Otro</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Nombre del documento *"
+                  value={docForm.nombre}
+                  onChange={(e) => setDocForm({ ...docForm, nombre: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+                <input
+                  type="text"
+                  placeholder="Descripción (opcional)"
+                  value={docForm.descripcion}
+                  onChange={(e) => setDocForm({ ...docForm, descripcion: e.target.value })}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                />
+                <div className="sm:col-span-2">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xls,.xlsx"
+                    onChange={(e) => setDocForm({ ...docForm, file: e.target.files?.[0] ?? null })}
+                    className="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, JPG, PNG — máx. 10 MB</p>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={uploadDocumento}
+                  disabled={docUploading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm"
+                >
+                  {docUploading ? 'Subiendo...' : 'Guardar'}
+                </button>
+                <button
+                  onClick={() => { setShowDocForm(false); setDocForm({ empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null }) }}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Lista de documentos */}
+          {documentos.length === 0 ? (
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+              <FolderOpen size={40} className="mx-auto mb-3 opacity-40" />
+              <p>No hay documentos subidos aún</p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {documentos.map((doc) => (
+                <div key={doc.id} className="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+                  <File size={24} className="text-blue-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 dark:text-white text-sm truncate">{doc.nombre}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {nombreEmpleado(doc.empleado)} · <span className="capitalize">{doc.tipo}</span>
+                      {doc.tamanio ? ` · ${(doc.tamanio / 1024).toFixed(0)} KB` : ''}
+                    </p>
+                    {doc.descripcion && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{doc.descripcion}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => getDocUrl(doc.storage_path)}
+                      className="px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50"
+                    >
+                      Ver
+                    </button>
+                    <button
+                      onClick={() => { if (confirm('¿Eliminar este documento?')) deleteDocumento.mutate(doc) }}
+                      className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

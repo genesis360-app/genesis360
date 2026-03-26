@@ -6,6 +6,8 @@ import { ClipboardList, Filter, X, Download, ChevronRight, User, Package, Shoppi
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { UpgradePrompt } from '@/components/UpgradePrompt'
 
 type Filtros = {
   entidad: string
@@ -83,7 +85,10 @@ const FILTROS_VACIOS: Filtros = { entidad: '', accion: '', usuario_id: '', desde
 const PAGE_SIZE = 50
 
 export default function HistorialPage() {
+  const { limits } = usePlanLimits()
   const { tenant, user } = useAuthStore()
+
+  if (limits && !limits.puede_historial) return <UpgradePrompt feature="historial" />
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VACIOS)
   const [page, setPage] = useState(0)
   const [showFiltros, setShowFiltros] = useState(false)

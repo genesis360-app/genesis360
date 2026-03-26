@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { MAX_MOVIMIENTOS_POR_PLAN } from '@/config/brand'
+import { MAX_MOVIMIENTOS_POR_PLAN, FEATURES_POR_PLAN } from '@/config/brand'
 
 export interface PlanLimits {
+  plan_id: string
   max_usuarios: number
   max_productos: number
   max_movimientos: number      // -1 = ilimitado
@@ -17,6 +18,14 @@ export interface PlanLimits {
   pct_usuarios: number
   pct_productos: number
   pct_movimientos: number      // 0–100 (0 si ilimitado)
+  // Feature flags por plan
+  puede_reportes: boolean
+  puede_historial: boolean
+  puede_metricas: boolean
+  puede_importar: boolean
+  puede_rrhh: boolean
+  puede_aging: boolean
+  puede_marketplace: boolean
 }
 
 export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean } {
@@ -59,7 +68,12 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
       const productos_actuales = productos ?? 0
       const movimientosMesActual = movimientosMes ?? 0
 
+      // Feature flags: se derivan del plan
+      const features = FEATURES_POR_PLAN[planId] ?? FEATURES_POR_PLAN['free']
+      const tiene = (f: string) => features.includes(f)
+
       return {
+        plan_id: planId,
         max_usuarios,
         max_productos,
         max_movimientos,
@@ -75,6 +89,13 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
         pct_movimientos: max_movimientos === -1
           ? 0
           : Math.round((movimientosMesActual / max_movimientos) * 100),
+        puede_reportes:   tiene('reportes'),
+        puede_historial:  tiene('historial'),
+        puede_metricas:   tiene('metricas'),
+        puede_importar:   tiene('importar'),
+        puede_rrhh:       tiene('rrhh'),
+        puede_aging:      tiene('aging'),
+        puede_marketplace: tiene('marketplace'),
       } as PlanLimits
     },
     enabled: !!tenant,

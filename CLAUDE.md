@@ -250,11 +250,23 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ### Revenue — Límites de movimientos (v0.36.0, migración 021)
 - **Límites por plan** en `brand.ts` → `MAX_MOVIMIENTOS_POR_PLAN`: Free=200 · Básico=2.000 · Pro/Enterprise=-1 (ilimitado).
 - **`tenants.addon_movimientos INT DEFAULT 0`**: movimientos extra comprados (se suman al límite del plan).
-- **`usePlanLimits`**: cuenta `movimientos_stock` del mes en curso (desde día 1 00:00:00). Expone `max_movimientos`, `movimientos_mes`, `puede_crear_movimiento`, `pct_movimientos`.
+- **`usePlanLimits`**: cuenta `movimientos_stock` del mes en curso. Expone `plan_id`, `max_movimientos`, `movimientos_mes`, `puede_crear_movimiento`, `pct_movimientos` + feature flags: `puede_reportes`, `puede_historial`, `puede_metricas`, `puede_importar`, `puede_rrhh`, `puede_aging`, `puede_marketplace`.
 - **MovimientosPage**: banner con barra de progreso (green/amber ≥80%/red ≥100%); botones Ingreso y Rebaje deshabilitados; bloqueo también en `mutationFn`.
 - **SuscripcionPage**: widget de uso del mes + card add-on (+500 movs $990 vía email precompletado).
 - **Activar add-on manualmente**: `UPDATE tenants SET addon_movimientos = addon_movimientos + 500 WHERE id = '...'`
-- **Pendiente**: add-on con pago automático MP; ampliar matriz por plan (funcionalidades bloqueadas por plan).
+- **Pendiente**: add-on con pago automático MP.
+
+### Matriz de funcionalidades por plan (v0.37.0)
+- **`FEATURES_POR_PLAN`** en `brand.ts`: mapa `plan_id → string[]` con features habilitadas. `PLAN_REQUERIDO` mapea feature → plan mínimo.
+- **Matriz actual**:
+  - Free: inventario, movimientos, alertas, ventas, caja, gastos, clientes
+  - Básico: + reportes, historial, metricas
+  - Pro/Enterprise: + importar, rrhh, aging, marketplace
+- **`usePlanLimits`**: expone `puede_reportes`, `puede_historial`, `puede_metricas`, `puede_importar`, `puede_rrhh`, `puede_aging`, `puede_marketplace`.
+- **`UpgradePrompt`** (`src/components/UpgradePrompt.tsx`): componente reutilizable con lock icon, mensaje y botón → `/suscripcion`. Props: `feature: keyof PLAN_REQUERIDO`.
+- **Sidebar**: candado pequeño junto al label en items bloqueados (`planFeature` en navItems). Ítem sigue siendo navegable → muestra UpgradePrompt adentro.
+- **Páginas bloqueadas con early return**: `ReportesPage`, `HistorialPage`, `ImportarProductosPage`, `RrhhPage`. **Tab bloqueada**: Métricas en `DashboardPage`.
+- **Para agregar una nueva feature bloqueada**: 1) agregar a `FEATURES_POR_PLAN` y `PLAN_REQUERIDO`; 2) agregar flag en `usePlanLimits`; 3) early return con `<UpgradePrompt feature="..." />` en la página.
 
 ### Hooks / Compactación
 - PostCompact hook en `.claude/settings.local.json`: inyecta contexto post-compactación.
@@ -269,7 +281,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ### Revenue
 - [x] Límite de movimientos por plan: Free=200/mes · Básico=2.000/mes · Pro/Enterprise=∞ (v0.36.0)
 - [x] Add-ons: +500 movimientos por $990 vía email/soporte; `tenants.addon_movimientos` acumula extra (v0.36.0)
-- [ ] Revisar matriz de funcionalidades por plan (actualmente solo se limitan usuarios, productos y movimientos)
+- [x] Matriz de funcionalidades por plan: `FEATURES_POR_PLAN` en brand.ts · `UpgradePrompt` reutilizable · candados en sidebar · bloqueo en Reportes/Historial (Básico+), Métricas/Importar/RRHH (Pro+) (v0.37.0)
 - [ ] Add-on con pago automático vía MP (actualmente es manual por email)
 
 ### RRHH — Phases 2–5 (ver ROADMAP.md)

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BRAND } from '@/config/brand'
+import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { UpgradePrompt } from '@/components/UpgradePrompt'
 import {
   BarChart2, Download, FileSpreadsheet, FileText,
   Package, AlertTriangle, ArrowLeftRight, ShoppingCart,
@@ -41,7 +43,10 @@ function formatMoneda(valor: number) {
 }
 
 export default function ReportesPage() {
+  const { limits } = usePlanLimits()
   const { tenant } = useAuthStore()
+
+  if (limits && !limits.puede_reportes) return <UpgradePrompt feature="reportes" />
   const [reporteActivo, setReporteActivo] = useState<ReporteId | null>(null)
   const [fechaDesde, setFechaDesde] = useState(() => {
     const d = new Date(); d.setMonth(d.getMonth() - 1)

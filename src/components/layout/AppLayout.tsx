@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
   BarChart2, Users, Users2, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
   ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle,
-  Moon, Sun, LifeBuoy
+  Moon, Sun, LifeBuoy, Lock
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -14,6 +14,7 @@ import { Walkthrough, useWalkthrough } from '@/components/Walkthrough'
 import { differenceInDays } from 'date-fns'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { usePlanLimits } from '@/hooks/usePlanLimits'
 
 const navItems = [
   { to: '/dashboard',       icon: LayoutDashboard, label: 'Dashboard' },
@@ -24,11 +25,11 @@ const navItems = [
   { to: '/alertas',         icon: Bell,            label: 'Alertas', badge: true },
   { to: '/gastos',          icon: TrendingDown,    label: 'Gastos' },
   { to: '/clientes',        icon: Users,           label: 'Clientes' },
-  { to: '/reportes',        icon: BarChart2,       label: 'Reportes' },
+  { to: '/reportes',        icon: BarChart2,       label: 'Reportes',       planFeature: 'puede_reportes' },
   { to: '/rentabilidad',    icon: BarChart2,       label: 'Rentabilidad' },
   { to: '/recomendaciones', icon: Zap,             label: 'Recomendaciones' },
-  { to: '/historial',       icon: ClipboardList,   label: 'Historial',      supervisorOnly: true },
-  { to: '/rrhh',            icon: Users2,          label: 'RRHH',           ownerOnly: true },
+  { to: '/historial',       icon: ClipboardList,   label: 'Historial',      supervisorOnly: true, planFeature: 'puede_historial' },
+  { to: '/rrhh',            icon: Users2,          label: 'RRHH',           ownerOnly: true,       planFeature: 'puede_rrhh' },
   { to: '/usuarios',        icon: Users,           label: 'Usuarios',       ownerOnly: true },
   { to: '/configuracion',   icon: Settings,        label: 'Configuración',  ownerOnly: true },
 ]
@@ -62,6 +63,7 @@ export function AppLayout() {
   const { count: alertCount } = useAlertas()
   const { visto } = useWalkthrough()
   const navigate = useNavigate()
+  const { limits } = usePlanLimits()
 
   // Abrir automáticamente la primera vez
   useEffect(() => {
@@ -118,21 +120,24 @@ export function AppLayout() {
 
         {/* Navegación */}
         <nav className={`flex-1 py-4 space-y-1 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-3'}`}>
-          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly }: any) => {
+          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature }: any) => {
             if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN') return null
             if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
+            const locked = planFeature && limits != null && !(limits as any)[planFeature]
             return (
               <NavLink
                 key={to}
                 to={to}
                 onClick={() => setSidebarOpen(false)}
-                title={collapsed ? label : undefined}
+                title={collapsed ? label : locked ? `${label} — requiere plan superior` : undefined}
                 className={({ isActive }) =>
                   `flex items-center rounded-lg text-sm font-medium transition-all
                   ${collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'}
-                  ${isActive
-                    ? 'bg-accent text-white'
-                    : 'text-blue-100 hover:bg-accent/30 hover:text-white'}`
+                  ${locked
+                    ? 'text-blue-300/50 hover:bg-accent/10 hover:text-blue-200/60'
+                    : isActive
+                      ? 'bg-accent text-white'
+                      : 'text-blue-100 hover:bg-accent/30 hover:text-white'}`
                 }
               >
                 <div className="relative flex-shrink-0">
@@ -147,10 +152,11 @@ export function AppLayout() {
                   )}
                 </div>
                 {!collapsed && <span className="flex-1">{label}</span>}
-                {!collapsed && to === '/caja' && (
+                {!collapsed && locked && <Lock size={12} className="text-blue-300/50 flex-shrink-0" />}
+                {!collapsed && to === '/caja' && !locked && (
                   <span className={`w-2 h-2 rounded-full ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} title={cajaAbierta ? 'Caja abierta' : 'Caja cerrada'} />
                 )}
-                {!collapsed && badge && alertCount > 0 && (
+                {!collapsed && badge && alertCount > 0 && !locked && (
                   <span className="bg-red-50 dark:bg-red-900/200 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                     {alertCount > 9 ? '9+' : alertCount}
                   </span>

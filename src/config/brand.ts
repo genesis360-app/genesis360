@@ -67,9 +67,11 @@ export const PLANES = [
       'Alertas de stock mínimo',
     ],
     noIncluye: [
-      'Módulo de ventas',
       'Reportes',
-      'Soporte prioritario',
+      'Historial de actividad',
+      'Métricas avanzadas',
+      'Importación masiva',
+      'RRHH',
     ],
   },
   {
@@ -88,13 +90,16 @@ export const PLANES = [
       'Hasta 500 productos',
       '2.000 movimientos/mes',
       'Todo lo del plan Free',
-      'Módulo de ventas',
-      'Reportes básicos',
+      'Reportes',
+      'Historial de actividad',
+      'Métricas avanzadas',
       'Soporte por email',
     ],
     noIncluye: [
-      'Usuarios ilimitados',
       'Importación masiva',
+      'RRHH',
+      'Aging profiles',
+      'Marketplace',
     ],
   },
   {
@@ -114,9 +119,10 @@ export const PLANES = [
       'Movimientos ilimitados',
       'Todo lo del plan Básico',
       'Importación masiva (CSV/Excel)',
+      'RRHH completo',
+      'Aging profiles',
+      'Marketplace',
       'Trazabilidad por serie y lote',
-      'Grupos de estados personalizados',
-      'Reportes avanzados',
       'Soporte prioritario',
     ],
     noIncluye: [],
@@ -145,6 +151,21 @@ export const PLANES = [
     noIncluye: [],
   },
 ]
+
+// Features habilitadas por plan (para usePlanLimits y UpgradePrompt)
+// Cada plan incluye todas las features del anterior.
+export const FEATURES_POR_PLAN: Record<string, string[]> = {
+  free:       ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas'],
+  basico:     ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas'],
+  pro:        ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas', 'importar', 'rrhh', 'aging', 'marketplace'],
+  enterprise: ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas', 'importar', 'rrhh', 'aging', 'marketplace'],
+}
+
+// Plan mínimo requerido por feature (para mensajes de upgrade)
+export const PLAN_REQUERIDO: Record<string, string> = {
+  reportes: 'basico', historial: 'basico', metricas: 'basico',
+  importar: 'pro', rrhh: 'pro', aging: 'pro', marketplace: 'pro',
+}
 
 // Límites de movimientos por plan (para uso en usePlanLimits)
 export const MAX_MOVIMIENTOS_POR_PLAN: Record<string, number> = {

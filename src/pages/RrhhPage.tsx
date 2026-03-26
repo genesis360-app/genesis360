@@ -10,6 +10,8 @@ import {
 import { utils as xlsxUtils, writeFile as xlsxWriteFile } from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
@@ -152,9 +154,12 @@ interface Departamento {
 }
 
 export default function RrhhPage() {
+  const { limits } = usePlanLimits()
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
   const [activeTab, setActiveTab] = useState<Tab>('empleados')
+
+  if (limits && !limits.puede_rrhh) return <UpgradePrompt feature="rrhh" />
   const [formMode, setFormMode] = useState<FormMode>(null)
   const [selectedEmpleado, setSelectedEmpleado] = useState<Empleado | null>(null)
   const [editingPuesto, setEditingPuesto] = useState<Puesto | null>(null)

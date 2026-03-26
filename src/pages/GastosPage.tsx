@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X, ChevronDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
@@ -39,6 +40,7 @@ function formatFecha(f: string) {
 
 export default function GastosPage() {
   const { tenant, user } = useAuthStore()
+  const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
 
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -68,15 +70,17 @@ export default function GastosPage() {
   const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
 
   const { data: gastos = [], isLoading } = useQuery({
-    queryKey: ['gastos', tenant?.id, fechaDesde, fechaHasta],
+    queryKey: ['gastos', tenant?.id, fechaDesde, fechaHasta, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('gastos')
+      let q = supabase.from('gastos')
         .select('*')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', fechaDesde)
         .lte('fecha', fechaHasta)
         .order('fecha', { ascending: false })
         .order('created_at', { ascending: false })
+      q = applyFilter(q)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant,
@@ -146,6 +150,7 @@ export default function GastosPage() {
         medio_pago: form.medio_pago || null,
         fecha: form.fecha,
         notas: form.notas.trim() || null,
+        sucursal_id: sucursalId || null,
       }
 
       if (editandoId) {

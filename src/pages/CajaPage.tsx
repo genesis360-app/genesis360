@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
@@ -21,6 +22,7 @@ function formatMoneda(v: number) {
 
 export default function CajaPage() {
   const { tenant, user } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('caja')
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string | null>(null)
@@ -131,6 +133,7 @@ export default function CajaPage() {
         usuario_id: user?.id,
         monto_apertura: parseFloat(montoApertura) || 0,
         estado: 'abierta',
+        sucursal_id: sucursalId || null,
       })
       if (error) throw error
     },

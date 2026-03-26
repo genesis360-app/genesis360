@@ -8,6 +8,7 @@ import { getRebajeSort } from '@/lib/rebajeSort'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import toast from 'react-hot-toast'
 
@@ -55,6 +56,7 @@ interface CartItem {
 
 export default function VentasPage() {
   const { tenant, user } = useAuthStore()
+  const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
@@ -195,11 +197,12 @@ export default function VentasPage() {
   })
 
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
-    queryKey: ['ventas', tenant?.id, filterEstado],
+    queryKey: ['ventas', tenant?.id, filterEstado, sucursalId],
     queryFn: async () => {
       let q = supabase.from('ventas').select('*, venta_items(id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,tiene_series), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
       if (filterEstado) q = q.eq('estado', filterEstado)
+      q = applyFilter(q)
       const { data, error } = await q
       if (error) throw error
       return data ?? []
@@ -471,6 +474,7 @@ export default function VentasPage() {
         medio_pago: serializeMediosPago(mediosPago, total),
         notas: notas || null,
         usuario_id: user?.id,
+        sucursal_id: sucursalId || null,
         ...(estado === 'despachada' ? { despachado_at: new Date().toISOString() } : {}),
       }).select().single()
       if (ventaError) throw ventaError

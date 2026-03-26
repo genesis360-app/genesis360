@@ -324,6 +324,19 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **GitHub Actions** `.github/workflows/tests.yml`: unit tests en cada push a `dev`; E2E opcional con `vars.RUN_E2E=true` + secrets.
 - **Para activar E2E en CI**: en GitHub repo → Settings → Variables → `RUN_E2E=true` + Secrets: `E2E_BASE_URL`, `E2E_EMAIL`, `E2E_PASSWORD`, `DEV_SUPABASE_URL`, `DEV_SUPABASE_ANON_KEY`.
 
+### v0.42.0 — Multi-sucursal (en dev)
+
+#### Arquitectura multi-sucursal
+- **Migration 025**: tabla `sucursales` (tenant_id, nombre, dirección, teléfono, activo) + `sucursal_id UUID nullable` en 6 tablas operativas: `inventario_lineas`, `movimientos_stock`, `ventas`, `caja_sesiones`, `gastos`, `clientes`. RLS tenant-based. 6 índices.
+- **`authStore`**: nuevos campos `sucursales: Sucursal[]` y `sucursalId: string | null`. `loadUserData` carga sucursales activas y valida que el ID en localStorage sigue siendo válido (se resetea si la sucursal fue eliminada). `setSucursal(id)` persiste en localStorage.
+- **`useSucursalFilter`** (`src/hooks/useSucursalFilter.ts`): `applyFilter(q)` agrega `.eq('sucursal_id', sucursalId)` solo si hay sucursal activa. Sin sucursal seleccionada → vista global.
+- **`SucursalSelector`**: `<select>` en el header (AppLayout), visible solo cuando `sucursales.length > 0`. Primera opción: "Todas las sucursales" (valor vacío = null).
+- **`SucursalesPage`** (`/sucursales`, OWNER-only): CRUD. Tras mutación llama `loadUserData` para sincronizar el selector del header.
+- **Filtros aplicados**:
+  - Read: `inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `clientes`. QueryKey incluye `sucursalId` para invalidación automática.
+  - Write: `sucursal_id: sucursalId || null` en inserts de movimientos (ingreso/rebaje), ventas, gastos, clientes, caja_sesiones.
+- **Invariante**: datos existentes con `sucursal_id = NULL` siempre visibles en vista global. Al seleccionar una sucursal solo se ven los datos de esa sucursal.
+
 ## Backlog pendiente
 
 ### UX / Config
@@ -352,5 +365,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [ ] Activar por tenant: `UPDATE tenants SET marketplace_activo = true WHERE id = '...'`
 - [ ] Deploy EFs con Supabase CLI
 
+### Multi-sucursal (v0.42.0, en dev)
+- [x] Migration 025: `sucursales` + `sucursal_id` nullable en 6 tablas operativas (DEV ✅, PROD ⏳)
+- [x] `Sucursal` interface en supabase.ts
+- [x] `authStore`: sucursales[], sucursalId, setSucursal() — persiste en localStorage
+- [x] `useSucursalFilter`: applyFilter(q) condicional
+- [x] `SucursalSelector` en header — solo visible con ≥1 sucursal configurada
+- [x] `SucursalesPage` (/sucursales, OWNER-only): CRUD completo
+- [x] Filtro en Inventario, Movimientos, Ventas, Caja, Gastos, Clientes (read + write)
+
 ### Ideas futuras
-Cupones, multi-sucursal, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.
+Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

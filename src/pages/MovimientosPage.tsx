@@ -8,6 +8,7 @@ import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
 import type { Producto } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
@@ -44,6 +45,7 @@ export default function MovimientosPage() {
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { limits } = usePlanLimits()
+  const { sucursalId, applyFilter } = useSucursalFilter()
   const [modal, setModal] = useState<ModalType>(null)
   const [search, setSearch] = useState('')
   const [selectedProduct, setSelectedProduct] = useState<Producto | null>(null)
@@ -64,14 +66,16 @@ export default function MovimientosPage() {
   const [rebajeMotivoSelect, setRebajeMotivoSelect] = useState('')
 
   const { data: movimientos = [], isLoading } = useQuery({
-    queryKey: ['movimientos', tenant?.id],
+    queryKey: ['movimientos', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('movimientos_stock')
         .select('*, productos(nombre,sku,unidad_medida), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie))')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
+      q = applyFilter(q)
+      const { data, error } = await q
       if (error) throw error
       return data ?? []
     },
@@ -221,6 +225,7 @@ export default function MovimientosPage() {
         estado_id: form.estadoId || null,
         usuario_id: user?.id,
         linea_id: linea.id,
+        sucursal_id: sucursalId || null,
       })
     },
     onSuccess: () => {
@@ -290,6 +295,7 @@ export default function MovimientosPage() {
         motivo: rebajeMotivo || null,
         usuario_id: user?.id,
         linea_id: rebajeLinea.id,
+        sucursal_id: sucursalId || null,
       })
     },
     onSuccess: () => {

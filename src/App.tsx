@@ -33,6 +33,7 @@ const GastosPage          = lazy(() => import('@/pages/GastosPage'))
 const HistorialPage       = lazy(() => import('@/pages/HistorialPage'))
 const ImportarMasterPage  = lazy(() => import('@/pages/ImportarMasterPage'))
 const RrhhPage            = lazy(() => import('@/pages/RrhhPage'))
+const SucursalesPage      = lazy(() => import('@/pages/SucursalesPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -104,6 +105,7 @@ function App() {
                   <Route path="/reportes" element={<ReportesPage />} />
                   <Route path="/usuarios" element={<UsuariosPage />} />
                   <Route path="/rrhh" element={<RrhhPage />} />
+                  <Route path="/sucursales" element={<SucursalesPage />} />
                   <Route path="/configuracion" element={<ConfigPage />} />
                   <Route path="/grupos-estados" element={<Navigate to="/configuracion" replace />} />
                   <Route path="/caja" element={<CajaPage />} />

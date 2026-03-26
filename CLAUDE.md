@@ -284,8 +284,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Storage bucket `empleados`** (privado, 10 MB max): path = `{empleado_id}/{timestamp}.{ext}`. URL firmada temporal (300s) para descarga.
 - **Tab Documentos** en RrhhPage: filtro por empleado, form upload (select, input file), lista con Ver (signed URL) y Eliminar.
 - **Trial = Pro completo**: `usePlanLimits` detecta `subscription_status='trial'` con `trial_ends_at` futuro → usa `FEATURES_POR_PLAN['pro']` en lugar del plan real.
-- **⚠ Pendiente deploy EF**: `supabase functions deploy birthday-notifications --project-ref jjffnbrdjchquexdfgwq`
-- **⚠ Pendiente secrets GitHub**: `SUPABASE_URL` + `SUPABASE_ANON_KEY` en Settings → Secrets del repo
+- EF deployada en PROD ✅. GitHub Actions secrets configurados ✅.
 
 ## Backlog pendiente
 
@@ -309,8 +308,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ### Marketplace
 - [x] Migration 020: campos marketplace en productos + tenants (PROD v0.35.0)
-- [x] EF marketplace-api: GET público con rate limiting (pendiente deploy CLI)
-- [x] EF marketplace-webhook: notificación externa (pendiente deploy CLI)
+- [x] EF marketplace-api: GET público con rate limiting (PROD ✅)
+- [x] EF marketplace-webhook: notificación externa (PROD ✅)
 - [x] UI ProductoFormPage: sección colapsable (solo si marketplace_activo)
 - [ ] Activar por tenant: `UPDATE tenants SET marketplace_activo = true WHERE id = '...'`
 - [ ] Deploy EFs con Supabase CLI

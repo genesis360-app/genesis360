@@ -299,6 +299,44 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Tabs por rol**: SUPERVISOR ve solo `equipo, asistencia, vacaciones, cumpleanos`. OWNER/RRHH ven todos los tabs.
 - **esSupervisor / esRrhhAdmin**: variables booleanas derivadas de `user?.rol` usadas para filtrar tabs y lógica.
 
+### v0.41.0 — Insights automáticos + Mi Plan + Tests (en dev)
+
+#### Insights automáticos
+- **`useRecomendaciones`** extendido con 4 reglas nuevas (11 reglas en total):
+  - **Cobertura crítica** (`cobertura-critica`): productos con < 3 días de stock al ritmo actual. Usa `ventaItems30d` para calcular velocidad por producto. `danger`.
+  - **Margen realizado bajo** (`margen-realizado-bajo`): margen real del mes (precio_unitario - precio_costo_historico sobre venta_items) < 15%. `warning`.
+  - **Día de semana flojo** (`dia-flojo`): 90 días de ventas agrupadas por DOW → detecta días con < 50% del promedio con ≥4 semanas de datos. `info`.
+  - **Cumpleaños del mes** (`cumpleanos-mes`): query a `empleados` filtrando `EXTRACT(month) = mes_actual`. `info`. No bloquea si no hay RRHH habilitado (tabla vacía = sin regla).
+- Nuevas queries en `queryFn`: `ventas90d` (para análisis DOW) + `empleadosMes` (para cumpleaños).
+- **Tab "Insights"** en `DashboardPage`: tercer tab junto a General y Métricas. Muestra score de salud completo con barras por dimensión (Rotación/Rentabilidad/Reservas/Crecimiento/Datos) + lista completa de recomendaciones con descripción expandida + CTA.
+- Refactor `tabButtons()`: función local en DashboardPage que centraliza los 3 botones, elimina duplicación de JSX entre early returns.
+
+#### Acceso a Mi Plan (UX fix)
+- **Sidebar**: indicador "Mi Plan" permanente al fondo (entre nav y CotizacionWidget). Muestra plan actual capitalizado. Link a `/suscripcion`. Colapsado: solo `CreditCard` icon con tooltip. **Resuelve el gap donde `/suscripcion` era inaccesible sin trial activo.**
+
+#### Testing automatizado
+- **Vitest** (`npm run test:unit`): 49 tests, todos verdes. Funciones puras sin Supabase:
+  - `tests/unit/rebajeSort.test.ts`: FIFO/LIFO/FEFO/LEFO/Manual, jerarquía, prioridades
+  - `tests/unit/brand.test.ts`: planes, features, límites de movimientos, PLAN_REQUERIDO
+  - `tests/unit/planLimits.test.ts`: cálculo límites, add-ons, trial activo/vencido
+  - `tests/unit/insights.rules.test.ts`: cobertura, margen realizado, días flojos
+- **Playwright** (`npm run test:e2e`): E2E con auth real contra DEV. 12 archivos spec (01_dashboard → 12_navegacion_sidebar). Requiere `tests/e2e/.env.test.local` con `E2E_EMAIL` y `E2E_PASSWORD`.
+- **GitHub Actions** `.github/workflows/tests.yml`: unit tests en cada push a `dev`; E2E opcional con `vars.RUN_E2E=true` + secrets.
+- **Para activar E2E en CI**: en GitHub repo → Settings → Variables → `RUN_E2E=true` + Secrets: `E2E_BASE_URL`, `E2E_EMAIL`, `E2E_PASSWORD`, `DEV_SUPABASE_URL`, `DEV_SUPABASE_ANON_KEY`.
+
+### v0.42.0 — Multi-sucursal (en dev)
+
+#### Arquitectura multi-sucursal
+- **Migration 025**: tabla `sucursales` (tenant_id, nombre, dirección, teléfono, activo) + `sucursal_id UUID nullable` en 6 tablas operativas: `inventario_lineas`, `movimientos_stock`, `ventas`, `caja_sesiones`, `gastos`, `clientes`. RLS tenant-based. 6 índices.
+- **`authStore`**: nuevos campos `sucursales: Sucursal[]` y `sucursalId: string | null`. `loadUserData` carga sucursales activas y valida que el ID en localStorage sigue siendo válido (se resetea si la sucursal fue eliminada). `setSucursal(id)` persiste en localStorage.
+- **`useSucursalFilter`** (`src/hooks/useSucursalFilter.ts`): `applyFilter(q)` agrega `.eq('sucursal_id', sucursalId)` solo si hay sucursal activa. Sin sucursal seleccionada → vista global.
+- **`SucursalSelector`**: `<select>` en el header (AppLayout), visible solo cuando `sucursales.length > 0`. Primera opción: "Todas las sucursales" (valor vacío = null).
+- **`SucursalesPage`** (`/sucursales`, OWNER-only): CRUD. Tras mutación llama `loadUserData` para sincronizar el selector del header.
+- **Filtros aplicados**:
+  - Read: `inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `clientes`. QueryKey incluye `sucursalId` para invalidación automática.
+  - Write: `sucursal_id: sucursalId || null` en inserts de movimientos (ingreso/rebaje), ventas, gastos, clientes, caja_sesiones.
+- **Invariante**: datos existentes con `sucursal_id = NULL` siempre visibles en vista global. Al seleccionar una sucursal solo se ven los datos de esa sucursal.
+
 ## Backlog pendiente
 
 ### UX / Config
@@ -327,5 +365,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [ ] Activar por tenant: `UPDATE tenants SET marketplace_activo = true WHERE id = '...'`
 - [ ] Deploy EFs con Supabase CLI
 
+### Multi-sucursal (v0.42.0, en dev)
+- [x] Migration 025: `sucursales` + `sucursal_id` nullable en 6 tablas operativas (DEV ✅, PROD ⏳)
+- [x] `Sucursal` interface en supabase.ts
+- [x] `authStore`: sucursales[], sucursalId, setSucursal() — persiste en localStorage
+- [x] `useSucursalFilter`: applyFilter(q) condicional
+- [x] `SucursalSelector` en header — solo visible con ≥1 sucursal configurada
+- [x] `SucursalesPage` (/sucursales, OWNER-only): CRUD completo
+- [x] Filtro en Inventario, Movimientos, Ventas, Caja, Gastos, Clientes (read + write)
+
 ### Ideas futuras
-Cupones, multi-sucursal, insights automáticos, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.
+Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

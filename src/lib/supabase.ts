@@ -49,6 +49,16 @@ export interface User {
   created_at: string
 }
 
+export interface Sucursal {
+  id: string
+  tenant_id: string
+  nombre: string
+  direccion?: string
+  telefono?: string
+  activo: boolean
+  created_at: string
+}
+
 export interface Cliente {
   id: string
   tenant_id: string

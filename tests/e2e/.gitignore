@@ -1,0 +1,9 @@
+# Sesión guardada por Playwright (contiene tokens — NO commitear)
+.auth/
+
+# Resultados y reportes generados
+.results/
+.report/
+
+# Variables de entorno locales con credenciales
+.env.test.local

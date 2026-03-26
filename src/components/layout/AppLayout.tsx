@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, ArrowLeftRight, Bell,
   BarChart2, Users, Users2, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
   ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle,
-  Moon, Sun, LifeBuoy, Lock
+  Moon, Sun, LifeBuoy, Lock, CreditCard, Building2
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -15,6 +15,7 @@ import { differenceInDays } from 'date-fns'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 
 const navItems = [
   { to: '/dashboard',       icon: LayoutDashboard, label: 'Dashboard' },
@@ -30,6 +31,7 @@ const navItems = [
   { to: '/recomendaciones', icon: Zap,             label: 'Recomendaciones' },
   { to: '/historial',       icon: ClipboardList,   label: 'Historial',      supervisorOnly: true, planFeature: 'puede_historial' },
   { to: '/rrhh',            icon: Users2,          label: 'RRHH',           ownerOnly: true,       planFeature: 'puede_rrhh' },
+  { to: '/sucursales',      icon: Building2,       label: 'Sucursales',     ownerOnly: true },
   { to: '/usuarios',        icon: Users,           label: 'Usuarios',       ownerOnly: true },
   { to: '/configuracion',   icon: Settings,        label: 'Configuración',  ownerOnly: true },
 ]
@@ -64,6 +66,7 @@ export function AppLayout() {
   const { visto } = useWalkthrough()
   const navigate = useNavigate()
   const { limits } = usePlanLimits()
+  const { sucursalId, sucursales, setSucursal } = useSucursalFilter()
 
   // Abrir automáticamente la primera vez
   useEffect(() => {
@@ -166,6 +169,29 @@ export function AppLayout() {
           })}
         </nav>
 
+        {/* Mi Plan */}
+        <div className={`border-t border-accent/20 ${collapsed ? 'px-1.5 py-2' : 'px-3 py-2'}`}>
+          <NavLink
+            to="/suscripcion"
+            title={collapsed ? `Plan ${limits?.plan_id ?? ''}` : undefined}
+            className={({ isActive }) =>
+              `flex items-center rounded-lg text-xs font-medium transition-all
+              ${collapsed ? 'justify-center px-2 py-2' : 'gap-2 px-3 py-2'}
+              ${isActive ? 'bg-accent text-white' : 'text-blue-200 hover:bg-accent/30 hover:text-white'}`
+            }
+          >
+            <CreditCard size={15} className="flex-shrink-0" />
+            {!collapsed && (
+              <>
+                <span className="flex-1 truncate capitalize">
+                  Plan {limits?.plan_id === 'basico' ? 'Básico' : limits?.plan_id === 'pro' ? 'Pro' : limits?.plan_id === 'enterprise' ? 'Enterprise' : 'Free'}
+                </span>
+                <ChevronRight size={12} className="opacity-60" />
+              </>
+            )}
+          </NavLink>
+        </div>
+
         {/* Cotización USD */}
         {!collapsed && <CotizacionWidget />}
       </div>
@@ -215,6 +241,24 @@ export function AppLayout() {
               {user?.nombre_display}{user?.rol ? ` · ${user.rol.charAt(0) + user.rol.slice(1).toLowerCase()}` : ''}
             </p>
           </div>
+
+          {/* Selector de sucursal — solo si hay sucursales configuradas */}
+          {sucursales.length > 0 && (
+            <div className="flex items-center gap-1.5 ml-3">
+              <Building2 size={15} className="text-gray-400 flex-shrink-0" />
+              <select
+                value={sucursalId ?? ''}
+                onChange={(e) => setSucursal(e.target.value || null)}
+                className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-primary max-w-[140px]"
+                title="Filtrar por sucursal"
+              >
+                <option value="">Todas las sucursales</option>
+                {sucursales.map(s => (
+                  <option key={s.id} value={s.id}>{s.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Spacer */}
           <div className="ml-auto flex items-center gap-0.5">

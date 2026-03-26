@@ -8,6 +8,7 @@ import {
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
 
 interface FilaCliente {
@@ -49,6 +50,7 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 
 export default function ClientesPage() {
   const { tenant } = useAuthStore()
+  const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -66,10 +68,11 @@ export default function ClientesPage() {
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: clientes = [], isLoading } = useQuery({
-    queryKey: ['clientes', tenant?.id, search],
+    queryKey: ['clientes', tenant?.id, search, sucursalId],
     queryFn: async () => {
       let q = supabase.from('clientes').select('*').eq('tenant_id', tenant!.id).order('nombre')
       if (search) q = q.ilike('nombre', `%${search}%`)
+      q = applyFilter(q)
       const { data, error } = await q
       if (error) throw error
       return data ?? []
@@ -148,7 +151,7 @@ export default function ClientesPage() {
         if (error) throw error
         toast.success('Cliente actualizado')
       } else {
-        const { error } = await supabase.from('clientes').insert({ tenant_id: tenant!.id, ...payload })
+        const { error } = await supabase.from('clientes').insert({ tenant_id: tenant!.id, sucursal_id: sucursalId || null, ...payload })
         if (error) throw error
         toast.success('Cliente creado')
       }

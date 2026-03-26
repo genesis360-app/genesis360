@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -17,6 +18,7 @@ export default function InventarioPage() {
   const qc = useQueryClient()
   const { limits } = usePlanLimits()
   const { cotizacion } = useCotizacion()
+  const { sucursalId, applyFilter } = useSucursalFilter()
   const [search, setSearch] = useState('')
   const [filterAlerta, setFilterAlerta] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -42,14 +44,16 @@ export default function InventarioPage() {
   })
 
   const { data: lineasMap = {} } = useQuery({
-    queryKey: ['inventario_lineas_all', tenant?.id],
+    queryKey: ['inventario_lineas_all', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from('inventario_lineas')
         .select('*, estados_inventario(nombre,color), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('created_at', { ascending: true })
+      q = applyFilter(q)
+      const { data, error } = await q
       if (error) throw error
       const map: Record<string, any[]> = {}
       for (const l of data ?? []) {

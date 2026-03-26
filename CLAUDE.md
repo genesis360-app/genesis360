@@ -324,7 +324,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **GitHub Actions** `.github/workflows/tests.yml`: unit tests en cada push a `dev`; E2E opcional con `vars.RUN_E2E=true` + secrets.
 - **Para activar E2E en CI**: en GitHub repo → Settings → Variables → `RUN_E2E=true` + Secrets: `E2E_BASE_URL`, `E2E_EMAIL`, `E2E_PASSWORD`, `DEV_SUPABASE_URL`, `DEV_SUPABASE_ANON_KEY`.
 
-### v0.42.0 — Multi-sucursal (en dev)
+### v0.42.0 — Multi-sucursal
 
 #### Arquitectura multi-sucursal
 - **Migration 025**: tabla `sucursales` (tenant_id, nombre, dirección, teléfono, activo) + `sucursal_id UUID nullable` en 6 tablas operativas: `inventario_lineas`, `movimientos_stock`, `ventas`, `caja_sesiones`, `gastos`, `clientes`. RLS tenant-based. 6 índices.
@@ -365,8 +365,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [ ] Activar por tenant: `UPDATE tenants SET marketplace_activo = true WHERE id = '...'`
 - [ ] Deploy EFs con Supabase CLI
 
-### Multi-sucursal (v0.42.0, en dev)
-- [x] Migration 025: `sucursales` + `sucursal_id` nullable en 6 tablas operativas (DEV ✅, PROD ⏳)
+### Multi-sucursal (v0.42.0 ✅ PROD)
+- [x] Migration 025: `sucursales` + `sucursal_id` nullable en 6 tablas operativas (DEV ✅, PROD ✅)
 - [x] `Sucursal` interface en supabase.ts
 - [x] `authStore`: sucursales[], sucursalId, setSucursal() — persiste en localStorage
 - [x] `useSucursalFilter`: applyFilter(q) condicional

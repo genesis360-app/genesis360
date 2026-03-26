@@ -135,7 +135,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.39.0 | RRHH Phase 4B+5: Capacitaciones (rrhh_capacitaciones + tab Capacitaciones + cert upload) · Supervisor Self-Service (tab Mi Equipo, KPIs, aprobar vacaciones) · Árbol Organizacional · migrations 023+024 | 2026-03 |
 | v0.40.0 | Add-on movimientos con pago automático MP: EF mp-addon + mp-webhook actualizado · secrets PROD configurados · webhook MP registrado | 2026-03 |
 | v0.41.0 | Insights automáticos (11 reglas en useRecomendaciones + tab Insights en Dashboard con score de salud) · fix acceso a Mi Plan en sidebar · infraestructura de tests (Playwright E2E + Vitest unit, 49 tests) | 2026-03 |
-| v0.42.0 | Multi-sucursal: migration 025 · tabla sucursales · SucursalesPage (OWNER) · SucursalSelector en header · useSucursalFilter · filtro en Inventario/Movimientos/Ventas/Caja/Gastos/Clientes | 2026-03 (en dev) |
+| v0.42.0 | Multi-sucursal: migration 025 · tabla sucursales · SucursalesPage (OWNER) · SucursalSelector en header · useSucursalFilter · filtro en Inventario/Movimientos/Ventas/Caja/Gastos/Clientes | 2026-03 |
 
 ---
 

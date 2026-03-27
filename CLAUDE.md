@@ -1,4 +1,4 @@
-# Stokio — Contexto para Claude Code
+# Genesis360 — Contexto para Claude Code
 
 > Roadmap completo: [ROADMAP.md](ROADMAP.md) · Workflow de deploy: [WORKFLOW.md](WORKFLOW.md)
 
@@ -407,6 +407,17 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Caja multi-usuario**: `sesionActiva` join `usuario_id(nombre_display)` → header muestra "Abierta: [fecha] · [nombre]"; banner naranja si la sesión fue abierta por otro usuario; botón "Cerrar caja" bloqueado para CAJERO en sesión ajena (OWNER/SUPERVISOR pueden cerrar cualquier sesión); check defensivo en `abrirCaja.mutationFn` con `.maybeSingle()` antes del insert.
 - [x] **Reportes — breakdown por método de pago**: chips `[Tipo] $monto (n)` en resumen del reporte Ventas. IIFE que agrega `medio_pago` JSON de todas las ventas del período por tipo.
 - [x] **Usuarios — mejoras UX**: filtros por rol con contadores; descripción del rol en cada card; fecha de alta "Desde DD/MM/YYYY"; sección colapsable "Permisos por rol" (tabla 12 funciones × 4 roles con ✓/✗).
+
+### v0.44.1 ✅ PROD
+- [x] **Migración a genesis360.pro**: nuevo dominio (Porkbun) + org GitHub `genesis360-app` + repo renombrado a `genesis360` (público).
+- [x] **Seguridad — .gitignore**: `.env.local` estaba trackeado en git. Fix: `.gitignore` completo + `git rm --cached .env.local`.
+- [x] **Rotación de API keys**: MP Public Key, MP Access Token, Resend API Key, Supabase Access Token, GitHub Token — todos rotados y actualizados en Vercel + Supabase EF secrets.
+- [x] **URLs actualizadas**: referencias `stokio.com` → `genesis360.pro` en EFs (`send-email`, `invite-user`, `crear-suscripcion`, `mp-addon`) y `AppLayout` (soporte email).
+- [x] **Vercel**: proyecto renombrado a `genesis360`, `VITE_APP_URL=https://genesis360.pro` en Production.
+
+### v0.45.0 ✅ PROD
+- [x] **Rebrand completo Stokio → Genesis360**: `index.html` (`<title>`), `package.json` (`name`), `brand.ts` (comentarios), `useRecomendaciones`, `RecomendacionesPage`, `SuscripcionPage`, `VentasPage` (fallback ticket), EF `send-email` (`BRAND`, `APP_URL`), EF `invite-user`, `crear-suscripcion`, `mp-addon` (fallbacks `APP_URL`), `schema_full.sql`, `CLAUDE.md`, `WORKFLOW.md`, `ROADMAP.md`.
+- [x] **Header UX — sucursal activa**: el nombre en el header (antes `BRAND.name`) ahora muestra la sucursal seleccionada, o el nombre del tenant en vista global. Fallback a `BRAND.name` si los datos aún no cargaron.
 
 ### Ideas futuras
 Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

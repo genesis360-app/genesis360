@@ -1,4 +1,4 @@
-# Stokio — Workflow de Desarrollo
+# Genesis360 — Workflow de Desarrollo
 
 ## Ambientes
 
@@ -139,6 +139,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.42.0 | Multi-sucursal: migration 025 · tabla sucursales · SucursalesPage (OWNER) · SucursalSelector en header · useSucursalFilter · filtro en Inventario/Movimientos/Ventas/Caja/Gastos/Clientes | 2026-03 |
 | v0.43.0 | Fix check_stock_minimo SECURITY DEFINER · Ventas filtro categoría · Alertas sin categoría · Dark mode CajaPage · RRHH nómina: medio_pago + check saldo + historial sueldos (migration 026) | 2026-03 |
 | v0.44.0 | Caja multi-usuario (quién abrió, warning sesión ajena, bloqueo cerrar CAJERO) · Reportes breakdown ingresos por método de pago · Usuarios: filtros por rol, descripción, fecha alta, matriz de permisos | 2026-03 |
+| v0.44.1 | Migración a genesis360.pro: nuevo dominio + org GitHub genesis360-app · .gitignore completo + .env.local removido del tracking · rotación de todas las API keys (MP, Resend, Supabase AT, GH) · referencias stokio.com → genesis360.pro en Edge Functions | 2026-03 |
+| v0.45.0 | Rebrand completo Stokio → Genesis360 en todo el codebase (index.html, package.json, EFs, templates email, schema, docs) · Header UX: muestra sucursal activa (o tenant) en lugar del nombre de marca | 2026-03 |
 
 ---
 

@@ -234,9 +234,13 @@ export function AppLayout() {
             <Menu size={22} />
           </button>
 
-          {/* Brand + user info */}
+          {/* Sucursal / negocio + user info */}
           <div className="min-w-0">
-            <p className="font-bold text-primary dark:text-blue-400 leading-tight">{BRAND.name}</p>
+            <p className="font-bold text-primary dark:text-blue-400 leading-tight truncate">
+              {sucursalId
+                ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? tenant?.nombre)
+                : (tenant?.nombre ?? BRAND.name)}
+            </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
               {user?.nombre_display}{user?.rol ? ` · ${user.rol.charAt(0) + user.rol.slice(1).toLowerCase()}` : ''}
             </p>

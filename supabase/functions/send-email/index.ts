@@ -5,10 +5,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// TODO: Cambiar a 'noreply@stokio.com' cuando el dominio esté verificado en Resend
+// TODO: Cambiar a 'Genesis360 <noreply@genesis360.pro>' cuando el dominio esté verificado en Resend
 const FROM = 'onboarding@resend.dev'
-const APP_URL = 'https://stokio-tau.vercel.app'
-const BRAND = 'Stokio'
+const APP_URL = 'https://genesis360.pro'
+const BRAND = 'Genesis360'
 
 // ─── Templates ────────────────────────────────────────────────────────────────
 

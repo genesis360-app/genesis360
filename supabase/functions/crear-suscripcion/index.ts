@@ -41,7 +41,7 @@ serve(async (req) => {
     if (!userData?.tenant_id) throw new Error('Tenant no encontrado')
 
     const mpToken  = Deno.env.get('MP_ACCESS_TOKEN') ?? ''
-    const appUrl   = Deno.env.get('APP_URL') ?? 'https://stokio-tau.vercel.app'
+    const appUrl   = Deno.env.get('APP_URL') ?? 'https://genesis360.pro'
 
     // Crear suscripción en MP — external_reference = tenant_id para que el webhook lo identifique
     const mpRes = await fetch('https://api.mercadopago.com/preapproval', {

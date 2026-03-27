@@ -1554,7 +1554,7 @@ export default function VentasPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6" id="ticket-print">
             <div className="text-center mb-4 border-b border-dashed border-gray-300 dark:border-gray-600 pb-4">
-              <p className="text-lg font-bold text-primary">{tenant?.nombre ?? 'Stokio'}</p>
+              <p className="text-lg font-bold text-primary">{tenant?.nombre ?? 'Genesis360'}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                 {new Date(ticketVenta.created_at ?? Date.now()).toLocaleString('es-AR', {
                   dateStyle: 'full', timeStyle: 'short'

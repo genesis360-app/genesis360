@@ -37,7 +37,7 @@ serve(async (req) => {
     if (userRowErr || !userRow) throw new Error('Tenant no encontrado')
 
     const tenantId = userRow.tenant_id
-    const appUrl = Deno.env.get('APP_URL') ?? 'https://stokio-tau.vercel.app'
+    const appUrl = Deno.env.get('APP_URL') ?? 'https://genesis360.pro'
     const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
     if (!mpToken) throw new Error('MP_ACCESS_TOKEN no configurado')
 

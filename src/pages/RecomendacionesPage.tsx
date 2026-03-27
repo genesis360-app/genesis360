@@ -146,7 +146,7 @@ export default function RecomendacionesPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Motor de Recomendaciones</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Lo que Stokio detectó en tu negocio</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Lo que Genesis360 detectó en tu negocio</p>
         </div>
       </div>
 

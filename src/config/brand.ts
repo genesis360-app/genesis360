@@ -4,7 +4,7 @@
 //   2. Cambiar los colores TANTO aquí (hex) como en src/index.css (:root, formato RGB sin comas)
 //
 // ─── Paletas de referencia ────────────────────────────────────────────────────
-// Stokio (azul marino):
+// Stokio / azul marino (paleta de referencia alternativa):
 //   primary: '#1E3A5F'  →  index.css: 30 58 95
 //   accent:  '#2E75B6'  →  index.css: 46 117 182
 //   bg:      '#F5F7FA'  →  index.css: 245 247 250

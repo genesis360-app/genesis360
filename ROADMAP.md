@@ -1,4 +1,4 @@
-# Stokio — Roadmap RRHH
+# Genesis360 — Roadmap RRHH
 
 **Última actualización:** 23 de Marzo, 2026 · **v0.27.0 en PROD**
 

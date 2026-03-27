@@ -255,7 +255,7 @@ export function useRecomendaciones() {
         tipo: 'info',
         categoria: 'ventas',
         titulo: 'Sin ventas registradas este mes',
-        descripcion: 'Todavía no hay ventas en Stokio este mes. Registrá tus ventas para empezar a ver tus métricas y recomendaciones.',
+        descripcion: 'Todavía no hay ventas en Genesis360 este mes. Registrá tus ventas para empezar a ver tus métricas y recomendaciones.',
         impacto: 'Sin datos de ventas',
         accion: 'Nueva venta',
         link: '/ventas',

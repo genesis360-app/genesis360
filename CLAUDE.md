@@ -1,4 +1,4 @@
-# Stokio — Contexto para Claude Code
+# Genesis360 — Contexto para Claude Code
 
 > Roadmap completo: [ROADMAP.md](ROADMAP.md) · Workflow de deploy: [WORKFLOW.md](WORKFLOW.md)
 

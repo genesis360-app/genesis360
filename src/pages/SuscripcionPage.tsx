@@ -161,7 +161,7 @@ export default function SuscripcionPage() {
         </h1>
         <p className="text-blue-200">
           {tenant?.subscription_status === 'trial'
-            ? 'Activá tu suscripción para seguir usando Stokio sin interrupciones'
+            ? 'Activá tu suscripción para seguir usando Genesis360 sin interrupciones'
             : 'Todos los planes incluyen 7 días de prueba gratuita'}
         </p>
       </div>

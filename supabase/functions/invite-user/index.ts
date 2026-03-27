@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const APP_URL = 'https://stokio-tau.vercel.app'
+const APP_URL = 'https://genesis360.pro'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {

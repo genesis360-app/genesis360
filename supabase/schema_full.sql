@@ -1,5 +1,5 @@
 -- ============================================================
--- Stokio — Schema completo (actualizado 2026-03-26, migrations 001–024)
+-- Genesis360 — Schema completo (actualizado 2026-03-26, migrations 001–024)
 -- Aplicar en Supabase DEV con el SQL Editor
 -- ============================================================
 

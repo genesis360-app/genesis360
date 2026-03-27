@@ -81,7 +81,7 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 022 | `022_rrhh_nombre_documentos.sql` | RRHH Phase 2C+4A: nombre+apellido en empleados · rrhh_documentos · Storage bucket empleados | ✅ | ✅ |
 | 023 | `023_rrhh_capacitaciones.sql` | RRHH Phase 4B: rrhh_capacitaciones (nombre, fechas, horas, proveedor, estado, certificado_path) | ✅ | ✅ |
 | 024 | `024_supervisor_rls.sql` | RRHH Phase 5: get_supervisor_team_ids() + RLS SUPERVISOR en asistencia/vacaciones/empleados | ✅ | ✅ |
-| 025 | `025_sucursales.sql` | Multi-sucursal: tabla sucursales + sucursal_id nullable en inventario_lineas/movimientos_stock/ventas/caja_sesiones/gastos/clientes | ✅ | ⏳ |
+| 025 | `025_sucursales.sql` | Multi-sucursal: tabla sucursales + sucursal_id nullable en inventario_lineas/movimientos_stock/ventas/caja_sesiones/gastos/clientes | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -135,7 +135,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.39.0 | RRHH Phase 4B+5: Capacitaciones (rrhh_capacitaciones + tab Capacitaciones + cert upload) · Supervisor Self-Service (tab Mi Equipo, KPIs, aprobar vacaciones) · Árbol Organizacional · migrations 023+024 | 2026-03 |
 | v0.40.0 | Add-on movimientos con pago automático MP: EF mp-addon + mp-webhook actualizado · secrets PROD configurados · webhook MP registrado | 2026-03 |
 | v0.41.0 | Insights automáticos (11 reglas en useRecomendaciones + tab Insights en Dashboard con score de salud) · fix acceso a Mi Plan en sidebar · infraestructura de tests (Playwright E2E + Vitest unit, 49 tests) | 2026-03 |
-| v0.42.0 | Multi-sucursal: migration 025 · tabla sucursales · SucursalesPage (OWNER) · SucursalSelector en header · useSucursalFilter · filtro en Inventario/Movimientos/Ventas/Caja/Gastos/Clientes | 2026-03 (en dev) |
+| v0.42.0 | Multi-sucursal: migration 025 · tabla sucursales · SucursalesPage (OWNER) · SucursalSelector en header · useSucursalFilter · filtro en Inventario/Movimientos/Ventas/Caja/Gastos/Clientes | 2026-03 |
 
 ---
 

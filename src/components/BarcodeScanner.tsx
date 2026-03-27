@@ -34,7 +34,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
     setScanning(false)
 
     reader.decodeFromConstraints(
-      { video: { facingMode: { ideal: facing } } },
+      { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } } },
       videoRef.current,
       (result, err) => {
         if (result && !detectedRef.current) {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, Trash2, Shield, User, Mail, AlertTriangle } from 'lucide-react'
+import { UserPlus, Trash2, Shield, User, Mail, AlertTriangle, ChevronDown, ChevronUp, Check, X as XIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -26,6 +26,8 @@ export default function UsuariosPage() {
   const [invEmail, setInvEmail] = useState('')
   const [invRol, setInvRol] = useState<UserRole>('CAJERO')
   const [saving, setSaving] = useState(false)
+  const [filterRol, setFilterRol] = useState<UserRole | 'TODOS'>('TODOS')
+  const [showPermisos, setShowPermisos] = useState(false)
 
   const { data: usuarios = [], isLoading } = useQuery({
     queryKey: ['usuarios', tenant?.id],
@@ -94,6 +96,29 @@ export default function UsuariosPage() {
   })
 
   const canManage = user?.rol === 'OWNER'
+
+  const usuariosFiltrados = filterRol === 'TODOS'
+    ? (usuarios as any[])
+    : (usuarios as any[]).filter(u => u.rol === filterRol)
+
+  const PERMISOS: Record<string, Partial<Record<UserRole, boolean>>> = {
+    'Ver inventario':       { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
+    'Movimientos de stock': { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
+    'Ventas y caja':        { OWNER: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false },
+    'Gastos':               { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
+    'Clientes':             { OWNER: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false },
+    'Reportes e historial': { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
+    'Métricas e insights':  { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
+    'Importar datos':       { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false },
+    'Configuración':        { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false },
+    'Usuarios':             { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false },
+    'RRHH (empleados)':     { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: true  },
+    'Sucursales':           { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false },
+  }
+
+  function formatFechaCorta(iso: string) {
+    return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -188,6 +213,24 @@ export default function UsuariosPage() {
         </form>
       )}
 
+      {/* Filtros por rol */}
+      <div className="flex gap-2 flex-wrap">
+        {(['TODOS', ...Object.keys(ROLES)] as (UserRole | 'TODOS')[]).map(r => {
+          const cfg = r === 'TODOS' ? null : ROLES[r as UserRole]
+          const count = r === 'TODOS' ? (usuarios as any[]).length : (usuarios as any[]).filter((u: any) => u.rol === r).length
+          return (
+            <button key={r} onClick={() => setFilterRol(r)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium border-2 transition-all
+                ${filterRol === r
+                  ? 'border-accent bg-blue-50 dark:bg-blue-900/20 text-accent'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                }`}>
+              {r === 'TODOS' ? 'Todos' : cfg!.label} ({count})
+            </button>
+          )
+        })}
+      </div>
+
       {/* Lista de usuarios */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -196,7 +239,7 @@ export default function UsuariosPage() {
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div className="divide-y divide-gray-50 dark:divide-gray-700">
-            {usuarios.map((u: any) => {
+            {usuariosFiltrados.map((u: any) => {
               const rolCfg = ROLES[u.rol as UserRole] ?? ROLES.CAJERO
               const esMiUsuario = u.id === user?.id
               return (
@@ -205,14 +248,20 @@ export default function UsuariosPage() {
                     <User size={18} className="text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{u.nombre_display ?? u.id.slice(0, 8)}</p>
                       {esMiUsuario && <span className="text-xs text-gray-400 dark:text-gray-400">(vos)</span>}
                       {!u.activo && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">Inactivo</span>}
                     </div>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rolCfg.color}`}>
-                      {rolCfg.label}
-                    </span>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rolCfg.color}`}>
+                        {rolCfg.label}
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">{rolCfg.desc}</span>
+                    </div>
+                    {u.created_at && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Desde {formatFechaCorta(u.created_at)}</p>
+                    )}
                   </div>
 
                   {canManage && u.activo && (
@@ -237,9 +286,57 @@ export default function UsuariosPage() {
                 </div>
               )
             })}
+            {usuariosFiltrados.length === 0 && (
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">
+                No hay usuarios con el rol seleccionado
+              </p>
+            )}
           </div>
         </div>
       )}
+
+      {/* Matriz de permisos por rol */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <button onClick={() => setShowPermisos(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+          <div className="flex items-center gap-2">
+            <Shield size={15} className="text-accent" />
+            Permisos por rol
+          </div>
+          {showPermisos ? <ChevronUp size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}
+        </button>
+        {showPermisos && (
+          <div className="overflow-x-auto border-t border-gray-100 dark:border-gray-700">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-700/50">
+                  <th className="text-left px-4 py-2.5 font-semibold text-gray-600 dark:text-gray-300 min-w-40">Función</th>
+                  {(Object.entries(ROLES) as [UserRole, any][]).map(([rol, cfg]) => (
+                    <th key={rol} className="px-3 py-2.5 text-center">
+                      <span className={`font-semibold px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(PERMISOS).map(([funcion, roles]) => (
+                  <tr key={funcion} className="border-t border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{funcion}</td>
+                    {(Object.keys(ROLES) as UserRole[]).map(rol => (
+                      <td key={rol} className="px-3 py-2 text-center">
+                        {roles[rol]
+                          ? <Check size={13} className="text-green-500 mx-auto" />
+                          : <XIcon size={13} className="text-gray-300 dark:text-gray-600 mx-auto" />
+                        }
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

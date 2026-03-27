@@ -82,6 +82,7 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 023 | `023_rrhh_capacitaciones.sql` | RRHH Phase 4B: rrhh_capacitaciones (nombre, fechas, horas, proveedor, estado, certificado_path) | ✅ | ✅ |
 | 024 | `024_supervisor_rls.sql` | RRHH Phase 5: get_supervisor_team_ids() + RLS SUPERVISOR en asistencia/vacaciones/empleados | ✅ | ✅ |
 | 025 | `025_sucursales.sql` | Multi-sucursal: tabla sucursales + sucursal_id nullable en inventario_lineas/movimientos_stock/ventas/caja_sesiones/gastos/clientes | ✅ | ✅ |
+| 026 | `026_nomina_medio_pago.sql` | RRHH Nómina: medio_pago en rrhh_salarios + pagar_nomina_empleado con check saldo caja + p_medio_pago | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -136,6 +137,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.40.0 | Add-on movimientos con pago automático MP: EF mp-addon + mp-webhook actualizado · secrets PROD configurados · webhook MP registrado | 2026-03 |
 | v0.41.0 | Insights automáticos (11 reglas en useRecomendaciones + tab Insights en Dashboard con score de salud) · fix acceso a Mi Plan en sidebar · infraestructura de tests (Playwright E2E + Vitest unit, 49 tests) | 2026-03 |
 | v0.42.0 | Multi-sucursal: migration 025 · tabla sucursales · SucursalesPage (OWNER) · SucursalSelector en header · useSucursalFilter · filtro en Inventario/Movimientos/Ventas/Caja/Gastos/Clientes | 2026-03 |
+| v0.43.0 | Fix check_stock_minimo SECURITY DEFINER · Ventas filtro categoría · Alertas sin categoría · Dark mode CajaPage · RRHH nómina: medio_pago + check saldo + historial sueldos (migration 026) | 2026-03 |
+| v0.44.0 | Caja multi-usuario (quién abrió, warning sesión ajena, bloqueo cerrar CAJERO) · Reportes breakdown ingresos por método de pago · Usuarios: filtros por rol, descripción, fecha alta, matriz de permisos | 2026-03 |
 
 ---
 

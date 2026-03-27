@@ -98,6 +98,7 @@ export default function VentasPage() {
   // Historial
   const [searchHistorial, setSearchHistorial] = useState('')
   const [filterEstado, setFilterEstado] = useState<EstadoVenta | ''>('')
+  const [filterCategoria, setFilterCategoria] = useState<string>('')
   const [ventaDetalle, setVentaDetalle] = useState<any | null>(null)
 
   // Modal series
@@ -196,10 +197,19 @@ export default function VentasPage() {
     enabled: !!tenant && clienteDropOpen,
   })
 
+  const { data: categoriasHistorial = [] } = useQuery({
+    queryKey: ['categorias-historial', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categorias').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'historial',
+  })
+
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado, sucursalId],
     queryFn: async () => {
-      let q = supabase.from('ventas').select('*, venta_items(id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,tiene_series), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
+      let q = supabase.from('ventas').select('*, venta_items(id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,tiene_series,categoria_id), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
       if (filterEstado) q = q.eq('estado', filterEstado)
       q = applyFilter(q)
@@ -810,9 +820,15 @@ export default function VentasPage() {
   })
 
   const filteredVentas = ventas.filter((v: any) => {
-    if (!searchHistorial) return true
-    const s = searchHistorial.toLowerCase()
-    return v.numero?.toString().includes(s) || (v.cliente_nombre ?? '').toLowerCase().includes(s)
+    if (searchHistorial) {
+      const s = searchHistorial.toLowerCase()
+      if (!v.numero?.toString().includes(s) && !(v.cliente_nombre ?? '').toLowerCase().includes(s)) return false
+    }
+    if (filterCategoria) {
+      const tieneCategoria = (v.venta_items ?? []).some((item: any) => item.productos?.categoria_id === filterCategoria)
+      if (!tieneCategoria) return false
+    }
+    return true
   })
 
   return (
@@ -1329,6 +1345,13 @@ export default function VentasPage() {
               <option value="">Todos los estados</option>
               {Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
+            {categoriasHistorial.length > 0 && (
+              <select value={filterCategoria} onChange={e => setFilterCategoria(e.target.value)}
+                className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                <option value="">Todas las categorías</option>
+                {categoriasHistorial.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            )}
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">

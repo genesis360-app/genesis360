@@ -1,6 +1,6 @@
 // ─── AlertasPage ──────────────────────────────────────────────────────────────
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle, Clock } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, Tag } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
@@ -49,6 +49,22 @@ export default function AlertasPage() {
     enabled: !!tenant,
   })
 
+  const { data: sinCategoria = [], isLoading: loadingSinCategoria } = useQuery({
+    queryKey: ['productos-sin-categoria', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('productos')
+        .select('id, nombre, sku')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .is('categoria_id', null)
+        .order('nombre')
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
   const resolver = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('alertas').update({ resuelta: true }).eq('id', id)
@@ -61,8 +77,8 @@ export default function AlertasPage() {
     },
   })
 
-  const totalAlertas = alertas.length + reservasViejas.length
-  const isLoadingAll = isLoading || loadingReservas
+  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length
+  const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria
 
   return (
     <div className="space-y-6">
@@ -113,7 +129,7 @@ export default function AlertasPage() {
                   </div>
                   <Link
                     to="/ventas"
-                    className="text-xs bg-amber-50 dark:bg-amber-900/200 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-all whitespace-nowrap flex-shrink-0"
+                    className="text-xs bg-amber-500 dark:bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 dark:hover:bg-amber-700 transition-all whitespace-nowrap flex-shrink-0"
                   >
                     Ver venta
                   </Link>
@@ -158,6 +174,35 @@ export default function AlertasPage() {
                       Resolver
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Productos sin categoría */}
+          {sinCategoria.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                <Tag size={14} />
+                Productos sin categoría ({sinCategoria.length})
+              </h2>
+              {sinCategoria.map((p: any) => (
+                <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-orange-100 dark:border-orange-900/30 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
+                      <Tag size={18} className="text-orange-500 dark:text-orange-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-gray-800 dark:text-gray-100">{p.nombre}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">SKU: {p.sku} • Sin categoría asignada</p>
+                    </div>
+                  </div>
+                  <Link
+                    to={`/inventario/${p.id}/editar`}
+                    className="text-xs bg-orange-500 dark:bg-orange-600 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 dark:hover:bg-orange-700 transition-all whitespace-nowrap"
+                  >
+                    Editar producto
+                  </Link>
                 </div>
               ))}
             </div>

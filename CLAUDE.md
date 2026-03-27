@@ -101,8 +101,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - `vercel.json`: `redirects` con `has.host = app.genesis360.pro` para redirigir `/` → `/login`
 - `App.tsx`: `isAppDomain` detecta hostname en runtime como fallback
 - `VITE_APP_URL` en Vercel Production: `https://app.genesis360.pro`
-- **⚠ Manual pendiente**: agregar `https://app.genesis360.pro/**` en Supabase → Authentication → URL Configuration → Redirect URLs
-- **⚠ Manual pendiente**: agregar `app.genesis360.pro` como dominio en Vercel → Settings → Domains
+- Supabase PROD → Redirect URLs: `https://app.genesis360.pro/**` ✅
+- Vercel → Domains: `app.genesis360.pro` ✅
 
 ---
 
@@ -433,9 +433,9 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Login form accesibilidad**: `htmlFor`+`id` en inputs email y password (requerido por `getByLabel` en Playwright).
 - [x] **Fix ventas sin caja**: bloqueo de `despachada` y `reservada` ahora aplica independientemente del medio de pago. Antes solo bloqueaba con efectivo. Widget de estado de caja siempre visible en checkout.
 - [x] **Multi-dominio**: `www.genesis360.pro` → landing; `app.genesis360.pro` → `/login` directo. `vercel.json` redirect con `has.host`. `App.tsx` `isAppDomain` como fallback runtime.
-- [ ] **⚠ Manual**: `VITE_APP_URL=https://app.genesis360.pro` en Vercel Production
-- [ ] **⚠ Manual**: agregar `https://app.genesis360.pro/**` en Supabase → Authentication → URL Configuration → Redirect URLs
-- [ ] **⚠ Manual**: agregar `app.genesis360.pro` como dominio en Vercel → Settings → Domains
+- [x] **`VITE_APP_URL=https://app.genesis360.pro`** en Vercel Production ✅
+- [x] **Supabase PROD** → Redirect URLs: `https://app.genesis360.pro/**` ✅
+- [x] **Vercel** → Domains: `app.genesis360.pro` ✅
 
 ### Reglas de negocio — Caja
 - **Sin caja abierta = sin negocio**: no se puede registrar ninguna venta (`despachada` o `reservada`) ni gasto en efectivo si no hay sesión de caja abierta.

@@ -59,7 +59,8 @@ export default function CajaPage() {
     queryKey: ['sesion-activa', cajaId],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('*').eq('caja_id', cajaId!).eq('estado', 'abierta')
+        .select('*, abrio:usuario_id(nombre_display)')
+        .eq('caja_id', cajaId!).eq('estado', 'abierta')
         .order('abierta_at', { ascending: false }).limit(1).single()
       return data ?? null
     },
@@ -123,10 +124,24 @@ export default function CajaPage() {
   const montoRealNum = parseFloat(montoRealCierre) || 0
   const diferencia = montoRealCierre !== '' ? montoRealNum - saldoActual : null
 
+  // Multi-usuario: quién abrió la sesión
+  const abrioNombre = (sesionActiva as any)?.abrio?.nombre_display ?? null
+  const esOtroUsuario = !!sesionActiva && sesionActiva.usuario_id !== user?.id
+  const puedeAdministrarCaja = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
+
   // Mutations
   const abrirCaja = useMutation({
     mutationFn: async () => {
       if (!cajaId) throw new Error('Seleccioná una caja')
+      // Verificar que no haya otra sesión abierta por otro usuario
+      const { data: existente } = await supabase.from('caja_sesiones')
+        .select('id, usuario_id, abrio:usuario_id(nombre_display)')
+        .eq('caja_id', cajaId).eq('estado', 'abierta')
+        .maybeSingle()
+      if (existente && existente.usuario_id !== user?.id) {
+        const nombre = (existente as any).abrio?.nombre_display ?? 'otro usuario'
+        throw new Error(`Esta caja ya está abierta por ${nombre}`)
+      }
       const { error } = await supabase.from('caja_sesiones').insert({
         tenant_id: tenant!.id,
         caja_id: cajaId,
@@ -385,12 +400,21 @@ export default function CajaPage() {
                     <p className="text-blue-200 text-sm">{cajaActual?.nombre}</p>
                     <p className="text-xs text-blue-300">
                       Abierta: {new Date(sesionActiva.abierta_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                      {abrioNombre && ` · ${abrioNombre}`}
                     </p>
                   </div>
                   <div className="w-10 h-10 bg-white dark:bg-gray-800/10 rounded-xl flex items-center justify-center">
                     <Unlock size={18} className="text-green-400" />
                   </div>
                 </div>
+                {esOtroUsuario && (
+                  <div className="bg-amber-500/20 border border-amber-400/30 rounded-xl px-3 py-2 flex items-center gap-2 mb-3">
+                    <AlertTriangle size={13} className="text-amber-300 flex-shrink-0" />
+                    <p className="text-amber-200 text-xs">
+                      Sesión abierta por {abrioNombre ?? 'otro usuario'}. Podés registrar movimientos pero {puedeAdministrarCaja ? 'sos supervisor/dueño y podés cerrarla' : 'no podés cerrar la caja'}.
+                    </p>
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-white dark:bg-gray-800/10 rounded-xl p-3 text-center">
                     <p className="text-blue-200 text-xs">Apertura</p>
@@ -455,10 +479,16 @@ export default function CajaPage() {
               </div>
 
               {/* Cerrar caja */}
-              <button onClick={() => setShowCierre(true)}
-                className="w-full flex items-center justify-center gap-2 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-3 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all">
-                <Lock size={18} /> Cerrar caja
-              </button>
+              {esOtroUsuario && !puedeAdministrarCaja ? (
+                <div className="w-full flex items-center justify-center gap-2 border-2 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 font-semibold py-3 rounded-xl cursor-not-allowed">
+                  <Lock size={18} /> Solo {abrioNombre ?? 'quien abrió'} puede cerrar esta caja
+                </div>
+              ) : (
+                <button onClick={() => setShowCierre(true)}
+                  className="w-full flex items-center justify-center gap-2 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-3 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all">
+                  <Lock size={18} /> Cerrar caja
+                </button>
+              )}
             </div>
           )}
         </div>

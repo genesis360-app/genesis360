@@ -247,6 +247,27 @@ export default function ReportesPage() {
     },
   }
 
+  // Breakdown de ventas por método de pago
+  const breakdownMediosPago: Array<{ tipo: string; monto: number; count: number }> = (() => {
+    const map: Record<string, { monto: number; count: number }> = {}
+    ventas.forEach((v: any) => {
+      try {
+        const parsed = typeof v.medio_pago === 'string' ? JSON.parse(v.medio_pago) : (v.medio_pago ?? [])
+        if (Array.isArray(parsed)) {
+          parsed.forEach((mp: any) => {
+            const tipo = mp.tipo || 'Otro'
+            if (!map[tipo]) map[tipo] = { monto: 0, count: 0 }
+            map[tipo].monto += Number(mp.monto) || 0
+            map[tipo].count += 1
+          })
+        }
+      } catch {}
+    })
+    return Object.entries(map)
+      .map(([tipo, d]) => ({ tipo, ...d }))
+      .sort((a, b) => b.monto - a.monto)
+  })()
+
   // ── Exportar Excel ───────────────────────────────────────────────────────────
   const exportarExcel = (id: ReporteId) => {
     setGenerando(true)
@@ -481,15 +502,31 @@ export default function ReportesPage() {
             </div>
           )}
           {reporteActivo === 'ventas' && (
-            <div className="grid grid-cols-2 divide-x divide-gray-100 dark:divide-gray-700 border-b border-gray-100 dark:border-gray-700">
-              <div className="px-5 py-3 text-center">
-                <p className="text-xs text-gray-400 dark:text-gray-400">Ventas en el período</p>
-                <p className="text-xl font-bold text-primary">{totalesReporte.ventas.cantidad}</p>
+            <div className="border-b border-gray-100 dark:border-gray-700">
+              <div className="grid grid-cols-2 divide-x divide-gray-100 dark:divide-gray-700">
+                <div className="px-5 py-3 text-center">
+                  <p className="text-xs text-gray-400 dark:text-gray-400">Ventas en el período</p>
+                  <p className="text-xl font-bold text-primary">{totalesReporte.ventas.cantidad}</p>
+                </div>
+                <div className="px-5 py-3 text-center">
+                  <p className="text-xs text-gray-400 dark:text-gray-400">Total facturado</p>
+                  <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatMoneda(totalesReporte.ventas.total)}</p>
+                </div>
               </div>
-              <div className="px-5 py-3 text-center">
-                <p className="text-xs text-gray-400 dark:text-gray-400">Total facturado</p>
-                <p className="text-xl font-bold text-green-600 dark:text-green-400">{formatMoneda(totalesReporte.ventas.total)}</p>
-              </div>
+              {breakdownMediosPago.length > 0 && (
+                <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Ingresos por método de pago</p>
+                  <div className="flex flex-wrap gap-2">
+                    {breakdownMediosPago.map(({ tipo, monto, count }) => (
+                      <div key={tipo} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-1.5">
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{tipo}</span>
+                        <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{formatMoneda(monto)}</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">({count})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

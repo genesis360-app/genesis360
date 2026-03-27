@@ -337,6 +337,28 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - Write: `sucursal_id: sucursalId || null` en inserts de movimientos (ingreso/rebaje), ventas, gastos, clientes, caja_sesiones.
 - **Invariante**: datos existentes con `sucursal_id = NULL` siempre visibles en vista global. Al seleccionar una sucursal solo se ven los datos de esa sucursal.
 
+### v0.43.0 — Fixes, filtros y RRHH nómina
+
+#### check_stock_minimo SECURITY DEFINER
+- Trigger `productos_stock_check` AFTER UPDATE → `check_stock_minimo()`. Sin SECURITY DEFINER, `auth.uid()` no está disponible en el contexto del trigger → INSERT en alertas falla por RLS → 400. Fix: `SECURITY DEFINER` ejecuta con privilegios del owner.
+
+#### Ventas — filtro categoría en historial
+- Estado `filterCategoria: string` + query `categoriasHistorial` (lazy, solo cuando `tab === 'historial'`).
+- Ventas query agrega `categoria_id` al select de `productos` dentro de `venta_items`.
+- `filteredVentas`: filtra si algún `venta_items[].productos.categoria_id === filterCategoria`.
+- Select solo aparece si `categoriasHistorial.length > 0`.
+
+#### Alertas — productos sin categoría
+- Query `sinCategoria`: `productos WHERE activo=true AND categoria_id IS NULL ORDER BY nombre`.
+- Sección naranja con icono `Tag`. `totalAlertas` incluye `sinCategoria.length`.
+- Link `to="/inventario/:id/editar"` (ruta correcta en App.tsx).
+
+#### RRHH Nómina (migration 026)
+- `medio_pago` en `rrhh_salarios`: DEFAULT 'efectivo', CHECK IN ('efectivo','transferencia_banco','mp').
+- `pagar_nomina_empleado(p_salario_id, p_sesion_id, p_medio_pago DEFAULT 'efectivo')`: para `p_medio_pago='efectivo'` calcula saldo = `monto_apertura + ingresos - egresos` de la sesión y lanza EXCEPTION si saldo < neto.
+- UI: `medioPagoNomina` state en RrhhPage; select junto al selector de caja. Fila pagada muestra el medio de pago.
+- **Historial de sueldos**: `historialEmpleadoId` state + `historialSueldos` query (enabled solo cuando `showHistorialSueldos && historialEmpleadoId`). Tabla colapsable con período, básico, haberes, descuentos, neto, estado, medio de pago.
+
 ## Backlog pendiente
 
 ### UX / Config
@@ -373,6 +395,13 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] `SucursalSelector` en header — solo visible con ≥1 sucursal configurada
 - [x] `SucursalesPage` (/sucursales, OWNER-only): CRUD completo
 - [x] Filtro en Inventario, Movimientos, Ventas, Caja, Gastos, Clientes (read + write)
+
+### v0.43.0 ✅ PROD
+- [x] **Bug `check_stock_minimo` SECURITY DEFINER**: trigger AFTER UPDATE en productos fallaba con 400 (RLS bloqueaba INSERT en alertas en contexto de trigger). Fix: `SECURITY DEFINER` bypassa RLS.
+- [x] **Ventas — filtro por categoría**: dropdown en historial filtra ventas client-side por `categoria_id` de venta_items → productos. Query categorías lazy (solo cuando tab='historial').
+- [x] **Alertas — productos sin categoría**: nueva sección naranja (icono Tag). Query `productos WHERE activo=true AND categoria_id IS NULL`. Link a `/inventario/:id/editar`.
+- [x] **Dark mode CajaPage**: botón Egreso `bg-red-50` → `bg-red-500` (texto blanco era invisible en light); cards Ingresos/Egresos `dark:bg-*/200/20` (clase inválida) → `bg-*/400/20`.
+- [x] **RRHH Nómina — migration 026**: `rrhh_salarios.medio_pago TEXT CHECK IN ('efectivo','transferencia_banco','mp')` DEFAULT 'efectivo'. `pagar_nomina_empleado(p_salario_id, p_sesion_id, p_medio_pago DEFAULT 'efectivo')` — verifica saldo caja (RAISE EXCEPTION si saldo < neto para medio_pago='efectivo'). UI: select de método + caja; badge en fila pagada; sección colapsable "Historial de sueldos" con tabla evolutiva por período.
 
 ### Ideas futuras
 Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

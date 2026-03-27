@@ -13,7 +13,7 @@ test.describe('Ventas', () => {
 
   test('página carga con buscador de productos', async ({ page }) => {
     await expect(
-      page.getByPlaceholder(/buscar producto|escanear/i).first()
+      page.getByPlaceholder(/buscar por nombre/i).first()
     ).toBeVisible({ timeout: 8000 })
   })
 
@@ -31,12 +31,13 @@ test.describe('Ventas', () => {
   })
 
   test('toggle lista/galería funciona', async ({ page }) => {
-    const toggleGaleria = page.getByTitle(/galería|lista/i).first()
+    const toggleGaleria = page.getByRole('button', { name: /vista galería|vista lista/i }).first()
     if (await toggleGaleria.isVisible()) {
       await toggleGaleria.click()
       await page.waitForTimeout(300)
       // Volver a lista
-      await toggleGaleria.click()
+      const toggleLista = page.getByRole('button', { name: /vista galería|vista lista/i }).first()
+      if (await toggleLista.isVisible()) await toggleLista.click()
     }
   })
 })

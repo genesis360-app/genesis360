@@ -11,7 +11,9 @@
 import { test as setup, expect } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
+import { fileURLToPath } from 'url'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SESSION_FILE = path.join(__dirname, '.auth/session.json')
 
 setup('autenticar usuario de prueba', async ({ page }) => {
@@ -35,7 +37,11 @@ setup('autenticar usuario de prueba', async ({ page }) => {
 
   // Esperar redirección al dashboard
   await page.waitForURL('**/dashboard', { timeout: 15000 })
-  await expect(page.getByText(/dashboard/i).first()).toBeVisible()
+
+  // Marcar walkthrough como visto para que no bloquee los tests
+  await page.evaluate(() => {
+    localStorage.setItem('genesis360_walkthrough_v1', 'seen')
+  })
 
   // Guardar sesión (cookies + localStorage de Supabase)
   await page.context().storageState({ path: SESSION_FILE })

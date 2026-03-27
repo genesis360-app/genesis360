@@ -21,7 +21,7 @@ test.describe('Dashboard', () => {
   test('tabs General, Insights y Métricas están presentes', async ({ page }) => {
     await expect(page.getByRole('button', { name: 'General' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Insights' })).toBeVisible()
-    await expect(page.getByRole('button', { name: /métricas/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Métricas', exact: true })).toBeVisible()
   })
 
   test('tab Insights muestra score de salud y recomendaciones', async ({ page }) => {
@@ -33,7 +33,7 @@ test.describe('Dashboard', () => {
   })
 
   test('tab Métricas es accesible', async ({ page }) => {
-    await page.getByRole('button', { name: /métricas/i }).click()
+    await page.getByRole('button', { name: 'Métricas', exact: true }).click()
     // Puede mostrar UpgradePrompt (plan free) o las métricas reales
     await expect(
       page.getByText(/métricas|upgrade|plan/i).first()

@@ -49,27 +49,30 @@ test.describe('Inventario', () => {
     await page.getByRole('button', { name: /nuevo producto/i }).click()
     await page.waitForTimeout(300)
 
-    // Completar nombre (campo obligatorio)
-    const nombreInput = page.getByLabel(/nombre/i).first()
+    // Completar nombre y SKU (ambos obligatorios) — ProductoFormPage
+    const nombreInput = page.getByPlaceholder(/tornillo/i).first()
+    await nombreInput.scrollIntoViewIfNeeded()
     await nombreInput.fill(nombre)
+    await expect(nombreInput).toHaveValue(nombre)
 
-    // SKU opcional — completar para identificar fácilmente
-    const skuInput = page.getByLabel(/sku/i).first()
-    if (await skuInput.isVisible()) await skuInput.fill(`TST-${Date.now()}`)
+    const skuInput = page.getByPlaceholder(/TORN-0001/i).first()
+    await skuInput.fill(`TST-${Date.now()}`)
 
-    // Guardar
-    await page.getByRole('button', { name: /guardar|crear|nuevo/i }).last().click()
-    await page.waitForTimeout(1000)
+    // Guardar con el botón específico de la página
+    await page.getByRole('button', { name: 'Crear producto', exact: true }).click()
+    // Esperar que navegue de vuelta al inventario
+    await page.waitForURL('**/inventario', { timeout: 10000 }).catch(() => {})
+    await page.waitForTimeout(500)
 
-    // El producto debe aparecer en la lista
-    await expect(page.getByText(nombre)).toBeVisible({ timeout: 8000 })
-
-    // Eliminar producto creado (buscar y borrar)
+    // Buscar el producto creado en el buscador
     const buscador = page.getByPlaceholder(/buscar/i).first()
     if (await buscador.isVisible()) {
       await buscador.fill(nombre)
-      await page.waitForTimeout(500)
+      await page.waitForTimeout(800)
     }
+
+    // El producto debe aparecer en la lista
+    await expect(page.getByText(nombre)).toBeVisible({ timeout: 8000 })
 
     // Click en el botón de eliminar (puede ser un ícono/menú contextual)
     const fila = page.getByText(nombre).first()

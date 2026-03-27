@@ -26,7 +26,7 @@ test.describe('Gastos', () => {
   test('formulario nuevo gasto abre correctamente', async ({ page }) => {
     await page.getByRole('button', { name: /nuevo gasto/i }).click()
     await expect(
-      page.getByText(/concepto|monto|categoría/i).first()
+      page.getByPlaceholder(/pago de alquiler|detalles/i).first()
     ).toBeVisible({ timeout: 5000 })
     await page.keyboard.press('Escape')
   })

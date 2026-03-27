@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // Variables de entorno para los tests E2E
 // Configurar en .env.test.local (no commitear) o en GitHub Actions secrets
@@ -21,8 +24,6 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'off',
-    // Guarda la sesión autenticada entre tests del mismo archivo
-    storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
   },
 
   projects: [
@@ -30,12 +31,14 @@ export default defineConfig({
     {
       name: 'setup',
       testMatch: /.*\.setup\.ts/,
-      use: { storageState: undefined },
     },
     // Tests principales, dependen de la sesión creada en setup
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
+      },
       dependencies: ['setup'],
     },
   ],

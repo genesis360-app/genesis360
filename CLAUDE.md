@@ -403,5 +403,10 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dark mode CajaPage**: botón Egreso `bg-red-50` → `bg-red-500` (texto blanco era invisible en light); cards Ingresos/Egresos `dark:bg-*/200/20` (clase inválida) → `bg-*/400/20`.
 - [x] **RRHH Nómina — migration 026**: `rrhh_salarios.medio_pago TEXT CHECK IN ('efectivo','transferencia_banco','mp')` DEFAULT 'efectivo'. `pagar_nomina_empleado(p_salario_id, p_sesion_id, p_medio_pago DEFAULT 'efectivo')` — verifica saldo caja (RAISE EXCEPTION si saldo < neto para medio_pago='efectivo'). UI: select de método + caja; badge en fila pagada; sección colapsable "Historial de sueldos" con tabla evolutiva por período.
 
+### v0.44.0 ✅ PROD
+- [x] **Caja multi-usuario**: `sesionActiva` join `usuario_id(nombre_display)` → header muestra "Abierta: [fecha] · [nombre]"; banner naranja si la sesión fue abierta por otro usuario; botón "Cerrar caja" bloqueado para CAJERO en sesión ajena (OWNER/SUPERVISOR pueden cerrar cualquier sesión); check defensivo en `abrirCaja.mutationFn` con `.maybeSingle()` antes del insert.
+- [x] **Reportes — breakdown por método de pago**: chips `[Tipo] $monto (n)` en resumen del reporte Ventas. IIFE que agrega `medio_pago` JSON de todas las ventas del período por tipo.
+- [x] **Usuarios — mejoras UX**: filtros por rol con contadores; descripción del rol en cada card; fecha de alta "Desde DD/MM/YYYY"; sección colapsable "Permisos por rol" (tabla 12 funciones × 4 roles con ✓/✗).
+
 ### Ideas futuras
 Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

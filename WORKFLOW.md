@@ -138,6 +138,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.41.0 | Insights automáticos (11 reglas en useRecomendaciones + tab Insights en Dashboard con score de salud) · fix acceso a Mi Plan en sidebar · infraestructura de tests (Playwright E2E + Vitest unit, 49 tests) | 2026-03 |
 | v0.42.0 | Multi-sucursal: migration 025 · tabla sucursales · SucursalesPage (OWNER) · SucursalSelector en header · useSucursalFilter · filtro en Inventario/Movimientos/Ventas/Caja/Gastos/Clientes | 2026-03 |
 | v0.43.0 | Fix check_stock_minimo SECURITY DEFINER · Ventas filtro categoría · Alertas sin categoría · Dark mode CajaPage · RRHH nómina: medio_pago + check saldo + historial sueldos (migration 026) | 2026-03 |
+| v0.44.0 | Caja multi-usuario (quién abrió, warning sesión ajena, bloqueo cerrar CAJERO) · Reportes breakdown ingresos por método de pago · Usuarios: filtros por rol, descripción, fecha alta, matriz de permisos | 2026-03 |
 
 ---
 

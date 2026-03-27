@@ -35,6 +35,10 @@ const ImportarMasterPage  = lazy(() => import('@/pages/ImportarMasterPage'))
 const RrhhPage            = lazy(() => import('@/pages/RrhhPage'))
 const SucursalesPage      = lazy(() => import('@/pages/SucursalesPage'))
 
+// app.genesis360.pro → directo al login/dashboard (sin landing)
+// www.genesis360.pro  → muestra la landing
+const isAppDomain = window.location.hostname === 'app.genesis360.pro'
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 1000 * 60 * 5, retry: 1 },
@@ -84,7 +88,7 @@ function App() {
         }>
           <Routes>
             {/* Rutas públicas */}
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={isAppDomain ? <Navigate to="/login" replace /> : <LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/suscripcion" element={<SuscripcionPage />} />

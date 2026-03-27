@@ -29,7 +29,7 @@ test.describe('Clientes', () => {
     await page.getByRole('button', { name: /nuevo cliente/i }).click()
     await page.waitForTimeout(300)
 
-    const nombreInput = page.getByLabel(/nombre/i).first()
+    const nombreInput = page.getByPlaceholder(/nombre completo|razón social/i).first()
     await nombreInput.fill(nombre)
 
     await page.getByRole('button', { name: /guardar|crear/i }).last().click()

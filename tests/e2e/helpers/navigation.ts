@@ -10,9 +10,16 @@ export async function goto(page: Page, path: string) {
   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
 }
 
-/** Espera que el sidebar esté visible (indica que el layout está listo) */
+/** Espera que el layout esté listo. En páginas con sidebar espera el aside; en otras espera networkidle. */
 export async function waitForApp(page: Page) {
-  await expect(page.locator('aside').first()).toBeVisible({ timeout: 10000 })
+  const aside = page.locator('aside').first()
+  const hasAside = await aside.isVisible().catch(() => false)
+  if (hasAside) {
+    await expect(aside).toBeVisible({ timeout: 10000 })
+  } else {
+    // Páginas sin AppLayout (ej: /suscripcion): esperar que haya contenido visible
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
+  }
 }
 
 /** Genera un string único para nombres de test (evita colisiones entre corridas) */

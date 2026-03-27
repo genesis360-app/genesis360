@@ -91,9 +91,18 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ```
 
 ## Deploy
-- Producción: https://genesis360.pro · Repo: https://github.com/genesis360-app/genesis360
+- Repo: https://github.com/genesis360-app/genesis360
 - `vercel.json` obligatorio para SPA routing (`rewrites` a `/index.html`)
 - Preview `dev`: desactivar Vercel Authentication en Settings → Deployment Protection
+
+## Dominios
+- `www.genesis360.pro` → muestra LandingPage (marketing)
+- `app.genesis360.pro` → redirige `/` a `/login` directo (usuarios existentes)
+- `vercel.json`: `redirects` con `has.host = app.genesis360.pro` para redirigir `/` → `/login`
+- `App.tsx`: `isAppDomain` detecta hostname en runtime como fallback
+- `VITE_APP_URL` en Vercel Production: `https://app.genesis360.pro`
+- **⚠ Manual pendiente**: agregar `https://app.genesis360.pro/**` en Supabase → Authentication → URL Configuration → Redirect URLs
+- **⚠ Manual pendiente**: agregar `app.genesis360.pro` como dominio en Vercel → Settings → Domains
 
 ---
 
@@ -418,6 +427,21 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ### v0.45.0 ✅ PROD
 - [x] **Rebrand completo Stokio → Genesis360**: `index.html` (`<title>`), `package.json` (`name`), `brand.ts` (comentarios), `useRecomendaciones`, `RecomendacionesPage`, `SuscripcionPage`, `VentasPage` (fallback ticket), EF `send-email` (`BRAND`, `APP_URL`), EF `invite-user`, `crear-suscripcion`, `mp-addon` (fallbacks `APP_URL`), `schema_full.sql`, `CLAUDE.md`, `WORKFLOW.md`, `ROADMAP.md`.
 - [x] **Header UX — sucursal activa**: el nombre en el header (antes `BRAND.name`) ahora muestra la sucursal seleccionada, o el nombre del tenant en vista global. Fallback a `BRAND.name` si los datos aún no cargaron.
+
+### v0.46.0 — Tests E2E + Caja + Multi-dominio (en dev)
+- [x] **Tests E2E funcionales**: `playwright.config.ts` + `auth.setup.ts` fix `__dirname` ES module; walkthrough marcado como visto en localStorage antes de tests; `waitForApp` flexible (aside o networkidle); 49/49 passing.
+- [x] **Login form accesibilidad**: `htmlFor`+`id` en inputs email y password (requerido por `getByLabel` en Playwright).
+- [x] **Fix ventas sin caja**: bloqueo de `despachada` y `reservada` ahora aplica independientemente del medio de pago. Antes solo bloqueaba con efectivo. Widget de estado de caja siempre visible en checkout.
+- [x] **Multi-dominio**: `www.genesis360.pro` → landing; `app.genesis360.pro` → `/login` directo. `vercel.json` redirect con `has.host`. `App.tsx` `isAppDomain` como fallback runtime.
+- [ ] **⚠ Manual**: `VITE_APP_URL=https://app.genesis360.pro` en Vercel Production
+- [ ] **⚠ Manual**: agregar `https://app.genesis360.pro/**` en Supabase → Authentication → URL Configuration → Redirect URLs
+- [ ] **⚠ Manual**: agregar `app.genesis360.pro` como dominio en Vercel → Settings → Domains
+
+### Reglas de negocio — Caja
+- **Sin caja abierta = sin negocio**: no se puede registrar ninguna venta (`despachada` o `reservada`) ni gasto en efectivo si no hay sesión de caja abierta.
+- **Medios de pago en caja**: efectivo → `ingreso` en `caja_movimientos` (afecta saldo). Tarjeta/transferencia/MP → `ingreso_informativo` (no afecta saldo, solo registro).
+- **Gastos en efectivo**: también requieren caja abierta. Otros medios de pago no bloquean.
+- **Nómina**: `pagar_nomina_empleado()` verifica saldo caja si `medio_pago='efectivo'`.
 
 ### Ideas futuras
 Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

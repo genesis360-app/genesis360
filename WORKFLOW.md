@@ -141,6 +141,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.44.0 | Caja multi-usuario (quién abrió, warning sesión ajena, bloqueo cerrar CAJERO) · Reportes breakdown ingresos por método de pago · Usuarios: filtros por rol, descripción, fecha alta, matriz de permisos | 2026-03 |
 | v0.44.1 | Migración a genesis360.pro: nuevo dominio + org GitHub genesis360-app · .gitignore completo + .env.local removido del tracking · rotación de todas las API keys (MP, Resend, Supabase AT, GH) · referencias stokio.com → genesis360.pro en Edge Functions | 2026-03 |
 | v0.45.0 | Rebrand completo Stokio → Genesis360 en todo el codebase (index.html, package.json, EFs, templates email, schema, docs) · Header UX: muestra sucursal activa (o tenant) en lugar del nombre de marca | 2026-03 |
+| v0.46.0 | Tests E2E funcionales (49/49 passing) · fix ventas sin caja (bloqueo independiente del medio de pago) · multi-dominio: app.genesis360.pro→login / www.genesis360.pro→landing | 2026-03 |
 
 ---
 

@@ -458,13 +458,13 @@ export default function VentasPage() {
       return
     }
     const montoEfectivoCaja = calcularEfectivo(mediosPago, total)
-    if (estado === 'despachada' && montoEfectivoCaja > 0) {
+    if (estado === 'despachada' || estado === 'reservada') {
       if (sesionesAbiertas.length === 0) {
-        toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas en efectivo.')
+        toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
         return
       }
       if (sesionesAbiertas.length > 1 && !cajaSeleccionadaId) {
-        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar el efectivo.')
+        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
         return
       }
     }
@@ -1283,18 +1283,17 @@ export default function VentasPage() {
                   <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
 
-                {/* Estado de caja para efectivo */}
+                {/* Estado de caja */}
                 {(() => {
                   const efectivo = calcularEfectivo(mediosPago, total)
-                  if (efectivo === 0) return null
                   if (sesionesAbiertas.length === 0) return (
-                    <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-lg px-3 py-2.5">
-                      <span>⚠️</span><span>Sin caja abierta — el efectivo no se registrará</span>
+                    <div className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-lg px-3 py-2.5">
+                      <span>⚠️</span><span>Sin caja abierta — no se puede vender ni reservar</span>
                     </div>
                   )
                   if (sesionesAbiertas.length > 1) return (
                     <div>
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar efectivo en:</label>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar en caja:</label>
                       <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
                         className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
                         <option value="">— Seleccioná una caja —</option>
@@ -1306,7 +1305,7 @@ export default function VentasPage() {
                   )
                   return (
                     <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-lg px-3 py-2.5">
-                      <span>✓</span><span>Efectivo → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja'}</span>
+                      <span>✓</span><span>{efectivo > 0 ? 'Efectivo' : 'Venta'} → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja'}</span>
                     </div>
                   )
                 })()}

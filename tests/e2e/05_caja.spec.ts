@@ -12,9 +12,9 @@ test.describe('Caja', () => {
   })
 
   test('página carga y muestra estado de caja', async ({ page }) => {
-    // Debe mostrar "Caja abierta", "Caja cerrada" o botón de abrir
+    // Debe mostrar estado de sesión o botón de apertura
     await expect(
-      page.getByText(/caja abierta|caja cerrada|abrir caja|nueva sesión/i).first()
+      page.getByText(/abierta:|sesión abierta|abrir caja|nueva sesión|sin sesión/i).first()
     ).toBeVisible({ timeout: 8000 })
   })
 

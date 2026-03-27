@@ -396,13 +396,13 @@ export default function CajaPage() {
                     <p className="text-blue-200 text-xs">Apertura</p>
                     <p className="font-bold text-lg">{formatMoneda(sesionActiva.monto_apertura)}</p>
                   </div>
-                  <div className="bg-green-50 dark:bg-green-900/200/20 rounded-xl p-3 text-center">
+                  <div className="bg-green-400/20 rounded-xl p-3 text-center">
                     <p className="text-green-200 text-xs">Ingresos</p>
-                    <p className="font-bold text-lg text-green-300">{formatMoneda(totalIngresos)}</p>
+                    <p className="font-bold text-lg text-green-100">{formatMoneda(totalIngresos)}</p>
                   </div>
-                  <div className="bg-red-50 dark:bg-red-900/200/20 rounded-xl p-3 text-center">
+                  <div className="bg-red-400/20 rounded-xl p-3 text-center">
                     <p className="text-red-200 text-xs">Egresos</p>
-                    <p className="font-bold text-lg text-red-300">{formatMoneda(totalEgresos)}</p>
+                    <p className="font-bold text-lg text-red-100">{formatMoneda(totalEgresos)}</p>
                   </div>
                 </div>
                 <div className="mt-3 bg-white dark:bg-gray-800/10 rounded-xl p-3 flex items-center justify-between">
@@ -418,7 +418,7 @@ export default function CajaPage() {
                   <Plus size={18} /> Ingreso
                 </button>
                 <button onClick={() => { setMovTipo('egreso'); setShowMovimiento(true) }}
-                  className="flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/200 hover:bg-red-600 text-white font-semibold py-3 rounded-xl transition-all">
+                  className="flex items-center justify-center gap-2 bg-red-500 dark:bg-red-600 hover:bg-red-600 dark:hover:bg-red-500 text-white font-semibold py-3 rounded-xl transition-all">
                   <Minus size={18} /> Egreso
                 </button>
               </div>

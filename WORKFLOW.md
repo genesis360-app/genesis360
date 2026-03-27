@@ -4,7 +4,7 @@
 
 | Ambiente | Supabase | Vercel | Branch |
 |----------|----------|--------|--------|
-| **PROD** | `jjffnbrdjchquexdfgwq` | stokio-tau.vercel.app | `main` |
+| **PROD** | `jjffnbrdjchquexdfgwq` | genesis360.pro | `main` |
 | **DEV**  | `gcmhzdedrkmmzfzfveig` | preview automático | `dev` |
 
 ## Reglas fundamentales

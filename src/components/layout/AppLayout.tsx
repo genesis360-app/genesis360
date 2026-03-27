@@ -268,7 +268,7 @@ export function AppLayout() {
             </button>
 
             {/* Ayuda */}
-            <a href="mailto:soporte@stokio.com" title="Soporte / Ayuda" className={headerBtnCls}>
+            <a href="mailto:soporte@genesis360.pro" title="Soporte / Ayuda" className={headerBtnCls}>
               <LifeBuoy size={18} />
             </a>
 

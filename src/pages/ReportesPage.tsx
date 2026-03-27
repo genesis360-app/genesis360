@@ -294,7 +294,7 @@ export default function ReportesPage() {
 
       XLSX.utils.book_append_sheet(wb, wsInfo, 'Info')
       XLSX.utils.book_append_sheet(wb, ws, reporte.titulo)
-      XLSX.writeFile(wb, `stokio_${id}_${new Date().toISOString().split('T')[0]}.xlsx`)
+      XLSX.writeFile(wb, `genesis360_${id}_${new Date().toISOString().split('T')[0]}.xlsx`)
       toast.success('Excel descargado')
     } finally {
       setGenerando(false)
@@ -353,7 +353,7 @@ export default function ReportesPage() {
         doc.text(`Página ${i} de ${pages}`, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 8)
       }
 
-      doc.save(`stokio_${id}_${new Date().toISOString().split('T')[0]}.pdf`)
+      doc.save(`genesis360_${id}_${new Date().toISOString().split('T')[0]}.pdf`)
       toast.success('PDF descargado')
     } finally {
       setGenerando(false)

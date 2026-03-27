@@ -91,7 +91,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 ```
 
 ## Deploy
-- Producción: https://stokio-tau.vercel.app · Repo: https://github.com/tongas86/stokio
+- Producción: https://genesis360.pro · Repo: https://github.com/genesis360-app/genesis360
 - `vercel.json` obligatorio para SPA routing (`rewrites` a `/index.html`)
 - Preview `dev`: desactivar Vercel Authentication en Settings → Deployment Protection
 
@@ -119,7 +119,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ### Emails transaccionales (Resend)
 - Edge Function `send-email`: tipos `welcome`, `venta_confirmada`, `alerta_stock`. Fire-and-forget.
-- FROM temporal: `onboarding@resend.dev`. **Cambiar a `noreply@stokio.com`** cuando se compre el dominio.
+- FROM temporal: `onboarding@resend.dev`. **Cambiar a `noreply@genesis360.pro`** cuando se verifique el dominio en Resend.
 
 ### Movimientos y reserva de stock
 - `linea_id` en `movimientos_stock`: FK a `inventario_lineas`. Siempre guardar al insertar ingresos/rebajes.

@@ -41,6 +41,7 @@ interface Salario {
   pagado: boolean
   fecha_pago: string | null
   caja_movimiento_id: string | null
+  medio_pago: 'efectivo' | 'transferencia_banco' | 'mp' | null
   notas: string | null
   empleado?: Empleado
 }
@@ -223,6 +224,9 @@ export default function RrhhPage() {
   const [conceptoForm, setConceptoForm] = useState<{ nombre: string; tipo: 'HABER' | 'DESCUENTO' }>({ nombre: '', tipo: 'HABER' })
   const [newItem, setNewItem] = useState<{ descripcion: string; tipo: 'HABER' | 'DESCUENTO'; monto: string; concepto_id: string }>({ descripcion: '', tipo: 'HABER', monto: '', concepto_id: '' })
   const [cajaSessionId, setCajaSessionId] = useState<string>('')
+  const [medioPagoNomina, setMedioPagoNomina] = useState<'efectivo' | 'transferencia_banco' | 'mp'>('efectivo')
+  const [historialEmpleadoId, setHistorialEmpleadoId] = useState<string>('')
+  const [showHistorialSueldos, setShowHistorialSueldos] = useState(false)
 
   // Dashboard state
   const [dashMes, setDashMes] = useState(() => format(new Date(), 'yyyy-MM'))
@@ -345,6 +349,20 @@ export default function RrhhPage() {
       return (data ?? []) as SalarioItem[]
     },
     enabled: !!expandedSalario,
+  })
+
+  const { data: historialSueldos = [] } = useQuery({
+    queryKey: ['rrhh_historial_sueldos', tenant?.id, historialEmpleadoId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('rrhh_salarios')
+        .select('id, periodo, basico, total_haberes, total_descuentos, neto, pagado, fecha_pago, medio_pago')
+        .eq('tenant_id', tenant!.id)
+        .eq('empleado_id', historialEmpleadoId)
+        .order('periodo', { ascending: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && !!historialEmpleadoId && showHistorialSueldos,
   })
 
   const { data: cajaSesiones = [] } = useQuery({
@@ -717,6 +735,7 @@ export default function RrhhPage() {
       const { data, error } = await supabase.rpc('pagar_nomina_empleado', {
         p_salario_id: salarioId,
         p_sesion_id: cajaSessionId,
+        p_medio_pago: medioPagoNomina,
       })
       if (error) throw error
       return data
@@ -1748,16 +1767,22 @@ export default function RrhhPage() {
               <Plus size={16} /> Generar nómina del mes
             </button>
 
-            {/* Selector caja */}
+            {/* Selector caja + método de pago */}
             {cajaSesiones.length > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <CreditCard size={16} className="text-gray-500 dark:text-gray-400" />
                 <select value={cajaSessionId} onChange={(e) => setCajaSessionId(e.target.value)}
-                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
+                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800">
                   <option value="">Seleccionar caja...</option>
                   {cajaSesiones.map((s: any) => (
                     <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
                   ))}
+                </select>
+                <select value={medioPagoNomina} onChange={(e) => setMedioPagoNomina(e.target.value as typeof medioPagoNomina)}
+                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800">
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia_banco">Transferencia bancaria</option>
+                  <option value="mp">Mercado Pago</option>
                 </select>
               </div>
             )}
@@ -1821,11 +1846,18 @@ export default function RrhhPage() {
                         <p className="text-xs text-gray-500 dark:text-gray-400">Neto</p>
                         <p className="text-base font-bold text-gray-900 dark:text-white">${sal.neto.toLocaleString('es-AR')}</p>
                       </div>
-                      <div className="ml-2">
+                      <div className="ml-2 flex flex-col items-end gap-1">
                         {sal.pagado ? (
-                          <span className="flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-medium">
-                            <CheckCircle size={12}/> Pagado
-                          </span>
+                          <>
+                            <span className="flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-xs font-medium">
+                              <CheckCircle size={12}/> Pagado
+                            </span>
+                            {sal.medio_pago && (
+                              <span className="text-xs text-gray-400 dark:text-gray-500">
+                                {sal.medio_pago === 'efectivo' ? 'Efectivo' : sal.medio_pago === 'transferencia_banco' ? 'Transferencia' : 'Mercado Pago'}
+                              </span>
+                            )}
+                          </>
                         ) : (
                           <span className="flex items-center gap-1 px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-xs font-medium">
                             <Clock size={12}/> Pendiente
@@ -1983,6 +2015,72 @@ export default function RrhhPage() {
                   ))}
                   {conceptos.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 py-2 italic">Sin conceptos. Agregá haberes o descuentos frecuentes.</p>}
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Historial de sueldos por empleado */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <button
+              onClick={() => setShowHistorialSueldos(v => !v)}
+              className="w-full flex items-center justify-between px-5 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+            >
+              <span className="flex items-center gap-2"><TrendingUp size={15}/> Historial de sueldos por empleado</span>
+              <ChevronDown size={14} className={`transition-transform ${showHistorialSueldos ? 'rotate-180' : ''}`} />
+            </button>
+            {showHistorialSueldos && (
+              <div className="border-t border-gray-100 dark:border-gray-700 p-4 space-y-4">
+                <select value={historialEmpleadoId} onChange={e => setHistorialEmpleadoId(e.target.value)}
+                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 w-full max-w-xs">
+                  <option value="">Seleccioná un empleado...</option>
+                  {empleados.filter(e => e.activo).map(e => (
+                    <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>
+                  ))}
+                </select>
+
+                {historialEmpleadoId && historialSueldos.length === 0 && (
+                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">Sin liquidaciones registradas para este empleado.</p>
+                )}
+
+                {historialSueldos.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
+                          <th className="text-left pb-2 pr-4">Período</th>
+                          <th className="text-right pb-2 pr-4">Básico</th>
+                          <th className="text-right pb-2 pr-4">Haberes</th>
+                          <th className="text-right pb-2 pr-4">Descuentos</th>
+                          <th className="text-right pb-2 pr-4 font-bold">Neto</th>
+                          <th className="text-center pb-2 pr-4">Estado</th>
+                          <th className="text-left pb-2">Medio de pago</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {historialSueldos.map((s: any) => (
+                          <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td className="py-2 pr-4 font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                              {new Date(s.periodo + 'T12:00:00').toLocaleString('es-AR', { month: 'long', year: 'numeric' })}
+                            </td>
+                            <td className="py-2 pr-4 text-right text-gray-600 dark:text-gray-400">${s.basico.toLocaleString('es-AR')}</td>
+                            <td className="py-2 pr-4 text-right text-green-600 dark:text-green-400">${s.total_haberes.toLocaleString('es-AR')}</td>
+                            <td className="py-2 pr-4 text-right text-red-600 dark:text-red-400">${s.total_descuentos.toLocaleString('es-AR')}</td>
+                            <td className="py-2 pr-4 text-right font-bold text-gray-900 dark:text-white">${s.neto.toLocaleString('es-AR')}</td>
+                            <td className="py-2 pr-4 text-center">
+                              {s.pagado
+                                ? <span className="text-xs text-green-600 dark:text-green-400 font-medium">Pagado</span>
+                                : <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Pendiente</span>
+                              }
+                            </td>
+                            <td className="py-2 text-xs text-gray-500 dark:text-gray-400">
+                              {s.medio_pago === 'efectivo' ? 'Efectivo' : s.medio_pago === 'transferencia_banco' ? 'Transferencia' : s.medio_pago === 'mp' ? 'Mercado Pago' : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </div>

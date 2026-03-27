@@ -11,72 +11,54 @@ interface Props {
 export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un código' }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const readerRef = useRef<BrowserMultiFormatReader | null>(null)
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
-  const [deviceIdx, setDeviceIdx] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
+  const [canSwitch, setCanSwitch] = useState(false)
+  const facingRef = useRef<'environment' | 'user'>('environment')
   const detectedRef = useRef(false)
 
-  useEffect(() => {
+  const startScanner = (facing: 'environment' | 'user') => {
+    if (!videoRef.current) return
+    readerRef.current?.reset()
+
     const reader = new BrowserMultiFormatReader()
     readerRef.current = reader
+    detectedRef.current = false
+    setError(null)
+    setScanning(false)
 
-    // Pedir permiso explícito primero — sin esto, listVideoInputDevices()
-    // devuelve lista vacía en Chrome mobile e iOS Safari
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then(stream => {
-        // Detener el stream temporal, zxing maneja el suyo
-        stream.getTracks().forEach(t => t.stop())
-        return reader.listVideoInputDevices()
-      })
-      .then(devs => {
-        setDevices(devs)
-        const backIdx = devs.findIndex(d =>
-          d.label.toLowerCase().includes('back') ||
-          d.label.toLowerCase().includes('trasera') ||
-          d.label.toLowerCase().includes('environment')
-        )
-        setDeviceIdx(backIdx >= 0 ? backIdx : 0)
-      })
+    reader.decodeFromConstraints(
+      { video: { facingMode: { ideal: facing } } },
+      videoRef.current,
+      (result, err) => {
+        if (result && !detectedRef.current) {
+          detectedRef.current = true
+          reader.reset()
+          onDetected(result.getText())
+        }
+        if (err && !(err instanceof NotFoundException)) {
+          // NotFoundException es normal entre frames, ignorar
+        }
+      }
+    )
+      .then(() => setScanning(true))
       .catch(() => setError('No se pudo acceder a la cámara. Verificá los permisos.'))
 
-    return () => {
-      reader.reset()
-    }
-  }, [])
+    // Mostrar botón cambiar cámara si hay más de un dispositivo
+    navigator.mediaDevices.enumerateDevices().then(devs => {
+      setCanSwitch(devs.filter(d => d.kind === 'videoinput').length > 1)
+    }).catch(() => {})
+  }
 
   useEffect(() => {
-    if (!readerRef.current || devices.length === 0) return
-    const deviceId = devices[deviceIdx]?.deviceId
-    if (!deviceId || !videoRef.current) return
-
-    detectedRef.current = false
-    setScanning(true)
-    setError(null)
-
-    readerRef.current.decodeFromVideoDevice(deviceId, videoRef.current, (result, err) => {
-      if (result && !detectedRef.current) {
-        detectedRef.current = true
-        readerRef.current?.reset()
-        onDetected(result.getText())
-      }
-      if (err && !(err instanceof NotFoundException)) {
-        // NotFoundException es normal (no hay código en el frame), ignorar
-      }
-    }).catch(e => {
-      setError('No se pudo iniciar la cámara. Verificá los permisos.')
-      setScanning(false)
-    })
-
-    return () => {
-      readerRef.current?.reset()
-      setScanning(false)
-    }
-  }, [devices, deviceIdx])
+    startScanner('environment')
+    return () => { readerRef.current?.reset() }
+  }, [])
 
   const switchCamera = () => {
-    readerRef.current?.reset()
-    setDeviceIdx(i => (i + 1) % devices.length)
+    const next = facingRef.current === 'environment' ? 'user' : 'environment'
+    facingRef.current = next
+    startScanner(next)
   }
 
   return (
@@ -105,12 +87,10 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
           {/* Guía de escaneo */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="relative w-52 h-32">
-              {/* Esquinas */}
               <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-white rounded-tl" />
               <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-white rounded-tr" />
               <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-white rounded-bl" />
               <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-white rounded-br" />
-              {/* Línea de escaneo animada */}
               {scanning && (
                 <div className="absolute left-0 right-0 h-0.5 bg-accent opacity-80 animate-scan" />
               )}
@@ -130,7 +110,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
           <p className="text-xs text-gray-400">
             {scanning ? 'Apuntá al código de barras...' : 'Iniciando cámara...'}
           </p>
-          {devices.length > 1 && (
+          {canSwitch && (
             <button
               onClick={switchCamera}
               className="flex items-center gap-1.5 text-xs text-accent font-medium hover:text-primary"

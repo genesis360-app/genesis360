@@ -32,8 +32,8 @@ export const BRAND = {
   name: 'Genesis360',
   tagline: 'El inventario inteligente para tu negocio',
   description: 'Gestioná tu stock, ventas y movimientos desde cualquier dispositivo. Simple, rápido y pensado para comercios reales.',
-  email: 'hola@genesis360.app',
-  website: 'https://genesis360.app',
+  email: 'hola@genesis360.pro',
+  website: 'https://genesis360.pro',
   color: {
     primary: '#0D0D0D',
     accent: '#7B00FF',

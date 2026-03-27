@@ -328,7 +328,7 @@ CREATE INDEX idx_alertas_tenant ON alertas(tenant_id, resuelta);
 -- FUNCIONES que dependen de productos y alertas
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.check_stock_minimo()
-RETURNS TRIGGER LANGUAGE plpgsql AS $$
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
   IF NEW.stock_actual <= NEW.stock_minimo THEN
     INSERT INTO alertas (tenant_id, producto_id, tipo, mensaje)

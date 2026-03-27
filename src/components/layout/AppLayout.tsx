@@ -1,4 +1,4 @@
-import { BRAND } from '@/config/brand'
+import { BRAND, APP_VERSION } from '@/config/brand'
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
@@ -104,7 +104,12 @@ export function AppLayout() {
           <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center flex-shrink-0">
             <Package size={18} className="text-white" />
           </div>
-          {!collapsed && <span className="text-white font-bold text-xl tracking-tight flex-1">{BRAND.name}</span>}
+          {!collapsed && (
+            <div className="flex flex-col flex-1">
+              <span className="text-white font-bold text-xl tracking-tight leading-tight">{BRAND.name}</span>
+              <span className="text-blue-300/60 text-[10px] leading-none">{APP_VERSION}</span>
+            </div>
+          )}
           {!mobile && (
             <button onClick={toggleCollapse} title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
               className="text-blue-300 hover:text-white transition-colors ml-auto">

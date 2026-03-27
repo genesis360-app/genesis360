@@ -28,6 +28,8 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
+export const APP_VERSION = 'v0.46.0'
+
 export const BRAND = {
   name: 'Genesis360',
   tagline: 'El inventario inteligente para tu negocio',

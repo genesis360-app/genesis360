@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library'
+import {
+  BrowserMultiFormatReader,
+  BarcodeFormat,
+  DecodeHintType,
+  NotFoundException,
+} from '@zxing/library'
 import { X, Camera, CameraOff, SwitchCamera } from 'lucide-react'
 
 interface Props {
@@ -8,16 +13,30 @@ interface Props {
   title?: string
 }
 
+// Formatos de código de barras más comunes en productos retail
+const HINTS = new Map()
+HINTS.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.QR_CODE,
+])
+HINTS.set(DecodeHintType.TRY_HARDER, true)
+
 export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un código' }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const readerRef = useRef<BrowserMultiFormatReader | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [canSwitch, setCanSwitch] = useState(false)
   const facingRef = useRef<'environment' | 'user'>('environment')
   const detectedRef = useRef(false)
 
-  const startScanner = (facing: 'environment' | 'user') => {
+  const startScanner = async (facing: 'environment' | 'user') => {
     if (!videoRef.current) return
 
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -25,43 +44,64 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
       return
     }
 
+    // Detener stream anterior
     readerRef.current?.reset()
-
-    const reader = new BrowserMultiFormatReader()
-    readerRef.current = reader
+    streamRef.current?.getTracks().forEach(t => t.stop())
     detectedRef.current = false
     setError(null)
     setScanning(false)
 
-    reader.decodeFromConstraints(
-      { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-      videoRef.current,
-      (result, err) => {
+    try {
+      // getUserMedia explícito — dispara el diálogo de permisos en iOS Safari
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facing },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      })
+      streamRef.current = stream
+
+      // Mostrar preview inmediato mientras zxing se inicializa
+      videoRef.current.srcObject = stream
+
+      const reader = new BrowserMultiFormatReader(HINTS)
+      readerRef.current = reader
+
+      await reader.decodeFromStream(stream, videoRef.current, (result, err) => {
         if (result && !detectedRef.current) {
           detectedRef.current = true
           reader.reset()
           onDetected(result.getText())
         }
         if (err && !(err instanceof NotFoundException)) {
-          // NotFoundException es normal entre frames, ignorar
+          // Ignorar — NotFoundException es normal entre frames
         }
-      }
-    )
-      .then(() => setScanning(true))
-      .catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e)
-        setError(`Error: ${msg}`)
       })
 
-    // Mostrar botón cambiar cámara si hay más de un dispositivo
-    navigator.mediaDevices.enumerateDevices().then(devs => {
-      setCanSwitch(devs.filter(d => d.kind === 'videoinput').length > 1)
-    }).catch(() => {})
+      setScanning(true)
+
+      // Detectar si hay más de una cámara para mostrar botón switch
+      navigator.mediaDevices.enumerateDevices().then(devs => {
+        setCanSwitch(devs.filter(d => d.kind === 'videoinput').length > 1)
+      }).catch(() => {})
+
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (msg.includes('Permission') || msg.includes('NotAllowed') || msg.includes('denied')) {
+        setError('Permiso de cámara denegado. Habilitalo en Ajustes del navegador.')
+      } else {
+        setError(`No se pudo iniciar la cámara: ${msg}`)
+      }
+    }
   }
 
   useEffect(() => {
     startScanner('environment')
-    return () => { readerRef.current?.reset() }
+    return () => {
+      readerRef.current?.reset()
+      streamRef.current?.getTracks().forEach(t => t.stop())
+    }
   }, [])
 
   const switchCamera = () => {

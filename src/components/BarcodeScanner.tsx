@@ -19,6 +19,12 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
 
   const startScanner = (facing: 'environment' | 'user') => {
     if (!videoRef.current) return
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('Tu navegador no soporta acceso a cámara. Usá Chrome o Safari actualizado.')
+      return
+    }
+
     readerRef.current?.reset()
 
     const reader = new BrowserMultiFormatReader()
@@ -42,7 +48,10 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
       }
     )
       .then(() => setScanning(true))
-      .catch(() => setError('No se pudo acceder a la cámara. Verificá los permisos.'))
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e)
+        setError(`Error: ${msg}`)
+      })
 
     // Mostrar botón cambiar cámara si hay más de un dispositivo
     navigator.mediaDevices.enumerateDevices().then(devs => {

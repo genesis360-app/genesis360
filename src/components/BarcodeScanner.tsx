@@ -21,16 +21,24 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
     const reader = new BrowserMultiFormatReader()
     readerRef.current = reader
 
-    reader.listVideoInputDevices().then(devs => {
-      setDevices(devs)
-      // Prefer back camera
-      const backIdx = devs.findIndex(d =>
-        d.label.toLowerCase().includes('back') ||
-        d.label.toLowerCase().includes('trasera') ||
-        d.label.toLowerCase().includes('environment')
-      )
-      setDeviceIdx(backIdx >= 0 ? backIdx : 0)
-    }).catch(() => setError('No se pudo acceder a la cámara'))
+    // Pedir permiso explícito primero — sin esto, listVideoInputDevices()
+    // devuelve lista vacía en Chrome mobile e iOS Safari
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => {
+        // Detener el stream temporal, zxing maneja el suyo
+        stream.getTracks().forEach(t => t.stop())
+        return reader.listVideoInputDevices()
+      })
+      .then(devs => {
+        setDevices(devs)
+        const backIdx = devs.findIndex(d =>
+          d.label.toLowerCase().includes('back') ||
+          d.label.toLowerCase().includes('trasera') ||
+          d.label.toLowerCase().includes('environment')
+        )
+        setDeviceIdx(backIdx >= 0 ? backIdx : 0)
+      })
+      .catch(() => setError('No se pudo acceder a la cámara. Verificá los permisos.'))
 
     return () => {
       reader.reset()

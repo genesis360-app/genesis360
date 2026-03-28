@@ -154,7 +154,7 @@ export function AppLayout() {
                     <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-primary ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} />
                   )}
                   {badge && alertCount > 0 && collapsed && (
-                    <span className="absolute -top-1 -right-1 bg-red-50 dark:bg-red-900/200 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none" style={{ fontSize: 9 }}>
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none" style={{ fontSize: 9 }}>
                       {alertCount > 9 ? '9+' : alertCount}
                     </span>
                   )}
@@ -165,7 +165,7 @@ export function AppLayout() {
                   <span className={`w-2 h-2 rounded-full ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} title={cajaAbierta ? 'Caja abierta' : 'Caja cerrada'} />
                 )}
                 {!collapsed && badge && alertCount > 0 && !locked && (
-                  <span className="bg-red-50 dark:bg-red-900/200 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                     {alertCount > 9 ? '9+' : alertCount}
                   </span>
                 )}

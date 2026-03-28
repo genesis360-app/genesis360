@@ -43,6 +43,9 @@ body { font-family: 'Inter', system-ui, sans-serif; }
   color: rgb(243 244 246);
 }
 
+/* text-primary en dark mode: negro sobre negro = invisible → invertir a blanco */
+.dark .text-primary { color: rgb(255 255 255); }
+
 /* Scrollbar en dark mode */
 .dark ::-webkit-scrollbar { width: 8px; height: 8px; }
 .dark ::-webkit-scrollbar-track { background: rgb(31 41 55); }  /* gray-800 */

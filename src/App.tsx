@@ -46,7 +46,7 @@ const queryClient = new QueryClient({
 })
 
 function App() {
-  const { loadUserData, setUser, initialized } = useAuthStore()
+  const { loadUserData, setUser, initialized, user } = useAuthStore()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -88,8 +88,12 @@ function App() {
         }>
           <Routes>
             {/* Rutas públicas */}
-            <Route path="/" element={isAppDomain ? <Navigate to="/login" replace /> : <LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
+            <Route path="/" element={
+              user ? <Navigate to="/dashboard" replace /> :
+              isAppDomain ? <Navigate to="/login" replace /> :
+              <LandingPage />
+            } />
+            <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/suscripcion" element={<SuscripcionPage />} />
 

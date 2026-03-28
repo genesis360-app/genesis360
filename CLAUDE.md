@@ -458,6 +458,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Header mobile**: `flex-1` en bloque nombre/rol · selector sucursal `hidden sm:flex` · LifeBuoy/HelpCircle `hidden sm:inline-flex`.
 - [x] **CajaPage colores**: Apertura y Saldo actual con `text-gray-900 dark:text-white` (heredaban `text-white` del padre `bg-primary`).
 
+### v0.50.0 (en dev)
+- [x] **Fix ventas — medio de pago obligatorio**: `reservada`/`despachada` ahora exigen al menos un método con tipo y monto > 0. Bug: `hayMontos=false` saltaba toda la validación. Test: `tests/unit/ventasValidation.test.ts` (12 casos).
+
+### Ventas — validación medios de pago
+- `pendiente`: no requiere medio de pago.
+- `reservada`/`despachada`: requieren al menos un método con tipo y monto > 0, y que cubra el total (±$0.50 tolerancia).
+- Lógica en `registrarVenta()` — función pura `validarMediosPago()` testeada en `tests/unit/ventasValidation.test.ts`.
+
 ### Reglas de negocio — Caja
 - **Sin caja abierta = sin negocio**: no se puede registrar ninguna venta (`despachada` o `reservada`) ni gasto en efectivo si no hay sesión de caja abierta.
 - **Medios de pago en caja**: efectivo → `ingreso` en `caja_movimientos` (afecta saldo). Tarjeta/transferencia/MP → `ingreso_informativo` (no afecta saldo, solo registro).

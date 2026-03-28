@@ -458,7 +458,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Header mobile**: `flex-1` en bloque nombre/rol · selector sucursal `hidden sm:flex` · LifeBuoy/HelpCircle `hidden sm:inline-flex`.
 - [x] **CajaPage colores**: Apertura y Saldo actual con `text-gray-900 dark:text-white` (heredaban `text-white` del padre `bg-primary`).
 
-### v0.50.0 (en dev)
+### v0.50.0 ✅ PROD
 - [x] **Fix ventas — medio de pago obligatorio**: `reservada`/`despachada` ahora exigen al menos un método con tipo y monto > 0. Bug: `hayMontos=false` saltaba toda la validación. Test: `tests/unit/ventasValidation.test.ts` (12 casos).
 
 ### Ventas — validación medios de pago

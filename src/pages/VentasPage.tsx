@@ -10,12 +10,11 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { validarMediosPago, type EstadoVenta, type MedioPagoItem } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
-type EstadoVenta = 'pendiente' | 'reservada' | 'despachada' | 'cancelada' | 'facturada'
 type Tab = 'nueva' | 'historial'
 type DescTipo = 'pct' | 'monto'
-type MedioPagoItem = { tipo: string; monto: string }
 
 const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }> = {
   pendiente:  { label: 'Pendiente',  color: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-100 dark:bg-yellow-900/30' },
@@ -443,20 +442,8 @@ export default function VentasPage() {
       }
     }
     // Validar medios de pago
-    const hayMontos = mediosPago.some(m => m.monto !== '')
-    if (hayMontos && Math.abs(totalFaltante) > 0.5) {
-      toast.error(
-        totalFaltante > 0
-          ? `Falta asignar $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en medios de pago`
-          : `El monto ingresado excede el total por $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-      )
-      return
-    }
-    // Para reservar o despachar no se puede cobrar de menos
-    if ((estado === 'reservada' || estado === 'despachada') && hayMontos && totalFaltante > 0.5) {
-      toast.error(`El monto pagado ($${totalAsignado.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) es menor al total. No se puede reservar ni despachar con pago incompleto.`)
-      return
-    }
+    const errorPago = validarMediosPago(estado, mediosPago, total)
+    if (errorPago) { toast.error(errorPago); return }
     const montoEfectivoCaja = calcularEfectivo(mediosPago, total)
     if (estado === 'despachada' || estado === 'reservada') {
       if (sesionesAbiertas.length === 0) {

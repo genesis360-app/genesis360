@@ -440,13 +440,31 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Supabase PROD** → Redirect URLs: `https://app.genesis360.pro/**` ✅
 - [x] **Vercel** → Domains: `app.genesis360.pro` ✅
 
-### v0.47.0 — Scanner + MP + UX (en dev)
-- [x] **Fix scanner cámara**: reemplazar `@zxing/library` por `html5-qrcode` — maneja permisos, enumeración y decodificación en iOS Safari, Android Chrome y desktop. `getUserMedia` explícito para forzar diálogo de permisos.
-- [x] **Versión en sidebar**: `APP_VERSION` en `brand.ts` · mostrada debajo de `BRAND.name` en `AppLayout` en texto pequeño.
-- [x] **MP checkout directo**: `SuscripcionPage` redirige a `mercadopago.com.ar/subscriptions/checkout` directamente con `preapproval_plan_id` + `external_reference=tenant_id`. Sin Edge Function.
-- [x] **MP planes creados**: Básico `5823af4a325946f2a88538e3a2fe2dd3` ($4900) · Pro `e66cf7cd36e84b768b229657e81b0c0f` ($9900). `MP_PLAN_IDS` en `brand.ts`.
-- [x] **EFs DEV deployadas sin JWT**: `mp-webhook` + `crear-suscripcion` en DEV con `--no-verify-jwt`.
-- [ ] **Pendiente**: registrar webhook MP en PROD + deployar `mp-webhook` PROD sin JWT
+### v0.47.0 ✅ PROD
+- [x] **Fix scanner cámara**: reemplazar `@zxing/library` por `html5-qrcode` — maneja permisos, enumeración y decodificación en iOS Safari, Android Chrome y desktop.
+- [x] **Versión en sidebar**: `APP_VERSION` en `brand.ts` · mostrada debajo de `BRAND.name` en `AppLayout`.
+- [x] **MP checkout directo**: `SuscripcionPage` redirige a `mercadopago.com.ar/subscriptions/checkout` con `preapproval_plan_id` + `external_reference=tenant_id`. Sin Edge Function.
+- [x] **MP planes PROD**: Básico `836c7829f7e944c9ac58d7c0c67a513b` ($4900) · Pro `cb3bcdaa39bc444da4e17a517d5eadd1` ($9900) — cuenta real de MP.
+- [x] **mp-webhook PROD**: deployada sin JWT · webhook registrado en MP Dashboard (prueba + productivo).
+
+### v0.48.0 ✅ PROD
+- [x] **Dark mode — badge alertas**: `bg-red-50` → `bg-red-500` (número era invisible).
+- [x] **Dark mode — text-primary global**: `.dark .text-primary { color: rgb(255 255 255) }` en `index.css` — cubre todos los títulos sin parchear 40+ archivos.
+- [x] **docs/reglas_negocio.md**: inicio del documento con Módulo 1 (Caja) completo.
+
+### v0.49.0 ✅ PROD
+- [x] **Redirect auth**: `/` y `/login` redirigen a `/dashboard` si hay sesión activa. Spinner durante carga (ya existía `initialized`).
+- [x] **Banner DEV**: franja amarilla `⚠ Ambiente DEV — {hostname}` visible fuera de dominios de producción.
+- [x] **Header mobile**: `flex-1` en bloque nombre/rol · selector sucursal `hidden sm:flex` · LifeBuoy/HelpCircle `hidden sm:inline-flex`.
+- [x] **CajaPage colores**: Apertura y Saldo actual con `text-gray-900 dark:text-white` (heredaban `text-white` del padre `bg-primary`).
+
+### v0.50.0 (en dev)
+- [x] **Fix ventas — medio de pago obligatorio**: `reservada`/`despachada` ahora exigen al menos un método con tipo y monto > 0. Bug: `hayMontos=false` saltaba toda la validación. Test: `tests/unit/ventasValidation.test.ts` (12 casos).
+
+### Ventas — validación medios de pago
+- `pendiente`: no requiere medio de pago.
+- `reservada`/`despachada`: requieren al menos un método con tipo y monto > 0, y que cubra el total (±$0.50 tolerancia).
+- Lógica en `registrarVenta()` — función pura `validarMediosPago()` testeada en `tests/unit/ventasValidation.test.ts`.
 
 ### Reglas de negocio — Caja
 - **Sin caja abierta = sin negocio**: no se puede registrar ninguna venta (`despachada` o `reservada`) ni gasto en efectivo si no hay sesión de caja abierta.

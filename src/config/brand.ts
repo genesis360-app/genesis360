@@ -31,8 +31,8 @@ export const BTN = {
 export const APP_VERSION = 'v0.46.0'
 
 export const MP_PLAN_IDS: Record<string, string> = {
-  basico: '5823af4a325946f2a88538e3a2fe2dd3',
-  pro:    'e66cf7cd36e84b768b229657e81b0c0f',
+  basico: '836c7829f7e944c9ac58d7c0c67a513b',
+  pro:    'cb3bcdaa39bc444da4e17a517d5eadd1',
 }
 
 export const BRAND = {

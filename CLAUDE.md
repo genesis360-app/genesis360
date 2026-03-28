@@ -118,7 +118,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ### Mercado Pago
 - Modelo preapproval. `external_reference=tenant_id` para identificar en webhook.
-- Planes: Básico `f57914521a98415290aedf3fafa4bf98`, Pro `fe790716c9294035b6ee8fe50375fc63`
+- Planes: Básico `5823af4a325946f2a88538e3a2fe2dd3`, Pro `e66cf7cd36e84b768b229657e81b0c0f`
 - `init_point` construido en frontend (SuscripcionPage) sin llamar al backend.
 - **⚠ Pendiente**: configurar webhook en MP → `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook`
 

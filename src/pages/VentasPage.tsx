@@ -444,17 +444,20 @@ export default function VentasPage() {
     }
     // Validar medios de pago
     const hayMontos = mediosPago.some(m => m.monto !== '')
-    if (hayMontos && Math.abs(totalFaltante) > 0.5) {
-      toast.error(
-        totalFaltante > 0
-          ? `Falta asignar $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en medios de pago`
-          : `El monto ingresado excede el total por $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-      )
-      return
+    // Para reservar o despachar: método de pago obligatorio y monto completo
+    if (estado === 'reservada' || estado === 'despachada') {
+      const tieneMetodoValido = mediosPago.some(m => m.tipo && parseFloat(m.monto) > 0)
+      if (!tieneMetodoValido) {
+        toast.error('Ingresá un método de pago y monto para reservar o despachar')
+        return
+      }
+      if (totalFaltante > 0.5) {
+        toast.error(`Falta asignar $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en medios de pago`)
+        return
+      }
     }
-    // Para reservar o despachar no se puede cobrar de menos
-    if ((estado === 'reservada' || estado === 'despachada') && hayMontos && totalFaltante > 0.5) {
-      toast.error(`El monto pagado ($${totalAsignado.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) es menor al total. No se puede reservar ni despachar con pago incompleto.`)
+    if (hayMontos && totalFaltante < -0.5) {
+      toast.error(`El monto ingresado excede el total por $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`)
       return
     }
     const montoEfectivoCaja = calcularEfectivo(mediosPago, total)

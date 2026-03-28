@@ -232,15 +232,21 @@ export function AppLayout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Banner DEV — visible solo fuera de dominios de producción */}
+        {!['app.genesis360.pro', 'genesis360.pro', 'www.genesis360.pro'].includes(window.location.hostname) && (
+          <div className="bg-amber-400 text-amber-900 text-xs font-semibold text-center py-0.5 flex-shrink-0">
+            ⚠ Ambiente DEV — {window.location.hostname}
+          </div>
+        )}
         {/* Top bar — universal (mobile + desktop) */}
-        <header className="flex items-center gap-3 px-4 py-2.5 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm flex-shrink-0">
+        <header className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm flex-shrink-0">
           {/* Hamburger (mobile) */}
-          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-primary dark:text-blue-400">
+          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-primary dark:text-blue-400 flex-shrink-0">
             <Menu size={22} />
           </button>
 
           {/* Sucursal / negocio + user info */}
-          <div className="min-w-0">
+          <div className="flex-1 min-w-0">
             <p className="font-bold text-primary dark:text-blue-400 leading-tight truncate">
               {sucursalId
                 ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? tenant?.nombre)
@@ -251,9 +257,9 @@ export function AppLayout() {
             </p>
           </div>
 
-          {/* Selector de sucursal — solo si hay sucursales configuradas */}
+          {/* Selector de sucursal — oculto en mobile, visible en desktop */}
           {sucursales.length > 0 && (
-            <div className="flex items-center gap-1.5 ml-3">
+            <div className="hidden sm:flex items-center gap-1.5">
               <Building2 size={15} className="text-gray-400 flex-shrink-0" />
               <select
                 value={sucursalId ?? ''}
@@ -270,19 +276,19 @@ export function AppLayout() {
           )}
 
           {/* Spacer */}
-          <div className="ml-auto flex items-center gap-0.5">
+          <div className="flex-shrink-0 flex items-center gap-0.5">
             {/* Tema oscuro/claro */}
             <button onClick={toggleDarkMode} title={darkMode ? 'Modo claro' : 'Modo oscuro'} className={headerBtnCls}>
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            {/* Ayuda */}
-            <a href="mailto:soporte@genesis360.pro" title="Soporte / Ayuda" className={headerBtnCls}>
+            {/* Ayuda — oculto en mobile */}
+            <a href="mailto:soporte@genesis360.pro" title="Soporte / Ayuda" className={`hidden sm:inline-flex ${headerBtnCls}`}>
               <LifeBuoy size={18} />
             </a>
 
-            {/* Tour guiado */}
-            <button onClick={() => setWalkthroughOpen(true)} title="Tour guiado" className={headerBtnCls}>
+            {/* Tour guiado — oculto en mobile */}
+            <button onClick={() => setWalkthroughOpen(true)} title="Tour guiado" className={`hidden sm:inline-flex ${headerBtnCls}`}>
               <HelpCircle size={18} />
             </button>
 

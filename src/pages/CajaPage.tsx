@@ -417,8 +417,8 @@ export default function CajaPage() {
                 )}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-white dark:bg-gray-800/10 rounded-xl p-3 text-center">
-                    <p className="text-blue-200 text-xs">Apertura</p>
-                    <p className="font-bold text-lg">{formatMoneda(sesionActiva.monto_apertura)}</p>
+                    <p className="text-blue-500 dark:text-blue-200 text-xs">Apertura</p>
+                    <p className="font-bold text-lg text-gray-900 dark:text-white">{formatMoneda(sesionActiva.monto_apertura)}</p>
                   </div>
                   <div className="bg-green-400/20 rounded-xl p-3 text-center">
                     <p className="text-green-200 text-xs">Ingresos</p>
@@ -430,8 +430,8 @@ export default function CajaPage() {
                   </div>
                 </div>
                 <div className="mt-3 bg-white dark:bg-gray-800/10 rounded-xl p-3 flex items-center justify-between">
-                  <span className="text-blue-200">Saldo actual</span>
-                  <span className="text-2xl font-bold">{formatMoneda(saldoActual)}</span>
+                  <span className="text-blue-500 dark:text-blue-200">Saldo actual</span>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">{formatMoneda(saldoActual)}</span>
                 </div>
               </div>
 

@@ -10,12 +10,11 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { validarMediosPago, type EstadoVenta, type MedioPagoItem } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
-type EstadoVenta = 'pendiente' | 'reservada' | 'despachada' | 'cancelada' | 'facturada'
 type Tab = 'nueva' | 'historial'
 type DescTipo = 'pct' | 'monto'
-type MedioPagoItem = { tipo: string; monto: string }
 
 const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }> = {
   pendiente:  { label: 'Pendiente',  color: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-100 dark:bg-yellow-900/30' },
@@ -443,23 +442,8 @@ export default function VentasPage() {
       }
     }
     // Validar medios de pago
-    const hayMontos = mediosPago.some(m => m.monto !== '')
-    // Para reservar o despachar: método de pago obligatorio y monto completo
-    if (estado === 'reservada' || estado === 'despachada') {
-      const tieneMetodoValido = mediosPago.some(m => m.tipo && parseFloat(m.monto) > 0)
-      if (!tieneMetodoValido) {
-        toast.error('Ingresá un método de pago y monto para reservar o despachar')
-        return
-      }
-      if (totalFaltante > 0.5) {
-        toast.error(`Falta asignar $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en medios de pago`)
-        return
-      }
-    }
-    if (hayMontos && totalFaltante < -0.5) {
-      toast.error(`El monto ingresado excede el total por $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`)
-      return
-    }
+    const errorPago = validarMediosPago(estado, mediosPago, total)
+    if (errorPago) { toast.error(errorPago); return }
     const montoEfectivoCaja = calcularEfectivo(mediosPago, total)
     if (estado === 'despachada' || estado === 'reservada') {
       if (sesionesAbiertas.length === 0) {

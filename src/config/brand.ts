@@ -30,6 +30,11 @@ export const BTN = {
 
 export const APP_VERSION = 'v0.46.0'
 
+export const MP_PLAN_IDS = {
+  basico: '5823af4a325946f2a88538e3a2fe2dd3',
+  pro:    'e66cf7cd36e84b768b229657e81b0c0f',
+}
+
 export const BRAND = {
   name: 'Genesis360',
   tagline: 'El inventario inteligente para tu negocio',

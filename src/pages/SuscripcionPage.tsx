@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BRAND, PLANES, ADDON_MOVIMIENTOS } from '@/config/brand'
+import { BRAND, PLANES, ADDON_MOVIMIENTOS, MP_PLAN_IDS } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -10,10 +10,6 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-const MP_PLAN_IDS: Record<string, string> = {
-  basico: import.meta.env.VITE_MP_PLAN_BASICO ?? '',
-  pro:    import.meta.env.VITE_MP_PLAN_PRO ?? '',
-}
 
 export default function SuscripcionPage() {
   const { tenant, loadUserData } = useAuthStore()

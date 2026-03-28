@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { BRAND, PLANES, ADDON_MOVIMIENTOS } from '@/config/brand'
+import { BRAND, PLANES, ADDON_MOVIMIENTOS, MP_PLAN_IDS } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -10,10 +10,6 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-const MP_PLAN_IDS: Record<string, string> = {
-  basico: import.meta.env.VITE_MP_PLAN_BASICO ?? '',
-  pro:    import.meta.env.VITE_MP_PLAN_PRO ?? '',
-}
 
 export default function SuscripcionPage() {
   const { tenant, loadUserData } = useAuthStore()
@@ -27,19 +23,12 @@ export default function SuscripcionPage() {
   const paymentType = searchParams.get('type') // 'addon' | null (suscripción)
   const preapprovalId = searchParams.get('preapproval_id')
 
-  const handleSuscribir = async (planId: string, mpPlanId: string) => {
+  const handleSuscribir = (planId: string, mpPlanId: string) => {
     if (!mpPlanId) { toast.error('Plan no configurado'); return }
-    setLoading(planId)
-    try {
-      const { data, error } = await supabase.functions.invoke('crear-suscripcion', {
-        body: { plan_id: mpPlanId },
-      })
-      if (error || !data?.init_point) throw new Error(error?.message ?? 'No se obtuvo link de pago')
-      window.location.href = data.init_point
-    } catch (e: any) {
-      toast.error(e.message ?? 'Error al iniciar el pago')
-      setLoading(null)
-    }
+    if (!tenant?.id) { toast.error('No se encontró el tenant'); return }
+    const appUrl = import.meta.env.VITE_APP_URL ?? 'https://app.genesis360.pro'
+    const initPoint = `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${mpPlanId}&external_reference=${tenant.id}&back_url=${encodeURIComponent(appUrl + '/suscripcion')}`
+    window.location.href = initPoint
   }
 
   const handleVerificarPago = async () => {

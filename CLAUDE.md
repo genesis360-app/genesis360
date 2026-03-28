@@ -101,8 +101,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - `vercel.json`: `redirects` con `has.host = app.genesis360.pro` para redirigir `/` → `/login`
 - `App.tsx`: `isAppDomain` detecta hostname en runtime como fallback
 - `VITE_APP_URL` en Vercel Production: `https://app.genesis360.pro`
-- **⚠ Manual pendiente**: agregar `https://app.genesis360.pro/**` en Supabase → Authentication → URL Configuration → Redirect URLs
-- **⚠ Manual pendiente**: agregar `app.genesis360.pro` como dominio en Vercel → Settings → Domains
+- Supabase PROD → Redirect URLs: `https://app.genesis360.pro/**` ✅
+- Vercel → Domains: `app.genesis360.pro` ✅
 
 ---
 
@@ -118,9 +118,12 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ### Mercado Pago
 - Modelo preapproval. `external_reference=tenant_id` para identificar en webhook.
-- Planes: Básico `f57914521a98415290aedf3fafa4bf98`, Pro `fe790716c9294035b6ee8fe50375fc63`
-- `init_point` construido en frontend (SuscripcionPage) sin llamar al backend.
-- **⚠ Pendiente**: configurar webhook en MP → `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook`
+- Planes en `brand.ts` → `MP_PLAN_IDS`: Básico `5823af4a325946f2a88538e3a2fe2dd3` ($4900 ARS/mes) · Pro `e66cf7cd36e84b768b229657e81b0c0f` ($9900 ARS/mes)
+- `init_point` construido en frontend directo: `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id={id}&external_reference={tenant_id}&back_url={appUrl}/suscripcion`
+- **No usar** `POST /preapproval` vía Edge Function — MP requiere `card_token_id` que no tenemos en este flujo.
+- `mp-webhook` y `crear-suscripcion` deployadas en DEV con `--no-verify-jwt` ✅
+- **⚠ Pendiente**: registrar webhook en MP Dashboard → `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook`
+- **⚠ Pendiente**: deployar `mp-webhook` en PROD con `--no-verify-jwt`
 
 ### IA — scan-product
 - Edge Function `scan-product`: imagen base64 → Claude Haiku → si hay barcode → Open Food Facts
@@ -433,9 +436,17 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Login form accesibilidad**: `htmlFor`+`id` en inputs email y password (requerido por `getByLabel` en Playwright).
 - [x] **Fix ventas sin caja**: bloqueo de `despachada` y `reservada` ahora aplica independientemente del medio de pago. Antes solo bloqueaba con efectivo. Widget de estado de caja siempre visible en checkout.
 - [x] **Multi-dominio**: `www.genesis360.pro` → landing; `app.genesis360.pro` → `/login` directo. `vercel.json` redirect con `has.host`. `App.tsx` `isAppDomain` como fallback runtime.
-- [ ] **⚠ Manual**: `VITE_APP_URL=https://app.genesis360.pro` en Vercel Production
-- [ ] **⚠ Manual**: agregar `https://app.genesis360.pro/**` en Supabase → Authentication → URL Configuration → Redirect URLs
-- [ ] **⚠ Manual**: agregar `app.genesis360.pro` como dominio en Vercel → Settings → Domains
+- [x] **`VITE_APP_URL=https://app.genesis360.pro`** en Vercel Production ✅
+- [x] **Supabase PROD** → Redirect URLs: `https://app.genesis360.pro/**` ✅
+- [x] **Vercel** → Domains: `app.genesis360.pro` ✅
+
+### v0.47.0 — Scanner + MP + UX (en dev)
+- [x] **Fix scanner cámara**: reemplazar `@zxing/library` por `html5-qrcode` — maneja permisos, enumeración y decodificación en iOS Safari, Android Chrome y desktop. `getUserMedia` explícito para forzar diálogo de permisos.
+- [x] **Versión en sidebar**: `APP_VERSION` en `brand.ts` · mostrada debajo de `BRAND.name` en `AppLayout` en texto pequeño.
+- [x] **MP checkout directo**: `SuscripcionPage` redirige a `mercadopago.com.ar/subscriptions/checkout` directamente con `preapproval_plan_id` + `external_reference=tenant_id`. Sin Edge Function.
+- [x] **MP planes creados**: Básico `5823af4a325946f2a88538e3a2fe2dd3` ($4900) · Pro `e66cf7cd36e84b768b229657e81b0c0f` ($9900). `MP_PLAN_IDS` en `brand.ts`.
+- [x] **EFs DEV deployadas sin JWT**: `mp-webhook` + `crear-suscripcion` en DEV con `--no-verify-jwt`.
+- [ ] **Pendiente**: registrar webhook MP en PROD + deployar `mp-webhook` PROD sin JWT
 
 ### Reglas de negocio — Caja
 - **Sin caja abierta = sin negocio**: no se puede registrar ninguna venta (`despachada` o `reservada`) ni gasto en efectivo si no hay sesión de caja abierta.

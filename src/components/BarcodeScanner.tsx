@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BrowserMultiFormatReader, NotFoundException } from '@zxing/library'
+import { Html5Qrcode } from 'html5-qrcode'
 import { X, Camera, CameraOff, SwitchCamera } from 'lucide-react'
 
 interface Props {
@@ -8,67 +8,88 @@ interface Props {
   title?: string
 }
 
+const SCANNER_ID = 'barcode-scanner-container'
+
 export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un código' }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null)
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
-  const [deviceIdx, setDeviceIdx] = useState(0)
+  const scannerRef = useRef<Html5Qrcode | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
+  const [cameras, setCameras] = useState<{ id: string; label: string }[]>([])
+  const [cameraIdx, setCameraIdx] = useState(0)
   const detectedRef = useRef(false)
+  const startedRef = useRef(false)
+
+  const startScanner = async (camIdx: number, camList: { id: string; label: string }[]) => {
+    if (startedRef.current) {
+      try { await scannerRef.current?.stop() } catch {}
+    }
+    startedRef.current = false
+    setError(null)
+    setScanning(false)
+
+    const cameraId = camList[camIdx]?.id
+    if (!cameraId) return
+
+    try {
+      const scanner = scannerRef.current!
+      await scanner.start(
+        cameraId,
+        { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.333 },
+        (decodedText) => {
+          if (!detectedRef.current) {
+            detectedRef.current = true
+            scanner.stop().catch(() => {})
+            onDetected(decodedText)
+          }
+        },
+        () => { /* frame sin código, ignorar */ }
+      )
+      startedRef.current = true
+      setScanning(true)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('notallowed')) {
+        setError('Permiso de cámara denegado. Habilitalo en Ajustes del navegador.')
+      } else {
+        setError(`No se pudo iniciar la cámara: ${msg}`)
+      }
+    }
+  }
 
   useEffect(() => {
-    const reader = new BrowserMultiFormatReader()
-    readerRef.current = reader
+    const scanner = new Html5Qrcode(SCANNER_ID)
+    scannerRef.current = scanner
 
-    reader.listVideoInputDevices().then(devs => {
-      setDevices(devs)
-      // Prefer back camera
-      const backIdx = devs.findIndex(d =>
-        d.label.toLowerCase().includes('back') ||
-        d.label.toLowerCase().includes('trasera') ||
-        d.label.toLowerCase().includes('environment')
-      )
-      setDeviceIdx(backIdx >= 0 ? backIdx : 0)
-    }).catch(() => setError('No se pudo acceder a la cámara'))
+    Html5Qrcode.getCameras()
+      .then(devices => {
+        if (!devices.length) {
+          setError('No se encontró ninguna cámara.')
+          return
+        }
+        // Preferir cámara trasera
+        const backIdx = devices.findIndex(d =>
+          d.label.toLowerCase().includes('back') ||
+          d.label.toLowerCase().includes('trasera') ||
+          d.label.toLowerCase().includes('environment')
+        )
+        const idx = backIdx >= 0 ? backIdx : 0
+        setCameras(devices)
+        setCameraIdx(idx)
+        startScanner(idx, devices)
+      })
+      .catch(() => setError('No se pudo acceder a la cámara. Verificá los permisos.'))
 
     return () => {
-      reader.reset()
+      if (startedRef.current) {
+        scanner.stop().catch(() => {})
+      }
     }
   }, [])
 
-  useEffect(() => {
-    if (!readerRef.current || devices.length === 0) return
-    const deviceId = devices[deviceIdx]?.deviceId
-    if (!deviceId || !videoRef.current) return
-
-    detectedRef.current = false
-    setScanning(true)
-    setError(null)
-
-    readerRef.current.decodeFromVideoDevice(deviceId, videoRef.current, (result, err) => {
-      if (result && !detectedRef.current) {
-        detectedRef.current = true
-        readerRef.current?.reset()
-        onDetected(result.getText())
-      }
-      if (err && !(err instanceof NotFoundException)) {
-        // NotFoundException es normal (no hay código en el frame), ignorar
-      }
-    }).catch(e => {
-      setError('No se pudo iniciar la cámara. Verificá los permisos.')
-      setScanning(false)
-    })
-
-    return () => {
-      readerRef.current?.reset()
-      setScanning(false)
-    }
-  }, [devices, deviceIdx])
-
-  const switchCamera = () => {
-    readerRef.current?.reset()
-    setDeviceIdx(i => (i + 1) % devices.length)
+  const switchCamera = async () => {
+    const next = (cameraIdx + 1) % cameras.length
+    setCameraIdx(next)
+    await startScanner(next, cameras)
   }
 
   return (
@@ -85,30 +106,9 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
           </button>
         </div>
 
-        {/* Visor */}
+        {/* Visor — html5-qrcode inyecta el video acá */}
         <div className="relative bg-black" style={{ aspectRatio: '4/3' }}>
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            autoPlay
-            muted
-            playsInline
-          />
-          {/* Guía de escaneo */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative w-52 h-32">
-              {/* Esquinas */}
-              <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-white rounded-tl" />
-              <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-white rounded-tr" />
-              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-white rounded-bl" />
-              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-white rounded-br" />
-              {/* Línea de escaneo animada */}
-              {scanning && (
-                <div className="absolute left-0 right-0 h-0.5 bg-accent opacity-80 animate-scan" />
-              )}
-            </div>
-          </div>
-          {/* Error */}
+          <div id={SCANNER_ID} className="w-full h-full" />
           {error && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 p-4 text-center">
               <CameraOff size={32} className="text-white/60 mb-3" />
@@ -122,7 +122,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
           <p className="text-xs text-gray-400">
             {scanning ? 'Apuntá al código de barras...' : 'Iniciando cámara...'}
           </p>
-          {devices.length > 1 && (
+          {cameras.length > 1 && (
             <button
               onClick={switchCamera}
               className="flex items-center gap-1.5 text-xs text-accent font-medium hover:text-primary"
@@ -132,15 +132,6 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
           )}
         </div>
       </div>
-
-      <style>{`
-        @keyframes scan {
-          0%   { top: 10%; }
-          50%  { top: 80%; }
-          100% { top: 10%; }
-        }
-        .animate-scan { animation: scan 2s ease-in-out infinite; position: absolute; }
-      `}</style>
     </div>
   )
 }

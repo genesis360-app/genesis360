@@ -35,7 +35,7 @@ export default function InventarioPage() {
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
-      if (search) q = q.or(`nombre.ilike.%${search}%,sku.ilike.%${search}%`)
+      if (search) q = q.or(`nombre.ilike.%${search}%,sku.ilike.%${search}%,codigo_barras.eq.${search}`)
       const { data, error } = await q
       if (error) throw error
       return data ?? []

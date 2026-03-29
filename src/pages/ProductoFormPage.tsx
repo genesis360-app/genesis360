@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine } from 'lucide-react'
+import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -49,6 +50,8 @@ export default function ProductoFormPage() {
   const [loaded, setLoaded] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<string | null>(null)
+  const [scanPhotoCount, setScanPhotoCount] = useState(0)
+  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false) // 0=ninguna, 1=primera sacada, listo para segunda
 
   // USD mode (usa cotización global del sidebar)
   const [usdModoCosto, setUsdModoCosto] = useState(false)
@@ -285,48 +288,60 @@ export default function ProductoFormPage() {
     }
   }
 
+  const processScanPhoto = async (file: File, isSecondPhoto: boolean) => {
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve((reader.result as string).split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    const media_type = file.type || 'image/jpeg'
+
+    const { data, error } = await supabase.functions.invoke('scan-product', {
+      body: { image: base64, media_type },
+    })
+    if (error) throw error
+    if (data?.error) throw new Error(data.error)
+
+    // Combinar con lo ya detectado: la segunda foto completa sin pisar campos ya llenos
+    const fields: string[] = []
+    setForm(prev => {
+      const next = { ...prev }
+      if (data.nombre        && (!isSecondPhoto || !prev.nombre))        { next.nombre = data.nombre;               fields.push('nombre') }
+      if (data.descripcion   && (!isSecondPhoto || !prev.descripcion))   { next.descripcion = data.descripcion;     fields.push('descripción') }
+      if (data.unidad_medida && (!isSecondPhoto || !prev.unidad_medida)) { next.unidad_medida = data.unidad_medida; fields.push('unidad') }
+      if (data.codigo_barras && (!isSecondPhoto || !prev.codigo_barras)) { next.codigo_barras = data.codigo_barras; fields.push('código de barras') }
+      if (data.nombre && !prev.nombre) next.sku = generateSKU(data.nombre)
+      return next
+    })
+
+    // Solo la primera foto se usa como imagen del producto
+    if (!isSecondPhoto) {
+      setImageFile(file)
+      setImagePreview(URL.createObjectURL(file))
+    }
+
+    return { fields, fuente: data.fuente }
+  }
+
   const handleScanPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    e.target.value = '' // reset para permitir seleccionar el mismo archivo de vuelta
+    e.target.value = ''
 
+    const isSecondPhoto = scanPhotoCount === 1
     setScanning(true)
-    setScanResult(null)
+    if (!isSecondPhoto) setScanResult(null)
+
     try {
-      // Convertir a base64
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve((reader.result as string).split(',')[1])
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
-      const media_type = file.type || 'image/jpeg'
-
-      const { data, error } = await supabase.functions.invoke('scan-product', {
-        body: { image: base64, media_type },
-      })
-      if (error) throw error
-      if (data?.error) throw new Error(data.error)
-
-      // Pre-llenar form con lo detectado
-      const fields: string[] = []
-      setForm(prev => {
-        const next = { ...prev }
-        if (data.nombre)        { next.nombre = data.nombre;               fields.push('nombre') }
-        if (data.descripcion)   { next.descripcion = data.descripcion;     fields.push('descripción') }
-        if (data.unidad_medida) { next.unidad_medida = data.unidad_medida; fields.push('unidad') }
-        if (data.codigo_barras) { next.codigo_barras = data.codigo_barras; fields.push('código de barras') }
-        // Auto-generar SKU si se detectó nombre y el SKU está vacío
-        if (data.nombre && !prev.nombre) next.sku = generateSKU(data.nombre)
-        return next
-      })
-
-      // Usar la foto también como imagen del producto
-      setImageFile(file)
-      setImagePreview(URL.createObjectURL(file))
-
-      const fuente = data.fuente === 'open_food_facts' ? 'Open Food Facts' : 'IA'
-      setScanResult(`Detectado por ${fuente}: ${fields.join(', ')}`)
+      const { fields, fuente } = await processScanPhoto(file, isSecondPhoto)
+      const fuente_label = fuente === 'open_food_facts' ? 'Open Food Facts' : 'IA'
+      const prefix = isSecondPhoto ? 'Foto 2 agregó' : `Detectado por ${fuente_label}`
+      setScanResult(fields.length > 0
+        ? `${prefix}: ${fields.join(', ')}`
+        : isSecondPhoto ? 'Foto 2: sin datos nuevos detectados' : 'No se detectaron datos en la imagen'
+      )
+      setScanPhotoCount(prev => prev + 1)
     } catch (err: any) {
       toast.error(err.message ?? 'No se pudo analizar la imagen')
     } finally {
@@ -350,16 +365,34 @@ export default function ProductoFormPage() {
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{isEditing ? 'Modificá los datos del producto' : 'Completá los datos del nuevo producto'}</p>
         </div>
         {!isEditing && canEdit && (
-          <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all
-            ${scanning
-              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-400 cursor-not-allowed'
-              : 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 shadow-sm'}`}>
-            {scanning
-              ? <><RefreshCw size={15} className="animate-spin" /> Analizando...</>
-              : <><Sparkles size={15} /> Completar desde foto</>}
-            <input type="file" accept="image/*" capture="environment" className="hidden"
-              disabled={scanning} onChange={handleScanPhoto} />
-          </label>
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setBarcodeScannerOpen(true)}
+                title="Escanear código de barras"
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-accent hover:border-accent transition-all bg-white dark:bg-gray-800">
+                <ScanLine size={15} /> Escanear barcode
+              </button>
+            <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all
+              ${scanning
+                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-400 cursor-not-allowed'
+                : scanPhotoCount === 0
+                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700 shadow-sm'
+                  : 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700'}`}>
+              {scanning
+                ? <><RefreshCw size={15} className="animate-spin" /> Analizando...</>
+                : scanPhotoCount === 0
+                  ? <><Sparkles size={15} /> Completar desde foto</>
+                  : <><Camera size={15} /> Agregar 2da foto</>}
+              <input type="file" accept="image/*" capture="environment" className="hidden"
+                disabled={scanning} onChange={handleScanPhoto} />
+            </label>
+            </div>
+            {scanPhotoCount > 0 && (
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                {scanPhotoCount === 1 ? 'Foto 1 ✓ — podés agregar el reverso' : 'Foto 1 ✓ · Foto 2 ✓'}
+              </span>
+            )}
+          </div>
         )}
         {isEditing && canEdit && (
           <div className="flex gap-2">
@@ -849,6 +882,14 @@ export default function ProductoFormPage() {
           nombre={productoData.nombre}
           sku={productoData.sku}
           onClose={() => setShowQR(false)}
+        />
+      )}
+
+      {barcodeScannerOpen && (
+        <BarcodeScanner
+          title="Escanear código de barras"
+          onDetected={code => { setForm(p => ({ ...p, codigo_barras: code })); setBarcodeScannerOpen(false) }}
+          onClose={() => setBarcodeScannerOpen(false)}
         />
       )}
     </div>

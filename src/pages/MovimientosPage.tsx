@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Zap } from 'lucide-react'
+import { ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Zap, Camera } from 'lucide-react'
+import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -48,6 +49,7 @@ export default function MovimientosPage() {
   const { sucursalId, applyFilter } = useSucursalFilter()
   const [modal, setModal] = useState<ModalType>(null)
   const [search, setSearch] = useState('')
+  const [scannerOpen, setScannerOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<Producto | null>(null)
   const [form, setForm] = useState(emptyIngreso)
   const [series, setSeries] = useState<string[]>([''])
@@ -89,7 +91,7 @@ export default function MovimientosPage() {
         .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(5)
       if (form.productoSearch.length > 0)
-        q = q.or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%`)
+        q = q.or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%,codigo_barras.eq.${form.productoSearch}`)
       const { data } = await q
       return (data ?? []) as unknown as Producto[]
     },
@@ -328,6 +330,22 @@ export default function MovimientosPage() {
       if (modal === 'rebaje' && !rebajeMutation.isPending) rebajeMutation.mutate()
     },
   })
+
+  const handleBarcodeScan = async (code: string) => {
+    setScannerOpen(false)
+    const { data: prods } = await supabase.from('productos')
+      .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
+      .eq('tenant_id', tenant!.id).eq('activo', true)
+      .or(`codigo_barras.eq.${code},sku.eq.${code}`)
+      .limit(1)
+    if (!prods || prods.length === 0) {
+      toast.error(`No se encontró ningún producto con código "${code}"`)
+      return
+    }
+    const prod = prods[0] as unknown as Producto
+    setSelectedProduct(prod)
+    setForm(f => ({ ...f, productoSearch: '', ubicacionId: (prod as any).ubicacion_id ?? f.ubicacionId }))
+  }
 
   const filtered = movimientos.filter(m => {
     if (!search) return true
@@ -679,7 +697,12 @@ export default function MovimientosPage() {
                     onFocus={() => setSearchFocused(true)}
                     onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                     placeholder="Buscar por nombre o SKU..."
-                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  <button type="button" onClick={() => setScannerOpen(true)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent transition-colors"
+                    title="Escanear código de barras">
+                    <Camera size={16} />
+                  </button>
                   {productosBusqueda.length > 0 && searchFocused && (
                     <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                       {productosBusqueda.map(p => (
@@ -911,7 +934,12 @@ export default function MovimientosPage() {
                     onFocus={() => setSearchFocused(true)}
                     onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                     placeholder="Buscar por nombre o SKU..."
-                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  <button type="button" onClick={() => setScannerOpen(true)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent transition-colors"
+                    title="Escanear código de barras">
+                    <Camera size={16} />
+                  </button>
                   {productosBusqueda.length > 0 && searchFocused && (
                     <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                       {productosBusqueda.map(p => (
@@ -1122,6 +1150,14 @@ export default function MovimientosPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {scannerOpen && (
+        <BarcodeScanner
+          title="Escanear producto"
+          onDetected={handleBarcodeScan}
+          onClose={() => setScannerOpen(false)}
+        />
       )}
     </div>
   )

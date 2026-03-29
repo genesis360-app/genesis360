@@ -735,7 +735,10 @@ CREATE POLICY "gastos_tenant" ON gastos
 --   curl -X POST "https://{PROJECT_REF}.supabase.co/storage/v1/bucket" \
 --     -H "Authorization: Bearer {SERVICE_ROLE_KEY}" \
 --     -H "Content-Type: application/json" \
---     -d '{"id": "productos", "name": "productos", "public": true}'
+--     -d '{"id": "productos", "name": "productos", "public": true, "file_size_limit": 5242880, "allowed_mime_types": ["image/jpeg","image/png","image/webp"]}'
+--
+-- Límites: file_size_limit=5 MB · allowed_mime_types: image/jpeg, image/png, image/webp
+-- Path en el bucket: {tenant_id}/{timestamp}.{ext}
 --
 -- Políticas RLS del bucket (sí se aplican con SQL):
 DO $$ BEGIN
@@ -753,10 +756,24 @@ DO $$ BEGIN
     FOR UPDATE USING ((bucket_id = 'productos') AND (auth.uid() IS NOT NULL));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- DELETE: verifica que el primer segmento del path = tenant_id del usuario
 DO $$ BEGIN
   CREATE POLICY delete_productos ON storage.objects
-    FOR DELETE USING ((bucket_id = 'productos') AND (auth.uid() IS NOT NULL));
+    FOR DELETE USING (
+      bucket_id = 'productos'
+      AND auth.uid() IS NOT NULL
+      AND (storage.foldername(name))[1] IN (
+        SELECT tenant_id::text FROM users WHERE id = auth.uid()
+      )
+    );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Límites del bucket (migration 027)
+UPDATE storage.buckets
+SET
+  file_size_limit    = 5242880,
+  allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp']
+WHERE id = 'productos';
 
 -- ============================================================
 -- M17. ACTIVIDAD LOG (audit trail)

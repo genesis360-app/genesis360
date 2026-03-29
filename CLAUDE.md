@@ -17,6 +17,12 @@
 - GH_TOKEN en Windows Credential Manager (`git credential fill`). No en `.env.local`.
 - Co-Authored-By: siempre `GNO <gaston.otranto@gmail.com>` en todos los commits.
 
+### ⚠ Checklist obligatorio en cada deploy a PROD (sin excepción)
+1. **Bump `APP_VERSION`** en `src/config/brand.ts` → versión visible en el sidebar de la app
+2. **PR dev → main** con título `vX.Y.Z — Descripción`
+3. **GitHub release** sobre `main` con tag `vX.Y.Z` y notas
+4. **Docs actualizados**: `CLAUDE.md` (marcar ✅ PROD) · `WORKFLOW.md` (fila en tabla) · `memory/project_pendientes.md`
+
 ## Supabase
 - **PROD**: `jjffnbrdjchquexdfgwq` — NO tocar directamente
 - **DEV**: `gcmhzdedrkmmzfzfveig` · Tenant dev: `5f05f3eb-6757-4f60-b9d2-8853fdfae806`

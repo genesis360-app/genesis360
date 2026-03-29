@@ -1167,7 +1167,7 @@ export default function VentasPage() {
                       onChange={e => { setClienteSearch(e.target.value); setClienteDropOpen(true) }}
                       onFocus={() => setClienteDropOpen(true)}
                       onBlur={() => setTimeout(() => setClienteDropOpen(false), 150)}
-                      placeholder="Buscar cliente registrado..."
+                      placeholder="Buscar por nombre o DNI..."
                       className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent"
                     />
                     {clienteDropOpen && clientesBusqueda.length > 0 && (

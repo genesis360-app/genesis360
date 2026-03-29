@@ -460,6 +460,16 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ### v0.50.0 ✅ PROD
 - [x] **Fix ventas — medio de pago obligatorio**: `reservada`/`despachada` ahora exigen al menos un método con tipo y monto > 0. Bug: `hayMontos=false` saltaba toda la validación. Test: `tests/unit/ventasValidation.test.ts` (12 casos).
+- [x] **Refactor**: `validarMediosPago()` extraída a `src/lib/ventasValidation.ts` — función compartida entre VentasPage y tests.
+
+### v0.51.0 ✅ PROD
+- [x] **Scanner reescritura**: reemplaza `html5-qrcode` (ZXing) por `BarcodeDetector` nativo + `@undecaf/zbar-wasm` fallback. Funciona en iOS, Android y Desktop. Formatos: EAN-13, EAN-8, UPC, Code-128/39, QR, PDF417 y más.
+- [x] **Scanner UX**: línea laser animada, flash verde al detectar, beep (Web Audio), vibración háptica, modo manual (teclado + lector físico USB/Bluetooth).
+- [x] **Scanner en Movimientos**: ícono de cámara en búsqueda de producto en modal Ingreso y Rebaje. Busca por `codigo_barras` o SKU exacto.
+- [x] **Scanner en Nuevo Producto**: botón "Escanear barcode" completa solo el campo `codigo_barras`.
+- [x] **Completar desde foto — 2 fotos**: Foto 1 (frente) + Foto 2 (reverso) combinan datos sin pisar campos ya detectados.
+- [x] **scan-product EF**: fix 401 (redesplegada sin JWT en DEV y PROD). ANTHROPIC_API_KEY actualizada en DEV y PROD.
+- [x] **Búsqueda por código de barras**: InventarioPage y MovimientosPage incluyen `codigo_barras` en filtros.
 
 ### Ventas — validación medios de pago
 - `pendiente`: no requiere medio de pago.

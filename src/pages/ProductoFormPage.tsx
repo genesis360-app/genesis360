@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine } from 'lucide-react'
+import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -49,7 +50,8 @@ export default function ProductoFormPage() {
   const [loaded, setLoaded] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<string | null>(null)
-  const [scanPhotoCount, setScanPhotoCount] = useState(0) // 0=ninguna, 1=primera sacada, listo para segunda
+  const [scanPhotoCount, setScanPhotoCount] = useState(0)
+  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false) // 0=ninguna, 1=primera sacada, listo para segunda
 
   // USD mode (usa cotización global del sidebar)
   const [usdModoCosto, setUsdModoCosto] = useState(false)
@@ -364,6 +366,12 @@ export default function ProductoFormPage() {
         </div>
         {!isEditing && canEdit && (
           <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setBarcodeScannerOpen(true)}
+                title="Escanear código de barras"
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-accent hover:border-accent transition-all bg-white dark:bg-gray-800">
+                <ScanLine size={15} /> Escanear barcode
+              </button>
             <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all
               ${scanning
                 ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-400 cursor-not-allowed'
@@ -378,6 +386,7 @@ export default function ProductoFormPage() {
               <input type="file" accept="image/*" capture="environment" className="hidden"
                 disabled={scanning} onChange={handleScanPhoto} />
             </label>
+            </div>
             {scanPhotoCount > 0 && (
               <span className="text-xs text-gray-400 dark:text-gray-500">
                 {scanPhotoCount === 1 ? 'Foto 1 ✓ — podés agregar el reverso' : 'Foto 1 ✓ · Foto 2 ✓'}
@@ -873,6 +882,14 @@ export default function ProductoFormPage() {
           nombre={productoData.nombre}
           sku={productoData.sku}
           onClose={() => setShowQR(false)}
+        />
+      )}
+
+      {barcodeScannerOpen && (
+        <BarcodeScanner
+          title="Escanear código de barras"
+          onDetected={code => { setForm(p => ({ ...p, codigo_barras: code })); setBarcodeScannerOpen(false) }}
+          onClose={() => setBarcodeScannerOpen(false)}
         />
       )}
     </div>

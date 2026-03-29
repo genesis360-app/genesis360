@@ -66,10 +66,13 @@ export default function VentasPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [productoSearch, setProductoSearch] = useState('')
   const [clienteId, setClienteId] = useState<string | null>(null)
-  const [clienteSearch, setClienteSearch] = useState('')
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
+  const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
+  const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
+  const [nuevoClienteForm, setNuevoClienteForm] = useState({ nombre: '', dni: '', telefono: '' })
+  const [savingCliente, setSavingCliente] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   const [descuentoTotal, setDescuentoTotal] = useState('')
@@ -187,9 +190,9 @@ export default function VentasPage() {
   const { data: clientesBusqueda = [] } = useQuery({
     queryKey: ['clientes-search', tenant?.id, clienteSearch],
     queryFn: async () => {
-      let q = supabase.from('clientes').select('id, nombre, telefono')
+      let q = supabase.from('clientes').select('id, nombre, dni, telefono')
         .eq('tenant_id', tenant!.id).order('nombre').limit(10)
-      if (clienteSearch) q = q.ilike('nombre', `%${clienteSearch}%`)
+      if (clienteSearch) q = q.or(`nombre.ilike.%${clienteSearch}%,dni.ilike.%${clienteSearch}%`)
       const { data } = await q
       return data ?? []
     },
@@ -431,6 +434,30 @@ export default function VentasPage() {
   const totalAsignado = mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   const totalFaltante = total - totalAsignado
 
+  const registrarClienteInline = async () => {
+    const { nombre, dni, telefono } = nuevoClienteForm
+    if (!nombre.trim()) { toast.error('El nombre es obligatorio'); return }
+    if (!dni.trim()) { toast.error('El DNI es obligatorio'); return }
+    if (!telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
+    setSavingCliente(true)
+    try {
+      const { data, error } = await supabase.from('clientes')
+        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim(), telefono: telefono.trim() })
+        .select('id, nombre').single()
+      if (error) throw error
+      setClienteId(data.id)
+      setClienteNombre(data.nombre)
+      setClienteTelefono(telefono.trim())
+      setNuevoClienteOpen(false)
+      setNuevoClienteForm({ nombre: '', dni: '', telefono: '' })
+      toast.success('Cliente registrado')
+    } catch (err: any) {
+      toast.error(err.message?.includes('clientes_dni_tenant') ? 'Ya existe un cliente con ese DNI' : (err.message ?? 'Error al registrar'))
+    } finally {
+      setSavingCliente(false)
+    }
+  }
+
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
     for (const item of cart) {
@@ -440,6 +467,11 @@ export default function VentasPage() {
       if (item.tiene_series && item.series_seleccionadas.length !== item.cantidad) {
         toast.error(`Seleccioná ${item.cantidad} serie(s) para ${item.nombre}`); return
       }
+    }
+    // Cliente obligatorio para pendiente y reservada
+    if ((estado === 'pendiente' || estado === 'reservada') && !clienteId) {
+      toast.error('Registrá o seleccioná un cliente para continuar.')
+      return
     }
     // Validar medios de pago
     const errorPago = validarMediosPago(estado, mediosPago, total)
@@ -1152,6 +1184,7 @@ export default function VentasPage() {
                             className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm"
                           >
                             <span className="font-medium">{c.nombre}</span>
+                            {c.dni && <span className="text-gray-400 dark:text-gray-500 ml-2 text-xs">DNI {c.dni}</span>}
                             {c.telefono && <span className="text-gray-400 dark:text-gray-500 ml-2">{c.telefono}</span>}
                           </button>
                         ))}
@@ -1160,16 +1193,39 @@ export default function VentasPage() {
                   </>
                 )}
               </div>
-              {/* Campos manuales (si no hay cliente registrado) */}
+              {/* Registrar cliente nuevo inline */}
               {!clienteId && (
-                <>
-                  <input type="text" value={clienteNombre} onChange={e => setClienteNombre(e.target.value)}
-                    placeholder="Nombre (opcional)"
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
-                  <input type="text" value={clienteTelefono} onChange={e => setClienteTelefono(e.target.value)}
-                    placeholder="Teléfono (opcional)"
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
-                </>
+                nuevoClienteOpen ? (
+                  <div className="border border-blue-200 dark:border-blue-700 rounded-xl p-3 space-y-2 bg-blue-50 dark:bg-blue-900/10">
+                    <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Nuevo cliente</p>
+                    <input value={nuevoClienteForm.nombre} onChange={e => setNuevoClienteForm(f => ({ ...f, nombre: e.target.value }))}
+                      placeholder="Nombre completo *" autoFocus
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={nuevoClienteForm.dni} onChange={e => setNuevoClienteForm(f => ({ ...f, dni: e.target.value }))}
+                        placeholder="DNI *"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                      <input value={nuevoClienteForm.telefono} onChange={e => setNuevoClienteForm(f => ({ ...f, telefono: e.target.value }))}
+                        placeholder="Teléfono *"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }}
+                        className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm py-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700/50">
+                        Cancelar
+                      </button>
+                      <button onClick={registrarClienteInline} disabled={savingCliente}
+                        className="flex-1 bg-accent hover:bg-accent/90 text-white text-sm font-semibold py-2 rounded-xl disabled:opacity-50">
+                        {savingCliente ? 'Guardando...' : 'Guardar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setNuevoClienteOpen(true)}
+                    className="w-full text-sm text-accent border border-dashed border-accent/40 rounded-xl py-2 hover:bg-accent/5 transition-colors">
+                    + Registrar cliente nuevo
+                  </button>
+                )
               )}
             </div>
 

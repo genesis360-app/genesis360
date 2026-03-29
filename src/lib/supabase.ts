@@ -63,6 +63,7 @@ export interface Cliente {
   id: string
   tenant_id: string
   nombre: string
+  dni?: string
   telefono?: string
   email?: string
   notas?: string

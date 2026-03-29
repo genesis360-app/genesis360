@@ -1591,7 +1591,7 @@ export default function VentasPage() {
               {(ventaDetalle.estado === 'pendiente' || ventaDetalle.estado === 'reservada') && (
                 <button onClick={() => {
                   const saldo = (ventaDetalle.total ?? 0) - (ventaDetalle.monto_pagado ?? 0)
-                  if (ventaDetalle.estado === 'reservada' && saldo > 0.5) {
+                  if (saldo > 0.5) {
                     setSaldoModal({
                       ventaId: ventaDetalle.id,
                       total: ventaDetalle.total,

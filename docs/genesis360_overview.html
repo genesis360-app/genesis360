@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Genesis360 — Documento de producto</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1a1a2e; background: #fff; line-height: 1.6; }
+
+  .cover {
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    min-height: 100vh; background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%);
+    color: white; text-align: center; padding: 40px; page-break-after: always;
+  }
+  .cover h1 { font-size: 42pt; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
+  .cover .tagline { font-size: 14pt; opacity: 0.85; margin-bottom: 32px; font-style: italic; }
+  .cover .version { font-size: 10pt; opacity: 0.6; margin-top: 40px; }
+  .cover .meta { font-size: 10pt; opacity: 0.7; margin-top: 8px; }
+
+  .toc { padding: 48px 64px; page-break-after: always; }
+  .toc h2 { font-size: 18pt; color: #6d28d9; border-bottom: 2px solid #6d28d9; padding-bottom: 8px; margin-bottom: 24px; }
+  .toc ol { counter-reset: toc-section; list-style: none; padding: 0; }
+  .toc > ol > li { counter-increment: toc-section; margin-bottom: 6px; }
+  .toc > ol > li::before { content: counter(toc-section) ". "; font-weight: 700; color: #6d28d9; }
+  .toc a { color: #1a1a2e; text-decoration: none; }
+  .toc .toc-sub { padding-left: 20px; margin-top: 4px; }
+  .toc .toc-sub li { font-size: 10pt; color: #555; margin-bottom: 2px; list-style: none; }
+  .toc .toc-sub li::before { content: "— "; }
+
+  .section { padding: 40px 64px; page-break-inside: avoid; }
+  .section + .section { border-top: 1px solid #e5e7eb; }
+  .page-break { page-break-before: always; }
+
+  h2 { font-size: 16pt; color: #6d28d9; border-bottom: 2px solid #6d28d9; padding-bottom: 8px; margin-bottom: 20px; margin-top: 0; }
+  h3 { font-size: 12pt; color: #4f46e5; margin-top: 20px; margin-bottom: 10px; font-weight: 700; }
+  h4 { font-size: 11pt; color: #374151; margin-top: 14px; margin-bottom: 6px; font-weight: 600; }
+  p { margin-bottom: 10px; }
+  ul, ol { margin-left: 20px; margin-bottom: 10px; }
+  li { margin-bottom: 3px; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 8pt;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge-green { background: #d1fae5; color: #065f46; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-gray { background: #f3f4f6; color: #374151; }
+
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10pt; }
+  th { background: #6d28d9; color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+  td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background: #f9fafb; }
+
+  .callout { background: #ede9fe; border-left: 4px solid #6d28d9; padding: 12px 16px; margin: 12px 0; border-radius: 0 6px 6px 0; font-size: 10pt; }
+  .callout-warn { background: #fef3c7; border-left-color: #d97706; }
+  .callout-info { background: #dbeafe; border-left-color: #2563eb; }
+
+  .module-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .module-card h3 { margin-top: 0; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+  .kpi-card { background: #f9fafb; border-radius: 8px; padding: 12px 16px; border: 1px solid #e5e7eb; }
+  .kpi-card .label { font-size: 9pt; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-card .value { font-size: 14pt; font-weight: 700; color: #6d28d9; }
+
+  .footer { text-align: center; color: #9ca3af; font-size: 9pt; padding: 20px; border-top: 1px solid #e5e7eb; }
+
+  @media print {
+    body { font-size: 10pt; }
+    .cover { min-height: 100vh; }
+    .section { padding: 32px 48px; }
+    h2 { font-size: 14pt; }
+    h3 { font-size: 11pt; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- PORTADA -->
+<div class="cover">
+  <h1>Genesis360</h1>
+  <div class="tagline">"El cerebro del negocio físico"</div>
+  <p style="font-size:12pt; opacity:0.8; max-width:480px; line-height:1.7;">
+    Plataforma SaaS de gestión para comercios físicos. No solo muestra datos — dice qué hacer.
+  </p>
+  <div style="margin-top:48px; display:flex; gap:24px; flex-wrap:wrap; justify-content:center;">
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Inventario</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Ventas</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Caja</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">RRHH</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Reportes</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Alertas IA</span>
+  </div>
+  <div class="version">Versión del documento: Draft v1.0 — Marzo 2026</div>
+  <div class="meta">Genesis360 · app.genesis360.pro · Confidencial</div>
+</div>
+
+<!-- TABLA DE CONTENIDOS -->
+<div class="toc">
+  <h2>Contenido</h2>
+  <ol>
+    <li>Visión general del producto
+      <ul class="toc-sub"><li>Propuesta de valor · Stack tecnológico · Arquitectura</li></ul>
+    </li>
+    <li>Planes y precios
+      <ul class="toc-sub"><li>Tabla de planes · Límites · Matriz de funcionalidades</li></ul>
+    </li>
+    <li>Módulos actuales (implementados)
+      <ul class="toc-sub">
+        <li>Inventario · Movimientos · Ventas · Caja · Gastos · Clientes</li>
+        <li>Reportes · Alertas · Dashboard · RRHH · Configuración</li>
+      </ul>
+    </li>
+    <li>Reglas de negocio relevadas
+      <ul class="toc-sub"><li>Caja · Ventas · Clientes</li></ul>
+    </li>
+    <li>Roadmap — Features en desarrollo y planificadas
+      <ul class="toc-sub"><li>Corto plazo · Mediano plazo · Ideas futuras</li></ul>
+    </li>
+    <li>Arquitectura técnica
+      <ul class="toc-sub"><li>Multi-tenant · Multi-sucursal · Seguridad · Integraciones</li></ul>
+    </li>
+  </ol>
+</div>
+
+<!-- 1. VISIÓN GENERAL -->
+<div class="section page-break">
+  <h2>1. Visión general del producto</h2>
+
+  <h3>Propuesta de valor</h3>
+  <p>Genesis360 es una plataforma SaaS de gestión para comercios físicos (retail, almacenes, distribuidoras, etc.). Su diferencial no es mostrar datos — es <strong>decirle al dueño qué hacer</strong>: qué producto reponer, qué margen está bajando, qué empleado cumpleaños tiene esta semana, qué caja tiene diferencia.</p>
+
+  <div class="callout">
+    <strong>"El cerebro del negocio físico"</strong> — Insights automáticos, alertas proactivas y gestión integral en una sola plataforma.
+  </div>
+
+  <h3>Stack tecnológico</h3>
+  <div class="two-col">
+    <div>
+      <h4>Frontend</h4>
+      <ul>
+        <li>React 18 + TypeScript</li>
+        <li>Vite (build tool)</li>
+        <li>Tailwind CSS + shadcn/ui</li>
+        <li>Zustand (estado global)</li>
+        <li>React Query (cache/fetching)</li>
+        <li>Recharts (gráficos)</li>
+      </ul>
+    </div>
+    <div>
+      <h4>Backend</h4>
+      <ul>
+        <li>Supabase (PostgreSQL + Auth)</li>
+        <li>Row Level Security (RLS)</li>
+        <li>Edge Functions (Deno)</li>
+        <li>Storage (archivos/imágenes)</li>
+        <li>Vercel (deploy frontend)</li>
+        <li>Mercado Pago (suscripciones)</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Dominios</h3>
+  <ul>
+    <li><strong>www.genesis360.pro</strong> — Landing page (marketing)</li>
+    <li><strong>app.genesis360.pro</strong> — Aplicación (usuarios autenticados)</li>
+  </ul>
+
+  <h3>Arquitectura multi-tenant + multi-sucursal</h3>
+  <p>Cada cliente es un <strong>tenant</strong> con datos completamente aislados. Todas las tablas tienen <code>tenant_id</code> con Row Level Security (RLS) en PostgreSQL. Desde v0.42.0, cada tenant puede tener múltiples <strong>sucursales</strong>, con filtrado por sucursal en inventario, ventas, caja, gastos y clientes.</p>
+
+  <h3>Roles de usuario</h3>
+  <table>
+    <tr><th>Rol</th><th>Descripción</th><th>Accesos principales</th></tr>
+    <tr><td><strong>OWNER</strong></td><td>Dueño del negocio</td><td>Todo. Único que puede configurar y acceder a datos sensibles.</td></tr>
+    <tr><td><strong>SUPERVISOR</strong></td><td>Encargado / gerente</td><td>Operaciones + cierre de cualquier caja + aprobación de vacaciones.</td></tr>
+    <tr><td><strong>CAJERO</strong></td><td>Vendedor / cajero</td><td>Ventas, caja propia, gastos. Sin acceso a config ni reportes avanzados.</td></tr>
+    <tr><td><strong>RRHH</strong></td><td>Recursos humanos</td><td>Módulo RRHH (empleados, nómina, vacaciones, asistencia). Sin caja.</td></tr>
+    <tr><td><strong>ADMIN</strong></td><td>Administrador Genesis360</td><td>Acceso global para soporte/administración de la plataforma.</td></tr>
+  </table>
+</div>
+
+<!-- 2. PLANES Y PRECIOS -->
+<div class="section page-break">
+  <h2>2. Planes y precios</h2>
+
+  <table>
+    <tr><th>Plan</th><th>Precio</th><th>Usuarios</th><th>Productos</th><th>Movimientos/mes</th><th>Cajas</th></tr>
+    <tr><td><span class="badge badge-gray">Free</span></td><td>$0</td><td>1</td><td>50</td><td>200</td><td>1</td></tr>
+    <tr><td><span class="badge badge-blue">Básico</span></td><td>$4.900 ARS/mes</td><td>2</td><td>500</td><td>2.000</td><td>2</td></tr>
+    <tr><td><span class="badge badge-purple">Pro</span></td><td>$9.900 ARS/mes</td><td>10</td><td>5.000</td><td>Ilimitados</td><td>3</td></tr>
+    <tr><td><span class="badge badge-amber">Enterprise</span></td><td>A consultar</td><td>Ilimitados</td><td>Ilimitados</td><td>Ilimitados</td><td>10</td></tr>
+  </table>
+
+  <div class="callout-info callout">
+    <strong>Trial:</strong> 14 días con acceso Pro completo para nuevos usuarios. Se activa al completar el onboarding.
+  </div>
+
+  <h3>Matriz de funcionalidades por plan</h3>
+  <table>
+    <tr><th>Funcionalidad</th><th>Free</th><th>Básico</th><th>Pro</th><th>Enterprise</th></tr>
+    <tr><td>Inventario</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Movimientos (ingreso/rebaje)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Alertas de stock</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Ventas + carrito</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Caja + gastos</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Clientes</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Reportes</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Historial completo</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Métricas avanzadas</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Importación masiva</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+    <tr><td>RRHH completo</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Aging profiles</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Marketplace API</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Multi-sucursal</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+  </table>
+
+  <h3>Add-ons disponibles</h3>
+  <ul>
+    <li><strong>+500 movimientos/mes</strong> — $990 ARS (acumulable). Para planes Free y Básico.</li>
+  </ul>
+</div>
+
+<!-- 3. MÓDULOS ACTUALES -->
+<div class="section page-break">
+  <h2>3. Módulos actuales</h2>
+
+  <div class="module-card">
+    <h3>📦 Inventario</h3>
+    <p>Gestión de productos con múltiples líneas de stock (LPN — License Plate Number). Soporta productos serializados (número de serie único) y no serializados. Cada línea tiene ubicación, vencimiento, lote, cantidad reservada y estado.</p>
+    <ul>
+      <li>Reglas de selección: FIFO / LIFO / FEFO / LEFO / Manual (por SKU o por negocio)</li>
+      <li>Prioridad de ubicación: sort por prioridad en picking</li>
+      <li>Aging profiles: cambio automático de estado según días transcurridos</li>
+      <li>Importación masiva por Excel (productos + series)</li>
+      <li>Scanner de código de barras (cámara, iOS/Android/Desktop)</li>
+      <li>Scan con IA: foto del producto → reconocimiento automático vía Claude Haiku + Open Food Facts</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🔄 Movimientos de stock</h3>
+    <p>Registro de ingresos y rebajes de inventario con trazabilidad completa.</p>
+    <ul>
+      <li>Motivos predefinidos configurables + campo libre "Otro"</li>
+      <li>Vinculación a línea de inventario (LPN) y serie</li>
+      <li>Límite de movimientos por plan (con barra de progreso y bloqueo)</li>
+      <li>Banner de alerta al acercarse al límite</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🛒 Ventas</h3>
+    <p>Punto de venta con carrito, combos, descuentos y múltiples métodos de pago.</p>
+    <ul>
+      <li>Estados: pendiente → reservada → despachada / cancelada</li>
+      <li>Carrito con descuento por ítem y descuento general</li>
+      <li>Combos: descuento por porcentaje, monto ARS o monto USD</li>
+      <li>Múltiples métodos de pago: Efectivo / Tarjeta / Transferencia / Mercado Pago</li>
+      <li>Trazabilidad LPN→venta (qué línea de inventario se usó)</li>
+      <li>Vista lista + galería de productos</li>
+      <li>Ticket de venta imprimible</li>
+      <li>Historial con filtros por estado, fecha y categoría</li>
+    </ul>
+    <div class="callout">
+      <strong>Regla clave:</strong> Reserva/despacho requieren cliente registrado (excepto despacho directo). El monto total debe estar cubierto al despachar.
+    </div>
+  </div>
+
+  <div class="module-card">
+    <h3>💰 Caja</h3>
+    <p>Gestión de caja física con sesiones de apertura/cierre, movimientos manuales y conciliación automática con ventas.</p>
+    <ul>
+      <li>Múltiples cajas por sucursal (límite según plan)</li>
+      <li>Apertura con monto inicial · Cierre con conteo real</li>
+      <li>Ingresos manuales (con motivo) · Egresos manuales (con motivo)</li>
+      <li>Solo Efectivo afecta el saldo; otros medios son informativos</li>
+      <li>Ingreso automático al despachar venta con efectivo</li>
+      <li>Egreso automático al registrar gasto en efectivo</li>
+      <li>Widget de estado de caja en header (punto verde/rojo)</li>
+      <li>Multi-usuario: badge si sesión abierta por otro usuario</li>
+      <li>Shortcuts: Shift+I ingreso · Shift+O egreso</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>💸 Gastos</h3>
+    <p>Registro de gastos del negocio con integración automática a caja cuando el medio es efectivo.</p>
+    <ul>
+      <li>Categorías y proveedores configurables</li>
+      <li>Bloqueo si medio es efectivo y no hay caja abierta</li>
+      <li>Egreso automático en caja_movimientos (fire-and-forget)</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>👥 Clientes</h3>
+    <p>Base de clientes del negocio con cuenta corriente.</p>
+    <ul>
+      <li>Datos: nombre, DNI (único), teléfono, email, dirección</li>
+      <li>Importación masiva por Excel/CSV</li>
+      <li>Cuenta corriente: saldo de deuda sin interés ni vencimiento</li>
+      <li>Filtro por sucursal</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section page-break">
+
+  <div class="module-card">
+    <h3>🔔 Alertas</h3>
+    <p>Sistema de alertas automáticas para gestión proactiva del negocio.</p>
+    <ul>
+      <li>Stock mínimo: productos por debajo del umbral configurado</li>
+      <li>Stock cero: productos sin unidades disponibles</li>
+      <li>Productos sin categoría asignada</li>
+      <li>Ventas pendientes (sin fecha de vencimiento, requieren gestión manual)</li>
+      <li>Clientes con deuda pendiente (con link directo a ficha)</li>
+      <li>Diferencia de cierre de caja (notificación a OWNER/SUPERVISOR)</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>📊 Dashboard e Insights</h3>
+    <p>Panel principal con métricas del negocio e insights automáticos generados por reglas de negocio.</p>
+    <h4>Tab General</h4>
+    <ul>
+      <li>KPIs: ventas del período, ganancia neta, gastos, stock crítico</li>
+      <li>Proyección de cobertura (semáforo: rojo ≤7d / ámbar ≤14d / verde >14d)</li>
+      <li>Sugerencia de pedido para productos críticos</li>
+    </ul>
+    <h4>Tab Métricas</h4>
+    <ul>
+      <li>Top productos por ventas · Ranking por margen</li>
+      <li>Productos sin movimiento · Insights de margen vs. objetivo</li>
+      <li>Breakdown de movimientos por tipo/motivo</li>
+      <li>Valor de inventario por ubicación</li>
+      <li>Rango de fechas personalizable (7d / 30d / 90d / mes / custom)</li>
+      <li>Filtro por categoría</li>
+    </ul>
+    <h4>Tab Insights (IA de reglas)</h4>
+    <ul>
+      <li>Score de salud del negocio (Rotación / Rentabilidad / Reservas / Crecimiento / Datos)</li>
+      <li>11 reglas automáticas: cobertura crítica, margen bajo, día flojo, cumpleaños del mes, stock sin movimiento, etc.</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>📋 Reportes</h3>
+    <p>Exportación de datos a Excel y PDF. Disponible desde plan Básico.</p>
+    <ul>
+      <li>Stock actual (con N° Lote, vencimiento, series)</li>
+      <li>Ventas del período (con breakdown por método de pago)</li>
+      <li>Estados de inventario</li>
+      <li>Exportación a Excel (.xlsx) y PDF (jsPDF)</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>👔 RRHH</h3>
+    <p>Módulo completo de recursos humanos. Disponible desde plan Pro.</p>
+    <div class="two-col">
+      <div>
+        <h4>Gestión de personal</h4>
+        <ul>
+          <li>Empleados (DNI, contacto, puesto, depto, supervisor)</li>
+          <li>Puestos y departamentos</li>
+          <li>Árbol organizacional</li>
+          <li>Documentos (contratos, CVs, fotos) — storage privado</li>
+          <li>Capacitaciones con certificados</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Operaciones</h4>
+        <ul>
+          <li>Asistencia: entrada/salida/estado/motivo</li>
+          <li>Vacaciones: solicitud + aprobación + saldo anual</li>
+          <li>Nómina: liquidación mensual + conceptos + pago desde caja</li>
+          <li>Cumpleaños: alerta automática diaria (GitHub Actions)</li>
+        </ul>
+      </div>
+    </div>
+    <h4>Dashboard RRHH</h4>
+    <ul>
+      <li>KPIs: empleados activos, asistencia del mes, vacaciones pendientes, nómina</li>
+      <li>Breakdown por departamento</li>
+      <li>Exportación Excel: asistencia mensual + nómina histórica</li>
+    </ul>
+    <h4>Supervisor Self-Service</h4>
+    <ul>
+      <li>Tab "Mi Equipo": SUPERVISOR ve solo su equipo</li>
+      <li>Puede registrar asistencia y aprobar/rechazar vacaciones de su equipo</li>
+      <li>RLS a nivel de base de datos restringe el acceso automáticamente</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>⚙️ Configuración</h3>
+    <ul>
+      <li>Datos del negocio (nombre, logo, tipo de comercio)</li>
+      <li>Categorías y proveedores</li>
+      <li>Ubicaciones con prioridad de picking</li>
+      <li>Estados personalizados de inventario</li>
+      <li>Motivos de movimiento (por tipo)</li>
+      <li>Combos de productos</li>
+      <li>Grupos de estados</li>
+      <li>Aging Profiles (reglas de cambio de estado por antigüedad)</li>
+      <li>Sucursales (OWNER)</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 4. REGLAS DE NEGOCIO -->
+<div class="section page-break">
+  <h2>4. Reglas de negocio relevadas</h2>
+
+  <h3>Módulo: Caja</h3>
+
+  <h4>Límites y acceso</h4>
+  <ul>
+    <li>Roles con acceso: OWNER, SUPERVISOR, CAJERO. RRHH sin acceso.</li>
+    <li>Un cajero solo puede tener <strong>una caja abierta a la vez</strong>.</li>
+    <li>Cajas por sucursal: Free=1, Básico=2, Pro=3, Premium=5, Enterprise=10.</li>
+  </ul>
+
+  <h4>Apertura y cierre</h4>
+  <ul>
+    <li>Saldo sugerido al abrir = último cierre de esa caja específica (no la más reciente del sistema).</li>
+    <li>CAJERO solo puede cerrar su propia caja. OWNER/SUPERVISOR cierran cualquiera.</li>
+    <li>Cierre de caja ajena requiere <strong>contraseña maestra</strong> definida por el OWNER (pendiente implementar).</li>
+    <li>Al cerrar: se registra conteo real del cajero. Si hay diferencia → solo se registra + alerta a OWNER/SUPERVISOR. Sin bloqueo ni flujo de aprobación.</li>
+  </ul>
+
+  <h4>Ticket de cierre</h4>
+  <ul>
+    <li>Se genera comprobante/ticket de cierre imprimible (PDF).</li>
+    <li>Incluye: fecha/hora apertura y cierre, cajero, saldo inicial, ingresos, egresos, saldo sistema, conteo real, diferencia.</li>
+    <li>Puede reimprimirse desde el historial de sesiones (pendiente implementar).</li>
+  </ul>
+
+  <h4>Arqueo parcial</h4>
+  <ul>
+    <li>El cajero puede consultar si el efectivo físico cuadra con el sistema <strong>sin cerrar la sesión</strong>.</li>
+    <li>No queda registrado. Es una consulta momentánea (pendiente implementar).</li>
+  </ul>
+
+  <h4>Integración con ventas y gastos</h4>
+  <ul>
+    <li>Solo Efectivo afecta el saldo real de caja. Otros medios = registro informativo.</li>
+    <li>Sin caja abierta: no se puede despachar venta en efectivo ni registrar gasto en efectivo.</li>
+    <li>Venta despachada con efectivo → ingreso automático en caja.</li>
+    <li>Gasto en efectivo → egreso automático en caja.</li>
+    <li>Nómina en efectivo → egreso automático + verificación de saldo.</li>
+  </ul>
+
+  <h3>Módulo: Ventas</h3>
+
+  <table>
+    <tr><th>Estado</th><th>Cliente requerido</th><th>Pago requerido</th><th>Editable</th></tr>
+    <tr><td>Pendiente</td><td>✅ Obligatorio</td><td>No</td><td>✅ Sí</td></tr>
+    <tr><td>Reservada</td><td>✅ Obligatorio</td><td>Parcial o total</td><td>✅ Sí</td></tr>
+    <tr><td>Despachada</td><td>❌ Opcional</td><td>100% obligatorio</td><td>❌ No</td></tr>
+  </table>
+
+  <h4>Pago parcial en reservas</h4>
+  <ul>
+    <li>Se puede registrar una reserva con pago parcial o total.</li>
+    <li>El pago entra a la caja inmediatamente con motivo "Pago de reserva de venta #X".</li>
+    <li>Al despachar, el sistema calcula y muestra automáticamente el <strong>saldo pendiente</strong> (total − ya pagado).</li>
+  </ul>
+
+  <h4>Registro de cliente inline</h4>
+  <ul>
+    <li>Si el cliente no existe, se puede registrar directamente desde la pantalla de venta.</li>
+    <li>Campos obligatorios: nombre completo, DNI (identificador único), teléfono.</li>
+    <li>Email: opcional.</li>
+  </ul>
+
+  <h4>Ventas pendientes</h4>
+  <ul>
+    <li>No vencen automáticamente. Aparecen en Alertas para gestión manual.</li>
+  </ul>
+
+  <h3>Módulo: Clientes — Cuenta corriente</h3>
+  <ul>
+    <li>Un cliente puede generar deuda (llevar mercadería con pago parcial o sin pagar).</li>
+    <li>La deuda no tiene vencimiento ni interés (por ahora).</li>
+    <li>Se salda desde la ficha del cliente.</li>
+    <li>Alertas automáticas de clientes con deuda + link directo a ficha.</li>
+    <li>Dashboard: total deuda a cobrar + % ventas pagadas vs. en deuda.</li>
+  </ul>
+</div>
+
+<!-- 5. ROADMAP -->
+<div class="section page-break">
+  <h2>5. Roadmap</h2>
+
+  <h3>Próximas features (corto plazo)</h3>
+
+  <div class="module-card">
+    <h4>Mejoras en Clientes</h4>
+    <ul>
+      <li>Agregar DNI y teléfono como campos mandatorios en formulario</li>
+      <li>Registro inline de cliente desde la venta</li>
+      <li>Alertas de deuda con link a ficha del cliente</li>
+      <li>Widget en Dashboard: total deuda + % ventas en deuda</li>
+    </ul>
+    <span class="badge badge-blue">En diseño</span>
+  </div>
+
+  <div class="module-card">
+    <h4>Mejoras en Ventas</h4>
+    <ul>
+      <li>Bloquear reserva/pendiente sin cliente registrado</li>
+      <li>Pago parcial en reservas → descuento automático al despachar</li>
+      <li>Flujo de cuenta corriente: cliente se lleva mercadería sin pagar</li>
+      <li>Historial: validación de caja al cambiar estado desde historial</li>
+    </ul>
+    <span class="badge badge-blue">En diseño</span>
+  </div>
+
+  <div class="module-card">
+    <h4>Mejoras en Caja</h4>
+    <ul>
+      <li>Ticket de cierre imprimible (PDF) con todos los datos del turno</li>
+      <li>Reimprimir ticket de cierre desde historial de sesiones</li>
+      <li>Arqueo parcial: consulta de diferencia sin cerrar sesión</li>
+      <li>Contraseña maestra para cierre de caja ajena</li>
+      <li>Bóveda: módulo separado con saldo propio</li>
+      <li>Transferencias entre cajas / caja ↔ bóveda</li>
+    </ul>
+    <span class="badge badge-amber">Planificado</span>
+  </div>
+
+  <div class="module-card">
+    <h4>IVA informativo</h4>
+    <ul>
+      <li>Campo <code>alicuota_iva</code> por producto (0% / 10.5% / 21% / 27%)</li>
+      <li>Estimación de IVA en checkout, ticket y reportes</li>
+      <li>No es facturación ni integración con AFIP — solo referencia interna</li>
+      <li>Disclaimer claro en UI: "Valores informativos únicamente"</li>
+    </ul>
+    <span class="badge badge-gray">Draft relevado</span>
+  </div>
+
+  <h3>Mediano plazo</h3>
+
+  <div class="two-col">
+    <div class="module-card">
+      <h4>Cupones de descuento</h4>
+      <p>Códigos de descuento por porcentaje o monto fijo. Con límite de usos, fechas de validez y productos aplicables.</p>
+      <span class="badge badge-gray">Backlog</span>
+    </div>
+    <div class="module-card">
+      <h4>Marketplace API</h4>
+      <p>API pública por tenant para exponer catálogo a plataformas externas. Con rate limiting, webhooks de actualización de stock y configuración de precio diferenciado.</p>
+      <span class="badge badge-purple">Implementado (activación manual)</span>
+    </div>
+    <div class="module-card">
+      <h4>Permisos por rol parametrizables</h4>
+      <p>El OWNER puede configurar qué puede hacer cada rol dentro de su tenant. Actualmente los permisos son fijos por rol.</p>
+      <span class="badge badge-gray">Backlog (feature grande)</span>
+    </div>
+    <div class="module-card">
+      <h4>WhatsApp / notificaciones</h4>
+      <p>Resumen diario del negocio por WhatsApp. Alertas de stock crítico. Confirmación de ventas a clientes.</p>
+      <span class="badge badge-gray">Idea</span>
+    </div>
+    <div class="module-card">
+      <h4>IA chat interno</h4>
+      <p>Asistente conversacional integrado para consultas sobre el negocio: "¿Cuánto vendí esta semana?", "¿Qué producto tiene mejor margen?"</p>
+      <span class="badge badge-gray">Idea</span>
+    </div>
+    <div class="module-card">
+      <h4>Benchmark por rubro</h4>
+      <p>Comparación de métricas del negocio con promedios del rubro (márgenes, rotación, etc.).</p>
+      <span class="badge badge-gray">Idea</span>
+    </div>
+  </div>
+
+  <h3>RRHH — Fases futuras</h3>
+  <ul>
+    <li>Registro de asistencia por QR (sin intervención manual)</li>
+    <li>Liquidación automática de nómina según país (actualmente semi-manual)</li>
+    <li>Feriados configurables por país para cálculo de días hábiles</li>
+    <li>Remanente de vacaciones configurable por tenant (actualmente 50%)</li>
+  </ul>
+</div>
+
+<!-- 6. ARQUITECTURA TÉCNICA -->
+<div class="section page-break">
+  <h2>6. Arquitectura técnica</h2>
+
+  <h3>Multi-tenant</h3>
+  <p>Todas las tablas tienen <code>tenant_id UUID NOT NULL</code> con RLS habilitado. El patrón de política es:</p>
+  <div class="callout" style="font-family:monospace; font-size:9pt;">
+    tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid())
+  </div>
+  <p>Las funciones helper <code>is_admin()</code> e <code>is_rrhh()</code> son SECURITY DEFINER para evitar recursión en RLS.</p>
+
+  <h3>Multi-sucursal</h3>
+  <p>Desde v0.42.0, 6 tablas operativas tienen <code>sucursal_id UUID nullable</code>: inventario_lineas, movimientos_stock, ventas, caja_sesiones, gastos, clientes. Sin sucursal seleccionada = vista global de todos los datos.</p>
+
+  <h3>Seguridad</h3>
+  <ul>
+    <li>RLS en todas las tablas de datos de negocio</li>
+    <li>Triggers SECURITY DEFINER para operaciones que necesitan privilegios elevados</li>
+    <li>Edge Functions con JWT verificado (excepto webhooks públicos)</li>
+    <li>Variables de entorno en Vercel (frontend) y Supabase secrets (Edge Functions)</li>
+    <li>Repo público: sin credenciales en código</li>
+  </ul>
+
+  <h3>Integraciones</h3>
+  <table>
+    <tr><th>Servicio</th><th>Uso</th><th>Estado</th></tr>
+    <tr><td>Mercado Pago</td><td>Suscripciones (preapproval) + add-ons (pago único)</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
+    <tr><td>Resend</td><td>Emails transaccionales (bienvenida, ventas, alertas)</td><td><span class="badge badge-amber">FROM temporal (resend.dev)</span></td></tr>
+    <tr><td>Claude (Anthropic)</td><td>Scan de producto por imagen (Haiku)</td><td><span class="badge badge-amber">Requiere créditos</span></td></tr>
+    <tr><td>Open Food Facts</td><td>Info nutricional por código de barras</td><td><span class="badge badge-green">Activo</span></td></tr>
+    <tr><td>GitHub Actions</td><td>Tests CI + cumpleaños automáticos (cron diario)</td><td><span class="badge badge-green">Activo</span></td></tr>
+    <tr><td>Vercel</td><td>Deploy frontend + preview branches</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
+  </table>
+
+  <h3>Automatizaciones en base de datos</h3>
+  <ul>
+    <li><strong>Triggers</strong>: recálculo de stock_actual automático, número de venta secuencial por tenant, recálculo de totales de nómina</li>
+    <li><strong>Funciones SQL</strong>: pagar_nomina_empleado(), aprobar_vacacion(), process_aging_profiles(), calcular_dias_habiles()</li>
+    <li><strong>Aging profiles</strong>: proceso batch via Edge Function (botón manual + scheduler pendiente)</li>
+    <li><strong>Check_stock_minimo</strong>: SECURITY DEFINER para poder insertar en alertas desde contexto de trigger</li>
+  </ul>
+
+  <h3>Testing</h3>
+  <ul>
+    <li><strong>Unit tests</strong> (Vitest): 61 tests sobre funciones puras — reglas de selección de inventario, planes, límites, insights, validación de pagos</li>
+    <li><strong>E2E tests</strong> (Playwright): 12 archivos spec contra entorno DEV con usuario real</li>
+    <li><strong>CI</strong>: GitHub Actions ejecuta unit tests en cada push a <code>dev</code></li>
+  </ul>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  Genesis360 · Draft v1.0 · Marzo 2026 · Confidencial · app.genesis360.pro
+</div>
+
+</body>
+</html>

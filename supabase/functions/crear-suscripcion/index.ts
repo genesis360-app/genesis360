@@ -55,6 +55,7 @@ serve(async (req) => {
         payer_email: user.email,
         external_reference: userData.tenant_id,
         back_url: `${appUrl}/suscripcion`,
+        status: 'pending',
       }),
     })
 
@@ -63,7 +64,10 @@ serve(async (req) => {
 
     if (!mpRes.ok || !mpData.init_point) {
       console.error('MP error:', JSON.stringify(mpData))
-      throw new Error(mpData.message ?? `Error MP (${mpRes.status})`)
+      // Retornar detalle completo para diagnosticar
+      return new Response(JSON.stringify({ error: mpData.message ?? `Error MP (${mpRes.status})`, mp_detail: mpData }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     return new Response(JSON.stringify({ init_point: mpData.init_point }), {

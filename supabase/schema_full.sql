@@ -405,12 +405,14 @@ CREATE TABLE clientes (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   nombre      TEXT NOT NULL,
+  dni         TEXT,  -- DNI/RUT del cliente; único por tenant (WHERE dni IS NOT NULL); obligatorio en UI
   telefono    TEXT,
   email       TEXT,
   notas       TEXT,
   activo      BOOLEAN DEFAULT TRUE,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS clientes_dni_tenant ON clientes(tenant_id, dni) WHERE dni IS NOT NULL;
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================

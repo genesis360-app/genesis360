@@ -147,6 +147,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.49.0 | Banner DEV/PROD · header mobile fix (superposición) · CajaPage colores apertura/saldo en light mode · redirect /→/dashboard y /login→/dashboard si hay sesión | 2026-03 |
 | v0.50.0 | Fix ventas: medio de pago obligatorio para reservada/despachada · test unitario ventasValidation (12 casos) · refactor validarMediosPago a lib compartida | 2026-03 |
 | v0.51.0 | Scanner reescritura completa (BarcodeDetector + zbar-wasm) · scanner en Movimientos/Nuevo Producto · 2 fotos en Completar desde foto · scan-product sin JWT · búsqueda por codigo_barras | 2026-03 |
+| v0.51.1 | Security: policy DELETE bucket productos con validación de tenant · file_size_limit 5 MB · allowed_mime_types jpeg/png/webp (migration 027) | 2026-03 |
 
 ---
 

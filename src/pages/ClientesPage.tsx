@@ -37,8 +37,8 @@ function diasDesde(iso: string) {
   return `hace ${Math.floor(dias / 365)}a`
 }
 
-interface ClienteForm { nombre: string; telefono: string; email: string; notas: string }
-const FORM_VACIO: ClienteForm = { nombre: '', telefono: '', email: '', notas: '' }
+interface ClienteForm { nombre: string; dni: string; telefono: string; email: string; notas: string }
+const FORM_VACIO: ClienteForm = { nombre: '', dni: '', telefono: '', email: '', notas: '' }
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
   pendiente:  { label: 'Pendiente',  color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' },
@@ -133,7 +133,7 @@ export default function ClientesPage() {
   const abrirModal = (cliente?: any) => {
     if (cliente) {
       setEditId(cliente.id)
-      setForm({ nombre: cliente.nombre, telefono: cliente.telefono ?? '', email: cliente.email ?? '', notas: cliente.notas ?? '' })
+      setForm({ nombre: cliente.nombre, dni: cliente.dni ?? '', telefono: cliente.telefono ?? '', email: cliente.email ?? '', notas: cliente.notas ?? '' })
     } else {
       setEditId(null)
       setForm(FORM_VACIO)
@@ -143,9 +143,11 @@ export default function ClientesPage() {
 
   const guardar = async () => {
     if (!form.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
+    if (!form.dni.trim()) { toast.error('El DNI es obligatorio'); return }
+    if (!form.telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
     setSaving(true)
     try {
-      const payload = { nombre: form.nombre.trim(), telefono: form.telefono || null, email: form.email || null, notas: form.notas || null }
+      const payload = { nombre: form.nombre.trim(), dni: form.dni.trim(), telefono: form.telefono.trim(), email: form.email || null, notas: form.notas || null }
       if (editId) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editId)
         if (error) throw error
@@ -342,6 +344,7 @@ export default function ClientesPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{c.nombre}</p>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                      {c.dni && <span className="text-xs text-gray-400 dark:text-gray-500">DNI {c.dni}</span>}
                       {c.telefono && <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"><Phone size={11} /> {c.telefono}</span>}
                       {c.email && <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"><Mail size={11} /> {c.email}</span>}
                     </div>
@@ -460,24 +463,30 @@ export default function ClientesPage() {
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre completo *</label>
                 <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
                   placeholder="Nombre completo o razón social" autoFocus
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono</label>
-                  <input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))}
-                    placeholder="Opcional"
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">DNI *</label>
+                  <input value={form.dni} onChange={e => setForm(f => ({ ...f, dni: e.target.value }))}
+                    placeholder="Ej: 30123456"
                     className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-                  <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    placeholder="Opcional" type="email"
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono *</label>
+                  <input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))}
+                    placeholder="Ej: +54 11 1234-5678"
                     className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="Opcional" type="email"
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas</label>

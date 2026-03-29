@@ -32,6 +32,18 @@ function beep() {
   } catch {}
 }
 
+// Aumenta contraste del frame — mejora lectura de líneas finas y QR en pantallas con glare
+function boostContrast(imageData: ImageData) {
+  const d = imageData.data
+  const factor = 1.6 // factor de contraste: 1=sin cambio, 2=máximo
+  const intercept = 128 * (1 - factor)
+  for (let i = 0; i < d.length; i += 4) {
+    d[i]     = Math.min(255, Math.max(0, d[i]     * factor + intercept))
+    d[i + 1] = Math.min(255, Math.max(0, d[i + 1] * factor + intercept))
+    d[i + 2] = Math.min(255, Math.max(0, d[i + 2] * factor + intercept))
+  }
+}
+
 // Carga zbar-wasm solo cuando hace falta (fallback para iOS/Safari/Firefox)
 let zbarScanFn: ((data: ImageData) => Promise<{ typeName: string; decode(): string }[]>) | null = null
 async function getZBarScan() {
@@ -50,6 +62,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
   const detectorRef = useRef<BarcodeDetector | null>(null)
   const detectedRef = useRef(false)
   const useZBarRef = useRef(false)
+  const processingRef = useRef(false)  // evita acumulación de llamadas async
 
   const [scanning, setScanning] = useState(false)
   const [detected, setDetected] = useState(false)
@@ -84,22 +97,29 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
 
     const tick = async () => {
       if (detectedRef.current) return
+      // Si el frame anterior todavía se está procesando, saltear este tick
+      if (processingRef.current) { rafRef.current = requestAnimationFrame(tick); return }
+
+      processingRef.current = true
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
       try {
         if (!useZBarRef.current && detectorRef.current) {
           // BarcodeDetector nativo (Chrome/Edge/Android)
           const results = await detectorRef.current.detect(video)
-          if (results.length > 0) { handleDetected(results[0].rawValue); return }
+          if (results.length > 0) { processingRef.current = false; handleDetected(results[0].rawValue); return }
         } else {
           // zbar-wasm fallback (iOS/Safari/Firefox)
           const scan = await getZBarScan()
+          // Aumentar contraste antes de pasar a ZBar — mejora lectura de códigos finos y pantallas
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+          boostContrast(imageData)
           const results = await scan(imageData)
-          if (results.length > 0) { handleDetected(results[0].decode()); return }
+          if (results.length > 0) { processingRef.current = false; handleDetected(results[0].decode()); return }
         }
       } catch {}
 
+      processingRef.current = false
       rafRef.current = requestAnimationFrame(tick)
     }
 
@@ -114,14 +134,15 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
     }
     cancelAnimationFrame(rafRef.current)
     detectedRef.current = false
+    processingRef.current = false
     setDetected(false)
     setError(null)
     setScanning(false)
 
     const constraints: MediaStreamConstraints = {
       video: deviceId
-        ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-        : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        : { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
     }
 
     try {

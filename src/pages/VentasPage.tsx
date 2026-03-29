@@ -109,6 +109,7 @@ export default function VentasPage() {
 
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
   useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => setVentaDetalle(null) })
+  useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
 
   // Foco en buscador de productos
   const [searchFocused, setSearchFocused] = useState(false)

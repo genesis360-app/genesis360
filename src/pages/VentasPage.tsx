@@ -661,6 +661,12 @@ export default function VentasPage() {
       const venta = ventas.find((v: any) => v.id === ventaId)
       if (!venta) throw new Error('Venta no encontrada')
 
+      if (nuevoEstado === 'despachada' || nuevoEstado === 'reservada') {
+        if (sesionesAbiertas.length === 0) throw new Error('No hay caja abierta. Abrí una caja antes de continuar.')
+        if (nuevoEstado === 'despachada' && sesionesAbiertas.length > 1 && !cajaSeleccionadaId)
+          throw new Error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta desde el checkout.')
+      }
+
       const { data: items } = await supabase.from('venta_items')
         .select('*, venta_series(serie_id), productos(tiene_series, tiene_vencimiento, regla_inventario)')
         .eq('venta_id', ventaId)

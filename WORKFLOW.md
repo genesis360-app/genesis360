@@ -145,7 +145,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.47.0 | Fix scanner cámara mobile (html5-qrcode) · versión en sidebar · MP planes creados + checkout directo sin Edge Function · MP_PLAN_IDS en brand.ts · mp-webhook PROD | 2026-03 |
 | v0.48.0 | Dark mode: badge alertas visible (bg-red-500) · text-primary legible en dark (.dark .text-primary global CSS) · docs reglas de negocio módulo Caja | 2026-03 |
 | v0.49.0 | Banner DEV/PROD · header mobile fix (superposición) · CajaPage colores apertura/saldo en light mode · redirect /→/dashboard y /login→/dashboard si hay sesión | 2026-03 |
-| v0.50.0 | Fix ventas: medio de pago obligatorio para reservada/despachada · test unitario ventasValidation (12 casos) | 2026-03 (en dev) |
+| v0.50.0 | Fix ventas: medio de pago obligatorio para reservada/despachada · test unitario ventasValidation (12 casos) · refactor validarMediosPago a lib compartida | 2026-03 |
+| v0.51.0 | Scanner reescritura completa (BarcodeDetector + zbar-wasm) · scanner en Movimientos/Nuevo Producto · 2 fotos en Completar desde foto · scan-product sin JWT · búsqueda por codigo_barras | 2026-03 |
 
 ---
 

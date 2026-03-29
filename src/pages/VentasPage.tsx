@@ -80,6 +80,7 @@ export default function VentasPage() {
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
+  const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[] } | null>(null)
 
   // Caja abierta
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -110,6 +111,7 @@ export default function VentasPage() {
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
   useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => setVentaDetalle(null) })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
+  useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
 
   // Foco en buscador de productos
   const [searchFocused, setSearchFocused] = useState(false)
@@ -502,6 +504,7 @@ export default function VentasPage() {
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
         total,
         medio_pago: serializeMediosPago(mediosPago, total),
+        monto_pagado: mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0),
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
@@ -690,7 +693,7 @@ export default function VentasPage() {
   }
 
   const cambiarEstado = useMutation({
-    mutationFn: async ({ ventaId, nuevoEstado }: { ventaId: string; nuevoEstado: EstadoVenta }) => {
+    mutationFn: async ({ ventaId, nuevoEstado, saldoMediosPago }: { ventaId: string; nuevoEstado: EstadoVenta; saldoMediosPago?: MedioPagoItem[] }) => {
       const venta = ventas.find((v: any) => v.id === ventaId)
       if (!venta) throw new Error('Venta no encontrada')
 
@@ -778,22 +781,51 @@ export default function VentasPage() {
             })
           }
         }
+        // Acumular saldo en medio_pago si lo hay
+        let mediosPagoFinal = venta.medio_pago
+        let montoPagadoFinal = venta.monto_pagado ?? 0
+        if (saldoMediosPago && saldoMediosPago.length > 0) {
+          const saldoValido = saldoMediosPago.filter(m => m.tipo && parseFloat(m.monto) > 0)
+          if (saldoValido.length > 0) {
+            const prevArr: { tipo: string; monto: number }[] = venta.medio_pago ? JSON.parse(venta.medio_pago) : []
+            for (const m of saldoValido) {
+              const monto = parseFloat(m.monto)
+              const existing = prevArr.find(p => p.tipo === m.tipo)
+              if (existing) existing.monto += monto
+              else prevArr.push({ tipo: m.tipo, monto })
+              montoPagadoFinal += monto
+            }
+            mediosPagoFinal = JSON.stringify(prevArr)
+          }
+        }
         await supabase.from('ventas')
-          .update({ estado: 'despachada', despachado_at: new Date().toISOString() })
+          .update({ estado: 'despachada', despachado_at: new Date().toISOString(), medio_pago: mediosPagoFinal, monto_pagado: montoPagadoFinal })
           .eq('id', ventaId)
-        // Registrar efectivo en caja si hay sesión abierta
+        // Registrar en caja solo el efectivo del saldo (el de la reserva ya fue registrado)
         const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
-        if (_sesionId && venta.medio_pago) {
+        if (_sesionId) {
           try {
-            const mediosArr = JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[]
-            const _efectivo = mediosArr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
-            if (_efectivo > 0) {
+            // Si hay saldo nuevo, registrar solo ese efectivo
+            const pagosSaldo = saldoMediosPago?.filter(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0) ?? []
+            const efectivoSaldo = pagosSaldo.reduce((s, m) => s + parseFloat(m.monto), 0)
+            // Si no hay saldo (reserva ya pagada completa), registrar el efectivo de la reserva original
+            const efectivoOriginal = (() => {
+              if (!saldoMediosPago && venta.medio_pago) {
+                try {
+                  const arr = JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[]
+                  return arr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
+                } catch { return 0 }
+              }
+              return 0
+            })()
+            const efectivoTotal = efectivoSaldo + efectivoOriginal
+            if (efectivoTotal > 0) {
               await supabase.from('caja_movimientos').insert({
                 tenant_id: tenant!.id,
                 sesion_id: _sesionId,
                 tipo: 'ingreso',
                 concepto: `Venta #${venta.numero}`,
-                monto: _efectivo,
+                monto: efectivoTotal,
                 usuario_id: user?.id,
               })
             }
@@ -1557,7 +1589,19 @@ export default function VentasPage() {
                 </button>
               )}
               {(ventaDetalle.estado === 'pendiente' || ventaDetalle.estado === 'reservada') && (
-                <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'despachada' })}
+                <button onClick={() => {
+                  const saldo = (ventaDetalle.total ?? 0) - (ventaDetalle.monto_pagado ?? 0)
+                  if (ventaDetalle.estado === 'reservada' && saldo > 0.5) {
+                    setSaldoModal({
+                      ventaId: ventaDetalle.id,
+                      total: ventaDetalle.total,
+                      montoPagado: ventaDetalle.monto_pagado ?? 0,
+                      mediosPago: [{ tipo: '', monto: saldo.toFixed(2) }],
+                    })
+                  } else {
+                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'despachada' })
+                  }
+                }}
                   disabled={cambiarEstado.isPending}
                   className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
                   <Truck size={16} /> Despachar (rebaja stock)
@@ -1780,6 +1824,80 @@ export default function VentasPage() {
           onClose={() => setScannerOpen(false)}
         />
       )}
+
+      {/* Modal saldo restante al despachar reserva */}
+      {saldoModal && (() => {
+        const saldo = saldoModal.total - saldoModal.montoPagado
+        const asignado = saldoModal.mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+        const faltante = saldo - asignado
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2"><Truck size={16} /> Cobrar saldo y despachar</h2>
+                <button onClick={() => setSaldoModal(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
+              </div>
+              <div className="px-5 py-4 space-y-3">
+                <div className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-3 text-sm space-y-1">
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                    <span>Total venta</span>
+                    <span>${saldoModal.total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  <div className="flex justify-between text-green-600 dark:text-green-400">
+                    <span>Ya cobrado</span>
+                    <span>−${saldoModal.montoPagado.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-gray-800 dark:text-gray-100 border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                    <span>Saldo a cobrar</span>
+                    <span>${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Medio de pago para el saldo:</p>
+                {saldoModal.mediosPago.map((mp, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <select value={mp.tipo}
+                      onChange={e => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.map((m, i) => i === idx ? { ...m, tipo: e.target.value } : m) } : s)}
+                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                      <option value="">Medio de pago...</option>
+                      {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <input type="number" min="0" value={mp.monto}
+                      onChange={e => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m) } : s)}
+                      className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    {saldoModal.mediosPago.length > 1 && (
+                      <button onClick={() => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.filter((_, i) => i !== idx) } : s)}
+                        className="text-gray-400 hover:text-red-500"><X size={16} /></button>
+                    )}
+                  </div>
+                ))}
+                <button onClick={() => setSaldoModal(s => s ? { ...s, mediosPago: [...s.mediosPago, { tipo: '', monto: '' }] } : s)}
+                  className="text-xs text-accent hover:underline">+ Agregar medio</button>
+                {faltante > 0.5 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">Falta asignar ${faltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                )}
+                {faltante < -0.5 && (
+                  <p className="text-xs text-red-500">El monto excede el saldo por ${Math.abs(faltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                )}
+              </div>
+              <div className="px-5 pb-5 flex gap-3">
+                <button onClick={() => setSaldoModal(null)}
+                  className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
+                  Cancelar
+                </button>
+                <button
+                  disabled={cambiarEstado.isPending || faltante > 0.5 || faltante < -0.5 || saldoModal.mediosPago.some(m => !m.tipo && parseFloat(m.monto) > 0)}
+                  onClick={() => {
+                    cambiarEstado.mutate({ ventaId: saldoModal.ventaId, nuevoEstado: 'despachada', saldoMediosPago: saldoModal.mediosPago })
+                    setSaldoModal(null)
+                  }}
+                  className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl disabled:opacity-50 text-sm flex items-center justify-center gap-2">
+                  <Truck size={15} /> Despachar
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

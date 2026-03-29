@@ -430,6 +430,7 @@ CREATE TABLE ventas (
   descuento_total DECIMAL(12,2) NOT NULL DEFAULT 0,
   total           DECIMAL(12,2) NOT NULL DEFAULT 0,
   medio_pago      TEXT,
+  monto_pagado    DECIMAL(12,2) NOT NULL DEFAULT 0,  -- acumula cobros parciales (reservas)
   notas           TEXT,
   usuario_id      UUID REFERENCES users(id),
   despachado_at   TIMESTAMPTZ,

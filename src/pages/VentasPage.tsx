@@ -10,7 +10,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
-import { validarMediosPago, type EstadoVenta, type MedioPagoItem } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarSaldoMediosPago, acumularMediosPago, type EstadoVenta, type MedioPagoItem } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial'
@@ -782,21 +782,13 @@ export default function VentasPage() {
           }
         }
         // Acumular saldo en medio_pago si lo hay
-        let mediosPagoFinal = venta.medio_pago
         let montoPagadoFinal = venta.monto_pagado ?? 0
+        let mediosPagoFinal = venta.medio_pago
         if (saldoMediosPago && saldoMediosPago.length > 0) {
-          const saldoValido = saldoMediosPago.filter(m => m.tipo && parseFloat(m.monto) > 0)
-          if (saldoValido.length > 0) {
-            const prevArr: { tipo: string; monto: number }[] = venta.medio_pago ? JSON.parse(venta.medio_pago) : []
-            for (const m of saldoValido) {
-              const monto = parseFloat(m.monto)
-              const existing = prevArr.find(p => p.tipo === m.tipo)
-              if (existing) existing.monto += monto
-              else prevArr.push({ tipo: m.tipo, monto })
-              montoPagadoFinal += monto
-            }
-            mediosPagoFinal = JSON.stringify(prevArr)
-          }
+          const prevArr: { tipo: string; monto: number }[] = venta.medio_pago ? JSON.parse(venta.medio_pago) : []
+          const acumulado = acumularMediosPago(prevArr, saldoMediosPago)
+          mediosPagoFinal = JSON.stringify(acumulado)
+          montoPagadoFinal += saldoMediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
         }
         await supabase.from('ventas')
           .update({ estado: 'despachada', despachado_at: new Date().toISOString(), medio_pago: mediosPagoFinal, monto_pagado: montoPagadoFinal })
@@ -1590,7 +1582,7 @@ export default function VentasPage() {
               )}
               {(ventaDetalle.estado === 'pendiente' || ventaDetalle.estado === 'reservada') && (
                 <button onClick={() => {
-                  const saldo = (ventaDetalle.total ?? 0) - (ventaDetalle.monto_pagado ?? 0)
+                  const saldo = calcularSaldoPendiente(ventaDetalle.total ?? 0, ventaDetalle.monto_pagado ?? 0)
                   if (saldo > 0.5) {
                     setSaldoModal({
                       ventaId: ventaDetalle.id,
@@ -1827,7 +1819,8 @@ export default function VentasPage() {
 
       {/* Modal saldo restante al despachar reserva */}
       {saldoModal && (() => {
-        const saldo = saldoModal.total - saldoModal.montoPagado
+        const saldo = calcularSaldoPendiente(saldoModal.total, saldoModal.montoPagado)
+        const errorSaldo = validarSaldoMediosPago(saldoModal.mediosPago, saldo)
         const asignado = saldoModal.mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
         const faltante = saldo - asignado
         return (
@@ -1885,7 +1878,7 @@ export default function VentasPage() {
                   Cancelar
                 </button>
                 <button
-                  disabled={cambiarEstado.isPending || faltante > 0.5 || faltante < -0.5 || saldoModal.mediosPago.some(m => !m.tipo && parseFloat(m.monto) > 0)}
+                  disabled={cambiarEstado.isPending || !!errorSaldo}
                   onClick={() => {
                     cambiarEstado.mutate({ ventaId: saldoModal.ventaId, nuevoEstado: 'despachada', saldoMediosPago: saldoModal.mediosPago })
                     setSaldoModal(null)

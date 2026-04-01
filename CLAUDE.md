@@ -468,6 +468,20 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Fix ventas — medio de pago obligatorio**: `reservada`/`despachada` ahora exigen al menos un método con tipo y monto > 0. Bug: `hayMontos=false` saltaba toda la validación. Test: `tests/unit/ventasValidation.test.ts` (12 casos).
 - [x] **Refactor**: `validarMediosPago()` extraída a `src/lib/ventasValidation.ts` — función compartida entre VentasPage y tests.
 
+### v0.51.1 ✅ PROD
+- [x] **Security bucket `productos`** (migration 027): policy DELETE verifica `tenant_id` en path del archivo · `file_size_limit` 5 MB · `allowed_mime_types`: jpeg/png/webp.
+
+### v0.52.0 ✅ PROD
+- [x] **Clientes — DNI obligatorio** (migration 028): columna `dni TEXT` con `UNIQUE(tenant_id, dni) WHERE dni IS NOT NULL`. Obligatorio en UI junto con teléfono. Mostrado en cards. Búsqueda por nombre o DNI.
+- [x] **Ventas — bloqueo sin cliente**: `pendiente` y `reservada` requieren cliente registrado. `despachada` puede ir sin cliente.
+- [x] **Ventas — registro inline de cliente**: mini-form nombre+DNI+teléfono desde el checkout. ESC/Enter con `useModalKeyboard`.
+- [x] **Fix historial ventas**: `cambiarEstado` a `reservada`/`despachada` ahora valida caja abierta (igual que checkout directo).
+
+### v0.52.1 (en dev — pendiente deploy PROD)
+- [x] **Ventas — pago parcial en reservas** (migration 029): `monto_pagado DECIMAL(12,2) DEFAULT 0` en `ventas`. Al crear venta se guarda lo cobrado. Al despachar desde historial con saldo > $0.50 → modal muestra Total / Ya cobrado / Saldo a cobrar con selector de medios. Acumula pago en `medio_pago`. Registra solo el efectivo del saldo en caja (no duplica el de la reserva).
+- [x] **Validación en mutationFn**: `validarDespacho()` bloquea el despacho si hay saldo sin cubrir (no solo en el UI). Función pura testeada.
+- [x] **Tests — pago parcial**: `tests/unit/ventasSaldo.test.ts` — 24 casos: `calcularSaldoPendiente`, `validarSaldoMediosPago`, `validarDespacho`, `acumularMediosPago`. Total: 85/85 passing.
+
 ### v0.51.0 ✅ PROD
 - [x] **Scanner reescritura**: reemplaza `html5-qrcode` (ZXing) por `BarcodeDetector` nativo + `@undecaf/zbar-wasm` fallback. Funciona en iOS, Android y Desktop. Formatos: EAN-13, EAN-8, UPC, Code-128/39, QR, PDF417 y más.
 - [x] **Scanner UX**: línea laser animada, flash verde al detectar, beep (Web Audio), vibración háptica, modo manual (teclado + lector físico USB/Bluetooth).
@@ -477,10 +491,13 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **scan-product EF**: fix 401 (redesplegada sin JWT en DEV y PROD). ANTHROPIC_API_KEY actualizada en DEV y PROD.
 - [x] **Búsqueda por código de barras**: InventarioPage y MovimientosPage incluyen `codigo_barras` en filtros.
 
-### Ventas — validación medios de pago
-- `pendiente`: no requiere medio de pago.
-- `reservada`/`despachada`: requieren al menos un método con tipo y monto > 0, y que cubra el total (±$0.50 tolerancia).
-- Lógica en `registrarVenta()` — función pura `validarMediosPago()` testeada en `tests/unit/ventasValidation.test.ts`.
+### Ventas — validación medios de pago y clientes
+- `pendiente`: no requiere medio de pago. **Requiere cliente registrado.**
+- `reservada`: requiere cliente registrado. Permite pago parcial (guarda `monto_pagado`). Requiere al menos un método con monto > 0 y que cubra el total (±$0.50).
+- `despachada`: no requiere cliente. Al despachar desde historial con saldo > $0.50 → modal de cobro. `validarDespacho()` también bloquea en la `mutationFn`.
+- Registro inline de cliente desde checkout: nombre + DNI + teléfono (mandatorios). Búsqueda por nombre o DNI.
+- Funciones puras en `src/lib/ventasValidation.ts`: `validarMediosPago`, `validarDespacho`, `calcularSaldoPendiente`, `validarSaldoMediosPago`, `acumularMediosPago`.
+- Tests: `tests/unit/ventasValidation.test.ts` + `tests/unit/ventasSaldo.test.ts`.
 
 ### Reglas de negocio — Caja
 - **Sin caja abierta = sin negocio**: no se puede registrar ninguna venta (`despachada` o `reservada`) ni gasto en efectivo si no hay sesión de caja abierta.

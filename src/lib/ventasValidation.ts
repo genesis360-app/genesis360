@@ -63,9 +63,14 @@ export function validarMediosPago(
   const totalFaltante = total - totalAsignado
   const hayMontos = mediosPago.some(m => m.monto !== '')
 
-  if (estado === 'reservada' || estado === 'despachada') {
+  if (estado === 'reservada') {
     const tieneMetodoValido = mediosPago.some(m => m.tipo && parseFloat(m.monto) > 0)
-    if (!tieneMetodoValido) return 'Ingresá un método de pago y monto para reservar o despachar'
+    if (!tieneMetodoValido) return 'Ingresá un método de pago y monto para reservar'
+    // Pago parcial permitido en reserva — no se valida cobertura total
+  }
+  if (estado === 'despachada') {
+    const tieneMetodoValido = mediosPago.some(m => m.tipo && parseFloat(m.monto) > 0)
+    if (!tieneMetodoValido) return 'Ingresá un método de pago y monto para despachar'
     if (totalFaltante > 0.5) return `Falta asignar $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en medios de pago`
   }
   if (hayMontos && totalFaltante < -0.5) return `El monto ingresado excede el total por $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`

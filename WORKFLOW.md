@@ -148,6 +148,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.50.0 | Fix ventas: medio de pago obligatorio para reservada/despachada · test unitario ventasValidation (12 casos) · refactor validarMediosPago a lib compartida | 2026-03 |
 | v0.51.0 | Scanner reescritura completa (BarcodeDetector + zbar-wasm) · scanner en Movimientos/Nuevo Producto · 2 fotos en Completar desde foto · scan-product sin JWT · búsqueda por codigo_barras | 2026-03 |
 | v0.51.1 | Security: policy DELETE bucket productos con validación de tenant · file_size_limit 5 MB · allowed_mime_types jpeg/png/webp (migration 027) | 2026-03 |
+| v0.52.0 | DNI obligatorio en clientes (migration 028) · bloqueo pendiente/reservada sin cliente · registro inline desde venta · fix cambiarEstado valida caja | 2026-03 |
+| v0.52.1 | Pago parcial en reservas (migration 029) · modal saldo al despachar · reserva permite monto parcial · validarDespacho en mutationFn | 2026-04 |
 
 ---
 

@@ -16,19 +16,18 @@ describe('Ventas — validación medios de pago', () => {
   describe('estado: reservada', () => {
     it('bloquea sin ningún medio de pago ingresado', () => {
       expect(validarMediosPago('reservada', [{ tipo: '', monto: '' }], total))
-        .toBe('Ingresá un método de pago y monto para reservar o despachar')
+        .toBe('Ingresá un método de pago y monto para reservar')
     })
     it('bloquea con tipo sin monto', () => {
       expect(validarMediosPago('reservada', [{ tipo: 'Efectivo', monto: '' }], total))
-        .toBe('Ingresá un método de pago y monto para reservar o despachar')
+        .toBe('Ingresá un método de pago y monto para reservar')
     })
     it('bloquea con monto sin tipo', () => {
       expect(validarMediosPago('reservada', [{ tipo: '', monto: '1000' }], total))
-        .toBe('Ingresá un método de pago y monto para reservar o despachar')
+        .toBe('Ingresá un método de pago y monto para reservar')
     })
-    it('bloquea con monto insuficiente', () => {
-      expect(validarMediosPago('reservada', [{ tipo: 'Efectivo', monto: '500' }], total))
-        .toContain('Falta asignar')
+    it('permite con monto parcial (pago parcial OK en reserva)', () => {
+      expect(validarMediosPago('reservada', [{ tipo: 'Efectivo', monto: '500' }], total)).toBeNull()
     })
     it('permite con monto exacto', () => {
       expect(validarMediosPago('reservada', [{ tipo: 'Efectivo', monto: '1000' }], total)).toBeNull()
@@ -42,7 +41,7 @@ describe('Ventas — validación medios de pago', () => {
   describe('estado: despachada', () => {
     it('bloquea sin ningún medio de pago ingresado', () => {
       expect(validarMediosPago('despachada', [{ tipo: '', monto: '' }], total))
-        .toBe('Ingresá un método de pago y monto para reservar o despachar')
+        .toBe('Ingresá un método de pago y monto para despachar')
     })
     it('bloquea con monto insuficiente', () => {
       expect(validarMediosPago('despachada', [{ tipo: 'Efectivo', monto: '999' }], total))

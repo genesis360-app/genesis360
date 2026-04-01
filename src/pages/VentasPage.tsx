@@ -108,6 +108,30 @@ export default function VentasPage() {
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
   const [seriesBusqueda, setSeriesBusqueda] = useState('')
 
+  const registrarClienteInline = async () => {
+    const { nombre, dni, telefono } = nuevoClienteForm
+    if (!nombre.trim()) { toast.error('El nombre es obligatorio'); return }
+    if (!dni.trim()) { toast.error('El DNI es obligatorio'); return }
+    if (!telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
+    setSavingCliente(true)
+    try {
+      const { data, error } = await supabase.from('clientes')
+        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim(), telefono: telefono.trim() })
+        .select('id, nombre').single()
+      if (error) throw error
+      setClienteId(data.id)
+      setClienteNombre(data.nombre)
+      setClienteTelefono(telefono.trim())
+      setNuevoClienteOpen(false)
+      setNuevoClienteForm({ nombre: '', dni: '', telefono: '' })
+      toast.success('Cliente registrado')
+    } catch (err: any) {
+      toast.error(err.message?.includes('clientes_dni_tenant') ? 'Ya existe un cliente con ese DNI' : (err.message ?? 'Error al registrar'))
+    } finally {
+      setSavingCliente(false)
+    }
+  }
+
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
   useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => setVentaDetalle(null) })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
@@ -436,30 +460,6 @@ export default function VentasPage() {
 
   const totalAsignado = mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   const totalFaltante = total - totalAsignado
-
-  const registrarClienteInline = async () => {
-    const { nombre, dni, telefono } = nuevoClienteForm
-    if (!nombre.trim()) { toast.error('El nombre es obligatorio'); return }
-    if (!dni.trim()) { toast.error('El DNI es obligatorio'); return }
-    if (!telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
-    setSavingCliente(true)
-    try {
-      const { data, error } = await supabase.from('clientes')
-        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim(), telefono: telefono.trim() })
-        .select('id, nombre').single()
-      if (error) throw error
-      setClienteId(data.id)
-      setClienteNombre(data.nombre)
-      setClienteTelefono(telefono.trim())
-      setNuevoClienteOpen(false)
-      setNuevoClienteForm({ nombre: '', dni: '', telefono: '' })
-      toast.success('Cliente registrado')
-    } catch (err: any) {
-      toast.error(err.message?.includes('clientes_dni_tenant') ? 'Ya existe un cliente con ese DNI' : (err.message ?? 'Error al registrar'))
-    } finally {
-      setSavingCliente(false)
-    }
-  }
 
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }

@@ -10,7 +10,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
-import { validarMediosPago, calcularSaldoPendiente, validarSaldoMediosPago, acumularMediosPago, type EstadoVenta, type MedioPagoItem } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, type EstadoVenta, type MedioPagoItem } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial'
@@ -701,6 +701,11 @@ export default function VentasPage() {
         if (sesionesAbiertas.length === 0) throw new Error('No hay caja abierta. Abrí una caja antes de continuar.')
         if (nuevoEstado === 'despachada' && sesionesAbiertas.length > 1 && !cajaSeleccionadaId)
           throw new Error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta desde el checkout.')
+      }
+
+      if (nuevoEstado === 'despachada') {
+        const errorDespacho = validarDespacho(Number(venta.total ?? 0), Number(venta.monto_pagado ?? 0), saldoMediosPago)
+        if (errorDespacho) throw new Error(errorDespacho)
       }
 
       const { data: items } = await supabase.from('venta_items')

@@ -37,6 +37,23 @@ export function acumularMediosPago(
   return result
 }
 
+/** Valida si se puede despachar: verifica que el saldo quede cubierto por saldoMediosPago.
+ *  Retorna mensaje de error o null si está OK para despachar. */
+export function validarDespacho(
+  total: number,
+  montoPagado: number,
+  saldoMediosPago?: MedioPagoItem[]
+): string | null {
+  const saldoPendiente = calcularSaldoPendiente(total, montoPagado)
+  const saldoCubierto = saldoMediosPago
+    ? saldoMediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+    : 0
+  const restante = saldoPendiente - saldoCubierto
+  if (restante > 0.5)
+    return `Saldo pendiente de $${restante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}. Completá el pago antes de despachar.`
+  return null
+}
+
 export function validarMediosPago(
   estado: EstadoVenta,
   mediosPago: MedioPagoItem[],

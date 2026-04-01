@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calcularSaldoPendiente, validarSaldoMediosPago, acumularMediosPago } from '@/lib/ventasValidation'
+import { calcularSaldoPendiente, validarSaldoMediosPago, validarDespacho, acumularMediosPago } from '@/lib/ventasValidation'
 
 describe('calcularSaldoPendiente', () => {
   it('retorna 0 cuando ya se pagó todo', () => {
@@ -45,6 +45,34 @@ describe('validarSaldoMediosPago', () => {
   it('tolerancia ±$0.50 permite diferencia mínima', () => {
     expect(validarSaldoMediosPago([{ tipo: 'Efectivo', monto: '599.6' }], saldo)).toBeNull()
     expect(validarSaldoMediosPago([{ tipo: 'Efectivo', monto: '600.4' }], saldo)).toBeNull()
+  })
+})
+
+describe('validarDespacho', () => {
+  it('bloquea si monto_pagado=0 y no se pasa saldoMediosPago', () => {
+    expect(validarDespacho(1000, 0)).toContain('Saldo pendiente')
+  })
+  it('bloquea si saldo parcialmente cubierto', () => {
+    expect(validarDespacho(1000, 400, [{ tipo: 'Efectivo', monto: '400' }])).toContain('Saldo pendiente')
+  })
+  it('permite si monto_pagado cubre el total', () => {
+    expect(validarDespacho(1000, 1000)).toBeNull()
+  })
+  it('permite si saldoMediosPago cubre el saldo exacto', () => {
+    expect(validarDespacho(1000, 0, [{ tipo: 'Efectivo', monto: '1000' }])).toBeNull()
+  })
+  it('permite si pago original + saldo cubren el total', () => {
+    expect(validarDespacho(1000, 400, [{ tipo: 'Efectivo', monto: '600' }])).toBeNull()
+  })
+  it('permite con tolerancia ±$0.50', () => {
+    expect(validarDespacho(1000, 0, [{ tipo: 'Efectivo', monto: '999.6' }])).toBeNull()
+  })
+  it('bloquea si venta pendiente sin ningún pago (caso real del bug)', () => {
+    // venta creada como pendiente sin pagar, monto_pagado=0
+    expect(validarDespacho(1500, 0)).toContain('Saldo pendiente')
+  })
+  it('bloquea si saldoMediosPago vacío/sin tipo', () => {
+    expect(validarDespacho(1000, 0, [{ tipo: '', monto: '' }])).toContain('Saldo pendiente')
   })
 })
 

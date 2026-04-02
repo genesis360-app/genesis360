@@ -938,12 +938,12 @@ export default function VentasPage() {
         const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
         if (_sesionId) {
           try {
-            // Si hay saldo nuevo, registrar solo ese efectivo
+            // Efectivo del saldo cobrado ahora
             const pagosSaldo = saldoMediosPago?.filter(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0) ?? []
             const efectivoSaldo = pagosSaldo.reduce((s, m) => s + parseFloat(m.monto), 0)
-            // Si no hay saldo (reserva ya pagada completa), registrar el efectivo de la reserva original
+            // Efectivo de la reserva original (nunca fue a caja — las reservas no registran en caja)
             const efectivoOriginal = (() => {
-              if (!saldoMediosPago && venta.medio_pago) {
+              if (venta.medio_pago) {
                 try {
                   const arr = JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[]
                   return arr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)

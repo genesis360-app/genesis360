@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -81,6 +81,10 @@ export default function VentasPage() {
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[] } | null>(null)
+  const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('reservada')
+  const [editandoPago, setEditandoPago] = useState(false)
+  const [editMontoPagado, setEditMontoPagado] = useState('')
+  const [savingMontoPagado, setSavingMontoPagado] = useState(false)
 
   // Caja abierta
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -133,7 +137,7 @@ export default function VentasPage() {
   }
 
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
-  useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => setVentaDetalle(null) })
+  useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
 
@@ -238,7 +242,7 @@ export default function VentasPage() {
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado, sucursalId],
     queryFn: async () => {
-      let q = supabase.from('ventas').select('*, venta_items(id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,tiene_series,categoria_id), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
+      let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
       if (filterEstado) q = q.eq('estado', filterEstado)
       q = applyFilter(q)
@@ -412,6 +416,67 @@ export default function VentasPage() {
     toast.success(`Combo aplicado: ${comboUnits} uds. con ${comboDescLabel(combo)}${remainder > 0 ? ` + ${remainder} sin descuento` : ''}`)
   }
 
+  // Auto-aplicar combos cuando cambia el carrito
+  const autoComboSig = useRef('')
+  useEffect(() => {
+    if (!combosDisp.length) return
+    const sig = cart.map(i => `${i.producto_id}:${i.cantidad}:${i.descuento}:${i.descuento_tipo}`).join('|')
+    if (sig === autoComboSig.current) return
+    autoComboSig.current = sig
+
+    const changes = new Map<string, CartItem[]>()
+    const processed = new Set<string>()
+
+    for (const item of cart) {
+      if (item.tiene_series || processed.has(item.producto_id)) continue
+      processed.add(item.producto_id)
+
+      const productRows = cart.filter(r => r.producto_id === item.producto_id)
+      const totalQty = productRows.reduce((s, r) => s + r.cantidad, 0)
+
+      const combo = (combosDisp as any[])
+        .filter(c => c.producto_id === item.producto_id && totalQty >= c.cantidad)
+        .sort((a: any, b: any) => b.cantidad - a.cantidad)[0]
+      if (!combo) continue
+
+      const tipo = combo.descuento_tipo ?? 'pct'
+      const desc = tipo === 'pct' ? combo.descuento_pct
+        : tipo === 'monto_usd' ? Math.round(combo.descuento_monto * (cotizacionUSD || 1))
+        : combo.descuento_monto
+      const descTipo: DescTipo = tipo === 'pct' ? 'pct' : 'monto'
+
+      const comboUnits = Math.floor(totalQty / combo.cantidad) * combo.cantidad
+      const rem = totalQty % combo.cantidad
+      const target: CartItem[] = []
+      if (comboUnits > 0) target.push({ ...item, cantidad: comboUnits, descuento: desc, descuento_tipo: descTipo })
+      if (rem > 0) target.push({ ...item, cantidad: rem, descuento: 0, descuento_tipo: 'pct' as DescTipo })
+
+      const curSig = productRows.map(r => `${r.cantidad}:${r.descuento}:${r.descuento_tipo}`).sort().join(',')
+      const tgtSig = target.map(r => `${r.cantidad}:${r.descuento}:${r.descuento_tipo}`).sort().join(',')
+      if (curSig !== tgtSig) {
+        changes.set(item.producto_id, target)
+        toast.success(`Combo aplicado: ${combo.cantidad}× con ${comboDescLabel(combo)}`)
+      }
+    }
+
+    if (!changes.size) return
+
+    const done = new Set<string>()
+    const newCart: CartItem[] = []
+    for (const item of cart) {
+      if (changes.has(item.producto_id) && !done.has(item.producto_id)) {
+        done.add(item.producto_id)
+        newCart.push(...changes.get(item.producto_id)!)
+      } else if (!changes.has(item.producto_id)) {
+        newCart.push(item)
+      }
+    }
+
+    const newSig = newCart.map(i => `${i.producto_id}:${i.cantidad}:${i.descuento}:${i.descuento_tipo}`).join('|')
+    autoComboSig.current = newSig
+    setCart(newCart)
+  }, [cart, combosDisp, cotizacionUSD])
+
   const splitItem = (idx: number) => {
     setCart(prev => {
       const item = prev[idx]
@@ -479,7 +544,10 @@ export default function VentasPage() {
     // Validar medios de pago
     const errorPago = validarMediosPago(estado, mediosPago, total)
     if (errorPago) { toast.error(errorPago); return }
-    const montoEfectivoCaja = calcularEfectivo(mediosPago, total)
+    const efectivoBruto = calcularEfectivo(mediosPago, total)
+    const totalOtros = mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+    const vuelto = Math.max(0, efectivoBruto + totalOtros - total)
+    const montoEfectivoCaja = efectivoBruto - vuelto  // solo lo que la caja retiene
     if (estado === 'despachada' || estado === 'reservada') {
       if (sesionesAbiertas.length === 0) {
         toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
@@ -504,7 +572,7 @@ export default function VentasPage() {
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
         total,
         medio_pago: serializeMediosPago(mediosPago, total),
-        monto_pagado: mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0),
+        monto_pagado: estado === 'pendiente' ? 0 : Math.min(mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0), total),
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
@@ -677,9 +745,9 @@ export default function VentasPage() {
       }
       const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
-      setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })) })
+      setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
-      setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas('')
+      setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('reservada')
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
@@ -690,6 +758,74 @@ export default function VentasPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const guardarMontoPagado = async () => {
+    const nuevo = parseFloat(editMontoPagado)
+    if (isNaN(nuevo) || nuevo < 0) { toast.error('Monto inválido'); return }
+    if (nuevo > ventaDetalle!.total) { toast.error(`No puede superar el total ($${ventaDetalle!.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })})`); return }
+    setSavingMontoPagado(true)
+    try {
+      const { error } = await supabase.from('ventas').update({ monto_pagado: nuevo }).eq('id', ventaDetalle!.id)
+      if (error) throw error
+      setVentaDetalle((prev: any) => ({ ...prev, monto_pagado: nuevo }))
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      setEditandoPago(false)
+      toast.success('Pago actualizado')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al actualizar')
+    } finally {
+      setSavingMontoPagado(false)
+    }
+  }
+
+  const modificarReserva = async () => {
+    if (!ventaDetalle) return
+    if (!confirm('¿Modificar esta reserva? Se cancelará la reserva actual y los productos volverán al carrito para que crees una nueva.')) return
+    // Cancelar la reserva actual (libera stock reservado) y registrar motivo
+    await cambiarEstado.mutateAsync({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' }).catch(() => null)
+    const notaAnterior = ventaDetalle.notas ? `${ventaDetalle.notas} | ` : ''
+    void supabase.from('ventas').update({
+      notas: `${notaAnterior}Cancelada por modificación de productos — ${new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} por ${user?.nombre_display ?? 'usuario'}`
+    }).eq('id', ventaDetalle.id)
+    // Pre-poblar el carrito con los items de la venta
+    const nuevosItems: CartItem[] = (ventaDetalle.venta_items ?? [])
+      .filter((item: any) => item.producto_id)
+      .map((item: any) => ({
+        producto_id: item.producto_id,
+        nombre: item.productos?.nombre ?? '',
+        sku: item.productos?.sku ?? '',
+        precio_unitario: item.precio_unitario,
+        precio_costo: item.productos?.precio_costo ?? 0,
+        cantidad: item.cantidad,
+        descuento: item.descuento ?? 0,
+        descuento_tipo: 'pct' as DescTipo,
+        tiene_series: item.productos?.tiene_series ?? false,
+        tiene_vencimiento: item.productos?.tiene_vencimiento ?? false,
+        regla_inventario: item.productos?.regla_inventario ?? null,
+        series_seleccionadas: [],
+        series_disponibles: [],
+      }))
+    setCart(nuevosItems)
+    if (ventaDetalle.cliente_id) { setClienteId(ventaDetalle.cliente_id); setClienteNombre(ventaDetalle.cliente_nombre ?? ''); setClienteTelefono(ventaDetalle.cliente_telefono ?? '') }
+    // Restaurar medios de pago ya cobrados (monto_pagado de la reserva original)
+    if (ventaDetalle.monto_pagado > 0 && ventaDetalle.medio_pago) {
+      try {
+        const pagosOriginales: { tipo: string; monto: number }[] = JSON.parse(ventaDetalle.medio_pago)
+        if (Array.isArray(pagosOriginales) && pagosOriginales.length > 0) {
+          // Solo los medios con monto > 0, convertidos a string para el estado
+          const pagosRestaurados = pagosOriginales
+            .filter(p => p.tipo && p.monto > 0)
+            .map(p => ({ tipo: p.tipo, monto: String(p.monto) }))
+          if (pagosRestaurados.length > 0)
+            setMediosPago(pagosRestaurados)
+        }
+      } catch { /* medio_pago inválido, no restaurar */ }
+    }
+    setModoVenta('reservada')
+    setVentaDetalle(null)
+    setTab('nueva')
+    toast.success('Reserva cancelada — editá el carrito y volvé a reservar')
   }
 
   const cambiarEstado = useMutation({
@@ -802,12 +938,12 @@ export default function VentasPage() {
         const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
         if (_sesionId) {
           try {
-            // Si hay saldo nuevo, registrar solo ese efectivo
+            // Efectivo del saldo cobrado ahora
             const pagosSaldo = saldoMediosPago?.filter(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0) ?? []
             const efectivoSaldo = pagosSaldo.reduce((s, m) => s + parseFloat(m.monto), 0)
-            // Si no hay saldo (reserva ya pagada completa), registrar el efectivo de la reserva original
+            // Efectivo de la reserva original (nunca fue a caja — las reservas no registran en caja)
             const efectivoOriginal = (() => {
-              if (!saldoMediosPago && venta.medio_pago) {
+              if (venta.medio_pago) {
                 try {
                   const arr = JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[]
                   return arr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
@@ -1259,8 +1395,8 @@ export default function VentasPage() {
               )}
             </div>
 
-            {/* Pago */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
+            {/* Pago — solo para reservada/despachada */}
+            {modoVenta !== 'pendiente' && <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"><CreditCard size={16} /> Pago</h2>
 
               {mediosPago.map((mp, idx) => (
@@ -1288,15 +1424,21 @@ export default function VentasPage() {
                 <Plus size={12} /> Agregar otro medio
               </button>
 
-              {cart.length > 0 && totalAsignado > 0 && (
-                <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600 dark:text-green-400' : totalFaltante > 0 ? 'text-orange-500' : 'text-red-500'}`}>
-                  {totalFaltante === 0
-                    ? '✓ Total cubierto'
-                    : totalFaltante > 0
-                      ? `Falta asignar: $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-                      : `Excede por: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
-                </p>
-              )}
+              {cart.length > 0 && totalAsignado > 0 && (() => {
+                const hayEfectivo = mediosPago.some(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0)
+                const esVuelto = totalFaltante < -0.5 && hayEfectivo
+                return (
+                  <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600 dark:text-green-400' : totalFaltante > 0 ? 'text-orange-500' : esVuelto ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                    {totalFaltante === 0
+                      ? '✓ Total cubierto'
+                      : totalFaltante > 0
+                        ? `Falta asignar: $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                        : esVuelto
+                          ? `Vuelto: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                          : `Excede por: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                  </p>
+                )
+              })()}
               {/* Descuento general con toggle % / $ */}
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento general</label>
@@ -1320,7 +1462,7 @@ export default function VentasPage() {
               <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2}
                 placeholder="Notas (opcional)"
                 className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
-            </div>
+            </div>}
 
             {/* Totales */}
             {cart.length > 0 && (
@@ -1389,17 +1531,23 @@ export default function VentasPage() {
                   )
                 })()}
                 <div className="space-y-2 pt-1">
-                  <button onClick={() => registrarVenta('reservada')} disabled={saving}
+                  {/* Selector de modo */}
+                  <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">
+                    {([
+                      ['reservada', 'Reservar', ShoppingCart],
+                      ['despachada', 'Venta directa', Zap],
+                      ['pendiente', 'Sin pago ahora', FileText],
+                    ] as const).map(([modo, label, Icon]) => (
+                      <button key={modo} onClick={() => setModoVenta(modo)}
+                        className={`flex-1 flex items-center justify-center gap-1 py-2 transition-colors ${modoVenta === modo ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                        <Icon size={11} />{label}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => registrarVenta(modoVenta)} disabled={saving}
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                    <ShoppingCart size={16} /> {saving ? 'Guardando...' : 'Reservar stock'}
-                  </button>
-                  <button onClick={() => registrarVenta('despachada')} disabled={saving}
-                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                    <Zap size={16} /> Venta directa (despacho inmediato)
-                  </button>
-                  <button onClick={() => registrarVenta('pendiente')} disabled={saving}
-                    className="w-full border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all disabled:opacity-50">
-                    Registrar sin reservar
+                    {modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
+                    {saving ? 'Guardando...' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Despachar (venta directa)' : 'Registrar sin pago'}
                   </button>
                 </div>
               </div>
@@ -1453,6 +1601,11 @@ export default function VentasPage() {
                         <div className="flex items-center gap-3">
                           <span className="font-mono text-sm font-bold text-primary">#{v.numero}</span>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${est.bg} ${est.color}`}>{est.label}</span>
+                          {v.estado === 'reservada' && calcularSaldoPendiente(v.total ?? 0, v.monto_pagado ?? 0) > 0.5 && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
+                              Saldo ${calcularSaldoPendiente(v.total, v.monto_pagado ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                            </span>
+                          )}
                         </div>
                         <span className="font-bold text-gray-800 dark:text-gray-100">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
@@ -1492,7 +1645,7 @@ export default function VentasPage() {
                   </span>
                 </div>
               </div>
-              <button onClick={() => setVentaDetalle(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
+              <button onClick={() => { setVentaDetalle(null); setEditandoPago(false) }} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
             {ventaDetalle.cliente_nombre && (
@@ -1550,6 +1703,42 @@ export default function VentasPage() {
                 <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
               {ventaDetalle.medio_pago && <p className="text-gray-500 dark:text-gray-400">Medio de pago: {formatMedioPago(ventaDetalle.medio_pago)}</p>}
+              {/* Pago parcial en reserva */}
+              {ventaDetalle.estado === 'reservada' && (() => {
+                const saldo = calcularSaldoPendiente(ventaDetalle.total ?? 0, ventaDetalle.monto_pagado ?? 0)
+                return (
+                  <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2 space-y-1.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-blue-700 dark:text-blue-300">Ya cobrado</span>
+                      <span className="font-semibold text-blue-700 dark:text-blue-300">${(ventaDetalle.monto_pagado ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                    {saldo > 0.5 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600 dark:text-orange-400 font-semibold">Saldo pendiente</span>
+                        <span className="font-bold text-orange-600 dark:text-orange-400">${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                      </div>
+                    )}
+                    {editandoPago ? (
+                      <div className="flex gap-2 items-center pt-1">
+                        <input type="number" min="0" max={ventaDetalle.total} value={editMontoPagado}
+                          onChange={e => setEditMontoPagado(e.target.value)}
+                          className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent"
+                          placeholder="Nuevo monto cobrado" autoFocus />
+                        <button onClick={guardarMontoPagado} disabled={savingMontoPagado}
+                          className="px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-lg disabled:opacity-50">
+                          {savingMontoPagado ? '...' : 'Guardar'}
+                        </button>
+                        <button onClick={() => setEditandoPago(false)} className="px-2 py-1.5 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setEditandoPago(true); setEditMontoPagado(String(ventaDetalle.monto_pagado ?? 0)) }}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                        Editar monto cobrado
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
               {ventaDetalle.notas && <p className="text-gray-500 dark:text-gray-400">Notas: {ventaDetalle.notas}</p>}
             </div>
 
@@ -1609,6 +1798,12 @@ export default function VentasPage() {
                   disabled={cambiarEstado.isPending}
                   className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
                   Marcar como facturada
+                </button>
+              )}
+              {ventaDetalle.estado === 'reservada' && (
+                <button onClick={modificarReserva} disabled={cambiarEstado.isPending}
+                  className="w-full border-2 border-amber-200 text-amber-700 dark:text-amber-400 font-semibold py-2.5 rounded-xl hover:bg-amber-50 dark:bg-amber-900/20 transition-all text-sm flex items-center justify-center gap-2">
+                  <ShoppingCart size={15} /> Modificar productos (cancela y recrea)
                 </button>
               )}
               {['pendiente', 'reservada'].includes(ventaDetalle.estado) && (
@@ -1736,6 +1931,12 @@ export default function VentasPage() {
                             {p.monto > 0 && <span>${p.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
                           </div>
                         ))}
+                        {ticketVenta.vuelto > 0 && (
+                          <div className="flex justify-between text-sm font-semibold text-green-600 dark:text-green-400 border-t border-dashed border-gray-200 dark:border-gray-700 pt-1 mt-1">
+                            <span>Vuelto</span>
+                            <span>${ticketVenta.vuelto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                          </div>
+                        )}
                       </div>
                     )
                   })()}

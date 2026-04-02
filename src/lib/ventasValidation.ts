@@ -73,7 +73,12 @@ export function validarMediosPago(
     if (!tieneMetodoValido) return 'Ingresá un método de pago y monto para despachar'
     if (totalFaltante > 0.5) return `Falta asignar $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })} en medios de pago`
   }
-  if (hayMontos && totalFaltante < -0.5) return `El monto ingresado excede el total por $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+  if (hayMontos && totalFaltante < -0.5) {
+    const efectivoPagado = mediosPago.reduce((acc, m) => m.tipo === 'Efectivo' ? acc + (parseFloat(m.monto) || 0) : acc, 0)
+    if (efectivoPagado < 0.5)
+      return `El monto ingresado excede el total por $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+    // Si hay efectivo, el exceso es vuelto — se permite
+  }
 
   return null
 }

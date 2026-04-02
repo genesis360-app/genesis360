@@ -8,8 +8,11 @@ describe('Ventas — validación medios de pago', () => {
     it('permite sin medios de pago', () => {
       expect(validarMediosPago('pendiente', [{ tipo: '', monto: '' }], total)).toBeNull()
     })
-    it('bloquea si monto excede total', () => {
-      expect(validarMediosPago('pendiente', [{ tipo: 'Efectivo', monto: '1500' }], total)).not.toBeNull()
+    it('permite con efectivo mayor al total (vuelto)', () => {
+      expect(validarMediosPago('pendiente', [{ tipo: 'Efectivo', monto: '1500' }], total)).toBeNull()
+    })
+    it('bloquea si monto excede total sin efectivo', () => {
+      expect(validarMediosPago('pendiente', [{ tipo: 'Tarjeta débito', monto: '1500' }], total)).not.toBeNull()
     })
   })
 
@@ -50,8 +53,11 @@ describe('Ventas — validación medios de pago', () => {
     it('permite con monto exacto', () => {
       expect(validarMediosPago('despachada', [{ tipo: 'Efectivo', monto: '1000' }], total)).toBeNull()
     })
-    it('bloquea si monto excede total', () => {
-      expect(validarMediosPago('despachada', [{ tipo: 'Efectivo', monto: '1500' }], total))
+    it('permite con efectivo mayor al total (vuelto)', () => {
+      expect(validarMediosPago('despachada', [{ tipo: 'Efectivo', monto: '1500' }], total)).toBeNull()
+    })
+    it('bloquea si monto excede total sin efectivo', () => {
+      expect(validarMediosPago('despachada', [{ tipo: 'Tarjeta débito', monto: '1500' }], total))
         .toContain('excede el total')
     })
   })

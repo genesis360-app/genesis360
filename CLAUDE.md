@@ -477,10 +477,19 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Ventas — registro inline de cliente**: mini-form nombre+DNI+teléfono desde el checkout. ESC/Enter con `useModalKeyboard`.
 - [x] **Fix historial ventas**: `cambiarEstado` a `reservada`/`despachada` ahora valida caja abierta (igual que checkout directo).
 
-### v0.52.1 (en dev — pendiente deploy PROD)
-- [x] **Ventas — pago parcial en reservas** (migration 029): `monto_pagado DECIMAL(12,2) DEFAULT 0` en `ventas`. Al crear venta se guarda lo cobrado. Al despachar desde historial con saldo > $0.50 → modal muestra Total / Ya cobrado / Saldo a cobrar con selector de medios. Acumula pago en `medio_pago`. Registra solo el efectivo del saldo en caja (no duplica el de la reserva).
+### v0.52.1 ✅ PROD
+- [x] **Ventas — pago parcial en reservas** (migration 029): `monto_pagado DECIMAL(12,2) DEFAULT 0` en `ventas`. Al crear venta se guarda lo cobrado. Al despachar desde historial con saldo > $0.50 → modal muestra Total / Ya cobrado / Saldo a cobrar con selector de medios. Acumula pago en `medio_pago`.
 - [x] **Validación en mutationFn**: `validarDespacho()` bloquea el despacho si hay saldo sin cubrir (no solo en el UI). Función pura testeada.
 - [x] **Tests — pago parcial**: `tests/unit/ventasSaldo.test.ts` — 24 casos: `calcularSaldoPendiente`, `validarSaldoMediosPago`, `validarDespacho`, `acumularMediosPago`. Total: 85/85 passing.
+
+### v0.53.0 ✅ PROD
+- [x] **Ventas — vuelto al cliente**: efectivo > total → muestra "Vuelto $X" en checkout y en ticket. Caja registra solo el neto (entregado − vuelto). `monto_pagado` tope en `total`. Tests: 87/87.
+- [x] **Ventas — selector de modo**: tres modos en un toggle (Reservar / Venta directa / Sin pago ahora). "Sin pago ahora" oculta el form de cobro; `monto_pagado = 0` para pendiente.
+- [x] **Ventas — combos automáticos**: `useEffect` detecta cuando la cantidad alcanza el umbral del combo y lo aplica sin intervención del cajero. Toast informativo.
+- [x] **Ventas — editar monto cobrado de reserva**: bloque azul en modal detalle de reservada con Ya cobrado / Saldo pendiente. Input inline para corregir el monto sin reabrir la venta.
+- [x] **Ventas — modificar productos de reserva**: botón ámbar "Modificar productos" en modal de reservada. Cancela la reserva, registra motivo en `notas` (`"Cancelada por modificación — fecha — usuario"`), pre-puebla el carrito con productos + cliente + medios de pago originales para recrear.
+- [x] **Ventas — badge saldo en historial**: chip naranja "Saldo $X" en reservas con pago parcial pendiente.
+- [x] **Fix caja despacho**: al despachar una reserva, la caja registra efectivo original de la reserva + efectivo del saldo. Antes el efectivo de la reserva se perdía.
 
 ### v0.51.0 ✅ PROD
 - [x] **Scanner reescritura**: reemplaza `html5-qrcode` (ZXing) por `BarcodeDetector` nativo + `@undecaf/zbar-wasm` fallback. Funciona en iOS, Android y Desktop. Formatos: EAN-13, EAN-8, UPC, Code-128/39, QR, PDF417 y más.
@@ -492,9 +501,12 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Búsqueda por código de barras**: InventarioPage y MovimientosPage incluyen `codigo_barras` en filtros.
 
 ### Ventas — validación medios de pago y clientes
-- `pendiente`: no requiere medio de pago. **Requiere cliente registrado.**
-- `reservada`: requiere cliente registrado. Permite pago parcial (guarda `monto_pagado`). Requiere al menos un método con monto > 0 y que cubra el total (±$0.50).
-- `despachada`: no requiere cliente. Al despachar desde historial con saldo > $0.50 → modal de cobro. `validarDespacho()` también bloquea en la `mutationFn`.
+- `pendiente`: no requiere medio de pago ni cliente. Selector "Sin pago ahora" oculta el form de cobro. `monto_pagado = 0`.
+- `reservada`: requiere cliente registrado. Permite pago parcial (monto > 0 pero sin exigir cubrir el total). Guarda `monto_pagado`. Badge naranja "Saldo $X" en historial si hay pendiente.
+- `despachada` (directo): requiere al menos un medio con monto > 0 y que cubra el total. Efectivo > total → muestra vuelto, caja registra neto. `monto_pagado = min(pagado, total)`.
+- `despachada` (desde reservada): si saldo > $0.50 → modal de cobro. Caja registra efectivo original de reserva + efectivo del saldo. `validarDespacho()` bloquea en UI y en `mutationFn`.
+- **Modificar reserva**: cancela la reserva, registra motivo en `notas`, pre-puebla carrito con productos + cliente + medios de pago originales.
+- **Editar monto cobrado**: input inline en modal de reservada, actualiza `monto_pagado` directo en DB.
 - Registro inline de cliente desde checkout: nombre + DNI + teléfono (mandatorios). Búsqueda por nombre o DNI.
 - Funciones puras en `src/lib/ventasValidation.ts`: `validarMediosPago`, `validarDespacho`, `calcularSaldoPendiente`, `validarSaldoMediosPago`, `acumularMediosPago`.
 - Tests: `tests/unit/ventasValidation.test.ts` + `tests/unit/ventasSaldo.test.ts`.

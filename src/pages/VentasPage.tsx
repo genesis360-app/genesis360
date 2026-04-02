@@ -82,6 +82,9 @@ export default function VentasPage() {
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[] } | null>(null)
   const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('reservada')
+  const [editandoPago, setEditandoPago] = useState(false)
+  const [editMontoPagado, setEditMontoPagado] = useState('')
+  const [savingMontoPagado, setSavingMontoPagado] = useState(false)
 
   // Caja abierta
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -134,7 +137,7 @@ export default function VentasPage() {
   }
 
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
-  useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => setVentaDetalle(null) })
+  useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
 
@@ -755,6 +758,54 @@ export default function VentasPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const guardarMontoPagado = async () => {
+    const nuevo = parseFloat(editMontoPagado)
+    if (isNaN(nuevo) || nuevo < 0) { toast.error('Monto inválido'); return }
+    if (nuevo > ventaDetalle!.total) { toast.error(`No puede superar el total ($${ventaDetalle!.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })})`); return }
+    setSavingMontoPagado(true)
+    try {
+      const { error } = await supabase.from('ventas').update({ monto_pagado: nuevo }).eq('id', ventaDetalle!.id)
+      if (error) throw error
+      setVentaDetalle((prev: any) => ({ ...prev, monto_pagado: nuevo }))
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      setEditandoPago(false)
+      toast.success('Pago actualizado')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al actualizar')
+    } finally {
+      setSavingMontoPagado(false)
+    }
+  }
+
+  const modificarReserva = async () => {
+    if (!ventaDetalle) return
+    if (!confirm('¿Modificar esta reserva? Se cancelará la reserva actual y los productos volverán al carrito para que crees una nueva.')) return
+    // Cancelar la reserva actual (libera stock reservado)
+    await cambiarEstado.mutateAsync({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' }).catch(() => null)
+    // Pre-poblar el carrito con los items de la venta
+    const nuevosItems: CartItem[] = (ventaDetalle.venta_items ?? []).map((item: any) => ({
+      producto_id: item.producto_id ?? item.productos?.id ?? '',
+      nombre: item.productos?.nombre ?? '',
+      sku: item.productos?.sku ?? '',
+      precio_unitario: item.precio_unitario,
+      precio_costo: 0,
+      cantidad: item.cantidad,
+      descuento: item.descuento ?? 0,
+      descuento_tipo: 'pct' as DescTipo,
+      tiene_series: item.productos?.tiene_series ?? false,
+      tiene_vencimiento: item.productos?.tiene_vencimiento ?? false,
+      regla_inventario: item.productos?.regla_inventario ?? null,
+      series_seleccionadas: [],
+      series_disponibles: [],
+    }))
+    setCart(nuevosItems)
+    if (ventaDetalle.cliente_id) { setClienteId(ventaDetalle.cliente_id); setClienteNombre(ventaDetalle.cliente_nombre ?? ''); setClienteTelefono(ventaDetalle.cliente_telefono ?? '') }
+    setModoVenta('reservada')
+    setVentaDetalle(null)
+    setTab('nueva')
+    toast.success('Reserva cancelada — editá el carrito y volvé a reservar')
   }
 
   const cambiarEstado = useMutation({
@@ -1530,6 +1581,11 @@ export default function VentasPage() {
                         <div className="flex items-center gap-3">
                           <span className="font-mono text-sm font-bold text-primary">#{v.numero}</span>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${est.bg} ${est.color}`}>{est.label}</span>
+                          {v.estado === 'reservada' && calcularSaldoPendiente(v.total ?? 0, v.monto_pagado ?? 0) > 0.5 && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
+                              Saldo ${calcularSaldoPendiente(v.total, v.monto_pagado ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                            </span>
+                          )}
                         </div>
                         <span className="font-bold text-gray-800 dark:text-gray-100">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
@@ -1569,7 +1625,7 @@ export default function VentasPage() {
                   </span>
                 </div>
               </div>
-              <button onClick={() => setVentaDetalle(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
+              <button onClick={() => { setVentaDetalle(null); setEditandoPago(false) }} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
             {ventaDetalle.cliente_nombre && (
@@ -1627,6 +1683,42 @@ export default function VentasPage() {
                 <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
               {ventaDetalle.medio_pago && <p className="text-gray-500 dark:text-gray-400">Medio de pago: {formatMedioPago(ventaDetalle.medio_pago)}</p>}
+              {/* Pago parcial en reserva */}
+              {ventaDetalle.estado === 'reservada' && (() => {
+                const saldo = calcularSaldoPendiente(ventaDetalle.total ?? 0, ventaDetalle.monto_pagado ?? 0)
+                return (
+                  <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2 space-y-1.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-blue-700 dark:text-blue-300">Ya cobrado</span>
+                      <span className="font-semibold text-blue-700 dark:text-blue-300">${(ventaDetalle.monto_pagado ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                    {saldo > 0.5 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600 dark:text-orange-400 font-semibold">Saldo pendiente</span>
+                        <span className="font-bold text-orange-600 dark:text-orange-400">${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                      </div>
+                    )}
+                    {editandoPago ? (
+                      <div className="flex gap-2 items-center pt-1">
+                        <input type="number" min="0" max={ventaDetalle.total} value={editMontoPagado}
+                          onChange={e => setEditMontoPagado(e.target.value)}
+                          className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent"
+                          placeholder="Nuevo monto cobrado" autoFocus />
+                        <button onClick={guardarMontoPagado} disabled={savingMontoPagado}
+                          className="px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-lg disabled:opacity-50">
+                          {savingMontoPagado ? '...' : 'Guardar'}
+                        </button>
+                        <button onClick={() => setEditandoPago(false)} className="px-2 py-1.5 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setEditandoPago(true); setEditMontoPagado(String(ventaDetalle.monto_pagado ?? 0)) }}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                        Editar monto cobrado
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
               {ventaDetalle.notas && <p className="text-gray-500 dark:text-gray-400">Notas: {ventaDetalle.notas}</p>}
             </div>
 
@@ -1686,6 +1778,12 @@ export default function VentasPage() {
                   disabled={cambiarEstado.isPending}
                   className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
                   Marcar como facturada
+                </button>
+              )}
+              {ventaDetalle.estado === 'reservada' && (
+                <button onClick={modificarReserva} disabled={cambiarEstado.isPending}
+                  className="w-full border-2 border-amber-200 text-amber-700 dark:text-amber-400 font-semibold py-2.5 rounded-xl hover:bg-amber-50 dark:bg-amber-900/20 transition-all text-sm flex items-center justify-center gap-2">
+                  <ShoppingCart size={15} /> Modificar productos (cancela y recrea)
                 </button>
               )}
               {['pendiente', 'reservada'].includes(ventaDetalle.estado) && (

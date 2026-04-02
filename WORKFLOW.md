@@ -151,6 +151,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.52.0 | DNI obligatorio en clientes (migration 028) · bloqueo pendiente/reservada sin cliente · registro inline desde venta · fix cambiarEstado valida caja | 2026-03 |
 | v0.52.1 | Pago parcial en reservas (migration 029) · modal saldo al despachar · reserva permite monto parcial · validarDespacho en mutationFn | 2026-04 |
 | v0.53.0 | Ventas: vuelto al cliente · pendiente sin cobro · combos automáticos · editar monto reserva · modificar productos reserva · badge saldo historial · fix caja despacho registra efectivo completo | 2026-04 |
+| v0.53.1 | Tests: calcularVuelto · calcularEfectivoCaja · calcularComboRows · restaurarMediosPago (111/111) · fix bug vuelto en tarjeta · refactor funciones puras a ventasValidation.ts | 2026-04 |
 
 ---
 

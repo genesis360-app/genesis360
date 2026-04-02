@@ -491,6 +491,11 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Ventas — badge saldo en historial**: chip naranja "Saldo $X" en reservas con pago parcial pendiente.
 - [x] **Fix caja despacho**: al despachar una reserva, la caja registra efectivo original de la reserva + efectivo del saldo. Antes el efectivo de la reserva se perdía.
 
+### v0.53.1 ✅ PROD
+- [x] **Tests — caja y ventas** (`tests/unit/ventasCaja.test.ts`, 24 casos nuevos): `calcularVuelto`, `calcularEfectivoCaja`, `calcularComboRows`, `restaurarMediosPago`. Total: 111/111 passing.
+- [x] **Fix bug vuelto con tarjeta**: `calcularVuelto` solo computaba vuelto sobre efectivo, no sobre el total pagado con todos los medios. Tarjeta > total ya no genera vuelto falso.
+- [x] **Refactor funciones puras**: `calcularVuelto`, `calcularEfectivoCaja`, `calcularComboRows`, `restaurarMediosPago` extraídas a `src/lib/ventasValidation.ts`. VentasPage usa las funciones compartidas.
+
 ### v0.51.0 ✅ PROD
 - [x] **Scanner reescritura**: reemplaza `html5-qrcode` (ZXing) por `BarcodeDetector` nativo + `@undecaf/zbar-wasm` fallback. Funciona en iOS, Android y Desktop. Formatos: EAN-13, EAN-8, UPC, Code-128/39, QR, PDF417 y más.
 - [x] **Scanner UX**: línea laser animada, flash verde al detectar, beep (Web Audio), vibración háptica, modo manual (teclado + lector físico USB/Bluetooth).

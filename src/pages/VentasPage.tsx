@@ -541,7 +541,10 @@ export default function VentasPage() {
     // Validar medios de pago
     const errorPago = validarMediosPago(estado, mediosPago, total)
     if (errorPago) { toast.error(errorPago); return }
-    const montoEfectivoCaja = calcularEfectivo(mediosPago, total)
+    const efectivoBruto = calcularEfectivo(mediosPago, total)
+    const totalOtros = mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+    const vuelto = Math.max(0, efectivoBruto + totalOtros - total)
+    const montoEfectivoCaja = efectivoBruto - vuelto  // solo lo que la caja retiene
     if (estado === 'despachada' || estado === 'reservada') {
       if (sesionesAbiertas.length === 0) {
         toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
@@ -566,7 +569,7 @@ export default function VentasPage() {
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
         total,
         medio_pago: serializeMediosPago(mediosPago, total),
-        monto_pagado: estado === 'pendiente' ? 0 : mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0),
+        monto_pagado: estado === 'pendiente' ? 0 : Math.min(mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0), total),
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
@@ -739,7 +742,7 @@ export default function VentasPage() {
       }
       const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
-      setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })) })
+      setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('reservada')
       qc.invalidateQueries({ queryKey: ['ventas'] })
@@ -1810,6 +1813,12 @@ export default function VentasPage() {
                             {p.monto > 0 && <span>${p.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
                           </div>
                         ))}
+                        {ticketVenta.vuelto > 0 && (
+                          <div className="flex justify-between text-sm font-semibold text-green-600 dark:text-green-400 border-t border-dashed border-gray-200 dark:border-gray-700 pt-1 mt-1">
+                            <span>Vuelto</span>
+                            <span>${ticketVenta.vuelto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                          </div>
+                        )}
                       </div>
                     )
                   })()}

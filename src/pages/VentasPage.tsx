@@ -10,7 +10,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, type EstadoVenta, type MedioPagoItem } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, restaurarMediosPago, type EstadoVenta, type MedioPagoItem } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial'
@@ -400,20 +400,12 @@ export default function VentasPage() {
 
   const aplicarCombo = (idx: number, combo: any) => {
     const item = cart[idx]
-    const comboUnits = Math.floor(item.cantidad / combo.cantidad) * combo.cantidad
-    const remainder = item.cantidad % combo.cantidad
-    const tipo = combo.descuento_tipo ?? 'pct'
-    const descuento = tipo === 'pct' ? combo.descuento_pct
-      : tipo === 'monto_usd' ? Math.round(combo.descuento_monto * (cotizacionUSD || 1))
-      : combo.descuento_monto
-    const descuento_tipo: DescTipo = tipo === 'pct' ? 'pct' : 'monto'
-    const rows: CartItem[] = []
-    if (comboUnits > 0)
-      rows.push({ ...item, cantidad: comboUnits, descuento, descuento_tipo })
-    if (remainder > 0)
-      rows.push({ ...item, cantidad: remainder, descuento: 0, descuento_tipo: 'pct' })
-    setCart(prev => [...prev.slice(0, idx), ...rows, ...prev.slice(idx + 1)])
-    toast.success(`Combo aplicado: ${comboUnits} uds. con ${comboDescLabel(combo)}${remainder > 0 ? ` + ${remainder} sin descuento` : ''}`)
+    const rows = calcularComboRows(item.cantidad, combo, cotizacionUSD || 1)
+    const newItems: CartItem[] = rows.map(r => ({ ...item, cantidad: r.cantidad, descuento: r.descuento, descuento_tipo: r.descuento_tipo as DescTipo }))
+    setCart(prev => [...prev.slice(0, idx), ...newItems, ...prev.slice(idx + 1)])
+    const comboUnits = rows[0]?.cantidad ?? 0
+    const rem = rows[1]?.cantidad ?? 0
+    toast.success(`Combo aplicado: ${comboUnits} uds. con ${comboDescLabel(combo)}${rem > 0 ? ` + ${rem} sin descuento` : ''}`)
   }
 
   // Auto-aplicar combos cuando cambia el carrito
@@ -439,17 +431,8 @@ export default function VentasPage() {
         .sort((a: any, b: any) => b.cantidad - a.cantidad)[0]
       if (!combo) continue
 
-      const tipo = combo.descuento_tipo ?? 'pct'
-      const desc = tipo === 'pct' ? combo.descuento_pct
-        : tipo === 'monto_usd' ? Math.round(combo.descuento_monto * (cotizacionUSD || 1))
-        : combo.descuento_monto
-      const descTipo: DescTipo = tipo === 'pct' ? 'pct' : 'monto'
-
-      const comboUnits = Math.floor(totalQty / combo.cantidad) * combo.cantidad
-      const rem = totalQty % combo.cantidad
-      const target: CartItem[] = []
-      if (comboUnits > 0) target.push({ ...item, cantidad: comboUnits, descuento: desc, descuento_tipo: descTipo })
-      if (rem > 0) target.push({ ...item, cantidad: rem, descuento: 0, descuento_tipo: 'pct' as DescTipo })
+      const rows = calcularComboRows(totalQty, combo, cotizacionUSD || 1)
+      const target: CartItem[] = rows.map(r => ({ ...item, cantidad: r.cantidad, descuento: r.descuento, descuento_tipo: r.descuento_tipo as DescTipo }))
 
       const curSig = productRows.map(r => `${r.cantidad}:${r.descuento}:${r.descuento_tipo}`).sort().join(',')
       const tgtSig = target.map(r => `${r.cantidad}:${r.descuento}:${r.descuento_tipo}`).sort().join(',')
@@ -544,10 +527,8 @@ export default function VentasPage() {
     // Validar medios de pago
     const errorPago = validarMediosPago(estado, mediosPago, total)
     if (errorPago) { toast.error(errorPago); return }
-    const efectivoBruto = calcularEfectivo(mediosPago, total)
-    const totalOtros = mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
-    const vuelto = Math.max(0, efectivoBruto + totalOtros - total)
-    const montoEfectivoCaja = efectivoBruto - vuelto  // solo lo que la caja retiene
+    const vuelto = calcularVuelto(mediosPago, total)
+    const montoEfectivoCaja = calcularEfectivoCaja(mediosPago, total)
     if (estado === 'despachada' || estado === 'reservada') {
       if (sesionesAbiertas.length === 0) {
         toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
@@ -809,18 +790,9 @@ export default function VentasPage() {
     setCart(nuevosItems)
     if (ventaDetalle.cliente_id) { setClienteId(ventaDetalle.cliente_id); setClienteNombre(ventaDetalle.cliente_nombre ?? ''); setClienteTelefono(ventaDetalle.cliente_telefono ?? '') }
     // Restaurar medios de pago ya cobrados (monto_pagado de la reserva original)
-    if (ventaDetalle.monto_pagado > 0 && ventaDetalle.medio_pago) {
-      try {
-        const pagosOriginales: { tipo: string; monto: number }[] = JSON.parse(ventaDetalle.medio_pago)
-        if (Array.isArray(pagosOriginales) && pagosOriginales.length > 0) {
-          // Solo los medios con monto > 0, convertidos a string para el estado
-          const pagosRestaurados = pagosOriginales
-            .filter(p => p.tipo && p.monto > 0)
-            .map(p => ({ tipo: p.tipo, monto: String(p.monto) }))
-          if (pagosRestaurados.length > 0)
-            setMediosPago(pagosRestaurados)
-        }
-      } catch { /* medio_pago inválido, no restaurar */ }
+    if (ventaDetalle.monto_pagado > 0) {
+      const pagosRestaurados = restaurarMediosPago(ventaDetalle.medio_pago)
+      if (pagosRestaurados.length > 0) setMediosPago(pagosRestaurados)
     }
     setModoVenta('reservada')
     setVentaDetalle(null)
@@ -1425,8 +1397,8 @@ export default function VentasPage() {
               </button>
 
               {cart.length > 0 && totalAsignado > 0 && (() => {
-                const hayEfectivo = mediosPago.some(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0)
-                const esVuelto = totalFaltante < -0.5 && hayEfectivo
+                const vueltoUI = calcularVuelto(mediosPago, total)
+                const esVuelto = vueltoUI > 0.5
                 return (
                   <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600 dark:text-green-400' : totalFaltante > 0 ? 'text-orange-500' : esVuelto ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                     {totalFaltante === 0

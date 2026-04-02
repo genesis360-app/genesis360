@@ -54,6 +54,59 @@ export function validarDespacho(
   return null
 }
 
+/** Calcula cuánto vuelto debe darse al cliente.
+ *  Vuelto solo aplica sobre efectivo: es lo que sobra del efectivo luego de cubrir
+ *  lo que no cubrieron otros medios de pago.
+ *  Retorna 0 si no hay vuelto. */
+export function calcularVuelto(mediosPago: MedioPagoItem[], total: number): number {
+  const efectivo = mediosPago.filter(m => m.tipo === 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  const otrosMedios = mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  // Cuánto debe cubrir el efectivo (lo que no cubrieron otros medios)
+  const neededFromEfectivo = Math.max(0, total - otrosMedios)
+  const vuelto = efectivo - neededFromEfectivo
+  return vuelto > 0.5 ? vuelto : 0
+}
+
+/** Calcula el efectivo neto que debe registrarse en caja (lo recibido menos el vuelto). */
+export function calcularEfectivoCaja(mediosPago: MedioPagoItem[], total: number): number {
+  const efectivo = mediosPago.filter(m => m.tipo === 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  const vuelto = calcularVuelto(mediosPago, total)
+  return Math.max(0, efectivo - vuelto)
+}
+
+export interface ComboRow { cantidad: number; descuento: number; descuento_tipo: 'pct' | 'monto' }
+
+/** Dada la cantidad total de un producto y un combo, retorna las filas que deben aparecer en el carrito.
+ *  Ej: 5 unidades con combo de 3×10%off → [{ cantidad:3, descuento:10, tipo:'pct' }, { cantidad:2, descuento:0, tipo:'pct' }] */
+export function calcularComboRows(
+  totalQty: number,
+  combo: { cantidad: number; descuento_pct: number; descuento_tipo?: string; descuento_monto?: number },
+  cotizacionUSD = 1
+): ComboRow[] {
+  const tipo = combo.descuento_tipo ?? 'pct'
+  const desc = tipo === 'pct' ? combo.descuento_pct
+    : tipo === 'monto_usd' ? Math.round((combo.descuento_monto ?? 0) * cotizacionUSD)
+    : (combo.descuento_monto ?? 0)
+  const descTipo: 'pct' | 'monto' = tipo === 'pct' ? 'pct' : 'monto'
+  const comboUnits = Math.floor(totalQty / combo.cantidad) * combo.cantidad
+  const rem = totalQty % combo.cantidad
+  const rows: ComboRow[] = []
+  if (comboUnits > 0) rows.push({ cantidad: comboUnits, descuento: desc, descuento_tipo: descTipo })
+  if (rem > 0) rows.push({ cantidad: rem, descuento: 0, descuento_tipo: 'pct' })
+  return rows
+}
+
+/** Parsea el JSON de medio_pago de una venta y restaura como MedioPagoItem[].
+ *  Retorna [] si no se puede parsear o no hay datos válidos. */
+export function restaurarMediosPago(mediosPagoJson: string | null | undefined): MedioPagoItem[] {
+  if (!mediosPagoJson) return []
+  try {
+    const arr = JSON.parse(mediosPagoJson) as { tipo: string; monto: number }[]
+    if (!Array.isArray(arr)) return []
+    return arr.filter(p => p.tipo && p.monto > 0).map(p => ({ tipo: p.tipo, monto: String(p.monto) }))
+  } catch { return [] }
+}
+
 export function validarMediosPago(
   estado: EstadoVenta,
   mediosPago: MedioPagoItem[],

@@ -242,7 +242,7 @@ export default function VentasPage() {
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado, sucursalId],
     queryFn: async () => {
-      let q = supabase.from('ventas').select('*, venta_items(id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,tiene_series,categoria_id), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
+      let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
       if (filterEstado) q = q.eq('estado', filterEstado)
       q = applyFilter(q)
@@ -785,21 +785,23 @@ export default function VentasPage() {
     // Cancelar la reserva actual (libera stock reservado)
     await cambiarEstado.mutateAsync({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' }).catch(() => null)
     // Pre-poblar el carrito con los items de la venta
-    const nuevosItems: CartItem[] = (ventaDetalle.venta_items ?? []).map((item: any) => ({
-      producto_id: item.producto_id ?? item.productos?.id ?? '',
-      nombre: item.productos?.nombre ?? '',
-      sku: item.productos?.sku ?? '',
-      precio_unitario: item.precio_unitario,
-      precio_costo: 0,
-      cantidad: item.cantidad,
-      descuento: item.descuento ?? 0,
-      descuento_tipo: 'pct' as DescTipo,
-      tiene_series: item.productos?.tiene_series ?? false,
-      tiene_vencimiento: item.productos?.tiene_vencimiento ?? false,
-      regla_inventario: item.productos?.regla_inventario ?? null,
-      series_seleccionadas: [],
-      series_disponibles: [],
-    }))
+    const nuevosItems: CartItem[] = (ventaDetalle.venta_items ?? [])
+      .filter((item: any) => item.producto_id)
+      .map((item: any) => ({
+        producto_id: item.producto_id,
+        nombre: item.productos?.nombre ?? '',
+        sku: item.productos?.sku ?? '',
+        precio_unitario: item.precio_unitario,
+        precio_costo: item.productos?.precio_costo ?? 0,
+        cantidad: item.cantidad,
+        descuento: item.descuento ?? 0,
+        descuento_tipo: 'pct' as DescTipo,
+        tiene_series: item.productos?.tiene_series ?? false,
+        tiene_vencimiento: item.productos?.tiene_vencimiento ?? false,
+        regla_inventario: item.productos?.regla_inventario ?? null,
+        series_seleccionadas: [],
+        series_disponibles: [],
+      }))
     setCart(nuevosItems)
     if (ventaDetalle.cliente_id) { setClienteId(ventaDetalle.cliente_id); setClienteNombre(ventaDetalle.cliente_nombre ?? ''); setClienteTelefono(ventaDetalle.cliente_telefono ?? '') }
     setModoVenta('reservada')

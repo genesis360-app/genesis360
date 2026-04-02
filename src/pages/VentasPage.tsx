@@ -808,6 +808,20 @@ export default function VentasPage() {
       }))
     setCart(nuevosItems)
     if (ventaDetalle.cliente_id) { setClienteId(ventaDetalle.cliente_id); setClienteNombre(ventaDetalle.cliente_nombre ?? ''); setClienteTelefono(ventaDetalle.cliente_telefono ?? '') }
+    // Restaurar medios de pago ya cobrados (monto_pagado de la reserva original)
+    if (ventaDetalle.monto_pagado > 0 && ventaDetalle.medio_pago) {
+      try {
+        const pagosOriginales: { tipo: string; monto: number }[] = JSON.parse(ventaDetalle.medio_pago)
+        if (Array.isArray(pagosOriginales) && pagosOriginales.length > 0) {
+          // Solo los medios con monto > 0, convertidos a string para el estado
+          const pagosRestaurados = pagosOriginales
+            .filter(p => p.tipo && p.monto > 0)
+            .map(p => ({ tipo: p.tipo, monto: String(p.monto) }))
+          if (pagosRestaurados.length > 0)
+            setMediosPago(pagosRestaurados)
+        }
+      } catch { /* medio_pago inválido, no restaurar */ }
+    }
     setModoVenta('reservada')
     setVentaDetalle(null)
     setTab('nueva')

@@ -782,8 +782,12 @@ export default function VentasPage() {
   const modificarReserva = async () => {
     if (!ventaDetalle) return
     if (!confirm('¿Modificar esta reserva? Se cancelará la reserva actual y los productos volverán al carrito para que crees una nueva.')) return
-    // Cancelar la reserva actual (libera stock reservado)
+    // Cancelar la reserva actual (libera stock reservado) y registrar motivo
     await cambiarEstado.mutateAsync({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' }).catch(() => null)
+    const notaAnterior = ventaDetalle.notas ? `${ventaDetalle.notas} | ` : ''
+    void supabase.from('ventas').update({
+      notas: `${notaAnterior}Cancelada por modificación de productos — ${new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} por ${user?.nombre_display ?? 'usuario'}`
+    }).eq('id', ventaDetalle.id)
     // Pre-poblar el carrito con los items de la venta
     const nuevosItems: CartItem[] = (ventaDetalle.venta_items ?? [])
       .filter((item: any) => item.producto_id)

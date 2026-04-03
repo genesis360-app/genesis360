@@ -62,13 +62,14 @@ export default function DashboardPage() {
       const hace7dias    = new Date(Date.now() - 7 * 86400000).toISOString()
       const hace30dias   = new Date(Date.now() - 30 * 86400000).toISOString()
 
-      const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes] = await Promise.all([
+      const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes, ventasDeuda] = await Promise.all([
         supabase.from('productos').select('id, nombre, sku, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
         supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
         supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes),
         supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt),
         supabase.from('movimientos_stock').select('producto_id, cantidad').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias),
+        supabase.from('ventas').select('total, monto_pagado').eq('tenant_id', tenant!.id).in('estado', ['pendiente', 'reservada']),
       ])
 
       const prods            = productos.data ?? []
@@ -124,11 +125,18 @@ export default function DashboardPage() {
         .sort((a, b) => a.diasHastaCritico - b.diasHastaCritico)
         .slice(0, 10)
 
+      // Deuda pendiente: ventas pendientes/reservadas con saldo sin cobrar
+      const deudaTotal = (ventasDeuda.data ?? []).reduce((acc, v) => {
+        const saldo = Math.max(0, (v.total ?? 0) - (v.monto_pagado ?? 0))
+        return acc + saldo
+      }, 0)
+      const cantDeudoras = (ventasDeuda.data ?? []).filter(v => Math.max(0, (v.total ?? 0) - (v.monto_pagado ?? 0)) > 0.5).length
+
       return {
         totalProductos, stockCritico, valorInventario, alertasActivas,
         ingresosHoy, cantIngresosHoy, rebajesHoy, totalVentasMes, cantVentasMes,
         totalVentasMesAnt, cantStockMuerto, valorStockMuerto, prodsInactivos, prodsCriticos,
-        proyeccionCobertura,
+        proyeccionCobertura, deudaTotal, cantDeudoras,
       }
     },
     enabled: !!tenant,
@@ -461,7 +469,14 @@ export default function DashboardPage() {
               {trendVentas >= 0 ? '+' : ''}${Math.abs(stats.totalVentasMes - stats.totalVentasMesAnt).toLocaleString('es-AR', { maximumFractionDigits: 0 })} vs mes anterior
             </p>
           )}
-          <button onClick={() => setTab('metricas')} className="inline-block mt-3 text-xs text-blue-300 hover:text-white transition-colors">
+          {(stats?.deudaTotal ?? 0) > 0 && (
+            <Link to="/alertas" className="flex items-center gap-1 mt-2 text-xs text-amber-300 hover:text-white transition-colors">
+              <Hourglass size={11} />
+              ${stats!.deudaTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })} pendiente de cobro
+              {stats!.cantDeudoras > 0 && ` · ${stats!.cantDeudoras} venta${stats!.cantDeudoras !== 1 ? 's' : ''}`}
+            </Link>
+          )}
+          <button onClick={() => setTab('metricas')} className="inline-block mt-2 text-xs text-blue-300 hover:text-white transition-colors">
             Ver métricas completas →
           </button>
         </div>

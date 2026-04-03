@@ -39,6 +39,11 @@ describe('Ventas — validación medios de pago', () => {
       const medios = [{ tipo: 'Efectivo', monto: '600' }, { tipo: 'Tarjeta', monto: '400' }]
       expect(validarMediosPago('reservada', medios, total)).toBeNull()
     })
+    it('bloquea si un medio tiene monto pero sin tipo (mixto sin tipo)', () => {
+      const medios = [{ tipo: 'Efectivo', monto: '600' }, { tipo: '', monto: '400' }]
+      expect(validarMediosPago('reservada', medios, total))
+        .toBe('Seleccioná un método de pago para todos los montos')
+    })
   })
 
   describe('estado: despachada', () => {
@@ -59,6 +64,12 @@ describe('Ventas — validación medios de pago', () => {
     it('bloquea si monto excede total sin efectivo', () => {
       expect(validarMediosPago('despachada', [{ tipo: 'Tarjeta débito', monto: '1500' }], total))
         .toContain('excede el total')
+    })
+    it('bloquea si un medio tiene monto pero sin tipo (mixto sin tipo)', () => {
+      // efectivo $600 cubre parcialmente, pero $400 sin tipo completa el total → debe bloquear
+      const medios = [{ tipo: 'Efectivo', monto: '600' }, { tipo: '', monto: '400' }]
+      expect(validarMediosPago('despachada', medios, total))
+        .toBe('Seleccioná un método de pago para todos los montos')
     })
   })
 })

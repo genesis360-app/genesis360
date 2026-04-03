@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -59,7 +60,8 @@ export default function VentasPage() {
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
-  const [tab, setTab] = useState<Tab>('nueva')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tab, setTab] = useState<Tab>(() => searchParams.get('id') ? 'historial' : 'nueva')
   const [ventaGrupoId, setVentaGrupoId] = useState<string | null>(null)
 
   // Nueva venta
@@ -252,6 +254,17 @@ export default function VentasPage() {
     },
     enabled: !!tenant && tab === 'historial',
   })
+
+  // Abrir modal de venta directamente si viene con ?id= en la URL
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (!id || loadingVentas) return
+    const venta = ventas.find((v: any) => v.id === id)
+    if (venta) {
+      setVentaDetalle(venta)
+      setSearchParams({}, { replace: true })
+    }
+  }, [ventas, loadingVentas, searchParams, setSearchParams])
 
   const agregarProducto = async (p: any) => {
     setProductoSearch('')

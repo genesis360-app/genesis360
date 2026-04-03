@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import {
   Users, Plus, Search, Phone, Mail, FileText, X,
   ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
@@ -52,12 +53,13 @@ export default function ClientesPage() {
   const { tenant } = useAuthStore()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<ClienteForm>(FORM_VACIO)
   const [saving, setSaving] = useState(false)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(() => searchParams.get('id'))
 
   // Import state
   const fileRefImport = useRef<HTMLInputElement>(null)
@@ -79,6 +81,17 @@ export default function ClientesPage() {
     },
     enabled: !!tenant,
   })
+
+  // Si viene con ?id= en la URL, expandir ese cliente y limpiar el param
+  useEffect(() => {
+    const id = searchParams.get('id')
+    if (!id || isLoading) return
+    const existe = clientes.some((c: any) => c.id === id)
+    if (existe) {
+      setExpandedId(id)
+      setSearchParams({}, { replace: true })
+    }
+  }, [clientes, isLoading, searchParams, setSearchParams])
 
   const { data: statsMap = {} } = useQuery({
     queryKey: ['clientes-stats', tenant?.id],

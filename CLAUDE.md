@@ -496,7 +496,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Fix bug vuelto con tarjeta**: `calcularVuelto` solo computaba vuelto sobre efectivo, no sobre el total pagado con todos los medios. Tarjeta > total ya no genera vuelto falso.
 - [x] **Refactor funciones puras**: `calcularVuelto`, `calcularEfectivoCaja`, `calcularComboRows`, `restaurarMediosPago` extraídas a `src/lib/ventasValidation.ts`. VentasPage usa las funciones compartidas.
 
-### v0.55.0 — en DEV
+### v0.55.0 ✅ PROD
 - [x] **Fix bug medio de pago sin tipo**: `validarMediosPago` y `validarSaldoMediosPago` bloquean si hay monto > 0 sin tipo seleccionado (mixto con "Elegir método" permitía cerrar venta). 3 tests nuevos (114/114).
 - [x] **Dashboard — deuda pendiente**: query paralela en `dashboard-stats` suma `total - monto_pagado` de ventas `pendiente`/`reservada`. Línea "$X pendiente de cobro · N ventas" en tarjeta ventas, link a `/alertas`.
 - [x] **Alertas — clientes con saldo pendiente**: nueva sección amarilla agrupa ventas por cliente, muestra saldo acumulado y cantidad de ventas. Botón "Ver ficha" → `/clientes?id=xxx`.

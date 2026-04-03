@@ -189,7 +189,7 @@ export default function AlertasPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Link
-                      to="/movimientos"
+                      to="/inventario"
                       className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-accent transition-all"
                     >
                       Ingresar stock
@@ -258,7 +258,7 @@ export default function AlertasPage() {
                     </div>
                   </div>
                   <Link
-                    to={`/inventario/${p.id}/editar`}
+                    to={`/productos/${p.id}/editar`}
                     className="text-xs bg-orange-500 dark:bg-orange-600 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 dark:hover:bg-orange-700 transition-all whitespace-nowrap"
                   >
                     Editar producto

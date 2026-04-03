@@ -31,7 +31,7 @@ const SLIDES: Slide[] = [
     titulo: 'Productos — tu catálogo',
     descripcion: 'Cargá tus productos con precio de costo, precio de venta, stock mínimo y categoría. Podés hacerlo uno por uno, desde una foto, o importar un Excel completo.',
     tip: 'Activá "Trazabilidad por serie" si vendés productos únicos (electrónica, herramientas, etc.)',
-    ruta: '/inventario/nuevo',
+    ruta: '/productos/nuevo',
   },
   {
     icon: ArrowLeftRight,
@@ -39,7 +39,7 @@ const SLIDES: Slide[] = [
     titulo: 'Movimientos — controlá el stock',
     descripcion: 'Cada vez que entra o sale mercadería, registralo acá. El stock se actualiza solo. Podés asignar ubicación, lote, vencimiento y número de serie.',
     tip: 'Usá "LPN" para identificar pallets o cajas físicas dentro de tu depósito.',
-    ruta: '/movimientos',
+    ruta: '/inventario',
   },
   {
     icon: ShoppingCart,

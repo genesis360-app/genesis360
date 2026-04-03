@@ -444,7 +444,7 @@ export default function ImportarProductosPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+        <button onClick={() => navigate('/productos')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
           <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
         </button>
         <div>
@@ -476,7 +476,7 @@ export default function ImportarProductosPage() {
                 <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
                   {resultadoProd.creados} creados · {resultadoProd.actualizados} actualizados · {resultadoProd.errores} errores
                 </p>
-                <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
+                <button onClick={() => navigate('/productos')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
               </div>
             </div>
           )}
@@ -582,7 +582,7 @@ export default function ImportarProductosPage() {
               <div>
                 <p className="font-semibold text-green-800 dark:text-green-400">Carga completada</p>
                 <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">{resultadoInv.cargados} línea{resultadoInv.cargados !== 1 ? 's' : ''} cargada{resultadoInv.cargados !== 1 ? 's' : ''} · {resultadoInv.errores} errores</p>
-                <button onClick={() => navigate('/inventario')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
+                <button onClick={() => navigate('/productos')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Ver inventario →</button>
               </div>
             </div>
           )}

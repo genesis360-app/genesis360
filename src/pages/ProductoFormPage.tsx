@@ -206,15 +206,15 @@ export default function ProductoFormPage() {
         const { error } = await supabase.from('productos').update(payload).eq('id', id)
         if (error) throw error
         toast.success('Producto actualizado')
-        logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: form.nombre, accion: 'editar', pagina: '/inventario' })
+        logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: form.nombre, accion: 'editar', pagina: '/productos' })
       } else {
         const { error } = await supabase.from('productos').insert(payload)
         if (error) { if (error.code === '23505') throw new Error('Ya existe un producto con ese SKU'); throw error }
         toast.success('Producto creado')
-        logActividad({ entidad: 'producto', entidad_nombre: form.nombre, accion: 'crear', pagina: '/inventario' })
+        logActividad({ entidad: 'producto', entidad_nombre: form.nombre, accion: 'crear', pagina: '/productos' })
       }
       qc.invalidateQueries({ queryKey: ['productos'] })
-      navigate('/inventario')
+      navigate('/productos')
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar')
     } finally {
@@ -243,9 +243,9 @@ export default function ProductoFormPage() {
     if (error) toast.error(error.message)
     else {
       toast.success('Producto eliminado')
-      logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: form.nombre, accion: 'eliminar', pagina: '/inventario' })
+      logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: form.nombre, accion: 'eliminar', pagina: '/productos' })
       qc.invalidateQueries({ queryKey: ['productos'] })
-      navigate('/inventario')
+      navigate('/productos')
     }
   }
 
@@ -278,9 +278,9 @@ export default function ProductoFormPage() {
       const { data: newProd, error } = await supabase.from('productos').insert(payload).select().single()
       if (error) throw error
       toast.success('Producto duplicado')
-      logActividad({ entidad: 'producto', entidad_id: newProd?.id, entidad_nombre: payload.nombre, accion: 'crear', campo: 'duplicado_de', valor_anterior: form.nombre, pagina: '/inventario' })
+      logActividad({ entidad: 'producto', entidad_id: newProd?.id, entidad_nombre: payload.nombre, accion: 'crear', campo: 'duplicado_de', valor_anterior: form.nombre, pagina: '/productos' })
       qc.invalidateQueries({ queryKey: ['productos'] })
-      navigate(newProd?.id ? `/inventario/${newProd.id}/editar` : '/inventario')
+      navigate(newProd?.id ? `/productos/${newProd.id}/editar` : '/productos')
     } catch (err: any) {
       toast.error(err.message ?? 'Error al duplicar')
     } finally {
@@ -357,7 +357,7 @@ export default function ProductoFormPage() {
         <PlanLimitModal tipo="producto" limits={limits} onClose={() => setShowLimitModal(false)} />
       )}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/inventario')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+        <button onClick={() => navigate('/productos')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
           <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
         </button>
         <div className="flex-1">
@@ -864,7 +864,7 @@ export default function ProductoFormPage() {
 
         {canEdit && (
           <div className="flex gap-3 justify-end">
-            <button type="button" onClick={() => navigate('/inventario')}
+            <button type="button" onClick={() => navigate('/productos')}
               className="px-6 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all">
               Cancelar
             </button>

@@ -13,12 +13,12 @@ const LoginPage        = lazy(() => import('@/pages/LoginPage'))
 const LandingPage      = lazy(() => import('@/pages/LandingPage'))
 const OnboardingPage   = lazy(() => import('@/pages/OnboardingPage'))
 const DashboardPage    = lazy(() => import('@/pages/DashboardPage'))
+const ProductosPage    = lazy(() => import('@/pages/ProductosPage'))
 const InventarioPage   = lazy(() => import('@/pages/InventarioPage'))
 const ProductoFormPage = lazy(() => import('@/pages/ProductoFormPage'))
 const ImportarProductosPage = lazy(() => import('@/pages/ImportarProductosPage'))
 const CajaPage             = lazy(() => import('@/pages/CajaPage'))
 const MetricasPage         = lazy(() => import('@/pages/MetricasPage'))
-const MovimientosPage  = lazy(() => import('@/pages/MovimientosPage'))
 const VentasPage       = lazy(() => import('@/pages/VentasPage'))
 const AlertasPage      = lazy(() => import('@/pages/AlertasPage'))
 const ReportesPage     = lazy(() => import('@/pages/ReportesPage'))
@@ -103,11 +103,16 @@ function App() {
                 <Route element={<AppLayout />}>
                   <Route path="/app" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/productos" element={<ProductosPage />} />
+                  <Route path="/productos/nuevo" element={<ProductoFormPage />} />
+                  <Route path="/productos/importar" element={<ImportarProductosPage />} />
+                  <Route path="/productos/:id/editar" element={<ProductoFormPage />} />
                   <Route path="/inventario" element={<InventarioPage />} />
-                  <Route path="/inventario/nuevo" element={<ProductoFormPage />} />
-                  <Route path="/inventario/importar" element={<ImportarProductosPage />} />
+                  {/* Redirects para compatibilidad con URLs viejas */}
+                  <Route path="/inventario/nuevo" element={<Navigate to="/productos/nuevo" replace />} />
+                  <Route path="/inventario/importar" element={<Navigate to="/productos/importar" replace />} />
                   <Route path="/inventario/:id/editar" element={<ProductoFormPage />} />
-                  <Route path="/movimientos" element={<MovimientosPage />} />
+                  <Route path="/movimientos" element={<Navigate to="/inventario" replace />} />
                   <Route path="/ventas" element={<VentasPage />} />
                   <Route path="/alertas" element={<AlertasPage />} />
                   <Route path="/reportes" element={<ReportesPage />} />

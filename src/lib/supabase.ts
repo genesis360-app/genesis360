@@ -132,6 +132,30 @@ export interface Producto {
   ubicaciones?: Ubicacion
 }
 
+export interface ProductoEstructura {
+  id: string
+  tenant_id: string
+  producto_id: string
+  nombre: string
+  is_default: boolean
+  unidades_por_caja?: number | null
+  cajas_por_pallet?: number | null
+  peso_unidad?: number | null
+  alto_unidad?: number | null
+  ancho_unidad?: number | null
+  largo_unidad?: number | null
+  peso_caja?: number | null
+  alto_caja?: number | null
+  ancho_caja?: number | null
+  largo_caja?: number | null
+  peso_pallet?: number | null
+  alto_pallet?: number | null
+  ancho_pallet?: number | null
+  largo_pallet?: number | null
+  created_at: string
+  updated_at: string
+}
+
 export interface MovimientoStock {
   id: string
   tenant_id: string

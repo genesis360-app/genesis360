@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
+import { MasivoModal } from '@/components/MasivoModal'
+import type { MasivoTipo } from '@/components/MasivoModal'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -58,6 +60,7 @@ export default function InventarioPage() {
 
   // ── Movimientos tab state ──────────────────────────────────────────────────
   const [modal, setModal] = useState<ModalType>(null)
+  const [masivoModal, setMasivoModal] = useState<MasivoTipo | null>(null)
   const [movSearch, setMovSearch] = useState('')
   const [movScannerOpen, setMovScannerOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<Producto | null>(null)
@@ -428,6 +431,15 @@ export default function InventarioPage() {
         />
       )}
 
+      {/* Modal masivo */}
+      {masivoModal && (
+        <MasivoModal
+          tipo={masivoModal}
+          onClose={() => setMasivoModal(null)}
+          onSuccess={() => {}}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Inventario</h1>
@@ -436,14 +448,24 @@ export default function InventarioPage() {
           </p>
         </div>
         {tab === 'movimientos' && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => setModal('ingreso')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               <ArrowDown size={16} /> Ingreso
             </button>
+            <button onClick={() => setMasivoModal('ingreso')} disabled={limiteAlcanzado}
+              className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Ingreso de múltiples SKUs">
+              <ArrowDown size={16} /> Masivo
+            </button>
             <button onClick={() => setModal('rebaje')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               <ArrowUp size={16} /> Rebaje
+            </button>
+            <button onClick={() => setMasivoModal('rebaje')} disabled={limiteAlcanzado}
+              className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Rebaje de múltiples SKUs">
+              <ArrowUp size={16} /> Masivo
             </button>
           </div>
         )}

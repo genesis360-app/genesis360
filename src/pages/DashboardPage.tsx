@@ -440,7 +440,7 @@ export default function DashboardPage() {
       {/* KPI Cards con semáforo */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
-        <Link to="/inventario" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
+        <Link to="/productos" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
             <Package size={20} />
           </div>
@@ -459,7 +459,7 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Alertas activas</p>
         </Link>
 
-        <Link to="/movimientos" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
+        <Link to="/inventario" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400">
             <ArrowDown size={20} />
           </div>
@@ -808,7 +808,7 @@ export default function DashboardPage() {
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Movimientos recientes</h2>
-            <Link to="/movimientos" className="text-xs text-accent hover:underline">Ver todos →</Link>
+            <Link to="/inventario" className="text-xs text-accent hover:underline">Ver todos →</Link>
           </div>
           {movRecientes.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-400 py-4 text-center">Sin movimientos aún</p>

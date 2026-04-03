@@ -47,7 +47,7 @@ export function CotizacionWidget() {
         <div className="flex items-center gap-1">
           <span className="text-blue-200 text-xs whitespace-nowrap">$1 USD =</span>
           <input
-            type="number" min="0" step="1"
+            type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
             value={inputVal}
             onChange={e => setInputVal(e.target.value)}
             onKeyDown={handleKey}

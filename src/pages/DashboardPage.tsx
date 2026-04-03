@@ -10,6 +10,8 @@ import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
 import { useRecomendaciones } from '@/hooks/useRecomendaciones'
 import MetricasPage from './MetricasPage'
+import RentabilidadPage from './RentabilidadPage'
+import RecomendacionesPage from './RecomendacionesPage'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 
@@ -48,7 +50,7 @@ export default function DashboardPage() {
   const { tenant } = useAuthStore()
   const { score, recomendaciones } = useRecomendaciones()
   const { limits } = usePlanLimits()
-  const [tab, setTab] = useState<'general' | 'metricas' | 'insights'>('general')
+  const [tab, setTab] = useState<'general' | 'metricas' | 'insights' | 'rentabilidad' | 'recomendaciones'>('general')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
 
@@ -252,16 +254,22 @@ export default function DashboardPage() {
 
   const fecha = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
 
-  const tabButtons = (active: 'general' | 'metricas' | 'insights') => (
-    <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
-      {(['general', 'insights', 'metricas'] as const).map(t => (
-        <button key={t} onClick={() => setTab(t)}
+  const tabButtons = (active: typeof tab) => (
+    <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl flex-wrap">
+      {([
+        { id: 'general'         as const, label: 'General' },
+        { id: 'insights'        as const, label: 'Insights' },
+        { id: 'metricas'        as const, label: 'Métricas',        lock: limits && !limits.puede_metricas },
+        { id: 'rentabilidad'    as const, label: 'Rentabilidad' },
+        { id: 'recomendaciones' as const, label: 'Recomendaciones' },
+      ]).map(({ id, label, lock }) => (
+        <button key={id} onClick={() => setTab(id)}
           className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5
-            ${active === t
+            ${active === id
               ? 'bg-white dark:bg-gray-800 text-primary shadow-sm dark:shadow-gray-900'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-          {t === 'metricas' && limits && !limits.puede_metricas && <Lock size={12} className="text-gray-400" />}
-          {t === 'general' ? 'General' : t === 'metricas' ? 'Métricas' : 'Insights'}
+          {lock && <Lock size={12} className="text-gray-400" />}
+          {label}
         </button>
       ))}
     </div>
@@ -383,6 +391,36 @@ export default function DashboardPage() {
           ? <UpgradePrompt feature="metricas" />
           : <MetricasPage hideHeader />
         }
+      </div>
+    )
+  }
+
+  if (tab === 'rentabilidad') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
+          </div>
+          {tabButtons('rentabilidad')}
+        </div>
+        <RentabilidadPage hideHeader />
+      </div>
+    )
+  }
+
+  if (tab === 'recomendaciones') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
+          </div>
+          {tabButtons('recomendaciones')}
+        </div>
+        <RecomendacionesPage hideHeader />
       </div>
     )
   }

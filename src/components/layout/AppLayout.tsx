@@ -18,22 +18,20 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 
 const navItems = [
-  { to: '/dashboard',       icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/ventas',          icon: ShoppingCart,    label: 'Ventas' },
-  { to: '/caja',            icon: DollarSign,      label: 'Caja' },
-  { to: '/inventario',      icon: Package,         label: 'Inventario' },
-  { to: '/movimientos',     icon: ArrowLeftRight,  label: 'Movimientos' },
-  { to: '/alertas',         icon: Bell,            label: 'Alertas', badge: true },
-  { to: '/gastos',          icon: TrendingDown,    label: 'Gastos' },
-  { to: '/clientes',        icon: Users,           label: 'Clientes' },
-  { to: '/reportes',        icon: BarChart2,       label: 'Reportes',       planFeature: 'puede_reportes' },
-  { to: '/rentabilidad',    icon: BarChart2,       label: 'Rentabilidad' },
-  { to: '/recomendaciones', icon: Zap,             label: 'Recomendaciones' },
-  { to: '/historial',       icon: ClipboardList,   label: 'Historial',      supervisorOnly: true, planFeature: 'puede_historial' },
-  { to: '/rrhh',            icon: Users2,          label: 'RRHH',           ownerOnly: true,       planFeature: 'puede_rrhh' },
-  { to: '/sucursales',      icon: Building2,       label: 'Sucursales',     ownerOnly: true },
-  { to: '/usuarios',        icon: Users,           label: 'Usuarios',       ownerOnly: true },
-  { to: '/configuracion',   icon: Settings,        label: 'Configuración',  ownerOnly: true },
+  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas' },
+  { to: '/gastos',        icon: TrendingDown,    label: 'Gastos' },
+  { to: '/caja',          icon: DollarSign,      label: 'Caja' },
+  { to: '/inventario',    icon: Package,         label: 'Productos' },
+  { to: '/movimientos',   icon: ArrowLeftRight,  label: 'Inventario' },
+  { to: '/clientes',      icon: Users,           label: 'Clientes' },
+  { to: '/alertas',       icon: Bell,            label: 'Alertas', badge: true },
+  { to: '/reportes',      icon: BarChart2,       label: 'Reportes',   planFeature: 'puede_reportes' },
+  { to: '/historial',     icon: ClipboardList,   label: 'Historial',  supervisorOnly: true, planFeature: 'puede_historial' },
+  { to: '/rrhh',          icon: Users2,          label: 'RRHH',       ownerOnly: true, planFeature: 'puede_rrhh' },
+  { to: '/sucursales',    icon: Building2,       label: 'Sucursales', ownerOnly: true },
+  { to: '/usuarios',      icon: Users,           label: 'Usuarios',   ownerOnly: true },
+  { to: '/configuracion', icon: Settings,        label: 'Configuración', ownerOnly: true },
 ]
 
 export function AppLayout() {

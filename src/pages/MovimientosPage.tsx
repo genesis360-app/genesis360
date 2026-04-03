@@ -773,7 +773,7 @@ export default function MovimientosPage() {
                         <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">({(selectedProduct as any).unidad_medida})</span>
                       )}
                     </label>
-                    <input type="number" min="1" value={form.cantidad} onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" value={form.cantidad} onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
                       className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
                   </div>
                 )}
@@ -1094,7 +1094,7 @@ export default function MovimientosPage() {
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                           Cantidad a rebajar (disponible: {rebajeLinea.cantidad})
                         </label>
-                        <input type="number" min="1" max={rebajeLinea.cantidad} value={rebajeCantidad}
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max={rebajeLinea.cantidad} value={rebajeCantidad}
                           onChange={e => setRebajeCantidad(e.target.value)}
                           className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
                       </div>

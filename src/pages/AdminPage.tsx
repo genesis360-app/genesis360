@@ -313,7 +313,7 @@ export default function AdminPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Extender trial (días adicionales)
                 </label>
-                <input type="number" min="0" max="365" value={editForm.trial_days}
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="365" value={editForm.trial_days}
                   onChange={e => setEditForm(p => ({ ...p, trial_days: parseInt(e.target.value) || 0 }))}
                   className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent"
                   placeholder="0 = sin cambio" />

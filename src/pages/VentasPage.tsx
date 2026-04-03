@@ -1017,14 +1017,19 @@ export default function VentasPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-full sm:w-fit">
         {[{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }].map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id as Tab)}
-            className={`flex items-center gap-2 py-2 px-4 rounded-lg text-sm font-medium transition-all
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-medium transition-all
               ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
             <Icon size={15} />{label}
           </button>
         ))}
+      </div>
+      {/* Indicador de sección activa */}
+      <div className="flex items-center gap-2 -mt-2">
+        <div className="h-0.5 w-4 bg-accent rounded-full" />
+        <span className="text-xs text-gray-400 dark:text-gray-500">{tab === 'nueva' ? 'Todo lo de abajo corresponde a Nueva venta' : 'Todo lo de abajo corresponde a Historial'}</span>
       </div>
 
       {/* ── NUEVA VENTA ── */}
@@ -1176,7 +1181,7 @@ export default function VentasPage() {
                               <Scissors size={14} />
                             </button>
                           )}
-                          <button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-400 transition-colors"><X size={16} /></button>
+                          <button onClick={() => removeItem(idx)} title="Quitar producto del carrito" className="text-gray-300 hover:text-red-400 transition-colors"><X size={16} /></button>
                         </div>
                       </div>
 
@@ -1184,14 +1189,14 @@ export default function VentasPage() {
                         {/* Cantidad */}
                         {!item.tiene_series && (
                           <div className="flex items-center gap-1">
-                            <button onClick={() => updateItem(idx, 'cantidad', Math.max(1, item.cantidad - 1))}
+                            <button onClick={() => updateItem(idx, 'cantidad', Math.max(1, item.cantidad - 1))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
                             <input
-                              type="number" min="1" value={item.cantidad}
+                              type="number" onWheel={e => e.currentTarget.blur()} min="1" value={item.cantidad}
                               onChange={e => updateItem(idx, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
                               className="w-12 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
                             />
-                            <button onClick={() => updateItem(idx, 'cantidad', item.cantidad + 1)}
+                            <button onClick={() => updateItem(idx, 'cantidad', item.cantidad + 1)} title="Aumentar cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">+</button>
                           </div>
                         )}
@@ -1199,17 +1204,18 @@ export default function VentasPage() {
                         {/* Precio */}
                         <div className="relative flex-1">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-xs">$</span>
-                          <input type="number" value={item.precio_unitario}
+                          <input type="number" onWheel={e => e.currentTarget.blur()} value={item.precio_unitario}
                             onChange={e => updateItem(idx, 'precio_unitario', parseFloat(e.target.value) || 0)}
                             className="w-full pl-5 pr-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
                         </div>
 
                         {/* Descuento con toggle % / $ */}
                         <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden w-28">
-                          <input type="number" min="0" value={item.descuento}
+                          <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={item.descuento}
                             onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
                             className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none" placeholder="0" />
                           <button onClick={() => updateItem(idx, 'descuento_tipo', item.descuento_tipo === 'pct' ? 'monto' : 'pct')}
+                            title="Cambiar tipo de descuento (% o $)"
                             className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors">
                             {item.descuento_tipo === 'pct' ? '%' : '$'}
                           </button>
@@ -1298,7 +1304,7 @@ export default function VentasPage() {
           </div>
 
           {/* Panel lateral */}
-          <div className="space-y-4">
+          <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto lg:pr-1">
             {/* Cliente */}
             <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"><User size={16} /> Cliente</h2>
@@ -1307,7 +1313,7 @@ export default function VentasPage() {
                 {clienteId ? (
                   <div className="flex items-center gap-2 px-3 py-2.5 border border-blue-300 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-sm">
                     <span className="flex-1 font-medium text-blue-800 dark:text-blue-400">{clienteNombre}</span>
-                    <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch('') }} className="text-blue-400 hover:text-blue-700 dark:text-blue-400"><X size={14} /></button>
+                    <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch('') }} title="Quitar cliente" className="text-blue-400 hover:text-blue-700 dark:text-blue-400"><X size={14} /></button>
                   </div>
                 ) : (
                   <>
@@ -1391,13 +1397,13 @@ export default function VentasPage() {
                     <option value="">Medio de pago...</option>
                     {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
-                  <input type="number" min="0" value={mp.monto}
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
                     onChange={e => updateMedioPago(idx, 'monto', e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                     placeholder="Monto"
                     className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                   {mediosPago.length > 1 && (
-                    <button onClick={() => removeMedioPago(idx)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 flex-shrink-0">
+                    <button onClick={() => removeMedioPago(idx)} title="Quitar medio de pago" className="text-gray-400 dark:text-gray-500 hover:text-red-500 flex-shrink-0">
                       <X size={16} />
                     </button>
                   )}
@@ -1434,11 +1440,12 @@ export default function VentasPage() {
                   </div>
                 )}
                 <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                  <input type="number" min="0" value={descuentoTotal}
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={descuentoTotal}
                     onChange={e => setDescuentoTotal(e.target.value)}
                     placeholder="0"
                     className="flex-1 px-3 py-2.5 text-sm focus:outline-none" />
                   <button onClick={() => setDescuentoTotalTipo(t => t === 'pct' ? 'monto' : 'pct')}
+                    title="Cambiar tipo de descuento (% o $)"
                     className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-400 text-sm font-bold border-l border-gray-200 dark:border-gray-700 transition-colors min-w-10">
                     {descuentoTotalTipo === 'pct' ? '%' : '$'}
                   </button>
@@ -1532,7 +1539,7 @@ export default function VentasPage() {
                   <button onClick={() => registrarVenta(modoVenta)} disabled={saving}
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
-                    {saving ? 'Guardando...' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Despachar (venta directa)' : 'Registrar sin pago'}
+                    {saving ? 'Guardando...' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Registrar sin pago'}
                   </button>
                 </div>
               </div>
@@ -1630,7 +1637,7 @@ export default function VentasPage() {
                   </span>
                 </div>
               </div>
-              <button onClick={() => { setVentaDetalle(null); setEditandoPago(false) }} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
+              <button onClick={() => { setVentaDetalle(null); setEditandoPago(false) }} title="Cerrar" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
             {ventaDetalle.cliente_nombre && (
@@ -1705,7 +1712,7 @@ export default function VentasPage() {
                     )}
                     {editandoPago ? (
                       <div className="flex gap-2 items-center pt-1">
-                        <input type="number" min="0" max={ventaDetalle.total} value={editMontoPagado}
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={ventaDetalle.total} value={editMontoPagado}
                           onChange={e => setEditMontoPagado(e.target.value)}
                           className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent"
                           placeholder="Nuevo monto cobrado" autoFocus />
@@ -2045,7 +2052,7 @@ export default function VentasPage() {
                       <option value="">Medio de pago...</option>
                       {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
-                    <input type="number" min="0" value={mp.monto}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
                       onChange={e => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m) } : s)}
                       className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                     {saldoModal.mediosPago.length > 1 && (

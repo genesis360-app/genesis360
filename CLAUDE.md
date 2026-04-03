@@ -496,13 +496,19 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Fix bug vuelto con tarjeta**: `calcularVuelto` solo computaba vuelto sobre efectivo, no sobre el total pagado con todos los medios. Tarjeta > total ya no genera vuelto falso.
 - [x] **Refactor funciones puras**: `calcularVuelto`, `calcularEfectivoCaja`, `calcularComboRows`, `restaurarMediosPago` extraídas a `src/lib/ventasValidation.ts`. VentasPage usa las funciones compartidas.
 
-### v0.54.0 — en DEV
+### v0.55.0 — en DEV
 - [x] **Fix bug medio de pago sin tipo**: `validarMediosPago` y `validarSaldoMediosPago` bloquean si hay monto > 0 sin tipo seleccionado (mixto con "Elegir método" permitía cerrar venta). 3 tests nuevos (114/114).
 - [x] **Dashboard — deuda pendiente**: query paralela en `dashboard-stats` suma `total - monto_pagado` de ventas `pendiente`/`reservada`. Línea "$X pendiente de cobro · N ventas" en tarjeta ventas, link a `/alertas`.
 - [x] **Alertas — clientes con saldo pendiente**: nueva sección amarilla agrupa ventas por cliente, muestra saldo acumulado y cantidad de ventas. Botón "Ver ficha" → `/clientes?id=xxx`.
 - [x] **Alertas — link directo a venta**: botón "Ver venta" en reservas viejas lleva a `/ventas?id=xxx`.
 - [x] **VentasPage — apertura por URL**: `?id=` arranca en tab historial y abre modal de esa venta. Limpia param al abrir.
 - [x] **ClientesPage — apertura por URL**: `?id=` expande ficha del cliente automáticamente. Limpia param al abrir.
+- [x] **UX — scroll en inputs numéricos**: `onWheel={e => e.currentTarget.blur()}` en todos los `type="number"` (10 archivos).
+- [x] **UX — tooltips en botones icon-only**: `title` en todos los botones sin label de texto visible.
+- [x] **VentasPage UX**: botón "Despachar (venta directa)" → "Venta directa"; tabs full-width en mobile; carrito sticky en desktop (`lg:sticky lg:top-4`); label tab activa visible debajo de los tabs.
+- [x] **Sidebar reorden**: Dashboard, Ventas, Gastos, Caja, Productos, Inventario, Clientes, Alertas, Reportes, Historial, RRHH, Sucursales, Usuarios, Configuración. Eliminados Rentabilidad y Recomendaciones del nav.
+- [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
+- [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
 ### Devoluciones — plan aprobado (próxima sesión, migration 030)
 - **`ubicaciones.es_devolucion BOOLEAN DEFAULT false`**: toggle en ConfigPage → Ubicaciones. Requerido para procesar devoluciones.

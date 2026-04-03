@@ -55,9 +55,9 @@ src/
 │   └── layout/AppLayout.tsx
 └── pages/
     ├── LandingPage.tsx / LoginPage.tsx / OnboardingPage.tsx
-    ├── DashboardPage.tsx        # Tabs: General / Métricas
-    ├── InventarioPage.tsx       # LpnAccionesModal; badge P{N} = prioridad ubicación
-    ├── MovimientosPage.tsx      # Ingreso/rebaje; banner amarillo si cambia ubicación
+    ├── DashboardPage.tsx        # Tabs: General / Insights / Métricas / Rentabilidad / Recomendaciones
+    ├── ProductosPage.tsx        # Tabs: Productos (listado + resumen expandible) / Estructura (placeholder)
+    ├── InventarioPage.tsx       # Tabs: Movimientos (ingreso/rebaje) / Inventario (LPNs + LpnAccionesModal)
     ├── VentasPage.tsx           # Carrito + checkout; caja integrada; widget estado caja
     ├── RrhhPage.tsx             # Empleados, puestos, departamentos, cumpleaños
     ├── AlertasPage.tsx / MetricasPage.tsx / ReportesPage.tsx
@@ -495,6 +495,13 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Tests — caja y ventas** (`tests/unit/ventasCaja.test.ts`, 24 casos nuevos): `calcularVuelto`, `calcularEfectivoCaja`, `calcularComboRows`, `restaurarMediosPago`. Total: 111/111 passing.
 - [x] **Fix bug vuelto con tarjeta**: `calcularVuelto` solo computaba vuelto sobre efectivo, no sobre el total pagado con todos los medios. Tarjeta > total ya no genera vuelto falso.
 - [x] **Refactor funciones puras**: `calcularVuelto`, `calcularEfectivoCaja`, `calcularComboRows`, `restaurarMediosPago` extraídas a `src/lib/ventasValidation.ts`. VentasPage usa las funciones compartidas.
+
+### v0.56.0 — en DEV
+- [x] **ProductosPage** (`/productos`): 2 tabs — Productos (listado con panel de resumen expandible, imagen, precios, stock, categoría, notas) + Estructura (placeholder "próximamente"). Rutas `/productos/nuevo`, `/productos/:id/editar`, `/productos/importar`.
+- [x] **InventarioPage** (`/inventario`): 2 tabs — Movimientos (todo el ingreso/rebaje con scanner, modales, historial) + Inventario (listado LPNs por producto con expandir, cambiar estado, acciones LPN modal).
+- [x] **Rutas renombradas**: sidebar `/inventario`→`/productos` · `/movimientos`→`/inventario`. Redirects de compatibilidad para URLs viejas (`/inventario/nuevo`, `/inventario/importar`, `/movimientos`). `/inventario/:id/editar` sigue funcionando (apunta a `ProductoFormPage`).
+- [x] **Referencias actualizadas**: AlertasPage (`/movimientos`→`/inventario`, `/inventario/:id/editar`→`/productos/:id/editar`) · DashboardPage (card Productos, link Movimientos) · ImportarProductosPage (navigate post-import) · ProductoFormPage (navigate + logActividad) · Walkthrough (rutas del tour).
+- [x] **MovimientosPage.tsx** queda como archivo muerto (no importado). No se eliminó para no perder historia.
 
 ### v0.55.0 ✅ PROD
 - [x] **Fix bug medio de pago sin tipo**: `validarMediosPago` y `validarSaldoMediosPago` bloquean si hay monto > 0 sin tipo seleccionado (mixto con "Elegir método" permitía cerrar venta). 3 tests nuevos (114/114).

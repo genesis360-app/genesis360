@@ -1,6 +1,6 @@
 // ─── AlertasPage ──────────────────────────────────────────────────────────────
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle, Clock, Tag } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
@@ -65,6 +65,33 @@ export default function AlertasPage() {
     enabled: !!tenant,
   })
 
+  // Clientes con saldo pendiente (ventas pendientes/reservadas con deuda)
+  const { data: clientesConDeuda = [], isLoading: loadingDeuda } = useQuery({
+    queryKey: ['clientes-con-deuda', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ventas')
+        .select('id, numero, total, monto_pagado, cliente_id, clientes(id, nombre, telefono)')
+        .eq('tenant_id', tenant!.id)
+        .in('estado', ['pendiente', 'reservada'])
+        .not('cliente_id', 'is', null)
+      if (error) throw error
+      // Agrupar por cliente, sumar saldo pendiente
+      const mapa: Record<string, { clienteId: string; nombre: string; telefono: string; saldo: number; ventas: number }> = {}
+      for (const v of data ?? []) {
+        const saldo = Math.max(0, (v.total ?? 0) - (v.monto_pagado ?? 0))
+        if (saldo < 0.5) continue
+        const c = (v as any).clientes
+        if (!c) continue
+        if (!mapa[c.id]) mapa[c.id] = { clienteId: c.id, nombre: c.nombre, telefono: c.telefono ?? '', saldo: 0, ventas: 0 }
+        mapa[c.id].saldo += saldo
+        mapa[c.id].ventas += 1
+      }
+      return Object.values(mapa).sort((a, b) => b.saldo - a.saldo)
+    },
+    enabled: !!tenant,
+  })
+
   const resolver = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('alertas').update({ resuelta: true }).eq('id', id)
@@ -77,8 +104,8 @@ export default function AlertasPage() {
     },
   })
 
-  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length
-  const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria
+  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length
+  const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda
 
   return (
     <div className="space-y-6">
@@ -128,7 +155,7 @@ export default function AlertasPage() {
                     </div>
                   </div>
                   <Link
-                    to="/ventas"
+                    to={`/ventas?id=${v.id}`}
                     className="text-xs bg-amber-500 dark:bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 dark:hover:bg-amber-700 transition-all whitespace-nowrap flex-shrink-0"
                   >
                     Ver venta
@@ -174,6 +201,39 @@ export default function AlertasPage() {
                       Resolver
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Clientes con saldo pendiente */}
+          {clientesConDeuda.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                <DollarSign size={14} />
+                Clientes con saldo pendiente ({clientesConDeuda.length})
+              </h2>
+              {clientesConDeuda.map((c) => (
+                <div key={c.clienteId} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-yellow-100 dark:border-yellow-900/30 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <DollarSign size={18} className="text-yellow-600 dark:text-yellow-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-800 dark:text-gray-100">{c.nombre}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        <span className="text-yellow-600 dark:text-yellow-400 font-medium">${c.saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        {' '}pendiente · {c.ventas} venta{c.ventas !== 1 ? 's' : ''}
+                        {c.telefono && ` · ${c.telefono}`}
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    to={`/clientes?id=${c.clienteId}`}
+                    className="text-xs bg-yellow-500 dark:bg-yellow-600 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-600 dark:hover:bg-yellow-700 transition-all whitespace-nowrap flex-shrink-0"
+                  >
+                    Ver ficha
+                  </Link>
                 </div>
               ))}
             </div>

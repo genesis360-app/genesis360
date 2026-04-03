@@ -46,6 +46,12 @@ describe('validarSaldoMediosPago', () => {
     expect(validarSaldoMediosPago([{ tipo: 'Efectivo', monto: '599.6' }], saldo)).toBeNull()
     expect(validarSaldoMediosPago([{ tipo: 'Efectivo', monto: '600.4' }], saldo)).toBeNull()
   })
+  it('bloquea si un medio tiene monto pero sin tipo (bug: mixto sin tipo cierra el saldo)', () => {
+    // efectivo $200 + sin tipo $400 = $600 cubre el saldo → debe bloquear igual
+    const medios = [{ tipo: 'Efectivo', monto: '200' }, { tipo: '', monto: '400' }]
+    expect(validarSaldoMediosPago(medios, saldo))
+      .toBe('Seleccioná un método de pago para todos los montos')
+  })
 })
 
 describe('validarDespacho', () => {

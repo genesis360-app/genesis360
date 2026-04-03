@@ -668,7 +668,7 @@ export default function ConfigPage() {
   ]
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Configuración</h1>
@@ -680,15 +680,30 @@ export default function ConfigPage() {
         </Link>
       </div>
 
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl overflow-x-auto">
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`flex-shrink-0 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all
-              ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
-            <Icon size={15} /><span className="hidden sm:inline">{label}</span>
-          </button>
-        ))}
-      </div>
+      <div className="flex gap-6 items-start">
+        {/* Sidebar nav — desktop only */}
+        <nav className="hidden lg:flex flex-col w-44 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl p-2 shadow-sm border border-gray-100 sticky top-4">
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button key={id} onClick={() => setTab(id)}
+              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left
+                ${tab === id ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200'}`}>
+              <Icon size={15} className="flex-shrink-0" />{label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Content column */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* Horizontal tabs — mobile only */}
+          <div className="lg:hidden flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl overflow-x-auto">
+            {tabs.map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={() => setTab(id)}
+                className={`flex-shrink-0 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all
+                  ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
+                <Icon size={15} /><span className="hidden sm:inline">{label}</span>
+              </button>
+            ))}
+          </div>
 
       {tab === 'negocio' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
@@ -786,7 +801,7 @@ export default function ConfigPage() {
                 onChange={e => setNewUbicNombre(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addUbicacion()}
                 className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
-              <input type="number" min="0" placeholder="Prioridad" value={newUbicPrioridad}
+              <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Prioridad" value={newUbicPrioridad}
                 onChange={e => setNewUbicPrioridad(e.target.value)}
                 className="w-24 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
               <button onClick={addUbicacion} disabled={!newUbicNombre.trim()}
@@ -820,7 +835,7 @@ export default function ConfigPage() {
                           className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
                         <input type="text" value={editUbicDesc} onChange={e => setEditUbicDesc(e.target.value)}
                           placeholder="Descripción" className="w-32 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
-                        <input type="number" min="0" value={editUbicPrioridad} onChange={e => setEditUbicPrioridad(e.target.value)}
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={editUbicPrioridad} onChange={e => setEditUbicPrioridad(e.target.value)}
                           className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent" title="Prioridad" />
                         <button onClick={() => saveUbicacion(u.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:text-green-400 p-1"><Check size={15} /></button>
                         <button onClick={() => setEditUbicId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 p-1"><X size={15} /></button>
@@ -908,7 +923,7 @@ export default function ConfigPage() {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cantidad mínima</label>
-                <input type="number" min="2" value={comboForm.cantidad}
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="2" value={comboForm.cantidad}
                   onChange={e => setComboForm(p => ({ ...p, cantidad: e.target.value }))}
                   className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
@@ -925,7 +940,7 @@ export default function ConfigPage() {
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                   {comboForm.descuento_tipo === 'pct' ? 'Descuento (%)' : comboForm.descuento_tipo === 'monto_usd' ? 'Descuento (USD)' : 'Descuento ($)'}
                 </label>
-                <input type="number" min="0" max={comboForm.descuento_tipo === 'pct' ? '100' : undefined} step={comboForm.descuento_tipo === 'pct' ? '0.5' : '1'}
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={comboForm.descuento_tipo === 'pct' ? '100' : undefined} step={comboForm.descuento_tipo === 'pct' ? '0.5' : '1'}
                   value={comboForm.descuento_valor}
                   onChange={e => setComboForm(p => ({ ...p, descuento_valor: e.target.value }))}
                   className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
@@ -1198,7 +1213,7 @@ export default function ConfigPage() {
                                 <option key={e.id} value={e.id}>{e.nombre}</option>
                               ))}
                             </select>
-                            <input type="number" min="0" value={addRuleDias} onChange={e => setAddRuleDias(e.target.value)}
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={addRuleDias} onChange={e => setAddRuleDias(e.target.value)}
                               placeholder="Días" className="w-24 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent" />
                             <button onClick={() => addAgingRegla(ap.id)} disabled={!addRuleEstadoId || addRuleDias === ''}
                               className="p-1.5 bg-accent text-white rounded-lg disabled:opacity-40"><Check size={14} /></button>
@@ -1220,6 +1235,8 @@ export default function ConfigPage() {
           )}
         </div>
       )}
+        </div>{/* end content column */}
+      </div>{/* end flex gap-6 */}
     </div>
   )
 }

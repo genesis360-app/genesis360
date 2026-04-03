@@ -320,7 +320,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 {!tieneSeries && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Cantidad</label>
-                    <input type="number" min="0" value={editForm.cantidad}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={editForm.cantidad}
                       onChange={e => setEditForm(p => ({ ...p, cantidad: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
                     {parseInt(editForm.cantidad) !== linea.cantidad && (
@@ -407,7 +407,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                       Cantidad a mover (disponible: {linea.cantidad - (linea.cantidad_reservada ?? 0)})
                     </label>
-                    <input type="number" min="1" max={linea.cantidad - (linea.cantidad_reservada ?? 0)}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max={linea.cantidad - (linea.cantidad_reservada ?? 0)}
                       value={cantMover} onChange={e => setCantMover(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="0" />
                   </div>

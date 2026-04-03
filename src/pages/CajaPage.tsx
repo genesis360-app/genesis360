@@ -367,7 +367,7 @@ export default function CajaPage() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-left">Monto inicial en caja</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
-                      <input type="number" min="0" value={montoApertura} onChange={e => setMontoApertura(e.target.value)}
+                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={montoApertura} onChange={e => setMontoApertura(e.target.value)}
                         placeholder="0" autoFocus
                         className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                     </div>
@@ -681,7 +681,7 @@ export default function CajaPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
-                  <input type="number" min="0" value={movMonto} onChange={e => setMovMonto(e.target.value)}
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={movMonto} onChange={e => setMovMonto(e.target.value)}
                     placeholder="0"
                     className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                 </div>
@@ -728,7 +728,7 @@ export default function CajaPage() {
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
-                <input type="number" min="0" value={montoRealCierre}
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={montoRealCierre}
                   onChange={e => setMontoRealCierre(e.target.value)}
                   placeholder={formatMoneda(saldoActual).replace('$', '')}
                   className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />

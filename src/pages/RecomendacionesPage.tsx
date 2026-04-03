@@ -107,7 +107,7 @@ function ScoreCircle({ score }: { score: number }) {
   )
 }
 
-export default function RecomendacionesPage() {
+export default function RecomendacionesPage({ hideHeader = false }: { hideHeader?: boolean }) {
   const { recomendaciones, score, isLoading } = useRecomendaciones()
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todas')
   const [filtroCat, setFiltroCat]   = useState<FiltroCat>('todas')
@@ -137,10 +137,10 @@ export default function RecomendacionesPage() {
   ] : []
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className={hideHeader ? '' : 'p-6 max-w-4xl mx-auto'}>
 
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      {!hideHeader && <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
           <Zap size={20} className="text-purple-600" />
         </div>
@@ -148,7 +148,7 @@ export default function RecomendacionesPage() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Motor de Recomendaciones</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">Lo que Genesis360 detectó en tu negocio</p>
         </div>
-      </div>
+      </div>}
 
       {isLoading ? (
         <p className="text-center text-gray-400 dark:text-gray-500 py-16">Analizando tu negocio...</p>

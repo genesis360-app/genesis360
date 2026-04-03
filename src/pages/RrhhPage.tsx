@@ -1443,7 +1443,7 @@ export default function RrhhPage() {
                   </select>
 
                   <input
-                    type="number"
+                    type="number" onWheel={e => e.currentTarget.blur()}
                     placeholder="Salario bruto"
                     value={formData.salario_bruto ?? ''}
                     onChange={(e) => setFormData({ ...formData, salario_bruto: e.target.value ? parseFloat(e.target.value) : null })}
@@ -1558,7 +1558,7 @@ export default function RrhhPage() {
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                 />
                 <input
-                  type="number"
+                  type="number" onWheel={e => e.currentTarget.blur()}
                   placeholder="Salario sugerido"
                   value={puestoForm.salario_base_sugerido ?? ''}
                   onChange={(e) =>
@@ -1757,7 +1757,7 @@ export default function RrhhPage() {
                 </option>
               ))}
             </select>
-            <input type="number" value={nominaAnio} onChange={(e) => setNominaAnio(e.target.value)}
+            <input type="number" onWheel={e => e.currentTarget.blur()} value={nominaAnio} onChange={(e) => setNominaAnio(e.target.value)}
               className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm w-24" />
             <button
               onClick={() => generarNominaMes.mutate()}
@@ -1922,7 +1922,7 @@ export default function RrhhPage() {
                               <option value="HABER">Haber</option>
                               <option value="DESCUENTO">Descuento</option>
                             </select>
-                            <input type="number" placeholder="Monto" value={newItem.monto}
+                            <input type="number" onWheel={e => e.currentTarget.blur()} placeholder="Monto" value={newItem.monto}
                               onChange={(e) => setNewItem({ ...newItem, monto: e.target.value })}
                               className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm w-28" />
                             <button
@@ -2300,7 +2300,7 @@ export default function RrhhPage() {
           <div className="flex flex-wrap items-center gap-3 justify-between">
             <div className="flex items-center gap-3">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Año:</label>
-              <input type="number" value={vacAnio} onChange={(e) => setVacAnio(parseInt(e.target.value))}
+              <input type="number" onWheel={e => e.currentTarget.blur()} value={vacAnio} onChange={(e) => setVacAnio(parseInt(e.target.value))}
                 className="w-24 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm" />
             </div>
             <button onClick={() => setShowVacForm(true)}
@@ -2428,13 +2428,13 @@ export default function RrhhPage() {
                       <div className="space-y-3">
                         <div>
                           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Días totales asignados</label>
-                          <input type="number" min="0" value={saldoForm.dias_totales}
+                          <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={saldoForm.dias_totales}
                             onChange={(e) => setSaldoForm({ ...saldoForm, dias_totales: e.target.value })}
                             className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2" />
                         </div>
                         <div>
                           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Remanente del año anterior</label>
-                          <input type="number" min="0" value={saldoForm.remanente_anterior}
+                          <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={saldoForm.remanente_anterior}
                             onChange={(e) => setSaldoForm({ ...saldoForm, remanente_anterior: e.target.value })}
                             className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2" />
                         </div>
@@ -2914,7 +2914,7 @@ export default function RrhhPage() {
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
                 />
                 <input
-                  type="number"
+                  type="number" onWheel={e => e.currentTarget.blur()}
                   placeholder="Horas (ej: 8)"
                   value={capForm.horas}
                   onChange={(e) => setCapForm({ ...capForm, horas: e.target.value })}

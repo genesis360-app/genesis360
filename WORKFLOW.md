@@ -152,6 +152,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.52.1 | Pago parcial en reservas (migration 029) · modal saldo al despachar · reserva permite monto parcial · validarDespacho en mutationFn | 2026-04 |
 | v0.53.0 | Ventas: vuelto al cliente · pendiente sin cobro · combos automáticos · editar monto reserva · modificar productos reserva · badge saldo historial · fix caja despacho registra efectivo completo | 2026-04 |
 | v0.53.1 | Tests: calcularVuelto · calcularEfectivoCaja · calcularComboRows · restaurarMediosPago (111/111) · fix bug vuelto en tarjeta · refactor funciones puras a ventasValidation.ts | 2026-04 |
+| v0.54.0 | Fix bug medio de pago sin tipo (mixto cierra venta) · Dashboard deuda pendiente · Alertas clientes con deuda + link ficha · Alertas link directo a venta (/ventas?id=) · VentasPage/ClientesPage apertura directa por URL params (114/114 tests) | 2026-04 |
+| v0.55.0 | UX Group 1: onWheel blur inputs numéricos · tooltips icon-only · VentasPage carrito sticky + tab label · Sidebar reorden + consolida Rentabilidad/Recomendaciones en Dashboard · ConfigPage layout full-width con sidebar lateral desktop | 2026-04 |
 
 ---
 

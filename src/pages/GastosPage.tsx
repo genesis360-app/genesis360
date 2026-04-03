@@ -413,7 +413,7 @@ export default function GastosPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto ($) *</label>
                   <input
-                    type="number"
+                    type="number" onWheel={e => e.currentTarget.blur()}
                     value={form.monto}
                     onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
                     placeholder="0"

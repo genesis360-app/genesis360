@@ -43,7 +43,7 @@ function KpiCard({ label, value, sub, icon: Icon, color, trend }: any) {
   )
 }
 
-export default function RentabilidadPage() {
+export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: boolean }) {
   const { tenant } = useAuthStore()
   const [periodo, setPeriodo] = useState<Periodo>('30d')
 
@@ -147,9 +147,9 @@ export default function RentabilidadPage() {
   ]
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className={hideHeader ? '' : 'p-6 max-w-5xl mx-auto'}>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      {!hideHeader && <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
             <TrendingUp size={20} className="text-green-600 dark:text-green-400" />
@@ -170,7 +170,7 @@ export default function RentabilidadPage() {
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
       {isLoading ? (
         <p className="text-center text-gray-400 dark:text-gray-500 py-16">Cargando...</p>

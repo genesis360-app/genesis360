@@ -542,7 +542,7 @@ export default function ProductoFormPage() {
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm font-medium">
                           {usdModoCosto ? 'USD' : '$'}
                         </span>
-                        <input type="number" min="0" step="0.01" disabled={!canEdit}
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01" disabled={!canEdit}
                           value={usdModoCosto ? usdInputCosto : form.precio_costo}
                           onChange={e => {
                             if (usdModoCosto && cotizNum > 0) {
@@ -576,7 +576,7 @@ export default function ProductoFormPage() {
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm font-medium">
                           {usdModoVenta ? 'USD' : '$'}
                         </span>
-                        <input type="number" min="0" step="0.01" disabled={!canEdit}
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01" disabled={!canEdit}
                           value={usdModoVenta ? usdInputVenta : form.precio_venta}
                           onChange={e => {
                             if (usdModoVenta && cotizNum > 0) {
@@ -623,7 +623,7 @@ export default function ProductoFormPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Margen objetivo</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta en Métricas si el margen cae debajo</p>
                   <div className="relative">
-                    <input type="number" min="0" max="100" step="0.1" disabled={!canEdit}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.1" disabled={!canEdit}
                       value={form.margen_objetivo}
                       onChange={e => setForm(p => ({ ...p, margen_objetivo: e.target.value }))}
                       className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700"
@@ -637,7 +637,7 @@ export default function ProductoFormPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stock mínimo</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta cuando el stock baje de este valor</p>
-                  <input type="number" min="0" value={form.stock_minimo} disabled={!canEdit}
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={form.stock_minimo} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, stock_minimo: e.target.value }))}
                     className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
                 </div>
@@ -815,7 +815,7 @@ export default function ProductoFormPage() {
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm font-medium">$</span>
                           <input
-                            type="number" min="0" step="0.01"
+                            type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
                             value={form.precio_marketplace}
                             onChange={e => setForm(p => ({ ...p, precio_marketplace: e.target.value }))}
                             placeholder={form.precio_venta || '0.00'}
@@ -829,7 +829,7 @@ export default function ProductoFormPage() {
                           <span className="ml-1 text-xs text-gray-400 font-normal">(destinado al marketplace)</span>
                         </label>
                         <input
-                          type="number" min="0"
+                          type="number" onWheel={e => e.currentTarget.blur()} min="0"
                           value={form.stock_reservado_marketplace}
                           onChange={e => setForm(p => ({ ...p, stock_reservado_marketplace: e.target.value }))}
                           className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400"

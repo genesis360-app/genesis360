@@ -928,6 +928,7 @@ export default function VentasPage() {
     }
 
     setDevSaving(true)
+    let devId: string | null = null
     try {
       // 1. Calcular número NC si es facturada
       let numero_nc: string | null = null
@@ -950,6 +951,7 @@ export default function VentasPage() {
         created_by: user?.id,
       }).select().single()
       if (devError) throw devError
+      devId = dev.id
 
       // 3. Procesar cada ítem
       for (const item of itemsADevolver) {
@@ -1054,6 +1056,10 @@ export default function VentasPage() {
       })
       setDevolucionVenta(null)
     } catch (err: any) {
+      // Rollback manual: eliminar el header de devolución si ya se insertó
+      if (devId) {
+        await supabase.from('devoluciones').delete().eq('id', devId)
+      }
       toast.error(err.message ?? 'Error al procesar devolución')
     } finally {
       setDevSaving(false)

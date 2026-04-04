@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -87,6 +87,26 @@ export default function VentasPage() {
   const [editandoPago, setEditandoPago] = useState(false)
   const [editMontoPagado, setEditMontoPagado] = useState('')
   const [savingMontoPagado, setSavingMontoPagado] = useState(false)
+
+  // Devoluciones
+  interface DevItem {
+    venta_item_id: string
+    producto_id: string
+    nombre: string
+    cantidad_original: number
+    precio_unitario: number
+    tiene_series: boolean
+    venta_series: { serie_id: string; nro_serie: string }[]
+    cantidad_devolver: number
+    series_seleccionadas: string[]
+  }
+  const [devolucionVenta, setDevolucionVenta] = useState<any | null>(null)
+  const [devItems, setDevItems] = useState<DevItem[]>([])
+  const [devMotivo, setDevMotivo] = useState('')
+  const [devMediosPago, setDevMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
+  const [devSaving, setDevSaving] = useState(false)
+  const [devComprobante, setDevComprobante] = useState<any | null>(null)
+  const [devolucionesOpen, setDevolucionesOpen] = useState(false)
 
   // Caja abierta
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -241,10 +261,22 @@ export default function VentasPage() {
     enabled: !!tenant && tab === 'historial',
   })
 
+  const { data: devolucionesPasadas = [] } = useQuery({
+    queryKey: ['devoluciones-venta', ventaDetalle?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('devoluciones')
+        .select('*, devolucion_items(*, productos(nombre,sku))')
+        .eq('venta_id', ventaDetalle!.id)
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!ventaDetalle?.id,
+  })
+
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado, sucursalId],
     queryFn: async () => {
-      let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(inventario_series(nro_serie)))')
+      let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
       if (filterEstado) q = q.eq('estado', filterEstado)
       q = applyFilter(q)
@@ -826,6 +858,206 @@ export default function VentasPage() {
     setVentaDetalle(null)
     setTab('nueva')
     toast.success('Reserva cancelada — editá el carrito y volvé a reservar')
+  }
+
+  const abrirModalDevolucion = (venta: any) => {
+    const items = (venta.venta_items ?? []).map((item: any) => ({
+      venta_item_id: item.id,
+      producto_id: item.producto_id,
+      nombre: item.productos?.nombre ?? '',
+      cantidad_original: item.cantidad,
+      precio_unitario: item.precio_unitario,
+      tiene_series: (item.productos?.tiene_series ?? false),
+      venta_series: (item.venta_series ?? []).map((vs: any) => ({
+        serie_id: vs.serie_id,
+        nro_serie: vs.inventario_series?.nro_serie ?? '',
+      })),
+      cantidad_devolver: item.tiene_series ? 0 : item.cantidad,
+      series_seleccionadas: [],
+    }))
+    setDevItems(items)
+    setDevMotivo('')
+    setDevMediosPago([{ tipo: '', monto: '' }])
+    setDevolucionVenta(venta)
+  }
+
+  const procesarDevolucion = async () => {
+    if (!devolucionVenta || !tenant) return
+    const itemsADevolver = devItems.filter(i =>
+      i.tiene_series ? i.series_seleccionadas.length > 0 : i.cantidad_devolver > 0
+    )
+    if (itemsADevolver.length === 0) {
+      toast.error('Seleccioná al menos un ítem a devolver')
+      return
+    }
+
+    // Validar que existe ubicación y estado de devolución configurados
+    const { data: ubicDevData } = await supabase.from('ubicaciones')
+      .select('id').eq('tenant_id', tenant.id).eq('es_devolucion', true).single()
+    if (!ubicDevData) {
+      toast.error('Configurá una ubicación de devolución en Configuración → Ubicaciones antes de continuar')
+      return
+    }
+    const { data: estadoDevData } = await supabase.from('estados_inventario')
+      .select('id').eq('tenant_id', tenant.id).eq('es_devolucion', true).single()
+    if (!estadoDevData) {
+      toast.error('Configurá un estado de devolución en Configuración → Estados antes de continuar')
+      return
+    }
+    const ubicDevId = ubicDevData.id
+    const estadoDevId = estadoDevData.id
+
+    // Calcular monto total de la devolución
+    const montoTotal = itemsADevolver.reduce((acc, i) => {
+      const cant = i.tiene_series ? i.series_seleccionadas.length : i.cantidad_devolver
+      return acc + i.precio_unitario * cant
+    }, 0)
+
+    // Validar medio de pago si hay monto
+    const mediosValidos = devMediosPago.filter(m => m.tipo && parseFloat(m.monto) > 0)
+    const totalMedios = mediosValidos.reduce((a, m) => a + parseFloat(m.monto), 0)
+    const hayEfectivo = mediosValidos.some(m => m.tipo === 'Efectivo')
+
+    if (montoTotal > 0 && Math.abs(totalMedios - montoTotal) > 0.5) {
+      toast.error(`Los medios de devolución ($${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no cubren el total ($${montoTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })})`)
+      return
+    }
+    if (hayEfectivo && !sesionCajaId) {
+      toast.error('No hay caja abierta. Abrí una caja antes de devolver en efectivo.')
+      return
+    }
+
+    setDevSaving(true)
+    try {
+      // 1. Calcular número NC si es facturada
+      let numero_nc: string | null = null
+      if (devolucionVenta.estado === 'facturada') {
+        const { count } = await supabase.from('devoluciones')
+          .select('id', { count: 'exact', head: true })
+          .eq('venta_id', devolucionVenta.id)
+        numero_nc = `NC-${devolucionVenta.numero}-${(count ?? 0) + 1}`
+      }
+
+      // 2. Insertar devolución
+      const { data: dev, error: devError } = await supabase.from('devoluciones').insert({
+        tenant_id: tenant.id,
+        venta_id: devolucionVenta.id,
+        numero_nc,
+        origen: devolucionVenta.estado as 'despachada' | 'facturada',
+        motivo: devMotivo || null,
+        monto_total: montoTotal,
+        medio_pago: mediosValidos.length > 0 ? JSON.stringify(mediosValidos.map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto) }))) : null,
+        created_by: user?.id,
+      }).select().single()
+      if (devError) throw devError
+
+      // 3. Procesar cada ítem
+      for (const item of itemsADevolver) {
+        const cantDev = item.tiene_series ? item.series_seleccionadas.length : item.cantidad_devolver
+
+        if (item.tiene_series) {
+          // Reactivar series originales
+          await supabase.from('inventario_series')
+            .update({ activo: true, reservado: false })
+            .in('id', item.series_seleccionadas)
+          // Buscar la linea de la primera serie para saber dónde está
+          const { data: serieData } = await supabase.from('inventario_series')
+            .select('linea_id').eq('id', item.series_seleccionadas[0]).single()
+          if (serieData?.linea_id) {
+            await supabase.from('inventario_lineas')
+              .update({ activo: true })
+              .eq('id', serieData.linea_id)
+          }
+          // Insertar devolucion_item sin linea_nueva (la serie ya existe)
+          await supabase.from('devolucion_items').insert({
+            devolucion_id: dev.id,
+            producto_id: item.producto_id,
+            cantidad: cantDev,
+            precio_unitario: item.precio_unitario,
+          })
+          // Recalcular stock manualmente (trigger solo se ejecuta en UPDATE de inventario_series)
+          const { data: prodData } = await supabase.from('productos').select('stock_actual').eq('id', item.producto_id).single()
+          if (prodData) {
+            await supabase.from('productos').update({ stock_actual: prodData.stock_actual + cantDev }).eq('id', item.producto_id)
+          }
+        } else {
+          // No serializado: crear nueva inventario_lineas en ubicación DEV
+          const { data: linea, error: lineaErr } = await supabase.from('inventario_lineas').insert({
+            tenant_id: tenant.id,
+            producto_id: item.producto_id,
+            cantidad: cantDev,
+            ubicacion_id: ubicDevId,
+            estado_id: estadoDevId,
+            notas: `Devolución de venta #${devolucionVenta.numero}`,
+          }).select().single()
+          if (lineaErr) throw lineaErr
+          // Movimiento de ingreso
+          const { data: prodData } = await supabase.from('productos').select('stock_actual').eq('id', item.producto_id).single()
+          if (prodData) {
+            await supabase.from('movimientos_stock').insert({
+              tenant_id: tenant.id,
+              producto_id: item.producto_id,
+              tipo: 'ingreso',
+              cantidad: cantDev,
+              stock_antes: prodData.stock_actual,
+              stock_despues: prodData.stock_actual + cantDev,
+              motivo: `Devolución venta #${devolucionVenta.numero}`,
+              usuario_id: user?.id,
+              linea_id: linea.id,
+            })
+          }
+          // Insertar devolucion_item con referencia a la nueva linea
+          await supabase.from('devolucion_items').insert({
+            devolucion_id: dev.id,
+            producto_id: item.producto_id,
+            cantidad: cantDev,
+            precio_unitario: item.precio_unitario,
+            inventario_linea_nueva_id: linea.id,
+          })
+        }
+      }
+
+      // 4. Egreso en caja si hay efectivo
+      if (hayEfectivo && sesionCajaId) {
+        const montoEfectivo = mediosValidos
+          .filter(m => m.tipo === 'Efectivo')
+          .reduce((a, m) => a + parseFloat(m.monto), 0)
+        void supabase.from('caja_movimientos').insert({
+          tenant_id: tenant.id,
+          sesion_id: sesionCajaId,
+          tipo: 'egreso',
+          concepto: `Devolución venta #${devolucionVenta.numero}${numero_nc ? ` · ${numero_nc}` : ''}`,
+          monto: montoEfectivo,
+          usuario_id: user?.id,
+        })
+      }
+
+      toast.success(`Devolución procesada${numero_nc ? ` · ${numero_nc}` : ''}`)
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+
+      // Mostrar comprobante
+      setDevComprobante({
+        numero_nc,
+        venta_numero: devolucionVenta.numero,
+        origen: devolucionVenta.estado,
+        motivo: devMotivo,
+        items: itemsADevolver.map(i => ({
+          nombre: i.nombre,
+          cantidad: i.tiene_series ? i.series_seleccionadas.length : i.cantidad_devolver,
+          precio_unitario: i.precio_unitario,
+        })),
+        monto_total: montoTotal,
+        medio_pago: mediosValidos,
+        created_at: new Date().toISOString(),
+      })
+      setDevolucionVenta(null)
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al procesar devolución')
+    } finally {
+      setDevSaving(false)
+    }
   }
 
   const cambiarEstado = useMutation({
@@ -1746,6 +1978,35 @@ export default function VentasPage() {
               {ventaDetalle.notas && <p className="text-gray-500 dark:text-gray-400">Notas: {ventaDetalle.notas}</p>}
             </div>
 
+            {/* Devoluciones previas colapsable */}
+            {devolucionesPasadas.length > 0 && (
+              <div className="mb-4 rounded-xl border border-orange-200 dark:border-orange-800 overflow-hidden">
+                <button
+                  onClick={() => setDevolucionesOpen(o => !o)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 bg-orange-50 dark:bg-orange-900/20 text-sm font-medium text-orange-700 dark:text-orange-400">
+                  <span className="flex items-center gap-2"><RotateCcw size={14} /> Devoluciones ({devolucionesPasadas.length})</span>
+                  {devolucionesOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                {devolucionesOpen && (
+                  <div className="divide-y divide-orange-100 dark:divide-orange-800/40">
+                    {(devolucionesPasadas as any[]).map((d: any) => (
+                      <div key={d.id} className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+                        <div className="flex justify-between">
+                          <span className="font-medium text-orange-600 dark:text-orange-400">{d.numero_nc ?? 'Sin NC'}</span>
+                          <span>{new Date(d.created_at).toLocaleDateString('es-AR')}</span>
+                        </div>
+                        {d.motivo && <p className="text-gray-400 dark:text-gray-500">{d.motivo}</p>}
+                        {(d.devolucion_items ?? []).map((di: any) => (
+                          <p key={di.id}>{di.cantidad}× {di.productos?.nombre} — ${(di.precio_unitario * di.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                        ))}
+                        <p className="font-semibold text-orange-600 dark:text-orange-400">Total: ${d.monto_total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Acciones según estado */}
             <div className="space-y-2">
               <button
@@ -1804,6 +2065,12 @@ export default function VentasPage() {
                   Marcar como facturada
                 </button>
               )}
+              {['despachada', 'facturada'].includes(ventaDetalle.estado) && (
+                <button onClick={() => abrirModalDevolucion(ventaDetalle)}
+                  className="w-full flex items-center justify-center gap-2 border-2 border-orange-200 text-orange-600 dark:text-orange-400 font-semibold py-2.5 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all text-sm">
+                  <RotateCcw size={15} /> Devolver
+                </button>
+              )}
               {ventaDetalle.estado === 'reservada' && (
                 <button onClick={modificarReserva} disabled={cambiarEstado.isPending}
                   className="w-full border-2 border-amber-200 text-amber-700 dark:text-amber-400 font-semibold py-2.5 rounded-xl hover:bg-amber-50 dark:bg-amber-900/20 transition-all text-sm flex items-center justify-center gap-2">
@@ -1833,6 +2100,183 @@ export default function VentasPage() {
                   Eliminar venta
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal DEVOLUCIÓN */}
+      {devolucionVenta && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
+              <div>
+                <h2 className="text-lg font-bold text-primary flex items-center gap-2"><RotateCcw size={18} className="text-orange-500" /> Procesar devolución</h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Venta #{devolucionVenta.numero} · {devolucionVenta.estado === 'facturada' ? 'Se generará nota de crédito' : 'Registra devolución sin NC'}</p>
+              </div>
+              <button onClick={() => setDevolucionVenta(null)} title="Cerrar" className="text-gray-400 hover:text-gray-600 dark:text-gray-500"><X size={20} /></button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Ítems a devolver */}
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Ítems a devolver</p>
+                <div className="space-y-2">
+                  {devItems.map((item, idx) => (
+                    <div key={item.venta_item_id} className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-sm font-medium">{item.nombre}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">${item.precio_unitario.toLocaleString('es-AR', { maximumFractionDigits: 0 })} c/u</p>
+                      </div>
+                      {item.tiene_series ? (
+                        <div className="space-y-1">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Seleccioná series a devolver:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {item.venta_series.map(vs => {
+                              const sel = item.series_seleccionadas.includes(vs.serie_id)
+                              return (
+                                <button key={vs.serie_id}
+                                  onClick={() => setDevItems(prev => prev.map((it, i) => i !== idx ? it : {
+                                    ...it,
+                                    series_seleccionadas: sel
+                                      ? it.series_seleccionadas.filter(s => s !== vs.serie_id)
+                                      : [...it.series_seleccionadas, vs.serie_id]
+                                  }))}
+                                  className={`text-xs px-2 py-0.5 rounded font-mono border transition-colors ${sel ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-400 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+                                  {vs.nro_serie}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          {item.series_seleccionadas.length > 0 && (
+                            <p className="text-xs text-orange-600 dark:text-orange-400">{item.series_seleccionadas.length} serie(s) · ${(item.precio_unitario * item.series_seleccionadas.length).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3 mt-1">
+                          <label className="text-xs text-gray-500 dark:text-gray-400">Cant. a devolver (máx {item.cantidad_original}):</label>
+                          <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={item.cantidad_original}
+                            value={item.cantidad_devolver}
+                            onChange={e => setDevItems(prev => prev.map((it, i) => i !== idx ? it : { ...it, cantidad_devolver: Math.min(item.cantidad_original, Math.max(0, parseInt(e.target.value) || 0)) }))}
+                            className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent" />
+                          {item.cantidad_devolver > 0 && (
+                            <span className="text-xs text-orange-600 dark:text-orange-400">${(item.precio_unitario * item.cantidad_devolver).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Total */}
+              {(() => {
+                const total = devItems.reduce((acc, i) => {
+                  const cant = i.tiene_series ? i.series_seleccionadas.length : i.cantidad_devolver
+                  return acc + i.precio_unitario * cant
+                }, 0)
+                return total > 0 ? (
+                  <div className="flex justify-between items-center font-semibold text-sm bg-orange-50 dark:bg-orange-900/20 rounded-xl px-4 py-2.5 text-orange-700 dark:text-orange-300">
+                    <span>Total a devolver</span>
+                    <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                ) : null
+              })()}
+
+              {/* Motivo */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo (opcional)</label>
+                <input type="text" value={devMotivo} onChange={e => setDevMotivo(e.target.value)}
+                  placeholder="Producto dañado, talla incorrecta..."
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              </div>
+
+              {/* Medio de devolución */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medio de devolución</label>
+                <div className="space-y-2">
+                  {devMediosPago.map((mp, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <select value={mp.tipo} onChange={e => setDevMediosPago(prev => prev.map((m, i) => i !== idx ? m : { ...m, tipo: e.target.value }))}
+                        className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                        <option value="">Sin devolución monetaria</option>
+                        {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      {mp.tipo && (
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
+                          onChange={e => setDevMediosPago(prev => prev.map((m, i) => i !== idx ? m : { ...m, monto: e.target.value }))}
+                          placeholder="Monto"
+                          className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                      )}
+                      {devMediosPago.length > 1 && (
+                        <button onClick={() => setDevMediosPago(prev => prev.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500 p-1"><X size={16} /></button>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => setDevMediosPago(prev => [...prev, { tipo: '', monto: '' }])}
+                    className="text-xs text-accent hover:underline">+ Agregar medio</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 pb-5 flex gap-3">
+              <button onClick={() => setDevolucionVenta(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
+                Cancelar
+              </button>
+              <button onClick={procesarDevolucion} disabled={devSaving}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl disabled:opacity-50 text-sm flex items-center justify-center gap-2">
+                {devSaving ? 'Procesando...' : <><RotateCcw size={15} /> Confirmar devolución</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal COMPROBANTE DEVOLUCIÓN */}
+      {devComprobante && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6" id="devolucion-print">
+            <div className="text-center mb-4 border-b border-dashed border-gray-300 dark:border-gray-600 pb-4">
+              <p className="text-lg font-bold text-primary">{tenant?.nombre ?? 'Genesis360'}</p>
+              <p className="text-sm font-semibold text-orange-600 dark:text-orange-400 mt-1">
+                {devComprobante.numero_nc ?? 'Comprobante de devolución'}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Venta #{devComprobante.venta_numero} · {new Date(devComprobante.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+              </p>
+            </div>
+            {devComprobante.motivo && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Motivo: {devComprobante.motivo}</p>
+            )}
+            <div className="space-y-1.5 mb-4">
+              {devComprobante.items.map((item: any, i: number) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span>{item.cantidad}× {item.nombre}</span>
+                  <span className="font-medium">${(item.precio_unitario * item.cantidad).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-dashed border-gray-300 dark:border-gray-600 pt-3">
+              <div className="flex justify-between font-bold text-base text-orange-600 dark:text-orange-400">
+                <span>Total devuelto</span>
+                <span>${devComprobante.monto_total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+              </div>
+              {devComprobante.medio_pago?.length > 0 && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  {devComprobante.medio_pago.map((m: any) => `${m.tipo} $${m.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`).join(' + ')}
+                </p>
+              )}
+            </div>
+            <div className="mt-5 flex gap-3">
+              <button onClick={() => { window.print(); }}
+                className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm flex items-center justify-center gap-2">
+                <Printer size={15} /> Imprimir
+              </button>
+              <button onClick={() => setDevComprobante(null)}
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm">
+                Cerrar
+              </button>
             </div>
           </div>
         </div>

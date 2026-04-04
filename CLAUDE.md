@@ -556,6 +556,15 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
+### v0.59.0 ✅ PROD
+
+#### WMS Fase 2 — Dimensiones en ubicaciones (migration 032)
+- **6 columnas opcionales en `ubicaciones`**: `tipo_ubicacion TEXT CHECK IN ('picking','bulk','estiba','camara','cross_dock')` + `alto_cm`, `ancho_cm`, `largo_cm`, `peso_max_kg` `DECIMAL(8,2)` + `capacidad_pallets INT`. Todos nullable — ubicaciones existentes sin impacto.
+- **ConfigPage**: sección colapsable "Dimensiones WMS (opcional)" en modo edición de cada ubicación. Se abre automáticamente si ya tiene datos. Grid 3 cols: select tipo + 5 inputs numéricos.
+- **Lista**: badge violeta con `tipo_ubicacion` + indicador `📏 alto×ancho×largo cm` si tiene dimensiones.
+- **`Ubicacion` interface** en `supabase.ts` actualizada con campos WMS.
+- **Fix**: `APP_VERSION` v0.58.0 que se había omitido en el deploy anterior ahora incluido (v0.59.0 visible en sidebar).
+
 ### v0.58.0 ✅ PROD
 
 #### Devoluciones (migration 030)

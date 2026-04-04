@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronRight, Play, RotateCcw } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronRight, Play, RotateCcw, Ruler } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -374,6 +374,13 @@ export default function ConfigPage() {
   const [editUbicNombre, setEditUbicNombre] = useState('')
   const [editUbicDesc, setEditUbicDesc] = useState('')
   const [editUbicPrioridad, setEditUbicPrioridad] = useState('0')
+  const [editUbicTipo, setEditUbicTipo] = useState('')
+  const [editUbicAlto, setEditUbicAlto] = useState('')
+  const [editUbicAncho, setEditUbicAncho] = useState('')
+  const [editUbicLargo, setEditUbicLargo] = useState('')
+  const [editUbicPeso, setEditUbicPeso] = useState('')
+  const [editUbicPallets, setEditUbicPallets] = useState('')
+  const [editUbicWmsOpen, setEditUbicWmsOpen] = useState(false)
   const [ubicSearch, setUbicSearch] = useState('')
 
   const addUbicacion = async () => {
@@ -385,10 +392,32 @@ export default function ConfigPage() {
     logActividad({ entidad: 'ubicacion', entidad_nombre: newUbicNombre.trim(), accion: 'crear', pagina: '/configuracion' })
     setNewUbicNombre(''); setNewUbicDesc(''); setNewUbicPrioridad('0')
   }
-  const startEditUbic = (u: any) => { setEditUbicId(u.id); setEditUbicNombre(u.nombre); setEditUbicDesc(u.descripcion ?? ''); setEditUbicPrioridad(String(u.prioridad ?? 0)) }
+  const startEditUbic = (u: any) => {
+    setEditUbicId(u.id)
+    setEditUbicNombre(u.nombre)
+    setEditUbicDesc(u.descripcion ?? '')
+    setEditUbicPrioridad(String(u.prioridad ?? 0))
+    setEditUbicTipo(u.tipo_ubicacion ?? '')
+    setEditUbicAlto(u.alto_cm != null ? String(u.alto_cm) : '')
+    setEditUbicAncho(u.ancho_cm != null ? String(u.ancho_cm) : '')
+    setEditUbicLargo(u.largo_cm != null ? String(u.largo_cm) : '')
+    setEditUbicPeso(u.peso_max_kg != null ? String(u.peso_max_kg) : '')
+    setEditUbicPallets(u.capacidad_pallets != null ? String(u.capacidad_pallets) : '')
+    setEditUbicWmsOpen(!!(u.tipo_ubicacion || u.alto_cm || u.ancho_cm || u.largo_cm || u.peso_max_kg || u.capacidad_pallets))
+  }
   const saveUbicacion = async (id: string) => {
     const old = (ubicaciones as any[]).find(u => u.id === id)
-    const { error } = await supabase.from('ubicaciones').update({ nombre: editUbicNombre.trim(), descripcion: editUbicDesc || null, prioridad: parseInt(editUbicPrioridad) || 0 }).eq('id', id)
+    const { error } = await supabase.from('ubicaciones').update({
+      nombre: editUbicNombre.trim(),
+      descripcion: editUbicDesc || null,
+      prioridad: parseInt(editUbicPrioridad) || 0,
+      tipo_ubicacion: editUbicTipo || null,
+      alto_cm: editUbicAlto ? parseFloat(editUbicAlto) : null,
+      ancho_cm: editUbicAncho ? parseFloat(editUbicAncho) : null,
+      largo_cm: editUbicLargo ? parseFloat(editUbicLargo) : null,
+      peso_max_kg: editUbicPeso ? parseFloat(editUbicPeso) : null,
+      capacidad_pallets: editUbicPallets ? parseInt(editUbicPallets) : null,
+    }).eq('id', id)
     if (error) { toast.error(error.message); return }
     toast.success('Actualizada')
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
@@ -810,7 +839,7 @@ export default function ConfigPage() {
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Ubicaciones</h2>
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{ubicaciones.length} cargadas</span>
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero. <ShoppingCart size={11} className="inline" /> = elegible para surtir ventas. <RotateCcw size={11} className="inline text-orange-500" /> = destino de stock devuelto (solo una).</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero. <ShoppingCart size={11} className="inline" /> = elegible para surtir ventas. <RotateCcw size={11} className="inline text-orange-500" /> = destino de stock devuelto (solo una). Cada ubicación puede tener dimensiones y tipo WMS opcionales (editando con <Pencil size={11} className="inline" />).</p>
 
           {/* Agregar nueva */}
           <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
@@ -848,22 +877,65 @@ export default function ConfigPage() {
                 .map((u: any) => (
                   <div key={u.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2.5">
                     {editUbicId === u.id ? (
-                      <>
-                        <input type="text" value={editUbicNombre} onChange={e => setEditUbicNombre(e.target.value)}
-                          className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
-                        <input type="text" value={editUbicDesc} onChange={e => setEditUbicDesc(e.target.value)}
-                          placeholder="Descripción" className="w-32 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
-                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={editUbicPrioridad} onChange={e => setEditUbicPrioridad(e.target.value)}
-                          className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent" title="Prioridad" />
-                        <button onClick={() => saveUbicacion(u.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:text-green-400 p-1"><Check size={15} /></button>
-                        <button onClick={() => setEditUbicId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 p-1"><X size={15} /></button>
-                      </>
+                      <div className="flex-1 space-y-2">
+                        {/* Fila principal */}
+                        <div className="flex gap-2 items-center">
+                          <input type="text" value={editUbicNombre} onChange={e => setEditUbicNombre(e.target.value)}
+                            className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                          <input type="text" value={editUbicDesc} onChange={e => setEditUbicDesc(e.target.value)}
+                            placeholder="Descripción" className="w-32 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                          <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={editUbicPrioridad} onChange={e => setEditUbicPrioridad(e.target.value)}
+                            className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent" title="Prioridad" />
+                          <button onClick={() => saveUbicacion(u.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 p-1"><Check size={15} /></button>
+                          <button onClick={() => setEditUbicId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 p-1"><X size={15} /></button>
+                        </div>
+                        {/* Dimensiones WMS (colapsable) */}
+                        <button
+                          type="button"
+                          onClick={() => setEditUbicWmsOpen(v => !v)}
+                          className="flex items-center gap-1 text-xs text-purple-500 dark:text-purple-400 hover:text-purple-700">
+                          <Ruler size={11} />
+                          <span>Dimensiones WMS (opcional)</span>
+                          <ChevronRight size={11} className={`transition-transform ${editUbicWmsOpen ? 'rotate-90' : ''}`} />
+                        </button>
+                        {editUbicWmsOpen && (
+                          <div className="grid grid-cols-3 gap-2 pt-1">
+                            <select value={editUbicTipo} onChange={e => setEditUbicTipo(e.target.value)}
+                              className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                              <option value="">Tipo de ubicación (opcional)</option>
+                              <option value="picking">Picking</option>
+                              <option value="bulk">Bulk / Reserva</option>
+                              <option value="estiba">Estiba / Pallet rack</option>
+                              <option value="camara">Cámara frigorífica</option>
+                              <option value="cross_dock">Cross-dock</option>
+                            </select>
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Alto (cm)" value={editUbicAlto} onChange={e => setEditUbicAlto(e.target.value)}
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Ancho (cm)" value={editUbicAncho} onChange={e => setEditUbicAncho(e.target.value)}
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Largo (cm)" value={editUbicLargo} onChange={e => setEditUbicLargo(e.target.value)}
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Peso máx (kg)" value={editUbicPeso} onChange={e => setEditUbicPeso(e.target.value)}
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Cap. pallets" value={editUbicPallets} onChange={e => setEditUbicPallets(e.target.value)}
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                          </div>
+                        )}
+                      </div>
                     ) : (
                       <>
                         <div className="flex-1 min-w-0">
                           <span className={`text-sm font-medium ${u.disponible_surtido ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>{u.nombre}</span>
                           {u.descripcion && <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{u.descripcion}</span>}
                           {!u.disponible_surtido && <span className="ml-2 text-xs text-red-400">No disponible para surtido</span>}
+                          {u.tipo_ubicacion && (
+                            <span className="ml-2 text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-mono">{u.tipo_ubicacion}</span>
+                          )}
+                          {(u.alto_cm || u.ancho_cm || u.largo_cm) && (
+                            <span className="ml-1 text-xs text-gray-400 dark:text-gray-500" title="Dimensiones alto × ancho × largo">
+                              <Ruler size={10} className="inline mb-0.5" /> {[u.alto_cm, u.ancho_cm, u.largo_cm].filter(Boolean).join('×')} cm
+                            </span>
+                          )}
                         </div>
                         {(u.prioridad ?? 0) > 0 && (
                           <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded font-mono" title="Prioridad de rebaje">P{u.prioridad}</span>

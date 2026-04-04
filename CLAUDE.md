@@ -556,6 +556,10 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
+### v0.59.1 ✅ PROD
+
+- **Fix devoluciones** (migration 033): `notas TEXT` nullable en `inventario_lineas`. La lógica de devoluciones insertaba `notas` al crear nueva línea en ubicación DEV pero la columna no existía → error 400. Columna útil para trazabilidad futura.
+
 ### v0.59.0 ✅ PROD
 
 #### WMS Fase 2 — Dimensiones en ubicaciones (migration 032)

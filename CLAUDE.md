@@ -496,7 +496,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Fix bug vuelto con tarjeta**: `calcularVuelto` solo computaba vuelto sobre efectivo, no sobre el total pagado con todos los medios. Tarjeta > total ya no genera vuelto falso.
 - [x] **Refactor funciones puras**: `calcularVuelto`, `calcularEfectivoCaja`, `calcularComboRows`, `restaurarMediosPago` extraídas a `src/lib/ventasValidation.ts`. VentasPage usa las funciones compartidas.
 
-### v0.57.0 — en DEV
+### v0.57.0 ✅ PROD
 
 #### Fixes pre-deploy (commit f0b711cd)
 - **Bug: modificarReserva + series** — `VentasPage.tsx`: `modificarReserva()` ahora fetchea `inventario_lineas(inventario_series activo & !reservado)` para cada producto serializado antes de llamar `setCart`. Fix: `series_disponibles` ya no queda vacío al volver al carrito.

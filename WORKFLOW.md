@@ -87,7 +87,7 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 028 | `028_clientes_dni.sql` | Clientes: columna `dni TEXT` + UNIQUE(tenant_id, dni) WHERE dni IS NOT NULL | ✅ | ✅ |
 | 029 | `029_ventas_monto_pagado.sql` | Ventas: `monto_pagado DECIMAL(12,2) DEFAULT 0` para pago parcial en reservas | ✅ | ✅ |
 | 030 | _(pendiente)_ | Devoluciones: `es_devolucion` en ubicaciones/estados + tablas `devoluciones` + `devolucion_items` | ❌ | ❌ |
-| 031 | `031_producto_estructuras.sql` | WMS Fase 1: tabla `producto_estructuras` (niveles unidad/caja/pallet con peso y dimensiones) + partial unique index default | ✅ | ❌ |
+| 031 | `031_producto_estructuras.sql` | WMS Fase 1: tabla `producto_estructuras` (niveles unidad/caja/pallet con peso y dimensiones) + partial unique index default | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero

@@ -280,9 +280,10 @@ export function AppLayout() {
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            {/* Ayuda — oculto en mobile */}
-            <a href="mailto:soporte@genesis360.pro" title="Soporte / Ayuda" className={`hidden sm:inline-flex ${headerBtnCls}`}>
+            {/* Ayuda */}
+            <a href="mailto:soporte@genesis360.pro" title="Centro de Soporte" className={`hidden sm:inline-flex items-center gap-1.5 ${headerBtnCls}`}>
               <LifeBuoy size={18} />
+              <span className="text-sm font-medium hidden md:inline">Ayuda</span>
             </a>
 
             {/* Tour guiado — oculto en mobile */}

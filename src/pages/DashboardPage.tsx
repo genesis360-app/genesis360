@@ -64,7 +64,8 @@ export default function DashboardPage() {
       const hace7dias    = new Date(Date.now() - 7 * 86400000).toISOString()
       const hace30dias   = new Date(Date.now() - 30 * 86400000).toISOString()
 
-      const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes, ventasDeuda] = await Promise.all([
+      const fechaReservaVieja = new Date(hoy.getTime() - 3 * 86400000).toISOString()
+      const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes, ventasDeuda, productosInactivos, reservasViejas] = await Promise.all([
         supabase.from('productos').select('id, nombre, sku, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
         supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
@@ -72,13 +73,17 @@ export default function DashboardPage() {
         supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt),
         supabase.from('movimientos_stock').select('producto_id, cantidad').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias),
         supabase.from('ventas').select('total, monto_pagado').eq('tenant_id', tenant!.id).in('estado', ['pendiente', 'reservada']),
+        supabase.from('productos').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('activo', false),
+        supabase.from('ventas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('estado', 'reservada').lt('created_at', fechaReservaVieja),
       ])
 
-      const prods            = productos.data ?? []
-      const totalProductos   = prods.length
-      const stockCritico     = prods.filter(p => p.stock_actual <= p.stock_minimo).length
-      const valorInventario  = prods.reduce((acc, p) => acc + p.precio_costo * p.stock_actual, 0)
-      const alertasActivas   = alertas.data?.length ?? 0
+      const prods                 = productos.data ?? []
+      const totalProductos        = prods.length
+      const totalProductosInactivos = productosInactivos.count ?? 0
+      const stockCritico          = prods.filter(p => p.stock_actual <= p.stock_minimo).length
+      const valorInventario       = prods.reduce((acc, p) => acc + p.precio_costo * p.stock_actual, 0)
+      // alertasActivas = alertas DB + reservas viejas (mismo cálculo que sidebar badge useAlertas)
+      const alertasActivas        = (alertas.data?.length ?? 0) + (reservasViejas.count ?? 0)
       const movs             = movimientos.data ?? []
       const ingresosMovs     = movs.filter(m => m.tipo === 'ingreso')
       const ingresosHoy      = ingresosMovs.reduce((a, m) => a + m.cantidad * ((m as any).productos?.precio_costo ?? 0), 0)
@@ -135,7 +140,7 @@ export default function DashboardPage() {
       const cantDeudoras = (ventasDeuda.data ?? []).filter(v => Math.max(0, (v.total ?? 0) - (v.monto_pagado ?? 0)) > 0.5).length
 
       return {
-        totalProductos, stockCritico, valorInventario, alertasActivas,
+        totalProductos, totalProductosInactivos, stockCritico, valorInventario, alertasActivas,
         ingresosHoy, cantIngresosHoy, rebajesHoy, totalVentasMes, cantVentasMes,
         totalVentasMesAnt, cantStockMuerto, valorStockMuerto, prodsInactivos, prodsCriticos,
         proyeccionCobertura, deudaTotal, cantDeudoras,
@@ -445,7 +450,10 @@ export default function DashboardPage() {
             <Package size={20} />
           </div>
           <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{(stats?.totalProductos ?? 0).toLocaleString()}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Total productos</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Total productos activos</p>
+          {(stats?.totalProductosInactivos ?? 0) > 0 && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{stats!.totalProductosInactivos} inactivos</p>
+          )}
         </Link>
 
         <Link to="/alertas" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">

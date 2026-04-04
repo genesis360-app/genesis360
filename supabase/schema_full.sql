@@ -1475,3 +1475,34 @@ CREATE INDEX IF NOT EXISTS idx_ventas_sucursal            ON ventas(sucursal_id)
 CREATE INDEX IF NOT EXISTS idx_caja_sesiones_sucursal     ON caja_sesiones(sucursal_id);
 CREATE INDEX IF NOT EXISTS idx_gastos_sucursal            ON gastos(sucursal_id);
 CREATE INDEX IF NOT EXISTS idx_clientes_sucursal          ON clientes(sucursal_id);
+
+-- ─── Migration 031: Maestro de estructura de producto ─────────────────────────
+
+CREATE TABLE IF NOT EXISTS producto_estructuras (
+  id              UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id       UUID        NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  producto_id     UUID        NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+  nombre          TEXT        NOT NULL,
+  is_default      BOOLEAN     NOT NULL DEFAULT false,
+  unidades_por_caja   INT,
+  cajas_por_pallet    INT,
+  peso_unidad    DECIMAL(10,4),
+  alto_unidad    DECIMAL(10,2),
+  ancho_unidad   DECIMAL(10,2),
+  largo_unidad   DECIMAL(10,2),
+  peso_caja      DECIMAL(10,4),
+  alto_caja      DECIMAL(10,2),
+  ancho_caja     DECIMAL(10,2),
+  largo_caja     DECIMAL(10,2),
+  peso_pallet    DECIMAL(10,4),
+  alto_pallet    DECIMAL(10,2),
+  ancho_pallet   DECIMAL(10,2),
+  largo_pallet   DECIMAL(10,2),
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_estructuras_default
+  ON producto_estructuras (tenant_id, producto_id) WHERE is_default = true;
+CREATE INDEX IF NOT EXISTS idx_producto_estructuras_producto ON producto_estructuras (producto_id);
+CREATE INDEX IF NOT EXISTS idx_producto_estructuras_tenant   ON producto_estructuras (tenant_id);

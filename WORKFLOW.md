@@ -83,6 +83,11 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 024 | `024_supervisor_rls.sql` | RRHH Phase 5: get_supervisor_team_ids() + RLS SUPERVISOR en asistencia/vacaciones/empleados | ✅ | ✅ |
 | 025 | `025_sucursales.sql` | Multi-sucursal: tabla sucursales + sucursal_id nullable en inventario_lineas/movimientos_stock/ventas/caja_sesiones/gastos/clientes | ✅ | ✅ |
 | 026 | `026_nomina_medio_pago.sql` | RRHH Nómina: medio_pago en rrhh_salarios + pagar_nomina_empleado con check saldo caja + p_medio_pago | ✅ | ✅ |
+| 027 | `027_storage_productos_security.sql` | Security: policy DELETE bucket productos con validación tenant_id en path · file_size_limit 5 MB · allowed_mime_types jpeg/png/webp | ✅ | ✅ |
+| 028 | `028_clientes_dni.sql` | Clientes: columna `dni TEXT` + UNIQUE(tenant_id, dni) WHERE dni IS NOT NULL | ✅ | ✅ |
+| 029 | `029_ventas_monto_pagado.sql` | Ventas: `monto_pagado DECIMAL(12,2) DEFAULT 0` para pago parcial en reservas | ✅ | ✅ |
+| 030 | _(pendiente)_ | Devoluciones: `es_devolucion` en ubicaciones/estados + tablas `devoluciones` + `devolucion_items` | ❌ | ❌ |
+| 031 | `031_producto_estructuras.sql` | WMS Fase 1: tabla `producto_estructuras` (niveles unidad/caja/pallet con peso y dimensiones) + partial unique index default | ✅ | ❌ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -154,7 +159,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.53.1 | Tests: calcularVuelto · calcularEfectivoCaja · calcularComboRows · restaurarMediosPago (111/111) · fix bug vuelto en tarjeta · refactor funciones puras a ventasValidation.ts | 2026-04 |
 | v0.54.0 | Fix bug medio de pago sin tipo (mixto cierra venta) · Dashboard deuda pendiente · Alertas clientes con deuda + link ficha · Alertas link directo a venta (/ventas?id=) · VentasPage/ClientesPage apertura directa por URL params (114/114 tests) | 2026-04 |
 | v0.55.0 ✅ | UX Group 1: onWheel blur inputs numéricos · tooltips icon-only · VentasPage carrito sticky + tab label · Sidebar reorden + consolida Rentabilidad/Recomendaciones en Dashboard · ConfigPage layout full-width con sidebar lateral desktop | 2026-04 |
-| v0.56.0 | Grupo 2: ProductosPage (/productos, 2 tabs Productos+Estructura) · nueva InventarioPage (/inventario, 2 tabs Movimientos+LPNs) · rutas renombradas + redirects compatibilidad · referencias actualizadas en 8 archivos | 2026-04 |
+| v0.56.0 ✅ | Grupo 2: ProductosPage (/productos, 2 tabs Productos+Estructura) · nueva InventarioPage (/inventario, 2 tabs Movimientos+LPNs) · rutas renombradas + redirects compatibilidad · referencias actualizadas en 8 archivos | 2026-04 |
+| v0.57.0 | Grupo 3: maestro de estructura de producto (migration 031) — tabla producto_estructuras, CRUD en tab Estructura, resumen default en panel expandible · Grupo 4: ingreso/rebaje masivo multi-SKU (MasivoModal, auto-FIFO para rebaje, serializado con textarea series) · Fixes pre-deploy: bug modificarReserva+series, series reservadas tachadas, Dashboard alertas=badge, "Total productos activos"+inactivos, Caja selector abierta, Ventas tabs underline, Header botón Ayuda | 2026-04 |
 
 ---
 

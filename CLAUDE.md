@@ -556,7 +556,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
-### v0.58.0 — en DEV
+### v0.58.0 ✅ PROD
 
 #### Devoluciones (migration 030)
 - **`ubicaciones.es_devolucion BOOLEAN DEFAULT false`**: toggle `RotateCcw` naranja en ConfigPage → Ubicaciones. Solo una por tenant.

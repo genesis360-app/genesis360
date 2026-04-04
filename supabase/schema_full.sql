@@ -139,6 +139,14 @@ CREATE TABLE ubicaciones (
   prioridad           INT NOT NULL DEFAULT 0,
   disponible_surtido  BOOLEAN NOT NULL DEFAULT TRUE,
   activo              BOOLEAN DEFAULT TRUE,
+  es_devolucion       BOOLEAN NOT NULL DEFAULT false,
+  -- WMS Fase 2 (migration 032)
+  tipo_ubicacion      TEXT CHECK (tipo_ubicacion IN ('picking','bulk','estiba','camara','cross_dock')),
+  alto_cm             DECIMAL(8,2),
+  ancho_cm            DECIMAL(8,2),
+  largo_cm            DECIMAL(8,2),
+  peso_max_kg         DECIMAL(8,2),
+  capacidad_pallets   INT,
   created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE ubicaciones ENABLE ROW LEVEL SECURITY;

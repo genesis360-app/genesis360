@@ -94,7 +94,16 @@ export interface Ubicacion {
   nombre: string
   descripcion?: string
   activo: boolean
+  prioridad?: number
+  disponible_surtido?: boolean
   es_devolucion?: boolean
+  // WMS Fase 2
+  tipo_ubicacion?: 'picking' | 'bulk' | 'estiba' | 'camara' | 'cross_dock' | null
+  alto_cm?: number | null
+  ancho_cm?: number | null
+  largo_cm?: number | null
+  peso_max_kg?: number | null
+  capacidad_pallets?: number | null
 }
 
 export interface Producto {

@@ -23,6 +23,7 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
   despachada: { label: 'Despachada', color: 'text-green-700 dark:text-green-400',  bg: 'bg-green-100 dark:bg-green-900/30'  },
   cancelada:  { label: 'Cancelada',  color: 'text-red-700 dark:text-red-400',    bg: 'bg-red-100 dark:bg-red-900/30'    },
   facturada:  { label: 'Facturada',  color: 'text-purple-700', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+  devuelta:   { label: 'Devuelta',   color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
 }
 
 const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
@@ -1032,6 +1033,16 @@ export default function VentasPage() {
           monto: montoEfectivo,
           usuario_id: user?.id,
         })
+      }
+
+      // Marcar venta como "devuelta" si el total devuelto cubre el 100% del total
+      const { data: todasDev } = await supabase
+        .from('devoluciones')
+        .select('monto_total')
+        .eq('venta_id', devolucionVenta.id)
+      const totalDevuelto = (todasDev ?? []).reduce((acc, d) => acc + Number(d.monto_total), 0)
+      if (totalDevuelto >= Number(devolucionVenta.total) - 0.5) {
+        await supabase.from('ventas').update({ estado: 'devuelta' }).eq('id', devolucionVenta.id)
       }
 
       toast.success(`Devolución procesada${numero_nc ? ` · ${numero_nc}` : ''}`)

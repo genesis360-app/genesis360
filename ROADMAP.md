@@ -139,6 +139,68 @@ Migration: 019_rrhh_capacitaciones.sql
 
 ---
 
+---
+
+## WMS — Almacenaje Dirigido y Picking Inteligente
+
+> Visión: el sistema sugiere dónde almacenar cada SKU en base a dimensiones/peso, y genera
+> listas de picking con tareas dirigidas que guían al operador exactamente a qué ubicación ir
+> y qué cantidad tomar, respetando FIFO/FEFO/serie/lote.
+
+### Fase 1 — Estructura de producto ✅ (migration 031, v0.57.0)
+
+- Tabla `producto_estructuras`: niveles unidad / caja / pallet con peso (kg) y
+  dimensiones alto/ancho/largo (cm). `unidades_por_caja`, `cajas_por_pallet`.
+- Mínimo 2 niveles activos al crear. Un único default por SKU (partial unique index).
+- Base de datos para calcular capacidades de almacenaje y armar listas de picking.
+
+### Fase 2 — Dimensiones en ubicaciones (migration futura)
+
+Nuevos campos en tabla `ubicaciones`:
+- `alto_cm`, `ancho_cm`, `largo_cm` — dimensiones físicas del hueco/posición.
+- `peso_max_kg` — peso máximo soportado.
+- `tipo_ubicacion` ENUM: `picking` | `bulk` | `estiba` | `camara` | `cross_dock`.
+- `capacidad_pallets INT` — para ubicaciones tipo estiba.
+
+**Almacenaje dirigido (putaway)**: al ingresar stock, el sistema sugiere ubicación óptima
+comparando dimensiones de la caja/pallet del producto vs disponibilidad en ubicaciones.
+Prioridad: tipo adecuado → capacidad suficiente → menor prioridad ocupada.
+
+### Fase 3 — Tareas WMS y listas de picking (migration futura)
+
+Nueva tabla `wms_tareas`:
+- `tipo` ENUM: `putaway` | `picking` | `replenishment` | `conteo`.
+- `estado` ENUM: `pendiente` | `en_curso` | `completada` | `cancelada`.
+- `usuario_asignado_id`, `prioridad INT`, `fecha_limite`.
+- FK a `inventario_lineas`, `ubicaciones` (origen y destino), `ventas` (para picking de pedidos).
+
+**Listas de picking**: agrupan tareas de tipo `picking` por pedido/despacho.
+- El sistema calcula la ruta óptima dentro del depósito (prioridad de ubicaciones).
+- Cada tarea indica: SKU · LPN · N/S o lote · ubicación origen · cantidad · ubicación destino.
+- Respeta regla de inventario del SKU (FIFO/FEFO/serie) para selección de línea exacta.
+- Interface en InventarioPage o nueva página WMS dedicada.
+
+### Fase 4 — Surtido y cross-docking (fase larga plazo)
+
+- Reposición automática: cuando stock en zona picking < umbral → tarea `replenishment` desde bulk.
+- Cross-docking: mercadería entrante → tarea putaway directo a zona despacho sin almacenar.
+- KPIs WMS: tasa de error de picking, tiempo promedio por tarea, utilización de ubicaciones.
+
+### Dependencias entre fases
+
+```
+Fase 1 ✅ (producto_estructuras) 
+  → Fase 2 (ubicaciones con dimensiones)
+    → Fase 3 (tareas WMS + picking)
+      → Fase 4 (surtido + cross-docking)
+```
+
+> **Nota de arquitectura**: el schema actual es compatible con todas las fases.
+> `inventario_lineas` ya tiene `ubicacion_id`, `lpn`, `nro_lote`, `fecha_vencimiento`, series.
+> Al llegar a Fase 2, solo se agregan columnas a `ubicaciones` + nueva tabla `wms_tareas`.
+
+---
+
 ## Orden recomendado
 
 ```
@@ -192,3 +254,4 @@ const { data } = useQuery({
 |-------|---------|---------|
 | 23-Mar-2026 | 1.0 | Roadmap inicial + Phase 1 RRHH en PROD |
 | 23-Mar-2026 | 1.1 | Actualizado post v0.27.0 · compactado · duplicados eliminados |
+| 04-Apr-2026 | 1.2 | Sección WMS completa (Fases 1–4): estructura de producto ✅ · dimensiones ubicaciones · tareas/picking · cross-docking |

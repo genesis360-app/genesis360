@@ -56,7 +56,7 @@ src/
 └── pages/
     ├── LandingPage.tsx / LoginPage.tsx / OnboardingPage.tsx
     ├── DashboardPage.tsx        # Tabs: General / Insights / Métricas / Rentabilidad / Recomendaciones
-    ├── ProductosPage.tsx        # Tabs: Productos (listado + resumen expandible) / Estructura (placeholder)
+    ├── ProductosPage.tsx        # Tabs: Productos (listado + resumen expandible + estructura default) / Estructura (CRUD completo)
     ├── InventarioPage.tsx       # Tabs: Movimientos (ingreso/rebaje) / Inventario (LPNs + LpnAccionesModal)
     ├── VentasPage.tsx           # Carrito + checkout; caja integrada; widget estado caja
     ├── RrhhPage.tsx             # Empleados, puestos, departamentos, cumpleaños
@@ -495,6 +495,32 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Tests — caja y ventas** (`tests/unit/ventasCaja.test.ts`, 24 casos nuevos): `calcularVuelto`, `calcularEfectivoCaja`, `calcularComboRows`, `restaurarMediosPago`. Total: 111/111 passing.
 - [x] **Fix bug vuelto con tarjeta**: `calcularVuelto` solo computaba vuelto sobre efectivo, no sobre el total pagado con todos los medios. Tarjeta > total ya no genera vuelto falso.
 - [x] **Refactor funciones puras**: `calcularVuelto`, `calcularEfectivoCaja`, `calcularComboRows`, `restaurarMediosPago` extraídas a `src/lib/ventasValidation.ts`. VentasPage usa las funciones compartidas.
+
+### v0.57.0 — en DEV
+
+#### Grupo 3 — Maestro de estructura de producto (migration 031)
+- Nueva tabla `producto_estructuras`: N estructuras por SKU, una sola default.
+  - Niveles: unidad / caja / pallet con peso (kg) y dimensiones alto/ancho/largo (cm).
+  - Conversiones: `unidades_por_caja`, `cajas_por_pallet`.
+  - Validación: mínimo 2 niveles activos al crear; todos los campos del nivel son obligatorios.
+  - Default automático al crear la primera; se reasigna al eliminar la default.
+  - `UNIQUE INDEX (tenant_id, producto_id) WHERE is_default = true` — garantía en DB.
+  - **Diseño WMS-ready**: estructura pensada para almacenaje dirigido (fase futura) — ver ROADMAP.md § WMS.
+- Tab "Estructura" en ProductosPage: CRUD completo con buscador/dropdown de producto,
+  modal `EstrModal` con toggle por nivel (`NivelSection`), tarjeta `EstrCard` con detalle por nivel.
+- Panel expandible (tab Productos): muestra estructura default con peso y dimensiones por nivel;
+  link "Agregar estructura" si no tiene ninguna; link "Gestionar →" navega al tab Estructura con producto preseleccionado.
+- Interface `ProductoEstructura` en `supabase.ts`.
+
+#### Grupo 4 — Ingreso y rebaje masivo (sin migration)
+- Nuevo `src/components/MasivoModal.tsx`: modal reutilizable para N productos en una sola operación.
+  - **Ingreso masivo**: no serializados (cantidad + opcionales expandibles: ubicación, estado,
+    proveedor, lote, vencimiento, LPN) · serializados (textarea con series una por línea).
+  - **Rebaje masivo**: solo no serializados; auto-FIFO/FEFO/LEFO/LIFO desde líneas existentes;
+    serializados muestran aviso "usar rebaje individual" y se excluyen del procesamiento.
+  - Buscador + scanner integrado para agregar productos a la lista.
+  - Preview stock resultante en tiempo real por fila; procesamiento secuencial (evita race conditions).
+- InventarioPage tab Movimientos: 4 botones — Ingreso · **Ingreso masivo** · Rebaje · **Rebaje masivo**.
 
 ### v0.56.0 — en DEV
 - [x] **ProductosPage** (`/productos`): 2 tabs — Productos (listado con panel de resumen expandible, imagen, precios, stock, categoría, notas) + Estructura (placeholder "próximamente"). Rutas `/productos/nuevo`, `/productos/:id/editar`, `/productos/importar`.

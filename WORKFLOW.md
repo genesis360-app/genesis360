@@ -154,7 +154,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.53.1 | Tests: calcularVuelto · calcularEfectivoCaja · calcularComboRows · restaurarMediosPago (111/111) · fix bug vuelto en tarjeta · refactor funciones puras a ventasValidation.ts | 2026-04 |
 | v0.54.0 | Fix bug medio de pago sin tipo (mixto cierra venta) · Dashboard deuda pendiente · Alertas clientes con deuda + link ficha · Alertas link directo a venta (/ventas?id=) · VentasPage/ClientesPage apertura directa por URL params (114/114 tests) | 2026-04 |
 | v0.55.0 ✅ | UX Group 1: onWheel blur inputs numéricos · tooltips icon-only · VentasPage carrito sticky + tab label · Sidebar reorden + consolida Rentabilidad/Recomendaciones en Dashboard · ConfigPage layout full-width con sidebar lateral desktop | 2026-04 |
-| v0.56.0 | Grupo 2: ProductosPage (/productos, 2 tabs Productos+Estructura) · nueva InventarioPage (/inventario, 2 tabs Movimientos+LPNs) · rutas renombradas + redirects compatibilidad · referencias actualizadas en 8 archivos | 2026-04 |
+| v0.56.0 ✅ | Grupo 2: ProductosPage (/productos, 2 tabs Productos+Estructura) · nueva InventarioPage (/inventario, 2 tabs Movimientos+LPNs) · rutas renombradas + redirects compatibilidad · referencias actualizadas en 8 archivos | 2026-04 |
+| v0.57.0 | Grupo 3: maestro de estructura de producto (migration 031) — tabla producto_estructuras, CRUD en tab Estructura, resumen default en panel expandible · Grupo 4: ingreso/rebaje masivo multi-SKU (MasivoModal, auto-FIFO para rebaje, serializado con textarea series) | 2026-04 |
 
 ---
 

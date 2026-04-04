@@ -86,8 +86,8 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 027 | `027_storage_productos_security.sql` | Security: policy DELETE bucket productos con validación tenant_id en path · file_size_limit 5 MB · allowed_mime_types jpeg/png/webp | ✅ | ✅ |
 | 028 | `028_clientes_dni.sql` | Clientes: columna `dni TEXT` + UNIQUE(tenant_id, dni) WHERE dni IS NOT NULL | ✅ | ✅ |
 | 029 | `029_ventas_monto_pagado.sql` | Ventas: `monto_pagado DECIMAL(12,2) DEFAULT 0` para pago parcial en reservas | ✅ | ✅ |
-| 030 | _(pendiente)_ | Devoluciones: `es_devolucion` en ubicaciones/estados + tablas `devoluciones` + `devolucion_items` | ❌ | ❌ |
-| 031 | `031_producto_estructuras.sql` | WMS Fase 1: tabla `producto_estructuras` (niveles unidad/caja/pallet con peso y dimensiones) + partial unique index default | ✅ | ❌ |
+| 030 | `030_devoluciones.sql` | Devoluciones: `es_devolucion` en ubicaciones/estados_inventario + tablas `devoluciones` + `devolucion_items` con RLS | ✅ | ❌ |
+| 031 | `031_producto_estructuras.sql` | WMS Fase 1: tabla `producto_estructuras` (niveles unidad/caja/pallet con peso y dimensiones) + partial unique index default | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -160,7 +160,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.54.0 | Fix bug medio de pago sin tipo (mixto cierra venta) · Dashboard deuda pendiente · Alertas clientes con deuda + link ficha · Alertas link directo a venta (/ventas?id=) · VentasPage/ClientesPage apertura directa por URL params (114/114 tests) | 2026-04 |
 | v0.55.0 ✅ | UX Group 1: onWheel blur inputs numéricos · tooltips icon-only · VentasPage carrito sticky + tab label · Sidebar reorden + consolida Rentabilidad/Recomendaciones en Dashboard · ConfigPage layout full-width con sidebar lateral desktop | 2026-04 |
 | v0.56.0 ✅ | Grupo 2: ProductosPage (/productos, 2 tabs Productos+Estructura) · nueva InventarioPage (/inventario, 2 tabs Movimientos+LPNs) · rutas renombradas + redirects compatibilidad · referencias actualizadas en 8 archivos | 2026-04 |
-| v0.57.0 | Grupo 3: maestro de estructura de producto (migration 031) — tabla producto_estructuras, CRUD en tab Estructura, resumen default en panel expandible · Grupo 4: ingreso/rebaje masivo multi-SKU (MasivoModal, auto-FIFO para rebaje, serializado con textarea series) · Fixes pre-deploy: bug modificarReserva+series, series reservadas tachadas, Dashboard alertas=badge, "Total productos activos"+inactivos, Caja selector abierta, Ventas tabs underline, Header botón Ayuda | 2026-04 |
+| v0.57.0 ✅ | Grupo 3: maestro de estructura de producto (migration 031) — tabla producto_estructuras, CRUD en tab Estructura, resumen default en panel expandible · Grupo 4: ingreso/rebaje masivo multi-SKU (MasivoModal, auto-FIFO para rebaje, serializado con textarea series) · Fixes pre-deploy: bug modificarReserva+series, series reservadas tachadas, Dashboard alertas=badge, "Total productos activos"+inactivos, Caja selector abierta, Ventas tabs underline, Header botón Ayuda | 2026-04 |
+| v0.58.0 | Devoluciones (migration 030): es_devolucion en ubicaciones+estados_inventario, tablas devoluciones+devolucion_items · ConfigPage: toggle ubicación DEV + selector estado DEV · VentasPage: botón Devolver (despachada/facturada), modal ítems/series/motivo/medio, lógica procesarDevolucion (reactiva series / nueva linea no-serial + movimiento ingreso), egreso caja efectivo, NC automática si facturada, comprobante imprimible, sección devoluciones previas colapsable | 2026-04 |
 
 ---
 

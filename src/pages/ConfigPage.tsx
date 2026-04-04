@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronRight, Play } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronRight, Play, RotateCcw } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -409,6 +409,13 @@ export default function ConfigPage() {
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
     logActividad({ entidad: 'ubicacion', entidad_id: u.id, entidad_nombre: u.nombre, accion: 'editar', campo: 'disponible_surtido', valor_anterior: String(u.disponible_surtido), valor_nuevo: String(nuevo), pagina: '/configuracion' })
   }
+  const toggleUbicDevolucion = async (u: any) => {
+    const nuevo = !u.es_devolucion
+    const { error } = await supabase.from('ubicaciones').update({ es_devolucion: nuevo }).eq('id', u.id)
+    if (error) { toast.error(error.message); return }
+    toast.success(nuevo ? 'Marcada como ubicación de devolución' : 'Desmarcada como devolución')
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+  }
 
   // Estados de inventario
   const { data: estados = [], isLoading: loadingEstados } = useQuery({
@@ -430,6 +437,17 @@ export default function ConfigPage() {
     const old = (estados as Item[]).find(e => e.id === id)
     const { error } = await supabase.from('estados_inventario').delete().eq('id', id)
     if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }); logActividad({ entidad: 'estado', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
+  }
+  const setEstadoDevolucion = async (estadoId: string) => {
+    // Desmarcar todos primero, luego marcar el elegido
+    const { error: e1 } = await supabase.from('estados_inventario').update({ es_devolucion: false }).eq('tenant_id', tenant!.id)
+    if (e1) { toast.error(e1.message); return }
+    if (estadoId) {
+      const { error: e2 } = await supabase.from('estados_inventario').update({ es_devolucion: true }).eq('id', estadoId)
+      if (e2) { toast.error(e2.message); return }
+    }
+    toast.success(estadoId ? 'Estado de devolución configurado' : 'Estado de devolución desasignado')
+    qc.invalidateQueries({ queryKey: ['estados_inventario'] })
   }
 
   // Motivos
@@ -792,7 +810,7 @@ export default function ConfigPage() {
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Ubicaciones</h2>
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{ubicaciones.length} cargadas</span>
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero. El ícono <ShoppingCart size={11} className="inline" /> indica si la ubicación es elegible para surtir ventas (líneas sin ubicación siempre quedan excluidas).</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero. <ShoppingCart size={11} className="inline" /> = elegible para surtir ventas. <RotateCcw size={11} className="inline text-orange-500" /> = destino de stock devuelto (solo una).</p>
 
           {/* Agregar nueva */}
           <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
@@ -856,6 +874,12 @@ export default function ConfigPage() {
                           className={`p-1 transition-colors ${u.disponible_surtido ? 'text-green-500 hover:text-gray-400 dark:text-gray-500' : 'text-gray-300 hover:text-green-500'}`}>
                           <ShoppingCart size={14} />
                         </button>
+                        <button
+                          onClick={() => toggleUbicDevolucion(u)}
+                          title={u.es_devolucion ? 'Ubicación de devolución activa — click para desmarcar' : 'Marcar como ubicación para devoluciones'}
+                          className={`p-1 transition-colors ${u.es_devolucion ? 'text-orange-500 hover:text-gray-400' : 'text-gray-300 hover:text-orange-500'}`}>
+                          <RotateCcw size={14} />
+                        </button>
                         <button onClick={() => startEditUbic(u)} className="text-gray-400 dark:text-gray-500 hover:text-accent p-1"><Pencil size={14} /></button>
                         <button onClick={() => deleteUbicacion(u.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={14} /></button>
                       </>
@@ -869,14 +893,36 @@ export default function ConfigPage() {
       )}
 
       {tab === 'estados' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-1">
-            <CircleDot size={18} className="text-accent" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Estados de inventario</h2>
-            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{estados.length} cargados</span>
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <CircleDot size={18} className="text-accent" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Estados de inventario</h2>
+              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{estados.length} cargados</span>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Definen la condición del producto: Disponible, Dañado, Reservado, En tránsito, etc.</p>
+            <ListaABM items={estados} loading={loadingEstados} withColor onAdd={addEstado} onUpdate={updateEstado} onDelete={deleteEstado} />
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Definen la condición del producto: Disponible, Dañado, Reservado, En tránsito, etc.</p>
-          <ListaABM items={estados} loading={loadingEstados} withColor onAdd={addEstado} onUpdate={updateEstado} onDelete={deleteEstado} />
+
+          {/* Estado para devoluciones */}
+          {estados.length > 0 && (
+            <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+              <div className="flex items-center gap-2 mb-1">
+                <RotateCcw size={15} className="text-orange-500" />
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Estado para ítems devueltos</p>
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">El stock devuelto ingresará con este estado. Solo uno puede estar activo.</p>
+              <select
+                value={(estados as any[]).find(e => e.es_devolucion)?.id ?? ''}
+                onChange={e => setEstadoDevolucion(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                <option value="">Sin configurar</option>
+                {(estados as any[]).map((e: any) => (
+                  <option key={e.id} value={e.id}>{e.nombre}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 

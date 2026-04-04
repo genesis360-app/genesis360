@@ -94,6 +94,7 @@ export interface Ubicacion {
   nombre: string
   descripcion?: string
   activo: boolean
+  es_devolucion?: boolean
 }
 
 export interface Producto {
@@ -205,4 +206,28 @@ export interface Plan {
   precio_mensual: number
   mp_plan_id?: string
   activo: boolean
+}
+
+export interface Devolucion {
+  id: string
+  tenant_id: string
+  venta_id: string
+  numero_nc?: string | null
+  origen: 'despachada' | 'facturada'
+  motivo?: string | null
+  monto_total: number
+  medio_pago?: string | null
+  created_by?: string | null
+  created_at: string
+  devolucion_items?: DevolucionItem[]
+}
+
+export interface DevolucionItem {
+  id: string
+  devolucion_id: string
+  producto_id: string
+  cantidad: number
+  precio_unitario: number
+  inventario_linea_nueva_id?: string | null
+  productos?: Pick<Producto, 'nombre' | 'sku'>
 }

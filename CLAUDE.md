@@ -498,6 +498,19 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ### v0.57.0 — en DEV
 
+#### Fixes pre-deploy (commit f0b711cd)
+- **Bug: modificarReserva + series** — `VentasPage.tsx`: `modificarReserva()` ahora fetchea `inventario_lineas(inventario_series activo & !reservado)` para cada producto serializado antes de llamar `setCart`. Fix: `series_disponibles` ya no queda vacío al volver al carrito.
+- **Bug: series reservadas sin marcar** — `InventarioPage.tsx`: chips de series en tab Inventario muestran `line-through opacity-70 bg-orange-100` para `reservado === true`. Tooltip "Reservada".
+- **Dashboard: "Alertas activas" = sidebar badge** — stats query agrega conteo de `reservas_viejas` (mismo criterio que `useAlertas`). `alertasActivas = alertas.length + reservasViejas.count`. Coherencia garantizada con el badge del sidebar.
+- **Dashboard: "Total productos activos"** — label renombrado; segunda query `SELECT id count WHERE activo=false`; muestra "X inactivos" debajo si hay alguno.
+- **Caja: selector con indicador de abierta** — nueva query `cajasAbiertas` con todos los `caja_id` con sesión abierta. `useEffect` auto-selecciona la primera caja abierta si usuario no seleccionó nada. Opciones del select muestran "✓ Abierta" para cajas con sesión activa.
+- **Ventas: tabs underline (Option B)** — reemplaza pill container gris por tabs con `border-b-2 border-accent` en activo. Elimina texto indicador "Todo lo de abajo corresponde a...".
+- **Header: botón "Ayuda"** — LifeBuoy button muestra label "Ayuda" visible en desktop (`hidden md:inline`). Punto de entrada futuro al Centro de Soporte (`/ayuda`).
+
+#### Notas de arquitectura / comportamiento documentadas
+- **Dashboard "Stock Crítico"** (card) = tiempo real (`stock_actual <= stock_minimo`). **AlertasPage** sección stock = tabla `alertas` (trigger-based). Pueden diferir: el trigger crea la alerta cuando el stock baja pero no la resuelve al reponerse — hay que resolver manualmente. Esto es comportamiento esperado; documentar en FAQ del Centro de Soporte.
+- **"Alertas activas"** dashboard card = sidebar badge = `alertas DB + reservas_viejas`. AlertasPage `totalAlertas` incluye además `sinCategoria + clientesConDeuda` (informativas). La diferencia es intencional: dashboard/sidebar muestran alertas urgentes, AlertasPage muestra todo el detalle.
+
 #### Grupo 3 — Maestro de estructura de producto (migration 031)
 - Nueva tabla `producto_estructuras`: N estructuras por SKU, una sola default.
   - Niveles: unidad / caja / pallet con peso (kg) y dimensiones alto/ancho/largo (cm).
@@ -578,6 +591,32 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Medios de pago en caja**: efectivo → `ingreso` en `caja_movimientos` (afecta saldo). Tarjeta/transferencia/MP → `ingreso_informativo` (no afecta saldo, solo registro).
 - **Gastos en efectivo**: también requieren caja abierta. Otros medios de pago no bloquean.
 - **Nómina**: `pagar_nomina_empleado()` verifica saldo caja si `medio_pago='efectivo'`.
+
+### Centro de Soporte / Ayuda (plan aprobado, pendiente implementar)
+- Ruta `/ayuda` — acceso desde botón "Ayuda" en header (LifeBuoy + label).
+- Secciones: FAQ por módulo · Chat directo (WhatsApp/email) · Buenas Prácticas · Guías Populares interactivas · Reportar un Problema (form: tipo/urgencia/asunto/descripción/adjunto) · Cursos y recursos (YouTube).
+- Form "Reportar Problema" → email a `soporte@genesis360.pro` o tabla `soporte_tickets` en DB.
+- Guías interactivas: primera versión paso a paso; objetivo final = tour animado con mouse guiado.
+- Guías sugeridas: "Crear tu primer producto" · "Gestionar una venta de principio a fin" · "Proceso de recepción de mercadería" · "Configurar tu primera caja" · "Armar tu equipo de usuarios".
+
+### KITs / Kitting (plan aprobado, backlog WMS)
+- Proceso de kitting: N productos existentes → 1 nuevo SKU compuesto (KIT).
+- Tabla `kit_recetas` (kit_producto_id, componente_producto_id, cantidad).
+- Movimiento tipo `kitting`: rebaje de componentes + ingreso del KIT en una operación.
+- Desarmado inverso disponible.
+- Se considera parte del WMS (entre Fase 2 y Fase 3).
+- Pendiente decidir: ¿un KIT tiene precio propio y se puede vender directamente?
+
+### Sesión Expiry (pendiente evaluar)
+- Sesión actual parece no expirar. Evaluar si Supabase permite configurar JWT expiry por tenant sin riesgo.
+- Si es simple → configurable por tenant en ConfigPage. Si es complejo/riesgoso → backlog largo plazo.
+- **No implementar sin consultar al usuario primero.**
+
+### Testing por rol
+- Tests E2E para CAJERO: crear venta, manejar caja, no accede a config/usuarios/rrhh.
+- Tests E2E para SUPERVISOR: accede a historial, no accede a config/usuarios/rrhh.
+- Tests de coherencia de números: tarjeta Dashboard → click → página destino muestra mismo count.
+- Escenarios nuevos: modificarReserva con serializado → series disponibles en carrito; serie reservada aparece tachada en tab Inventario.
 
 ### Ideas futuras
 Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

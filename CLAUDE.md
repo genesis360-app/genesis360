@@ -556,11 +556,18 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
-### Devoluciones — plan aprobado (próxima sesión, migration 030)
-- **`ubicaciones.es_devolucion BOOLEAN DEFAULT false`**: toggle en ConfigPage → Ubicaciones. Requerido para procesar devoluciones.
-- **`estados.es_devolucion BOOLEAN DEFAULT false`**: toggle en ConfigPage → Estados. El stock devuelto ingresa con este estado. Validación previa: si falta alguno de los dos → error descriptivo.
-- **Tablas**: `devoluciones` (id, tenant_id, venta_id, numero_nc TEXT, origen, motivo, monto_total, medio_pago JSON, created_by) + `devolucion_items` (id, devolucion_id, producto_id, cantidad, precio_unitario, inventario_linea_nueva_id).
-- **NC**: solo si origen=`facturada` → `numero_nc = "NC-{numero}-{n}"`. Si origen=`despachada` → registro sin NC.
+### v0.58.0 — en DEV
+
+#### Devoluciones (migration 030)
+- **`ubicaciones.es_devolucion BOOLEAN DEFAULT false`**: toggle `RotateCcw` naranja en ConfigPage → Ubicaciones. Solo una por tenant.
+- **`estados_inventario.es_devolucion BOOLEAN DEFAULT false`**: select en ConfigPage → Estados. Solo uno activo a la vez (desactiva todos antes de asignar).
+- **Tablas**: `devoluciones` (id, tenant_id, venta_id, numero_nc, origen, motivo, monto_total, medio_pago TEXT JSON, created_by) + `devolucion_items` (devolucion_id, producto_id, cantidad, precio_unitario, inventario_linea_nueva_id nullable). RLS tenant-based.
+- **NC**: solo si origen=`facturada` → `numero_nc = "NC-{venta.numero}-{n}"` (n = count previas + 1). Si `despachada` → sin NC.
+- **Stock serializado**: reactiva series originales (`activo=true, reservado=false`) + su linea. Recalcula `stock_actual` manualmente (+cantDev).
+- **Stock no serializado**: nueva `inventario_lineas` en ubicación DEV con `estado_id=estadoDevId` + `notas = "Devolución de venta #N"`. Trigger recalcula automáticamente. Registra movimiento `ingreso`.
+- **Caja**: Efectivo en `medio_pago` → `egreso` en `caja_movimientos`. Bloquea si no hay sesión abierta.
+- **UI**: botón "Devolver" en modal detalle (estados `despachada` y `facturada`). Modal con selección chips de series / input cantidad, motivo, medios de devolución. Comprobante imprimible al finalizar. Sección colapsable "Devoluciones (n)" en modal si ya existen devoluciones previas.
+- **Prerequisito de uso**: configurar en Configuración → Ubicaciones una ubicación DEV + en Estados un estado DEV. Sin eso, la lógica bloquea con error descriptivo.
 - **Stock no serializado**: nueva `inventario_lineas` en ubicación DEV, estado DEV, `notas = "Devolución de LPN {lpn_original}"`.
 - **Stock serializado**: reactiva serie existente (`activo=true, reservado=false`). No crea nuevo registro.
 - **Caja**: Efectivo en `medio_pago` → egreso en `caja_movimientos`. Requiere sesión abierta.

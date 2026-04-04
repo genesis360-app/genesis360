@@ -154,17 +154,19 @@ Migration: 019_rrhh_capacitaciones.sql
 - Mínimo 2 niveles activos al crear. Un único default por SKU (partial unique index).
 - Base de datos para calcular capacidades de almacenaje y armar listas de picking.
 
-### Fase 2 — Dimensiones en ubicaciones (migration futura)
+### Fase 2 — Dimensiones en ubicaciones ✅ (migration 032, v0.59.0)
 
-Nuevos campos en tabla `ubicaciones`:
+Nuevos campos en tabla `ubicaciones` (todos opcionales):
 - `alto_cm`, `ancho_cm`, `largo_cm` — dimensiones físicas del hueco/posición.
 - `peso_max_kg` — peso máximo soportado.
-- `tipo_ubicacion` ENUM: `picking` | `bulk` | `estiba` | `camara` | `cross_dock`.
+- `tipo_ubicacion` TEXT CHECK: `picking` | `bulk` | `estiba` | `camara` | `cross_dock`.
 - `capacidad_pallets INT` — para ubicaciones tipo estiba.
+
+UI: sección colapsable "Dimensiones WMS" en ConfigPage → Ubicaciones. Badge tipo + medidas en lista.
 
 **Almacenaje dirigido (putaway)**: al ingresar stock, el sistema sugiere ubicación óptima
 comparando dimensiones de la caja/pallet del producto vs disponibilidad en ubicaciones.
-Prioridad: tipo adecuado → capacidad suficiente → menor prioridad ocupada.
+Prioridad: tipo adecuado → capacidad suficiente → menor prioridad ocupada. *(Pendiente: lógica de sugerencia — Fase 3)*
 
 ### Fase 3 — Tareas WMS y listas de picking (migration futura)
 
@@ -200,7 +202,7 @@ Proceso de kitting: combinar N productos existentes → generar un nuevo SKU com
 
 ```
 Fase 1 ✅ (producto_estructuras) 
-  → Fase 2 (ubicaciones con dimensiones)
+  → Fase 2 ✅ (ubicaciones con dimensiones)
     → Fase 2.5 (KITs / Kitting)
     → Fase 3 (tareas WMS + picking)
       → Fase 4 (surtido + cross-docking)

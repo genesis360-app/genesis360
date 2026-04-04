@@ -98,7 +98,7 @@
     <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Reportes</span>
     <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Alertas IA</span>
   </div>
-  <div class="version">Versión del documento: Draft v1.0 — Marzo 2026</div>
+  <div class="version">Versión del documento: Draft v1.1 — Abril 2026 · App v0.57.0</div>
   <div class="meta">Genesis360 · app.genesis360.pro · Confidencial</div>
 </div>
 
@@ -502,29 +502,46 @@
 <div class="section page-break">
   <h2>5. Roadmap</h2>
 
+  <p style="margin-bottom:16px;font-size:10pt;color:#555;"><em>Documento actualizado a v0.57.0 · Abril 2026. Las features marcadas ✅ ya están implementadas en PROD.</em></p>
+
+  <h3>Implementado recientemente (v0.52–v0.57)</h3>
+
+  <div class="module-card">
+    <h4>Mejoras en Clientes y Ventas ✅</h4>
+    <ul>
+      <li>DNI y teléfono obligatorios + registro inline desde la venta ✅</li>
+      <li>Pago parcial en reservas + modal de saldo al despachar ✅</li>
+      <li>Modificar productos de una reserva activa (cancela y recrea) ✅</li>
+      <li>Alertas: clientes con deuda + link a ficha del cliente ✅</li>
+      <li>Dashboard: deuda total pendiente con link a alertas ✅</li>
+    </ul>
+    <span class="badge badge-purple">Implementado</span>
+  </div>
+
+  <div class="module-card">
+    <h4>WMS Fase 1 — Estructura de producto ✅ (v0.57.0)</h4>
+    <ul>
+      <li>Tabla <code>producto_estructuras</code>: N estructuras por SKU, una sola default</li>
+      <li>Niveles: unidad / caja / pallet con peso (kg) y dimensiones (cm)</li>
+      <li>Conversiones: <code>unidades_por_caja</code>, <code>cajas_por_pallet</code></li>
+      <li>Partial unique index garantiza un solo default por producto en DB</li>
+      <li>CRUD en tab "Estructura" de ProductosPage + resumen en panel expandible</li>
+    </ul>
+    <span class="badge badge-purple">Implementado</span>
+  </div>
+
+  <div class="module-card">
+    <h4>Ingreso y Rebaje Masivo ✅ (v0.57.0)</h4>
+    <ul>
+      <li>Modal multi-SKU para N productos en una sola operación</li>
+      <li>Ingreso: no serializados (cantidad + opcionales) + serializados (textarea series)</li>
+      <li>Rebaje: auto-FIFO/FEFO desde líneas existentes; serializados excluidos con aviso</li>
+      <li>Scanner integrado + preview stock resultante</li>
+    </ul>
+    <span class="badge badge-purple">Implementado</span>
+  </div>
+
   <h3>Próximas features (corto plazo)</h3>
-
-  <div class="module-card">
-    <h4>Mejoras en Clientes</h4>
-    <ul>
-      <li>Agregar DNI y teléfono como campos mandatorios en formulario</li>
-      <li>Registro inline de cliente desde la venta</li>
-      <li>Alertas de deuda con link a ficha del cliente</li>
-      <li>Widget en Dashboard: total deuda + % ventas en deuda</li>
-    </ul>
-    <span class="badge badge-blue">En diseño</span>
-  </div>
-
-  <div class="module-card">
-    <h4>Mejoras en Ventas</h4>
-    <ul>
-      <li>Bloquear reserva/pendiente sin cliente registrado</li>
-      <li>Pago parcial en reservas → descuento automático al despachar</li>
-      <li>Flujo de cuenta corriente: cliente se lleva mercadería sin pagar</li>
-      <li>Historial: validación de caja al cambiar estado desde historial</li>
-    </ul>
-    <span class="badge badge-blue">En diseño</span>
-  </div>
 
   <div class="module-card">
     <h4>Mejoras en Caja</h4>
@@ -583,6 +600,55 @@
       <p>Comparación de métricas del negocio con promedios del rubro (márgenes, rotación, etc.).</p>
       <span class="badge badge-gray">Idea</span>
     </div>
+  </div>
+
+  <h3>WMS — Fases planificadas</h3>
+  <div class="two-col">
+    <div class="module-card">
+      <h4>Fase 2 — Dimensiones en ubicaciones</h4>
+      <p>Agregar <code>alto_cm</code>, <code>ancho_cm</code>, <code>largo_cm</code>, <code>peso_max_kg</code>, <code>tipo_ubicacion</code> (picking/bulk/estiba/camara/cross_dock), <code>capacidad_pallets</code>. El sistema sugerirá dónde almacenar cada SKU en base a sus dimensiones vs disponibilidad en ubicaciones (putaway dirigido).</p>
+      <span class="badge badge-amber">Planificado</span>
+    </div>
+    <div class="module-card">
+      <h4>Fase 2.5 — KITs / Kitting</h4>
+      <p>Proceso de armado de kits: N productos componentes → 1 SKU compuesto. Tabla <code>kit_recetas</code>. Movimiento tipo <code>kitting</code> rebaja componentes e ingresa el KIT. Desarmado inverso disponible.</p>
+      <span class="badge badge-amber">Planificado</span>
+    </div>
+    <div class="module-card">
+      <h4>Fase 3 — Tareas WMS y Picking</h4>
+      <p>Tabla <code>wms_tareas</code> (putaway/picking/replenishment/conteo). Listas de picking dirigidas por pedido, calculando ruta óptima en el depósito y respetando FIFO/FEFO/lote/serie.</p>
+      <span class="badge badge-gray">Backlog</span>
+    </div>
+    <div class="module-card">
+      <h4>Fase 4 — Cross-docking y KPIs</h4>
+      <p>Reposición automática bulk→picking. Cross-docking (entrante → despacho directo). KPIs de eficiencia: tasa de error de picking, tiempo por tarea, utilización de ubicaciones.</p>
+      <span class="badge badge-gray">Largo plazo</span>
+    </div>
+  </div>
+
+  <h3>Centro de Soporte / Ayuda</h3>
+  <div class="module-card">
+    <h4>Página /ayuda — Centro de Soporte integrado</h4>
+    <ul>
+      <li>Acceso desde botón "Ayuda" en el header (actualmente mailto)</li>
+      <li>Secciones: FAQ por módulo · Chat WhatsApp/Email · Buenas Prácticas</li>
+      <li>Guías populares interactivas: "Crear tu primer producto", "Gestionar una venta de principio a fin", etc.</li>
+      <li>Reportar un Problema: form con tipo, urgencia, asunto, descripción y adjunto</li>
+      <li>Cursos y recursos (links a YouTube / blog)</li>
+    </ul>
+    <span class="badge badge-amber">Planificado</span>
+  </div>
+
+  <h3>Devoluciones</h3>
+  <div class="module-card">
+    <h4>Módulo de devoluciones (migration 030)</h4>
+    <ul>
+      <li>Botón "Devolver" en ventas despachadas/facturadas → modal de devolución → comprobante imprimible</li>
+      <li>NC (Nota de Crédito) solo si origen=facturada</li>
+      <li>Stock no serializado → nueva línea en ubicación DEV · serializado → reactiva serie existente</li>
+      <li>Efectivo devuelto → egreso automático en caja (requiere sesión abierta)</li>
+    </ul>
+    <span class="badge badge-blue">En diseño (alta prioridad)</span>
   </div>
 
   <h3>RRHH — Fases futuras</h3>
@@ -646,7 +712,7 @@
 
 <!-- FOOTER -->
 <div class="footer">
-  Genesis360 · Draft v1.0 · Marzo 2026 · Confidencial · app.genesis360.pro
+  Genesis360 · Draft v1.1 · Abril 2026 · Confidencial · app.genesis360.pro
 </div>
 
 </body>

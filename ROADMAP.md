@@ -186,11 +186,22 @@ Nueva tabla `wms_tareas`:
 - Cross-docking: mercadería entrante → tarea putaway directo a zona despacho sin almacenar.
 - KPIs WMS: tasa de error de picking, tiempo promedio por tarea, utilización de ubicaciones.
 
+### Fase 2.5 — KITs / Kitting (entre Fase 2 y Fase 3)
+
+Proceso de kitting: combinar N productos existentes → generar un nuevo SKU compuesto (KIT).
+
+- Tabla `kit_recetas` (kit_producto_id, componente_producto_id, cantidad).
+- Movimiento tipo `kitting` en `movimientos_stock`: rebaje de componentes + ingreso del KIT.
+- Desarmado inverso disponible (reverse kitting).
+- UI: sección "KITs" en InventarioPage o página `/kitting`.
+- Pendiente decidir: ¿un KIT tiene precio propio y se puede vender directamente desde Ventas?
+
 ### Dependencias entre fases
 
 ```
 Fase 1 ✅ (producto_estructuras) 
   → Fase 2 (ubicaciones con dimensiones)
+    → Fase 2.5 (KITs / Kitting)
     → Fase 3 (tareas WMS + picking)
       → Fase 4 (surtido + cross-docking)
 ```
@@ -255,3 +266,4 @@ const { data } = useQuery({
 | 23-Mar-2026 | 1.0 | Roadmap inicial + Phase 1 RRHH en PROD |
 | 23-Mar-2026 | 1.1 | Actualizado post v0.27.0 · compactado · duplicados eliminados |
 | 04-Apr-2026 | 1.2 | Sección WMS completa (Fases 1–4): estructura de producto ✅ · dimensiones ubicaciones · tareas/picking · cross-docking |
+| 04-Apr-2026 | 1.3 | KITs/Kitting agregado como Fase 2.5 · fixes pre-deploy v0.57.0 documentados |

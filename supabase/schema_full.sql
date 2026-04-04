@@ -263,6 +263,7 @@ CREATE TABLE inventario_lineas (
   nro_lote           TEXT,
   fecha_vencimiento  DATE,
   precio_costo_snapshot DECIMAL(14,2),
+  notas              TEXT,
   activo             BOOLEAN DEFAULT TRUE,
   created_at         TIMESTAMPTZ DEFAULT NOW(),
   updated_at         TIMESTAMPTZ DEFAULT NOW()

@@ -52,6 +52,24 @@ export default function CajaPage() {
     enabled: !!tenant,
   })
 
+  // Sesiones abiertas en TODAS las cajas (para mostrar indicador en selector)
+  const { data: cajasAbiertas = [] } = useQuery({
+    queryKey: ['cajas-abiertas-ids', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('caja_id').eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      return (data ?? []).map((r: any) => r.caja_id as string)
+    },
+    enabled: !!tenant,
+  })
+
+  // Auto-seleccionar la primera caja abierta cuando carga la página
+  useEffect(() => {
+    if (cajaSeleccionada === null && cajasAbiertas.length > 0) {
+      setCajaSeleccionada(cajasAbiertas[0])
+    }
+  }, [cajasAbiertas, cajaSeleccionada])
+
   const cajaActual = cajas.find((c: any) => c.id === cajaSeleccionada) ?? cajas[0] ?? null
   const cajaId = cajaActual?.id ?? null
 
@@ -336,7 +354,10 @@ export default function CajaPage() {
               <span className="text-sm text-gray-500 dark:text-gray-400">Caja:</span>
               <select value={cajaId ?? ''} onChange={e => setCajaSeleccionada(e.target.value)}
                 className="border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                {cajas.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                {cajas.map((c: any) => {
+                  const abierta = cajasAbiertas.includes(c.id)
+                  return <option key={c.id} value={c.id}>{c.nombre}{abierta ? ' ✓ Abierta' : ''}</option>
+                })}
               </select>
             </div>
           )}

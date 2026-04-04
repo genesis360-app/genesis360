@@ -783,7 +783,7 @@ export default function VentasPage() {
       notas: `${notaAnterior}Cancelada por modificación de productos — ${new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} por ${user?.nombre_display ?? 'usuario'}`
     }).eq('id', ventaDetalle.id)
     // Pre-poblar el carrito con los items de la venta
-    const nuevosItems: CartItem[] = (ventaDetalle.venta_items ?? [])
+    const itemsBase: CartItem[] = (ventaDetalle.venta_items ?? [])
       .filter((item: any) => item.producto_id)
       .map((item: any) => ({
         producto_id: item.producto_id,
@@ -800,7 +800,22 @@ export default function VentasPage() {
         series_seleccionadas: [],
         series_disponibles: [],
       }))
-    setCart(nuevosItems)
+    // Para productos serializados, cargar series disponibles (activas y no reservadas)
+    const cartConSeries = await Promise.all(itemsBase.map(async (cartItem) => {
+      if (!cartItem.tiene_series) return cartItem
+      const { data: lineasData } = await supabase.from('inventario_lineas')
+        .select('id, lpn, inventario_series(id, nro_serie, activo, reservado)')
+        .eq('producto_id', cartItem.producto_id)
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+      const seriesDisp = (lineasData ?? []).flatMap((l: any) =>
+        (l.inventario_series ?? [])
+          .filter((s: any) => s.activo && !s.reservado)
+          .map((s: any) => ({ ...s, linea_id: l.id, lpn: l.lpn }))
+      )
+      return { ...cartItem, series_disponibles: seriesDisp }
+    }))
+    setCart(cartConSeries)
     if (ventaDetalle.cliente_id) { setClienteId(ventaDetalle.cliente_id); setClienteNombre(ventaDetalle.cliente_nombre ?? ''); setClienteTelefono(ventaDetalle.cliente_telefono ?? '') }
     // Restaurar medios de pago ya cobrados (monto_pagado de la reserva original)
     if (ventaDetalle.monto_pagado > 0) {
@@ -1017,19 +1032,16 @@ export default function VentasPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-full sm:w-fit">
+      <div className="flex border-b border-gray-200 dark:border-gray-700 -mb-2">
         {[{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }].map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id as Tab)}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-medium transition-all
-              ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
+            className={`flex items-center gap-2 py-2.5 px-4 text-sm font-medium transition-all border-b-2 -mb-px
+              ${tab === id
+                ? 'border-accent text-accent'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'}`}>
             <Icon size={15} />{label}
           </button>
         ))}
-      </div>
-      {/* Indicador de sección activa */}
-      <div className="flex items-center gap-2 -mt-2">
-        <div className="h-0.5 w-4 bg-accent rounded-full" />
-        <span className="text-xs text-gray-400 dark:text-gray-500">{tab === 'nueva' ? 'Todo lo de abajo corresponde a Nueva venta' : 'Todo lo de abajo corresponde a Historial'}</span>
       </div>
 
       {/* ── NUEVA VENTA ── */}

@@ -1386,7 +1386,11 @@ export default function InventarioPage() {
                                     {tieneSerieProd ? (
                                       <div className="space-y-0.5">
                                         {(l.inventario_series ?? []).filter((s: any) => s.activo).map((s: any) => (
-                                          <span key={s.id} className="flex items-center gap-1 text-xs bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded font-mono">
+                                          <span key={s.id} title={s.reservado ? 'Reservada' : undefined}
+                                            className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono
+                                              ${s.reservado
+                                                ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 dark:text-orange-400 line-through opacity-70'
+                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
                                             <Hash size={9} />{s.nro_serie}
                                           </span>
                                         ))}

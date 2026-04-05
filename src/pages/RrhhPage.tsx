@@ -1398,13 +1398,21 @@ export default function RrhhPage() {
 
                   <select
                     value={formData.puesto_id ?? ''}
-                    onChange={(e) => setFormData({ ...formData, puesto_id: e.target.value || null })}
+                    onChange={(e) => {
+                      const puestoId = e.target.value || null
+                      const puestoSel = puestos.find(p => p.id === puestoId)
+                      const updates: Partial<typeof formData> = { puesto_id: puestoId }
+                      if (puestoSel?.salario_base_sugerido && !formData.salario_bruto) {
+                        updates.salario_bruto = puestoSel.salario_base_sugerido
+                      }
+                      setFormData({ ...formData, ...updates })
+                    }}
                     className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   >
                     <option value="">Selecciona puesto...</option>
                     {puestos.filter((p) => p.activo).map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.nombre}
+                        {p.nombre}{p.salario_base_sugerido ? ` — $${p.salario_base_sugerido.toLocaleString('es-AR')}` : ''}
                       </option>
                     ))}
                   </select>

@@ -1,6 +1,6 @@
 import { BRAND, APP_VERSION } from '@/config/brand'
 import { useState, useEffect } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
@@ -19,20 +19,22 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 
 const navItems = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas' },
+  { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas',       cajeroVisible: true },
   { to: '/gastos',        icon: TrendingDown,    label: 'Gastos' },
-  { to: '/caja',          icon: DollarSign,      label: 'Caja' },
+  { to: '/caja',          icon: DollarSign,      label: 'Caja',         cajeroVisible: true },
   { to: '/productos',     icon: Package,         label: 'Productos' },
   { to: '/inventario',    icon: Boxes,           label: 'Inventario' },
-  { to: '/clientes',      icon: Users,           label: 'Clientes' },
+  { to: '/clientes',      icon: Users,           label: 'Clientes',     cajeroVisible: true },
   { to: '/alertas',       icon: Bell,            label: 'Alertas', badge: true },
   { to: '/reportes',      icon: BarChart2,       label: 'Reportes',   planFeature: 'puede_reportes' },
   { to: '/historial',     icon: ClipboardList,   label: 'Historial',  supervisorOnly: true, planFeature: 'puede_historial' },
-  { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',       ownerOnly: true, planFeature: 'puede_rrhh' },
+  { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',       ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
   { to: '/sucursales',    icon: Building2,       label: 'Sucursales', ownerOnly: true },
   { to: '/usuarios',      icon: Shield,          label: 'Usuarios',   ownerOnly: true },
   { to: '/configuracion', icon: Settings,        label: 'Configuración', ownerOnly: true },
 ]
+
+const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes']
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -63,7 +65,18 @@ export function AppLayout() {
   const { count: alertCount } = useAlertas()
   const { visto } = useWalkthrough()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const { limits } = usePlanLimits()
+
+  // Restricción de rutas por rol
+  useEffect(() => {
+    if (!user) return
+    if (user.rol === 'RRHH' && !pathname.startsWith('/rrhh')) {
+      navigate('/rrhh', { replace: true })
+    } else if (user.rol === 'CAJERO' && !CAJERO_ALLOWED.some(r => pathname.startsWith(r))) {
+      navigate('/ventas', { replace: true })
+    }
+  }, [pathname, user?.rol])
   const { sucursalId, sucursales, setSucursal } = useSucursalFilter()
 
   // Abrir automáticamente la primera vez
@@ -126,8 +139,10 @@ export function AppLayout() {
 
         {/* Navegación */}
         <nav className={`flex-1 py-4 space-y-1 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-3'}`}>
-          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature }: any) => {
-            if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN') return null
+          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible }: any) => {
+            if (user?.rol === 'RRHH' && !rrhhVisible) return null
+            if (user?.rol === 'CAJERO' && !cajeroVisible) return null
+            if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN' && user?.rol !== 'RRHH') return null
             if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
             const locked = planFeature && limits != null && !(limits as any)[planFeature]
             return (

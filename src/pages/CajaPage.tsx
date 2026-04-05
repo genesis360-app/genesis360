@@ -181,6 +181,7 @@ export default function CajaPage() {
   const cerrarCaja = useMutation({
     mutationFn: async () => {
       if (!sesionActiva) throw new Error('No hay caja abierta')
+      if (montoRealCierre.trim() === '') throw new Error('Ingresá el monto contado para poder cerrar la caja')
       const payload: any = {
         estado: 'cerrada',
         monto_cierre: saldoActual,
@@ -189,10 +190,8 @@ export default function CajaPage() {
         notas_cierre: notasCierre || null,
         cerrado_por_id: user?.id,
         cerrada_at: new Date().toISOString(),
-      }
-      if (montoRealCierre !== '') {
-        payload.monto_real_cierre = montoRealNum
-        payload.diferencia_cierre = diferencia
+        monto_real_cierre: montoRealNum,
+        diferencia_cierre: diferencia ?? 0,
       }
       const { error } = await supabase.from('caja_sesiones').update(payload).eq('id', sesionActiva.id)
       if (error) throw error
@@ -740,7 +739,7 @@ export default function CajaPage() {
             {/* Conteo real */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Conteo real en caja <span className="text-gray-400 dark:text-gray-500 font-normal">(opcional)</span>
+                Conteo real en caja <span className="text-red-500 font-normal">*</span>
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
@@ -776,7 +775,7 @@ export default function CajaPage() {
                 className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                 Cancelar
               </button>
-              <button onClick={() => cerrarCaja.mutate()} disabled={cerrarCaja.isPending}
+              <button onClick={() => cerrarCaja.mutate()} disabled={cerrarCaja.isPending || montoRealCierre.trim() === ''}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50">
                 {cerrarCaja.isPending ? 'Cerrando...' : 'Confirmar cierre'}
               </button>

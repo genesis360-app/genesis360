@@ -512,11 +512,12 @@ CREATE INDEX idx_venta_series_venta ON venta_series(venta_id);
 -- 19. CAJAS
 -- ============================================================
 CREATE TABLE cajas (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  nombre      TEXT NOT NULL,
-  activo      BOOLEAN DEFAULT TRUE,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre          TEXT NOT NULL,
+  activo          BOOLEAN DEFAULT TRUE,
+  es_caja_fuerte  BOOLEAN DEFAULT FALSE,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE cajas ENABLE ROW LEVEL SECURITY;
 
@@ -565,6 +566,25 @@ CREATE TABLE caja_movimientos (
 ALTER TABLE caja_movimientos ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX idx_mov_caja_sesion ON caja_movimientos(sesion_id);
+
+-- ============================================================
+-- 21B. CAJA TRASPASOS
+-- ============================================================
+CREATE TABLE caja_traspasos (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  sesion_origen_id    UUID NOT NULL REFERENCES caja_sesiones(id),
+  sesion_destino_id   UUID NOT NULL REFERENCES caja_sesiones(id),
+  monto               DECIMAL(12,2) NOT NULL CHECK (monto > 0),
+  concepto            TEXT,
+  usuario_id          UUID REFERENCES users(id),
+  created_at          TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE caja_traspasos ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX idx_traspasos_origen  ON caja_traspasos(sesion_origen_id);
+CREATE INDEX idx_traspasos_destino ON caja_traspasos(sesion_destino_id);
+CREATE INDEX idx_traspasos_tenant  ON caja_traspasos(tenant_id);
 
 -- ============================================================
 -- 22. VISTA

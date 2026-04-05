@@ -169,6 +169,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.59.2 ✅ | Fixes devoluciones: estado 'devuelta' automático cuando totalDevuelto >= venta.total (badge naranja, botón Devolver oculto) · rollback manual si falla post-INSERT header (evita registros huérfanos) | 2026-04 |
 | v0.60.0 ✅ | Mobile: maximum-scale=1 + overflow-x hidden · Inventario/LPNs tabla responsive (overflow-x-auto min-w-640) · Sidebar: Inventario→Boxes, RRHH→Briefcase, Usuarios→Shield · Caja: quita botón Egreso · SuscripcionPage: bg-white/10 (Plan Básico legible) · useAlertas badge alineado con totalAlertas (4 categorías) | 2026-04 |
 | v0.61.0 ✅ | Ventas: "Despachada"→"Finalizada" · motivo cancelación bloque rojo · bloqueo producto sin precio · Caja: cierre monto obligatorio · ESC modal anidado fix · caja default por usuario (localStorage) · badges cajitas visuales | 2026-04 |
+| v0.62.0 — dev | RRHH bug fix (joins en UPDATE) · SKU auto secuencial (SKU-XXXXX) · Clientes→link venta · Historial→modal detalle · Inventario bloqueo LPNs/series con reservas · Traspasos entre cajas (migration 034) | 2026-04 |
 
 ---
 

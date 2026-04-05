@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Users, Plus, Search, Phone, Mail, FileText, X,
   ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
-  Upload, Download, CheckCircle, XCircle, FileSpreadsheet,
+  Upload, Download, CheckCircle, XCircle, FileSpreadsheet, ExternalLink,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
@@ -53,6 +53,7 @@ export default function ClientesPage() {
   const { tenant } = useAuthStore()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -436,9 +437,17 @@ export default function ClientesPage() {
                                   <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">#{v.numero ?? v.id.slice(-6)}</span>
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${est.color}`}>{est.label}</span>
                                 </div>
-                                <div className="text-right">
-                                  <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{formatMoneda(v.total ?? 0)}</p>
-                                  <p className="text-xs text-gray-400 dark:text-gray-500">{formatFecha(v.created_at)}</p>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-right">
+                                    <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{formatMoneda(v.total ?? 0)}</p>
+                                    <p className="text-xs text-gray-400 dark:text-gray-500">{formatFecha(v.created_at)}</p>
+                                  </div>
+                                  <button
+                                    onClick={() => navigate(`/ventas?id=${v.id}`)}
+                                    title="Ver venta"
+                                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 hover:text-accent transition-colors">
+                                    <ExternalLink size={14} />
+                                  </button>
                                 </div>
                               </div>
                               {items.length > 0 && (

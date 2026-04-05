@@ -5,7 +5,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History,
-  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info
+  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -30,6 +30,10 @@ export default function CajaPage() {
   const [showCierre, setShowCierre] = useState(false)
   const [showMovimiento, setShowMovimiento] = useState(false)
   const [showNuevaCaja, setShowNuevaCaja] = useState(false)
+  const [showTraspaso, setShowTraspaso] = useState(false)
+  const [traspasoDestinoSesionId, setTraspasoDestinoSesionId] = useState<string>('')
+  const [traspasoMonto, setTraspasoMonto] = useState('')
+  const [traspasoConcepto, setTraspasoConcepto] = useState('')
   const [sesionExpandida, setSesionExpandida] = useState<string | null>(null)
 
   // Forms
@@ -61,6 +65,18 @@ export default function CajaPage() {
       return (data ?? []).map((r: any) => r.caja_id as string)
     },
     enabled: !!tenant,
+  })
+
+  // Sesiones abiertas con datos completos (para modal traspaso)
+  const { data: sesionesAbiertasAll = [] } = useQuery({
+    queryKey: ['sesiones-abiertas-todas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, caja_id, monto_apertura, cajas(nombre)')
+        .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      return data ?? []
+    },
+    enabled: !!tenant && showTraspaso,
   })
 
   // Auto-seleccionar caja: primero preferida del usuario, luego primera abierta
@@ -249,6 +265,48 @@ export default function CajaPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const realizarTraspaso = useMutation({
+    mutationFn: async () => {
+      if (!sesionActiva) throw new Error('No hay sesión activa')
+      if (!traspasoDestinoSesionId) throw new Error('Seleccioná la caja destino')
+      const monto = parseFloat(traspasoMonto)
+      if (!monto || monto <= 0) throw new Error('Ingresá un monto válido')
+      if (monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMoneda(saldoActual)}`)
+      const concepto = traspasoConcepto.trim() || 'Traspaso entre cajas'
+      const sesDestino = (sesionesAbiertasAll as any[]).find(s => s.id === traspasoDestinoSesionId)
+      const nombreDestino = sesDestino?.cajas?.nombre ?? 'otra caja'
+      const nombreOrigen = cajaActual?.nombre ?? 'esta caja'
+      // Egreso en origen
+      const { error: e1 } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id, sesion_id: sesionActiva.id,
+        tipo: 'egreso', concepto: `${concepto} → ${nombreDestino}`,
+        monto, usuario_id: user!.id,
+      })
+      if (e1) throw e1
+      // Ingreso en destino
+      const { error: e2 } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id, sesion_id: traspasoDestinoSesionId,
+        tipo: 'ingreso', concepto: `${concepto} ← ${nombreOrigen}`,
+        monto, usuario_id: user!.id,
+      })
+      if (e2) throw e2
+      // Registro en tabla de traspasos
+      const { error: e3 } = await supabase.from('caja_traspasos').insert({
+        tenant_id: tenant!.id,
+        sesion_origen_id: sesionActiva.id,
+        sesion_destino_id: traspasoDestinoSesionId,
+        monto, concepto: concepto || null, usuario_id: user!.id,
+      })
+      if (e3) throw e3
+    },
+    onSuccess: () => {
+      toast.success('Traspaso realizado')
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      setShowTraspaso(false); setTraspasoMonto(''); setTraspasoConcepto(''); setTraspasoDestinoSesionId('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const crearCaja = useMutation({
     mutationFn: async () => {
       if (!nuevaCajaNombre.trim()) throw new Error('Ingresá un nombre')
@@ -270,6 +328,7 @@ export default function CajaPage() {
   useModalKeyboard({ isOpen: showCierre, onClose: () => { setShowCierre(false); setMontoRealCierre('') }, onConfirm: () => { if (!cerrarCaja.isPending) cerrarCaja.mutate() } })
   useModalKeyboard({ isOpen: showApertura, onClose: () => setShowApertura(false), onConfirm: () => { if (!abrirCaja.isPending) abrirCaja.mutate() } })
   useModalKeyboard({ isOpen: showNuevaCaja, onClose: () => setShowNuevaCaja(false), onConfirm: () => { if (!crearCaja.isPending) crearCaja.mutate() } })
+  useModalKeyboard({ isOpen: showTraspaso && !showMovimiento, onClose: () => { setShowTraspaso(false); setTraspasoMonto(''); setTraspasoConcepto(''); setTraspasoDestinoSesionId('') }, onConfirm: () => { if (!realizarTraspaso.isPending) realizarTraspaso.mutate() } })
 
   // Atajo de teclado: Shift+I = ingreso (solo con caja abierta)
   useEffect(() => {
@@ -495,11 +554,18 @@ export default function CajaPage() {
               </div>
 
               {/* Acciones */}
-              <div>
+              <div className="flex gap-2">
                 <button onClick={() => { setMovTipo('ingreso'); setShowMovimiento(true) }}
-                  className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
+                  className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
                   <Plus size={18} /> Ingreso
                 </button>
+                {cajasAbiertas.length >= 2 && (
+                  <button onClick={() => setShowTraspaso(true)}
+                    title="Transferir efectivo a otra caja"
+                    className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-accent text-accent hover:bg-accent/10 font-semibold rounded-xl transition-all">
+                    <ArrowRightLeft size={16} />
+                  </button>
+                )}
               </div>
 
               {/* Movimientos */}
@@ -750,6 +816,54 @@ export default function CajaPage() {
               <button onClick={() => agregarMovimiento.mutate()} disabled={agregarMovimiento.isPending}
                 className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
                 {agregarMovimiento.isPending ? 'Guardando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal traspaso */}
+      {showTraspaso && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowTraspaso(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
+                <ArrowRightLeft size={18} className="text-accent" /> Transferir a otra caja
+              </h2>
+              <button onClick={() => setShowTraspaso(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 transition-colors"><X size={16} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Caja destino *</label>
+                <select value={traspasoDestinoSesionId}
+                  onChange={e => setTraspasoDestinoSesionId(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                  <option value="">Seleccioná una caja...</option>
+                  {(sesionesAbiertasAll as any[])
+                    .filter(s => s.id !== sesionActiva?.id)
+                    .map(s => (
+                      <option key={s.id} value={s.id}>{s.cajas?.nombre ?? s.id}</option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
+                  value={traspasoMonto} onChange={e => setTraspasoMonto(e.target.value)}
+                  placeholder="0"
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible: {formatMoneda(saldoActual)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto (opcional)</label>
+                <input type="text" value={traspasoConcepto} onChange={e => setTraspasoConcepto(e.target.value)}
+                  placeholder="Traspaso entre cajas"
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              </div>
+              <button onClick={() => realizarTraspaso.mutate()}
+                disabled={realizarTraspaso.isPending || !traspasoDestinoSesionId || !traspasoMonto}
+                className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50">
+                {realizarTraspaso.isPending ? 'Procesando...' : 'Confirmar traspaso'}
               </button>
             </div>
           </div>

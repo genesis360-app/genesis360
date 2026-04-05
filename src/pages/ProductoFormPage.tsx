@@ -160,7 +160,6 @@ export default function ProductoFormPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.nombre.trim()) return toast.error('El nombre es obligatorio')
-    if (!form.sku.trim()) return toast.error('El SKU es obligatorio')
 
     // Verificar límite de productos solo al crear (no al editar)
     if (!isEditing && limits && !limits.puede_crear_producto) {
@@ -170,6 +169,22 @@ export default function ProductoFormPage() {
 
     setSaving(true)
     try {
+      // Auto-generar SKU secuencial si está vacío
+      let skuFinal = form.sku.trim().toUpperCase()
+      if (!skuFinal) {
+        const { data: skuRows } = await supabase
+          .from('productos')
+          .select('sku')
+          .eq('tenant_id', tenant!.id)
+          .like('sku', 'SKU-%')
+        const maxNum = (skuRows ?? []).reduce((max: number, row: any) => {
+          const n = parseInt(row.sku.replace('SKU-', ''), 10)
+          return isNaN(n) ? max : Math.max(max, n)
+        }, 0)
+        skuFinal = `SKU-${String(maxNum + 1).padStart(5, '0')}`
+        setForm(p => ({ ...p, sku: skuFinal }))
+      }
+
       let imagen_url = existingImageUrl
       if (imageFile) {
         const ext = imageFile.name.split('.').pop()
@@ -181,7 +196,7 @@ export default function ProductoFormPage() {
       }
       const payload = {
         tenant_id: tenant!.id,
-        nombre: form.nombre.trim(), sku: form.sku.trim().toUpperCase(),
+        nombre: form.nombre.trim(), sku: skuFinal,
         descripcion: form.descripcion.trim() || null,
         categoria_id: form.categoria_id || null, proveedor_id: form.proveedor_id || null,
         ubicacion_id: form.ubicacion_id || null,
@@ -438,11 +453,11 @@ export default function ProductoFormPage() {
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SKU <span className="text-red-500">*</span></label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SKU <span className="text-gray-400 text-xs font-normal">(auto si vacío)</span></label>
                   <div className="flex gap-2">
                     <input type="text" value={form.sku} disabled={!canEdit}
                       onChange={e => setForm(p => ({ ...p, sku: e.target.value.toUpperCase() }))}
-                      placeholder="TORN-0001"
+                      placeholder="Vacío = SKU-00001 automático"
                       className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
                     {!isEditing && (
                       <button type="button" onClick={() => setForm(p => ({ ...p, sku: generateSKU(form.nombre) }))}

@@ -488,9 +488,11 @@ export default function RrhhPage() {
   const saveEmpleado = useMutation({
     mutationFn: async (data: Partial<Empleado>) => {
       if (formMode === 'crear') {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { puesto, departamento, supervisor, ...campos } = data as any
         const { error } = await supabase.from('empleados').insert({
           tenant_id: tenant!.id,
-          ...data,
+          ...campos,
         })
         if (error) throw error
         logActividad({
@@ -501,9 +503,11 @@ export default function RrhhPage() {
           pagina: '/rrhh',
         })
       } else if (selectedEmpleado) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { puesto, departamento, supervisor, ...campos } = data as any
         const { error } = await supabase
           .from('empleados')
-          .update(data)
+          .update(campos)
           .eq('id', selectedEmpleado.id)
         if (error) throw error
         logActividad({

@@ -1402,8 +1402,9 @@ export default function InventarioPage() {
                                   <div className="col-span-1 flex justify-center">
                                     <button
                                       onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: p }) }}
-                                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"
-                                      title="Acciones sobre este LPN">
+                                      disabled={(l.cantidad_reservada ?? 0) > 0}
+                                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                                      title={(l.cantidad_reservada ?? 0) > 0 ? `${l.cantidad_reservada} unidad(es) reservada(s) — no se puede modificar` : 'Acciones sobre este LPN'}>
                                       <Settings2 size={15} />
                                     </button>
                                   </div>

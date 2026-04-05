@@ -23,6 +23,7 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
   despachada: { label: 'Despachada', color: 'text-green-700 dark:text-green-400',  bg: 'bg-green-100 dark:bg-green-900/30'  },
   cancelada:  { label: 'Cancelada',  color: 'text-red-700 dark:text-red-400',    bg: 'bg-red-100 dark:bg-red-900/30'    },
   facturada:  { label: 'Facturada',  color: 'text-purple-700', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+  devuelta:   { label: 'Devuelta',   color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
 }
 
 const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
@@ -928,6 +929,7 @@ export default function VentasPage() {
     }
 
     setDevSaving(true)
+    let devId: string | null = null
     try {
       // 1. Calcular número NC si es facturada
       let numero_nc: string | null = null
@@ -950,6 +952,7 @@ export default function VentasPage() {
         created_by: user?.id,
       }).select().single()
       if (devError) throw devError
+      devId = dev.id
 
       // 3. Procesar cada ítem
       for (const item of itemsADevolver) {
@@ -1032,6 +1035,16 @@ export default function VentasPage() {
         })
       }
 
+      // Marcar venta como "devuelta" si el total devuelto cubre el 100% del total
+      const { data: todasDev } = await supabase
+        .from('devoluciones')
+        .select('monto_total')
+        .eq('venta_id', devolucionVenta.id)
+      const totalDevuelto = (todasDev ?? []).reduce((acc, d) => acc + Number(d.monto_total), 0)
+      if (totalDevuelto >= Number(devolucionVenta.total) - 0.5) {
+        await supabase.from('ventas').update({ estado: 'devuelta' }).eq('id', devolucionVenta.id)
+      }
+
       toast.success(`Devolución procesada${numero_nc ? ` · ${numero_nc}` : ''}`)
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -1054,6 +1067,10 @@ export default function VentasPage() {
       })
       setDevolucionVenta(null)
     } catch (err: any) {
+      // Rollback manual: eliminar el header de devolución si ya se insertó
+      if (devId) {
+        await supabase.from('devoluciones').delete().eq('id', devId)
+      }
       toast.error(err.message ?? 'Error al procesar devolución')
     } finally {
       setDevSaving(false)

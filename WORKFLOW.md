@@ -89,6 +89,7 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 030 | `030_devoluciones.sql` | Devoluciones: `es_devolucion` en ubicaciones/estados_inventario + tablas `devoluciones` + `devolucion_items` con RLS | ✅ | ✅ |
 | 031 | `031_producto_estructuras.sql` | WMS Fase 1: tabla `producto_estructuras` (niveles unidad/caja/pallet con peso y dimensiones) + partial unique index default | ✅ | ✅ |
 | 032 | `032_ubicaciones_dimensiones.sql` | WMS Fase 2: `tipo_ubicacion` + dimensiones físicas (`alto_cm`, `ancho_cm`, `largo_cm`, `peso_max_kg`, `capacidad_pallets`) en `ubicaciones` | ✅ | ✅ |
+| 033 | `033_inventario_lineas_notas.sql` | Fix: `notas TEXT` nullable en `inventario_lineas` (usada por devoluciones al crear línea en ubicación DEV) | ✅ | ✅ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -164,6 +165,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.57.0 ✅ | Grupo 3: maestro de estructura de producto (migration 031) — tabla producto_estructuras, CRUD en tab Estructura, resumen default en panel expandible · Grupo 4: ingreso/rebaje masivo multi-SKU (MasivoModal, auto-FIFO para rebaje, serializado con textarea series) · Fixes pre-deploy: bug modificarReserva+series, series reservadas tachadas, Dashboard alertas=badge, "Total productos activos"+inactivos, Caja selector abierta, Ventas tabs underline, Header botón Ayuda | 2026-04 |
 | v0.58.0 ✅ | Devoluciones (migration 030): es_devolucion en ubicaciones+estados_inventario, tablas devoluciones+devolucion_items · ConfigPage: toggle ubicación DEV + selector estado DEV · VentasPage: botón Devolver (despachada/facturada), modal ítems/series/motivo/medio, lógica procesarDevolucion (reactiva series / nueva linea no-serial + movimiento ingreso), egreso caja efectivo, NC automática si facturada, comprobante imprimible, sección devoluciones previas colapsable | 2026-04 |
 | v0.59.0 ✅ | WMS Fase 2 (migration 032): tipo_ubicacion + dimensiones físicas (alto/ancho/largo/peso_max/capacidad_pallets) en ubicaciones · ConfigPage: sección colapsable "Dimensiones WMS" en edición, badge tipo + medidas en lista · Fix APP_VERSION v0.58.0 omitido | 2026-04 |
+| v0.59.1 ✅ | Fix devoluciones (migration 033): notas TEXT en inventario_lineas — columna faltante que bloqueaba confirmar devolución de no serializado | 2026-04 |
+| v0.59.2 | Fixes devoluciones: estado 'devuelta' automático cuando totalDevuelto >= venta.total (badge naranja, botón Devolver oculto) · rollback manual si falla post-INSERT header (evita registros huérfanos) | 2026-04 |
 
 ---
 

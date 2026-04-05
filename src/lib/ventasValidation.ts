@@ -1,4 +1,4 @@
-export type EstadoVenta = 'pendiente' | 'reservada' | 'despachada' | 'cancelada' | 'facturada'
+export type EstadoVenta = 'pendiente' | 'reservada' | 'despachada' | 'cancelada' | 'facturada' | 'devuelta'
 export interface MedioPagoItem { tipo: string; monto: string }
 
 /** Calcula el saldo pendiente de cobrar al despachar. */

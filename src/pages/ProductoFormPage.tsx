@@ -10,6 +10,7 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
+import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { ProductoQR } from '@/components/ProductoQR'
 import toast from 'react-hot-toast'
 
@@ -177,11 +178,7 @@ export default function ProductoFormPage() {
           .select('sku')
           .eq('tenant_id', tenant!.id)
           .like('sku', 'SKU-%')
-        const maxNum = (skuRows ?? []).reduce((max: number, row: any) => {
-          const n = parseInt(row.sku.replace('SKU-', ''), 10)
-          return isNaN(n) ? max : Math.max(max, n)
-        }, 0)
-        skuFinal = `SKU-${String(maxNum + 1).padStart(5, '0')}`
+        skuFinal = calcularSiguienteSKU((skuRows ?? []).map((r: any) => r.sku))
         setForm(p => ({ ...p, sku: skuFinal }))
       }
 

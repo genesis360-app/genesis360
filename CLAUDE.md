@@ -556,6 +556,21 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
+### v0.62.0 — en dev
+
+- **Bug RRHH UPDATE empleado**: `setFormData(emp)` cargaba joins (`puesto`, `departamento`, `supervisor`). Fix: destruturar y excluir antes de `.insert()` / `.update()` en `saveEmpleado.mutationFn`.
+- **SKU automático secuencial**: si campo vacío al guardar → consulta `productos WHERE sku LIKE 'SKU-%'`, extrae MAX numérico, genera `SKU-XXXXX` (5 dígitos zero-padded). Lógica pura extraída a `src/lib/skuAuto.ts` → `calcularSiguienteSKU(skus: string[]): string`.
+- **Clientes → link venta**: botón `ExternalLink` en cada venta del historial del cliente → `navigate('/ventas?id={v.id}')`.
+- **Historial actividad → modal detalle**: filas clickeables (cursor-pointer + hover accent border). Click abre modal con: descripción, entidad, ID, acción, campo, valor anterior/nuevo, fecha, usuario, módulo.
+- **Inventario: bloqueo acciones con reservas**: botón `Settings2` en cada LPN deshabilitado si `cantidad_reservada > 0`. Tooltip descriptivo. Series con `reservado=true` ya tenían visual line-through desde v0.57.0.
+- **Traspasos entre cajas** (migration 034):
+  - `es_caja_fuerte BOOLEAN DEFAULT FALSE` en `cajas`.
+  - Tabla `caja_traspasos`: sesion_origen_id, sesion_destino_id, monto, concepto, usuario_id. RLS tenant.
+  - Query `sesionesAbiertasAll` (lazy, enabled solo cuando `showTraspaso`): devuelve sesiones abiertas con `cajas(nombre)`.
+  - Mutation `realizarTraspaso`: valida monto ≤ saldo; inserta egreso en origen + ingreso en destino + registro en `caja_traspasos`.
+  - Botón `ArrowRightLeft` visible solo cuando `cajasAbiertas.length >= 2`.
+- **Tests**: `tests/unit/skuAuto.test.ts` — 8 casos. Total acumulado: **122/122**.
+
 ### v0.61.0 ✅ PROD
 
 #### Ventas + Caja UX

@@ -2,8 +2,8 @@ import { BRAND, APP_VERSION } from '@/config/brand'
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Package, ArrowLeftRight, Bell,
-  BarChart2, Users, Users2, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
+  LayoutDashboard, Package, Boxes, Bell,
+  BarChart2, Users, Briefcase, Shield, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
   ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle,
   Moon, Sun, LifeBuoy, Lock, CreditCard, Building2
 } from 'lucide-react'
@@ -23,14 +23,14 @@ const navItems = [
   { to: '/gastos',        icon: TrendingDown,    label: 'Gastos' },
   { to: '/caja',          icon: DollarSign,      label: 'Caja' },
   { to: '/productos',     icon: Package,         label: 'Productos' },
-  { to: '/inventario',    icon: ArrowLeftRight,  label: 'Inventario' },
+  { to: '/inventario',    icon: Boxes,           label: 'Inventario' },
   { to: '/clientes',      icon: Users,           label: 'Clientes' },
   { to: '/alertas',       icon: Bell,            label: 'Alertas', badge: true },
   { to: '/reportes',      icon: BarChart2,       label: 'Reportes',   planFeature: 'puede_reportes' },
   { to: '/historial',     icon: ClipboardList,   label: 'Historial',  supervisorOnly: true, planFeature: 'puede_historial' },
-  { to: '/rrhh',          icon: Users2,          label: 'RRHH',       ownerOnly: true, planFeature: 'puede_rrhh' },
+  { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',       ownerOnly: true, planFeature: 'puede_rrhh' },
   { to: '/sucursales',    icon: Building2,       label: 'Sucursales', ownerOnly: true },
-  { to: '/usuarios',      icon: Users,           label: 'Usuarios',   ownerOnly: true },
+  { to: '/usuarios',      icon: Shield,          label: 'Usuarios',   ownerOnly: true },
   { to: '/configuracion', icon: Settings,        label: 'Configuración', ownerOnly: true },
 ]
 

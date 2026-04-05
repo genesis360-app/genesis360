@@ -1301,7 +1301,8 @@ export default function InventarioPage() {
                           {lineas.length === 0 ? (
                             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Sin líneas de inventario. Registrá un ingreso para este producto.</p>
                           ) : (
-                            <div className="space-y-2">
+                            <div className="overflow-x-auto -mx-4 px-4">
+                            <div className="space-y-2 min-w-[640px]">
                               <div className="grid grid-cols-7 gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1">
                                 <span className="col-span-1">LPN</span>
                                 <span className="col-span-1 text-right">Cantidad</span>
@@ -1408,6 +1409,7 @@ export default function InventarioPage() {
                                   </div>
                                 </div>
                               ))}
+                            </div>
                             </div>
                           )}
                         </div>

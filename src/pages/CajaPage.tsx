@@ -260,12 +260,11 @@ export default function CajaPage() {
   useModalKeyboard({ isOpen: showApertura, onClose: () => setShowApertura(false), onConfirm: () => { if (!abrirCaja.isPending) abrirCaja.mutate() } })
   useModalKeyboard({ isOpen: showNuevaCaja, onClose: () => setShowNuevaCaja(false), onConfirm: () => { if (!crearCaja.isPending) crearCaja.mutate() } })
 
-  // Atajos de teclado de página: Shift+I = ingreso, Shift+O = egreso (solo con caja abierta)
+  // Atajo de teclado: Shift+I = ingreso (solo con caja abierta)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!sesionActiva || tab !== 'caja') return
       if (e.shiftKey && e.key === 'I') { e.preventDefault(); setMovTipo('ingreso'); setShowMovimiento(true) }
-      if (e.shiftKey && e.key === 'O') { e.preventDefault(); setMovTipo('egreso'); setShowMovimiento(true) }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -457,14 +456,10 @@ export default function CajaPage() {
               </div>
 
               {/* Acciones */}
-              <div className="grid grid-cols-2 gap-3">
+              <div>
                 <button onClick={() => { setMovTipo('ingreso'); setShowMovimiento(true) }}
-                  className="flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
+                  className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
                   <Plus size={18} /> Ingreso
-                </button>
-                <button onClick={() => { setMovTipo('egreso'); setShowMovimiento(true) }}
-                  className="flex items-center justify-center gap-2 bg-red-500 dark:bg-red-600 hover:bg-red-600 dark:hover:bg-red-500 text-white font-semibold py-3 rounded-xl transition-all">
-                  <Minus size={18} /> Egreso
                 </button>
               </div>
 

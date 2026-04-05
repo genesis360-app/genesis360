@@ -167,7 +167,7 @@ export default function SuscripcionPage() {
                 className={`rounded-2xl p-6 flex flex-col relative
                   ${plan.destacado
                     ? 'bg-white dark:bg-gray-800 shadow-2xl scale-105'
-                    : 'bg-white dark:bg-gray-800/10 border border-white/20'}`}>
+                    : 'bg-white/10 dark:bg-gray-800/10 border border-white/20'}`}>
 
                 {plan.destacado && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">

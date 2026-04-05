@@ -569,7 +569,13 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - Query `sesionesAbiertasAll` (lazy, enabled solo cuando `showTraspaso`): devuelve sesiones abiertas con `cajas(nombre)`.
   - Mutation `realizarTraspaso`: valida monto ≤ saldo; inserta egreso en origen + ingreso en destino + registro en `caja_traspasos`.
   - Botón `ArrowRightLeft` visible solo cuando `cajasAbiertas.length >= 2`.
-- **Tests**: `tests/unit/skuAuto.test.ts` — 8 casos. Total acumulado: **122/122**.
+- **LPN multi-fuente en carrito** (VentasPage):
+  - `CartItem` agrega `lineas_disponibles: LineaDisponible[]` (todas las líneas ordenadas por sort activo) y `lpn_fuentes: LpnFuente[]` (qué líneas cubren la cantidad actual).
+  - `agregarProducto`: pre-fetch de TODAS las líneas disponibles con `cantidad - cantidad_reservada > 0`; calcula fuentes iniciales (cantidad=1) con `calcularLpnFuentes()`.
+  - `updateItem`: al cambiar `cantidad`, recomputa `lpn_fuentes` y `linea_id` client-side desde `lineas_disponibles` (sin re-fetch).
+  - Cart JSX: badges múltiples `LPN-X (Nu)` (máx 3 + "+N más"). Si hay una sola fuente, muestra sin cantidad.
+  - Función pura `calcularLpnFuentes(lineas, cantidad)` en `src/lib/ventasValidation.ts`. Tipos: `LineaDisponible`, `LpnFuente`.
+- **Tests**: `tests/unit/skuAuto.test.ts` (8) + `tests/unit/lpnFuentes.test.ts` (21: 10 unitarios + 8 integración sort+fuentes). Total acumulado: **141/141**.
 
 ### v0.61.0 ✅ PROD
 

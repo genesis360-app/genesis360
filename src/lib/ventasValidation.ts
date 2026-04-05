@@ -109,6 +109,40 @@ export function restaurarMediosPago(mediosPagoJson: string | null | undefined): 
   } catch { return [] }
 }
 
+export interface LineaDisponible {
+  id: string
+  lpn: string | null
+  cantidad: number
+  cantidad_reservada: number
+}
+
+export interface LpnFuente {
+  linea_id: string
+  lpn: string | null
+  cantidad: number
+}
+
+/**
+ * Dado un conjunto de líneas de inventario disponibles (ya ordenadas por sort activo),
+ * calcula qué líneas se consumen para cubrir `cantidad` unidades pedidas.
+ * Excluye líneas donde cantidad_disponible <= 0.
+ * Retorna array de fuentes con cuántas unidades se toman de cada una.
+ */
+export function calcularLpnFuentes(lineas: LineaDisponible[], cantidad: number): LpnFuente[] {
+  const fuentes: LpnFuente[] = []
+  let restante = cantidad
+  for (const l of lineas) {
+    const disponible = l.cantidad - (l.cantidad_reservada ?? 0)
+    if (disponible <= 0) continue
+    const usar = Math.min(disponible, restante)
+    if (usar <= 0) continue
+    fuentes.push({ linea_id: l.id, lpn: l.lpn, cantidad: usar })
+    restante -= usar
+    if (restante <= 0) break
+  }
+  return fuentes
+}
+
 export function validarMediosPago(
   estado: EstadoVenta,
   mediosPago: MedioPagoItem[],

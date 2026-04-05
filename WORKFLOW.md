@@ -166,7 +166,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.58.0 ✅ | Devoluciones (migration 030): es_devolucion en ubicaciones+estados_inventario, tablas devoluciones+devolucion_items · ConfigPage: toggle ubicación DEV + selector estado DEV · VentasPage: botón Devolver (despachada/facturada), modal ítems/series/motivo/medio, lógica procesarDevolucion (reactiva series / nueva linea no-serial + movimiento ingreso), egreso caja efectivo, NC automática si facturada, comprobante imprimible, sección devoluciones previas colapsable | 2026-04 |
 | v0.59.0 ✅ | WMS Fase 2 (migration 032): tipo_ubicacion + dimensiones físicas (alto/ancho/largo/peso_max/capacidad_pallets) en ubicaciones · ConfigPage: sección colapsable "Dimensiones WMS" en edición, badge tipo + medidas en lista · Fix APP_VERSION v0.58.0 omitido | 2026-04 |
 | v0.59.1 ✅ | Fix devoluciones (migration 033): notas TEXT en inventario_lineas — columna faltante que bloqueaba confirmar devolución de no serializado | 2026-04 |
-| v0.59.2 | Fixes devoluciones: estado 'devuelta' automático cuando totalDevuelto >= venta.total (badge naranja, botón Devolver oculto) · rollback manual si falla post-INSERT header (evita registros huérfanos) | 2026-04 |
+| v0.59.2 ✅ | Fixes devoluciones: estado 'devuelta' automático cuando totalDevuelto >= venta.total (badge naranja, botón Devolver oculto) · rollback manual si falla post-INSERT header (evita registros huérfanos) | 2026-04 |
 
 ---
 

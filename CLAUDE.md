@@ -556,7 +556,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
-### v0.59.2 — en DEV
+### v0.59.2 ✅ PROD
 
 #### Fixes devoluciones
 - **Estado `devuelta`**: nuevo valor en `EstadoVenta` (badge naranja). Al finalizar `procesarDevolucion`, suma todas las devoluciones de la venta; si `totalDevuelto >= venta.total` → `UPDATE ventas SET estado='devuelta'`. Botón "Devolver" ya no aparece para ventas en este estado. Filtro historial incluye `devuelta` automáticamente.

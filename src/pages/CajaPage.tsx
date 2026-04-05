@@ -63,12 +63,24 @@ export default function CajaPage() {
     enabled: !!tenant,
   })
 
-  // Auto-seleccionar la primera caja abierta cuando carga la página
+  // Auto-seleccionar caja: primero preferida del usuario, luego primera abierta
+  const prefKey = tenant?.id && user?.id ? `caja_preferida_${tenant.id}_${user.id}` : null
   useEffect(() => {
-    if (cajaSeleccionada === null && cajasAbiertas.length > 0) {
+    if (cajaSeleccionada !== null || cajas.length === 0) return
+    const preferida = prefKey ? localStorage.getItem(prefKey) : null
+    if (preferida && cajas.find((c: any) => c.id === preferida)) {
+      setCajaSeleccionada(preferida)
+    } else if (cajasAbiertas.length > 0) {
       setCajaSeleccionada(cajasAbiertas[0])
     }
-  }, [cajasAbiertas, cajaSeleccionada])
+  }, [cajas, cajasAbiertas, cajaSeleccionada, prefKey])
+
+  function guardarCajaDefault(id: string) {
+    if (prefKey) {
+      localStorage.setItem(prefKey, id)
+      toast.success('Caja guardada como predeterminada')
+    }
+  }
 
   const cajaActual = cajas.find((c: any) => c.id === cajaSeleccionada) ?? cajas[0] ?? null
   const cajaId = cajaActual?.id ?? null
@@ -181,6 +193,7 @@ export default function CajaPage() {
   const cerrarCaja = useMutation({
     mutationFn: async () => {
       if (!sesionActiva) throw new Error('No hay caja abierta')
+      if (montoRealCierre.trim() === '') throw new Error('Ingresá el monto contado para poder cerrar la caja')
       const payload: any = {
         estado: 'cerrada',
         monto_cierre: saldoActual,
@@ -189,10 +202,8 @@ export default function CajaPage() {
         notas_cierre: notasCierre || null,
         cerrado_por_id: user?.id,
         cerrada_at: new Date().toISOString(),
-      }
-      if (montoRealCierre !== '') {
-        payload.monto_real_cierre = montoRealNum
-        payload.diferencia_cierre = diferencia
+        monto_real_cierre: montoRealNum,
+        diferencia_cierre: diferencia ?? 0,
       }
       const { error } = await supabase.from('caja_sesiones').update(payload).eq('id', sesionActiva.id)
       if (error) throw error
@@ -260,12 +271,11 @@ export default function CajaPage() {
   useModalKeyboard({ isOpen: showApertura, onClose: () => setShowApertura(false), onConfirm: () => { if (!abrirCaja.isPending) abrirCaja.mutate() } })
   useModalKeyboard({ isOpen: showNuevaCaja, onClose: () => setShowNuevaCaja(false), onConfirm: () => { if (!crearCaja.isPending) crearCaja.mutate() } })
 
-  // Atajos de teclado de página: Shift+I = ingreso, Shift+O = egreso (solo con caja abierta)
+  // Atajo de teclado: Shift+I = ingreso (solo con caja abierta)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!sesionActiva || tab !== 'caja') return
       if (e.shiftKey && e.key === 'I') { e.preventDefault(); setMovTipo('ingreso'); setShowMovimiento(true) }
-      if (e.shiftKey && e.key === 'O') { e.preventDefault(); setMovTipo('egreso'); setShowMovimiento(true) }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -348,17 +358,45 @@ export default function CajaPage() {
       {/* ── CAJA ACTUAL ── */}
       {tab === 'caja' && (
         <div className="space-y-4">
-          {/* Selector de caja */}
+          {/* Selector de caja + badges cajitas */}
           {cajas.length > 1 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Caja:</span>
-              <select value={cajaId ?? ''} onChange={e => setCajaSeleccionada(e.target.value)}
-                className="border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-gray-500 dark:text-gray-400">Caja:</span>
+                <select value={cajaId ?? ''} onChange={e => setCajaSeleccionada(e.target.value)}
+                  className="border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                  {cajas.map((c: any) => {
+                    const abierta = cajasAbiertas.includes(c.id)
+                    return <option key={c.id} value={c.id}>{c.nombre}{abierta ? ' ✓ Abierta' : ''}</option>
+                  })}
+                </select>
+                <button onClick={() => cajaId && guardarCajaDefault(cajaId)}
+                  title="Guardar esta caja como predeterminada"
+                  className="text-xs text-gray-400 dark:text-gray-500 hover:text-accent transition-colors px-2 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+                  ★ Predeterminar
+                </button>
+              </div>
+              {/* Badges visuales por caja */}
+              <div className="flex gap-2 flex-wrap">
                 {cajas.map((c: any) => {
                   const abierta = cajasAbiertas.includes(c.id)
-                  return <option key={c.id} value={c.id}>{c.nombre}{abierta ? ' ✓ Abierta' : ''}</option>
+                  const activa = c.id === cajaId
+                  return (
+                    <button key={c.id} onClick={() => setCajaSeleccionada(c.id)}
+                      title={abierta ? 'Abierta' : 'Cerrada'}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all
+                        ${activa
+                          ? 'border-accent bg-accent/10 text-accent'
+                          : abierta
+                            ? 'border-green-300 bg-green-50 dark:bg-green-900/20 dark:border-green-700 text-green-700 dark:text-green-400 hover:border-green-400'
+                            : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:border-gray-300'}`}>
+                      <DollarSign size={12} />
+                      <span>{c.nombre}</span>
+                      <span className={`w-2 h-2 rounded-full ${abierta ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                    </button>
+                  )
                 })}
-              </select>
+              </div>
             </div>
           )}
 
@@ -457,14 +495,10 @@ export default function CajaPage() {
               </div>
 
               {/* Acciones */}
-              <div className="grid grid-cols-2 gap-3">
+              <div>
                 <button onClick={() => { setMovTipo('ingreso'); setShowMovimiento(true) }}
-                  className="flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
+                  className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
                   <Plus size={18} /> Ingreso
-                </button>
-                <button onClick={() => { setMovTipo('egreso'); setShowMovimiento(true) }}
-                  className="flex items-center justify-center gap-2 bg-red-500 dark:bg-red-600 hover:bg-red-600 dark:hover:bg-red-500 text-white font-semibold py-3 rounded-xl transition-all">
-                  <Minus size={18} /> Egreso
                 </button>
               </div>
 
@@ -745,7 +779,7 @@ export default function CajaPage() {
             {/* Conteo real */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Conteo real en caja <span className="text-gray-400 dark:text-gray-500 font-normal">(opcional)</span>
+                Conteo real en caja <span className="text-red-500 font-normal">*</span>
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
@@ -781,7 +815,7 @@ export default function CajaPage() {
                 className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                 Cancelar
               </button>
-              <button onClick={() => cerrarCaja.mutate()} disabled={cerrarCaja.isPending}
+              <button onClick={() => cerrarCaja.mutate()} disabled={cerrarCaja.isPending || montoRealCierre.trim() === ''}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50">
                 {cerrarCaja.isPending ? 'Cerrando...' : 'Confirmar cierre'}
               </button>

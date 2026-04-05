@@ -20,7 +20,7 @@ type DescTipo = 'pct' | 'monto'
 const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }> = {
   pendiente:  { label: 'Pendiente',  color: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-100 dark:bg-yellow-900/30' },
   reservada:  { label: 'Reservada',  color: 'text-blue-700 dark:text-blue-400',   bg: 'bg-blue-100 dark:bg-blue-900/30'   },
-  despachada: { label: 'Despachada', color: 'text-green-700 dark:text-green-400',  bg: 'bg-green-100 dark:bg-green-900/30'  },
+  despachada: { label: 'Finalizada', color: 'text-green-700 dark:text-green-400',  bg: 'bg-green-100 dark:bg-green-900/30'  },
   cancelada:  { label: 'Cancelada',  color: 'text-red-700 dark:text-red-400',    bg: 'bg-red-100 dark:bg-red-900/30'    },
   facturada:  { label: 'Facturada',  color: 'text-purple-700', bg: 'bg-purple-100 dark:bg-purple-900/30' },
   devuelta:   { label: 'Devuelta',   color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
@@ -160,7 +160,7 @@ export default function VentasPage() {
   }
 
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
-  useModalKeyboard({ isOpen: ventaDetalle !== null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
+  useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
 
@@ -309,6 +309,11 @@ export default function VentasPage() {
       toast.error(p.stock_filtrado
         ? 'Sin stock disponible en el grupo seleccionado'
         : 'Este producto no tiene stock disponible')
+      return
+    }
+
+    if (!p.precio_venta || p.precio_venta <= 0) {
+      toast.error(`"${p.nombre}" no tiene precio de venta. Editá el producto antes de venderlo.`)
       return
     }
 
@@ -770,7 +775,7 @@ export default function VentasPage() {
           usuario_id: user?.id,
         })
       }
-      const msg = estado === 'despachada' ? 'Venta despachada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
+      const msg = estado === 'despachada' ? 'Venta finalizada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
@@ -1992,7 +1997,17 @@ export default function VentasPage() {
                   </div>
                 )
               })()}
-              {ventaDetalle.notas && <p className="text-gray-500 dark:text-gray-400">Notas: {ventaDetalle.notas}</p>}
+              {ventaDetalle.notas && (
+                ventaDetalle.estado === 'cancelada'
+                  ? (
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-3 py-2.5 text-sm">
+                      <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-0.5 uppercase tracking-wide">Motivo de cancelación</p>
+                      <p className="text-red-700 dark:text-red-300">{ventaDetalle.notas}</p>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Notas: {ventaDetalle.notas}</p>
+                  )
+              )}
             </div>
 
             {/* Devoluciones previas colapsable */}
@@ -2072,7 +2087,7 @@ export default function VentasPage() {
                 }}
                   disabled={cambiarEstado.isPending}
                   className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
-                  <Truck size={16} /> Despachar (rebaja stock)
+                  <Truck size={16} /> Finalizar (rebaja stock)
                 </button>
               )}
               {ventaDetalle.estado === 'despachada' && (
@@ -2498,7 +2513,7 @@ export default function VentasPage() {
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2"><Truck size={16} /> Cobrar saldo y despachar</h2>
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2"><Truck size={16} /> Cobrar saldo y finalizar</h2>
                 <button onClick={() => setSaldoModal(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
               </div>
               <div className="px-5 py-4 space-y-3">
@@ -2555,7 +2570,7 @@ export default function VentasPage() {
                     setSaldoModal(null)
                   }}
                   className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl disabled:opacity-50 text-sm flex items-center justify-center gap-2">
-                  <Truck size={15} /> Despachar
+                  <Truck size={15} /> Finalizar venta
                 </button>
               </div>
             </div>

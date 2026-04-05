@@ -556,15 +556,18 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
-### v0.61.0 — en DEV
+### v0.61.0 ✅ PROD
 
 #### Ventas + Caja UX
 - **"Finalizada"**: `ESTADOS.despachada.label` → `'Finalizada'`. Botón historial → "Finalizar (rebaja stock)". Modal saldo → "Cobrar saldo y finalizar" + botón "Finalizar venta". Toast → "Venta finalizada". El valor en DB sigue siendo `'despachada'`.
 - **Motivo cancelación visible**: cuando `ventaDetalle.estado === 'cancelada'` el campo `notas` se muestra en un bloque rojo (`bg-red-50`) con título "Motivo de cancelación" en lugar del texto gris pequeño anterior.
 - **Bloqueo producto sin precio**: `agregarProducto()` valida `precio_venta > 0` antes de agregar al carrito — toast de error con nombre del producto.
 - **Cierre de caja con monto obligatorio**: campo "Conteo real" renombrado a obligatorio (`*`). Botón deshabilitado si está vacío. `mutationFn` lanza error si `montoRealCierre.trim() === ''`. `monto_real_cierre` y `diferencia_cierre` siempre se guardan al cerrar.
+- **ESC modal anidado**: `useModalKeyboard` de `ventaDetalle` desactivado cuando `saldoModal` está abierto — ESC solo cierra el hijo.
+- **Caja default por usuario**: `caja_preferida_${tenantId}_${userId}` en localStorage. Auto-selección al cargar. Botón "★ Predeterminar" guarda la selección actual.
+- **Badges cajitas**: pills visuales clickeables por caja — verde=abierta, gris=cerrada, accent=seleccionada.
 
-### v0.60.0 — en DEV
+### v0.60.0 ✅ PROD
 
 #### Mobile + Quick UX fixes
 - **Viewport mobile**: `maximum-scale=1.0, viewport-fit=cover` en `index.html` — previene zoom automático en iOS al enfocar inputs. `html, body { overflow-x: hidden }` en `index.css` — previene overflow horizontal.

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { BRAND, PLANES, ADDON_MOVIMIENTOS, MP_PLAN_IDS } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
@@ -12,7 +12,7 @@ import toast from 'react-hot-toast'
 
 
 export default function SuscripcionPage() {
-  const { tenant, loadUserData } = useAuthStore()
+  const { tenant, user, loadUserData } = useAuthStore()
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
   const [loadingAddon, setLoadingAddon] = useState(false)
@@ -22,6 +22,14 @@ export default function SuscripcionPage() {
   const status = searchParams.get('status')
   const paymentType = searchParams.get('type') // 'addon' | null (suscripción)
   const preapprovalId = searchParams.get('preapproval_id')
+  const esAddon = paymentType === 'addon'
+
+  // Auto-verificar y redirigir al dashboard cuando MP redirige con status=approved
+  useEffect(() => {
+    if (status === 'approved' && !esAddon) {
+      handleVerificarPago()
+    }
+  }, [status])
 
   const handleSuscribir = (planId: string, mpPlanId: string) => {
     if (!mpPlanId) { toast.error('Plan no configurado'); return }
@@ -35,13 +43,11 @@ export default function SuscripcionPage() {
     if (!tenant) return
     setLoading('verificando')
     try {
-      // El webhook de MP debería haber activado el tenant automáticamente via external_reference.
-      // Recargamos los datos del usuario para reflejar el estado actualizado.
-      await loadUserData(tenant.id)
-      // Si el webhook ya actuó, el status será 'active'
+      // Consultar estado actual del tenant (el webhook MP puede haber actuado ya)
       const { data } = await supabase.from('tenants').select('subscription_status').eq('id', tenant.id).single()
       if (data?.subscription_status === 'active') {
         toast.success('¡Suscripción activada!')
+        if (user?.id) await loadUserData(user.id)
         window.location.href = '/dashboard'
         return
       }
@@ -51,7 +57,6 @@ export default function SuscripcionPage() {
           subscription_status: 'active',
           mp_subscription_id: preapprovalId,
         }).eq('id', tenant.id)
-        await loadUserData(tenant.id)
         toast.success('¡Suscripción activada!')
         window.location.href = '/dashboard'
       } else {
@@ -60,7 +65,6 @@ export default function SuscripcionPage() {
       }
     } catch {
       toast.error('Error al verificar el pago. Contactá soporte.')
-    } finally {
       setLoading(null)
     }
   }
@@ -81,7 +85,6 @@ export default function SuscripcionPage() {
 
   // Pantalla de resultado de pago
   if (status) {
-    const esAddon = paymentType === 'addon'
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary to-accent flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
@@ -102,13 +105,15 @@ export default function SuscripcionPage() {
               <>
                 <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Pago aprobado!</h1>
-                <p className="text-gray-500 dark:text-gray-400 mb-6">Tu suscripción está siendo procesada. En unos segundos tu cuenta quedará activa.</p>
-                <button onClick={handleVerificarPago} disabled={loading === 'verificando'}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                <p className="text-gray-500 dark:text-gray-400 mb-6">
                   {loading === 'verificando'
-                    ? <><RefreshCw size={16} className="animate-spin" /> Verificando...</>
-                    : <><CheckCircle size={16} /> Ir al dashboard</>}
-                </button>
+                    ? 'Activando tu cuenta...'
+                    : 'Tu suscripción se activó correctamente.'}
+                </p>
+                <div className="flex items-center justify-center gap-2 text-accent font-medium">
+                  <RefreshCw size={16} className="animate-spin" />
+                  <span>Redirigiendo al dashboard...</span>
+                </div>
               </>
             )
           ) : status === 'pending' ? (

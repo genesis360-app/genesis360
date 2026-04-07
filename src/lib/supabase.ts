@@ -46,6 +46,7 @@ export interface User {
   rol: UserRole
   nombre_display?: string
   activo: boolean
+  avatar_url?: string | null
   created_at: string
 }
 

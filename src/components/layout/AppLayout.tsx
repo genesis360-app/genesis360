@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
   ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle,
-  Moon, Sun, LifeBuoy, Lock, CreditCard, Building2
+  Moon, Sun, LifeBuoy, Lock, CreditCard, Building2, User
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -129,13 +129,31 @@ export function AppLayout() {
           )}
         </div>
 
-        {/* Nombre del negocio */}
-        {!collapsed && (
-          <div className="px-6 py-3 border-b border-accent/20">
-            <p className="text-accent text-xs font-medium uppercase tracking-wider">Negocio</p>
-            <p className="text-white text-sm font-semibold truncate">{tenant?.nombre}</p>
-          </div>
-        )}
+        {/* Perfil de usuario */}
+        <NavLink
+          to="/mi-cuenta"
+          title={collapsed ? `${user?.nombre_display} — Mi Cuenta` : undefined}
+          className={({ isActive }) =>
+            `flex items-center border-b border-accent/20 transition-colors hover:bg-accent/20
+            ${collapsed ? 'justify-center px-2 py-3' : 'gap-3 px-4 py-3'}
+            ${isActive ? 'bg-accent/30' : ''}`
+          }
+        >
+          {/* Avatar circular */}
+          {user?.avatar_url ? (
+            <img src={user.avatar_url} alt="Avatar" className="w-9 h-9 rounded-full object-cover border-2 border-accent/40 flex-shrink-0" />
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-accent/30 flex items-center justify-center flex-shrink-0 border-2 border-accent/40">
+              <User size={16} className="text-white" />
+            </div>
+          )}
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="text-white text-sm font-semibold leading-tight truncate">{user?.nombre_display ?? 'Mi Cuenta'}</p>
+              <p className="text-blue-300/70 text-[10px] leading-tight truncate">{user?.rol?.charAt(0) + (user?.rol?.slice(1).toLowerCase() ?? '')} · {tenant?.nombre}</p>
+            </div>
+          )}
+        </NavLink>
 
         {/* Navegación */}
         <nav className={`flex-1 py-4 space-y-1 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-3'}`}>
@@ -187,11 +205,11 @@ export function AppLayout() {
           })}
         </nav>
 
-        {/* Mi Plan */}
+        {/* Mi Cuenta (fondo sidebar) */}
         <div className={`border-t border-accent/20 ${collapsed ? 'px-1.5 py-2' : 'px-3 py-2'}`}>
           <NavLink
-            to="/suscripcion"
-            title={collapsed ? `Plan ${limits?.plan_id ?? ''}` : undefined}
+            to="/mi-cuenta"
+            title={collapsed ? 'Mi Cuenta' : undefined}
             className={({ isActive }) =>
               `flex items-center rounded-lg text-xs font-medium transition-all
               ${collapsed ? 'justify-center px-2 py-2' : 'gap-2 px-3 py-2'}
@@ -201,8 +219,8 @@ export function AppLayout() {
             <CreditCard size={15} className="flex-shrink-0" />
             {!collapsed && (
               <>
-                <span className="flex-1 truncate capitalize">
-                  Plan {limits?.plan_id === 'basico' ? 'Básico' : limits?.plan_id === 'pro' ? 'Pro' : limits?.plan_id === 'enterprise' ? 'Enterprise' : 'Free'}
+                <span className="flex-1 truncate">
+                  Mi Cuenta · Plan <span className="capitalize">{limits?.plan_id === 'basico' ? 'Básico' : limits?.plan_id === 'pro' ? 'Pro' : limits?.plan_id === 'enterprise' ? 'Enterprise' : 'Free'}</span>
                 </span>
                 <ChevronRight size={12} className="opacity-60" />
               </>

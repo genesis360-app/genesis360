@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { BRAND, PLANES, ADDON_MOVIMIENTOS, MP_PLAN_IDS } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import {
   Package, Check, X, CheckCircle, XCircle, Clock,
-  ArrowRight, Shield, RefreshCw, Zap, AlertTriangle,
+  ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 
 export default function SuscripcionPage() {
   const { tenant, user, loadUserData } = useAuthStore()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
   const [loadingAddon, setLoadingAddon] = useState(false)
@@ -143,9 +144,19 @@ export default function SuscripcionPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-primary to-accent">
+      {/* Flecha volver */}
+      <div className="px-4 pt-5 max-w-5xl mx-auto">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-blue-300 hover:text-white transition-colors text-sm font-medium"
+        >
+          <ArrowLeft size={16} /> Volver
+        </button>
+      </div>
+
       {/* Header */}
-      <div className="text-center pt-12 pb-8 px-4">
-        <div className="inline-flex items-center justify-center w-14 h-14 bg-white dark:bg-gray-800/10 rounded-2xl mb-4">
+      <div className="text-center pt-6 pb-8 px-4">
+        <div className="inline-flex items-center justify-center w-14 h-14 bg-accent rounded-2xl mb-4">
           <Package size={28} className="text-white" />
         </div>
         <h1 className="text-3xl font-bold text-white mb-2">
@@ -312,13 +323,6 @@ export default function SuscripcionPage() {
           <span className="flex items-center gap-2"><Check size={16} /> Sin costos ocultos</span>
         </div>
 
-        {tenant && (
-          <div className="text-center mt-6">
-            <Link to="/dashboard" className="text-blue-300 text-sm hover:text-white transition-colors">
-              Volver al dashboard →
-            </Link>
-          </div>
-        )}
       </div>
     </div>
   )

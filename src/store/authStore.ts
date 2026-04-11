@@ -52,28 +52,25 @@ export const useAuthStore = create<AuthState>((set) => ({
 		const googleAvatar = authData?.user?.user_metadata?.avatar_url ?? null
 		const resolvedAvatar = userData.avatar_url ?? googleAvatar
 
-		const { data: tenantData, error: tenantError } = await supabase
-		  .from('tenants')
-		  .select('*')
-		  .eq('id', userData.tenant_id)
-		  .single()
+		const [{ data: tenantData, error: tenantError }, { data: sucursalesData }, { data: rolCustomData }] = await Promise.all([
+		  supabase.from('tenants').select('*').eq('id', userData.tenant_id).single(),
+		  supabase.from('sucursales').select('*').eq('tenant_id', userData.tenant_id).eq('activo', true).order('nombre'),
+		  userData.rol_custom_id
+		    ? supabase.from('roles_custom').select('permisos').eq('id', userData.rol_custom_id).eq('activo', true).maybeSingle()
+		    : Promise.resolve({ data: null }),
+		])
 
 		console.log('tenantData:', tenantData, 'error:', tenantError)
-
-		const { data: sucursalesData } = await supabase
-		  .from('sucursales')
-		  .select('*')
-		  .eq('tenant_id', userData.tenant_id)
-		  .eq('activo', true)
-		  .order('nombre')
 
 		// Validar que el sucursal_id guardado sigue siendo válido
 		const savedId = typeof window !== 'undefined' ? (localStorage.getItem('sucursal-id') || null) : null
 		const ids = (sucursalesData ?? []).map((s: Sucursal) => s.id)
 		const validSucursalId = savedId && ids.includes(savedId) ? savedId : null
 
+		const permisosCustom = (rolCustomData?.permisos ?? null) as Record<string, 'no_ver' | 'ver' | 'editar'> | null
+
 		set({
-		  user: { ...userData, avatar_url: resolvedAvatar },
+		  user: { ...userData, avatar_url: resolvedAvatar, permisos_custom: permisosCustom },
 		  tenant: tenantData,
 		  sucursales: sucursalesData ?? [],
 		  sucursalId: validSucursalId,

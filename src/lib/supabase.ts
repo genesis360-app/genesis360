@@ -47,6 +47,9 @@ export interface User {
   nombre_display?: string
   activo: boolean
   avatar_url?: string | null
+  rol_custom_id?: string | null
+  /** Permisos cargados en runtime desde roles_custom.permisos — no existe en DB directamente */
+  permisos_custom?: Record<string, 'no_ver' | 'ver' | 'editar'> | null
   created_at: string
 }
 

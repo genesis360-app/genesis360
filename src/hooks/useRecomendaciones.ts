@@ -274,8 +274,8 @@ export function useRecomendaciones() {
         titulo: `${sinCosto.length} productos sin precio de costo cargado`,
         descripcion: `Sin el precio de compra no podés saber cuánto ganás por cada venta. Cargá el costo en los productos para activar el módulo de Rentabilidad Real.`,
         impacto: `${pctSinCosto.toFixed(0)}% de tu catálogo sin datos`,
-        accion: 'Ver inventario',
-        link: '/inventario',
+        accion: 'Ver productos',
+        link: '/productos',
         valor: 0,
       })
     }

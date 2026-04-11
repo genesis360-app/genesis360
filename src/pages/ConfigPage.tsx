@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronRight, Play, RotateCcw, Ruler } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -282,6 +282,84 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
               )}
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MarketplaceSection() {
+  const { tenant, user, setTenant } = useAuthStore()
+  const canEdit = user?.rol === 'OWNER'
+  const [activo, setActivo] = useState(tenant?.marketplace_activo ?? false)
+  const [webhookUrl, setWebhookUrl] = useState(tenant?.marketplace_webhook_url ?? '')
+  const [saving, setSaving] = useState(false)
+  const [collapsed, setCollapsed] = useState(!tenant?.marketplace_activo)
+
+  const save = async () => {
+    setSaving(true)
+    const { data, error } = await supabase.from('tenants')
+      .update({ marketplace_activo: activo, marketplace_webhook_url: webhookUrl.trim() || null })
+      .eq('id', tenant!.id).select().single()
+    if (error) toast.error(error.message)
+    else { setTenant(data); toast.success('Marketplace actualizado') }
+    setSaving(false)
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <button onClick={() => setCollapsed(c => !c)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+        <div className="flex items-center gap-2">
+          <Globe size={16} className="text-accent" />
+          <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Marketplace</span>
+          {activo && <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">Activo</span>}
+        </div>
+        {collapsed ? <ChevronDown size={16} className="text-gray-400 dark:text-gray-500" /> : <ChevronUp size={16} className="text-gray-400 dark:text-gray-500" />}
+      </button>
+      {!collapsed && (
+        <div className="px-5 pb-5 space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
+          <p className="text-xs text-gray-400 dark:text-gray-500">Exponé tu catálogo a sistemas externos mediante la API pública del marketplace.</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Activar marketplace</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Habilita la API pública y la sección en cada producto</p>
+            </div>
+            <button
+              disabled={!canEdit}
+              onClick={() => setActivo(a => !a)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${activo ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} disabled:opacity-50`}>
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${activo ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+          {activo && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                URL de webhook externo <span className="text-gray-400 dark:text-gray-500 font-normal">(opcional)</span>
+              </label>
+              <input type="url" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)}
+                disabled={!canEdit}
+                placeholder="https://mi-sistema.com/webhook/stock"
+                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Recibís una notificación POST cada vez que cambia el stock de un producto publicado.</p>
+            </div>
+          )}
+          {activo && (
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-1">
+              <p className="text-xs font-medium text-gray-600 dark:text-gray-300">Endpoint público de tu catálogo:</p>
+              <p className="text-xs font-mono text-accent break-all">
+                {import.meta.env.VITE_SUPABASE_URL}/functions/v1/marketplace-api?tenant_id={tenant?.id}
+              </p>
+            </div>
+          )}
+          {canEdit && (
+            <div className="flex justify-end">
+              <button onClick={save} disabled={saving}
+                className="px-5 py-2 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                {saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -808,6 +886,10 @@ export default function ConfigPage() {
             </div>
           )}
         </div>
+      )}
+
+      {tab === 'negocio' && (
+        <MarketplaceSection />
       )}
 
       {tab === 'categorias' && (

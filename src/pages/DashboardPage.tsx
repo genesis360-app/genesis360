@@ -65,7 +65,8 @@ export default function DashboardPage() {
       const hace30dias   = new Date(Date.now() - 30 * 86400000).toISOString()
 
       const fechaReservaVieja = new Date(hoy.getTime() - 3 * 86400000).toISOString()
-      const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes, ventasDeuda, productosInactivos, reservasViejas] = await Promise.all([
+      const inicioMesStr = inicioMes.split('T')[0]
+      const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes, ventasDeuda, productosInactivos, reservasViejas, gastosMes, ventasMesCosto] = await Promise.all([
         supabase.from('productos').select('id, nombre, sku, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
         supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
@@ -75,6 +76,8 @@ export default function DashboardPage() {
         supabase.from('ventas').select('total, monto_pagado').eq('tenant_id', tenant!.id).in('estado', ['pendiente', 'reservada']),
         supabase.from('productos').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('activo', false),
         supabase.from('ventas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('estado', 'reservada').lt('created_at', fechaReservaVieja),
+        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', inicioMesStr),
+        supabase.from('venta_items').select('cantidad, precio_costo_historico').eq('tenant_id', tenant!.id).gte('created_at', inicioMes),
       ])
 
       const prods                 = productos.data ?? []
@@ -139,11 +142,18 @@ export default function DashboardPage() {
       }, 0)
       const cantDeudoras = (ventasDeuda.data ?? []).filter(v => Math.max(0, (v.total ?? 0) - (v.monto_pagado ?? 0)) > 0.5).length
 
+      // Rentabilidad neta = ventas − costo de lo vendido − gastos del mes
+      const gastosTotal    = (gastosMes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)
+      const costoVentas    = (ventasMesCosto.data ?? []).reduce((a, vi: any) => a + (vi.precio_costo_historico ?? 0) * (vi.cantidad ?? 0), 0)
+      const rentabilidadNeta = totalVentasMes - costoVentas - gastosTotal
+      const margenNeto = totalVentasMes > 0 ? (rentabilidadNeta / totalVentasMes) * 100 : null
+
       return {
         totalProductos, totalProductosInactivos, stockCritico, valorInventario, alertasActivas,
         ingresosHoy, cantIngresosHoy, rebajesHoy, totalVentasMes, cantVentasMes,
         totalVentasMesAnt, cantStockMuerto, valorStockMuerto, prodsInactivos, prodsCriticos,
         proyeccionCobertura, deudaTotal, cantDeudoras,
+        gastosTotal, costoVentas, rentabilidadNeta, margenNeto,
       }
     },
     enabled: !!tenant,
@@ -490,7 +500,7 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* Ventas del mes + Valor inventario */}
+      {/* Ventas del mes + Valor inventario + Rentabilidad neta */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-gradient-to-br from-primary to-accent rounded-xl p-5 text-white">
           <div className="flex items-center justify-between mb-2">
@@ -543,6 +553,48 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Rentabilidad neta del mes */}
+      {stats && (stats.rentabilidadNeta !== 0 || stats.gastosTotal > 0 || stats.costoVentas > 0) && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2 mb-3">
+            {stats.rentabilidadNeta >= 0
+              ? <TrendingUp size={18} className="text-green-500" />
+              : <TrendingDown size={18} className="text-red-500" />}
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Rentabilidad neta este mes</h2>
+            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">Ventas − Costo − Gastos</span>
+          </div>
+          <div className="flex items-end gap-4 flex-wrap">
+            <div>
+              <p className={`text-3xl font-bold ${stats.rentabilidadNeta >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {stats.rentabilidadNeta >= 0 ? '' : '−'}${Math.abs(stats.rentabilidadNeta).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+              </p>
+              {stats.margenNeto !== null && (
+                <p className={`text-xs mt-0.5 font-medium ${stats.rentabilidadNeta >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                  {stats.margenNeto.toFixed(1)}% de margen neto
+                </p>
+              )}
+            </div>
+            <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+              <div>
+                <p className="text-gray-400">Ventas</p>
+                <p className="font-semibold text-gray-700 dark:text-gray-300">${stats.totalVentasMes.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Costo ventas</p>
+                <p className="font-semibold text-red-500">−${stats.costoVentas.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+              </div>
+              <div>
+                <p className="text-gray-400">Gastos</p>
+                <p className="font-semibold text-red-500">−${stats.gastosTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+              </div>
+            </div>
+          </div>
+          {stats.costoVentas === 0 && stats.totalVentasMes > 0 && (
+            <p className="text-xs text-amber-500 mt-2">⚠ Sin precio costo en productos vendidos — el cálculo puede ser incompleto</p>
+          )}
+        </div>
+      )}
 
       {/* Productos sin movimiento — expandable */}
       {(stats?.cantStockMuerto ?? 0) > 0 && (

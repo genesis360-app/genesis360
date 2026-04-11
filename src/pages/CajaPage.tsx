@@ -35,6 +35,9 @@ export default function CajaPage() {
   const [traspasoMonto, setTraspasoMonto] = useState('')
   const [traspasoConcepto, setTraspasoConcepto] = useState('')
   const [sesionExpandida, setSesionExpandida] = useState<string | null>(null)
+  const [showArqueo, setShowArqueo] = useState(false)
+  const [arqueoConteo, setArqueoConteo] = useState('')
+  const [arqueoNotas, setArqueoNotas] = useState('')
 
   // Forms
   const [montoApertura, setMontoApertura] = useState('')
@@ -161,6 +164,30 @@ export default function CajaPage() {
     enabled: !!tenant,
   })
 
+  const { data: arqueosSesion = [] } = useQuery({
+    queryKey: ['caja-arqueos', sesionActiva?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_arqueos')
+        .select('*, users(nombre_display)')
+        .eq('sesion_id', sesionActiva!.id)
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!sesionActiva,
+  })
+
+  const { data: arqueosHistorial = [] } = useQuery({
+    queryKey: ['caja-arqueos-historial', sesionExpandida],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_arqueos')
+        .select('*, users(nombre_display)')
+        .eq('sesion_id', sesionExpandida!)
+        .order('created_at', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!sesionExpandida,
+  })
+
   // Calcular totales de la sesión actual
   const totalIngresos = movimientos.filter((m: any) => m.tipo === 'ingreso').reduce((a: number, m: any) => a + m.monto, 0)
   const totalEgresos = movimientos.filter((m: any) => m.tipo === 'egreso').reduce((a: number, m: any) => a + m.monto, 0)
@@ -232,7 +259,22 @@ export default function CajaPage() {
         valor_nuevo: `Saldo: ${formatMoneda(saldoActual)}${diferencia !== null ? ` | Diferencia: ${formatMoneda(diferencia)}` : ''}`,
         pagina: '/caja',
       })
-      toast.success('Caja cerrada')
+      // Auto-download ticket de cierre
+      const closedSesion = {
+        ...sesionActiva,
+        cajas: { nombre: cajaActual?.nombre ?? 'Caja' },
+        monto_cierre: saldoActual,
+        total_ingresos: totalIngresos,
+        total_egresos: totalEgresos,
+        monto_real_cierre: montoRealCierre !== '' ? montoRealNum : null,
+        diferencia_cierre: diferencia ?? 0,
+        notas_cierre: notasCierre || null,
+        cerrada_at: new Date().toISOString(),
+        abrio: (sesionActiva as any)?.abrio,
+        cerrado_por: { nombre_display: user?.nombre_display ?? '—' },
+      }
+      imprimirCierre(closedSesion)
+      toast.success('Caja cerrada · PDF descargado')
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
       qc.invalidateQueries({ queryKey: ['historial-sesiones'] })
       setShowCierre(false); setNotasCierre(''); setMontoRealCierre('')
@@ -307,6 +349,29 @@ export default function CajaPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const realizarArqueo = useMutation({
+    mutationFn: async () => {
+      if (!sesionActiva) throw new Error('No hay sesión activa')
+      const conteo = parseFloat(arqueoConteo.replace(',', '.'))
+      if (isNaN(conteo) || conteo < 0) throw new Error('Ingresá un monto válido')
+      const { error } = await supabase.from('caja_arqueos').insert({
+        tenant_id: tenant!.id,
+        sesion_id: sesionActiva.id,
+        saldo_calculado: saldoActual,
+        saldo_real: conteo,
+        notas: arqueoNotas.trim() || null,
+        usuario_id: user?.id,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Arqueo registrado')
+      qc.invalidateQueries({ queryKey: ['caja-arqueos', sesionActiva?.id] })
+      setShowArqueo(false); setArqueoConteo(''); setArqueoNotas('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const crearCaja = useMutation({
     mutationFn: async () => {
       if (!nuevaCajaNombre.trim()) throw new Error('Ingresá un nombre')
@@ -329,6 +394,7 @@ export default function CajaPage() {
   useModalKeyboard({ isOpen: showApertura, onClose: () => setShowApertura(false), onConfirm: () => { if (!abrirCaja.isPending) abrirCaja.mutate() } })
   useModalKeyboard({ isOpen: showNuevaCaja, onClose: () => setShowNuevaCaja(false), onConfirm: () => { if (!crearCaja.isPending) crearCaja.mutate() } })
   useModalKeyboard({ isOpen: showTraspaso && !showMovimiento, onClose: () => { setShowTraspaso(false); setTraspasoMonto(''); setTraspasoConcepto(''); setTraspasoDestinoSesionId('') }, onConfirm: () => { if (!realizarTraspaso.isPending) realizarTraspaso.mutate() } })
+  useModalKeyboard({ isOpen: showArqueo, onClose: () => { setShowArqueo(false); setArqueoConteo(''); setArqueoNotas('') }, onConfirm: () => { if (!realizarArqueo.isPending) realizarArqueo.mutate() } })
 
   // Atajo de teclado: Shift+I = ingreso (solo con caja abierta)
   useEffect(() => {
@@ -559,6 +625,11 @@ export default function CajaPage() {
                   className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
                   <Plus size={18} /> Ingreso
                 </button>
+                <button onClick={() => setShowArqueo(true)}
+                  title="Arqueo parcial — contar efectivo sin cerrar caja"
+                  className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-semibold rounded-xl transition-all">
+                  <CheckCircle size={16} />
+                </button>
                 {cajasAbiertas.length >= 2 && (
                   <button onClick={() => setShowTraspaso(true)}
                     title="Transferir efectivo a otra caja"
@@ -598,6 +669,44 @@ export default function CajaPage() {
                   </div>
                 )}
               </div>
+
+              {/* Arqueos de la sesión */}
+              {arqueosSesion.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                    <h3 className="font-semibold text-gray-700 dark:text-gray-300 text-sm flex items-center gap-2">
+                      <CheckCircle size={14} className="text-accent" /> Arqueos ({arqueosSesion.length})
+                    </h3>
+                  </div>
+                  <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                    {(arqueosSesion as any[]).map((a) => {
+                      const dif = a.diferencia ?? 0
+                      return (
+                        <div key={a.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
+                              {new Date(a.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                              {a.users?.nombre_display && ` · ${a.users.nombre_display}`}
+                            </p>
+                            {a.notas && <p className="text-xs text-gray-500 dark:text-gray-400 italic mt-0.5">{a.notas}</p>}
+                          </div>
+                          <div className="flex items-center gap-3 text-sm flex-shrink-0">
+                            <span className="text-gray-500 dark:text-gray-400">{formatMoneda(a.saldo_calculado)} calc.</span>
+                            <span className="font-semibold text-gray-800 dark:text-gray-100">{formatMoneda(a.saldo_real)} real</span>
+                            <span className={`font-bold px-2 py-0.5 rounded-lg text-xs ${
+                              dif > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' :
+                              dif < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' :
+                              'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                            }`}>
+                              {dif > 0 ? `+${formatMoneda(dif)}` : dif < 0 ? formatMoneda(dif) : 'OK'}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Cerrar caja */}
               {esOtroUsuario && !puedeAdministrarCaja ? (
@@ -709,6 +818,28 @@ export default function CajaPage() {
                         ))}
                       </div>
                     )}
+                    {/* Arqueos de esta sesión */}
+                    {arqueosHistorial.length > 0 && (
+                      <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3">
+                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
+                          <CheckCircle size={11} className="text-accent" /> Arqueos ({arqueosHistorial.length})
+                        </p>
+                        <div className="space-y-1.5">
+                          {(arqueosHistorial as any[]).map((a) => {
+                            const dif = a.diferencia ?? 0
+                            return (
+                              <div key={a.id} className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                                <span>{new Date(a.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span>{formatMoneda(a.saldo_calculado)} → {formatMoneda(a.saldo_real)}</span>
+                                <span className={`font-bold ${dif > 0 ? 'text-green-600 dark:text-green-400' : dif < 0 ? 'text-red-500' : 'text-gray-400 dark:text-gray-500'}`}>
+                                  {dif > 0 ? `+${formatMoneda(dif)}` : dif < 0 ? formatMoneda(dif) : 'OK'}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -761,6 +892,53 @@ export default function CajaPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal arqueo */}
+      {showArqueo && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
+                <CheckCircle size={20} className="text-accent" /> Arqueo parcial
+              </h2>
+              <button onClick={() => { setShowArqueo(false); setArqueoConteo(''); setArqueoNotas('') }}
+                className="text-gray-400 dark:text-gray-500 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Saldo calculado</span>
+                <span className="font-bold text-gray-800 dark:text-gray-100">{formatMoneda(saldoActual)}</span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Conteo físico real *</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()}
+                  value={arqueoConteo} onChange={e => setArqueoConteo(e.target.value)}
+                  placeholder="0" min="0" step="0.01" autoFocus
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                {arqueoConteo !== '' && (
+                  <p className={`mt-1.5 text-sm font-medium ${
+                    parseFloat(arqueoConteo) - saldoActual > 0 ? 'text-green-600 dark:text-green-400' :
+                    parseFloat(arqueoConteo) - saldoActual < 0 ? 'text-red-600 dark:text-red-400' :
+                    'text-gray-400 dark:text-gray-500'
+                  }`}>
+                    Diferencia: {formatMoneda(parseFloat(arqueoConteo) - saldoActual)}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
+                <input type="text" value={arqueoNotas} onChange={e => setArqueoNotas(e.target.value)}
+                  placeholder="Observaciones..."
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              </div>
+              <button onClick={() => realizarArqueo.mutate()} disabled={realizarArqueo.isPending || !arqueoConteo.trim()}
+                className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
+                {realizarArqueo.isPending ? 'Registrando...' : 'Registrar arqueo'}
+              </button>
+            </div>
           </div>
         </div>
       )}

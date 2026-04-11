@@ -188,6 +188,15 @@ interface Capacitacion {
   empleado?: { nombre: string; apellido: string | null; dni_rut: string }
 }
 
+interface Feriado {
+  id: string
+  tenant_id: string
+  nombre: string
+  fecha: string
+  tipo: 'nacional' | 'provincial' | 'personalizado' | 'no_laborable'
+  created_at: string
+}
+
 export default function RrhhPage() {
   const { limits } = usePlanLimits()
   const { tenant, user } = useAuthStore()
@@ -247,6 +256,16 @@ export default function RrhhPage() {
     empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), hora_entrada: '', hora_salida: '', estado: 'presente', motivo: '',
   })
   const [asistFiltroEmpleado, setAsistFiltroEmpleado] = useState('')
+
+  // Check-in rápido state
+  const [checkinEmpleadoId, setCheckinEmpleadoId] = useState('')
+
+  // Feriados state
+  const [showFeriadoForm, setShowFeriadoForm] = useState(false)
+  const [editingFeriado, setEditingFeriado] = useState<Feriado | null>(null)
+  const [feriadoForm, setFeriadoForm] = useState<{ nombre: string; fecha: string; tipo: string }>({
+    nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional',
+  })
 
   // Documentos state
   const [docEmpleadoFiltro, setDocEmpleadoFiltro] = useState('')
@@ -482,6 +501,40 @@ export default function RrhhPage() {
       return (data ?? []) as Array<{ id: string; nombre_display: string }>
     },
     enabled: !!tenant,
+  })
+
+  // Feriados query
+  const { data: feriados = [], refetch: refetchFeriados } = useQuery({
+    queryKey: ['rrhh_feriados', tenant?.id],
+    queryFn: async () => {
+      const hoy = format(new Date(), 'yyyy-MM-dd')
+      const en60 = format(new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
+      const { data, error } = await supabase.from('rrhh_feriados')
+        .select('*')
+        .eq('tenant_id', tenant!.id)
+        .gte('fecha', hoy)
+        .lte('fecha', en60)
+        .order('fecha')
+      if (error) throw error
+      return (data ?? []) as Feriado[]
+    },
+    enabled: !!tenant && activeTab === 'cumpleanos',
+  })
+
+  // Asistencia hoy del empleado seleccionado para check-in
+  const { data: asistenciaHoy, refetch: refetchAsistenciaHoy } = useQuery({
+    queryKey: ['rrhh_asistencia_hoy', tenant?.id, checkinEmpleadoId],
+    queryFn: async () => {
+      const hoy = format(new Date(), 'yyyy-MM-dd')
+      const { data } = await supabase.from('rrhh_asistencia')
+        .select('*')
+        .eq('tenant_id', tenant!.id)
+        .eq('empleado_id', checkinEmpleadoId)
+        .eq('fecha', hoy)
+        .maybeSingle()
+      return data as Asistencia | null
+    },
+    enabled: !!tenant && !!checkinEmpleadoId && activeTab === 'asistencia',
   })
 
   // Mutations
@@ -870,6 +923,80 @@ export default function RrhhPage() {
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
 
+  // ─── Check-in rápido ────────────────────────────────────────────────────────
+  const checkinRapido = useMutation({
+    mutationFn: async ({ tipo }: { tipo: 'entrada' | 'salida' }) => {
+      if (!checkinEmpleadoId) throw new Error('Seleccioná un empleado')
+      const hoy = format(new Date(), 'yyyy-MM-dd')
+      const hora = format(new Date(), 'HH:mm')
+      if (asistenciaHoy) {
+        const patch = tipo === 'entrada' ? { hora_entrada: hora, estado: 'presente' } : { hora_salida: hora }
+        const { error } = await supabase.from('rrhh_asistencia').update(patch).eq('id', asistenciaHoy.id)
+        if (error) throw error
+        logActividad({ entidad: 'asistencia', entidad_id: asistenciaHoy.id, accion: 'editar', pagina: '/rrhh' })
+      } else {
+        const id = crypto.randomUUID()
+        const { error } = await supabase.from('rrhh_asistencia').insert({
+          id,
+          tenant_id: tenant!.id,
+          empleado_id: checkinEmpleadoId,
+          fecha: hoy,
+          hora_entrada: tipo === 'entrada' ? hora : null,
+          hora_salida: tipo === 'salida' ? hora : null,
+          estado: 'presente',
+          motivo: null,
+        })
+        if (error) throw error
+        logActividad({ entidad: 'asistencia', entidad_id: id, accion: 'crear', pagina: '/rrhh' })
+      }
+    },
+    onSuccess: (_, { tipo }) => {
+      toast.success(tipo === 'entrada' ? 'Entrada registrada' : 'Salida registrada')
+      refetchAsistenciaHoy()
+      refetchAsistencias()
+    },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
+  // ─── Feriados mutations ──────────────────────────────────────────────────────
+  const saveFeriado = useMutation({
+    mutationFn: async (form: { nombre: string; fecha: string; tipo: string }) => {
+      if (!form.nombre.trim()) throw new Error('Ingresá el nombre del feriado')
+      if (!form.fecha) throw new Error('Indicá la fecha')
+      const payload = {
+        tenant_id: tenant!.id,
+        nombre: form.nombre.trim(),
+        fecha: form.fecha,
+        tipo: form.tipo,
+        created_by: user!.id,
+      }
+      if (editingFeriado) {
+        const { error } = await supabase.from('rrhh_feriados').update(payload).eq('id', editingFeriado.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('rrhh_feriados').insert({ id: crypto.randomUUID(), ...payload })
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      toast.success(editingFeriado ? 'Feriado actualizado' : 'Feriado agregado')
+      setShowFeriadoForm(false)
+      setEditingFeriado(null)
+      setFeriadoForm({ nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional' })
+      refetchFeriados()
+    },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
+  const deleteFeriado = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('rrhh_feriados').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Feriado eliminado'); refetchFeriados() },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
   // ─── Exports ─────────────────────────────────────────────────────────────────
   const exportAsistenciaMes = async () => {
     const [y, m] = dashMes.split('-').map(Number)
@@ -1182,13 +1309,12 @@ export default function RrhhPage() {
     return { days: differenceInDays(next, today), date: next }
   }
 
-  // Cumpleaños - empleados activos del mes actual
+  // Cumpleaños - empleados activos con cumpleaños en los próximos 30 días
   const cumpleanosMes = empleados
     .filter((e) => {
       if (!e.fecha_nacimiento || !e.activo) return false
-      const birth = new Date(e.fecha_nacimiento)
-      const today = new Date()
-      return birth.getMonth() === today.getMonth()
+      const { days } = proximoCumpleanos(e.fecha_nacimiento)
+      return days <= 30
     })
     .sort((a, b) => {
       const { days: dA } = proximoCumpleanos(a.fecha_nacimiento!)
@@ -2517,6 +2643,43 @@ export default function RrhhPage() {
       {/* ASISTENCIA TAB */}
       {activeTab === 'asistencia' && (
         <div className="space-y-6">
+
+          {/* Check-in rápido */}
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+              <Clock size={15} className="text-accent" /> Check-in rápido — {format(new Date(), "EEEE d 'de' MMMM", { locale: es })}
+            </h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <select value={checkinEmpleadoId} onChange={e => setCheckinEmpleadoId(e.target.value)}
+                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white flex-1 min-w-[180px]">
+                <option value="">Seleccioná empleado...</option>
+                {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>)}
+              </select>
+              <button
+                disabled={!checkinEmpleadoId || checkinRapido.isPending}
+                onClick={() => checkinRapido.mutate({ tipo: 'entrada' })}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-40 text-sm font-medium"
+                title="Registrar entrada con hora actual">
+                <UserCheck size={16}/> Entrada {format(new Date(), 'HH:mm')}
+              </button>
+              <button
+                disabled={!checkinEmpleadoId || checkinRapido.isPending}
+                onClick={() => checkinRapido.mutate({ tipo: 'salida' })}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-40 text-sm font-medium"
+                title="Registrar salida con hora actual">
+                <UserX size={16}/> Salida {format(new Date(), 'HH:mm')}
+              </button>
+            </div>
+            {checkinEmpleadoId && asistenciaHoy && (
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Hoy: <span className="font-medium text-gray-700 dark:text-gray-300">
+                  {asistenciaHoy.hora_entrada ? `Entrada ${asistenciaHoy.hora_entrada}` : 'Sin entrada'}
+                  {asistenciaHoy.hora_salida ? ` · Salida ${asistenciaHoy.hora_salida}` : ''}
+                </span>
+              </p>
+            )}
+          </div>
+
           <div className="flex flex-wrap items-center gap-3 justify-between">
             <div className="flex items-center gap-3 flex-wrap">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Mes:</label>
@@ -2676,45 +2839,150 @@ export default function RrhhPage() {
 
       {/* CUMPLEANOS TAB */}
       {activeTab === 'cumpleanos' && (
-        <div>
-          <div className="grid gap-4">
-            {cumpleanosMes.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">No hay cumpleaños este mes</div>
-            ) : (
-              cumpleanosMes.map((emp) => {
-                const { days: daysToNext } = proximoCumpleanos(emp.fecha_nacimiento!)
-                const birth = new Date(emp.fecha_nacimiento!)
-                const age = new Date().getFullYear() - birth.getFullYear() + (daysToNext === 0 ? 0 : 0)
-                let badgeColor = 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                if (daysToNext === 0) badgeColor = 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                else if (daysToNext <= 7) badgeColor = 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
-
-                return (
-                  <div key={emp.id} className={`p-6 border rounded-lg bg-white dark:bg-gray-800 hover:shadow-md transition ${daysToNext === 0 ? 'border-red-300 dark:border-red-700 ring-1 ring-red-200 dark:ring-red-900' : 'border-gray-200 dark:border-gray-700'}`}>
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
+        <div className="space-y-8">
+          {/* Cumpleaños próximos 30 días */}
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Heart size={18} className="text-red-400" /> Cumpleaños — próximos 30 días
+            </h2>
+            <div className="grid gap-4">
+              {cumpleanosMes.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">Sin cumpleaños en los próximos 30 días</div>
+              ) : (
+                cumpleanosMes.map((emp) => {
+                  const { days: daysToNext } = proximoCumpleanos(emp.fecha_nacimiento!)
+                  const birth = new Date(emp.fecha_nacimiento!)
+                  const age = new Date().getFullYear() - birth.getFullYear()
+                  let badgeColor = 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  if (daysToNext === 0) badgeColor = 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                  else if (daysToNext <= 7) badgeColor = 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                  return (
+                    <div key={emp.id} className={`p-5 border rounded-lg bg-white dark:bg-gray-800 hover:shadow-md transition ${daysToNext === 0 ? 'border-red-300 dark:border-red-700 ring-1 ring-red-200 dark:ring-red-900' : 'border-gray-200 dark:border-gray-700'}`}>
+                      <div className="flex justify-between items-center">
                         <div className="flex items-center gap-3">
-                          <Heart className={daysToNext === 0 ? 'text-red-500 animate-pulse' : 'text-red-400'} size={24} />
+                          <Heart className={daysToNext === 0 ? 'text-red-500 animate-pulse' : 'text-red-400'} size={20} />
                           <div>
-                            <h3 className="font-semibold text-lg text-gray-900 dark:text-white">{nombreEmpleado(emp)}</h3>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">{emp.dni_rut} · {emp.departamento?.nombre || 'Sin departamento'}</p>
-                            <p className="text-xs text-gray-400 dark:text-gray-500">{emp.puesto?.nombre || 'Sin puesto'}</p>
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{nombreEmpleado(emp)}</h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{emp.departamento?.nombre || 'Sin departamento'} · {emp.puesto?.nombre || 'Sin puesto'}</p>
                           </div>
                         </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-500 dark:text-gray-400">{format(birth, 'dd MMMM', { locale: es })} · {age} años</p>
+                          <span className={`inline-block mt-1 px-3 py-0.5 rounded-full text-xs font-medium ${badgeColor}`}>
+                            {daysToNext === 0 ? '🎂 ¡Hoy!' : `En ${daysToNext} día${daysToNext !== 1 ? 's' : ''}`}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {format(birth, 'dd MMMM', { locale: es })} · {age} años
-                        </p>
-                        <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm font-medium ${badgeColor}`}>
-                          {daysToNext === 0 ? '🎂 ¡Hoy!' : `En ${daysToNext} día${daysToNext !== 1 ? 's' : ''}`}
-                        </span>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Feriados próximos 60 días */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Calendar size={18} className="text-blue-500" /> Feriados — próximos 60 días
+              </h2>
+              {esRrhhAdmin && (
+                <button onClick={() => { setEditingFeriado(null); setFeriadoForm({ nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional' }); setShowFeriadoForm(true) }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                  <Plus size={14}/> Agregar feriado
+                </button>
+              )}
+            </div>
+
+            {/* Modal feriado */}
+            {showFeriadoForm && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-sm w-full p-6">
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+                    {editingFeriado ? 'Editar feriado' : 'Nuevo feriado'}
+                  </h2>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Nombre *</label>
+                      <input type="text" value={feriadoForm.nombre} onChange={e => setFeriadoForm({ ...feriadoForm, nombre: e.target.value })}
+                        placeholder="Ej: Día del trabajador"
+                        className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-white text-sm" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Fecha *</label>
+                        <input type="date" value={feriadoForm.fecha} onChange={e => setFeriadoForm({ ...feriadoForm, fecha: e.target.value })}
+                          className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-white text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Tipo</label>
+                        <select value={feriadoForm.tipo} onChange={e => setFeriadoForm({ ...feriadoForm, tipo: e.target.value })}
+                          className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-white text-sm">
+                          <option value="nacional">Nacional</option>
+                          <option value="provincial">Provincial</option>
+                          <option value="personalizado">Personalizado</option>
+                          <option value="no_laborable">No laborable</option>
+                        </select>
                       </div>
                     </div>
                   </div>
-                )
-              })
+                  <div className="flex gap-2 mt-4 justify-end">
+                    <button onClick={() => { setShowFeriadoForm(false); setEditingFeriado(null) }}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400">
+                      Cancelar
+                    </button>
+                    <button onClick={() => saveFeriado.mutate(feriadoForm)} disabled={saveFeriado.isPending}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+                      {editingFeriado ? 'Actualizar' : 'Agregar'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
+
+            <div className="space-y-2">
+              {feriados.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
+                  Sin feriados cargados para los próximos 60 días
+                  {esRrhhAdmin && <span className="block mt-1 text-xs">Usá "Agregar feriado" para registrar días no laborables</span>}
+                </div>
+              ) : (
+                feriados.map((f) => {
+                  const diasRestantes = differenceInDays(new Date(f.fecha + 'T00:00:00'), new Date(new Date().toDateString()))
+                  const tipoBadge: Record<string, string> = {
+                    nacional:      'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+                    provincial:    'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+                    personalizado: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
+                    no_laborable:  'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400',
+                  }
+                  return (
+                    <div key={f.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
+                      <div className="flex items-center gap-3">
+                        <Calendar size={16} className="text-blue-400 flex-shrink-0" />
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white text-sm">{f.nombre}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {format(new Date(f.fecha + 'T00:00:00'), "EEEE d 'de' MMMM", { locale: es })}
+                            {' · '}{diasRestantes === 0 ? '¡Hoy!' : `en ${diasRestantes} día${diasRestantes !== 1 ? 's' : ''}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipoBadge[f.tipo] ?? tipoBadge.personalizado}`}>{f.tipo}</span>
+                        {esRrhhAdmin && (
+                          <>
+                            <button title="Editar" onClick={() => { setEditingFeriado(f); setFeriadoForm({ nombre: f.nombre, fecha: f.fecha, tipo: f.tipo }); setShowFeriadoForm(true) }}
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800"><Edit size={14}/></button>
+                            <button title="Eliminar" onClick={() => { if (confirm('¿Eliminar feriado?')) deleteFeriado.mutate(f.id) }}
+                              className="text-red-500 hover:text-red-700"><Trash2 size={14}/></button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -3186,75 +3454,92 @@ export default function RrhhPage() {
             </div>
           )}
 
-          {/* Árbol organizacional — visible para todos */}
+          {/* Árbol organizacional genealógico */}
           <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <Network size={20} className="text-purple-500" /> Árbol Organizacional
             </h2>
             {(() => {
               const activos = empleados.filter((e) => e.activo)
+              if (activos.length === 0) return (
+                <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                  <Users2 size={40} className="mx-auto mb-3 opacity-40" />
+                  <p>No hay empleados activos</p>
+                </div>
+              )
+
               const bySup: Record<string, typeof activos> = {}
-              activos.forEach((e) => {
-                const key = e.supervisor_id ?? '__sin_supervisor__'
-                if (!bySup[key]) bySup[key] = []
-                bySup[key].push(e)
-              })
-              // Obtener nombre del supervisor desde cualquier empleado que lo tenga
               const supNombres: Record<string, string> = {}
               activos.forEach((e) => {
+                const key = e.supervisor_id ?? '__root__'
+                if (!bySup[key]) bySup[key] = []
+                bySup[key].push(e)
                 if (e.supervisor_id && e.supervisor?.nombre_display) {
                   supNombres[e.supervisor_id] = e.supervisor.nombre_display
                 }
               })
-              const supervisorIds = Object.keys(bySup).filter((k) => k !== '__sin_supervisor__')
+
+              const EmpNode = ({ emp }: { emp: typeof activos[0] }) => (
+                <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 shadow-sm min-w-[160px] max-w-[200px] hover:shadow-md transition-shadow">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center font-bold text-blue-600 dark:text-blue-400 text-xs flex-shrink-0">
+                    {(emp.nombre || emp.dni_rut)[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-900 dark:text-white truncate leading-tight">{nombreEmpleado(emp)}</p>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{emp.puesto?.nombre ?? emp.departamento?.nombre ?? emp.dni_rut}</p>
+                  </div>
+                </div>
+              )
+
+              const supervisorIds = Object.keys(bySup).filter(k => k !== '__root__')
+
               return (
-                <div className="space-y-4">
-                  {/* Sin supervisor */}
-                  {bySup['__sin_supervisor__']?.length > 0 && (
-                    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
-                      <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
-                        <Users2 size={14} /> Sin supervisor asignado
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {bySup['__sin_supervisor__'].map((emp) => (
-                          <div key={emp.id} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                            <div className="w-7 h-7 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300 flex-shrink-0">
-                              {(emp.nombre || emp.dni_rut)[0].toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{nombreEmpleado(emp)}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{emp.puesto?.nombre ?? emp.departamento?.nombre ?? emp.dni_rut}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {/* Por supervisor */}
+                <div className="space-y-8 overflow-x-auto pb-4">
+                  {/* Grupos con supervisor */}
                   {supervisorIds.map((supId) => (
-                    <div key={supId} className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
-                      <p className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-3 flex items-center gap-2">
-                        <UserCheck size={14} /> {supNombres[supId] ?? supId}
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pl-4 border-l-2 border-blue-200 dark:border-blue-700">
+                    <div key={supId} className="flex flex-col items-start">
+                      {/* Nodo supervisor */}
+                      <div className="flex items-center gap-3 bg-accent/5 dark:bg-accent/10 border-2 border-accent/30 rounded-xl px-4 py-3 shadow-sm ml-4">
+                        <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center font-bold text-accent text-sm flex-shrink-0">
+                          {supNombres[supId]?.[0]?.toUpperCase() ?? '?'}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">{supNombres[supId] ?? 'Supervisor'}</p>
+                          <p className="text-[11px] text-accent font-medium flex items-center gap-1"><UserCheck size={10}/>Supervisor</p>
+                        </div>
+                      </div>
+
+                      {/* Línea vertical desde supervisor */}
+                      <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 ml-9" />
+
+                      {/* Fila de empleados con conector */}
+                      <div className="relative flex flex-wrap gap-4 pt-0">
+                        {/* Línea horizontal superior (bracket) */}
+                        {bySup[supId].length > 1 && (
+                          <div className="absolute top-0 left-9 right-0 h-px bg-gray-300 dark:bg-gray-600" style={{ width: `calc(100% - 36px)` }} />
+                        )}
                         {bySup[supId].map((emp) => (
-                          <div key={emp.id} className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                            <div className="w-7 h-7 rounded-full bg-blue-200 dark:bg-blue-700 flex items-center justify-center text-xs font-bold text-blue-700 dark:text-blue-200 flex-shrink-0">
-                              {(emp.nombre || emp.dni_rut)[0].toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{nombreEmpleado(emp)}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{emp.puesto?.nombre ?? emp.departamento?.nombre ?? emp.dni_rut}</p>
-                            </div>
+                          <div key={emp.id} className="flex flex-col items-center">
+                            {/* Línea vertical conectora hacia la barra horizontal */}
+                            <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
+                            <EmpNode emp={emp} />
                           </div>
                         ))}
                       </div>
                     </div>
                   ))}
-                  {activos.length === 0 && (
-                    <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                      <Users2 size={40} className="mx-auto mb-3 opacity-40" />
-                      <p>No hay empleados activos</p>
+
+                  {/* Sin supervisor */}
+                  {bySup['__root__']?.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <Users2 size={12} /> Sin supervisor asignado
+                      </p>
+                      <div className="flex flex-wrap gap-3">
+                        {bySup['__root__'].map((emp) => (
+                          <EmpNode key={emp.id} emp={emp} />
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

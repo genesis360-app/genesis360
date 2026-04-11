@@ -35,6 +35,7 @@ const ImportarMasterPage  = lazy(() => import('@/pages/ImportarMasterPage'))
 const RrhhPage            = lazy(() => import('@/pages/RrhhPage'))
 const SucursalesPage      = lazy(() => import('@/pages/SucursalesPage'))
 const MiCuentaPage        = lazy(() => import('@/pages/MiCuentaPage'))
+const AyudaPage           = lazy(() => import('@/pages/AyudaPage'))
 
 // app.genesis360.pro → directo al login/dashboard (sin landing)
 // www.genesis360.pro  → muestra la landing
@@ -120,6 +121,7 @@ function App() {
                   <Route path="/usuarios" element={<UsuariosPage />} />
                   <Route path="/rrhh" element={<RrhhPage />} />
                   <Route path="/mi-cuenta" element={<MiCuentaPage />} />
+                  <Route path="/ayuda" element={<AyudaPage />} />
                   <Route path="/sucursales" element={<SucursalesPage />} />
                   <Route path="/configuracion" element={<ConfigPage />} />
                   <Route path="/grupos-estados" element={<Navigate to="/configuracion" replace />} />

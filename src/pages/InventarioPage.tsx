@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Zap, Camera,
-  MapPin, Tag, Settings2,
+  MapPin, Tag, Settings2, ExternalLink,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -49,6 +49,7 @@ function InfoTip({ text }: { text: string }) {
 
 export default function InventarioPage() {
   const { tenant, user } = useAuthStore()
+  const navigate = useNavigate()
   const { cotizacion: cotizacionNum } = useCotizacion()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
@@ -101,7 +102,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('movimientos_stock')
-        .select('*, productos(nombre,sku,unidad_medida), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie))')
+        .select('*, productos(nombre,sku,unidad_medida), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie)), ventas(numero)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -572,7 +573,17 @@ export default function InventarioPage() {
                         <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{m.cantidad}</td>
                         <td className="px-4 py-3 text-right text-gray-400 dark:text-gray-500 hidden md:table-cell">{m.stock_antes}</td>
                         <td className="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300 hidden md:table-cell">{m.stock_despues}</td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">{m.motivo ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">
+                          <span>{m.motivo ?? '—'}</span>
+                          {m.venta_id && (
+                            <button
+                              onClick={e => { e.stopPropagation(); navigate(`/ventas?id=${m.venta_id}`) }}
+                              className="ml-2 inline-flex items-center gap-0.5 text-accent hover:underline font-medium"
+                              title="Ver venta">
+                              <ExternalLink size={11} />#{m.ventas?.numero}
+                            </button>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-gray-300"><ChevronRight size={14} /></td>
                       </tr>
                     ))}
@@ -669,6 +680,17 @@ export default function InventarioPage() {
                         <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Motivo</p>
                         <p className="text-sm text-gray-700 dark:text-gray-300">{movDetalle.motivo ?? '—'}</p>
                       </div>
+                      {movDetalle.venta_id && (
+                        <div className="col-span-2">
+                          <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Venta origen</p>
+                          <button
+                            onClick={() => { setMovDetalle(null); navigate(`/ventas?id=${movDetalle.venta_id}`) }}
+                            className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
+                            <ExternalLink size={13} />
+                            Venta #{movDetalle.ventas?.numero ?? '—'}
+                          </button>
+                        </div>
+                      )}
                       {linea ? (
                         <>
                           {linea.ubicaciones?.nombre && (

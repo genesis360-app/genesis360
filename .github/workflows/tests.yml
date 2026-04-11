@@ -33,9 +33,11 @@ jobs:
     # Solo corre E2E si hay credenciales de test configuradas
     if: vars.RUN_E2E == 'true'
     env:
-      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
-      E2E_EMAIL:    ${{ secrets.E2E_EMAIL }}
-      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+      E2E_BASE_URL:      ${{ secrets.E2E_BASE_URL }}
+      E2E_EMAIL:         ${{ secrets.E2E_EMAIL }}
+      E2E_PASSWORD:      ${{ secrets.E2E_PASSWORD }}
+      E2E_CAJERO_EMAIL:  ${{ secrets.E2E_CAJERO_EMAIL }}
+      E2E_CAJERO_PASSWORD: ${{ secrets.E2E_CAJERO_PASSWORD }}
       # Supabase DEV para que la app se conecte correctamente
       VITE_SUPABASE_URL:      ${{ secrets.DEV_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.DEV_SUPABASE_ANON_KEY }}

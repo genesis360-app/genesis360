@@ -27,20 +27,38 @@ export default defineConfig({
   },
 
   projects: [
-    // Proyecto especial para autenticación (corre primero, genera session.json)
+    // ─── Auth setup projects (corren primero)
     {
-      name: 'setup',
-      testMatch: /.*\.setup\.ts/,
+      name: 'setup-owner',
+      testMatch: /auth\.setup\.ts/,
     },
-    // Tests principales, dependen de la sesión creada en setup
+    // Setup CAJERO — solo si las credenciales están disponibles
+    ...(process.env.E2E_CAJERO_EMAIL ? [{
+      name: 'setup-cajero',
+      testMatch: /auth\.cajero\.setup\.ts/,
+    }] : []),
+
+    // ─── Tests OWNER (main)
     {
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
         storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
       },
-      dependencies: ['setup'],
+      dependencies: ['setup-owner'],
+      testIgnore: /1[3-9]_rol_.*/,
     },
+
+    // ─── Tests CAJERO — solo si hay credenciales
+    ...(process.env.E2E_CAJERO_EMAIL ? [{
+      name: 'chromium-cajero',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: path.join(__dirname, 'tests/e2e/.auth/cajero_session.json'),
+      },
+      dependencies: ['setup-cajero'],
+      testMatch: /13_rol_cajero\.spec\.ts/,
+    }] : []),
   ],
 
   // Levanta el servidor de dev si no está corriendo (solo local)

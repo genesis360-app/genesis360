@@ -18,20 +18,20 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 
 const navItems = [
-  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas',       cajeroVisible: true },
-  { to: '/gastos',        icon: TrendingDown,    label: 'Gastos' },
-  { to: '/caja',          icon: DollarSign,      label: 'Caja',         cajeroVisible: true },
-  { to: '/productos',     icon: Package,         label: 'Productos' },
-  { to: '/inventario',    icon: Boxes,           label: 'Inventario' },
-  { to: '/clientes',      icon: Users,           label: 'Clientes',     cajeroVisible: true },
-  { to: '/alertas',       icon: Bell,            label: 'Alertas', badge: true },
-  { to: '/reportes',      icon: BarChart2,       label: 'Reportes',   planFeature: 'puede_reportes' },
-  { to: '/historial',     icon: ClipboardList,   label: 'Historial',  supervisorOnly: true, planFeature: 'puede_historial' },
-  { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',       ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
-  { to: '/sucursales',    icon: Building2,       label: 'Sucursales', ownerOnly: true },
-  { to: '/usuarios',      icon: Shield,          label: 'Usuarios',   ownerOnly: true },
-  { to: '/configuracion', icon: Settings,        label: 'Configuración', ownerOnly: true },
+  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',      modulo: 'dashboard' },
+  { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas',         modulo: 'ventas',        cajeroVisible: true },
+  { to: '/gastos',        icon: TrendingDown,    label: 'Gastos',         modulo: 'gastos' },
+  { to: '/caja',          icon: DollarSign,      label: 'Caja',           modulo: 'caja',          cajeroVisible: true },
+  { to: '/productos',     icon: Package,         label: 'Productos',      modulo: 'inventario' },
+  { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos' },
+  { to: '/clientes',      icon: Users,           label: 'Clientes',       modulo: 'clientes',      cajeroVisible: true },
+  { to: '/alertas',       icon: Bell,            label: 'Alertas',        modulo: 'alertas',       badge: true },
+  { to: '/reportes',      icon: BarChart2,       label: 'Reportes',       modulo: 'reportes',      planFeature: 'puede_reportes' },
+  { to: '/historial',     icon: ClipboardList,   label: 'Historial',      modulo: 'historial',     supervisorOnly: true, planFeature: 'puede_historial' },
+  { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',           modulo: 'rrhh',          ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
+  { to: '/sucursales',    icon: Building2,       label: 'Sucursales',     modulo: 'sucursales',    ownerOnly: true },
+  { to: '/usuarios',      icon: Shield,          label: 'Usuarios',       modulo: 'usuarios',      ownerOnly: true },
+  { to: '/configuracion', icon: Settings,        label: 'Configuración',  modulo: 'configuracion', ownerOnly: true },
 ]
 
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes']
@@ -68,15 +68,22 @@ export function AppLayout() {
   const { pathname } = useLocation()
   const { limits } = usePlanLimits()
 
-  // Restricción de rutas por rol
+  // Restricción de rutas por rol (y por permisos_custom si aplica)
   useEffect(() => {
     if (!user) return
     if (user.rol === 'RRHH' && !pathname.startsWith('/rrhh')) {
       navigate('/rrhh', { replace: true })
     } else if (user.rol === 'CAJERO' && !CAJERO_ALLOWED.some(r => pathname.startsWith(r))) {
       navigate('/ventas', { replace: true })
+    } else if (user.permisos_custom) {
+      // Custom role tiene mayor prioridad que el rol estándar
+      const currentItem = navItems.find(item => pathname.startsWith(item.to))
+      if (currentItem && user.permisos_custom[currentItem.modulo] === 'no_ver') {
+        const firstAllowed = navItems.find(item => user.permisos_custom![item.modulo] !== 'no_ver')
+        navigate(firstAllowed?.to ?? '/dashboard', { replace: true })
+      }
     }
-  }, [pathname, user?.rol])
+  }, [pathname, user?.rol, user?.permisos_custom])
   const { sucursalId, sucursales, setSucursal } = useSucursalFilter()
 
   // Abrir automáticamente la primera vez
@@ -92,8 +99,9 @@ export function AppLayout() {
       return (data ?? []).length > 0
     },
     enabled: !!tenant,
-    refetchInterval: 60000,
-    staleTime: 30000,
+    refetchInterval: 15000,
+    refetchOnWindowFocus: true,
+    staleTime: 10000,
   })
 
   const trialDaysLeft = tenant
@@ -157,11 +165,13 @@ export function AppLayout() {
 
         {/* Navegación */}
         <nav className={`flex-1 py-4 space-y-1 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-3'}`}>
-          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible }: any) => {
+          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible, modulo }: any) => {
             if (user?.rol === 'RRHH' && !rrhhVisible) return null
             if (user?.rol === 'CAJERO' && !cajeroVisible) return null
             if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN' && user?.rol !== 'RRHH') return null
             if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
+            // Custom role: no_ver oculta el ítem (mayor prioridad que el rol estándar)
+            if (user?.permisos_custom?.[modulo] === 'no_ver') return null
             const locked = planFeature && limits != null && !(limits as any)[planFeature]
             return (
               <NavLink

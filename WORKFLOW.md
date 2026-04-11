@@ -92,6 +92,10 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 033 | `033_inventario_lineas_notas.sql` | Fix: `notas TEXT` nullable en `inventario_lineas` (usada por devoluciones al crear línea en ubicación DEV) | ✅ | ✅ |
 | 034 | `034_caja_traspasos.sql` | Traspasos entre cajas: `es_caja_fuerte` en `cajas` + tabla `caja_traspasos` con RLS | ✅ | ✅ |
 | 035 | `035_users_avatar.sql` | Perfil: `users.avatar_url TEXT` + bucket `avatares` (public, 2 MB) con policies por usuario | ✅ | ✅ |
+| 036 | `036_roles_custom.sql` | Roles parametrizables: tabla `roles_custom` (nombre, permisos JSONB, activo) + `users.rol_custom_id` FK | ✅ | ⬜ |
+| 037 | `037_caja_arqueos_prep.sql` | Preparación arqueos: índices y ajustes previos | ✅ | ⬜ |
+| 038 | `038_movimientos_links.sql` | Trazabilidad: `venta_id` + `gasto_id` FK en `movimientos_stock` con ON DELETE SET NULL | ✅ | ⬜ |
+| 039 | `039_caja_arqueos.sql` | Arqueos: tabla `caja_arqueos` (saldo_calculado, saldo_real, diferencia GENERATED STORED, notas) con RLS | ✅ | ⬜ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -173,6 +177,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.61.0 ✅ | Ventas: "Despachada"→"Finalizada" · motivo cancelación bloque rojo · bloqueo producto sin precio · Caja: cierre monto obligatorio · ESC modal anidado fix · caja default por usuario (localStorage) · badges cajitas visuales | 2026-04 |
 | v0.62.0 ✅ | RRHH bug fix (joins en UPDATE) · SKU auto secuencial (SKU-XXXXX) · Clientes→link venta · Historial→modal detalle · Inventario bloqueo LPNs/series con reservas · Traspasos entre cajas (migration 034) · LPN multi-fuente en carrito (sort+reservas) · 141/141 tests | 2026-04 |
 | v0.63.0 ✅ | Mi Cuenta (/mi-cuenta): avatar upload+Google, plan, cambiar contraseña, salir/eliminar · Restricciones menú por rol (RRHH→solo RRHH, CAJERO→Ventas+Caja+Clientes) · Sueldo sugerido al crear empleado · Sidebar: bloque perfil circular bajo logo · Header: sin usuario/rol/negocio · SuscripcionPage: fix ícono light mode + flecha volver + auto-redirect post-pago MP · Migrations 034+035 PROD | 2026-04 |
+| v0.64.0 | Custom roles (permisos_custom sidebar + redirect) · Movimientos→link venta origen (migration 038) · Ticket cierre caja PDF auto-download · Arqueo parcial sin cerrar sesión (migration 039) · Marketplace toggle UI en ConfigPage · Fix useRecomendaciones link · E2E tests CAJERO + coherencia números · Migrations 036–039 DEV | 2026-04 |
 
 ---
 

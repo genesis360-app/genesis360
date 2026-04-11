@@ -1789,10 +1789,17 @@ export default function VentasPage() {
                     <span>−${descTotalMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-bold text-primary text-lg border-t border-gray-100 pt-2">
+                <div className="flex justify-between font-bold text-primary text-lg border-t border-gray-100 dark:border-gray-700 pt-2">
                   <span>Total</span>
                   <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
+                {/* IVA informativo (precio incluye IVA) */}
+                {total > 0 && (
+                  <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
+                    <span>IVA incluido (21%)</span>
+                    <span>${(total - total / 1.21).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                )}
 
                 {/* Estado de caja */}
                 {(() => {
@@ -1992,6 +1999,12 @@ export default function VentasPage() {
                 <span>Total</span>
                 <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
+              {(ventaDetalle.total ?? 0) > 0 && (
+                <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
+                  <span>IVA incluido (21%)</span>
+                  <span>${((ventaDetalle.total ?? 0) - (ventaDetalle.total ?? 0) / 1.21).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                </div>
+              )}
               {ventaDetalle.medio_pago && <p className="text-gray-500 dark:text-gray-400">Medio de pago: {formatMedioPago(ventaDetalle.medio_pago)}</p>}
               {/* Pago parcial en reserva */}
               {ventaDetalle.estado === 'reservada' && (() => {

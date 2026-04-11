@@ -4,8 +4,8 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
-  ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle,
-  Moon, Sun, LifeBuoy, Lock, CreditCard, Building2, User
+  ShoppingCart, DollarSign, TrendingDown, ClipboardList, HelpCircle,
+  Moon, Sun, LifeBuoy, Lock, Building2, User
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -254,17 +254,8 @@ export function AppLayout() {
             <Menu size={22} />
           </button>
 
-          {/* Sucursal / negocio + user info */}
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-primary dark:text-blue-400 leading-tight truncate">
-              {sucursalId
-                ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? tenant?.nombre)
-                : (tenant?.nombre ?? BRAND.name)}
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {user?.nombre_display}{user?.rol ? ` · ${user.rol.charAt(0) + user.rol.slice(1).toLowerCase()}` : ''}
-            </p>
-          </div>
+          {/* Spacer flexible */}
+          <div className="flex-1" />
 
           {/* Selector de sucursal — oculto en mobile, visible en desktop */}
           {sucursales.length > 0 && (

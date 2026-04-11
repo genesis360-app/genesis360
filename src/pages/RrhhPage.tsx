@@ -3454,75 +3454,92 @@ export default function RrhhPage() {
             </div>
           )}
 
-          {/* Árbol organizacional — visible para todos */}
+          {/* Árbol organizacional genealógico */}
           <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <Network size={20} className="text-purple-500" /> Árbol Organizacional
             </h2>
             {(() => {
               const activos = empleados.filter((e) => e.activo)
+              if (activos.length === 0) return (
+                <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                  <Users2 size={40} className="mx-auto mb-3 opacity-40" />
+                  <p>No hay empleados activos</p>
+                </div>
+              )
+
               const bySup: Record<string, typeof activos> = {}
-              activos.forEach((e) => {
-                const key = e.supervisor_id ?? '__sin_supervisor__'
-                if (!bySup[key]) bySup[key] = []
-                bySup[key].push(e)
-              })
-              // Obtener nombre del supervisor desde cualquier empleado que lo tenga
               const supNombres: Record<string, string> = {}
               activos.forEach((e) => {
+                const key = e.supervisor_id ?? '__root__'
+                if (!bySup[key]) bySup[key] = []
+                bySup[key].push(e)
                 if (e.supervisor_id && e.supervisor?.nombre_display) {
                   supNombres[e.supervisor_id] = e.supervisor.nombre_display
                 }
               })
-              const supervisorIds = Object.keys(bySup).filter((k) => k !== '__sin_supervisor__')
+
+              const EmpNode = ({ emp }: { emp: typeof activos[0] }) => (
+                <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 shadow-sm min-w-[160px] max-w-[200px] hover:shadow-md transition-shadow">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center font-bold text-blue-600 dark:text-blue-400 text-xs flex-shrink-0">
+                    {(emp.nombre || emp.dni_rut)[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-900 dark:text-white truncate leading-tight">{nombreEmpleado(emp)}</p>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{emp.puesto?.nombre ?? emp.departamento?.nombre ?? emp.dni_rut}</p>
+                  </div>
+                </div>
+              )
+
+              const supervisorIds = Object.keys(bySup).filter(k => k !== '__root__')
+
               return (
-                <div className="space-y-4">
-                  {/* Sin supervisor */}
-                  {bySup['__sin_supervisor__']?.length > 0 && (
-                    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
-                      <p className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
-                        <Users2 size={14} /> Sin supervisor asignado
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {bySup['__sin_supervisor__'].map((emp) => (
-                          <div key={emp.id} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                            <div className="w-7 h-7 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300 flex-shrink-0">
-                              {(emp.nombre || emp.dni_rut)[0].toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{nombreEmpleado(emp)}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{emp.puesto?.nombre ?? emp.departamento?.nombre ?? emp.dni_rut}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {/* Por supervisor */}
+                <div className="space-y-8 overflow-x-auto pb-4">
+                  {/* Grupos con supervisor */}
                   {supervisorIds.map((supId) => (
-                    <div key={supId} className="bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
-                      <p className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-3 flex items-center gap-2">
-                        <UserCheck size={14} /> {supNombres[supId] ?? supId}
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pl-4 border-l-2 border-blue-200 dark:border-blue-700">
+                    <div key={supId} className="flex flex-col items-start">
+                      {/* Nodo supervisor */}
+                      <div className="flex items-center gap-3 bg-accent/5 dark:bg-accent/10 border-2 border-accent/30 rounded-xl px-4 py-3 shadow-sm ml-4">
+                        <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center font-bold text-accent text-sm flex-shrink-0">
+                          {supNombres[supId]?.[0]?.toUpperCase() ?? '?'}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">{supNombres[supId] ?? 'Supervisor'}</p>
+                          <p className="text-[11px] text-accent font-medium flex items-center gap-1"><UserCheck size={10}/>Supervisor</p>
+                        </div>
+                      </div>
+
+                      {/* Línea vertical desde supervisor */}
+                      <div className="w-px h-5 bg-gray-300 dark:bg-gray-600 ml-9" />
+
+                      {/* Fila de empleados con conector */}
+                      <div className="relative flex flex-wrap gap-4 pt-0">
+                        {/* Línea horizontal superior (bracket) */}
+                        {bySup[supId].length > 1 && (
+                          <div className="absolute top-0 left-9 right-0 h-px bg-gray-300 dark:bg-gray-600" style={{ width: `calc(100% - 36px)` }} />
+                        )}
                         {bySup[supId].map((emp) => (
-                          <div key={emp.id} className="flex items-center gap-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                            <div className="w-7 h-7 rounded-full bg-blue-200 dark:bg-blue-700 flex items-center justify-center text-xs font-bold text-blue-700 dark:text-blue-200 flex-shrink-0">
-                              {(emp.nombre || emp.dni_rut)[0].toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{nombreEmpleado(emp)}</p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{emp.puesto?.nombre ?? emp.departamento?.nombre ?? emp.dni_rut}</p>
-                            </div>
+                          <div key={emp.id} className="flex flex-col items-center">
+                            {/* Línea vertical conectora hacia la barra horizontal */}
+                            <div className="w-px h-5 bg-gray-300 dark:bg-gray-600" />
+                            <EmpNode emp={emp} />
                           </div>
                         ))}
                       </div>
                     </div>
                   ))}
-                  {activos.length === 0 && (
-                    <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                      <Users2 size={40} className="mx-auto mb-3 opacity-40" />
-                      <p>No hay empleados activos</p>
+
+                  {/* Sin supervisor */}
+                  {bySup['__root__']?.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wide mb-3 flex items-center gap-2">
+                        <Users2 size={12} /> Sin supervisor asignado
+                      </p>
+                      <div className="flex flex-wrap gap-3">
+                        {bySup['__root__'].map((emp) => (
+                          <EmpNode key={emp.id} emp={emp} />
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

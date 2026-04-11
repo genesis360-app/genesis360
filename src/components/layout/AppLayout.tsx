@@ -283,10 +283,10 @@ export function AppLayout() {
             </button>
 
             {/* Ayuda */}
-            <a href="mailto:soporte@genesis360.pro" title="Centro de Soporte" className={`hidden sm:inline-flex items-center gap-1.5 ${headerBtnCls}`}>
+            <NavLink to="/ayuda" title="Centro de Soporte" className={`hidden sm:inline-flex items-center gap-1.5 ${headerBtnCls}`}>
               <LifeBuoy size={18} />
               <span className="text-sm font-medium hidden md:inline">Ayuda</span>
-            </a>
+            </NavLink>
 
             {/* Tour guiado — oculto en mobile */}
             <button onClick={() => setWalkthroughOpen(true)} title="Tour guiado" className={`hidden sm:inline-flex ${headerBtnCls}`}>

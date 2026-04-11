@@ -90,6 +90,8 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 031 | `031_producto_estructuras.sql` | WMS Fase 1: tabla `producto_estructuras` (niveles unidad/caja/pallet con peso y dimensiones) + partial unique index default | ✅ | ✅ |
 | 032 | `032_ubicaciones_dimensiones.sql` | WMS Fase 2: `tipo_ubicacion` + dimensiones físicas (`alto_cm`, `ancho_cm`, `largo_cm`, `peso_max_kg`, `capacidad_pallets`) en `ubicaciones` | ✅ | ✅ |
 | 033 | `033_inventario_lineas_notas.sql` | Fix: `notas TEXT` nullable en `inventario_lineas` (usada por devoluciones al crear línea en ubicación DEV) | ✅ | ✅ |
+| 034 | `034_caja_traspasos.sql` | Traspasos entre cajas: `es_caja_fuerte` en `cajas` + tabla `caja_traspasos` con RLS | ✅ | ⬜ |
+| 035 | `035_users_avatar.sql` | Perfil: `users.avatar_url TEXT` + bucket `avatares` (public, 2 MB) con policies por usuario | ✅ | ⬜ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero

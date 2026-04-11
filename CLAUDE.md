@@ -556,6 +556,37 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
+### v0.63.0 — en dev
+
+#### Restricciones de menú por rol
+- **Rol RRHH**: ve solo `/rrhh` en sidebar. Cualquier otra ruta → redirect a `/rrhh`. Flag `rrhhVisible: true` en navItem para bypass de `ownerOnly`.
+- **Rol CAJERO**: ve solo Ventas + Caja + Clientes. Cualquier otra ruta → redirect a `/ventas`. Flag `cajeroVisible: true` en navItems.
+- Implementado en `AppLayout.tsx`: `useLocation` + `useEffect` + flags por item. `CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes']`.
+
+#### Sueldo sugerido al crear empleado
+- `RrhhPage`: al seleccionar puesto en el form, si `salario_bruto` está vacío → autocompleta con `puesto.salario_base_sugerido`.
+- Las opciones del select muestran el salario al lado del nombre: `Repositor — $350.000`.
+
+#### Mi Cuenta (`/mi-cuenta`)
+- Nueva página accesible desde el bloque de perfil en el sidebar (debajo del logo).
+- **Avatar circular**: Google OAuth → `user_metadata.avatar_url` automático. Email/password → upload al bucket `avatares` (public, 2 MB, jpeg/png/webp). `authStore.loadUserData` resuelve el avatar y lo expone en `user.avatar_url`.
+- **Plan + estado**: muestra plan actual y `subscription_status` con link a `/suscripcion`.
+- **Cambio de contraseña**: solo email/password (no Google). `supabase.auth.updateUser({ password })`.
+- **Zona de riesgo** colapsable:
+  - Non-OWNER: "Salir del negocio" → `DELETE FROM users WHERE id = auth_user_id`. La cuenta de auth queda libre para otro tenant.
+  - OWNER: "Eliminar cuenta permanentemente" → requiere escribir el nombre del negocio + cancela el tenant.
+- Migration 035: `users.avatar_url TEXT` + bucket `avatares` + 4 policies (read/insert/update/delete por usuario).
+
+#### Sidebar + Header UX
+- Bloque de perfil (avatar + nombre + rol + tenant) justo debajo del logo → link a `/mi-cuenta`. Colapsado → solo avatar.
+- Pie del sidebar: eliminado botón "Mi Cuenta · Plan X" (redundante).
+- Header: eliminados nombre, rol y negocio (ya visibles en sidebar).
+
+#### SuscripcionPage fixes
+- **Ícono invisible en light mode**: `bg-white text-white` → `bg-accent text-white`.
+- **Flecha volver**: `← Volver` con `navigate(-1)` al tope. Elimina link del pie.
+- **Auto-redirect post-pago**: `useEffect` auto-dispara verificación cuando `status=approved`. Muestra spinner. Fix: `loadUserData` usaba `tenant.id` en lugar de `user.id`.
+
 ### v0.62.0 — en dev
 
 - **Bug RRHH UPDATE empleado**: `setFormData(emp)` cargaba joins (`puesto`, `departamento`, `supervisor`). Fix: destruturar y excluir antes de `.insert()` / `.update()` en `saveEmpleado.mutationFn`.

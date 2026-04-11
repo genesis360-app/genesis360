@@ -36,11 +36,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 	loadUserData: async (authUserId: string) => {
 	  console.log('loadUserData llamado con:', authUserId)
 	  try {
-		const { data: userData, error: userError } = await supabase
-		  .from('users')
-		  .select('*')
-		  .eq('id', authUserId)
-		  .single()
+		const [{ data: userData, error: userError }, { data: authData }] = await Promise.all([
+		  supabase.from('users').select('*').eq('id', authUserId).single(),
+		  supabase.auth.getUser(),
+		])
 
 		console.log('userData:', userData, 'error:', userError)
 
@@ -48,6 +47,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 		  set({ user: null, tenant: null, loading: false, initialized: true, needsOnboarding: true })
 		  return
 		}
+
+		// Resolver avatar: Google OAuth tiene avatar en user_metadata; email/password usa el subido por el usuario
+		const googleAvatar = authData?.user?.user_metadata?.avatar_url ?? null
+		const resolvedAvatar = userData.avatar_url ?? googleAvatar
 
 		const { data: tenantData, error: tenantError } = await supabase
 		  .from('tenants')
@@ -70,7 +73,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 		const validSucursalId = savedId && ids.includes(savedId) ? savedId : null
 
 		set({
-		  user: userData,
+		  user: { ...userData, avatar_url: resolvedAvatar },
 		  tenant: tenantData,
 		  sucursales: sucursalesData ?? [],
 		  sucursalId: validSucursalId,

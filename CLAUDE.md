@@ -556,15 +556,70 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
-### v0.61.0 — en DEV
+### v0.63.0 — en dev
+
+#### Restricciones de menú por rol
+- **Rol RRHH**: ve solo `/rrhh` en sidebar. Cualquier otra ruta → redirect a `/rrhh`. Flag `rrhhVisible: true` en navItem para bypass de `ownerOnly`.
+- **Rol CAJERO**: ve solo Ventas + Caja + Clientes. Cualquier otra ruta → redirect a `/ventas`. Flag `cajeroVisible: true` en navItems.
+- Implementado en `AppLayout.tsx`: `useLocation` + `useEffect` + flags por item. `CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes']`.
+
+#### Sueldo sugerido al crear empleado
+- `RrhhPage`: al seleccionar puesto en el form, si `salario_bruto` está vacío → autocompleta con `puesto.salario_base_sugerido`.
+- Las opciones del select muestran el salario al lado del nombre: `Repositor — $350.000`.
+
+#### Mi Cuenta (`/mi-cuenta`)
+- Nueva página accesible desde el bloque de perfil en el sidebar (debajo del logo).
+- **Avatar circular**: Google OAuth → `user_metadata.avatar_url` automático. Email/password → upload al bucket `avatares` (public, 2 MB, jpeg/png/webp). `authStore.loadUserData` resuelve el avatar y lo expone en `user.avatar_url`.
+- **Plan + estado**: muestra plan actual y `subscription_status` con link a `/suscripcion`.
+- **Cambio de contraseña**: solo email/password (no Google). `supabase.auth.updateUser({ password })`.
+- **Zona de riesgo** colapsable:
+  - Non-OWNER: "Salir del negocio" → `DELETE FROM users WHERE id = auth_user_id`. La cuenta de auth queda libre para otro tenant.
+  - OWNER: "Eliminar cuenta permanentemente" → requiere escribir el nombre del negocio + cancela el tenant.
+- Migration 035: `users.avatar_url TEXT` + bucket `avatares` + 4 policies (read/insert/update/delete por usuario).
+
+#### Sidebar + Header UX
+- Bloque de perfil (avatar + nombre + rol + tenant) justo debajo del logo → link a `/mi-cuenta`. Colapsado → solo avatar.
+- Pie del sidebar: eliminado botón "Mi Cuenta · Plan X" (redundante).
+- Header: eliminados nombre, rol y negocio (ya visibles en sidebar).
+
+#### SuscripcionPage fixes
+- **Ícono invisible en light mode**: `bg-white text-white` → `bg-accent text-white`.
+- **Flecha volver**: `← Volver` con `navigate(-1)` al tope. Elimina link del pie.
+- **Auto-redirect post-pago**: `useEffect` auto-dispara verificación cuando `status=approved`. Muestra spinner. Fix: `loadUserData` usaba `tenant.id` en lugar de `user.id`.
+
+### v0.62.0 — en dev
+
+- **Bug RRHH UPDATE empleado**: `setFormData(emp)` cargaba joins (`puesto`, `departamento`, `supervisor`). Fix: destruturar y excluir antes de `.insert()` / `.update()` en `saveEmpleado.mutationFn`.
+- **SKU automático secuencial**: si campo vacío al guardar → consulta `productos WHERE sku LIKE 'SKU-%'`, extrae MAX numérico, genera `SKU-XXXXX` (5 dígitos zero-padded). Lógica pura extraída a `src/lib/skuAuto.ts` → `calcularSiguienteSKU(skus: string[]): string`.
+- **Clientes → link venta**: botón `ExternalLink` en cada venta del historial del cliente → `navigate('/ventas?id={v.id}')`.
+- **Historial actividad → modal detalle**: filas clickeables (cursor-pointer + hover accent border). Click abre modal con: descripción, entidad, ID, acción, campo, valor anterior/nuevo, fecha, usuario, módulo.
+- **Inventario: bloqueo acciones con reservas**: botón `Settings2` en cada LPN deshabilitado si `cantidad_reservada > 0`. Tooltip descriptivo. Series con `reservado=true` ya tenían visual line-through desde v0.57.0.
+- **Traspasos entre cajas** (migration 034):
+  - `es_caja_fuerte BOOLEAN DEFAULT FALSE` en `cajas`.
+  - Tabla `caja_traspasos`: sesion_origen_id, sesion_destino_id, monto, concepto, usuario_id. RLS tenant.
+  - Query `sesionesAbiertasAll` (lazy, enabled solo cuando `showTraspaso`): devuelve sesiones abiertas con `cajas(nombre)`.
+  - Mutation `realizarTraspaso`: valida monto ≤ saldo; inserta egreso en origen + ingreso en destino + registro en `caja_traspasos`.
+  - Botón `ArrowRightLeft` visible solo cuando `cajasAbiertas.length >= 2`.
+- **LPN multi-fuente en carrito** (VentasPage):
+  - `CartItem` agrega `lineas_disponibles: LineaDisponible[]` (todas las líneas ordenadas por sort activo) y `lpn_fuentes: LpnFuente[]` (qué líneas cubren la cantidad actual).
+  - `agregarProducto`: pre-fetch de TODAS las líneas disponibles con `cantidad - cantidad_reservada > 0`; calcula fuentes iniciales (cantidad=1) con `calcularLpnFuentes()`.
+  - `updateItem`: al cambiar `cantidad`, recomputa `lpn_fuentes` y `linea_id` client-side desde `lineas_disponibles` (sin re-fetch).
+  - Cart JSX: badges múltiples `LPN-X (Nu)` (máx 3 + "+N más"). Si hay una sola fuente, muestra sin cantidad.
+  - Función pura `calcularLpnFuentes(lineas, cantidad)` en `src/lib/ventasValidation.ts`. Tipos: `LineaDisponible`, `LpnFuente`.
+- **Tests**: `tests/unit/skuAuto.test.ts` (8) + `tests/unit/lpnFuentes.test.ts` (21: 10 unitarios + 8 integración sort+fuentes). Total acumulado: **141/141**.
+
+### v0.61.0 ✅ PROD
 
 #### Ventas + Caja UX
 - **"Finalizada"**: `ESTADOS.despachada.label` → `'Finalizada'`. Botón historial → "Finalizar (rebaja stock)". Modal saldo → "Cobrar saldo y finalizar" + botón "Finalizar venta". Toast → "Venta finalizada". El valor en DB sigue siendo `'despachada'`.
 - **Motivo cancelación visible**: cuando `ventaDetalle.estado === 'cancelada'` el campo `notas` se muestra en un bloque rojo (`bg-red-50`) con título "Motivo de cancelación" en lugar del texto gris pequeño anterior.
 - **Bloqueo producto sin precio**: `agregarProducto()` valida `precio_venta > 0` antes de agregar al carrito — toast de error con nombre del producto.
 - **Cierre de caja con monto obligatorio**: campo "Conteo real" renombrado a obligatorio (`*`). Botón deshabilitado si está vacío. `mutationFn` lanza error si `montoRealCierre.trim() === ''`. `monto_real_cierre` y `diferencia_cierre` siempre se guardan al cerrar.
+- **ESC modal anidado**: `useModalKeyboard` de `ventaDetalle` desactivado cuando `saldoModal` está abierto — ESC solo cierra el hijo.
+- **Caja default por usuario**: `caja_preferida_${tenantId}_${userId}` en localStorage. Auto-selección al cargar. Botón "★ Predeterminar" guarda la selección actual.
+- **Badges cajitas**: pills visuales clickeables por caja — verde=abierta, gris=cerrada, accent=seleccionada.
 
-### v0.60.0 — en DEV
+### v0.60.0 ✅ PROD
 
 #### Mobile + Quick UX fixes
 - **Viewport mobile**: `maximum-scale=1.0, viewport-fit=cover` en `index.html` — previene zoom automático en iOS al enfocar inputs. `html, body { overflow-x: hidden }` en `index.css` — previene overflow horizontal.

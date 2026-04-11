@@ -11,7 +11,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, restaurarMediosPago, type EstadoVenta, type MedioPagoItem } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, restaurarMediosPago, calcularLpnFuentes, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial'
@@ -50,6 +50,8 @@ interface CartItem {
   regla_inventario?: string | null
   linea_id?: string
   lpn?: string
+  lineas_disponibles?: LineaDisponible[]   // todas las líneas ordenadas por sort activo
+  lpn_fuentes?: LpnFuente[]               // computed: qué líneas cubren la cantidad actual
   imagen_url?: string
   series_seleccionadas: string[]
   series_disponibles: any[]
@@ -353,9 +355,11 @@ export default function VentasPage() {
         )
     }
 
-    // Para productos sin series: pre-fetch primera línea disponible (LPN + linea_id)
+    // Para productos sin series: pre-fetch todas las líneas disponibles, calcular fuentes
     let primaryLpn: string | undefined
     let primaryLineaId: string | undefined
+    let lineasDisponibles: LineaDisponible[] = []
+    let lpnFuentes: LpnFuente[] = []
     if (!p.tiene_series) {
       const sortLineas = getRebajeSort(p.regla_inventario, tenant!.regla_inventario, p.tiene_vencimiento ?? false)
       const grupoActivo2 = ventaGrupoId === 'todos' ? null : ventaGrupoId ? grupos.find(g => g.id === ventaGrupoId) : grupoDefault
@@ -365,11 +369,18 @@ export default function VentasPage() {
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
       if (estadosFiltro2.length > 0) lq = lq.in('estado_id', estadosFiltro2)
       const { data: lineasRaw2 } = await lq
-      const sortedLineas = (lineasRaw2 ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
-      if (sortedLineas.length > 0) {
-        primaryLpn = (sortedLineas[0] as any).lpn
-        primaryLineaId = (sortedLineas[0] as any).id
-      }
+      const sortedLineas = (lineasRaw2 ?? [])
+        .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+        .sort(sortLineas)
+      lineasDisponibles = sortedLineas.map((l: any) => ({
+        id: l.id,
+        lpn: l.lpn ?? null,
+        cantidad: l.cantidad,
+        cantidad_reservada: l.cantidad_reservada ?? 0,
+      }))
+      lpnFuentes = calcularLpnFuentes(lineasDisponibles, 1)
+      primaryLineaId = lpnFuentes[0]?.linea_id
+      primaryLpn = lpnFuentes[0]?.lpn ?? undefined
     }
 
     const newItem: CartItem = {
@@ -386,6 +397,8 @@ export default function VentasPage() {
       regla_inventario: p.regla_inventario ?? null,
       linea_id: primaryLineaId,
       lpn: primaryLpn,
+      lineas_disponibles: lineasDisponibles,
+      lpn_fuentes: lpnFuentes,
       imagen_url: p.imagen_url,
       series_seleccionadas: [],
       series_disponibles: seriesDisp,
@@ -412,7 +425,19 @@ export default function VentasPage() {
   }
 
   const updateItem = (idx: number, field: keyof CartItem, value: any) => {
-    setCart(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item))
+    setCart(prev => prev.map((item, i) => {
+      if (i !== idx) return item
+      const updated = { ...item, [field]: value }
+      // Recomputa las fuentes de LPN cuando cambia la cantidad (solo non-series)
+      if (field === 'cantidad' && !item.tiene_series && item.lineas_disponibles) {
+        const nuevasCantidad = value as number
+        const fuentes = calcularLpnFuentes(item.lineas_disponibles, nuevasCantidad)
+        updated.lpn_fuentes = fuentes
+        updated.linea_id = fuentes[0]?.linea_id
+        updated.lpn = fuentes[0]?.lpn ?? undefined
+      }
+      return updated
+    }))
   }
 
   const removeItem = (idx: number) => setCart(prev => prev.filter((_, i) => i !== idx))
@@ -1433,10 +1458,17 @@ export default function VentasPage() {
                           <p className="font-medium text-gray-800 dark:text-gray-100">{item.nombre}</p>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">{item.sku}</span>
-                            {!item.tiene_series && item.lpn && (
-                              <span className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
-                                {item.lpn}
-                              </span>
+                            {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
+                              <>
+                                {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
+                                  <span key={fi} className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                                    {f.lpn ?? 'Sin LPN'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
+                                  </span>
+                                ))}
+                                {item.lpn_fuentes.length > 3 && (
+                                  <span className="text-xs text-gray-400 dark:text-gray-500">+{item.lpn_fuentes.length - 3} más</span>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -2353,8 +2385,17 @@ export default function VentasPage() {
                           S/N: {(item.series_seleccionadas as string[]).join(', ')}
                         </p>
                       )}
-                      {!item.tiene_series && item.lpn && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5">LPN: {item.lpn}</p>
+                      {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {item.lpn_fuentes.slice(0, 3).map((f: LpnFuente, fi: number) => (
+                            <span key={fi} className="text-xs text-blue-600 dark:text-blue-400 font-mono">
+                              LPN: {f.lpn ?? '—'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
+                            </span>
+                          ))}
+                          {item.lpn_fuentes.length > 3 && (
+                            <span className="text-xs text-gray-400 dark:text-gray-500">+{item.lpn_fuentes.length - 3} más</span>
+                          )}
+                        </div>
                       )}
                     </div>
                     <div className="text-right whitespace-nowrap">

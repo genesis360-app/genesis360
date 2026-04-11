@@ -488,9 +488,11 @@ export default function RrhhPage() {
   const saveEmpleado = useMutation({
     mutationFn: async (data: Partial<Empleado>) => {
       if (formMode === 'crear') {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { puesto, departamento, supervisor, ...campos } = data as any
         const { error } = await supabase.from('empleados').insert({
           tenant_id: tenant!.id,
-          ...data,
+          ...campos,
         })
         if (error) throw error
         logActividad({
@@ -501,9 +503,11 @@ export default function RrhhPage() {
           pagina: '/rrhh',
         })
       } else if (selectedEmpleado) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { puesto, departamento, supervisor, ...campos } = data as any
         const { error } = await supabase
           .from('empleados')
-          .update(data)
+          .update(campos)
           .eq('id', selectedEmpleado.id)
         if (error) throw error
         logActividad({
@@ -1394,13 +1398,21 @@ export default function RrhhPage() {
 
                   <select
                     value={formData.puesto_id ?? ''}
-                    onChange={(e) => setFormData({ ...formData, puesto_id: e.target.value || null })}
+                    onChange={(e) => {
+                      const puestoId = e.target.value || null
+                      const puestoSel = puestos.find(p => p.id === puestoId)
+                      const updates: Partial<typeof formData> = { puesto_id: puestoId }
+                      if (puestoSel?.salario_base_sugerido && !formData.salario_bruto) {
+                        updates.salario_bruto = puestoSel.salario_base_sugerido
+                      }
+                      setFormData({ ...formData, ...updates })
+                    }}
                     className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   >
                     <option value="">Selecciona puesto...</option>
                     {puestos.filter((p) => p.activo).map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.nombre}
+                        {p.nombre}{p.salario_base_sugerido ? ` — $${p.salario_base_sugerido.toLocaleString('es-AR')}` : ''}
                       </option>
                     ))}
                   </select>

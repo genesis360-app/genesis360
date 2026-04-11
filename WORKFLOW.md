@@ -90,6 +90,8 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 031 | `031_producto_estructuras.sql` | WMS Fase 1: tabla `producto_estructuras` (niveles unidad/caja/pallet con peso y dimensiones) + partial unique index default | ✅ | ✅ |
 | 032 | `032_ubicaciones_dimensiones.sql` | WMS Fase 2: `tipo_ubicacion` + dimensiones físicas (`alto_cm`, `ancho_cm`, `largo_cm`, `peso_max_kg`, `capacidad_pallets`) en `ubicaciones` | ✅ | ✅ |
 | 033 | `033_inventario_lineas_notas.sql` | Fix: `notas TEXT` nullable en `inventario_lineas` (usada por devoluciones al crear línea en ubicación DEV) | ✅ | ✅ |
+| 034 | `034_caja_traspasos.sql` | Traspasos entre cajas: `es_caja_fuerte` en `cajas` + tabla `caja_traspasos` con RLS | ✅ | ⬜ |
+| 035 | `035_users_avatar.sql` | Perfil: `users.avatar_url TEXT` + bucket `avatares` (public, 2 MB) con policies por usuario | ✅ | ⬜ |
 
 ### NUNCA
 - ❌ Modificar tablas directamente en PROD sin pasar por DEV primero
@@ -167,8 +169,9 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.59.0 ✅ | WMS Fase 2 (migration 032): tipo_ubicacion + dimensiones físicas (alto/ancho/largo/peso_max/capacidad_pallets) en ubicaciones · ConfigPage: sección colapsable "Dimensiones WMS" en edición, badge tipo + medidas en lista · Fix APP_VERSION v0.58.0 omitido | 2026-04 |
 | v0.59.1 ✅ | Fix devoluciones (migration 033): notas TEXT en inventario_lineas — columna faltante que bloqueaba confirmar devolución de no serializado | 2026-04 |
 | v0.59.2 ✅ | Fixes devoluciones: estado 'devuelta' automático cuando totalDevuelto >= venta.total (badge naranja, botón Devolver oculto) · rollback manual si falla post-INSERT header (evita registros huérfanos) | 2026-04 |
-| v0.60.0 | Mobile: maximum-scale=1 + overflow-x hidden · Inventario/LPNs tabla responsive (overflow-x-auto min-w-640) · Sidebar: Inventario→Boxes, RRHH→Briefcase, Usuarios→Shield · Caja: quita botón Egreso · SuscripcionPage: bg-white/10 (Plan Básico legible) · useAlertas badge alineado con totalAlertas (4 categorías) | 2026-04 |
-| v0.61.0 | Ventas: "Despachada"→"Finalizada" (label, badges, botones, toast) · motivo cancelación en bloque rojo destacado · bloqueo producto sin precio al agregar al carrito · Caja: cierre requiere monto contado obligatorio | 2026-04 |
+| v0.60.0 ✅ | Mobile: maximum-scale=1 + overflow-x hidden · Inventario/LPNs tabla responsive (overflow-x-auto min-w-640) · Sidebar: Inventario→Boxes, RRHH→Briefcase, Usuarios→Shield · Caja: quita botón Egreso · SuscripcionPage: bg-white/10 (Plan Básico legible) · useAlertas badge alineado con totalAlertas (4 categorías) | 2026-04 |
+| v0.61.0 ✅ | Ventas: "Despachada"→"Finalizada" · motivo cancelación bloque rojo · bloqueo producto sin precio · Caja: cierre monto obligatorio · ESC modal anidado fix · caja default por usuario (localStorage) · badges cajitas visuales | 2026-04 |
+| v0.62.0 — dev | RRHH bug fix (joins en UPDATE) · SKU auto secuencial (SKU-XXXXX) · Clientes→link venta · Historial→modal detalle · Inventario bloqueo LPNs/series con reservas · Traspasos entre cajas (migration 034) · LPN multi-fuente en carrito (sort+reservas) · 141/141 tests | 2026-04 |
 
 ---
 

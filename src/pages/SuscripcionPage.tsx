@@ -1,18 +1,19 @@
-import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { BRAND, PLANES, ADDON_MOVIMIENTOS, MP_PLAN_IDS } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import {
   Package, Check, X, CheckCircle, XCircle, Clock,
-  ArrowRight, Shield, RefreshCw, Zap, AlertTriangle,
+  ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 
 export default function SuscripcionPage() {
-  const { tenant, loadUserData } = useAuthStore()
+  const { tenant, user, loadUserData } = useAuthStore()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
   const [loadingAddon, setLoadingAddon] = useState(false)
@@ -22,6 +23,14 @@ export default function SuscripcionPage() {
   const status = searchParams.get('status')
   const paymentType = searchParams.get('type') // 'addon' | null (suscripción)
   const preapprovalId = searchParams.get('preapproval_id')
+  const esAddon = paymentType === 'addon'
+
+  // Auto-verificar y redirigir al dashboard cuando MP redirige con status=approved
+  useEffect(() => {
+    if (status === 'approved' && !esAddon) {
+      handleVerificarPago()
+    }
+  }, [status])
 
   const handleSuscribir = (planId: string, mpPlanId: string) => {
     if (!mpPlanId) { toast.error('Plan no configurado'); return }
@@ -35,13 +44,11 @@ export default function SuscripcionPage() {
     if (!tenant) return
     setLoading('verificando')
     try {
-      // El webhook de MP debería haber activado el tenant automáticamente via external_reference.
-      // Recargamos los datos del usuario para reflejar el estado actualizado.
-      await loadUserData(tenant.id)
-      // Si el webhook ya actuó, el status será 'active'
+      // Consultar estado actual del tenant (el webhook MP puede haber actuado ya)
       const { data } = await supabase.from('tenants').select('subscription_status').eq('id', tenant.id).single()
       if (data?.subscription_status === 'active') {
         toast.success('¡Suscripción activada!')
+        if (user?.id) await loadUserData(user.id)
         window.location.href = '/dashboard'
         return
       }
@@ -51,7 +58,6 @@ export default function SuscripcionPage() {
           subscription_status: 'active',
           mp_subscription_id: preapprovalId,
         }).eq('id', tenant.id)
-        await loadUserData(tenant.id)
         toast.success('¡Suscripción activada!')
         window.location.href = '/dashboard'
       } else {
@@ -60,7 +66,6 @@ export default function SuscripcionPage() {
       }
     } catch {
       toast.error('Error al verificar el pago. Contactá soporte.')
-    } finally {
       setLoading(null)
     }
   }
@@ -81,7 +86,6 @@ export default function SuscripcionPage() {
 
   // Pantalla de resultado de pago
   if (status) {
-    const esAddon = paymentType === 'addon'
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary to-accent flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
@@ -102,13 +106,15 @@ export default function SuscripcionPage() {
               <>
                 <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Pago aprobado!</h1>
-                <p className="text-gray-500 dark:text-gray-400 mb-6">Tu suscripción está siendo procesada. En unos segundos tu cuenta quedará activa.</p>
-                <button onClick={handleVerificarPago} disabled={loading === 'verificando'}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+                <p className="text-gray-500 dark:text-gray-400 mb-6">
                   {loading === 'verificando'
-                    ? <><RefreshCw size={16} className="animate-spin" /> Verificando...</>
-                    : <><CheckCircle size={16} /> Ir al dashboard</>}
-                </button>
+                    ? 'Activando tu cuenta...'
+                    : 'Tu suscripción se activó correctamente.'}
+                </p>
+                <div className="flex items-center justify-center gap-2 text-accent font-medium">
+                  <RefreshCw size={16} className="animate-spin" />
+                  <span>Redirigiendo al dashboard...</span>
+                </div>
               </>
             )
           ) : status === 'pending' ? (
@@ -138,9 +144,19 @@ export default function SuscripcionPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-primary to-accent">
+      {/* Flecha volver */}
+      <div className="px-4 pt-5 max-w-5xl mx-auto">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-blue-300 hover:text-white transition-colors text-sm font-medium"
+        >
+          <ArrowLeft size={16} /> Volver
+        </button>
+      </div>
+
       {/* Header */}
-      <div className="text-center pt-12 pb-8 px-4">
-        <div className="inline-flex items-center justify-center w-14 h-14 bg-white dark:bg-gray-800/10 rounded-2xl mb-4">
+      <div className="text-center pt-6 pb-8 px-4">
+        <div className="inline-flex items-center justify-center w-14 h-14 bg-accent rounded-2xl mb-4">
           <Package size={28} className="text-white" />
         </div>
         <h1 className="text-3xl font-bold text-white mb-2">
@@ -307,13 +323,6 @@ export default function SuscripcionPage() {
           <span className="flex items-center gap-2"><Check size={16} /> Sin costos ocultos</span>
         </div>
 
-        {tenant && (
-          <div className="text-center mt-6">
-            <Link to="/dashboard" className="text-blue-300 text-sm hover:text-white transition-colors">
-              Volver al dashboard →
-            </Link>
-          </div>
-        )}
       </div>
     </div>
   )

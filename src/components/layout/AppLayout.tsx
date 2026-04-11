@@ -1,11 +1,11 @@
 import { BRAND, APP_VERSION } from '@/config/brand'
 import { useState, useEffect } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, LogOut, Menu, X, ChevronRight, ChevronLeft,
-  ShoppingCart, DollarSign, Zap, TrendingDown, ClipboardList, HelpCircle,
-  Moon, Sun, LifeBuoy, Lock, CreditCard, Building2
+  ShoppingCart, DollarSign, TrendingDown, ClipboardList, HelpCircle,
+  Moon, Sun, LifeBuoy, Lock, Building2, User
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -19,20 +19,22 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 
 const navItems = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas' },
+  { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas',       cajeroVisible: true },
   { to: '/gastos',        icon: TrendingDown,    label: 'Gastos' },
-  { to: '/caja',          icon: DollarSign,      label: 'Caja' },
+  { to: '/caja',          icon: DollarSign,      label: 'Caja',         cajeroVisible: true },
   { to: '/productos',     icon: Package,         label: 'Productos' },
   { to: '/inventario',    icon: Boxes,           label: 'Inventario' },
-  { to: '/clientes',      icon: Users,           label: 'Clientes' },
+  { to: '/clientes',      icon: Users,           label: 'Clientes',     cajeroVisible: true },
   { to: '/alertas',       icon: Bell,            label: 'Alertas', badge: true },
   { to: '/reportes',      icon: BarChart2,       label: 'Reportes',   planFeature: 'puede_reportes' },
   { to: '/historial',     icon: ClipboardList,   label: 'Historial',  supervisorOnly: true, planFeature: 'puede_historial' },
-  { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',       ownerOnly: true, planFeature: 'puede_rrhh' },
+  { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',       ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
   { to: '/sucursales',    icon: Building2,       label: 'Sucursales', ownerOnly: true },
   { to: '/usuarios',      icon: Shield,          label: 'Usuarios',   ownerOnly: true },
   { to: '/configuracion', icon: Settings,        label: 'Configuración', ownerOnly: true },
 ]
+
+const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes']
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -63,7 +65,18 @@ export function AppLayout() {
   const { count: alertCount } = useAlertas()
   const { visto } = useWalkthrough()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const { limits } = usePlanLimits()
+
+  // Restricción de rutas por rol
+  useEffect(() => {
+    if (!user) return
+    if (user.rol === 'RRHH' && !pathname.startsWith('/rrhh')) {
+      navigate('/rrhh', { replace: true })
+    } else if (user.rol === 'CAJERO' && !CAJERO_ALLOWED.some(r => pathname.startsWith(r))) {
+      navigate('/ventas', { replace: true })
+    }
+  }, [pathname, user?.rol])
   const { sucursalId, sucursales, setSucursal } = useSucursalFilter()
 
   // Abrir automáticamente la primera vez
@@ -116,18 +129,38 @@ export function AppLayout() {
           )}
         </div>
 
-        {/* Nombre del negocio */}
-        {!collapsed && (
-          <div className="px-6 py-3 border-b border-accent/20">
-            <p className="text-accent text-xs font-medium uppercase tracking-wider">Negocio</p>
-            <p className="text-white text-sm font-semibold truncate">{tenant?.nombre}</p>
-          </div>
-        )}
+        {/* Perfil de usuario */}
+        <NavLink
+          to="/mi-cuenta"
+          title={collapsed ? `${user?.nombre_display} — Mi Cuenta` : undefined}
+          className={({ isActive }) =>
+            `flex items-center border-b border-accent/20 transition-colors hover:bg-accent/20
+            ${collapsed ? 'justify-center px-2 py-3' : 'gap-3 px-4 py-3'}
+            ${isActive ? 'bg-accent/30' : ''}`
+          }
+        >
+          {/* Avatar circular */}
+          {user?.avatar_url ? (
+            <img src={user.avatar_url} alt="Avatar" className="w-9 h-9 rounded-full object-cover border-2 border-accent/40 flex-shrink-0" />
+          ) : (
+            <div className="w-9 h-9 rounded-full bg-accent/30 flex items-center justify-center flex-shrink-0 border-2 border-accent/40">
+              <User size={16} className="text-white" />
+            </div>
+          )}
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="text-white text-sm font-semibold leading-tight truncate">{user?.nombre_display ?? 'Mi Cuenta'}</p>
+              <p className="text-blue-300/70 text-[10px] leading-tight truncate">{user?.rol?.charAt(0) + (user?.rol?.slice(1).toLowerCase() ?? '')} · {tenant?.nombre}</p>
+            </div>
+          )}
+        </NavLink>
 
         {/* Navegación */}
         <nav className={`flex-1 py-4 space-y-1 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-3'}`}>
-          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature }: any) => {
-            if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN') return null
+          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible }: any) => {
+            if (user?.rol === 'RRHH' && !rrhhVisible) return null
+            if (user?.rol === 'CAJERO' && !cajeroVisible) return null
+            if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN' && user?.rol !== 'RRHH') return null
             if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
             const locked = planFeature && limits != null && !(limits as any)[planFeature]
             return (
@@ -172,28 +205,6 @@ export function AppLayout() {
           })}
         </nav>
 
-        {/* Mi Plan */}
-        <div className={`border-t border-accent/20 ${collapsed ? 'px-1.5 py-2' : 'px-3 py-2'}`}>
-          <NavLink
-            to="/suscripcion"
-            title={collapsed ? `Plan ${limits?.plan_id ?? ''}` : undefined}
-            className={({ isActive }) =>
-              `flex items-center rounded-lg text-xs font-medium transition-all
-              ${collapsed ? 'justify-center px-2 py-2' : 'gap-2 px-3 py-2'}
-              ${isActive ? 'bg-accent text-white' : 'text-blue-200 hover:bg-accent/30 hover:text-white'}`
-            }
-          >
-            <CreditCard size={15} className="flex-shrink-0" />
-            {!collapsed && (
-              <>
-                <span className="flex-1 truncate capitalize">
-                  Plan {limits?.plan_id === 'basico' ? 'Básico' : limits?.plan_id === 'pro' ? 'Pro' : limits?.plan_id === 'enterprise' ? 'Enterprise' : 'Free'}
-                </span>
-                <ChevronRight size={12} className="opacity-60" />
-              </>
-            )}
-          </NavLink>
-        </div>
 
         {/* Cotización USD */}
         {!collapsed && <CotizacionWidget />}
@@ -243,17 +254,8 @@ export function AppLayout() {
             <Menu size={22} />
           </button>
 
-          {/* Sucursal / negocio + user info */}
-          <div className="flex-1 min-w-0">
-            <p className="font-bold text-primary dark:text-blue-400 leading-tight truncate">
-              {sucursalId
-                ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? tenant?.nombre)
-                : (tenant?.nombre ?? BRAND.name)}
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-              {user?.nombre_display}{user?.rol ? ` · ${user.rol.charAt(0) + user.rol.slice(1).toLowerCase()}` : ''}
-            </p>
-          </div>
+          {/* Spacer flexible */}
+          <div className="flex-1" />
 
           {/* Selector de sucursal — oculto en mobile, visible en desktop */}
           {sucursales.length > 0 && (

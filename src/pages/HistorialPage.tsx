@@ -91,6 +91,7 @@ export default function HistorialPage() {
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VACIOS)
   const [page, setPage] = useState(0)
   const [showFiltros, setShowFiltros] = useState(false)
+  const [selectedLog, setSelectedLog] = useState<any>(null)
 
   // Rol check
   const puedeVer = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
@@ -273,7 +274,9 @@ export default function HistorialPage() {
                   const accionInfo = ACCION_LABELS[log.accion] ?? { label: log.accion, color: 'text-gray-700 dark:text-gray-300', bg: 'bg-gray-100 dark:bg-gray-700' }
                   const EntidadIcon = ENTIDAD_ICONS[log.entidad] ?? ClipboardList
                   return (
-                    <div key={log.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 p-3.5 hover:shadow-sm transition-shadow">
+                    <div key={log.id}
+                      onClick={() => setSelectedLog(log)}
+                      className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-3.5 hover:shadow-sm hover:border-accent/30 transition-all cursor-pointer">
                       <div className="flex items-start gap-3">
                         <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 mt-0.5">
                           <EntidadIcon size={15} className="text-gray-500 dark:text-gray-400" />
@@ -294,9 +297,12 @@ export default function HistorialPage() {
                             )}
                           </div>
                         </div>
-                        <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
-                          {format(parseISO(log.created_at), 'HH:mm')}
-                        </span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs text-gray-400 dark:text-gray-500">
+                            {format(parseISO(log.created_at), 'HH:mm')}
+                          </span>
+                          <ChevronRight size={14} className="text-gray-300 dark:text-gray-600" />
+                        </div>
                       </div>
                     </div>
                   )
@@ -321,6 +327,61 @@ export default function HistorialPage() {
           </button>
         </div>
       )}
+
+      {/* Modal detalle */}
+      {selectedLog && (() => {
+        const log = selectedLog
+        const accionInfo = ACCION_LABELS[log.accion] ?? { label: log.accion, color: 'text-gray-700 dark:text-gray-300', bg: 'bg-gray-100 dark:bg-gray-700' }
+        const EntidadIcon = ENTIDAD_ICONS[log.entidad] ?? ClipboardList
+        const rows: { label: string; value: string }[] = [
+          { label: 'Entidad', value: ENTIDAD_LABELS[log.entidad] ?? log.entidad },
+          ...(log.entidad_nombre ? [{ label: 'Nombre', value: log.entidad_nombre }] : []),
+          ...(log.entidad_id ? [{ label: 'ID', value: log.entidad_id }] : []),
+          { label: 'Acción', value: accionInfo.label },
+          ...(log.campo ? [{ label: 'Campo', value: log.campo }] : []),
+          ...(log.valor_anterior ? [{ label: 'Valor anterior', value: log.valor_anterior }] : []),
+          ...(log.valor_nuevo ? [{ label: 'Valor nuevo', value: log.valor_nuevo }] : []),
+          { label: 'Fecha', value: format(parseISO(log.created_at), "dd/MM/yyyy 'a las' HH:mm:ss", { locale: es }) },
+          ...(log.usuario_nombre ? [{ label: 'Usuario', value: log.usuario_nombre }] : []),
+          ...(log.pagina ? [{ label: 'Módulo', value: log.pagina }] : []),
+        ]
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedLog(null)}>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+                    <EntidadIcon size={16} className="text-gray-500 dark:text-gray-400" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-white text-sm">Detalle del registro</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{log.id?.slice(0, 8)}…</p>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedLog(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 transition-colors">
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-5">
+                <p className="text-sm text-gray-700 dark:text-gray-200 mb-4 leading-relaxed">{describir(log)}</p>
+                <div className="space-y-2">
+                  {rows.map(r => (
+                    <div key={r.label} className="flex items-start gap-2">
+                      <span className="text-xs font-medium text-gray-400 dark:text-gray-500 w-28 flex-shrink-0 pt-0.5">{r.label}</span>
+                      <span className="text-xs text-gray-700 dark:text-gray-200 font-mono break-all">{r.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="px-5 pb-5">
+                <span className={`text-xs font-medium px-3 py-1 rounded-full ${accionInfo.bg} ${accionInfo.color}`}>
+                  {accionInfo.label}
+                </span>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

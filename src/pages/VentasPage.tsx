@@ -122,7 +122,8 @@ export default function VentasPage() {
       return data ?? []
     },
     enabled: !!tenant,
-    refetchInterval: 60_000,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   })
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
   const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
@@ -739,6 +740,7 @@ export default function VentasPage() {
               stock_despues: stockDespues,
               motivo: `Venta #${venta.numero}`,
               usuario_id: user?.id,
+              venta_id: venta.id,
             })
             // Alerta de stock bajo (fire-and-forget)
             if (stockDespues <= (prodData.stock_minimo ?? 0)) {
@@ -1037,6 +1039,7 @@ export default function VentasPage() {
               motivo: `Devolución venta #${devolucionVenta.numero}`,
               usuario_id: user?.id,
               linea_id: linea.id,
+              venta_id: devolucionVenta.id,
             })
           }
           // Insertar devolucion_item con referencia a la nueva linea
@@ -1198,6 +1201,7 @@ export default function VentasPage() {
               stock_despues: stockDespues,
               motivo: `Venta #${venta.numero}`,
               usuario_id: user?.id,
+              venta_id: ventaId,
             })
           }
         }

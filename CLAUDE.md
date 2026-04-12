@@ -402,8 +402,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] EF marketplace-api: GET público con rate limiting (PROD ✅)
 - [x] EF marketplace-webhook: notificación externa (PROD ✅)
 - [x] UI ProductoFormPage: sección colapsable (solo si marketplace_activo)
-- [ ] Activar por tenant: `UPDATE tenants SET marketplace_activo = true WHERE id = '...'`
-- [ ] Deploy EFs con Supabase CLI
+- [x] Toggle marketplace_activo desde ConfigPage → Negocio (v0.64.0) — ya no requiere SQL
 
 ### Multi-sucursal (v0.42.0 ✅ PROD)
 - [x] Migration 025: `sucursales` + `sucursal_id` nullable en 6 tablas operativas (DEV ✅, PROD ✅)
@@ -698,13 +697,19 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - Guías interactivas: primera versión paso a paso; objetivo final = tour animado con mouse guiado.
 - Guías sugeridas: "Crear tu primer producto" · "Gestionar una venta de principio a fin" · "Proceso de recepción de mercadería" · "Configurar tu primera caja" · "Armar tu equipo de usuarios".
 
-### KITs / Kitting (plan aprobado, backlog WMS)
-- Proceso de kitting: N productos existentes → 1 nuevo SKU compuesto (KIT).
-- Tabla `kit_recetas` (kit_producto_id, componente_producto_id, cantidad).
-- Movimiento tipo `kitting`: rebaje de componentes + ingreso del KIT en una operación.
-- Desarmado inverso disponible.
-- Se considera parte del WMS (entre Fase 2 y Fase 3).
-- Pendiente decidir: ¿un KIT tiene precio propio y se puede vender directamente?
+### KITs / Kitting (WMS Fase 2.5 — migration 040, v0.65.0 DEV)
+- **Tablas**: `kit_recetas` (kit_producto_id, comp_producto_id, cantidad) + `kitting_log` (auditoria de armados).
+- **`productos.es_kit BOOLEAN`**: toggle en ProductoFormPage sección atributos.
+- **Movimiento tipo `kitting`**: CHECK constraint ampliado en `movimientos_stock.tipo`.
+- **Tab "Kits" en InventarioPage**: CRUD de recetas por KIT, preview "puede armar: N" según stock mínimo de componentes, modal ejecutar kitting con consumo en tiempo real + validación stock insuficiente.
+- **Desarmado inverso**: pendiente (backlog largo plazo).
+- **KIT como producto de venta**: pendiente decidir — el SKU existe y puede venderse, pero el precio/stock se gestiona igual que cualquier producto.
+
+### v0.65.0 — en DEV (pendiente deploy a PROD)
+- ✅ E2E tests rol SUPERVISOR: `auth.supervisor.setup.ts` + `15_rol_supervisor.spec.ts`
+- ✅ Fix sync multi-dispositivo caja: `refetchInterval: 30_000` + `refetchOnWindowFocus: true` en `sesion-activa` y `caja-movimientos`
+- ✅ KITs/Kitting WMS Fase 2.5 (migration 040 DEV)
+- Pendiente: migration 040 PROD + PR dev→main + GitHub release
 
 ### Sesión Expiry (pendiente evaluar)
 - Sesión actual parece no expirar. Evaluar si Supabase permite configurar JWT expiry por tenant sin riesgo.
@@ -712,10 +717,10 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **No implementar sin consultar al usuario primero.**
 
 ### Testing por rol
-- Tests E2E para CAJERO: crear venta, manejar caja, no accede a config/usuarios/rrhh.
-- Tests E2E para SUPERVISOR: accede a historial, no accede a config/usuarios/rrhh.
-- Tests de coherencia de números: tarjeta Dashboard → click → página destino muestra mismo count.
-- Escenarios nuevos: modificarReserva con serializado → series disponibles en carrito; serie reservada aparece tachada en tab Inventario.
+- [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0)
+- [x] Tests E2E para SUPERVISOR: `15_rol_supervisor.spec.ts` (v0.65.0)
+- [x] Tests de coherencia de números: `14_coherencia_numeros.spec.ts` (v0.64.0)
+- Escenarios nuevos pendientes: modificarReserva con serializado → series disponibles en carrito.
 
 ### Ideas futuras
 Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

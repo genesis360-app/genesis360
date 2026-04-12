@@ -42,6 +42,11 @@ export default defineConfig({
       name: 'setup-supervisor',
       testMatch: /auth\.supervisor\.setup\.ts/,
     }] : []),
+    // Setup RRHH — solo si las credenciales están disponibles
+    ...(process.env.E2E_RRHH_EMAIL ? [{
+      name: 'setup-rrhh',
+      testMatch: /auth\.rrhh\.setup\.ts/,
+    }] : []),
 
     // ─── Tests OWNER (main)
     {
@@ -51,7 +56,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
       },
       dependencies: ['setup-owner'],
-      testIgnore: /1[3-9]_rol_.*|15_rol_.*/,
+      testIgnore: /1[3-9]_rol_.*|1[56]_rol_.*/,
     },
 
     // ─── Tests CAJERO — solo si hay credenciales
@@ -74,6 +79,17 @@ export default defineConfig({
       },
       dependencies: ['setup-supervisor'],
       testMatch: /15_rol_supervisor\.spec\.ts/,
+    }] : []),
+
+    // ─── Tests RRHH — solo si hay credenciales
+    ...(process.env.E2E_RRHH_EMAIL ? [{
+      name: 'chromium-rrhh',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: path.join(__dirname, 'tests/e2e/.auth/rrhh_session.json'),
+      },
+      dependencies: ['setup-rrhh'],
+      testMatch: /16_rol_rrhh\.spec\.ts/,
     }] : []),
   ],
 

@@ -11,6 +11,7 @@ const RUTAS_PERMITIDAS = [
   '/ventas',
   '/caja',
   '/clientes',
+  '/mi-cuenta',
 ]
 
 const RUTAS_RESTRINGIDAS = [

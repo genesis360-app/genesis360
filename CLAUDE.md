@@ -718,10 +718,16 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ **tests.yml**: vars `E2E_RRHH_EMAIL` + `E2E_RRHH_PASSWORD`
 - ✅ **Todos los roles E2E verdes**: CAJERO 20/20 · SUPERVISOR 23/23 · RRHH 18/18
 
-### Sesión Expiry (pendiente evaluar)
-- Sesión actual parece no expirar. Evaluar si Supabase permite configurar JWT expiry por tenant sin riesgo.
-- Si es simple → configurable por tenant en ConfigPage. Si es complejo/riesgoso → backlog largo plazo.
-- **No implementar sin consultar al usuario primero.**
+### v0.67.0 — en DEV
+- ✅ **Sesión expiry por inactividad**: `useInactivityTimeout` hook · select en ConfigPage → Negocio (5/15/30 min / 1h / Nunca) · aviso toast 1 min antes · migration 041: `tenants.session_timeout_minutes INT DEFAULT NULL`
+- ✅ **RRHH feriados nacionales**: botón "🇦🇷 AR 2026" en tab Cumpleaños → carga 16 feriados AR 2026 (solo los faltantes) · widget próximos feriados en Dashboard RRHH
+- ✅ **Desarmado inverso KITs**: botón "Desarmar" en tab Kits · modal con preview de componentes · valida stock del KIT · rebaja KIT + ingresa componentes · migration 041: `kitting_log.tipo` (armado/desarmado) + tipo `des_kitting` en `movimientos_stock`
+- ✅ **VentasPage — badge KIT**: badge naranja "KIT" en dropdown de búsqueda de productos
+
+### Para completar v0.67.0
+- [ ] Bump `APP_VERSION` → v0.67.0
+- [ ] PR dev→main + GitHub release v0.67.0
+- [ ] Migration 041 en PROD
 
 ### Testing por rol
 - [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0) — 20 tests ✅

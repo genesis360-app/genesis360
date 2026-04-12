@@ -181,6 +181,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.64.0 ✅ | Custom roles (permisos_custom sidebar + redirect) · Movimientos→link venta origen (migration 038) · Ticket cierre caja PDF auto-download · Arqueo parcial sin cerrar sesión (migration 039) · Marketplace toggle UI en ConfigPage · Fix useRecomendaciones link · E2E tests CAJERO + coherencia números · Migrations 036–039 PROD | 2026-04 |
 | v0.65.0 ✅ | E2E tests rol SUPERVISOR · Fix sync multi-dispositivo caja (refetchInterval 30s + windowFocus) · KITs/Kitting WMS Fase 2.5: kit_recetas + kitting_log + tab Kits en InventarioPage · Toggle es_kit en ProductoFormPage · Migration 040 PROD | 2026-04 |
 | v0.66.0 ✅ | E2E tests rol RRHH (18 tests) · Fix /mi-cuenta accesible para CAJERO+RRHH · Redirect SUPERVISOR en rutas ownerOnly (SUPERVISOR_FORBIDDEN) · playwright.config.ts proyectos RRHH · tests.yml E2E_RRHH_* secrets | 2026-04 |
+| v0.67.0 | Sesión expiry por inactividad (5/15/30min/1h/nunca — ConfigPage Negocio · useInactivityTimeout · migration 041) · RRHH feriados AR 2026 bulk-load + widget en Dashboard · Desarmado inverso KITs (modal + validación stock · des_kitting · kitting_log.tipo) · Badge KIT en búsqueda VentasPage | 2026-04 |
 
 ---
 

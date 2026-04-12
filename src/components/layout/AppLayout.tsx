@@ -35,6 +35,7 @@ const navItems = [
 ]
 
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/mi-cuenta']
+const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -75,6 +76,8 @@ export function AppLayout() {
       navigate('/rrhh', { replace: true })
     } else if (user.rol === 'CAJERO' && !CAJERO_ALLOWED.some(r => pathname.startsWith(r))) {
       navigate('/ventas', { replace: true })
+    } else if (user.rol === 'SUPERVISOR' && SUPERVISOR_FORBIDDEN.some(r => pathname.startsWith(r))) {
+      navigate('/dashboard', { replace: true })
     } else if (user.permisos_custom) {
       // Custom role tiene mayor prioridad que el rol estándar
       const currentItem = navItems.find(item => pathname.startsWith(item.to))

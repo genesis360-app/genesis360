@@ -705,11 +705,18 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Desarmado inverso**: pendiente (backlog largo plazo).
 - **KIT como producto de venta**: pendiente decidir — el SKU existe y puede venderse, pero el precio/stock se gestiona igual que cualquier producto.
 
-### v0.65.0 — en DEV (pendiente deploy a PROD)
+### v0.65.0 ✅ PROD
 - ✅ E2E tests rol SUPERVISOR: `auth.supervisor.setup.ts` + `15_rol_supervisor.spec.ts`
 - ✅ Fix sync multi-dispositivo caja: `refetchInterval: 30_000` + `refetchOnWindowFocus: true` en `sesion-activa` y `caja-movimientos`
-- ✅ KITs/Kitting WMS Fase 2.5 (migration 040 DEV)
-- Pendiente: migration 040 PROD + PR dev→main + GitHub release
+- ✅ KITs/Kitting WMS Fase 2.5: `kit_recetas` + `kitting_log` + `productos.es_kit` + tipo `kitting` (migration 040 PROD ✅)
+
+### v0.66.0 — en DEV
+- ✅ **E2E tests rol RRHH**: `auth.rrhh.setup.ts` + `16_rol_rrhh.spec.ts` (18 tests)
+- ✅ **Fix /mi-cuenta accesible para CAJERO y RRHH**: `CAJERO_ALLOWED` + redirect RRHH ampliados en `AppLayout`
+- ✅ **Redirect SUPERVISOR en rutas ownerOnly**: `SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']` → redirige a `/dashboard`
+- ✅ **playwright.config.ts**: proyectos `setup-rrhh` + `chromium-rrhh` condicionales; `testIgnore` actualizado
+- ✅ **tests.yml**: vars `E2E_RRHH_EMAIL` + `E2E_RRHH_PASSWORD`
+- ✅ **Todos los roles E2E verdes**: CAJERO 20/20 · SUPERVISOR 23/23 · RRHH 18/18
 
 ### Sesión Expiry (pendiente evaluar)
 - Sesión actual parece no expirar. Evaluar si Supabase permite configurar JWT expiry por tenant sin riesgo.
@@ -717,10 +724,18 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **No implementar sin consultar al usuario primero.**
 
 ### Testing por rol
-- [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0)
-- [x] Tests E2E para SUPERVISOR: `15_rol_supervisor.spec.ts` (v0.65.0)
+- [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0) — 20 tests ✅
+- [x] Tests E2E para SUPERVISOR: `15_rol_supervisor.spec.ts` (v0.65.0) — 23 tests ✅
+- [x] Tests E2E para RRHH: `16_rol_rrhh.spec.ts` (v0.66.0) — 18 tests ✅
 - [x] Tests de coherencia de números: `14_coherencia_numeros.spec.ts` (v0.64.0)
+- Usuarios E2E DEV: OWNER `e2e@genesis360.test` · CAJERO `cajero1@local.com` · RRHH `rrhh1@local.com` · SUPERVISOR `supervisor@test.com` — todos con contraseña `123` (via SQL en auth.users)
 - Escenarios nuevos pendientes: modificarReserva con serializado → series disponibles en carrito.
+
+### Restricciones de rutas por rol (AppLayout)
+- **RRHH**: solo `/rrhh` + `/mi-cuenta`. Cualquier otra ruta → redirect `/rrhh`.
+- **CAJERO**: `CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/mi-cuenta']`. Otra ruta → redirect `/ventas`.
+- **SUPERVISOR**: `SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']`. Intento de acceso → redirect `/dashboard`.
+- **permisos_custom**: mayor prioridad que el rol estándar. Si `permisos_custom[modulo] === 'no_ver'` → redirect al primer módulo permitido.
 
 ### Ideas futuras
 Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.

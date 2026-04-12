@@ -18,6 +18,7 @@ const RUTAS_PERMITIDAS = [
   '/inventario',
   '/clientes',
   '/alertas',
+  '/mi-cuenta',
 ]
 
 const RUTAS_RESTRINGIDAS = [
@@ -74,10 +75,10 @@ test.describe('Rol SUPERVISOR — sidebar', () => {
     await goto(page, '/dashboard')
     await waitForApp(page)
 
-    await expect(page.getByRole('link', { name: /^dashboard$/i }).first()).toBeVisible()
-    await expect(page.getByRole('link', { name: /^ventas$/i }).first()).toBeVisible()
-    await expect(page.getByRole('link', { name: /^caja$/i }).first()).toBeVisible()
-    await expect(page.getByRole('link', { name: /^alertas$/i }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: /dashboard/i }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: /ventas/i }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: /caja/i }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: /alertas/i }).first()).toBeVisible()
   })
 
   test('no ve Configuración, Usuarios, RRHH, Sucursales en sidebar', async ({ page }) => {

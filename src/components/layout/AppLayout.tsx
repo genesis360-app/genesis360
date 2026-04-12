@@ -34,7 +34,8 @@ const navItems = [
   { to: '/configuracion', icon: Settings,        label: 'Configuración',  modulo: 'configuracion', ownerOnly: true },
 ]
 
-const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes']
+const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/mi-cuenta']
+const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -71,10 +72,12 @@ export function AppLayout() {
   // Restricción de rutas por rol (y por permisos_custom si aplica)
   useEffect(() => {
     if (!user) return
-    if (user.rol === 'RRHH' && !pathname.startsWith('/rrhh')) {
+    if (user.rol === 'RRHH' && !pathname.startsWith('/rrhh') && !pathname.startsWith('/mi-cuenta')) {
       navigate('/rrhh', { replace: true })
     } else if (user.rol === 'CAJERO' && !CAJERO_ALLOWED.some(r => pathname.startsWith(r))) {
       navigate('/ventas', { replace: true })
+    } else if (user.rol === 'SUPERVISOR' && SUPERVISOR_FORBIDDEN.some(r => pathname.startsWith(r))) {
+      navigate('/dashboard', { replace: true })
     } else if (user.permisos_custom) {
       // Custom role tiene mayor prioridad que el rol estándar
       const currentItem = navItems.find(item => pathname.startsWith(item.to))

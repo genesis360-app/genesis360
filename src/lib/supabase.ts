@@ -18,7 +18,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 export type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'ADMIN' | 'RRHH'
 export type SubscriptionStatus = 'trial' | 'active' | 'inactive' | 'cancelled'
-export type MovimientoTipo = 'ingreso' | 'rebaje' | 'ajuste'
+export type MovimientoTipo = 'ingreso' | 'rebaje' | 'ajuste' | 'kitting'
 
 export interface Tenant {
   id: string
@@ -132,6 +132,7 @@ export interface Producto {
   tiene_series?: boolean
   tiene_lote?: boolean
   tiene_vencimiento?: boolean
+  es_kit?: boolean
   regla_inventario?: string | null
   publicado_marketplace?: boolean
   precio_marketplace?: number | null
@@ -243,4 +244,27 @@ export interface DevolucionItem {
   precio_unitario: number
   inventario_linea_nueva_id?: string | null
   productos?: Pick<Producto, 'nombre' | 'sku'>
+}
+
+export interface KitReceta {
+  id: string
+  tenant_id: string
+  kit_producto_id: string
+  comp_producto_id: string
+  cantidad: number
+  created_at: string
+  // Joins
+  componente?: Pick<Producto, 'id' | 'nombre' | 'sku' | 'stock_actual' | 'unidad_medida'>
+}
+
+export interface KittingLog {
+  id: string
+  tenant_id: string
+  kit_producto_id: string
+  cantidad_kits: number
+  ubicacion_id?: string | null
+  usuario_id?: string | null
+  notas?: string | null
+  created_at: string
+  kit?: Pick<Producto, 'nombre' | 'sku'>
 }

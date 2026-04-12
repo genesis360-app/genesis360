@@ -37,7 +37,7 @@ export default function ProductoFormPage() {
     nombre: '', sku: '', descripcion: '', categoria_id: '', proveedor_id: '',
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
     stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
-    tiene_series: false, tiene_lote: false, tiene_vencimiento: false,
+    tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false,
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '',
     // Marketplace
     publicado_marketplace: false, precio_marketplace: '', stock_reservado_marketplace: '0',
@@ -129,6 +129,7 @@ export default function ProductoFormPage() {
         tiene_series: productoData.tiene_series ?? false,
         tiene_lote: productoData.tiene_lote ?? false,
         tiene_vencimiento: productoData.tiene_vencimiento ?? false,
+        es_kit: productoData.es_kit ?? false,
         regla_inventario: productoData.regla_inventario ?? '',
         aging_profile_id: productoData.aging_profile_id ?? '',
         margen_objetivo: productoData.margen_objetivo != null ? productoData.margen_objetivo.toString() : '',
@@ -206,6 +207,7 @@ export default function ProductoFormPage() {
         tiene_series: form.tiene_series,
         tiene_lote: form.tiene_lote,
         tiene_vencimiento: form.tiene_vencimiento,
+        es_kit: form.es_kit,
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
@@ -283,6 +285,7 @@ export default function ProductoFormPage() {
         tiene_series: form.tiene_series,
         tiene_lote: form.tiene_lote,
         tiene_vencimiento: form.tiene_vencimiento,
+        es_kit: form.es_kit,
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
@@ -761,6 +764,7 @@ export default function ProductoFormPage() {
                   { key: 'tiene_series', label: 'Control por número de serie', desc: 'Cada unidad tiene su propio N° de serie' },
                   { key: 'tiene_lote', label: 'Control por lote', desc: 'El stock se agrupa por número de lote' },
                   { key: 'tiene_vencimiento', label: 'Fecha de vencimiento', desc: 'Registra fecha de vencimiento por línea' },
+                  { key: 'es_kit', label: 'Es un KIT', desc: 'Se arma a partir de otros SKUs (kitting). Configurá la receta en Inventario → Kits.' },
                 ].map(({ key, label, desc }) => (
                   <label key={key} className="flex items-start gap-3 cursor-pointer">
                     <div className="relative mt-0.5">

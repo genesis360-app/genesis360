@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Zap, Camera,
-  MapPin, Tag, Settings2, ExternalLink,
+  MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -18,10 +18,10 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
-import type { Producto } from '@/lib/supabase'
+import type { Producto, KitReceta } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
 
-type Tab = 'movimientos' | 'inventario'
+type Tab = 'movimientos' | 'inventario' | 'kits'
 type ModalType = 'ingreso' | 'rebaje' | null
 
 const emptyIngreso = {
@@ -85,6 +85,19 @@ export default function InventarioPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [invScannerOpen, setInvScannerOpen] = useState(false)
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
+
+  // ── Kits tab state ─────────────────────────────────────────────────────────
+  const [kitExpandedId, setKitExpandedId] = useState<string | null>(null)
+  const [kitSearch, setKitSearch] = useState('')
+  const [showKittingModal, setShowKittingModal] = useState(false)
+  const [kittingKitId, setKittingKitId] = useState<string | null>(null)
+  const [kittingCantidad, setKittingCantidad] = useState('1')
+  const [kittingUbicacionId, setKittingUbicacionId] = useState('')
+  const [kittingNotas, setKittingNotas] = useState('')
+  // Receta form
+  const [showRecetaForm, setShowRecetaForm] = useState<string | null>(null) // kit producto_id
+  const [recetaCompSearch, setRecetaCompSearch] = useState('')
+  const [recetaCantidad, setRecetaCantidad] = useState('1')
 
   // ── Shared queries ─────────────────────────────────────────────────────────
   const { data: estados = [] } = useQuery({
@@ -215,6 +228,50 @@ export default function InventarioPage() {
       return map
     },
     enabled: !!tenant && tab === 'inventario',
+  })
+
+  // ── Kits queries ───────────────────────────────────────────────────────────
+  const { data: kitsProductos = [] } = useQuery({
+    queryKey: ['kits-productos', tenant?.id, kitSearch],
+    queryFn: async () => {
+      let q = supabase.from('productos')
+        .select('id, nombre, sku, stock_actual, unidad_medida, es_kit')
+        .eq('tenant_id', tenant!.id).eq('activo', true).eq('es_kit', true).order('nombre')
+      if (kitSearch) q = q.or(`nombre.ilike.%${kitSearch}%,sku.ilike.%${kitSearch}%`)
+      const { data } = await q
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'kits',
+  })
+
+  const { data: recetasMap = {} } = useQuery({
+    queryKey: ['kit-recetas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('kit_recetas')
+        .select('*, componente:comp_producto_id(id, nombre, sku, stock_actual, unidad_medida)')
+        .eq('tenant_id', tenant!.id)
+      const map: Record<string, KitReceta[]> = {}
+      for (const r of data ?? []) {
+        if (!map[r.kit_producto_id]) map[r.kit_producto_id] = []
+        map[r.kit_producto_id].push(r)
+      }
+      return map
+    },
+    enabled: !!tenant && tab === 'kits',
+  })
+
+  const { data: compsBusqueda = [] } = useQuery({
+    queryKey: ['productos-comps-busqueda', tenant?.id, recetaCompSearch, showRecetaForm],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos')
+        .select('id, nombre, sku, stock_actual, unidad_medida')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+        .or(`nombre.ilike.%${recetaCompSearch}%,sku.ilike.%${recetaCompSearch}%`)
+        .neq('id', showRecetaForm!) // no puede ser componente de sí mismo
+        .limit(8)
+      return data ?? []
+    },
+    enabled: !!tenant && !!showRecetaForm && recetaCompSearch.length > 1,
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -356,6 +413,109 @@ export default function InventarioPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Kit mutations ──────────────────────────────────────────────────────────
+  const agregarReceta = useMutation({
+    mutationFn: async ({ kitId, compId }: { kitId: string; compId: string }) => {
+      const cant = parseFloat(recetaCantidad)
+      if (isNaN(cant) || cant <= 0) throw new Error('Cantidad inválida')
+      const { error } = await supabase.from('kit_recetas').insert({
+        tenant_id: tenant!.id, kit_producto_id: kitId, comp_producto_id: compId, cantidad: cant,
+      })
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => {
+      toast.success('Componente agregado')
+      qc.invalidateQueries({ queryKey: ['kit-recetas'] })
+      setRecetaCompSearch(''); setRecetaCantidad('1')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const eliminarReceta = useMutation({
+    mutationFn: async (recetaId: string) => {
+      const { error } = await supabase.from('kit_recetas').delete().eq('id', recetaId)
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => { toast.success('Componente eliminado'); qc.invalidateQueries({ queryKey: ['kit-recetas'] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const ejecutarKitting = useMutation({
+    mutationFn: async () => {
+      const cant = parseFloat(kittingCantidad)
+      if (!kittingKitId || isNaN(cant) || cant <= 0) throw new Error('Datos inválidos')
+      const recetas = recetasMap[kittingKitId] ?? []
+      if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
+
+      // 1. Verificar stock suficiente de cada componente
+      for (const r of recetas) {
+        const comp = r.componente as any
+        const requerido = r.cantidad * cant
+        if ((comp?.stock_actual ?? 0) < requerido) {
+          throw new Error(`Stock insuficiente de ${comp?.nombre ?? r.comp_producto_id}: necesitás ${requerido} ${comp?.unidad_medida ?? ''}, hay ${comp?.stock_actual ?? 0}`)
+        }
+      }
+
+      // 2. Rebaje de cada componente
+      for (const r of recetas) {
+        const cantComp = r.cantidad * cant
+        const { data: lineas } = await supabase.from('inventario_lineas')
+          .select('id, cantidad, cantidad_reservada')
+          .eq('tenant_id', tenant!.id).eq('producto_id', r.comp_producto_id).eq('activo', true)
+          .order('created_at', { ascending: true })
+
+        let restante = cantComp
+        for (const linea of lineas ?? []) {
+          if (restante <= 0) break
+          const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
+          const aRebajar = Math.min(disponible, restante)
+          if (aRebajar <= 0) continue
+          await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
+          restante -= aRebajar
+        }
+
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id, producto_id: r.comp_producto_id,
+          tipo: 'rebaje', cantidad: cantComp,
+          stock_antes: 0, stock_despues: 0, // triggers recalculan
+          motivo: `Kitting x${cant} [${kittingKitId}]`,
+          usuario_id: user?.id ?? null,
+        })
+      }
+
+      // 3. Ingreso del KIT
+      await supabase.from('inventario_lineas').insert({
+        tenant_id: tenant!.id, producto_id: kittingKitId, cantidad: cant,
+        ubicacion_id: kittingUbicacionId || null,
+        activo: true,
+      })
+      await supabase.from('movimientos_stock').insert({
+        tenant_id: tenant!.id, producto_id: kittingKitId,
+        tipo: 'kitting', cantidad: cant,
+        stock_antes: 0, stock_despues: 0,
+        motivo: kittingNotas || `Kitting x${cant}`,
+        usuario_id: user?.id ?? null,
+      })
+
+      // 4. Log
+      await supabase.from('kitting_log').insert({
+        tenant_id: tenant!.id, kit_producto_id: kittingKitId,
+        cantidad_kits: cant, ubicacion_id: kittingUbicacionId || null,
+        usuario_id: user?.id ?? null, notas: kittingNotas || null,
+      })
+    },
+    onSuccess: () => {
+      toast.success('Kitting realizado con éxito')
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['kits-productos'] })
+      setShowKittingModal(false)
+      setKittingCantidad('1'); setKittingUbicacionId(''); setKittingNotas('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const closeModal = () => {
     setModal(null); setSelectedProduct(null)
     setForm(emptyIngreso); setSeries([''])
@@ -477,6 +637,7 @@ export default function InventarioPage() {
         {([
           { id: 'movimientos' as const, label: 'Movimientos' },
           { id: 'inventario' as const, label: 'Inventario' },
+          { id: 'kits' as const, label: 'Kits' },
         ]).map(({ id, label }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all
@@ -1451,6 +1612,241 @@ export default function InventarioPage() {
               onClose={() => setInvScannerOpen(false)}
             />
           )}
+        </>
+      )}
+
+      {/* ════════════════════════ TAB: KITS ════════════════════════ */}
+      {tab === 'kits' && (
+        <>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex gap-3 items-start">
+            <Combine size={18} className="text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-blue-800 dark:text-blue-300">
+              <p className="font-semibold">Kitting</p>
+              <p className="mt-0.5 text-blue-700 dark:text-blue-400">Un KIT es un producto armado a partir de otros SKUs. Al ejecutar el kitting, se rebajan los componentes y se ingresa el KIT terminado al stock.</p>
+            </div>
+          </div>
+
+          {/* Buscador + botón nuevo KIT */}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={kitSearch} onChange={e => setKitSearch(e.target.value)}
+                placeholder="Buscar KIT por nombre o SKU..."
+                className="w-full pl-9 pr-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+            </div>
+          </div>
+
+          {/* Lista de KITs */}
+          {kitsProductos.length === 0 ? (
+            <div className="text-center py-16 text-gray-500 dark:text-gray-400">
+              <Combine size={40} className="mx-auto mb-3 opacity-30" />
+              <p className="font-medium">No hay KITs configurados</p>
+              <p className="text-sm mt-1">Marcá un producto como KIT desde <Link to="/productos" className="text-accent hover:underline">Productos</Link> y configurá su receta aquí.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {kitsProductos.map((kit: any) => {
+                const recetas: KitReceta[] = recetasMap[kit.id] ?? []
+                const isExpanded = kitExpandedId === kit.id
+                // Stock mínimo disponible según recetas (cuántos kits se pueden armar)
+                const maxKits = recetas.length === 0 ? 0 : Math.floor(
+                  Math.min(...recetas.map(r => ((r.componente as any)?.stock_actual ?? 0) / r.cantidad))
+                )
+                return (
+                  <div key={kit.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    {/* Header del KIT */}
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <button onClick={() => setKitExpandedId(isExpanded ? null : kit.id)}
+                        className="flex-1 flex items-center gap-3 text-left">
+                        <div className="w-8 h-8 bg-accent/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Combine size={16} className="text-accent" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{kit.nombre}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{kit.sku} · Stock: {kit.stock_actual} {kit.unidad_medida}</p>
+                        </div>
+                        <div className="ml-auto flex items-center gap-2">
+                          {recetas.length > 0 && (
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${maxKits > 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                              {maxKits > 0 ? `Puede armar: ${maxKits}` : 'Sin stock de componentes'}
+                            </span>
+                          )}
+                          {recetas.length === 0 && (
+                            <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded-full">Sin receta</span>
+                          )}
+                          {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                        </div>
+                      </button>
+                      {/* Botón ejecutar kitting */}
+                      <button
+                        onClick={() => { setKittingKitId(kit.id); setShowKittingModal(true) }}
+                        disabled={recetas.length === 0}
+                        title={recetas.length === 0 ? 'Configurá la receta primero' : 'Ejecutar kitting'}
+                        className="flex items-center gap-1.5 bg-accent hover:bg-accent/90 text-white px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
+                        <Play size={13} /> Armar
+                      </button>
+                    </div>
+
+                    {/* Receta expandida */}
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 space-y-3">
+                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Componentes de la receta</p>
+
+                        {recetas.length === 0 ? (
+                          <p className="text-sm text-gray-400 italic">Sin componentes. Agregá los ingredientes del KIT.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {recetas.map(r => {
+                              const comp = r.componente as any
+                              const stockOk = (comp?.stock_actual ?? 0) >= r.cantidad
+                              return (
+                                <div key={r.id} className="flex items-center gap-3 text-sm">
+                                  <div className="flex-1 min-w-0">
+                                    <span className="font-medium text-gray-800 dark:text-gray-200">{comp?.nombre ?? r.comp_producto_id}</span>
+                                    <span className="text-gray-400 ml-1 text-xs">{comp?.sku}</span>
+                                  </div>
+                                  <span className="text-gray-600 dark:text-gray-400 text-xs">× {r.cantidad} {comp?.unidad_medida}</span>
+                                  <span className={`text-xs px-1.5 py-0.5 rounded ${stockOk ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'}`}>
+                                    Stock: {comp?.stock_actual ?? '—'}
+                                  </span>
+                                  <button onClick={() => eliminarReceta.mutate(r.id)} title="Quitar componente"
+                                    className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0">
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* Form agregar componente */}
+                        {showRecetaForm === kit.id ? (
+                          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 space-y-2">
+                            <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Agregar componente</p>
+                            <div className="flex gap-2">
+                              <div className="flex-1 relative">
+                                <input value={recetaCompSearch} onChange={e => setRecetaCompSearch(e.target.value)}
+                                  placeholder="Buscar producto..."
+                                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                                {compsBusqueda.length > 0 && (
+                                  <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-20 max-h-40 overflow-y-auto">
+                                    {compsBusqueda.map((p: any) => (
+                                      <button key={p.id} onClick={() => { setRecetaCompSearch(p.nombre); agregarReceta.mutate({ kitId: kit.id, compId: p.id }) }}
+                                        className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm">
+                                        <span className="font-medium text-gray-800 dark:text-gray-200">{p.nombre}</span>
+                                        <span className="text-gray-400 ml-1 text-xs">{p.sku}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <input value={recetaCantidad} onChange={e => setRecetaCantidad(e.target.value)}
+                                type="number" min="0.001" step="0.001" placeholder="Cant."
+                                onWheel={e => e.currentTarget.blur()}
+                                className="w-20 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                              <button onClick={() => setShowRecetaForm(null)}
+                                className="text-gray-400 hover:text-gray-600 px-2">
+                                <X size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => { setShowRecetaForm(kit.id); setRecetaCompSearch(''); setRecetaCantidad('1') }}
+                            className="flex items-center gap-1.5 text-accent hover:text-accent/80 text-sm font-medium transition-colors">
+                            <Plus size={14} /> Agregar componente
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Modal ejecutar kitting */}
+          {showKittingModal && kittingKitId && (() => {
+            const kit = kitsProductos.find((k: any) => k.id === kittingKitId)
+            const recetas: KitReceta[] = recetasMap[kittingKitId] ?? []
+            const cantNum = parseFloat(kittingCantidad) || 0
+            return (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+                  <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
+                    <div>
+                      <h3 className="font-bold text-gray-900 dark:text-white">Ejecutar Kitting</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{kit?.nombre}</p>
+                    </div>
+                    <button onClick={() => setShowKittingModal(false)} className="text-gray-400 hover:text-gray-600">
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Cantidad de KITs a armar *</label>
+                      <input value={kittingCantidad} onChange={e => setKittingCantidad(e.target.value)}
+                        type="number" min="1" step="1"
+                        onWheel={e => e.currentTarget.blur()}
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                    </div>
+
+                    {/* Preview consumo */}
+                    {cantNum > 0 && recetas.length > 0 && (
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 space-y-1.5">
+                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Se van a consumir</p>
+                        {recetas.map(r => {
+                          const comp = r.componente as any
+                          const requerido = r.cantidad * cantNum
+                          const ok = (comp?.stock_actual ?? 0) >= requerido
+                          return (
+                            <div key={r.id} className="flex items-center justify-between text-sm">
+                              <span className="text-gray-700 dark:text-gray-300">{comp?.nombre ?? r.comp_producto_id}</span>
+                              <span className={`font-medium ${ok ? 'text-gray-900 dark:text-white' : 'text-red-600 dark:text-red-400'}`}>
+                                {requerido} {comp?.unidad_medida}
+                                {!ok && <span className="ml-1 text-xs">(falta {requerido - (comp?.stock_actual ?? 0)})</span>}
+                              </span>
+                            </div>
+                          )
+                        })}
+                        <div className="border-t border-gray-200 dark:border-gray-600 pt-1.5 flex items-center justify-between text-sm font-semibold">
+                          <span className="text-gray-700 dark:text-gray-300">KITs producidos</span>
+                          <span className="text-accent">+{cantNum} {kit?.unidad_medida}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Ubicación destino (opcional)</label>
+                      <select value={kittingUbicacionId} onChange={e => setKittingUbicacionId(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30">
+                        <option value="">Sin ubicación</option>
+                        {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Notas (opcional)</label>
+                      <input value={kittingNotas} onChange={e => setKittingNotas(e.target.value)}
+                        placeholder="Observaciones del armado..."
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <button onClick={() => setShowKittingModal(false)}
+                        className="flex-1 px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
+                        Cancelar
+                      </button>
+                      <button onClick={() => ejecutarKitting.mutate()}
+                        disabled={ejecutarKitting.isPending || !kittingCantidad || parseFloat(kittingCantidad) <= 0}
+                        className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-50 text-sm py-2.5">
+                        {ejecutarKitting.isPending ? 'Procesando...' : <><Play size={15} /> Ejecutar</>}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </>
       )}
     </div>

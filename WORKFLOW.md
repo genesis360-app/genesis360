@@ -180,7 +180,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.63.0 ✅ | Mi Cuenta (/mi-cuenta): avatar upload+Google, plan, cambiar contraseña, salir/eliminar · Restricciones menú por rol (RRHH→solo RRHH, CAJERO→Ventas+Caja+Clientes) · Sueldo sugerido al crear empleado · Sidebar: bloque perfil circular bajo logo · Header: sin usuario/rol/negocio · SuscripcionPage: fix ícono light mode + flecha volver + auto-redirect post-pago MP · Migrations 034+035 PROD | 2026-04 |
 | v0.64.0 ✅ | Custom roles (permisos_custom sidebar + redirect) · Movimientos→link venta origen (migration 038) · Ticket cierre caja PDF auto-download · Arqueo parcial sin cerrar sesión (migration 039) · Marketplace toggle UI en ConfigPage · Fix useRecomendaciones link · E2E tests CAJERO + coherencia números · Migrations 036–039 PROD | 2026-04 |
 | v0.65.0 ✅ | E2E tests rol SUPERVISOR · Fix sync multi-dispositivo caja (refetchInterval 30s + windowFocus) · KITs/Kitting WMS Fase 2.5: kit_recetas + kitting_log + tab Kits en InventarioPage · Toggle es_kit en ProductoFormPage · Migration 040 PROD | 2026-04 |
-| v0.66.0 | E2E tests rol RRHH (18 tests) · Fix /mi-cuenta accesible para CAJERO+RRHH · Redirect SUPERVISOR en rutas ownerOnly (SUPERVISOR_FORBIDDEN) · playwright.config.ts proyectos RRHH · tests.yml E2E_RRHH_* secrets | 2026-04 |
+| v0.66.0 ✅ | E2E tests rol RRHH (18 tests) · Fix /mi-cuenta accesible para CAJERO+RRHH · Redirect SUPERVISOR en rutas ownerOnly (SUPERVISOR_FORBIDDEN) · playwright.config.ts proyectos RRHH · tests.yml E2E_RRHH_* secrets | 2026-04 |
 
 ---
 

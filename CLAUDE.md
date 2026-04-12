@@ -710,7 +710,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ Fix sync multi-dispositivo caja: `refetchInterval: 30_000` + `refetchOnWindowFocus: true` en `sesion-activa` y `caja-movimientos`
 - ✅ KITs/Kitting WMS Fase 2.5: `kit_recetas` + `kitting_log` + `productos.es_kit` + tipo `kitting` (migration 040 PROD ✅)
 
-### v0.66.0 — en DEV
+### v0.66.0 ✅ PROD
 - ✅ **E2E tests rol RRHH**: `auth.rrhh.setup.ts` + `16_rol_rrhh.spec.ts` (18 tests)
 - ✅ **Fix /mi-cuenta accesible para CAJERO y RRHH**: `CAJERO_ALLOWED` + redirect RRHH ampliados en `AppLayout`
 - ✅ **Redirect SUPERVISOR en rutas ownerOnly**: `SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']` → redirige a `/dashboard`

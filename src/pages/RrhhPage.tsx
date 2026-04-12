@@ -518,7 +518,7 @@ export default function RrhhPage() {
       if (error) throw error
       return (data ?? []) as Feriado[]
     },
-    enabled: !!tenant && activeTab === 'cumpleanos',
+    enabled: !!tenant && (activeTab === 'cumpleanos' || activeTab === 'dashboard'),
   })
 
   // Asistencia hoy del empleado seleccionado para check-in
@@ -955,6 +955,45 @@ export default function RrhhPage() {
       refetchAsistenciaHoy()
       refetchAsistencias()
     },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
+  // ─── Feriados nacionales Argentina 2026 ────────────────────────────────────
+  const FERIADOS_AR_2026 = [
+    { fecha: '2026-01-01', nombre: 'Año Nuevo' },
+    { fecha: '2026-02-16', nombre: 'Carnaval (lunes)' },
+    { fecha: '2026-02-17', nombre: 'Carnaval (martes)' },
+    { fecha: '2026-03-24', nombre: 'Día Nacional de la Memoria' },
+    { fecha: '2026-04-02', nombre: 'Día del Veterano de Malvinas' },
+    { fecha: '2026-04-03', nombre: 'Viernes Santo' },
+    { fecha: '2026-05-01', nombre: 'Día del Trabajador' },
+    { fecha: '2026-05-25', nombre: 'Día de la Revolución de Mayo' },
+    { fecha: '2026-06-15', nombre: 'Paso a la Inmortalidad del Gral. Güemes' },
+    { fecha: '2026-06-20', nombre: 'Paso a la Inmortalidad del Gral. Belgrano' },
+    { fecha: '2026-07-09', nombre: 'Día de la Independencia' },
+    { fecha: '2026-08-17', nombre: 'Paso a la Inmortalidad del Gral. San Martín' },
+    { fecha: '2026-10-12', nombre: 'Día del Respeto a la Diversidad Cultural' },
+    { fecha: '2026-11-20', nombre: 'Día de la Soberanía Nacional' },
+    { fecha: '2026-12-08', nombre: 'Inmaculada Concepción de María' },
+    { fecha: '2026-12-25', nombre: 'Navidad' },
+  ]
+
+  const cargarFeriadosNacionales = useMutation({
+    mutationFn: async () => {
+      // Solo insertar los que no existen (por fecha + tenant)
+      const { data: existentes } = await supabase.from('rrhh_feriados')
+        .select('fecha').eq('tenant_id', tenant!.id)
+        .in('fecha', FERIADOS_AR_2026.map(f => f.fecha))
+      const existentesFechas = new Set((existentes ?? []).map((e: any) => e.fecha))
+      const nuevos = FERIADOS_AR_2026.filter(f => !existentesFechas.has(f.fecha))
+      if (nuevos.length === 0) throw new Error('Todos los feriados 2026 ya están cargados')
+      const { error } = await supabase.from('rrhh_feriados').insert(
+        nuevos.map(f => ({ id: crypto.randomUUID(), tenant_id: tenant!.id, nombre: f.nombre, fecha: f.fecha, tipo: 'nacional', created_by: user!.id }))
+      )
+      if (error) throw error
+      return nuevos.length
+    },
+    onSuccess: (n) => { toast.success(`${n} feriado${n !== 1 ? 's' : ''} nacionales 2026 cargados`); refetchFeriados() },
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
 
@@ -2410,6 +2449,29 @@ export default function RrhhPage() {
               </div>
             </div>
 
+            {/* Próximos feriados */}
+            {feriados.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Próximos feriados (60 días)</h3>
+                <div className="flex flex-wrap gap-2">
+                  {feriados.slice(0, 6).map(f => {
+                    const dias = differenceInDays(new Date(f.fecha + 'T00:00:00'), new Date(new Date().toDateString()))
+                    return (
+                      <div key={f.id} className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
+                        <span className="font-medium text-blue-800 dark:text-blue-300">{f.nombre}</span>
+                        <span className="text-blue-500 dark:text-blue-400 text-xs">{dias === 0 ? '¡Hoy!' : `en ${dias}d`}</span>
+                      </div>
+                    )
+                  })}
+                  {feriados.length > 6 && (
+                    <button onClick={() => setActiveTab('cumpleanos')} className="px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                      +{feriados.length - 6} más →
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Exportar reportes */}
             <div>
               <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Exportar reportes</h3>
@@ -2887,10 +2949,19 @@ export default function RrhhPage() {
                 <Calendar size={18} className="text-blue-500" /> Feriados — próximos 60 días
               </h2>
               {esRrhhAdmin && (
-                <button onClick={() => { setEditingFeriado(null); setFeriadoForm({ nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional' }); setShowFeriadoForm(true) }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
-                  <Plus size={14}/> Agregar feriado
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { if (confirm('¿Cargar los feriados nacionales de Argentina 2026? Solo se agregarán los que no existan.')) cargarFeriadosNacionales.mutate() }}
+                    disabled={cargarFeriadosNacionales.isPending}
+                    title="Carga automáticamente los 16 feriados nacionales de Argentina 2026"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm disabled:opacity-50">
+                    🇦🇷 AR 2026
+                  </button>
+                  <button onClick={() => { setEditingFeriado(null); setFeriadoForm({ nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional' }); setShowFeriadoForm(true) }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                    <Plus size={14}/> Agregar feriado
+                  </button>
+                </div>
               )}
             </div>
 

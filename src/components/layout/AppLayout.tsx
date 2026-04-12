@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useInactivityTimeout } from '@/hooks/useInactivityTimeout'
 
 const navItems = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',      modulo: 'dashboard' },
@@ -63,6 +64,7 @@ export function AppLayout() {
   }
 
   const { user, tenant, signOut } = useAuthStore()
+  useInactivityTimeout(tenant?.session_timeout_minutes)
   const { count: alertCount } = useAlertas()
   const { visto } = useWalkthrough()
   const navigate = useNavigate()

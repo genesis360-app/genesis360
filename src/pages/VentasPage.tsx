@@ -53,6 +53,7 @@ interface CartItem {
   lineas_disponibles?: LineaDisponible[]   // todas las líneas ordenadas por sort activo
   lpn_fuentes?: LpnFuente[]               // computed: qué líneas cubren la cantidad actual
   imagen_url?: string
+  es_kit?: boolean
   series_seleccionadas: string[]
   series_disponibles: any[]
 }
@@ -184,7 +185,7 @@ export default function VentasPage() {
 
       // Buscar productos
       let prodQuery = supabase.from('productos')
-        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url')
+        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('nombre')
         .limit(viewMode === 'galeria' ? 60 : 20)
@@ -411,7 +412,7 @@ export default function VentasPage() {
     setScannerOpen(false)
     // Buscar por codigo_barras o SKU exacto
     const { data: prods } = await supabase.from('productos')
-      .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras')
+      .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit')
       .eq('tenant_id', tenant!.id).eq('activo', true)
       .or(`codigo_barras.eq.${code},sku.eq.${code}`)
       .limit(1)
@@ -1384,6 +1385,7 @@ export default function VentasPage() {
                               <span className="font-medium truncate">{p.nombre}</span>
                               <span className="text-gray-400 dark:text-gray-500 text-xs font-mono flex-shrink-0">{p.sku}</span>
                               {p.tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1 rounded flex-shrink-0">series</span>}
+                              {p.es_kit && <span className="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 px-1 rounded flex-shrink-0" title="Producto KIT — asegurate de tener stock armado">KIT</span>}
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">

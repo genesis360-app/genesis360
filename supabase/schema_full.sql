@@ -62,6 +62,7 @@ CREATE TABLE tenants (
   cotizacion_usd            DECIMAL(14,2),
   cotizacion_usd_updated_at TIMESTAMPTZ,
   regla_inventario          TEXT NOT NULL DEFAULT 'FIFO',
+  session_timeout_minutes   INT DEFAULT NULL,
   created_at                TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
@@ -1615,6 +1616,7 @@ CREATE TABLE IF NOT EXISTS kitting_log (
   ubicacion_id     UUID REFERENCES ubicaciones(id) ON DELETE SET NULL,
   usuario_id       UUID REFERENCES users(id) ON DELETE SET NULL,
   notas            TEXT,
+  tipo             TEXT DEFAULT 'armado' CHECK (tipo IN ('armado', 'desarmado')),
   created_at       TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE kitting_log ENABLE ROW LEVEL SECURITY;

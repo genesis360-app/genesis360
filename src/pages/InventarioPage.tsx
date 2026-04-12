@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Zap, Camera,
-  MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play,
+  MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -98,6 +98,11 @@ export default function InventarioPage() {
   const [showRecetaForm, setShowRecetaForm] = useState<string | null>(null) // kit producto_id
   const [recetaCompSearch, setRecetaCompSearch] = useState('')
   const [recetaCantidad, setRecetaCantidad] = useState('1')
+  // Desarmado inverso
+  const [showDesarmarModal, setShowDesarmarModal] = useState(false)
+  const [desarmarKitId, setDesarmarKitId] = useState<string | null>(null)
+  const [desarmarCantidad, setDesarmarCantidad] = useState('1')
+  const [desarmarNotas, setDesarmarNotas] = useState('')
 
   // ── Shared queries ─────────────────────────────────────────────────────────
   const { data: estados = [] } = useQuery({
@@ -512,6 +517,75 @@ export default function InventarioPage() {
       qc.invalidateQueries({ queryKey: ['kits-productos'] })
       setShowKittingModal(false)
       setKittingCantidad('1'); setKittingUbicacionId(''); setKittingNotas('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const desarmarKit = useMutation({
+    mutationFn: async () => {
+      const cant = parseFloat(desarmarCantidad)
+      if (!desarmarKitId || isNaN(cant) || cant <= 0) throw new Error('Datos inválidos')
+      const recetas = recetasMap[desarmarKitId] ?? []
+      if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
+
+      // 1. Verificar que hay stock suficiente del KIT en inventario_lineas
+      const { data: lineasKit } = await supabase.from('inventario_lineas')
+        .select('id, cantidad, cantidad_reservada')
+        .eq('tenant_id', tenant!.id).eq('producto_id', desarmarKitId).eq('activo', true)
+      const stockDisponibleKit = (lineasKit ?? []).reduce((s: number, l: any) => s + (l.cantidad - (l.cantidad_reservada ?? 0)), 0)
+      if (stockDisponibleKit < cant) {
+        throw new Error(`Stock insuficiente del KIT: necesitás ${cant}, hay ${stockDisponibleKit} disponibles`)
+      }
+
+      // 2. Rebaje del KIT (FIFO)
+      let restanteKit = cant
+      for (const linea of (lineasKit ?? [])) {
+        if (restanteKit <= 0) break
+        const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
+        const aRebajar = Math.min(disponible, restanteKit)
+        if (aRebajar <= 0) continue
+        await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
+        restanteKit -= aRebajar
+      }
+      await supabase.from('movimientos_stock').insert({
+        tenant_id: tenant!.id, producto_id: desarmarKitId,
+        tipo: 'des_kitting', cantidad: cant,
+        stock_antes: 0, stock_despues: 0,
+        motivo: desarmarNotas || `Desarmado x${cant}`,
+        usuario_id: user?.id ?? null,
+      })
+
+      // 3. Ingreso de cada componente según receta
+      for (const r of recetas) {
+        const cantComp = r.cantidad * cant
+        await supabase.from('inventario_lineas').insert({
+          tenant_id: tenant!.id, producto_id: r.comp_producto_id,
+          cantidad: cantComp, activo: true,
+        })
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id, producto_id: r.comp_producto_id,
+          tipo: 'ingreso', cantidad: cantComp,
+          stock_antes: 0, stock_despues: 0,
+          motivo: `Desarmado KIT x${cant} [${desarmarKitId}]`,
+          usuario_id: user?.id ?? null,
+        })
+      }
+
+      // 4. Log
+      await supabase.from('kitting_log').insert({
+        tenant_id: tenant!.id, kit_producto_id: desarmarKitId,
+        cantidad_kits: cant, usuario_id: user?.id ?? null,
+        notas: desarmarNotas || null, tipo: 'desarmado',
+      })
+    },
+    onSuccess: () => {
+      toast.success('KIT desarmado con éxito — componentes ingresados al stock')
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['kits-productos'] })
+      setShowDesarmarModal(false)
+      setDesarmarCantidad('1'); setDesarmarNotas('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -1685,6 +1759,14 @@ export default function InventarioPage() {
                         className="flex items-center gap-1.5 bg-accent hover:bg-accent/90 text-white px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
                         <Play size={13} /> Armar
                       </button>
+                      {/* Botón desarmado inverso */}
+                      <button
+                        onClick={() => { setDesarmarKitId(kit.id); setShowDesarmarModal(true) }}
+                        disabled={recetas.length === 0 || kit.stock_actual <= 0}
+                        title={recetas.length === 0 ? 'Sin receta' : kit.stock_actual <= 0 ? 'Sin stock del KIT para desarmar' : 'Desarmar KIT → devuelve componentes al stock'}
+                        className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
+                        <RotateCcw size={13} /> Desarmar
+                      </button>
                     </div>
 
                     {/* Receta expandida */}
@@ -1840,6 +1922,75 @@ export default function InventarioPage() {
                         disabled={ejecutarKitting.isPending || !kittingCantidad || parseFloat(kittingCantidad) <= 0}
                         className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-50 text-sm py-2.5">
                         {ejecutarKitting.isPending ? 'Procesando...' : <><Play size={15} /> Ejecutar</>}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Modal desarmar KIT */}
+          {showDesarmarModal && desarmarKitId && (() => {
+            const kit = kitsProductos.find((k: any) => k.id === desarmarKitId)
+            const recetas: KitReceta[] = recetasMap[desarmarKitId] ?? []
+            const cantNum = parseFloat(desarmarCantidad) || 0
+            return (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+                  <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
+                    <div>
+                      <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <RotateCcw size={16} className="text-orange-500" /> Desarmar KIT
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{kit?.nombre} · Stock: {kit?.stock_actual} {kit?.unidad_medida}</p>
+                    </div>
+                    <button onClick={() => setShowDesarmarModal(false)} className="text-gray-400 hover:text-gray-600">
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Cantidad de KITs a desarmar *</label>
+                      <input value={desarmarCantidad} onChange={e => setDesarmarCantidad(e.target.value)}
+                        type="number" min="1" step="1" max={kit?.stock_actual}
+                        onWheel={e => e.currentTarget.blur()}
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                    </div>
+
+                    {/* Preview componentes que se van a ingresar */}
+                    {cantNum > 0 && recetas.length > 0 && (
+                      <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-3 space-y-1.5">
+                        <p className="text-xs font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">Se van a ingresar al stock</p>
+                        {recetas.map(r => {
+                          const comp = r.componente as any
+                          const ingresa = r.cantidad * cantNum
+                          return (
+                            <div key={r.id} className="flex items-center justify-between text-sm">
+                              <span className="text-gray-700 dark:text-gray-300">{comp?.nombre ?? r.comp_producto_id}</span>
+                              <span className="font-semibold text-orange-700 dark:text-orange-400">+{ingresa} {comp?.unidad_medida}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Notas (opcional)</label>
+                      <input value={desarmarNotas} onChange={e => setDesarmarNotas(e.target.value)}
+                        placeholder="Motivo del desarmado..."
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <button onClick={() => setShowDesarmarModal(false)}
+                        className="flex-1 px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
+                        Cancelar
+                      </button>
+                      <button onClick={() => desarmarKit.mutate()}
+                        disabled={desarmarKit.isPending || !desarmarCantidad || parseFloat(desarmarCantidad) <= 0}
+                        className="flex-1 flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-all disabled:opacity-50 text-sm py-2.5">
+                        {desarmarKit.isPending ? 'Procesando...' : <><RotateCcw size={15} /> Desarmar</>}
                       </button>
                     </div>
                   </div>

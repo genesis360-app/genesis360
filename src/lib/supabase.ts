@@ -18,7 +18,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 export type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'ADMIN' | 'RRHH'
 export type SubscriptionStatus = 'trial' | 'active' | 'inactive' | 'cancelled'
-export type MovimientoTipo = 'ingreso' | 'rebaje' | 'ajuste' | 'kitting'
+export type MovimientoTipo = 'ingreso' | 'rebaje' | 'ajuste' | 'kitting' | 'des_kitting'
 
 export interface Tenant {
   id: string
@@ -37,6 +37,7 @@ export interface Tenant {
   regla_inventario: string
   marketplace_activo?: boolean
   marketplace_webhook_url?: string
+  session_timeout_minutes?: number | null
   created_at: string
 }
 

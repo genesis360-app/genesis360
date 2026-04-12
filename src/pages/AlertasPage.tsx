@@ -195,7 +195,15 @@ export default function AlertasPage() {
                       Ingresar stock
                     </Link>
                     <button
-                      onClick={() => resolver.mutate(a.id)}
+                      onClick={() => {
+                        const stockActual = (a as any).productos?.stock_actual ?? 0
+                        const stockMinimo = (a as any).productos?.stock_minimo ?? 0
+                        if (a.tipo === 'stock_minimo' && stockActual <= stockMinimo) {
+                          toast.error(`Stock actual (${stockActual}) sigue bajo el mínimo (${stockMinimo}). Ingresá stock primero.`)
+                          return
+                        }
+                        resolver.mutate(a.id)
+                      }}
                       className="text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
                     >
                       Resolver

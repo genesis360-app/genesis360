@@ -1535,3 +1535,88 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_producto_estructuras_default
   ON producto_estructuras (tenant_id, producto_id) WHERE is_default = true;
 CREATE INDEX IF NOT EXISTS idx_producto_estructuras_producto ON producto_estructuras (producto_id);
 CREATE INDEX IF NOT EXISTS idx_producto_estructuras_tenant   ON producto_estructuras (tenant_id);
+
+-- ─── Migration 036: rrhh_feriados ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS rrhh_feriados (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre     TEXT NOT NULL,
+  fecha      DATE NOT NULL,
+  tipo       TEXT DEFAULT 'nacional' CHECK (tipo IN ('nacional', 'provincial', 'personalizado', 'no_laborable')),
+  created_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE rrhh_feriados ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_feriados_tenant_fecha ON rrhh_feriados(tenant_id, fecha);
+
+-- ─── Migration 037: roles_custom ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS roles_custom (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id  UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre     TEXT NOT NULL,
+  permisos   JSONB NOT NULL DEFAULT '{}',
+  activo     BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(tenant_id, nombre)
+);
+ALTER TABLE roles_custom ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_roles_custom_tenant ON roles_custom(tenant_id);
+-- FK en users
+ALTER TABLE users ADD COLUMN IF NOT EXISTS rol_custom_id UUID REFERENCES roles_custom(id) ON DELETE SET NULL;
+
+-- ─── Migration 038: movimientos_stock links ───────────────────────────────────
+ALTER TABLE movimientos_stock
+  ADD COLUMN IF NOT EXISTS venta_id UUID REFERENCES ventas(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS gasto_id UUID REFERENCES gastos(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_movimientos_stock_venta_id ON movimientos_stock(venta_id) WHERE venta_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_movimientos_stock_gasto_id ON movimientos_stock(gasto_id) WHERE gasto_id IS NOT NULL;
+
+-- ─── Migration 039: caja_arqueos ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS caja_arqueos (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  sesion_id        UUID NOT NULL REFERENCES caja_sesiones(id) ON DELETE CASCADE,
+  saldo_calculado  DECIMAL(12,2) NOT NULL,
+  saldo_real       DECIMAL(12,2) NOT NULL,
+  diferencia       DECIMAL(12,2) GENERATED ALWAYS AS (saldo_real - saldo_calculado) STORED,
+  notas            TEXT,
+  usuario_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE caja_arqueos ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_caja_arqueos_sesion  ON caja_arqueos(sesion_id);
+CREATE INDEX IF NOT EXISTS idx_caja_arqueos_tenant  ON caja_arqueos(tenant_id, created_at DESC);
+
+-- ─── Migration 040: KITs / Kitting (WMS Fase 2.5) ────────────────────────────
+ALTER TABLE productos ADD COLUMN IF NOT EXISTS es_kit BOOLEAN DEFAULT FALSE;
+ALTER TABLE movimientos_stock DROP CONSTRAINT IF EXISTS movimientos_stock_tipo_check;
+ALTER TABLE movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check
+  CHECK (tipo IN ('ingreso', 'rebaje', 'ajuste', 'kitting'));
+
+CREATE TABLE IF NOT EXISTS kit_recetas (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  kit_producto_id  UUID NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+  comp_producto_id UUID NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+  cantidad         DECIMAL(12,3) NOT NULL CHECK (cantidad > 0),
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(kit_producto_id, comp_producto_id)
+);
+ALTER TABLE kit_recetas ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_kit_recetas_kit    ON kit_recetas(kit_producto_id);
+CREATE INDEX IF NOT EXISTS idx_kit_recetas_comp   ON kit_recetas(comp_producto_id);
+CREATE INDEX IF NOT EXISTS idx_kit_recetas_tenant ON kit_recetas(tenant_id);
+
+CREATE TABLE IF NOT EXISTS kitting_log (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  kit_producto_id  UUID NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+  cantidad_kits    DECIMAL(12,3) NOT NULL CHECK (cantidad_kits > 0),
+  ubicacion_id     UUID REFERENCES ubicaciones(id) ON DELETE SET NULL,
+  usuario_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+  notas            TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE kitting_log ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_kitting_log_tenant ON kitting_log(tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kitting_log_kit    ON kitting_log(kit_producto_id);

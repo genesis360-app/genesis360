@@ -37,6 +37,11 @@ export default defineConfig({
       name: 'setup-cajero',
       testMatch: /auth\.cajero\.setup\.ts/,
     }] : []),
+    // Setup SUPERVISOR — solo si las credenciales están disponibles
+    ...(process.env.E2E_SUPERVISOR_EMAIL ? [{
+      name: 'setup-supervisor',
+      testMatch: /auth\.supervisor\.setup\.ts/,
+    }] : []),
 
     // ─── Tests OWNER (main)
     {
@@ -46,7 +51,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
       },
       dependencies: ['setup-owner'],
-      testIgnore: /1[3-9]_rol_.*/,
+      testIgnore: /1[3-9]_rol_.*|15_rol_.*/,
     },
 
     // ─── Tests CAJERO — solo si hay credenciales
@@ -58,6 +63,17 @@ export default defineConfig({
       },
       dependencies: ['setup-cajero'],
       testMatch: /13_rol_cajero\.spec\.ts/,
+    }] : []),
+
+    // ─── Tests SUPERVISOR — solo si hay credenciales
+    ...(process.env.E2E_SUPERVISOR_EMAIL ? [{
+      name: 'chromium-supervisor',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: path.join(__dirname, 'tests/e2e/.auth/supervisor_session.json'),
+      },
+      dependencies: ['setup-supervisor'],
+      testMatch: /15_rol_supervisor\.spec\.ts/,
     }] : []),
   ],
 

@@ -114,6 +114,10 @@ export default function CajaPage() {
       return data ?? null
     },
     enabled: !!cajaId,
+    // Sincronización multi-dispositivo: refresca cada 30s y al volver al foco
+    // Así si otro usuario cierra la caja en otra pestaña/dispositivo, se refleja sin recargar
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   })
 
   const { data: movimientos = [] } = useQuery({
@@ -126,6 +130,8 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!sesionActiva?.id,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   })
 
   const { data: historialSesiones = [] } = useQuery({

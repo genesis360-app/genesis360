@@ -18,6 +18,7 @@ const RUTAS_PERMITIDAS = [
   '/inventario',
   '/clientes',
   '/alertas',
+  '/mi-cuenta',
 ]
 
 const RUTAS_RESTRINGIDAS = [

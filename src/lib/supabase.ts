@@ -134,6 +134,7 @@ export interface Producto {
   tiene_lote?: boolean
   tiene_vencimiento?: boolean
   es_kit?: boolean
+  alicuota_iva?: number
   regla_inventario?: string | null
   publicado_marketplace?: boolean
   precio_marketplace?: number | null
@@ -245,6 +246,19 @@ export interface DevolucionItem {
   precio_unitario: number
   inventario_linea_nueva_id?: string | null
   productos?: Pick<Producto, 'nombre' | 'sku'>
+}
+
+export interface ArchivosBiblioteca {
+  id: string
+  tenant_id: string
+  nombre: string
+  tipo: 'certificado_afip_crt' | 'certificado_afip_key' | 'contrato' | 'factura_proveedor' | 'manual' | 'otro'
+  descripcion?: string | null
+  storage_path: string
+  tamanio?: number | null
+  mime_type?: string | null
+  created_by?: string | null
+  created_at: string
 }
 
 export interface KitReceta {

@@ -57,7 +57,7 @@ export default function InventarioPage() {
   const { sucursalId, applyFilter } = useSucursalFilter()
 
   // ── Tab state ─────────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<Tab>('movimientos')
+  const [tab, setTab] = useState<Tab>('inventario')
 
   // ── Movimientos tab state ──────────────────────────────────────────────────
   const [modal, setModal] = useState<ModalType>(null)
@@ -320,6 +320,7 @@ export default function InventarioPage() {
           nro_lote: form.nroLote || null,
           fecha_vencimiento: form.fechaVencimiento || null,
           precio_costo_snapshot: (selectedProduct as any).precio_costo || null,
+          precio_venta_snapshot: (selectedProduct as any).precio_venta || null,
         })
         .select().single()
       if (lineaError) throw lineaError
@@ -1415,7 +1416,7 @@ export default function InventarioPage() {
 
                         <div className="mb-5">
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
-                          {motivos.filter((m: any) => m.tipo === 'rebaje' || m.tipo === 'ambos').length > 0 ? (
+                          {motivos.filter((m: any) => (m.tipo === 'rebaje' || m.tipo === 'ambos') && !m.es_sistema).length > 0 ? (
                             <div className="space-y-2">
                               <select value={rebajeMotivoSelect}
                                 onChange={e => {
@@ -1425,7 +1426,7 @@ export default function InventarioPage() {
                                 }}
                                 className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
                                 <option value="">Seleccioná un motivo...</option>
-                                {(motivos as any[]).filter((m: any) => m.tipo === 'rebaje' || m.tipo === 'ambos')
+                                {(motivos as any[]).filter((m: any) => (m.tipo === 'rebaje' || m.tipo === 'ambos') && !m.es_sistema)
                                   .map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                                 <option value="__otro__">Otro (escribir)</option>
                               </select>

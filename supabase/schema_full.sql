@@ -1622,3 +1622,70 @@ CREATE TABLE IF NOT EXISTS kitting_log (
 ALTER TABLE kitting_log ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_kitting_log_tenant ON kitting_log(tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_kitting_log_kit    ON kitting_log(kit_producto_id);
+
+-- ─── Migration 041: session_timeout + des_kitting ────────────────────────────
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_timeout_minutes INT DEFAULT NULL;
+ALTER TABLE movimientos_stock DROP CONSTRAINT IF EXISTS movimientos_stock_tipo_check;
+ALTER TABLE movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check
+  CHECK (tipo IN ('ingreso', 'rebaje', 'ajuste', 'kitting', 'des_kitting'));
+ALTER TABLE kitting_log ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'armado' CHECK (tipo IN ('armado', 'desarmado'));
+
+-- ─── Migration 042: IVA + archivos_biblioteca + auto-resolve alertas ─────────
+ALTER TABLE productos
+  ADD COLUMN IF NOT EXISTS alicuota_iva DECIMAL(5,2) NOT NULL DEFAULT 21
+    CHECK (alicuota_iva IN (0, 10.5, 21, 27));
+
+ALTER TABLE venta_items
+  ADD COLUMN IF NOT EXISTS alicuota_iva DECIMAL(5,2),
+  ADD COLUMN IF NOT EXISTS iva_monto    DECIMAL(12,2);
+
+ALTER TABLE inventario_lineas
+  ADD COLUMN IF NOT EXISTS precio_venta_snapshot DECIMAL(14,2);
+
+ALTER TABLE motivos_movimiento
+  ADD COLUMN IF NOT EXISTS es_sistema BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE motivos_movimiento SET es_sistema = TRUE WHERE LOWER(nombre) = 'ventas';
+
+CREATE OR REPLACE FUNCTION public.auto_resolver_alerta_stock()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF NEW.stock_actual > NEW.stock_minimo THEN
+    UPDATE alertas SET resuelta = TRUE
+    WHERE producto_id = NEW.id AND tipo = 'stock_minimo' AND resuelta = FALSE;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'productos_stock_auto_resolver') THEN
+    CREATE TRIGGER productos_stock_auto_resolver
+      AFTER UPDATE OF stock_actual ON productos
+      FOR EACH ROW EXECUTE FUNCTION auto_resolver_alerta_stock();
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS archivos_biblioteca (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre        TEXT NOT NULL,
+  tipo          TEXT NOT NULL DEFAULT 'otro'
+    CHECK (tipo IN ('certificado_afip_crt','certificado_afip_key','contrato','factura_proveedor','manual','otro')),
+  descripcion   TEXT,
+  storage_path  TEXT NOT NULL,
+  tamanio       BIGINT,
+  mime_type     TEXT,
+  created_by    UUID REFERENCES users(id),
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE archivos_biblioteca ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_archivos_biblioteca_tenant ON archivos_biblioteca(tenant_id, tipo);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'archivos_biblioteca' AND policyname = 'archivos_biblioteca_tenant') THEN
+    CREATE POLICY "archivos_biblioteca_tenant" ON archivos_biblioteca
+      FOR ALL USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('archivos-biblioteca', 'archivos-biblioteca', false, 10485760, NULL)
+ON CONFLICT (id) DO NOTHING;

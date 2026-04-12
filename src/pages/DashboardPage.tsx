@@ -446,8 +446,8 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary capitalize">{fecha}</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
+          <h1 className="text-2xl font-bold text-primary">{tenant?.nombre ?? 'Dashboard'}</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5 capitalize">{fecha}</p>
         </div>
         {tabButtons('general')}
       </div>

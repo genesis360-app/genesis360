@@ -92,8 +92,8 @@ GH_TOKEN="..." "/c/Program Files/GitHub CLI/gh.exe" release create vX.Y.Z --targ
 | 033 | `033_inventario_lineas_notas.sql` | Fix: `notas TEXT` nullable en `inventario_lineas` (usada por devoluciones al crear línea en ubicación DEV) | ✅ | ✅ |
 | 034 | `034_caja_traspasos.sql` | Traspasos entre cajas: `es_caja_fuerte` en `cajas` + tabla `caja_traspasos` con RLS | ✅ | ✅ |
 | 035 | `035_users_avatar.sql` | Perfil: `users.avatar_url TEXT` + bucket `avatares` (public, 2 MB) con policies por usuario | ✅ | ✅ |
-| 036 | `036_roles_custom.sql` | Roles parametrizables: tabla `roles_custom` (nombre, permisos JSONB, activo) + `users.rol_custom_id` FK | ✅ | ✅ |
-| 037 | `037_caja_arqueos_prep.sql` | Preparación arqueos: índices y ajustes previos | ✅ | ✅ |
+| 036 | `036_rrhh_feriados.sql` | RRHH: tabla `rrhh_feriados` (nacional/provincial/personalizado/no_laborable) con RLS + índice por tenant+fecha | ✅ | ✅ |
+| 037 | `037_roles_custom.sql` | Roles parametrizables: tabla `roles_custom` (nombre, permisos JSONB, activo) + `users.rol_custom_id` FK | ✅ | ✅ |
 | 038 | `038_movimientos_links.sql` | Trazabilidad: `venta_id` + `gasto_id` FK en `movimientos_stock` con ON DELETE SET NULL | ✅ | ✅ |
 | 039 | `039_caja_arqueos.sql` | Arqueos: tabla `caja_arqueos` (saldo_calculado, saldo_real, diferencia GENERATED STORED, notas) con RLS | ✅ | ✅ |
 | 040 | `040_kits.sql` | KITs/Kitting WMS Fase 2.5: `kit_recetas` + `kitting_log` + `productos.es_kit` + tipo `kitting` en movimientos_stock | ✅ | ✅ |

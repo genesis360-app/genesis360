@@ -195,8 +195,8 @@ export default function CajaPage() {
   })
 
   // Calcular totales de la sesión actual
-  const totalIngresos = movimientos.filter((m: any) => m.tipo === 'ingreso').reduce((a: number, m: any) => a + m.monto, 0)
-  const totalEgresos = movimientos.filter((m: any) => m.tipo === 'egreso').reduce((a: number, m: any) => a + m.monto, 0)
+  const totalIngresos = movimientos.filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ingreso_reserva').reduce((a: number, m: any) => a + m.monto, 0)
+  const totalEgresos = movimientos.filter((m: any) => m.tipo === 'egreso' || m.tipo === 'egreso_devolucion_sena').reduce((a: number, m: any) => a + m.monto, 0)
   const saldoActual = sesionActiva ? (sesionActiva.monto_apertura + totalIngresos - totalEgresos) : 0
 
   // Diferencia al cierre
@@ -667,8 +667,8 @@ export default function CajaPage() {
                             </p>
                           </div>
                         </div>
-                        <span className={`font-bold text-sm flex-shrink-0 ml-3 ${m.tipo === 'ingreso' ? 'text-green-600 dark:text-green-400' : m.tipo === 'egreso' ? 'text-red-500' : 'text-blue-400'}`}>
-                          {m.tipo === 'ingreso' ? '+' : m.tipo === 'egreso' ? '-' : '~'}{formatMoneda(m.monto)}
+                        <span className={`font-bold text-sm flex-shrink-0 ml-3 ${['ingreso','ingreso_reserva'].includes(m.tipo) ? 'text-green-600 dark:text-green-400' : ['egreso','egreso_devolucion_sena'].includes(m.tipo) ? 'text-red-500' : 'text-blue-400'}`}>
+                          {['ingreso','ingreso_reserva'].includes(m.tipo) ? '+' : ['egreso','egreso_devolucion_sena'].includes(m.tipo) ? '-' : '~'}{formatMoneda(m.monto)}
                         </span>
                       </div>
                     ))}
@@ -817,8 +817,8 @@ export default function CajaPage() {
                                 </p>
                               </div>
                             </div>
-                            <span className={`font-bold text-sm flex-shrink-0 ml-3 ${m.tipo === 'ingreso' ? 'text-green-600 dark:text-green-400' : m.tipo === 'egreso' ? 'text-red-500' : 'text-blue-400'}`}>
-                              {m.tipo === 'ingreso' ? '+' : m.tipo === 'egreso' ? '-' : '~'}{formatMoneda(m.monto)}
+                            <span className={`font-bold text-sm flex-shrink-0 ml-3 ${['ingreso','ingreso_reserva'].includes(m.tipo) ? 'text-green-600 dark:text-green-400' : ['egreso','egreso_devolucion_sena'].includes(m.tipo) ? 'text-red-500' : 'text-blue-400'}`}>
+                              {['ingreso','ingreso_reserva'].includes(m.tipo) ? '+' : ['egreso','egreso_devolucion_sena'].includes(m.tipo) ? '-' : '~'}{formatMoneda(m.monto)}
                             </span>
                           </div>
                         ))}

@@ -777,6 +777,22 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Barras DS homologadas**: todas las barras de progreso usan `bg-accent` (violeta). Corrige clases Tailwind malformadas (`dark:bg-red-900/20/40`, `dark:bg-green-900/200`) que causaban fondo claro + texto claro en dark mode.
 - **Divisores Detalle por venta**: `divide-gray-50` → `divide-gray-200 dark:divide-gray-600` (visibles en ambos modos).
 
+#### Design System Sprint 3 ✅ — Dashboard tab General
+- **5 componentes nuevos** en `src/components/`:
+  - `FilterBar.tsx`: período (Hoy/7D/30D/Mes/Trim/Año) + ARS/USD + c/IVA s/IVA. Helpers: `getFechasDashboard`, `getFechasAnteriores`, `labelPeriodo`. Tipos: `PeriodoDash`, `Moneda`, `IVAMode`.
+  - `KPICard.tsx`: tarjeta reutilizable con `title`, `value`, `badge` (success/warning/danger/neutral + TrendingUp/Down), `sub`, `icon`, `onClick`.
+  - `InsightCard.tsx`: tarjeta insight con `variant` (danger/warning/success/info), `icon`, `title`, `description`, `action`.
+  - `VentasVsGastosChart.tsx`: AreaChart "La Balanza" — ventas (área violeta) + gastos (línea roja) por día. Tooltip oscuro con diferencia. Usa `getFechasDashboard` para rango.
+  - `MixCajaChart.tsx`: Donut "El Mix de Caja" — por método de pago (Efectivo=accent, Transferencia=blue, Tarjeta=green, MP=cyan). Labels % en sectores, total en centro.
+- **DashboardPage tab General** refactorizado:
+  - FilterBar arriba; controla periodo/moneda/IVA de KPIs y gráficos
+  - 4 KPIs nuevas: Ingreso Neto (caja_movimientos ingreso-egreso), Margen Contribución ((ventas-costo)/ventas×100), Burn Rate diario (gastos/días), Posición IVA (sum venta_items.iva_monto)
+  - Badges comparativas auto: `getFechasAnteriores(periodo)` calcula período anterior equivalente
+  - Gráficos en grid 2 col: La Balanza + El Mix de Caja
+  - Insights automáticos: top 4 de `useRecomendaciones` en grid 2 col con `InsightCard`
+  - Tabla Fugas y Movimientos: top 8 gastos+ventas del período ordenados por monto
+  - Secciones existentes (stock crítico, proyección, sugerencia pedido, top productos, movimientos) sin cambios debajo
+
 #### Testing por rol
 - [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0) — 20 tests ✅
 - [x] Tests E2E para SUPERVISOR: `15_rol_supervisor.spec.ts` (v0.65.0) — 23 tests ✅

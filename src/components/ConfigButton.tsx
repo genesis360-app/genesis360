@@ -1,4 +1,4 @@
-import { Settings2 } from 'lucide-react'
+import { Settings } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 interface ConfigButtonProps {
@@ -13,7 +13,7 @@ export function ConfigButton({ className = '' }: ConfigButtonProps) {
       title="Configuración"
       className={className}
     >
-      <Settings2 size={18} />
+      <Settings size={18} />
     </button>
   )
 }

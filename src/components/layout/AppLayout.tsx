@@ -303,13 +303,20 @@ export function AppLayout() {
               </div>
             )}
 
-            {/* Config */}
-            {(user?.rol === 'OWNER' || user?.rol === 'ADMIN') && (
-              <ConfigButton className={hBtn} />
-            )}
+            {/* Refresh */}
+            <RefreshButton className={hBtn} />
 
             {/* Notificaciones */}
             <NotificacionesButton className={hBtn} />
+
+            {/* Dark / Light */}
+            <button
+              onClick={toggleDarkMode}
+              title={darkMode ? 'Modo claro' : 'Modo oscuro'}
+              className={hBtn}
+            >
+              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
 
             {/* Ayuda */}
             <button
@@ -324,17 +331,10 @@ export function AppLayout() {
               </svg>
             </button>
 
-            {/* Refresh */}
-            <RefreshButton className={hBtn} />
-
-            {/* Dark / Light */}
-            <button
-              onClick={toggleDarkMode}
-              title={darkMode ? 'Modo claro' : 'Modo oscuro'}
-              className={hBtn}
-            >
-              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
+            {/* Config */}
+            {(user?.rol === 'OWNER' || user?.rol === 'ADMIN') && (
+              <ConfigButton className={hBtn} />
+            )}
 
             {/* Avatar + dropdown */}
             <AvatarDropdown className={hBtn} />

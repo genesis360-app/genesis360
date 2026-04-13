@@ -1,6 +1,6 @@
 import { BRAND, APP_VERSION } from '@/config/brand'
 import { useState, useEffect } from 'react'
-import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
@@ -98,6 +98,13 @@ export function AppLayout() {
 
   const { sucursalId, sucursales, setSucursal } = useSucursalFilter()
 
+  // Auto-seleccionar la primera sucursal si hay sucursales pero ninguna seleccionada
+  useEffect(() => {
+    if (sucursales.length > 0 && !sucursalId) {
+      setSucursal(sucursales[0].id)
+    }
+  }, [sucursales.length])
+
   // Abrir walkthrough la primera vez
   useEffect(() => {
     if (!visto) setWalkthroughOpen(true)
@@ -130,8 +137,8 @@ export function AppLayout() {
 
         {/* Logo + versión + toggle colapsar */}
         <div className={`flex items-center border-b border-border-ds flex-shrink-0 ${collapsed ? 'justify-center px-2 py-4' : 'gap-3 px-4 py-4'}`}>
-          <Link
-            to="/"
+          <a
+            href={window.location.hostname === 'app.genesis360.pro' ? 'https://www.genesis360.pro' : '/'}
             title="Ir al inicio"
             className="flex items-center gap-3 flex-1 min-w-0 group"
           >
@@ -146,7 +153,7 @@ export function AppLayout() {
                 <span className="text-muted text-[10px] leading-none">{APP_VERSION}</span>
               </div>
             )}
-          </Link>
+          </a>
           {!mobile && (
             <button
               onClick={toggleCollapse}
@@ -289,7 +296,6 @@ export function AppLayout() {
                   className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
                   title="Filtrar por sucursal"
                 >
-                  <option value="">Todas las sucursales</option>
                   {sucursales.map(s => (
                     <option key={s.id} value={s.id}>{s.nombre}</option>
                   ))}

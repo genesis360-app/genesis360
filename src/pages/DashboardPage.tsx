@@ -26,10 +26,10 @@ interface Insight {
 }
 
 const INSIGHT_STYLES: Record<InsightTipo, { border: string; bg: string; iconColor: string; iconBg: string }> = {
-  danger:  { border: 'border-l-red-500',   bg: 'bg-red-50 dark:bg-red-900/20/40 dark:bg-red-900/20',   iconColor: 'text-red-500 dark:text-red-400',   iconBg: 'bg-red-100 dark:bg-red-900/30' },
-  warning: { border: 'border-l-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20/40 dark:bg-amber-900/20', iconColor: 'text-amber-600 dark:text-amber-400', iconBg: 'bg-amber-100 dark:bg-amber-900/30' },
-  success: { border: 'border-l-green-500', bg: 'bg-green-50 dark:bg-green-900/20/40 dark:bg-green-900/20', iconColor: 'text-green-600 dark:text-green-400', iconBg: 'bg-green-100 dark:bg-green-900/30' },
-  info:    { border: 'border-l-blue-500',  bg: 'bg-blue-50 dark:bg-blue-900/20/40 dark:bg-blue-900/20',  iconColor: 'text-blue-600 dark:text-blue-400',  iconBg: 'bg-blue-100 dark:bg-blue-900/30' },
+  danger:  { border: 'border-l-red-500',   bg: 'bg-red-50 dark:bg-gray-800',   iconColor: 'text-red-500 dark:text-red-400',   iconBg: 'bg-red-100 dark:bg-red-900/30' },
+  warning: { border: 'border-l-amber-500', bg: 'bg-amber-50 dark:bg-gray-800', iconColor: 'text-amber-600 dark:text-amber-400', iconBg: 'bg-amber-100 dark:bg-amber-900/30' },
+  success: { border: 'border-l-green-500', bg: 'bg-green-50 dark:bg-gray-800', iconColor: 'text-green-600 dark:text-green-400', iconBg: 'bg-green-100 dark:bg-green-900/30' },
+  info:    { border: 'border-l-blue-500',  bg: 'bg-blue-50 dark:bg-gray-800',  iconColor: 'text-blue-600 dark:text-blue-400',  iconBg: 'bg-blue-100 dark:bg-blue-900/30' },
 }
 
 const INSIGHT_ICONS: Record<InsightTipo, React.ElementType> = {

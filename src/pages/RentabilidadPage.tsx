@@ -26,7 +26,7 @@ function getFechaDesde(periodo: Periodo) {
 
 function KpiCard({ label, value, sub, icon: Icon, color, trend }: any) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
       <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 ${color}`}>
         <Icon size={20} />
       </div>
@@ -224,7 +224,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
 
           {/* Gráfico por producto */}
           {!sinDatos && porProducto.some(p => p.ganancia !== null) && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm mb-6">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
                 <Award size={16} /> Top productos por ganancia
               </h2>
@@ -244,7 +244,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
           )}
 
           {/* Tabla por venta */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-100">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                 <ShoppingCart size={16} /> Detalle por venta

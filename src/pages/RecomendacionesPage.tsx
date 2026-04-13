@@ -11,10 +11,10 @@ import { useRecomendaciones, type Recomendacion, type RecomendacionTipo, type Re
 const TIPO_STYLES: Record<RecomendacionTipo, {
   border: string; bg: string; iconColor: string; iconBg: string; badge: string
 }> = {
-  danger:  { border: 'border-l-red-500',   bg: 'bg-red-50 dark:bg-red-900/20/50',   iconColor: 'text-red-500',   iconBg: 'bg-red-100 dark:bg-red-900/30',   badge: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
-  warning: { border: 'border-l-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20/50', iconColor: 'text-amber-600 dark:text-amber-400', iconBg: 'bg-amber-100 dark:bg-amber-900/30', badge: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
-  success: { border: 'border-l-green-500', bg: 'bg-green-50 dark:bg-green-900/20/50', iconColor: 'text-green-600 dark:text-green-400', iconBg: 'bg-green-100 dark:bg-green-900/30', badge: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' },
-  info:    { border: 'border-l-blue-500',  bg: 'bg-blue-50 dark:bg-blue-900/20/50',  iconColor: 'text-blue-600 dark:text-blue-400',  iconBg: 'bg-blue-100 dark:bg-blue-900/30',  badge: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
+  danger:  { border: 'border-l-red-500',   bg: 'bg-red-50 dark:bg-transparent',   iconColor: 'text-red-500 dark:text-red-400',   iconBg: 'bg-red-100 dark:bg-red-900/30',   badge: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' },
+  warning: { border: 'border-l-amber-500', bg: 'bg-amber-50 dark:bg-transparent', iconColor: 'text-amber-600 dark:text-amber-400', iconBg: 'bg-amber-100 dark:bg-amber-900/30', badge: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
+  success: { border: 'border-l-green-500', bg: 'bg-green-50 dark:bg-transparent', iconColor: 'text-green-600 dark:text-green-400', iconBg: 'bg-green-100 dark:bg-green-900/30', badge: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' },
+  info:    { border: 'border-l-blue-500',  bg: 'bg-blue-50 dark:bg-transparent',  iconColor: 'text-blue-600 dark:text-blue-400',  iconBg: 'bg-blue-100 dark:bg-blue-900/30',  badge: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
 }
 
 const TIPO_ICONS: Record<RecomendacionTipo, React.ElementType> = {
@@ -43,7 +43,7 @@ function RecomendacionCard({ r }: { r: Recomendacion }) {
   const CatIcon = cat.icon
 
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-100 border-l-4 ${style.border} shadow-sm overflow-hidden`}>
+    <div className={`bg-white dark:bg-gray-800 rounded-xl border-l-4 ${style.border} shadow-sm overflow-hidden`}>
       <div className={`p-5 ${style.bg}`}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -156,7 +156,7 @@ export default function RecomendacionesPage({ hideHeader = false }: { hideHeader
         <>
           {/* Score + dimensiones */}
           {score && (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6 mb-6">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-5">Score de Salud del Negocio</h2>
               <div className="flex flex-col md:flex-row items-center gap-8">
                 <ScoreCircle score={score.total} />

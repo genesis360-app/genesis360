@@ -20,6 +20,32 @@ function formatMoneda(v: number) {
   return `$${v.toLocaleString('es-AR', { minimumFractionDigits: 0 })}`
 }
 
+const TIPO_LABEL: Record<string, string> = {
+  ingreso:               'Venta',
+  ingreso_informativo:   'No efectivo',
+  ingreso_reserva:       'Seña',
+  ingreso_apertura:      'Apertura',
+  ingreso_traspaso:      'Traspaso ↓',
+  egreso:                'Egreso',
+  egreso_devolucion_sena:'Dev. seña',
+  egreso_traspaso:       'Traspaso ↑',
+}
+
+function extraerNumeroVenta(concepto: string): string | null {
+  const m = concepto.match(/#(\d+)/)
+  return m ? m[1] : null
+}
+
+function extraerMedioPago(tipo: string, concepto: string): string {
+  if (tipo === 'ingreso_informativo') {
+    const m = concepto.match(/^\[(.+?)\]/)
+    return m ? m[1] : 'No efectivo'
+  }
+  if (['ingreso','ingreso_reserva','egreso','egreso_devolucion_sena','ingreso_apertura'].includes(tipo)) return 'Efectivo'
+  if (tipo === 'ingreso_traspaso' || tipo === 'egreso_traspaso') return 'Traspaso'
+  return ''
+}
+
 export default function CajaPage() {
   const { tenant, user } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
@@ -203,6 +229,18 @@ export default function CajaPage() {
     m.tipo === 'egreso' || m.tipo === 'egreso_devolucion_sena' || m.tipo === 'egreso_traspaso'
   ).reduce((a: number, m: any) => a + m.monto, 0)
   const saldoActual = sesionActiva ? (sesionActiva.monto_apertura + totalIngresos - totalEgresos) : 0
+
+  // Totales por medio de pago para el resumen de movimientos
+  const totalesMedios = (() => {
+    const map: Record<string, number> = {}
+    for (const m of movimientos as any[]) {
+      const medio = extraerMedioPago(m.tipo, m.concepto)
+      if (!medio) continue
+      const signo = ['egreso','egreso_devolucion_sena','egreso_traspaso'].includes(m.tipo) ? -1 : 1
+      map[medio] = (map[medio] ?? 0) + signo * m.monto
+    }
+    return map
+  })()
 
   // Diferencia al cierre
   const montoRealNum = parseFloat(montoRealCierre) || 0
@@ -666,33 +704,83 @@ export default function CajaPage() {
               </div>
 
               {/* Movimientos */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
                   <h3 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Movimientos de la sesión</h3>
                   <span className="text-xs text-gray-400 dark:text-gray-500">{movimientos.length} registros</span>
                 </div>
                 {movimientos.length === 0 ? (
                   <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin movimientos aún</p>
                 ) : (
-                  <div className="divide-y divide-gray-50 max-h-64 overflow-y-auto">
-                    {movimientos.map((m: any) => (
-                      <div key={m.id} className={`px-4 py-3 flex items-center justify-between ${m.tipo === 'ingreso_informativo' ? 'opacity-60' : ''}`}>
-                        <div className="flex items-start gap-2 min-w-0">
-                          {m.tipo === 'ingreso_informativo' && <Info size={13} className="text-blue-400 mt-0.5 flex-shrink-0" />}
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{m.concepto}</p>
-                            <p className="text-xs text-gray-400 dark:text-gray-500">
-                              {new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                              {m.users?.nombre_display && ` · ${m.users.nombre_display}`}
-                            </p>
+                  <>
+                    <div className="divide-y divide-gray-50 dark:divide-gray-700 max-h-72 overflow-y-auto">
+                      {(movimientos as any[]).map((m) => {
+                        const esEgreso = ['egreso','egreso_devolucion_sena','egreso_traspaso'].includes(m.tipo)
+                        const esIngreso = ['ingreso','ingreso_reserva','ingreso_traspaso','ingreso_apertura'].includes(m.tipo)
+                        const esInfo = m.tipo === 'ingreso_informativo'
+                        const numVenta = extraerNumeroVenta(m.concepto)
+                        const medio = extraerMedioPago(m.tipo, m.concepto)
+                        const tipoLabel = TIPO_LABEL[m.tipo] ?? m.tipo
+                        const conceptoLimpio = esInfo
+                          ? m.concepto.replace(/^\[.+?\]\s*/, '')
+                          : m.concepto
+                        return (
+                          <div key={m.id} className={`px-4 py-2.5 flex items-start justify-between gap-3 ${esInfo ? 'opacity-70' : ''}`}>
+                            <div className="flex items-start gap-2 min-w-0 flex-1">
+                              {esInfo && <Info size={13} className="text-blue-400 mt-1 flex-shrink-0" />}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                                    esIngreso ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                    : esEgreso ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                  }`}>{tipoLabel}</span>
+                                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{conceptoLimpio}</p>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                                    {new Date(m.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                  </span>
+                                  {m.users?.nombre_display && (
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">· {m.users.nombre_display}</span>
+                                  )}
+                                  {medio && (
+                                    <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">{medio}</span>
+                                  )}
+                                  {numVenta && (
+                                    <span className="text-xs bg-accent/10 text-accent px-1.5 py-0.5 rounded font-mono">#{numVenta}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <span className={`font-bold text-sm flex-shrink-0 ${
+                              esIngreso ? 'text-green-600 dark:text-green-400'
+                              : esEgreso ? 'text-red-500'
+                              : 'text-blue-400'
+                            }`}>
+                              {esIngreso ? '+' : esEgreso ? '−' : '~'}{formatMoneda(m.monto)}
+                            </span>
                           </div>
+                        )
+                      })}
+                    </div>
+                    {/* Totales por medio de pago */}
+                    {Object.keys(totalesMedios).length > 0 && (
+                      <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-700/50">
+                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Totales por método</p>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                          {Object.entries(totalesMedios).map(([medio, total]) => (
+                            <div key={medio} className="flex items-center gap-1.5 text-xs">
+                              <span className="text-gray-500 dark:text-gray-400">{medio}:</span>
+                              <span className={`font-semibold ${total >= 0 ? 'text-gray-800 dark:text-gray-100' : 'text-red-500'}`}>
+                                {total >= 0 ? formatMoneda(total) : `−${formatMoneda(Math.abs(total))}`}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                        <span className={`font-bold text-sm flex-shrink-0 ml-3 ${['ingreso','ingreso_reserva'].includes(m.tipo) ? 'text-green-600 dark:text-green-400' : ['egreso','egreso_devolucion_sena'].includes(m.tipo) ? 'text-red-500' : 'text-blue-400'}`}>
-                          {['ingreso','ingreso_reserva'].includes(m.tipo) ? '+' : ['egreso','egreso_devolucion_sena'].includes(m.tipo) ? '-' : '~'}{formatMoneda(m.monto)}
-                        </span>
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  </>
                 )}
               </div>
 

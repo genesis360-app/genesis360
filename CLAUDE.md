@@ -750,13 +750,26 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Dashboard**: h1 muestra `tenant.nombre` (en lugar de la fecha); fecha pasa a subtítulo
 - **motivos_movimiento**: columna `es_sistema BOOLEAN DEFAULT FALSE`; UPDATE marca "Ventas" como `es_sistema=TRUE`
 
-#### Design System Sprint 1
+#### Design System Sprint 1 ✅
 - `tailwind.config.js`: tokens nuevos aditivos: `page`, `surface`, `muted`, `border-ds`, `success`, `danger`, `warning`, `info` (via CSS vars). `fontFamily.mono = JetBrains Mono`.
 - `src/index.css`: variables `--ds-*` en `:root` (light) y `.dark` (dark). Semánticos = iguales en ambos modos.
 - `index.html`: JetBrains Mono 400/500 + preconnect gstatic.
 - `src/styles/design-tokens.css`: referencia completa — recetas botones/cards/tabs/inputs, colores raw, guía de uso.
 - Tokens existentes (`primary`, `accent`, `brand-bg`) sin modificar → cero regressions.
-- **Para Sprint 2 (Header+Sidebar)**: usar `bg-page`, `bg-surface`, `text-muted`, `border-border-ds`, `font-mono` para precios.
+
+#### Design System Sprint 2 ✅ — Header + Sidebar
+- **Sidebar**: `bg-surface border-r border-border-ds` (blanco light / `#171717` dark). Texto adaptativo: `text-primary dark:text-white` / `text-muted`. Nav items inactivos: `text-gray-700 dark:text-gray-300 hover:bg-accent/10 hover:text-accent`. Nav activo: `bg-accent text-white`.
+- **Nav reordenado**: RRHH sube a posición 9 (después de Alertas), Historial 10, Reportes 11.
+- **"Mi Plan"** fijo en pie del sidebar: link a `/suscripcion` con plan capitalizado. Colapsado: solo `CreditCard` icon.
+- **Header**: `bg-surface border-b border-border-ds`. Botones: `text-muted hover:text-primary dark:hover:text-white`. Sin `shadow-sm`.
+- **6 nuevos componentes** (`src/components/`):
+  - `AvatarDropdown.tsx`: avatar + dropdown con info usuario (email via `supabase.auth.getSession()`), Perfil, Idioma/País (próximamente), Cerrar sesión.
+  - `AyudaModal.tsx`: drawer desde derecha (w-96), FAQs dinámicas por `pathname`, buscador, placeholder videos, form bug-report → `mailto:soporte@genesis360.pro`.
+  - `NotificacionesButton.tsx`: campana con badge rojo, popover con datos simulados + marcar como leída. Backend pendiente.
+  - `RefreshButton.tsx`: `useQueryClient().invalidateQueries()` + spinner 800ms.
+  - `ConfigButton.tsx`: ícono Settings2 → `/configuracion` (visible solo OWNER/ADMIN).
+  - `PlanProgressBar.tsx`: barra reutilizable success/warning/danger por % uso. Reemplaza banners inline en ProductosPage e InventarioPage.
+- **Orden header** (izq→der): [hamburger mobile] [spacer] [SucursalSelector] [Config] [Notificaciones] [Ayuda] [Refresh] [Dark/Light] [AvatarDropdown].
 
 #### Testing por rol
 - [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0) — 20 tests ✅

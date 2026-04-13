@@ -824,6 +824,16 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ **GastosPage**: eliminada categoría 'Sueldos y cargas sociales' (pertenece a RRHH/Nómina).
 - ✅ **Métodos de pago** (migration 045): tabla `metodos_pago` con tenant_id, nombre, color, activo, es_sistema, orden. ConfigPage tab 'Métodos de pago': CRUD + color picker + toggle activo + seed automático de 5 defaults. MixCajaChart usa colores de DB.
 
+### v0.73.0 — en dev
+- ✅ **Fix sucursal filter**: `useSucursalFilter.applyFilter` usa `.or('sucursal_id.eq.{id},sucursal_id.is.null')` — datos previos a multi-sucursal (NULL) siguen visibles con cualquier sucursal seleccionada. Afecta inventario, movimientos, ventas, gastos, clientes.
+- ✅ **Post-venta → Nueva Venta**: tras finalizar/reservar, `setTab('nueva')` en lugar de `'historial'`. El cajero queda listo para seguir vendiendo.
+- ✅ **Caja polling 10s**: `cajasAbiertas`, `sesionActiva`, `caja-movimientos` y el indicador del sidebar pasan de 30–15s → 10s. Movimientos de otro usuario aparecen en ~10s sin F5.
+- ✅ **CAJERO no abre segunda caja**: `puedeAbrirCaja = puedeAdministrarCaja || cajasAbiertas.length === 0`. Botón deshabilitado con mensaje. Check también en `abrirCaja.mutationFn`.
+- ✅ **Cierre caja — labels efectivo**: modal de cierre dice "Ingresos efectivo", "Egresos efectivo", "Efectivo esperado", "Efectivo contado en caja". Nota: "Tarjeta, transferencia y MP no se cuentan aquí." Incluye `ingreso_traspaso`/`egreso_traspaso` en el cálculo de saldo.
+- ✅ **Movimientos de sesión enriquecidos**: badge de tipo (Venta/Seña/Egreso/No efectivo/Traspaso), concepto limpio (sin prefijo `[Tipo]`), hora HH:MM:SS, badge de medio de pago, badge `#N` de número de ticket. Al pie del card: "Totales por método" (Efectivo neto, Tarjeta, MP, etc.).
+  - Helpers: `TIPO_LABEL`, `extraerNumeroVenta(concepto)`, `extraerMedioPago(tipo, concepto)` — module-level, sin migration.
+  - `totalesMedios` = IIFE que agrupa por medio con signo (+/-) y excluye `ingreso_apertura` del total por método.
+
 ### Restricciones de rutas por rol (AppLayout)
 - **RRHH**: solo `/rrhh` + `/mi-cuenta`. Cualquier otra ruta → redirect `/rrhh`.
 - **CAJERO**: `CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/mi-cuenta']`. Otra ruta → redirect `/ventas`.

@@ -163,15 +163,26 @@ export default function GastosPage() {
         if (error) throw error
         toast.success('Gasto registrado')
         logActividad({ entidad: 'gasto', entidad_nombre: form.descripcion.trim(), accion: 'crear', valor_nuevo: `$${monto}`, pagina: '/gastos' })
-        if (form.medio_pago === 'Efectivo' && sesionCajaId) {
-          void supabase.from('caja_movimientos').insert({
-            tenant_id: tenant!.id,
-            sesion_id: sesionCajaId,
-            tipo: 'egreso',
-            concepto: `Gasto: ${form.descripcion.trim()}`,
-            monto,
-            usuario_id: user?.id,
-          }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
+        if (sesionCajaId) {
+          if (form.medio_pago === 'Efectivo') {
+            void supabase.from('caja_movimientos').insert({
+              tenant_id: tenant!.id,
+              sesion_id: sesionCajaId,
+              tipo: 'egreso',
+              concepto: `Gasto: ${form.descripcion.trim()}`,
+              monto,
+              usuario_id: user?.id,
+            }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
+          } else if (form.medio_pago) {
+            void supabase.from('caja_movimientos').insert({
+              tenant_id: tenant!.id,
+              sesion_id: sesionCajaId,
+              tipo: 'egreso_informativo',
+              concepto: `[${form.medio_pago}] Gasto: ${form.descripcion.trim()}`,
+              monto,
+              usuario_id: user?.id,
+            })
+          }
         }
       }
 

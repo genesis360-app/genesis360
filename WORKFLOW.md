@@ -189,6 +189,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.72.0 ✅ | Roles CONTADOR+DEPOSITO + routing AppLayout · Inventario vista Por Ubicación · Clonar KIT modal · Compresión imagen >2MB · FilterBar Custom date range · GastosPage -Sueldos · Métodos de pago ConfigPage+MixCajaChart (migration 045) | 2026-04 |
 | v0.73.0 | Fix sucursal filter (OR NULL para datos previos a multi-sucursal) · Post-venta vuelve a Nueva Venta · Caja polling 10s · CAJERO puede abrir 1 caja (no más de 1 propia simultánea) · Cierre caja: labels efectivo + traspasos en saldo · Movimientos sesión: tipo/medio/ticket/hora/totales por método | 2026-04 |
 | v0.74.0 | DS Sprint 4: VentasPage checkout — bg-surface, border-border-ds, text-primary, text-muted, font-mono en precios; modales y historial con tokens DS | 2026-04 |
+| v0.74.1 | Fix: pagos no-efectivo (tarjeta/MP/etc.) ahora se registran en caja_movimientos como ingreso_informativo/egreso_informativo en ventas, reservas y gastos | 2026-04 |
 
 ---
 

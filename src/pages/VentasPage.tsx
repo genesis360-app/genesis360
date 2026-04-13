@@ -821,6 +821,23 @@ export default function VentasPage() {
           usuario_id: user?.id,
         }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
       }
+      // Seña no-efectivo: registrar como ingreso_informativo (fire-and-forget)
+      if (estado === 'reservada' && sesionCajaId) {
+        const totalNoCashSena = total - montoEfectivoCaja
+        if (totalNoCashSena > 0.01) {
+          const tiposNoCash = [...new Set(
+            mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo' && m.tipo !== '').map(m => m.tipo)
+          )].join(' + ')
+          void supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id,
+            sesion_id: sesionCajaId,
+            tipo: 'ingreso_informativo',
+            concepto: `[${tiposNoCash || 'No efectivo'}] Seña Venta #${venta.numero}`,
+            monto: totalNoCashSena,
+            usuario_id: user?.id,
+          })
+        }
+      }
       const msg = estado === 'despachada' ? 'Venta finalizada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
@@ -1269,6 +1286,29 @@ export default function VentasPage() {
                 tipo: 'ingreso',
                 concepto: `Venta #${venta.numero}`,
                 monto: efectivoTotal,
+                usuario_id: user?.id,
+              })
+            }
+            // No-efectivo: saldo cobrado ahora + no-efectivo original de la reserva
+            const noCashSaldoItems = (saldoMediosPago ?? []).filter(m => m.tipo && m.tipo !== 'Efectivo' && parseFloat(m.monto) > 0)
+            const noCashSaldoTotal = noCashSaldoItems.reduce((s, m) => s + parseFloat(m.monto), 0)
+            const prevArr: { tipo: string; monto: number }[] = venta.medio_pago ? (() => { try { return JSON.parse(venta.medio_pago) } catch { return [] } })() : []
+            // Non-cash original de reserva solo si ya fue registrado como ingreso_informativo (si no hubo sesión al reservar, no está en caja)
+            const noCashOriginalTotal = senaEnCaja
+              ? prevArr.filter(m => m.tipo !== 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
+              : 0
+            const noCashTotal = noCashSaldoTotal + noCashOriginalTotal
+            if (noCashTotal > 0.01) {
+              const tiposNoCash = [...new Set([
+                ...noCashSaldoItems.map(m => m.tipo),
+                ...(senaEnCaja ? prevArr.filter(m => m.tipo !== 'Efectivo').map(m => m.tipo) : []),
+              ].filter(Boolean))].join(' + ')
+              void supabase.from('caja_movimientos').insert({
+                tenant_id: tenant!.id,
+                sesion_id: _sesionId,
+                tipo: 'ingreso_informativo',
+                concepto: `[${tiposNoCash || 'No efectivo'}] Venta #${venta.numero}`,
+                monto: noCashTotal,
                 usuario_id: user?.id,
               })
             }

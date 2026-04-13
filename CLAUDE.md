@@ -839,6 +839,16 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - `font-mono` en todos los valores numéricos de precio (dropdown, galería, carrito, totales, historial)
 - **Design System Sprint status**: Sprint 1 ✅ Tokens · Sprint 2 ✅ Header+Sidebar · Sprint 3 ✅ Dashboard General · Sprint 4 ✅ Ventas checkout
 
+### v0.74.1 — en dev
+
+#### Fix — Medios de pago no-efectivo registrados en caja
+- **Bug**: pagos con tarjeta, transferencia, MP y otros no quedaban en `caja_movimientos`. Solo el efectivo era registrado. El resumen de movimientos de sesión no mostraba estas operaciones.
+- **Fix `GastosPage.tsx`**: gasto con medio ≠ Efectivo → INSERT `egreso_informativo` con concepto `[MedioPago] Gasto: descripción`.
+- **Fix `VentasPage.tsx` `registrarVenta`**: reserva con parte no-efectiva → INSERT `ingreso_informativo` con concepto `[Tipos] Seña Venta #N` (fire-and-forget).
+- **Fix `VentasPage.tsx` `cambiarEstado`**: al despachar desde historial → INSERT `ingreso_informativo` con no-efectivo del saldo cobrado ahora + no-efectivo original de la reserva (si ya estaba en caja).
+- **Fix `CajaPage.tsx`**: `egreso_informativo` agregado a `TIPO_LABEL` y `extraerMedioPago`; incluido con signo negativo en `totalesMedios`.
+- **Invariante de saldo**: `totalIngresos` y `totalEgresos` para calcular saldo solo incluyen tipos `*` (no `*_informativo`) — el saldo de efectivo no se ve afectado.
+
 ### v0.73.0 — en dev
 - ✅ **Fix sucursal filter**: `useSucursalFilter.applyFilter` usa `.or('sucursal_id.eq.{id},sucursal_id.is.null')` — datos previos a multi-sucursal (NULL) siguen visibles con cualquier sucursal seleccionada. Afecta inventario, movimientos, ventas, gastos, clientes.
 - ✅ **Post-venta → Nueva Venta**: tras finalizar/reservar, `setTab('nueva')` en lugar de `'historial'`. El cajero queda listo para seguir vendiendo.

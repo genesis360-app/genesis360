@@ -27,6 +27,7 @@ const TIPO_LABEL: Record<string, string> = {
   ingreso_apertura:      'Apertura',
   ingreso_traspaso:      'Traspaso ↓',
   egreso:                'Egreso',
+  egreso_informativo:    'No efectivo',
   egreso_devolucion_sena:'Dev. seña',
   egreso_traspaso:       'Traspaso ↑',
 }
@@ -37,7 +38,7 @@ function extraerNumeroVenta(concepto: string): string | null {
 }
 
 function extraerMedioPago(tipo: string, concepto: string): string {
-  if (tipo === 'ingreso_informativo') {
+  if (tipo === 'ingreso_informativo' || tipo === 'egreso_informativo') {
     const m = concepto.match(/^\[(.+?)\]/)
     return m ? m[1] : 'No efectivo'
   }
@@ -249,7 +250,7 @@ export default function CajaPage() {
     for (const m of movimientos as any[]) {
       const medio = extraerMedioPago(m.tipo, m.concepto)
       if (!medio) continue
-      const signo = ['egreso','egreso_devolucion_sena','egreso_traspaso'].includes(m.tipo) ? -1 : 1
+      const signo = ['egreso','egreso_informativo','egreso_devolucion_sena','egreso_traspaso'].includes(m.tipo) ? -1 : 1
       map[medio] = (map[medio] ?? 0) + signo * m.monto
     }
     return map

@@ -824,6 +824,21 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ **GastosPage**: eliminada categoría 'Sueldos y cargas sociales' (pertenece a RRHH/Nómina).
 - ✅ **Métodos de pago** (migration 045): tabla `metodos_pago` con tenant_id, nombre, color, activo, es_sistema, orden. ConfigPage tab 'Métodos de pago': CRUD + color picker + toggle activo + seed automático de 5 defaults. MixCajaChart usa colores de DB.
 
+### v0.74.0 — en dev
+
+#### Design System Sprint 4 — VentasPage checkout
+- **`VentasPage.tsx`** — 42 reemplazos de tokens DS en checkout, historial y modales:
+  - `bg-white dark:bg-gray-800` → `bg-surface` en todos los panels, cards, dropdowns y modales (8+6+1 ocurrencias)
+  - `border border-gray-100` → `border border-border-ds` en cards del checkout
+  - Section headings `text-gray-700 dark:text-gray-300` → `text-primary`
+  - Product names/totals `text-gray-800 dark:text-gray-100` → `text-primary`
+  - `divide-y divide-gray-50` → `divide-y divide-gray-200 dark:divide-gray-600`
+  - Cart header: `bg-gray-50 dark:bg-gray-700` → `bg-page`
+  - Precio read-only field: → `bg-page text-muted`
+  - Semánticos en totales: `text-gray-600` → `text-muted`, `text-blue-600` → `text-info`, `text-green-600` → `text-success`
+  - `font-mono` en todos los valores numéricos de precio (dropdown, galería, carrito, totales, historial)
+- **Design System Sprint status**: Sprint 1 ✅ Tokens · Sprint 2 ✅ Header+Sidebar · Sprint 3 ✅ Dashboard General · Sprint 4 ✅ Ventas checkout
+
 ### v0.73.0 — en dev
 - ✅ **Fix sucursal filter**: `useSucursalFilter.applyFilter` usa `.or('sucursal_id.eq.{id},sucursal_id.is.null')` — datos previos a multi-sucursal (NULL) siguen visibles con cualquier sucursal seleccionada. Afecta inventario, movimientos, ventas, gastos, clientes.
 - ✅ **Post-venta → Nueva Venta**: tras finalizar/reservar, `setTab('nueva')` en lugar de `'historial'`. El cajero queda listo para seguir vendiendo.

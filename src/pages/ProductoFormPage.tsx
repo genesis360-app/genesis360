@@ -1,3 +1,4 @@
+import imageCompression from 'browser-image-compression'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -186,9 +187,12 @@ export default function ProductoFormPage() {
 
       let imagen_url = existingImageUrl
       if (imageFile) {
-        const ext = imageFile.name.split('.').pop()
+        const fileToUpload = imageFile.size > 2 * 1024 * 1024
+          ? await imageCompression(imageFile, { maxSizeMB: 1.5, maxWidthOrHeight: 1200, useWebWorker: true })
+          : imageFile
+        const ext = fileToUpload.name.split('.').pop()
         const path = `${tenant!.id}/${Date.now()}.${ext}`
-        const { error: uploadError } = await supabase.storage.from('productos').upload(path, imageFile, { upsert: true })
+        const { error: uploadError } = await supabase.storage.from('productos').upload(path, fileToUpload, { upsert: true })
         if (uploadError) throw uploadError
         const { data: urlData } = supabase.storage.from('productos').getPublicUrl(path)
         imagen_url = urlData.publicUrl
@@ -453,7 +457,7 @@ export default function ProductoFormPage() {
                   placeholder="Ej: Tornillo hexagonal 1/4"
                   className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:bg-gray-50 dark:bg-gray-700" />
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SKU <span className="text-gray-400 text-xs font-normal">(auto si vacío)</span></label>
                   <div className="flex gap-2">

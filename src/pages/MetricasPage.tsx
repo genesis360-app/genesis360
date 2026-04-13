@@ -20,7 +20,7 @@ function formatMoneda(v: number) {
 
 function StatCard({ label, value, sub, icon: Icon, color, trend }: any) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
       <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 ${color}`}>
         <Icon size={20} />
       </div>
@@ -444,7 +444,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Gráfico ventas por día */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4">Ventas por día</h2>
           {dataGrafico.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400 dark:text-gray-500 text-sm">Sin ventas en este período</div>
@@ -461,7 +461,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         </div>
 
         {/* Medios de pago */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4">Ventas por medio de pago</h2>
           {dataMediosPago.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-gray-400 dark:text-gray-500 text-sm">Sin datos</div>
@@ -482,7 +482,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Top productos */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
             <Award size={18} className="text-yellow-500" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Productos más vendidos</h2>
@@ -512,7 +512,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         </div>
 
         {/* Margen por producto */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
           <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4">Margen de ganancia (top vendidos)</h2>
           {margenProductos.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin datos suficientes</p>
@@ -539,7 +539,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
 
       {/* Insights de margen objetivo */}
       {insightsMargen.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
             <Target size={18} className="text-purple-500" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Insights de margen objetivo</h2>
@@ -583,7 +583,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         </h2>
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Movimientos del período */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-4 text-sm">Movimientos en el período</h3>
             {movimientosPeriodo.length === 0 ? (
               <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">Sin movimientos en este período</p>
@@ -616,7 +616,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
                             <span className="text-gray-500 dark:text-gray-400 font-medium ml-2 flex-shrink-0">{m.cantidad} u.</span>
                           </div>
                           <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                            <div className="h-full bg-primary rounded-full"
+                            <div className="h-full bg-accent rounded-full"
                               style={{ width: `${Math.min((m.cantidad / (topMotivos[0]?.cantidad || 1)) * 100, 100)}%` }} />
                           </div>
                         </div>
@@ -629,7 +629,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
           </div>
 
           {/* Stock por ubicación */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-4 text-sm flex items-center gap-2">
               <MapPin size={14} className="text-gray-400 dark:text-gray-500" /> Stock por ubicación
             </h3>
@@ -659,7 +659,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
       </div>
 
       {/* Productos sin movimiento */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
           <Clock size={18} className="text-orange-500" />
           <h2 className="font-semibold text-gray-700 dark:text-gray-300">Productos sin movimiento en el período</h2>

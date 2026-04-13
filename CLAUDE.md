@@ -348,7 +348,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Migration 025**: tabla `sucursales` (tenant_id, nombre, dirección, teléfono, activo) + `sucursal_id UUID nullable` en 6 tablas operativas: `inventario_lineas`, `movimientos_stock`, `ventas`, `caja_sesiones`, `gastos`, `clientes`. RLS tenant-based. 6 índices.
 - **`authStore`**: nuevos campos `sucursales: Sucursal[]` y `sucursalId: string | null`. `loadUserData` carga sucursales activas y valida que el ID en localStorage sigue siendo válido (se resetea si la sucursal fue eliminada). `setSucursal(id)` persiste en localStorage.
 - **`useSucursalFilter`** (`src/hooks/useSucursalFilter.ts`): `applyFilter(q)` agrega `.eq('sucursal_id', sucursalId)` solo si hay sucursal activa. Sin sucursal seleccionada → vista global.
-- **`SucursalSelector`**: `<select>` en el header (AppLayout), visible solo cuando `sucursales.length > 0`. Primera opción: "Todas las sucursales" (valor vacío = null).
+- **`SucursalSelector`**: `<select>` en el header (AppLayout), visible solo cuando `sucursales.length > 0`. Sin opción "Todas" — siempre debe haber una sucursal seleccionada. `useEffect` en AppLayout auto-selecciona la primera si `sucursalId` es null.
 - **`SucursalesPage`** (`/sucursales`, OWNER-only): CRUD. Tras mutación llama `loadUserData` para sincronizar el selector del header.
 - **Filtros aplicados**:
   - Read: `inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `clientes`. QueryKey incluye `sucursalId` para invalidación automática.
@@ -718,24 +718,88 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ **tests.yml**: vars `E2E_RRHH_EMAIL` + `E2E_RRHH_PASSWORD`
 - ✅ **Todos los roles E2E verdes**: CAJERO 20/20 · SUPERVISOR 23/23 · RRHH 18/18
 
-### v0.67.0 — en DEV
+### v0.67.0 ✅ PROD
 - ✅ **Sesión expiry por inactividad**: `useInactivityTimeout` hook · select en ConfigPage → Negocio (5/15/30 min / 1h / Nunca) · aviso toast 1 min antes · migration 041: `tenants.session_timeout_minutes INT DEFAULT NULL`
 - ✅ **RRHH feriados nacionales**: botón "🇦🇷 AR 2026" en tab Cumpleaños → carga 16 feriados AR 2026 (solo los faltantes) · widget próximos feriados en Dashboard RRHH
 - ✅ **Desarmado inverso KITs**: botón "Desarmar" en tab Kits · modal con preview de componentes · valida stock del KIT · rebaja KIT + ingresa componentes · migration 041: `kitting_log.tipo` (armado/desarmado) + tipo `des_kitting` en `movimientos_stock`
 - ✅ **VentasPage — badge KIT**: badge naranja "KIT" en dropdown de búsqueda de productos
 
-### Para completar v0.67.0
-- [ ] Bump `APP_VERSION` → v0.67.0
-- [ ] PR dev→main + GitHub release v0.67.0
-- [ ] Migration 041 en PROD
+### v0.68.0 — en dev
 
-### Testing por rol
+#### IVA por producto (migration 042)
+- `productos.alicuota_iva DECIMAL(5,2) DEFAULT 21 CHECK IN (0, 10.5, 21, 27)`: select en ProductoFormPage (Exento/10.5%/21%/27%). Persiste en DB.
+- `venta_items.alicuota_iva` + `venta_items.iva_monto`: IVA histórico al momento de la venta. Cálculo: `ivaMonto = subtotal - subtotal / (1 + rate/100)` (precio IVA incluido).
+- Checkout: desglose de IVA agrupado por tasa (línea gris por cada tasa activa en el carrito).
+- `inventario_lineas.precio_venta_snapshot DECIMAL(14,2)`: precio de venta al momento del ingreso.
+
+#### Biblioteca de Archivos (migration 042)
+- Tabla `archivos_biblioteca`: nombre, tipo (certificado_afip_crt/key/contrato/factura_proveedor/manual/otro), storage_path, tamanio, mime_type.
+- Bucket privado `archivos-biblioteca` (10 MB). RLS por tenant_id.
+- Tab "Biblioteca" en ConfigPage: upload, lista, descarga (signed URL 300s), eliminar.
+
+#### Certificados AFIP (migration 043)
+- Tabla `tenant_certificates`: UNIQUE por tenant, cuit, fecha_validez_hasta, activo. Trigger `updated_at`.
+- Bucket privado `certificados-afip` (1 MB). RLS filtra por `tenant_id` en el path del archivo.
+- `src/lib/afip.ts`: `uploadCertificates()` — valida extensiones, sube .crt + .key, rollback si falla, upsert en DB.
+- ConfigPage → tab Negocio: sección colapsable "Certificados AFIP" con badge estado, CUIT, fecha validez, file inputs con `accept=".crt"/.key"`, botón Guardar/Reemplazar.
+
+#### UX fixes
+- **Ventas**: precio_unitario read-only en carrito (se edita desde Productos) · reorden checkout (Desc+Notas → Totales → Método pago → Acciones) · "Sin Pago Ahora" → "Presupuesto"
+- **Alertas**: botón "Resolver" bloqueado si `stock_actual <= stock_minimo` (toast de error). Complementa el trigger `auto_resolver_alerta_stock` de migration 042.
+- **Inventario**: tab default cambiada a `'inventario'` · motivo "Ventas" (`es_sistema=true`) oculto en select de rebaje manual
+- **Dashboard**: h1 muestra `tenant.nombre` (en lugar de la fecha); fecha pasa a subtítulo
+- **motivos_movimiento**: columna `es_sistema BOOLEAN DEFAULT FALSE`; UPDATE marca "Ventas" como `es_sistema=TRUE`
+
+#### Design System Sprint 1 ✅
+- `tailwind.config.js`: tokens nuevos aditivos: `page`, `surface`, `muted`, `border-ds`, `success`, `danger`, `warning`, `info` (via CSS vars). `fontFamily.mono = JetBrains Mono`.
+- `src/index.css`: variables `--ds-*` en `:root` (light) y `.dark` (dark). Semánticos = iguales en ambos modos.
+- `index.html`: JetBrains Mono 400/500 + preconnect gstatic.
+- `src/styles/design-tokens.css`: referencia completa — recetas botones/cards/tabs/inputs, colores raw, guía de uso.
+- Tokens existentes (`primary`, `accent`, `brand-bg`) sin modificar → cero regressions.
+
+#### Design System Sprint 2 ✅ — Header + Sidebar
+- **Sidebar**: `bg-surface border-r border-border-ds` (blanco light / `#171717` dark). Texto adaptativo: `text-primary dark:text-white` / `text-muted`. Nav items inactivos: `text-gray-700 dark:text-gray-300 hover:bg-accent/10 hover:text-accent`. Nav activo: `bg-accent text-white`.
+- **Nav reordenado**: RRHH sube a posición 9 (después de Alertas), Historial 10, Reportes 11.
+- **Sin bloque de perfil en sidebar**: se removieron el NavLink de perfil (avatar+nombre+rol+tenant) y el "Mi Plan" del pie. El sidebar queda: Logo → Nav → CotizacionWidget.
+- **Header**: `bg-surface border-b border-border-ds`. Botones: `text-muted hover:text-primary dark:hover:text-white`. Sin `shadow-sm`.
+- **6 nuevos componentes** (`src/components/`):
+  - `AvatarDropdown.tsx`: avatar + dropdown con info usuario (email via `supabase.auth.getSession()`), Perfil, Idioma/País (próximamente), Cerrar sesión.
+  - `AyudaModal.tsx`: drawer desde derecha (w-96), FAQs dinámicas por `pathname`, buscador, placeholder videos, form bug-report → `mailto:soporte@genesis360.pro`.
+  - `NotificacionesButton.tsx`: campana con badge rojo, popover con datos simulados + marcar como leída. Backend pendiente.
+  - `RefreshButton.tsx`: `useQueryClient().invalidateQueries()` + spinner 800ms.
+  - `ConfigButton.tsx`: ícono Settings → `/configuracion` (visible solo OWNER/ADMIN).
+  - `PlanProgressBar.tsx`: barra reutilizable success/warning/danger por % uso. Reemplaza banners inline en ProductosPage e InventarioPage.
+- **Orden header** (izq→der): [hamburger mobile] [spacer] [SucursalSelector] [Refresh] [Notificaciones] [Dark/Light] [Ayuda] [Config] [AvatarDropdown]. Pendiente: reordenar completamente + gestionar cuentas en AvatarDropdown.
+- **Logo sidebar**: `<a href>` → `https://www.genesis360.pro` en dominio app, `/` en dev. El toggle colapsar (ChevronLeft/Right) queda separado a la derecha.
+- **SucursalSelector**: eliminada opción "Todas las sucursales". Auto-selecciona la primera sucursal si no hay ninguna seleccionada. Siempre se trabaja en una sucursal específica.
+- **CotizacionWidget**: colores adaptados para light mode (`text-blue-500 dark:text-blue-300`, etc.).
+- **Sin bordes en tarjetas**: removido `border border-gray-{100,200} dark:border-gray-700` de todas las cards en DashboardPage, MetricasPage, RentabilidadPage, RecomendacionesPage. Solo shadow.
+- **Barras DS homologadas**: todas las barras de progreso usan `bg-accent` (violeta). Corrige clases Tailwind malformadas (`dark:bg-red-900/20/40`, `dark:bg-green-900/200`) que causaban fondo claro + texto claro en dark mode.
+- **Divisores Detalle por venta**: `divide-gray-50` → `divide-gray-200 dark:divide-gray-600` (visibles en ambos modos).
+
+#### Design System Sprint 3 ✅ — Dashboard tab General
+- **5 componentes nuevos** en `src/components/`:
+  - `FilterBar.tsx`: período (Hoy/7D/30D/Mes/Trim/Año) + ARS/USD + c/IVA s/IVA. Helpers: `getFechasDashboard`, `getFechasAnteriores`, `labelPeriodo`. Tipos: `PeriodoDash`, `Moneda`, `IVAMode`.
+  - `KPICard.tsx`: tarjeta reutilizable con `title`, `value`, `badge` (success/warning/danger/neutral + TrendingUp/Down), `sub`, `icon`, `onClick`.
+  - `InsightCard.tsx`: tarjeta insight con `variant` (danger/warning/success/info), `icon`, `title`, `description`, `action`.
+  - `VentasVsGastosChart.tsx`: AreaChart "La Balanza" — ventas (área violeta) + gastos (línea roja) por día. Tooltip oscuro con diferencia. Usa `getFechasDashboard` para rango.
+  - `MixCajaChart.tsx`: Donut "El Mix de Caja" — por método de pago (Efectivo=accent, Transferencia=blue, Tarjeta=green, MP=cyan). Labels % en sectores, total en centro.
+- **DashboardPage tab General** refactorizado:
+  - FilterBar arriba; controla periodo/moneda/IVA de KPIs y gráficos
+  - 4 KPIs nuevas: Ingreso Neto (caja_movimientos ingreso-egreso), Margen Contribución ((ventas-costo)/ventas×100), Burn Rate diario (gastos/días), Posición IVA (sum venta_items.iva_monto)
+  - Badges comparativas auto: `getFechasAnteriores(periodo)` calcula período anterior equivalente
+  - Gráficos en grid 2 col: La Balanza + El Mix de Caja
+  - Insights automáticos: top 4 de `useRecomendaciones` en grid 2 col con `InsightCard`
+  - Tabla Fugas y Movimientos: top 8 gastos+ventas del período ordenados por monto
+  - Secciones existentes (stock crítico, proyección, sugerencia pedido, top productos, movimientos) sin cambios debajo
+
+#### Testing por rol
 - [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0) — 20 tests ✅
 - [x] Tests E2E para SUPERVISOR: `15_rol_supervisor.spec.ts` (v0.65.0) — 23 tests ✅
 - [x] Tests E2E para RRHH: `16_rol_rrhh.spec.ts` (v0.66.0) — 18 tests ✅
 - [x] Tests de coherencia de números: `14_coherencia_numeros.spec.ts` (v0.64.0)
 - Usuarios E2E DEV: OWNER `e2e@genesis360.test` · CAJERO `cajero1@local.com` · RRHH `rrhh1@local.com` · SUPERVISOR `supervisor@test.com` — todos con contraseña `123` (via SQL en auth.users)
-- Escenarios nuevos pendientes: modificarReserva con serializado → series disponibles en carrito.
+- Test regresión v0.57.0: `modificarReserva` con serializado → series disponibles en carrito ✅ (04_ventas.spec.ts)
 
 ### Restricciones de rutas por rol (AppLayout)
 - **RRHH**: solo `/rrhh` + `/mi-cuenta`. Cualquier otra ruta → redirect `/rrhh`.

@@ -38,7 +38,7 @@ export default function ProductoFormPage() {
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
     stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false,
-    regla_inventario: '', aging_profile_id: '', margen_objetivo: '',
+    regla_inventario: '', aging_profile_id: '', margen_objetivo: '', alicuota_iva: '21',
     // Marketplace
     publicado_marketplace: false, precio_marketplace: '', stock_reservado_marketplace: '0',
     descripcion_marketplace: '',
@@ -133,6 +133,7 @@ export default function ProductoFormPage() {
         regla_inventario: productoData.regla_inventario ?? '',
         aging_profile_id: productoData.aging_profile_id ?? '',
         margen_objetivo: productoData.margen_objetivo != null ? productoData.margen_objetivo.toString() : '',
+        alicuota_iva: (productoData.alicuota_iva ?? 21).toString(),
         publicado_marketplace: productoData.publicado_marketplace ?? false,
         precio_marketplace: productoData.precio_marketplace != null ? productoData.precio_marketplace.toString() : '',
         stock_reservado_marketplace: (productoData.stock_reservado_marketplace ?? 0).toString(),
@@ -211,6 +212,7 @@ export default function ProductoFormPage() {
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
+        alicuota_iva: parseFloat(form.alicuota_iva) || 21,
         publicado_marketplace: form.publicado_marketplace,
         precio_marketplace: form.precio_marketplace !== '' ? parseFloat(form.precio_marketplace) : null,
         stock_reservado_marketplace: parseInt(form.stock_reservado_marketplace) || 0,
@@ -646,7 +648,18 @@ export default function ProductoFormPage() {
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">%</span>
                   </div>
                 </div>
-                <div /> {/* spacer */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alícuota IVA</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">IVA incluido en el precio de venta</p>
+                  <select value={form.alicuota_iva} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, alicuota_iva: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:bg-gray-50 dark:bg-gray-700">
+                    <option value="0">Exento (0%)</option>
+                    <option value="10.5">10,5%</option>
+                    <option value="21">21% (general)</option>
+                    <option value="27">27% (servicios)</option>
+                  </select>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

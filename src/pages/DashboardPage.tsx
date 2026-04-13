@@ -4,6 +4,7 @@ import {
   Package, AlertTriangle, ArrowDown, TrendingUp, TrendingDown,
   ShoppingCart, DollarSign, CheckCircle, Zap, ChevronRight, Clock, BarChart2,
   ChevronDown, ChevronUp, Truck, Hourglass, Lock,
+  Wallet, Flame, Calculator, Activity,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -14,6 +15,14 @@ import RentabilidadPage from './RentabilidadPage'
 import RecomendacionesPage from './RecomendacionesPage'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
+import { useCotizacion } from '@/hooks/useCotizacion'
+import { FilterBar, getFechasDashboard, getFechasAnteriores, labelPeriodo } from '@/components/FilterBar'
+import type { PeriodoDash, Moneda, IVAMode } from '@/components/FilterBar'
+import { KPICard } from '@/components/KPICard'
+import { InsightCard } from '@/components/InsightCard'
+import type { InsightVariant } from '@/components/InsightCard'
+import { VentasVsGastosChart } from '@/components/VentasVsGastosChart'
+import { MixCajaChart } from '@/components/MixCajaChart'
 
 type InsightTipo = 'danger' | 'warning' | 'success' | 'info'
 
@@ -26,10 +35,10 @@ interface Insight {
 }
 
 const INSIGHT_STYLES: Record<InsightTipo, { border: string; bg: string; iconColor: string; iconBg: string }> = {
-  danger:  { border: 'border-l-red-500',   bg: 'bg-red-50 dark:bg-red-900/20/40 dark:bg-red-900/20',   iconColor: 'text-red-500 dark:text-red-400',   iconBg: 'bg-red-100 dark:bg-red-900/30' },
-  warning: { border: 'border-l-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20/40 dark:bg-amber-900/20', iconColor: 'text-amber-600 dark:text-amber-400', iconBg: 'bg-amber-100 dark:bg-amber-900/30' },
-  success: { border: 'border-l-green-500', bg: 'bg-green-50 dark:bg-green-900/20/40 dark:bg-green-900/20', iconColor: 'text-green-600 dark:text-green-400', iconBg: 'bg-green-100 dark:bg-green-900/30' },
-  info:    { border: 'border-l-blue-500',  bg: 'bg-blue-50 dark:bg-blue-900/20/40 dark:bg-blue-900/20',  iconColor: 'text-blue-600 dark:text-blue-400',  iconBg: 'bg-blue-100 dark:bg-blue-900/30' },
+  danger:  { border: 'border-l-red-500',   bg: 'bg-red-50 dark:bg-gray-800',   iconColor: 'text-red-500 dark:text-red-400',   iconBg: 'bg-red-100 dark:bg-red-900/30' },
+  warning: { border: 'border-l-amber-500', bg: 'bg-amber-50 dark:bg-gray-800', iconColor: 'text-amber-600 dark:text-amber-400', iconBg: 'bg-amber-100 dark:bg-amber-900/30' },
+  success: { border: 'border-l-green-500', bg: 'bg-green-50 dark:bg-gray-800', iconColor: 'text-green-600 dark:text-green-400', iconBg: 'bg-green-100 dark:bg-green-900/30' },
+  info:    { border: 'border-l-blue-500',  bg: 'bg-blue-50 dark:bg-gray-800',  iconColor: 'text-blue-600 dark:text-blue-400',  iconBg: 'bg-blue-100 dark:bg-blue-900/30' },
 }
 
 const INSIGHT_ICONS: Record<InsightTipo, React.ElementType> = {
@@ -53,6 +62,10 @@ export default function DashboardPage() {
   const [tab, setTab] = useState<'general' | 'metricas' | 'insights' | 'rentabilidad' | 'recomendaciones'>('general')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
+  const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
+  const [moneda, setMoneda] = useState<Moneda>('ARS')
+  const [iva, setIva] = useState<IVAMode>('incluido')
+  const { cotizacion } = useCotizacion()
 
   const { data: stats } = useQuery({
     queryKey: ['dashboard-stats', tenant?.id],
@@ -190,6 +203,130 @@ export default function DashboardPage() {
     enabled: !!tenant,
   })
 
+  // ─── KPIs período (Ingreso Neto / Margen / Burn Rate / IVA) ─────────────────
+  const { data: dashKpis } = useQuery({
+    queryKey: ['dash-kpis', tenant?.id, periodo],
+    queryFn: async () => {
+      const { desde, hasta } = getFechasDashboard(periodo)
+      const { desde: desdePrev, hasta: hastaPrev } = getFechasAnteriores(periodo)
+      const desdeDate = desde.split('T')[0]
+      const hastaDate = hasta.split('T')[0]
+      const desdePrevDate = desdePrev.split('T')[0]
+      const hastaPrevDate = hastaPrev.split('T')[0]
+
+      const [sessionsRes, sessionsPrevRes, viRes, viPrevRes, gastosRes, gastosPrevRes] = await Promise.all([
+        supabase.from('caja_sesiones').select('id').eq('tenant_id', tenant!.id)
+          .gte('created_at', desde).lte('created_at', hasta),
+        supabase.from('caja_sesiones').select('id').eq('tenant_id', tenant!.id)
+          .gte('created_at', desdePrev).lte('created_at', hastaPrev),
+        supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico, iva_monto')
+          .eq('tenant_id', tenant!.id).gte('created_at', desde).lte('created_at', hasta),
+        supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico')
+          .eq('tenant_id', tenant!.id).gte('created_at', desdePrev).lte('created_at', hastaPrev),
+        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id)
+          .gte('fecha', desdeDate).lte('fecha', hastaDate),
+        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id)
+          .gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate),
+      ])
+
+      // Ingreso Neto desde caja_movimientos
+      let ingresoNeto = 0
+      let ingresoNetoPrev = 0
+      const sesIds = sessionsRes.data?.map(s => s.id) ?? []
+      const sesIdsPrev = sessionsPrevRes.data?.map(s => s.id) ?? []
+      if (sesIds.length > 0) {
+        const { data: movs } = await supabase.from('caja_movimientos')
+          .select('tipo, monto').in('sesion_id', sesIds).in('tipo', ['ingreso', 'egreso'])
+        movs?.forEach(m => { ingresoNeto += m.tipo === 'ingreso' ? (m.monto ?? 0) : -(m.monto ?? 0) })
+      }
+      if (sesIdsPrev.length > 0) {
+        const { data: movsPrev } = await supabase.from('caja_movimientos')
+          .select('tipo, monto').in('sesion_id', sesIdsPrev).in('tipo', ['ingreso', 'egreso'])
+        movsPrev?.forEach(m => { ingresoNetoPrev += m.tipo === 'ingreso' ? (m.monto ?? 0) : -(m.monto ?? 0) })
+      }
+
+      // Margen de contribución
+      let totalVentas = 0, totalCosto = 0, ivaVentas = 0
+      let totalVentasPrev = 0, totalCostoPrev = 0
+      viRes.data?.forEach((vi: any) => {
+        const sub = (vi.precio_unitario ?? 0) * (vi.cantidad ?? 0)
+        totalVentas += sub
+        if (vi.precio_costo_historico) totalCosto += vi.precio_costo_historico * vi.cantidad
+        if (vi.iva_monto) ivaVentas += vi.iva_monto
+      })
+      viPrevRes.data?.forEach((vi: any) => {
+        const sub = (vi.precio_unitario ?? 0) * (vi.cantidad ?? 0)
+        totalVentasPrev += sub
+        if (vi.precio_costo_historico) totalCostoPrev += vi.precio_costo_historico * vi.cantidad
+      })
+
+      const margenContrib = totalVentas > 0 && totalCosto > 0
+        ? ((totalVentas - totalCosto) / totalVentas) * 100 : null
+      const margenContribPrev = totalVentasPrev > 0 && totalCostoPrev > 0
+        ? ((totalVentasPrev - totalCostoPrev) / totalVentasPrev) * 100 : null
+
+      // Burn Rate diario
+      const totalGastos = (gastosRes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)
+      const totalGastosPrev = (gastosPrevRes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)
+      const { desde: d1s, hasta: d2s } = getFechasDashboard(periodo)
+      const d1 = new Date(d1s), d2 = new Date(d2s)
+      const daysInPeriod = Math.max(1, Math.ceil((d2.getTime() - d1.getTime()) / 86400000))
+      const daysElapsed = Math.min(daysInPeriod, Math.ceil((Date.now() - d1.getTime()) / 86400000))
+      const burnRate = daysElapsed > 0 ? totalGastos / daysElapsed : 0
+      const { desde: dp1s, hasta: dp2s } = getFechasAnteriores(periodo)
+      const daysPrev = Math.max(1, Math.ceil((new Date(dp2s).getTime() - new Date(dp1s).getTime()) / 86400000))
+      const burnRatePrev = daysPrev > 0 ? totalGastosPrev / daysPrev : 0
+
+      return {
+        ingresoNeto, ingresoNetoPrev,
+        margenContrib, margenContribPrev,
+        burnRate, burnRatePrev,
+        ivaVentas,
+        totalVentas, totalCosto,
+      }
+    },
+    enabled: !!tenant,
+  })
+
+  // ─── Fugas y Movimientos (top 8 por monto) ───────────────────────────────────
+  const { data: fugasData = [] } = useQuery({
+    queryKey: ['dash-fugas', tenant?.id, periodo],
+    queryFn: async () => {
+      const { desde, hasta } = getFechasDashboard(periodo)
+      const desdeDate = desde.split('T')[0]
+      const hastaDate = hasta.split('T')[0]
+      const [{ data: gastos }, { data: ventas }] = await Promise.all([
+        supabase.from('gastos').select('id, descripcion, monto, fecha')
+          .eq('tenant_id', tenant!.id)
+          .gte('fecha', desdeDate).lte('fecha', hastaDate)
+          .order('monto', { ascending: false }).limit(5),
+        supabase.from('ventas').select('id, numero, total, cliente_nombre, created_at')
+          .eq('tenant_id', tenant!.id)
+          .in('estado', ['despachada', 'facturada'])
+          .gte('created_at', desde).lte('created_at', hasta)
+          .order('total', { ascending: false }).limit(5),
+      ])
+      const rows = [
+        ...(gastos ?? []).map(g => ({
+          id: g.id, tipo: 'gasto' as const,
+          descripcion: g.descripcion ?? 'Gasto',
+          monto: -(g.monto ?? 0),
+          fecha: g.fecha,
+        })),
+        ...(ventas ?? []).map(v => ({
+          id: v.id, tipo: 'venta' as const,
+          descripcion: v.cliente_nombre
+            ? `Venta #${v.numero} — ${v.cliente_nombre}`
+            : `Venta #${v.numero ?? v.id.slice(-4)}`,
+          monto: v.total ?? 0,
+          fecha: v.created_at?.split('T')[0] ?? '',
+        })),
+      ]
+      return rows.sort((a, b) => Math.abs(b.monto) - Math.abs(a.monto)).slice(0, 8)
+    },
+    enabled: !!tenant,
+  })
+
   // ─── Insights ────────────────────────────────────────────────────────────────
   const insights = useMemo<Insight[]>(() => {
     if (!stats) return []
@@ -303,7 +440,7 @@ export default function DashboardPage() {
 
         {/* Score de salud */}
         {score && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
             <div className="flex items-center gap-5">
               <div className="relative w-20 h-20 flex-shrink-0">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
@@ -359,7 +496,7 @@ export default function DashboardPage() {
               const Icon  = INSIGHT_ICONS[r.tipo]
               return (
                 <div key={r.id}
-                  className={`rounded-xl border border-gray-100 dark:border-gray-700 border-l-4 ${style.border} ${style.bg} p-4 shadow-sm dark:shadow-gray-900`}>
+                  className={`rounded-xl border-l-4 ${style.border} ${style.bg} p-4 shadow-sm dark:shadow-gray-900`}>
                   <div className="flex items-start gap-3">
                     <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${style.iconBg}`}>
                       <Icon size={17} className={style.iconColor} />
@@ -440,165 +577,199 @@ export default function DashboardPage() {
     )
   }
 
+  // ─── Helpers de formato ──────────────────────────────────────────────────────
+  const conv   = moneda === 'USD' && cotizacion > 0 ? cotizacion : 1
+  const sym    = moneda === 'USD' ? 'U$D ' : '$'
+  const fmtARS = (v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+  const fmtPct = (v: number) => `${v.toFixed(1)}%`
+
+  // Ajuste por IVA
+  const ajustarIva = (valor: number, ivaMontoAsoc = 0) =>
+    iva === 'excluido' ? valor - ivaMontoAsoc : valor
+
+  // Badges comparativas
+  const badgeVsAnterior = (actual: number | null, anterior: number | null, invertido = false) => {
+    if (actual === null || anterior === null || anterior === 0) return undefined
+    const pct = ((actual - anterior) / Math.abs(anterior)) * 100
+    const positivo = invertido ? pct < 0 : pct > 0
+    const color = Math.abs(pct) < 1 ? 'neutral' : positivo ? 'success' : 'danger'
+    const label = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% vs período ant.`
+    return { label, color } as const
+  }
+
   return (
     <div className="space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-primary capitalize">{fecha}</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
+          <h1 className="text-2xl font-bold text-primary">{tenant?.nombre ?? 'Dashboard'}</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5 capitalize">{fecha}</p>
         </div>
         {tabButtons('general')}
       </div>
 
-      {/* KPI Cards con semáforo */}
+      {/* FilterBar */}
+      <FilterBar
+        periodo={periodo} setPeriodo={setPeriodo}
+        moneda={moneda} setMoneda={setMoneda}
+        iva={iva} setIva={setIva}
+      />
+
+      {/* ── 4 KPI Cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
-        <Link to="/productos" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
-            <Package size={20} />
-          </div>
-          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{(stats?.totalProductos ?? 0).toLocaleString()}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Total productos activos</p>
-          {(stats?.totalProductosInactivos ?? 0) > 0 && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{stats!.totalProductosInactivos} inactivos</p>
-          )}
-        </Link>
+        {/* Ingreso Neto (Caja Real) */}
+        <KPICard
+          title="Ingreso Neto (Caja)"
+          value={dashKpis ? fmtARS(dashKpis.ingresoNeto) : '—'}
+          badge={badgeVsAnterior(dashKpis?.ingresoNeto ?? null, dashKpis?.ingresoNetoPrev ?? null)}
+          sub={`Efectivo ${labelPeriodo(periodo)}`}
+          icon={<div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400"><Wallet size={20} /></div>}
+        />
 
-        <Link to="/alertas" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
-          <div className="flex items-start justify-between mb-3">
-            <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400">
-              <AlertTriangle size={20} />
-            </div>
-            <span className={`w-2.5 h-2.5 rounded-full mt-1 ${SEMAFORO_COLOR[sem.alertas]}`} />
-          </div>
-          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats?.alertasActivas ?? 0}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Alertas activas</p>
-        </Link>
+        {/* Margen de Contribución */}
+        <KPICard
+          title="Margen Contribución"
+          value={dashKpis?.margenContrib != null ? fmtPct(dashKpis.margenContrib) : '—'}
+          badge={(() => {
+            if (!dashKpis?.margenContrib) return undefined
+            const m = dashKpis.margenContrib
+            return {
+              label: m >= 30 ? 'Saludable' : m >= 15 ? 'Ajustado' : 'Bajo',
+              color: m >= 30 ? 'success' : m >= 15 ? 'warning' : 'danger',
+            } as const
+          })()}
+          sub={dashKpis?.margenContrib == null ? 'Sin datos de costo' : `${fmtARS(ajustarIva(dashKpis.totalVentas - dashKpis.totalCosto))} ganancia bruta`}
+          icon={<div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"><TrendingUp size={20} /></div>}
+          onClick={() => setTab('rentabilidad')}
+        />
 
-        <Link to="/inventario" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
-          <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400">
-            <ArrowDown size={20} />
-          </div>
-          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">${(stats?.ingresosHoy ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Ingresos (7d)</p>
-          {(stats?.cantIngresosHoy ?? 0) > 0 && (
-            <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5">{stats!.cantIngresosHoy} unidades</p>
-          )}
-        </Link>
+        {/* Burn Rate Diario */}
+        <KPICard
+          title="Burn Rate Diario"
+          value={dashKpis && dashKpis.burnRate > 0 ? `${fmtARS(dashKpis.burnRate)}/día` : '—'}
+          badge={badgeVsAnterior(dashKpis?.burnRate ?? null, dashKpis?.burnRatePrev ?? null, true)}
+          sub={`Gasto promedio diario ${labelPeriodo(periodo)}`}
+          icon={<div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400"><Flame size={20} /></div>}
+        />
 
-        <Link to="/alertas" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
-          <div className="flex items-start justify-between mb-3">
-            <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-500 dark:text-amber-400">
-              <Package size={20} />
-            </div>
-            <span className={`w-2.5 h-2.5 rounded-full mt-1 ${SEMAFORO_COLOR[sem.stock]}`} />
-          </div>
-          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{stats?.stockCritico ?? 0}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Stock crítico</p>
-        </Link>
+        {/* Posición IVA Técnica */}
+        <KPICard
+          title="Posición IVA"
+          value={dashKpis && dashKpis.ivaVentas > 0 ? fmtARS(dashKpis.ivaVentas) : '—'}
+          badge={dashKpis && dashKpis.ivaVentas > 0
+            ? { label: 'Débito fiscal', color: 'warning' }
+            : undefined}
+          sub={dashKpis && dashKpis.ivaVentas > 0
+            ? 'IVA ventas del período'
+            : 'Sin IVA discriminado'}
+          icon={<div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"><Calculator size={20} /></div>}
+        />
       </div>
 
-      {/* Ventas del mes + Valor inventario + Rentabilidad neta */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gradient-to-br from-primary to-accent rounded-xl p-5 text-white">
-          <div className="flex items-center justify-between mb-2">
+      {/* ── Gráficos: La Balanza + El Mix de Caja ───────────────────────────── */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <Activity size={16} className="text-accent" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">La Balanza</h2>
+            <span className="ml-auto text-xs text-muted">Ventas vs Gastos · {labelPeriodo(periodo)}</span>
+          </div>
+          <VentasVsGastosChart periodo={periodo} moneda={moneda} cotizacion={conv} />
+        </div>
+        <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <DollarSign size={16} className="text-accent" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">El Mix de Caja</h2>
+            <span className="ml-auto text-xs text-muted">Origen de fondos · {labelPeriodo(periodo)}</span>
+          </div>
+          <MixCajaChart periodo={periodo} moneda={moneda} cotizacion={conv} />
+        </div>
+      </div>
+
+      {/* ── Insights automáticos ─────────────────────────────────────────────── */}
+      {recomendaciones.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <DollarSign size={18} className="text-blue-200" />
-              <span className="text-blue-200 text-sm">Ventas este mes</span>
+              <Zap size={16} className="text-accent" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Insights automáticos</h2>
+              <span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{recomendaciones.length}</span>
             </div>
-            {trendVentas !== null && (
-              <div className={`flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full
-                ${trendVentas >= 0 ? 'bg-green-50 dark:bg-green-900/200/30 text-green-200' : 'bg-red-50 dark:bg-red-900/200/30 text-red-200'}`}>
-                {trendVentas >= 0 ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                {Math.abs(trendVentas).toFixed(0)}%
-              </div>
-            )}
+            <button onClick={() => setTab('insights')} className="text-xs text-accent hover:underline">Ver todos →</button>
           </div>
-          <p className="text-3xl font-bold">
-            ${(stats?.totalVentasMes ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-          </p>
-          <p className="text-blue-200 text-xs mt-1">{stats?.cantVentasMes ?? 0} ventas despachadas</p>
-          {trendVentas !== null && stats && (
-            <p className="text-blue-300 text-xs mt-0.5">
-              {trendVentas >= 0 ? '+' : ''}${Math.abs(stats.totalVentasMes - stats.totalVentasMesAnt).toLocaleString('es-AR', { maximumFractionDigits: 0 })} vs mes anterior
-            </p>
-          )}
-          {(stats?.deudaTotal ?? 0) > 0 && (
-            <Link to="/alertas" className="flex items-center gap-1 mt-2 text-xs text-amber-300 hover:text-white transition-colors">
-              <Hourglass size={11} />
-              ${stats!.deudaTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })} pendiente de cobro
-              {stats!.cantDeudoras > 0 && ` · ${stats!.cantDeudoras} venta${stats!.cantDeudoras !== 1 ? 's' : ''}`}
-            </Link>
-          )}
-          <button onClick={() => setTab('metricas')} className="inline-block mt-2 text-xs text-blue-300 hover:text-white transition-colors">
-            Ver métricas completas →
-          </button>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingUp size={18} className="text-accent" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Valor del inventario</h2>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {recomendaciones.slice(0, 4).map(r => {
+              const iconMap = { danger: AlertTriangle, warning: Clock, success: CheckCircle, info: BarChart2 }
+              const Icon = iconMap[r.tipo]
+              return (
+                <InsightCard
+                  key={r.id}
+                  variant={r.tipo as InsightVariant}
+                  icon={<Icon size={16} />}
+                  title={r.titulo}
+                  description={r.impacto}
+                  action={{
+                    label: r.accion,
+                    onClick: () => r.link === '/metricas' ? setTab('metricas') : window.location.href = r.link,
+                  }}
+                />
+              )
+            })}
           </div>
-          <p className="text-3xl font-bold text-primary">
-            ${(stats?.valorInventario ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-          </p>
-          <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">Precio costo × stock actual</p>
-          {(stats?.cantStockMuerto ?? 0) > 0 && (
-            <p className="text-xs text-amber-500 mt-1">
-              ⚠ ${(stats?.valorStockMuerto ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })} en stock sin movimiento
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Rentabilidad neta del mes */}
-      {stats && (stats.rentabilidadNeta !== 0 || stats.gastosTotal > 0 || stats.costoVentas > 0) && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center gap-2 mb-3">
-            {stats.rentabilidadNeta >= 0
-              ? <TrendingUp size={18} className="text-green-500" />
-              : <TrendingDown size={18} className="text-red-500" />}
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Rentabilidad neta este mes</h2>
-            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">Ventas − Costo − Gastos</span>
-          </div>
-          <div className="flex items-end gap-4 flex-wrap">
-            <div>
-              <p className={`text-3xl font-bold ${stats.rentabilidadNeta >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                {stats.rentabilidadNeta >= 0 ? '' : '−'}${Math.abs(stats.rentabilidadNeta).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-              </p>
-              {stats.margenNeto !== null && (
-                <p className={`text-xs mt-0.5 font-medium ${stats.rentabilidadNeta >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {stats.margenNeto.toFixed(1)}% de margen neto
-                </p>
-              )}
-            </div>
-            <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-              <div>
-                <p className="text-gray-400">Ventas</p>
-                <p className="font-semibold text-gray-700 dark:text-gray-300">${stats.totalVentasMes.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Costo ventas</p>
-                <p className="font-semibold text-red-500">−${stats.costoVentas.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Gastos</p>
-                <p className="font-semibold text-red-500">−${stats.gastosTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
-              </div>
-            </div>
-          </div>
-          {stats.costoVentas === 0 && stats.totalVentasMes > 0 && (
-            <p className="text-xs text-amber-500 mt-2">⚠ Sin precio costo en productos vendidos — el cálculo puede ser incompleto</p>
-          )}
         </div>
       )}
 
+      {/* ── Fugas y Movimientos ──────────────────────────────────────────────── */}
+      {fugasData.length > 0 && (
+        <div className="bg-surface border border-border-ds rounded-xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-border-ds flex items-center gap-2">
+            <ShoppingCart size={16} className="text-accent" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Fugas y Movimientos</h2>
+            <span className="ml-auto text-xs text-muted">Top 8 por monto · {labelPeriodo(periodo)}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700/50">
+                <tr>
+                  <th className="text-left px-5 py-2.5 text-xs font-semibold text-muted uppercase">Descripción</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-muted uppercase hidden sm:table-cell">Tipo</th>
+                  <th className="text-right px-5 py-2.5 text-xs font-semibold text-muted uppercase">Monto</th>
+                  <th className="text-right px-5 py-2.5 text-xs font-semibold text-muted uppercase hidden md:table-cell">Fecha</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {fugasData.map((row: any) => (
+                  <tr key={`${row.tipo}-${row.id}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <td className="px-5 py-3 text-gray-700 dark:text-gray-300 max-w-[200px] truncate">{row.descripcion}</td>
+                    <td className="px-3 py-3 hidden sm:table-cell">
+                      <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium
+                        ${row.tipo === 'venta'
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                          : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
+                        {row.tipo === 'venta' ? 'Venta' : 'Gasto'}
+                      </span>
+                    </td>
+                    <td className={`px-5 py-3 text-right font-semibold ${row.monto >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                      {row.monto >= 0 ? '+' : ''}{fmtARS(Math.abs(row.monto))}
+                    </td>
+                    <td className="px-5 py-3 text-right text-muted text-xs hidden md:table-cell">
+                      {row.fecha ? new Date(row.fecha + (row.fecha.includes('T') ? '' : 'T00:00:00')).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Secciones existentes (sin movimiento, proyección, crítico, etc.) ── */}
+
       {/* Productos sin movimiento — expandable */}
       {(stats?.cantStockMuerto ?? 0) > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 overflow-hidden">
           <button
             onClick={() => setSinMovExpanded(v => !v)}
             className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
@@ -642,7 +813,7 @@ export default function DashboardPage() {
       {score && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Score widget */}
-          <Link to="/recomendaciones" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all flex items-center gap-4">
+          <Link to="/recomendaciones" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 hover:shadow-md transition-all flex items-center gap-4">
             <div className="relative w-16 h-16 flex-shrink-0">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="12" />
@@ -674,7 +845,7 @@ export default function DashboardPage() {
               <Link
                 key={r.id}
                 to={r.link}
-                className={`rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all
+                className={`rounded-xl p-4 shadow-sm hover:shadow-md transition-all
                   ${r.tipo === 'danger' ? 'bg-red-50 dark:bg-red-900/20 border-l-4 border-l-red-500' :
                     r.tipo === 'warning' ? 'bg-amber-50 dark:bg-amber-900/20 border-l-4 border-l-amber-500' :
                     r.tipo === 'success' ? 'bg-green-50 dark:bg-green-900/20 border-l-4 border-l-green-500' :
@@ -710,7 +881,7 @@ export default function DashboardPage() {
             const Icon  = INSIGHT_ICONS[insight.tipo]
             return (
               <div key={i}
-                className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 border-l-4 ${style.border} ${style.bg}
+                className={`bg-white dark:bg-gray-800 rounded-xl border-l-4 ${style.border} ${style.bg}
                   p-4 flex items-center justify-between gap-4 shadow-sm dark:shadow-gray-900`}>
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${style.iconBg}`}>
@@ -740,7 +911,7 @@ export default function DashboardPage() {
 
       {/* Sugerencia de pedido */}
       {(stats?.prodsCriticos?.length ?? 0) > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
             <Truck size={16} className="text-blue-500 dark:text-blue-400" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Sugerencia de pedido</h2>
@@ -784,7 +955,7 @@ export default function DashboardPage() {
 
       {/* Proyección de cobertura */}
       {(stats?.proyeccionCobertura?.length ?? 0) > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 overflow-hidden">
           <button
             onClick={() => setCoberturaExpanded(v => !v)}
             className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
@@ -838,7 +1009,7 @@ export default function DashboardPage() {
       {/* Bottom grid */}
       <div className="grid lg:grid-cols-2 gap-6">
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
               <ShoppingCart size={16} className="text-accent" /> Top productos este mes
@@ -865,7 +1036,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Movimientos recientes</h2>
             <Link to="/inventario" className="text-xs text-accent hover:underline">Ver todos →</Link>

@@ -54,6 +54,7 @@ interface CartItem {
   lpn_fuentes?: LpnFuente[]               // computed: qué líneas cubren la cantidad actual
   imagen_url?: string
   es_kit?: boolean
+  alicuota_iva?: number
   series_seleccionadas: string[]
   series_disponibles: any[]
 }
@@ -185,7 +186,7 @@ export default function VentasPage() {
 
       // Buscar productos
       let prodQuery = supabase.from('productos')
-        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit')
+        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit, alicuota_iva')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('nombre')
         .limit(viewMode === 'galeria' ? 60 : 20)
@@ -402,6 +403,7 @@ export default function VentasPage() {
       lineas_disponibles: lineasDisponibles,
       lpn_fuentes: lpnFuentes,
       imagen_url: p.imagen_url,
+      alicuota_iva: (p as any).alicuota_iva ?? 21,
       series_seleccionadas: [],
       series_disponibles: seriesDisp,
     }
@@ -412,7 +414,7 @@ export default function VentasPage() {
     setScannerOpen(false)
     // Buscar por codigo_barras o SKU exacto
     const { data: prods } = await supabase.from('productos')
-      .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit')
+      .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva')
       .eq('tenant_id', tenant!.id).eq('activo', true)
       .or(`codigo_barras.eq.${code},sku.eq.${code}`)
       .limit(1)
@@ -658,6 +660,9 @@ export default function VentasPage() {
           ventaItemLineaId = item.linea_id ?? null
         }
 
+        const ivaRate = item.alicuota_iva ?? 21
+        const ivaMonto = ivaRate > 0 ? itemSubtotal - itemSubtotal / (1 + ivaRate / 100) : 0
+
         const { data: ventaItem, error: itemError } = await supabase.from('venta_items').insert({
           tenant_id: tenant!.id,
           venta_id: venta.id,
@@ -668,6 +673,8 @@ export default function VentasPage() {
           precio_costo_historico: item.precio_costo || null,
           descuento: item.descuento_tipo === 'pct' ? item.descuento : 0,
           subtotal: itemSubtotal,
+          alicuota_iva: ivaRate,
+          iva_monto: parseFloat(ivaMonto.toFixed(2)),
         }).select().single()
         if (itemError) throw itemError
 
@@ -1505,12 +1512,12 @@ export default function VentasPage() {
                           </div>
                         )}
 
-                        {/* Precio */}
+                        {/* Precio (sólo lectura — se edita desde Productos) */}
                         <div className="relative flex-1">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-xs">$</span>
-                          <input type="number" onWheel={e => e.currentTarget.blur()} value={item.precio_unitario}
-                            onChange={e => updateItem(idx, 'precio_unitario', parseFloat(e.target.value) || 0)}
-                            className="w-full pl-5 pr-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                          <div className="w-full pl-5 pr-2 py-1.5 border border-gray-100 dark:border-gray-700 rounded-lg text-sm bg-gray-50 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 select-none">
+                            {item.precio_unitario.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                          </div>
                         </div>
 
                         {/* Descuento con toggle % / $ */}
@@ -1690,80 +1697,38 @@ export default function VentasPage() {
               )}
             </div>
 
-            {/* Pago — solo para reservada/despachada */}
-            {modoVenta !== 'pendiente' && <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"><CreditCard size={16} /> Pago</h2>
-
-              {mediosPago.map((mp, idx) => (
-                <div key={idx} className="flex gap-2 items-center">
-                  <select value={mp.tipo} onChange={e => updateMedioPago(idx, 'tipo', e.target.value)}
-                    className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
-                    <option value="">Medio de pago...</option>
-                    {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
-                    onChange={e => updateMedioPago(idx, 'monto', e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                    placeholder="Monto"
-                    className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
-                  {mediosPago.length > 1 && (
-                    <button onClick={() => removeMedioPago(idx)} title="Quitar medio de pago" className="text-gray-400 dark:text-gray-500 hover:text-red-500 flex-shrink-0">
-                      <X size={16} />
-                    </button>
+            {/* Descuento general + Notas — solo para reservada/despachada */}
+            {modoVenta !== 'pendiente' && cart.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento general</label>
+                  {descTotalVal > 0 && cart.some(i => i.descuento > 0) && (
+                    <div className="mb-1.5 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                      <span>⚠️</span>
+                      <span>Hay descuentos por producto <strong>y</strong> descuento general activos</span>
+                    </div>
                   )}
-                </div>
-              ))}
-
-              <button onClick={addMedioPago}
-                className="flex items-center gap-1 text-xs text-accent hover:underline">
-                <Plus size={12} /> Agregar otro medio
-              </button>
-
-              {cart.length > 0 && totalAsignado > 0 && (() => {
-                const vueltoUI = calcularVuelto(mediosPago, total)
-                const esVuelto = vueltoUI > 0.5
-                return (
-                  <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600 dark:text-green-400' : totalFaltante > 0 ? 'text-orange-500' : esVuelto ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                    {totalFaltante === 0
-                      ? '✓ Total cubierto'
-                      : totalFaltante > 0
-                        ? `Falta asignar: $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-                        : esVuelto
-                          ? `Vuelto: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-                          : `Excede por: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
-                  </p>
-                )
-              })()}
-              {/* Descuento general con toggle % / $ */}
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento general</label>
-                {descTotalVal > 0 && cart.some(i => i.descuento > 0) && (
-                  <div className="mb-1.5 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                    <span>⚠️</span>
-                    <span>Hay descuentos por producto <strong>y</strong> descuento general activos</span>
+                  <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={descuentoTotal}
+                      onChange={e => setDescuentoTotal(e.target.value)}
+                      placeholder="0"
+                      className="flex-1 px-3 py-2.5 text-sm focus:outline-none" />
+                    <button onClick={() => setDescuentoTotalTipo(t => t === 'pct' ? 'monto' : 'pct')}
+                      title="Cambiar tipo de descuento (% o $)"
+                      className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-400 text-sm font-bold border-l border-gray-200 dark:border-gray-700 transition-colors min-w-10">
+                      {descuentoTotalTipo === 'pct' ? '%' : '$'}
+                    </button>
                   </div>
-                )}
-                <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={descuentoTotal}
-                    onChange={e => setDescuentoTotal(e.target.value)}
-                    placeholder="0"
-                    className="flex-1 px-3 py-2.5 text-sm focus:outline-none" />
-                  <button onClick={() => setDescuentoTotalTipo(t => t === 'pct' ? 'monto' : 'pct')}
-                    title="Cambiar tipo de descuento (% o $)"
-                    className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-400 text-sm font-bold border-l border-gray-200 dark:border-gray-700 transition-colors min-w-10">
-                    {descuentoTotalTipo === 'pct' ? '%' : '$'}
-                  </button>
                 </div>
+                <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2}
+                  placeholder="Notas (opcional)"
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
               </div>
-              <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2}
-                placeholder="Notas (opcional)"
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
-            </div>}
+            )}
 
             {/* Totales */}
             {cart.length > 0 && (
               <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 space-y-2">
-                {/* Subtotal sin descuentos */}
                 {(() => {
                   const subtotalSinDesc = cart.reduce((acc, item) => {
                     const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
@@ -1799,15 +1764,84 @@ export default function VentasPage() {
                   <span>Total</span>
                   <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
-                {/* IVA informativo (precio incluye IVA) */}
-                {total > 0 && (
-                  <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
-                    <span>IVA incluido (21%)</span>
-                    <span>${(total - total / 1.21).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                  </div>
-                )}
+                {/* IVA desglosado por alícuota real */}
+                {total > 0 && (() => {
+                  const ivaByRate: Record<number, number> = {}
+                  cart.forEach(item => {
+                    const itemSubtotal = getItemSubtotal(item)
+                    const rate = item.alicuota_iva ?? 21
+                    if (rate > 0) {
+                      const iva = itemSubtotal - itemSubtotal / (1 + rate / 100)
+                      ivaByRate[rate] = (ivaByRate[rate] ?? 0) + iva
+                    }
+                  })
+                  const entries = Object.entries(ivaByRate)
+                  if (entries.length === 0) return null
+                  return (
+                    <div className="space-y-0.5">
+                      {entries.map(([rate, amount]) => (
+                        <div key={rate} className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
+                          <span>IVA {rate}% incluido</span>
+                          <span>${(amount as number).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
 
-                {/* Estado de caja */}
+            {/* Método de pago — solo para reservada/despachada */}
+            {modoVenta !== 'pendiente' && cart.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 space-y-3">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"><CreditCard size={16} /> Método de pago</h2>
+
+                {mediosPago.map((mp, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <select value={mp.tipo} onChange={e => updateMedioPago(idx, 'tipo', e.target.value)}
+                      className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                      <option value="">Medio de pago...</option>
+                      {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
+                      onChange={e => updateMedioPago(idx, 'monto', e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                      placeholder="Monto"
+                      className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    {mediosPago.length > 1 && (
+                      <button onClick={() => removeMedioPago(idx)} title="Quitar medio de pago" className="text-gray-400 dark:text-gray-500 hover:text-red-500 flex-shrink-0">
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                <button onClick={addMedioPago}
+                  className="flex items-center gap-1 text-xs text-accent hover:underline">
+                  <Plus size={12} /> Agregar otro medio
+                </button>
+
+                {cart.length > 0 && totalAsignado > 0 && (() => {
+                  const vueltoUI = calcularVuelto(mediosPago, total)
+                  const esVuelto = vueltoUI > 0.5
+                  return (
+                    <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600 dark:text-green-400' : totalFaltante > 0 ? 'text-orange-500' : esVuelto ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                      {totalFaltante === 0
+                        ? '✓ Total cubierto'
+                        : totalFaltante > 0
+                          ? `Falta asignar: $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                          : esVuelto
+                            ? `Vuelto: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                            : `Excede por: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                    </p>
+                  )
+                })()}
+              </div>
+            )}
+
+            {/* Acciones — estado caja + modo + botón */}
+            {cart.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 space-y-2">
                 {(() => {
                   const efectivo = calcularEfectivo(mediosPago, total)
                   if (sesionesAbiertas.length === 0) return (
@@ -1834,12 +1868,11 @@ export default function VentasPage() {
                   )
                 })()}
                 <div className="space-y-2 pt-1">
-                  {/* Selector de modo */}
                   <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">
                     {([
                       ['reservada', 'Reservar', ShoppingCart],
                       ['despachada', 'Venta directa', Zap],
-                      ['pendiente', 'Sin pago ahora', FileText],
+                      ['pendiente', 'Presupuesto', FileText],
                     ] as const).map(([modo, label, Icon]) => (
                       <button key={modo} onClick={() => setModoVenta(modo)}
                         className={`flex-1 flex items-center justify-center gap-1 py-2 transition-colors ${modoVenta === modo ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
@@ -1850,7 +1883,7 @@ export default function VentasPage() {
                   <button onClick={() => registrarVenta(modoVenta)} disabled={saving}
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
-                    {saving ? 'Guardando...' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Registrar sin pago'}
+                    {saving ? 'Guardando...' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
                   </button>
                 </div>
               </div>

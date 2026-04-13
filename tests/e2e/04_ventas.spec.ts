@@ -66,4 +66,48 @@ test.describe('Ventas', () => {
       if (await toggleLista.isVisible()) await toggleLista.click()
     }
   })
+
+  /**
+   * Regresión v0.57.0 — modificarReserva con producto serializado.
+   * Antes del fix, series_disponibles quedaba vacío al volver al carrito
+   * porque no se pre-fetcheaban las series de la línea de inventario.
+   * Este test verifica que, si existe una reserva serializada, al modificarla
+   * el carrito queda poblado y el selector de series tiene ítems disponibles.
+   */
+  test('modificarReserva con serializado: series disponibles en carrito (si existe reserva serializada)', async ({ page }) => {
+    // Navegar al tab historial
+    const tabHistorial = page.getByRole('button', { name: /historial/i }).first()
+    if (!await tabHistorial.isVisible().catch(() => false)) return
+    await tabHistorial.click()
+    await page.waitForTimeout(1200)
+
+    // Buscar la primera fila/card con badge "reservada"
+    const filaReservada = page.locator('text=reservada').first()
+    if (!await filaReservada.isVisible().catch(() => false)) return // sin datos, skip
+    await filaReservada.click()
+    await page.waitForTimeout(800)
+
+    // Si el modal detalle no abre, skip
+    const modalDetalle = page.locator('[role="dialog"], .modal, [data-modal]').first()
+    const modalAbierto = await modalDetalle.isVisible().catch(() => false)
+    if (!modalAbierto) return
+
+    // Buscar botón "Modificar productos"
+    const btnModificar = page.getByRole('button', { name: /modificar productos/i })
+    if (!await btnModificar.isVisible().catch(() => false)) return // venta sin serializado o sin botón, skip
+    await btnModificar.click()
+    await page.waitForTimeout(1500)
+
+    // El carrito debe tener al menos un ítem (no estar vacío)
+    await expect(page.getByText(/carrito vacío|sin productos/i)).not.toBeVisible({ timeout: 5000 })
+
+    // Si el producto tiene series, el selector de series debe tener opciones (no vacío)
+    const chipSeries = page.locator('button, span').filter({ hasText: /elegir series|n\/s|serie/i }).first()
+    if (await chipSeries.isVisible().catch(() => false)) {
+      await chipSeries.click()
+      await page.waitForTimeout(500)
+      // No debe mostrar "sin series disponibles" ni mensaje de error de stock
+      await expect(page.getByText(/sin series disponibles|no hay series|sin stock/i)).not.toBeVisible()
+    }
+  })
 })

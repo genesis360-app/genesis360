@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
+import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import type { ProductoEstructura } from '@/lib/supabase'
 
@@ -757,30 +758,12 @@ export default function ProductosPage() {
       /* ════════════════════ TAB PRODUCTOS ════════════════════ */
         <>
           {/* Barra de uso del plan */}
-          {limits && limits.max_productos < 9999 && (
-            <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm
-              ${limits.pct_productos >= 90 ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-700'}`}>
-              <Package size={15} className={limits.pct_productos >= 90 ? 'text-orange-500' : 'text-gray-400 dark:text-gray-500'} />
-              <div className="flex-1">
-                <div className="flex justify-between text-xs mb-1">
-                  <span className={limits.pct_productos >= 90 ? 'text-orange-700 font-medium' : 'text-gray-500 dark:text-gray-400'}>
-                    {limits.productos_actuales} de {limits.max_productos} productos
-                  </span>
-                  <span className={limits.pct_productos >= 90 ? 'text-orange-600' : 'text-gray-400 dark:text-gray-500'}>
-                    {limits.pct_productos}%
-                  </span>
-                </div>
-                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${limits.pct_productos >= 90 ? 'bg-orange-500' : 'bg-accent'}`}
-                    style={{ width: `${Math.min(limits.pct_productos, 100)}%` }} />
-                </div>
-              </div>
-              {limits.pct_productos >= 90 && (
-                <Link to="/suscripcion" className="text-xs text-orange-600 font-medium hover:underline whitespace-nowrap">
-                  Mejorar plan →
-                </Link>
-              )}
-            </div>
+          {limits && (
+            <PlanProgressBar
+              actual={limits.productos_actuales}
+              max={limits.max_productos}
+              label="productos"
+            />
           )}
 
           {stockCritico > 0 && (

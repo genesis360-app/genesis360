@@ -37,28 +37,28 @@ export function CotizacionWidget() {
   }
 
   return (
-    <div className="px-3 pt-2 pb-1 border-t border-accent/20">
+    <div className="px-3 pt-2 pb-1">
       <div className="flex items-center gap-1.5 mb-1">
-        <DollarSign size={12} className="text-blue-300 flex-shrink-0" />
-        <span className="text-blue-300 text-xs font-medium tracking-wide">Cotización USD</span>
+        <DollarSign size={12} className="text-blue-500 dark:text-blue-300 flex-shrink-0" />
+        <span className="text-blue-500 dark:text-blue-300 text-xs font-medium tracking-wide">Cotización USD</span>
       </div>
 
       {editing ? (
         <div className="flex items-center gap-1">
-          <span className="text-blue-200 text-xs whitespace-nowrap">$1 USD =</span>
+          <span className="text-blue-700 dark:text-blue-200 text-xs whitespace-nowrap">$1 USD =</span>
           <input
             type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
             value={inputVal}
             onChange={e => setInputVal(e.target.value)}
             onKeyDown={handleKey}
             autoFocus
-            className="flex-1 px-2 py-1 bg-accent/30 text-white text-xs rounded-lg border border-accent focus:outline-none min-w-0"
+            className="flex-1 px-2 py-1 bg-accent/20 dark:bg-accent/30 text-gray-900 dark:text-white text-xs rounded-lg border border-accent focus:outline-none min-w-0"
             placeholder="ej: 1250"
           />
-          <button onClick={handleSave} className="text-green-400 hover:text-green-300 flex-shrink-0">
+          <button onClick={handleSave} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 flex-shrink-0">
             <Check size={13} />
           </button>
-          <button onClick={() => setEditing(false)} className="text-blue-400 hover:text-blue-200 flex-shrink-0">
+          <button onClick={() => setEditing(false)} className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 flex-shrink-0">
             <X size={13} />
           </button>
         </div>
@@ -66,11 +66,11 @@ export function CotizacionWidget() {
         <div className="flex items-center justify-between gap-1">
           <button
             onClick={startEdit}
-            className="text-white text-sm font-semibold hover:text-blue-200 transition-colors text-left truncate"
+            className="text-gray-900 dark:text-white text-sm font-semibold hover:text-blue-600 dark:hover:text-blue-200 transition-colors text-left truncate"
           >
             {cotizacion > 0
               ? `$${cotizacion.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS`
-              : <span className="text-blue-400 text-xs font-normal italic">Sin cotización</span>
+              : <span className="text-blue-500 dark:text-blue-400 text-xs font-normal italic">Sin cotización</span>
             }
           </button>
 
@@ -79,7 +79,7 @@ export function CotizacionWidget() {
               onClick={() => setShowMenu(v => !v)}
               disabled={loadingApi}
               title="Actualizar desde API"
-              className="flex items-center gap-0.5 text-blue-300 hover:text-white transition-colors disabled:opacity-50"
+              className="flex items-center gap-0.5 text-blue-500 dark:text-blue-300 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
             >
               <RefreshCw size={12} className={loadingApi ? 'animate-spin' : ''} />
               <ChevronDown size={10} />
@@ -104,7 +104,7 @@ export function CotizacionWidget() {
       )}
 
       {cotizacion > 0 && updatedAt && !editing && (
-        <p className="text-blue-400 text-xs mt-0.5 truncate">
+        <p className="text-blue-500 dark:text-blue-400 text-xs mt-0.5 truncate">
           {new Date(updatedAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
         </p>
       )}

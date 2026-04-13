@@ -26,7 +26,7 @@ function getFechaDesde(periodo: Periodo) {
 
 function KpiCard({ label, value, sub, icon: Icon, color, trend }: any) {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm">
       <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 ${color}`}>
         <Icon size={20} />
       </div>
@@ -224,7 +224,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
 
           {/* Gráfico por producto */}
           {!sinDatos && porProducto.some(p => p.ganancia !== null) && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm mb-6">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
                 <Award size={16} /> Top productos por ganancia
               </h2>
@@ -244,7 +244,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
           )}
 
           {/* Tabla por venta */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
             <div className="p-4 border-b border-gray-100">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                 <ShoppingCart size={16} /> Detalle por venta
@@ -263,7 +263,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
                     <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Margen</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
                   {porVenta.map((v: any) => (
                     <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">#{v.numero ?? v.id.slice(-4)}</td>

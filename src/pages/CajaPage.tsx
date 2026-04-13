@@ -195,9 +195,13 @@ export default function CajaPage() {
     enabled: !!sesionExpandida,
   })
 
-  // Calcular totales de la sesión actual
-  const totalIngresos = movimientos.filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ingreso_reserva').reduce((a: number, m: any) => a + m.monto, 0)
-  const totalEgresos = movimientos.filter((m: any) => m.tipo === 'egreso' || m.tipo === 'egreso_devolucion_sena').reduce((a: number, m: any) => a + m.monto, 0)
+  // Calcular totales de la sesión actual — solo efectivo
+  const totalIngresos = movimientos.filter((m: any) =>
+    m.tipo === 'ingreso' || m.tipo === 'ingreso_reserva' || m.tipo === 'ingreso_traspaso'
+  ).reduce((a: number, m: any) => a + m.monto, 0)
+  const totalEgresos = movimientos.filter((m: any) =>
+    m.tipo === 'egreso' || m.tipo === 'egreso_devolucion_sena' || m.tipo === 'egreso_traspaso'
+  ).reduce((a: number, m: any) => a + m.monto, 0)
   const saldoActual = sesionActiva ? (sesionActiva.monto_apertura + totalIngresos - totalEgresos) : 0
 
   // Diferencia al cierre
@@ -208,11 +212,17 @@ export default function CajaPage() {
   const abrioNombre = (sesionActiva as any)?.abrio?.nombre_display ?? null
   const esOtroUsuario = !!sesionActiva && sesionActiva.usuario_id !== user?.id
   const puedeAdministrarCaja = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
+  // B2: CAJERO no puede abrir una segunda caja si ya hay una abierta
+  const puedeAbrirCaja = puedeAdministrarCaja || cajasAbiertas.length === 0
 
   // Mutations
   const abrirCaja = useMutation({
     mutationFn: async () => {
       if (!cajaId) throw new Error('Seleccioná una caja')
+      // B2: CAJERO solo puede abrir si no hay ninguna caja abierta
+      if (!puedeAdministrarCaja && cajasAbiertas.length > 0) {
+        throw new Error('Ya hay una caja abierta. Pedile a un OWNER o SUPERVISOR que abra una caja adicional.')
+      }
       // Verificar que no haya otra sesión abierta por otro usuario
       const { data: existente } = await supabase.from('caja_sesiones')
         .select('id, usuario_id, abrio:usuario_id(nombre_display)')
@@ -575,10 +585,19 @@ export default function CajaPage() {
                   </div>
                 </div>
               ) : (
-                <button onClick={() => setShowApertura(true)}
-                  className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-6 py-3 rounded-xl transition-all mx-auto">
-                  <Unlock size={18} /> Abrir caja
-                </button>
+                <div className="flex flex-col items-center gap-2">
+                  <button onClick={() => setShowApertura(true)}
+                    disabled={!puedeAbrirCaja}
+                    title={!puedeAbrirCaja ? 'Ya hay una caja abierta. Solo OWNER o SUPERVISOR pueden abrir una adicional.' : undefined}
+                    className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-6 py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                    <Unlock size={18} /> Abrir caja
+                  </button>
+                  {!puedeAbrirCaja && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 text-center max-w-xs">
+                      Ya hay una caja abierta. Pedile a un OWNER o SUPERVISOR que abra una adicional.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           ) : (
@@ -1065,20 +1084,21 @@ export default function CajaPage() {
                 className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
 
-            {/* Resumen calculado */}
+            {/* Resumen calculado — solo efectivo */}
             <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Apertura</span><span className="font-medium">{formatMoneda(sesionActiva?.monto_apertura ?? 0)}</span></div>
-              <div className="flex justify-between text-green-600 dark:text-green-400"><span>+ Ingresos</span><span className="font-medium">{formatMoneda(totalIngresos)}</span></div>
-              <div className="flex justify-between text-red-500"><span>− Egresos</span><span className="font-medium">{formatMoneda(totalEgresos)}</span></div>
+              <div className="flex justify-between text-green-600 dark:text-green-400"><span>+ Ingresos efectivo</span><span className="font-medium">{formatMoneda(totalIngresos)}</span></div>
+              <div className="flex justify-between text-red-500"><span>− Egresos efectivo</span><span className="font-medium">{formatMoneda(totalEgresos)}</span></div>
               <div className="flex justify-between border-t border-gray-200 dark:border-gray-700 pt-2 font-bold text-primary">
-                <span>Saldo calculado</span><span>{formatMoneda(saldoActual)}</span>
+                <span>Efectivo esperado</span><span>{formatMoneda(saldoActual)}</span>
               </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 pt-1">Tarjeta, transferencia y Mercado Pago no se cuentan aquí.</p>
             </div>
 
             {/* Conteo real */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Conteo real en caja <span className="text-red-500 font-normal">*</span>
+                Efectivo contado en caja <span className="text-red-500 font-normal">*</span>
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>

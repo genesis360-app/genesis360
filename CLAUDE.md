@@ -770,6 +770,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - `ConfigButton.tsx`: ícono Settings2 → `/configuracion` (visible solo OWNER/ADMIN).
   - `PlanProgressBar.tsx`: barra reutilizable success/warning/danger por % uso. Reemplaza banners inline en ProductosPage e InventarioPage.
 - **Orden header** (izq→der): [hamburger mobile] [spacer] [SucursalSelector] [Config] [Notificaciones] [Ayuda] [Refresh] [Dark/Light] [AvatarDropdown].
+- **Logo sidebar clickeable**: `<Link to="/">` → navega a landing page incluso con sesión activa. Hover: `bg-accent/80`. El toggle colapsar (ChevronLeft/Right) queda separado a la derecha.
 
 #### Testing por rol
 - [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0) — 20 tests ✅

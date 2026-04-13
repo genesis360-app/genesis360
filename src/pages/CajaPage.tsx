@@ -98,6 +98,19 @@ export default function CajaPage() {
     refetchOnWindowFocus: true,
   })
 
+  // Sesiones abiertas propias del usuario actual (para bloquear segunda apertura en CAJERO)
+  const { data: misSesionesAbiertas = [] } = useQuery({
+    queryKey: ['mis-sesiones-abiertas', tenant?.id, user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('caja_id').eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
+      return data ?? []
+    },
+    enabled: !!tenant && !!user,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
+  })
+
   // Sesiones abiertas con datos completos (para modal traspaso)
   const { data: sesionesAbiertasAll = [] } = useQuery({
     queryKey: ['sesiones-abiertas-todas', tenant?.id],
@@ -250,16 +263,20 @@ export default function CajaPage() {
   const abrioNombre = (sesionActiva as any)?.abrio?.nombre_display ?? null
   const esOtroUsuario = !!sesionActiva && sesionActiva.usuario_id !== user?.id
   const puedeAdministrarCaja = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
-  // B2: CAJERO no puede abrir una segunda caja si ya hay una abierta
-  const puedeAbrirCaja = puedeAdministrarCaja || cajasAbiertas.length === 0
+  // B2: CAJERO puede abrir 1 caja, pero no más de una simultáneamente
+  const puedeAbrirCaja = puedeAdministrarCaja || misSesionesAbiertas.length === 0
 
   // Mutations
   const abrirCaja = useMutation({
     mutationFn: async () => {
       if (!cajaId) throw new Error('Seleccioná una caja')
-      // B2: CAJERO solo puede abrir si no hay ninguna caja abierta
-      if (!puedeAdministrarCaja && cajasAbiertas.length > 0) {
-        throw new Error('Ya hay una caja abierta. Pedile a un OWNER o SUPERVISOR que abra una caja adicional.')
+      // B2: CAJERO no puede tener más de 1 sesión abierta simultáneamente
+      if (!puedeAdministrarCaja) {
+        const { data: check } = await supabase.from('caja_sesiones')
+          .select('id').eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
+        if (check && check.length > 0) {
+          throw new Error('Ya tenés una caja abierta. Cerrala antes de abrir otra.')
+        }
       }
       // Verificar que no haya otra sesión abierta por otro usuario
       const { data: existente } = await supabase.from('caja_sesiones')
@@ -626,13 +643,13 @@ export default function CajaPage() {
                 <div className="flex flex-col items-center gap-2">
                   <button onClick={() => setShowApertura(true)}
                     disabled={!puedeAbrirCaja}
-                    title={!puedeAbrirCaja ? 'Ya hay una caja abierta. Solo OWNER o SUPERVISOR pueden abrir una adicional.' : undefined}
+                    title={!puedeAbrirCaja ? 'Ya tenés una caja abierta. Cerrala antes de abrir otra.' : undefined}
                     className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-6 py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                     <Unlock size={18} /> Abrir caja
                   </button>
                   {!puedeAbrirCaja && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 text-center max-w-xs">
-                      Ya hay una caja abierta. Pedile a un OWNER o SUPERVISOR que abra una adicional.
+                      Ya tenés una caja abierta. Cerrala antes de abrir otra.
                     </p>
                   )}
                 </div>

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
   ChevronRight, ChevronLeft, ShoppingCart, DollarSign, TrendingDown,
-  ClipboardList, Moon, Sun, Lock, Building2, User, CreditCard,
+  ClipboardList, Moon, Sun, Lock, Building2,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -124,9 +124,6 @@ export function AppLayout() {
   // ─── Sidebar content ────────────────────────────────────────────────────────
   const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => {
     const collapsed = !mobile && sidebarCollapsed
-    const planLabel = tenant?.plan_id
-      ? tenant.plan_id.charAt(0).toUpperCase() + tenant.plan_id.slice(1)
-      : 'Free'
 
     return (
       <div className="flex flex-col h-full">
@@ -160,39 +157,6 @@ export function AppLayout() {
             </button>
           )}
         </div>
-
-        {/* Perfil de usuario → /mi-cuenta */}
-        <NavLink
-          to="/mi-cuenta"
-          title={collapsed ? `${user?.nombre_display} — Mi Cuenta` : undefined}
-          className={({ isActive }) =>
-            `flex items-center border-b border-border-ds transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 flex-shrink-0
-            ${collapsed ? 'justify-center px-2 py-3' : 'gap-3 px-4 py-3'}
-            ${isActive ? 'bg-accent/10' : ''}`
-          }
-        >
-          {user?.avatar_url ? (
-            <img
-              src={user.avatar_url}
-              alt="Avatar"
-              className="w-8 h-8 rounded-full object-cover border-2 border-gray-200 dark:border-gray-600 flex-shrink-0"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 border-2 border-gray-200 dark:border-gray-600">
-              <User size={15} className="text-accent" />
-            </div>
-          )}
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="text-primary dark:text-white text-sm font-semibold leading-tight truncate">
-                {user?.nombre_display ?? 'Mi Cuenta'}
-              </p>
-              <p className="text-muted text-[10px] leading-tight truncate">
-                {user?.rol?.charAt(0)}{user?.rol?.slice(1).toLowerCase() ?? ''} · {tenant?.nombre}
-              </p>
-            </div>
-          )}
-        </NavLink>
 
         {/* Navegación */}
         <nav className={`flex-1 py-3 space-y-0.5 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-2'}`}>
@@ -252,23 +216,12 @@ export function AppLayout() {
           })}
         </nav>
 
-        {/* Pie: Mi Plan + CotizacionWidget */}
-        <div className="border-t border-border-ds flex-shrink-0">
-          {/* Mi Plan */}
-          <div className={`${collapsed ? 'px-2 py-2 flex justify-center' : 'px-3 py-2'}`}>
-            <NavLink
-              to="/suscripcion"
-              title={collapsed ? `Mi Plan: ${planLabel}` : undefined}
-              className="flex items-center gap-2 text-muted hover:text-accent transition-colors text-xs font-medium w-full"
-            >
-              <CreditCard size={14} className="flex-shrink-0" />
-              {!collapsed && <span>Mi Plan: <span className="text-accent">{planLabel}</span></span>}
-            </NavLink>
+        {/* Pie: CotizacionWidget */}
+        {!collapsed && (
+          <div className="border-t border-border-ds flex-shrink-0">
+            <CotizacionWidget />
           </div>
-
-          {/* Cotización USD */}
-          {!collapsed && <CotizacionWidget />}
-        </div>
+        )}
 
       </div>
     )

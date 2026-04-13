@@ -303,7 +303,7 @@ export default function DashboardPage() {
 
         {/* Score de salud */}
         {score && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
             <div className="flex items-center gap-5">
               <div className="relative w-20 h-20 flex-shrink-0">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
@@ -359,7 +359,7 @@ export default function DashboardPage() {
               const Icon  = INSIGHT_ICONS[r.tipo]
               return (
                 <div key={r.id}
-                  className={`rounded-xl border border-gray-100 dark:border-gray-700 border-l-4 ${style.border} ${style.bg} p-4 shadow-sm dark:shadow-gray-900`}>
+                  className={`rounded-xl border-l-4 ${style.border} ${style.bg} p-4 shadow-sm dark:shadow-gray-900`}>
                   <div className="flex items-start gap-3">
                     <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${style.iconBg}`}>
                       <Icon size={17} className={style.iconColor} />
@@ -455,7 +455,7 @@ export default function DashboardPage() {
       {/* KPI Cards con semáforo */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
-        <Link to="/productos" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
+        <Link to="/productos" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 hover:shadow-md transition-all">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
             <Package size={20} />
           </div>
@@ -466,7 +466,7 @@ export default function DashboardPage() {
           )}
         </Link>
 
-        <Link to="/alertas" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
+        <Link to="/alertas" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 hover:shadow-md transition-all">
           <div className="flex items-start justify-between mb-3">
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400">
               <AlertTriangle size={20} />
@@ -477,7 +477,7 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Alertas activas</p>
         </Link>
 
-        <Link to="/inventario" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
+        <Link to="/inventario" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 hover:shadow-md transition-all">
           <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-3 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400">
             <ArrowDown size={20} />
           </div>
@@ -488,7 +488,7 @@ export default function DashboardPage() {
           )}
         </Link>
 
-        <Link to="/alertas" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
+        <Link to="/alertas" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 hover:shadow-md transition-all">
           <div className="flex items-start justify-between mb-3">
             <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-500 dark:text-amber-400">
               <Package size={20} />
@@ -537,7 +537,7 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp size={18} className="text-accent" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Valor del inventario</h2>
@@ -556,7 +556,7 @@ export default function DashboardPage() {
 
       {/* Rentabilidad neta del mes */}
       {stats && (stats.rentabilidadNeta !== 0 || stats.gastosTotal > 0 || stats.costoVentas > 0) && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
           <div className="flex items-center gap-2 mb-3">
             {stats.rentabilidadNeta >= 0
               ? <TrendingUp size={18} className="text-green-500" />
@@ -598,7 +598,7 @@ export default function DashboardPage() {
 
       {/* Productos sin movimiento — expandable */}
       {(stats?.cantStockMuerto ?? 0) > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 overflow-hidden">
           <button
             onClick={() => setSinMovExpanded(v => !v)}
             className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
@@ -642,7 +642,7 @@ export default function DashboardPage() {
       {score && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Score widget */}
-          <Link to="/recomendaciones" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all flex items-center gap-4">
+          <Link to="/recomendaciones" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 hover:shadow-md transition-all flex items-center gap-4">
             <div className="relative w-16 h-16 flex-shrink-0">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
                 <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="12" />
@@ -674,7 +674,7 @@ export default function DashboardPage() {
               <Link
                 key={r.id}
                 to={r.link}
-                className={`rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all
+                className={`rounded-xl p-4 shadow-sm hover:shadow-md transition-all
                   ${r.tipo === 'danger' ? 'bg-red-50 dark:bg-red-900/20 border-l-4 border-l-red-500' :
                     r.tipo === 'warning' ? 'bg-amber-50 dark:bg-amber-900/20 border-l-4 border-l-amber-500' :
                     r.tipo === 'success' ? 'bg-green-50 dark:bg-green-900/20 border-l-4 border-l-green-500' :
@@ -710,7 +710,7 @@ export default function DashboardPage() {
             const Icon  = INSIGHT_ICONS[insight.tipo]
             return (
               <div key={i}
-                className={`bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 border-l-4 ${style.border} ${style.bg}
+                className={`bg-white dark:bg-gray-800 rounded-xl border-l-4 ${style.border} ${style.bg}
                   p-4 flex items-center justify-between gap-4 shadow-sm dark:shadow-gray-900`}>
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${style.iconBg}`}>
@@ -740,7 +740,7 @@ export default function DashboardPage() {
 
       {/* Sugerencia de pedido */}
       {(stats?.prodsCriticos?.length ?? 0) > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
             <Truck size={16} className="text-blue-500 dark:text-blue-400" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Sugerencia de pedido</h2>
@@ -784,7 +784,7 @@ export default function DashboardPage() {
 
       {/* Proyección de cobertura */}
       {(stats?.proyeccionCobertura?.length ?? 0) > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 overflow-hidden">
           <button
             onClick={() => setCoberturaExpanded(v => !v)}
             className="w-full px-5 py-3.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
@@ -838,7 +838,7 @@ export default function DashboardPage() {
       {/* Bottom grid */}
       <div className="grid lg:grid-cols-2 gap-6">
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
               <ShoppingCart size={16} className="text-accent" /> Top productos este mes
@@ -865,7 +865,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Movimientos recientes</h2>
             <Link to="/inventario" className="text-xs text-accent hover:underline">Ver todos →</Link>

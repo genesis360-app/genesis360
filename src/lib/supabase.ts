@@ -248,6 +248,18 @@ export interface DevolucionItem {
   productos?: Pick<Producto, 'nombre' | 'sku'>
 }
 
+export interface TenantCertificate {
+  id: string
+  tenant_id: string
+  cert_crt_path: string
+  cert_key_path: string
+  cuit?: string | null
+  fecha_validez_hasta?: string | null
+  activo: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface ArchivosBiblioteca {
   id: string
   tenant_id: string

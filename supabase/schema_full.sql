@@ -1689,3 +1689,24 @@ END $$;
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES ('archivos-biblioteca', 'archivos-biblioteca', false, 10485760, NULL)
 ON CONFLICT (id) DO NOTHING;
+
+-- ─── Migration 043: Certificados AFIP ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS tenant_certificates (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  cert_crt_path       TEXT NOT NULL,
+  cert_key_path       TEXT NOT NULL,
+  cuit                TEXT,
+  fecha_validez_hasta DATE,
+  activo              BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at          TIMESTAMPTZ DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(tenant_id)
+);
+ALTER TABLE tenant_certificates ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_tenant_certificates_tenant ON tenant_certificates(tenant_id);
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('certificados-afip', 'certificados-afip', false, 1048576,
+  ARRAY['application/x-pem-file', 'application/octet-stream', 'application/x-x509-ca-cert'])
+ON CONFLICT (id) DO NOTHING;

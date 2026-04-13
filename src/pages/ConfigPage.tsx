@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, FolderOpen, FileText, Download } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, FolderOpen, FileText, Download, ShieldCheck, KeyRound } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
+import { uploadCertificates } from '@/lib/afip'
+import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'archivos'
@@ -784,6 +786,40 @@ export default function ConfigPage() {
     onError: () => toast.error('Error al eliminar'),
   })
 
+  // ── Certificados AFIP ───────────────────────────────────────────────────
+  const [certCollapsed, setCertCollapsed] = useState(true)
+  const [certCuit, setCertCuit] = useState('')
+  const [certValidez, setCertValidez] = useState('')
+  const [certCrtFile, setCertCrtFile] = useState<File | null>(null)
+  const [certKeyFile, setCertKeyFile] = useState<File | null>(null)
+  const [savingCert, setSavingCert] = useState(false)
+
+  const { data: tenantCert, refetch: refetchCert } = useQuery<TenantCertificate | null>({
+    queryKey: ['tenant-cert', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('tenant_certificates')
+        .select('*').eq('tenant_id', tenant!.id).maybeSingle()
+      return data as TenantCertificate | null
+    },
+    enabled: !!tenant && tab === 'negocio',
+  })
+
+  const handleSaveCert = async () => {
+    if (!certCrtFile || !certKeyFile) { toast.error('Seleccioná los dos archivos (.crt y .key)'); return }
+    if (!certCuit.trim()) { toast.error('El CUIT es obligatorio'); return }
+    setSavingCert(true)
+    try {
+      await uploadCertificates(tenant!.id, certCrtFile, certKeyFile, certCuit, certValidez || null)
+      toast.success('Certificados AFIP guardados')
+      setCertCrtFile(null); setCertKeyFile(null)
+      refetchCert()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error al guardar certificados')
+    } finally {
+      setSavingCert(false)
+    }
+  }
+
   // ── Biblioteca de Archivos ──────────────────────────────────────────────
   const TIPO_LABELS: Record<string, string> = {
     certificado_afip_crt: 'Cert. AFIP (.crt)',
@@ -978,6 +1014,123 @@ export default function ConfigPage() {
 
       {tab === 'negocio' && (
         <MarketplaceSection />
+      )}
+
+      {tab === 'negocio' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100">
+          {/* Header colapsable */}
+          <button
+            className="w-full flex items-center gap-3 px-5 py-4 text-left"
+            onClick={() => setCertCollapsed(p => !p)}
+          >
+            <ShieldCheck size={18} className={tenantCert?.activo ? 'text-green-500' : 'text-gray-400 dark:text-gray-500'} />
+            <span className="font-semibold text-gray-700 dark:text-gray-300 flex-1">Certificados AFIP</span>
+            {tenantCert ? (
+              tenantCert.activo ? (
+                <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2.5 py-1 rounded-full font-medium">
+                  ✅ Activo{tenantCert.fecha_validez_hasta ? ` hasta ${new Date(tenantCert.fecha_validez_hasta).toLocaleDateString('es-AR')}` : ''}
+                </span>
+              ) : (
+                <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2.5 py-1 rounded-full">Inactivo</span>
+              )
+            ) : (
+              <span className="text-xs bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 px-2.5 py-1 rounded-full">❌ No cargado</span>
+            )}
+            {certCollapsed ? <ChevronRight size={16} className="text-gray-400 dark:text-gray-500 flex-shrink-0" /> : <ChevronDown size={16} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />}
+          </button>
+
+          {!certCollapsed && (
+            <div className="px-5 pb-5 space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Requerido para facturación electrónica con ARCA (ex-AFIP). Los archivos se almacenan encriptados y solo son accesibles desde tu cuenta.
+              </p>
+
+              {/* Estado actual */}
+              {tenantCert && (
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 text-sm space-y-1">
+                  <p className="text-gray-600 dark:text-gray-300 font-medium">Certificado actual</p>
+                  {tenantCert.cuit && <p className="text-xs text-gray-500 dark:text-gray-400">CUIT: <span className="font-mono">{tenantCert.cuit}</span></p>}
+                  {tenantCert.fecha_validez_hasta && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Válido hasta:{' '}
+                      <span className={new Date(tenantCert.fecha_validez_hasta) < new Date() ? 'text-red-500 font-medium' : 'text-green-600 dark:text-green-400 font-medium'}>
+                        {new Date(tenantCert.fecha_validez_hasta).toLocaleDateString('es-AR')}
+                      </span>
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    Cargado el {new Date(tenantCert.created_at).toLocaleDateString('es-AR')}
+                  </p>
+                </div>
+              )}
+
+              {canEdit && (
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {tenantCert ? 'Reemplazar certificado' : 'Cargar certificado'}
+                  </p>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">CUIT *</label>
+                    <input type="text" value={certCuit} onChange={e => setCertCuit(e.target.value)}
+                      placeholder="20-12345678-9"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white font-mono" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de validez (opcional)</label>
+                    <input type="date" value={certValidez} onChange={e => setCertValidez(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
+                        <ShieldCheck size={11} /> Certificado (.crt) *
+                      </label>
+                      <label className={`flex items-center gap-2 px-3 py-2.5 border-2 border-dashed rounded-lg cursor-pointer transition-colors text-xs
+                        ${certCrtFile ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                        <ShieldCheck size={14} />
+                        <span className="truncate">{certCrtFile ? certCrtFile.name : 'Seleccionar .crt'}</span>
+                        <input type="file" accept=".crt" className="hidden"
+                          onChange={e => {
+                            const f = e.target.files?.[0] ?? null
+                            if (f && !f.name.endsWith('.crt')) { toast.error('Solo se aceptan archivos .crt'); return }
+                            setCertCrtFile(f)
+                          }} />
+                      </label>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
+                        <KeyRound size={11} /> Clave privada (.key) *
+                      </label>
+                      <label className={`flex items-center gap-2 px-3 py-2.5 border-2 border-dashed rounded-lg cursor-pointer transition-colors text-xs
+                        ${certKeyFile ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                        <KeyRound size={14} />
+                        <span className="truncate">{certKeyFile ? certKeyFile.name : 'Seleccionar .key'}</span>
+                        <input type="file" accept=".key" className="hidden"
+                          onChange={e => {
+                            const f = e.target.files?.[0] ?? null
+                            if (f && !f.name.endsWith('.key')) { toast.error('Solo se aceptan archivos .key'); return }
+                            setCertKeyFile(f)
+                          }} />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveCert}
+                      disabled={savingCert || !certCrtFile || !certKeyFile || !certCuit.trim()}
+                      className="px-5 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-2 transition-all">
+                      <ShieldCheck size={14} />
+                      {savingCert ? 'Guardando...' : tenantCert ? 'Reemplazar certificado' : 'Guardar certificados'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {tab === 'categorias' && (

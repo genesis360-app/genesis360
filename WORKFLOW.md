@@ -186,7 +186,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.69.0 ✅ | DS Sprint 3 — Dashboard tab General rediseño completo: 4 KPIs (Ingreso Neto caja, Margen Contribución, Burn Rate diario, Posición IVA) · FilterBar período/ARS-USD/IVA · La Balanza AreaChart ventas vs gastos · El Mix de Caja Donut por método de pago · Insights automáticos grid InsightCard · Tabla Fugas y Movimientos top 8 · 5 componentes nuevos: KPICard, FilterBar, InsightCard, VentasVsGastosChart, MixCajaChart · badges comparativas vs período anterior · dark mode + DS tokens | 2026-04 |
 | v0.70.0 ✅ | Header reorden [Sucursal][Refresh][Notif][Dark/Light][Ayuda][Config][Avatar] · ConfigButton ícono rueda (Settings) · AvatarDropdown "Gestionar cuentas": localStorage genesis360_saved_accounts · cuenta activa con ✓ · cambio de cuenta vía signOut+navigate · "+ Agregar otra cuenta" | 2026-04 |
 | v0.71.0 ✅ | Seña en caja: ingreso_reserva al crear reserva con efectivo · no-duplicado al despachar (query por concepto) · egreso_devolucion_sena al cancelar · CajaPage saldo/colores actualizados · pagar_nomina_empleado con nuevos tipos (migration 044) · 7 unit tests nuevos (148 total) | 2026-04 |
-| v0.72.0 | Roles CONTADOR+DEPOSITO + routing AppLayout · Inventario vista Por Ubicación · Clonar KIT modal · Compresión imagen >2MB · FilterBar Custom date range · GastosPage -Sueldos · Métodos de pago ConfigPage+MixCajaChart (migration 045) | 2026-04 |
+| v0.72.0 ✅ | Roles CONTADOR+DEPOSITO + routing AppLayout · Inventario vista Por Ubicación · Clonar KIT modal · Compresión imagen >2MB · FilterBar Custom date range · GastosPage -Sueldos · Métodos de pago ConfigPage+MixCajaChart (migration 045) | 2026-04 |
 
 ---
 

@@ -815,7 +815,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - `pagar_nomina_empleado` (migration 044): CASE WHEN actualizado con nuevos tipos.
   - 7 unit tests nuevos en `tests/unit/cajaSeña.test.ts`. Total: **148/148** passing.
 
-### v0.72.0 — en dev
+### v0.72.0 ✅ PROD
 - ✅ **Roles CONTADOR + DEPOSITO**: `UserRole` ampliado · AppLayout `CONTADOR_ALLOWED` (dashboard/gastos/historial/reportes) · `DEPOSITO_ALLOWED` (productos/inventario/alertas) · navItems con flags · UsuariosPage con CRUD de ambos roles + modal permisos por usuario
 - ✅ **Inventario por ubicación**: query `lineasMap` incluye `productos(nombre,sku,unidad_medida)` + `byUbicacion`. Toggle `LayoutList/Building` en tab Inventario. Vista expandible por ubicación con lineas/producto/stock.
 - ✅ **Clonar KIT**: botón Clonar en header KIT (deshabilitado si sin receta) → modal selector de KIT destino → `clonarKitRecetas.mutate({origenId, destinoId})`. Eliminada mutación muerta `clonarKit`.

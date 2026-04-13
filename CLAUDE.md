@@ -815,11 +815,89 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - `pagar_nomina_empleado` (migration 044): CASE WHEN actualizado con nuevos tipos.
   - 7 unit tests nuevos en `tests/unit/cajaSeña.test.ts`. Total: **148/148** passing.
 
+### v0.72.0 — en dev
+- ✅ **Roles CONTADOR + DEPOSITO**: `UserRole` ampliado · AppLayout `CONTADOR_ALLOWED` (dashboard/gastos/historial/reportes) · `DEPOSITO_ALLOWED` (productos/inventario/alertas) · navItems con flags · UsuariosPage con CRUD de ambos roles + modal permisos por usuario
+- ✅ **Inventario por ubicación**: query `lineasMap` incluye `productos(nombre,sku,unidad_medida)` + `byUbicacion`. Toggle `LayoutList/Building` en tab Inventario. Vista expandible por ubicación con lineas/producto/stock.
+- ✅ **Clonar KIT**: botón Clonar en header KIT (deshabilitado si sin receta) → modal selector de KIT destino → `clonarKitRecetas.mutate({origenId, destinoId})`. Eliminada mutación muerta `clonarKit`.
+- ✅ **Compresión imagen**: `browser-image-compression` — si imagen > 2 MB → comprime a 1.5 MB / 1200px. SKU+barcode row full-width en mobile.
+- ✅ **FilterBar custom**: eliminado '30D', agregado 'Custom' con date pickers inline. `getFechasDashboard(periodo, customRange?)` y `getFechasAnteriores(periodo, customRange?)`. DashboardPage pasa `customRange`.
+- ✅ **GastosPage**: eliminada categoría 'Sueldos y cargas sociales' (pertenece a RRHH/Nómina).
+- ✅ **Métodos de pago** (migration 045): tabla `metodos_pago` con tenant_id, nombre, color, activo, es_sistema, orden. ConfigPage tab 'Métodos de pago': CRUD + color picker + toggle activo + seed automático de 5 defaults. MixCajaChart usa colores de DB.
+
 ### Restricciones de rutas por rol (AppLayout)
 - **RRHH**: solo `/rrhh` + `/mi-cuenta`. Cualquier otra ruta → redirect `/rrhh`.
 - **CAJERO**: `CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/mi-cuenta']`. Otra ruta → redirect `/ventas`.
 - **SUPERVISOR**: `SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']`. Intento de acceso → redirect `/dashboard`.
+- **CONTADOR**: `CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion']`. Otra ruta → redirect `/dashboard`.
+- **DEPOSITO**: `DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta']`. Otra ruta → redirect `/inventario`.
 - **permisos_custom**: mayor prioridad que el rol estándar. Si `permisos_custom[modulo] === 'no_ver'` → redirect al primer módulo permitido.
 
 ### Ideas futuras
 Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.
+ 
+ # CLAUDE.md
+
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" ? "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" ? "Write a test that reproduces it, then make it pass"
+- "Refactor X" ? "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] ? verify: [check]
+2. [Step] ? verify: [check]
+3. [Step] ? verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+

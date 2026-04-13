@@ -724,13 +724,47 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ **Desarmado inverso KITs**: botón "Desarmar" en tab Kits · modal con preview de componentes · valida stock del KIT · rebaja KIT + ingresa componentes · migration 041: `kitting_log.tipo` (armado/desarmado) + tipo `des_kitting` en `movimientos_stock`
 - ✅ **VentasPage — badge KIT**: badge naranja "KIT" en dropdown de búsqueda de productos
 
-### Testing por rol
+### v0.68.0 — en dev
+
+#### IVA por producto (migration 042)
+- `productos.alicuota_iva DECIMAL(5,2) DEFAULT 21 CHECK IN (0, 10.5, 21, 27)`: select en ProductoFormPage (Exento/10.5%/21%/27%). Persiste en DB.
+- `venta_items.alicuota_iva` + `venta_items.iva_monto`: IVA histórico al momento de la venta. Cálculo: `ivaMonto = subtotal - subtotal / (1 + rate/100)` (precio IVA incluido).
+- Checkout: desglose de IVA agrupado por tasa (línea gris por cada tasa activa en el carrito).
+- `inventario_lineas.precio_venta_snapshot DECIMAL(14,2)`: precio de venta al momento del ingreso.
+
+#### Biblioteca de Archivos (migration 042)
+- Tabla `archivos_biblioteca`: nombre, tipo (certificado_afip_crt/key/contrato/factura_proveedor/manual/otro), storage_path, tamanio, mime_type.
+- Bucket privado `archivos-biblioteca` (10 MB). RLS por tenant_id.
+- Tab "Biblioteca" en ConfigPage: upload, lista, descarga (signed URL 300s), eliminar.
+
+#### Certificados AFIP (migration 043)
+- Tabla `tenant_certificates`: UNIQUE por tenant, cuit, fecha_validez_hasta, activo. Trigger `updated_at`.
+- Bucket privado `certificados-afip` (1 MB). RLS filtra por `tenant_id` en el path del archivo.
+- `src/lib/afip.ts`: `uploadCertificates()` — valida extensiones, sube .crt + .key, rollback si falla, upsert en DB.
+- ConfigPage → tab Negocio: sección colapsable "Certificados AFIP" con badge estado, CUIT, fecha validez, file inputs con `accept=".crt"/.key"`, botón Guardar/Reemplazar.
+
+#### UX fixes
+- **Ventas**: precio_unitario read-only en carrito (se edita desde Productos) · reorden checkout (Desc+Notas → Totales → Método pago → Acciones) · "Sin Pago Ahora" → "Presupuesto"
+- **Alertas**: botón "Resolver" bloqueado si `stock_actual <= stock_minimo` (toast de error). Complementa el trigger `auto_resolver_alerta_stock` de migration 042.
+- **Inventario**: tab default cambiada a `'inventario'` · motivo "Ventas" (`es_sistema=true`) oculto en select de rebaje manual
+- **Dashboard**: h1 muestra `tenant.nombre` (en lugar de la fecha); fecha pasa a subtítulo
+- **motivos_movimiento**: columna `es_sistema BOOLEAN DEFAULT FALSE`; UPDATE marca "Ventas" como `es_sistema=TRUE`
+
+#### Design System Sprint 1
+- `tailwind.config.js`: tokens nuevos aditivos: `page`, `surface`, `muted`, `border-ds`, `success`, `danger`, `warning`, `info` (via CSS vars). `fontFamily.mono = JetBrains Mono`.
+- `src/index.css`: variables `--ds-*` en `:root` (light) y `.dark` (dark). Semánticos = iguales en ambos modos.
+- `index.html`: JetBrains Mono 400/500 + preconnect gstatic.
+- `src/styles/design-tokens.css`: referencia completa — recetas botones/cards/tabs/inputs, colores raw, guía de uso.
+- Tokens existentes (`primary`, `accent`, `brand-bg`) sin modificar → cero regressions.
+- **Para Sprint 2 (Header+Sidebar)**: usar `bg-page`, `bg-surface`, `text-muted`, `border-border-ds`, `font-mono` para precios.
+
+#### Testing por rol
 - [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0) — 20 tests ✅
 - [x] Tests E2E para SUPERVISOR: `15_rol_supervisor.spec.ts` (v0.65.0) — 23 tests ✅
 - [x] Tests E2E para RRHH: `16_rol_rrhh.spec.ts` (v0.66.0) — 18 tests ✅
 - [x] Tests de coherencia de números: `14_coherencia_numeros.spec.ts` (v0.64.0)
 - Usuarios E2E DEV: OWNER `e2e@genesis360.test` · CAJERO `cajero1@local.com` · RRHH `rrhh1@local.com` · SUPERVISOR `supervisor@test.com` — todos con contraseña `123` (via SQL en auth.users)
-- Escenarios nuevos pendientes: modificarReserva con serializado → series disponibles en carrito.
+- Test regresión v0.57.0: `modificarReserva` con serializado → series disponibles en carrito ✅ (04_ventas.spec.ts)
 
 ### Restricciones de rutas por rol (AppLayout)
 - **RRHH**: solo `/rrhh` + `/mi-cuenta`. Cualquier otra ruta → redirect `/rrhh`.

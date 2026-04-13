@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
-  User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Zap, Camera,
+  User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -16,6 +16,7 @@ import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
 import type { Producto, KitReceta } from '@/lib/supabase'
@@ -727,34 +728,14 @@ export default function InventarioPage() {
       {/* ════════════════════════ TAB: MOVIMIENTOS ════════════════════════ */}
       {tab === 'movimientos' && (
         <>
-          {/* Banner uso de movimientos */}
-          {limits && limits.max_movimientos !== -1 && (
-            <div className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm ${
-              limiteAlcanzado
-                ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
-                : limiteWarning
-                ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-400'
-                : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-            }`}>
-              {limiteAlcanzado ? <AlertTriangle size={15} className="flex-shrink-0" /> : <Zap size={15} className="flex-shrink-0" />}
-              <div className="flex-1 min-w-0">
-                <span className="font-medium">
-                  {limits.movimientos_mes.toLocaleString()} / {limits.max_movimientos.toLocaleString()} movimientos este mes
-                </span>
-                {limits.addon_movimientos > 0 && (
-                  <span className="ml-2 text-xs opacity-70">(incluye {limits.addon_movimientos} extra)</span>
-                )}
-                <div className="mt-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${limiteAlcanzado ? 'bg-red-500' : limiteWarning ? 'bg-amber-400' : 'bg-accent'}`}
-                    style={{ width: `${Math.min(100, limits.pct_movimientos)}%` }}
-                  />
-                </div>
-              </div>
-              <Link to="/suscripcion" className="flex-shrink-0 text-xs font-medium underline underline-offset-2 hover:opacity-80">
-                {limiteAlcanzado ? 'Ampliar límite' : 'Ver plan'}
-              </Link>
-            </div>
+          {/* Barra de uso de movimientos */}
+          {limits && (
+            <PlanProgressBar
+              actual={limits.movimientos_mes}
+              max={limits.max_movimientos}
+              label="movimientos este mes"
+              addonInfo={limits.addon_movimientos > 0 ? `(incluye ${limits.addon_movimientos} extra)` : undefined}
+            />
           )}
 
           <div className="relative">

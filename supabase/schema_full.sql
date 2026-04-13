@@ -1710,3 +1710,19 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES ('certificados-afip', 'certificados-afip', false, 1048576,
   ARRAY['application/x-pem-file', 'application/octet-stream', 'application/x-x509-ca-cert'])
 ON CONFLICT (id) DO NOTHING;
+
+-- ─── Migration 045: Métodos de pago configurables ─────────────────────────────
+CREATE TABLE IF NOT EXISTS metodos_pago (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre      TEXT NOT NULL,
+  color       TEXT NOT NULL DEFAULT '#6b7280',
+  activo      BOOLEAN NOT NULL DEFAULT TRUE,
+  es_sistema  BOOLEAN NOT NULL DEFAULT FALSE,
+  orden       INT NOT NULL DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(tenant_id, nombre)
+);
+ALTER TABLE metodos_pago ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_metodos_pago_tenant ON metodos_pago(tenant_id);

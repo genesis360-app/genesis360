@@ -15,16 +15,12 @@ interface Props {
   cotizacion: number
 }
 
-const COLORS: Record<string, string> = {
-  Efectivo:       '#7c3aed', // accent violet
-  Transferencia:  '#3b82f6', // blue
-  Tarjeta:        '#10b981', // green
-  MercadoPago:    '#06b6d4', // cyan
-  Otro:           '#94a3b8', // slate
-}
-
-function getColor(tipo: string): string {
-  return COLORS[tipo] ?? COLORS.Otro
+const FALLBACK_COLORS: Record<string, string> = {
+  Efectivo:            '#22c55e',
+  'Mercado Pago':      '#06b6d4',
+  'Tarjeta de débito': '#eab308',
+  Transferencia:       '#8b5cf6',
+  'Tarjeta de crédito':'#f97316',
 }
 
 const CustomTooltip = ({ active, payload, moneda, cotizacion }: any) => {
@@ -58,6 +54,21 @@ const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: an
 
 export function MixCajaChart({ periodo, moneda, cotizacion }: Props) {
   const { tenant } = useAuthStore()
+
+  const { data: metodosDB = [] } = useQuery({
+    queryKey: ['metodos_pago', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('metodos_pago')
+        .select('nombre, color').eq('tenant_id', tenant!.id).eq('activo', true)
+      return data ?? []
+    },
+    enabled: !!tenant,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const colorMap: Record<string, string> = {}
+  ;(metodosDB as any[]).forEach((m: any) => { colorMap[m.nombre] = m.color })
+  const getColor = (tipo: string) => colorMap[tipo] ?? FALLBACK_COLORS[tipo] ?? '#94a3b8'
 
   const { data: mixData = [], isLoading } = useQuery({
     queryKey: ['mix-caja', tenant?.id, periodo],

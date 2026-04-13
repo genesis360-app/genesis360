@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
-  MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw,
+  MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -102,6 +102,13 @@ export default function InventarioPage() {
   // Desarmado inverso
   const [showDesarmarModal, setShowDesarmarModal] = useState(false)
   const [desarmarKitId, setDesarmarKitId] = useState<string | null>(null)
+
+  // Inventario vista
+  const [invVista, setInvVista] = useState<'producto' | 'ubicacion'>('producto')
+
+  // Clonar KIT
+  const [clonarOrigenId, setClonarOrigenId] = useState<string | null>(null)
+  const [clonarDestinoId, setClonarDestinoId] = useState('')
   const [desarmarCantidad, setDesarmarCantidad] = useState('1')
   const [desarmarNotas, setDesarmarNotas] = useState('')
 
@@ -214,27 +221,33 @@ export default function InventarioPage() {
     enabled: !!tenant && tab === 'inventario',
   })
 
-  const { data: lineasMap = {} } = useQuery({
+  const { data: lineasData = { byProducto: {} as Record<string, any[]>, byUbicacion: {} as Record<string, any[]> } } = useQuery({
     queryKey: ['inventario_lineas_all', tenant?.id, sucursalId],
     queryFn: async () => {
       let q = supabase
         .from('inventario_lineas')
-        .select('*, estados_inventario(nombre,color), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado)')
+        .select('*, estados_inventario(nombre,color), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado), productos(nombre,sku,unidad_medida)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('created_at', { ascending: true })
       q = applyFilter(q)
       const { data, error } = await q
       if (error) throw error
-      const map: Record<string, any[]> = {}
+      const byProducto: Record<string, any[]> = {}
+      const byUbicacion: Record<string, any[]> = {}
       for (const l of data ?? []) {
-        if (!map[l.producto_id]) map[l.producto_id] = []
-        map[l.producto_id].push(l)
+        if (!byProducto[l.producto_id]) byProducto[l.producto_id] = []
+        byProducto[l.producto_id].push(l)
+        const ubicKey = l.ubicacion_id ?? '__sin_ubicacion__'
+        if (!byUbicacion[ubicKey]) byUbicacion[ubicKey] = []
+        byUbicacion[ubicKey].push(l)
       }
-      return map
+      return { byProducto, byUbicacion }
     },
     enabled: !!tenant && tab === 'inventario',
   })
+  const lineasMap = lineasData.byProducto
+  const ubicacionLineasMap = lineasData.byUbicacion
 
   // ── Kits queries ───────────────────────────────────────────────────────────
   const { data: kitsProductos = [] } = useQuery({
@@ -390,7 +403,8 @@ export default function InventarioPage() {
       } else {
         const cant = parseInt(rebajeCantidad)
         if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
-        if (cant > rebajeLinea.cantidad) throw new Error(`Stock insuficiente en esta línea. Disponible: ${rebajeLinea.cantidad}`)
+        const disponible = rebajeLinea.cantidad - (rebajeLinea.cantidad_reservada ?? 0)
+        if (cant > disponible) throw new Error(`Stock disponible insuficiente: ${disponible} u. (${rebajeLinea.cantidad} total − ${rebajeLinea.cantidad_reservada ?? 0} reservada(s))`)
         const nuevaCant = rebajeLinea.cantidad - cant
         await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', rebajeLinea.id)
       }
@@ -444,6 +458,27 @@ export default function InventarioPage() {
       if (error) throw new Error(error.message)
     },
     onSuccess: () => { toast.success('Componente eliminado'); qc.invalidateQueries({ queryKey: ['kit-recetas'] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const clonarKitRecetas = useMutation({
+    mutationFn: async ({ origenId, destinoId }: { origenId: string; destinoId: string }) => {
+      const recetas = recetasMap[origenId] ?? []
+      if (recetas.length === 0) throw new Error('El KIT origen no tiene receta')
+      for (const r of recetas) {
+        await supabase.from('kit_recetas').upsert({
+          tenant_id: tenant!.id,
+          kit_producto_id: destinoId,
+          comp_producto_id: r.comp_producto_id,
+          cantidad: r.cantidad,
+        }, { onConflict: 'tenant_id,kit_producto_id,comp_producto_id' })
+      }
+    },
+    onSuccess: () => {
+      toast.success('Receta clonada')
+      qc.invalidateQueries({ queryKey: ['kit-recetas'] })
+      setClonarOrigenId(null); setClonarDestinoId('')
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -1476,6 +1511,17 @@ export default function InventarioPage() {
               title="Escanear código de barras">
               <Camera size={17} />
             </button>
+            {/* Vista toggle */}
+            <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 flex-shrink-0">
+              <button onClick={() => setInvVista('producto')} title="Por producto"
+                className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'producto' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                <LayoutList size={15} />
+              </button>
+              <button onClick={() => setInvVista('ubicacion')} title="Por ubicación"
+                className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'ubicacion' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                <Building size={15} />
+              </button>
+            </div>
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -1483,7 +1529,89 @@ export default function InventarioPage() {
               <div className="flex items-center justify-center py-16">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>
-            ) : filteredInv.length === 0 ? (
+            ) : invVista === 'ubicacion' ? (() => {
+              const search = invSearch.toLowerCase()
+              const ubicKeys = Object.keys(ubicacionLineasMap).filter(key => {
+                const lineas = ubicacionLineasMap[key]
+                const ubicNombre = key === '__sin_ubicacion__' ? 'Sin ubicación' : (lineas[0]?.ubicaciones?.nombre ?? '')
+                if (!search) return true
+                if (ubicNombre.toLowerCase().includes(search)) return true
+                return lineas.some((l: any) => {
+                  const prod = l.productos as any
+                  return prod?.nombre?.toLowerCase().includes(search) || prod?.sku?.toLowerCase().includes(search) || (l.lpn ?? '').toLowerCase().includes(search)
+                })
+              })
+              if (ubicKeys.length === 0) return (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+                  <Building size={40} className="mb-3 opacity-50" />
+                  <p className="font-medium">{search ? 'No se encontraron ubicaciones' : 'Sin datos de inventario'}</p>
+                </div>
+              )
+              return (
+                <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {ubicKeys.map(key => {
+                    const lineas = ubicacionLineasMap[key]
+                    const isExpUbic = expandedId === key
+                    const ubicNombre = key === '__sin_ubicacion__' ? 'Sin ubicación' : (lineas[0]?.ubicaciones?.nombre ?? key)
+                    const totalCantidad = lineas.reduce((s: number, l: any) => s + (l.cantidad ?? 0), 0)
+                    const totalDisponible = lineas.reduce((s: number, l: any) => s + ((l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
+                    return (
+                      <div key={key}>
+                        <div className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${isExpUbic ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                          onClick={() => setExpandedId(isExpUbic ? null : key)}>
+                          <div className="w-5 flex-shrink-0 text-gray-400 dark:text-gray-500">
+                            {isExpUbic ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </div>
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <Building size={15} className={key === '__sin_ubicacion__' ? 'text-gray-400' : 'text-blue-500'} />
+                            <span className="font-medium text-sm text-gray-900 dark:text-white truncate">{ubicNombre}</span>
+                            <span className="text-xs text-gray-400 dark:text-gray-500">({lineas.length} línea{lineas.length !== 1 ? 's' : ''})</span>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{totalCantidad} u.</p>
+                            {totalDisponible !== totalCantidad && (
+                              <p className="text-xs text-amber-500">{totalDisponible} disp.</p>
+                            )}
+                          </div>
+                        </div>
+                        {isExpUbic && (
+                          <div className="border-t border-gray-100 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700/50">
+                            {lineas.map((l: any) => {
+                              const prod = l.productos as any
+                              const disponible = (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)
+                              return (
+                                <div key={l.id} className="px-6 py-3 flex items-start gap-3 bg-gray-50/50 dark:bg-gray-800/50">
+                                  <div className="flex-1 min-w-0 space-y-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-medium text-sm text-gray-900 dark:text-white">{prod?.nombre ?? l.producto_id}</span>
+                                      <span className="text-xs text-gray-400 dark:text-gray-500">{prod?.sku}</span>
+                                      {l.lpn && <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded font-mono">{l.lpn}</span>}
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap text-xs">
+                                      {l.estados_inventario && (
+                                        <span className="px-1.5 py-0.5 rounded text-white text-xs font-medium" style={{ backgroundColor: l.estados_inventario.color ?? '#6b7280' }}>{l.estados_inventario.nombre}</span>
+                                      )}
+                                      {l.lote && <span className="text-gray-500 dark:text-gray-400">Lote: {l.lote}</span>}
+                                      {l.vencimiento && <span className="text-gray-500 dark:text-gray-400">Vto: {new Date(l.vencimiento).toLocaleDateString('es-AR')}</span>}
+                                    </div>
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{l.cantidad} {prod?.unidad_medida}</p>
+                                    {(l.cantidad_reservada ?? 0) > 0 && (
+                                      <p className="text-xs text-amber-500">{disponible} disp.</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })() : filteredInv.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
                 <Package size={40} className="mb-3 opacity-50" />
                 <p className="font-medium">{invSearch ? 'No se encontraron productos' : 'No hay productos aún'}</p>
@@ -1749,6 +1877,14 @@ export default function InventarioPage() {
                         className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
                         <RotateCcw size={13} /> Desarmar
                       </button>
+                      {/* Botón clonar receta */}
+                      <button
+                        onClick={() => { setClonarOrigenId(kit.id); setClonarDestinoId('') }}
+                        disabled={recetas.length === 0}
+                        title={recetas.length === 0 ? 'Sin receta para clonar' : 'Clonar receta a otro KIT'}
+                        className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
+                        <Copy size={13} /> Clonar
+                      </button>
                     </div>
 
                     {/* Receta expandida */}
@@ -1913,6 +2049,51 @@ export default function InventarioPage() {
           })()}
 
           {/* Modal desarmar KIT */}
+          {/* Modal clonar receta KIT */}
+          {clonarOrigenId && (() => {
+            const origen = kitsProductos.find((k: any) => k.id === clonarOrigenId)
+            const destinos = kitsProductos.filter((k: any) => k.id !== clonarOrigenId)
+            return (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+                  <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
+                    <div>
+                      <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <Copy size={16} className="text-accent" /> Clonar receta
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Desde: {origen?.nombre}</p>
+                    </div>
+                    <button onClick={() => setClonarOrigenId(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">KIT destino *</label>
+                      <select value={clonarDestinoId} onChange={e => setClonarDestinoId(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30">
+                        <option value="">Seleccioná un KIT...</option>
+                        {destinos.map((k: any) => (
+                          <option key={k.id} value={k.id}>{k.nombre} ({k.sku})</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Los componentes existentes del destino serán reemplazados por los del origen.</p>
+                    </div>
+                    <div className="flex gap-3 pt-1">
+                      <button onClick={() => setClonarOrigenId(null)}
+                        className="flex-1 px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
+                        Cancelar
+                      </button>
+                      <button onClick={() => clonarKitRecetas.mutate({ origenId: clonarOrigenId, destinoId: clonarDestinoId })}
+                        disabled={!clonarDestinoId || clonarKitRecetas.isPending}
+                        className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-50 text-sm py-2.5">
+                        {clonarKitRecetas.isPending ? 'Clonando...' : <><Copy size={14} /> Clonar</>}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           {showDesarmarModal && desarmarKitId && (() => {
             const kit = kitsProductos.find((k: any) => k.id === desarmarKitId)
             const recetas: KitReceta[] = recetasMap[desarmarKitId] ?? []

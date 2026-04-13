@@ -16,7 +16,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 // ─── Tipos TypeScript ─────────────────────────────────────────────────────────
 
-export type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'ADMIN' | 'RRHH'
+export type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'ADMIN' | 'RRHH' | 'CONTADOR' | 'DEPOSITO'
 export type SubscriptionStatus = 'trial' | 'active' | 'inactive' | 'cancelled'
 export type MovimientoTipo = 'ingreso' | 'rebaje' | 'ajuste' | 'kitting' | 'des_kitting'
 

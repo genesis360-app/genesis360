@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, FolderOpen, FileText, Download, ShieldCheck, KeyRound } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, FolderOpen, FileText, Download, ShieldCheck, KeyRound, CreditCard } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -11,7 +11,7 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'archivos'
+type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'archivos' | 'metodos_pago'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
 const COLORES = [
@@ -890,6 +890,78 @@ export default function ConfigPage() {
     else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['archivos_biblioteca'] }) }
   }
 
+  // ── Métodos de pago ─────────────────────────────────────────────────────────
+  const [nuevoMetodo, setNuevoMetodo] = useState({ nombre: '', color: '#22c55e' })
+  const [editMetodoId, setEditMetodoId] = useState<string | null>(null)
+  const [editMetodoData, setEditMetodoData] = useState({ nombre: '', color: '' })
+
+  const METODOS_DEFAULTS = [
+    { nombre: 'Efectivo',           color: '#22c55e', orden: 1 },
+    { nombre: 'Mercado Pago',       color: '#06b6d4', orden: 2 },
+    { nombre: 'Tarjeta de débito',  color: '#eab308', orden: 3 },
+    { nombre: 'Transferencia',      color: '#8b5cf6', orden: 4 },
+    { nombre: 'Tarjeta de crédito', color: '#f97316', orden: 5 },
+  ]
+
+  const { data: metodosPago = [], isLoading: loadingMetodos } = useQuery({
+    queryKey: ['metodos_pago', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('metodos_pago')
+        .select('*').eq('tenant_id', tenant!.id).order('orden').order('nombre')
+      if (!data || data.length === 0) {
+        const { data: inserted } = await supabase.from('metodos_pago').insert(
+          METODOS_DEFAULTS.map(d => ({ ...d, tenant_id: tenant!.id, activo: true, es_sistema: true }))
+        ).select()
+        return inserted ?? []
+      }
+      return data
+    },
+    enabled: !!tenant && tab === 'metodos_pago',
+  })
+
+  const addMetodoPago = useMutation({
+    mutationFn: async () => {
+      if (!nuevoMetodo.nombre.trim()) throw new Error('El nombre es requerido')
+      const { error } = await supabase.from('metodos_pago').insert({
+        tenant_id: tenant!.id, nombre: nuevoMetodo.nombre.trim(),
+        color: nuevoMetodo.color, activo: true, es_sistema: false,
+        orden: (metodosPago.length + 1),
+      })
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Método agregado'); setNuevoMetodo({ nombre: '', color: '#22c55e' }); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const updateMetodoPago = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('metodos_pago').update({
+        nombre: editMetodoData.nombre.trim(), color: editMetodoData.color,
+      }).eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Guardado'); setEditMetodoId(null); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const toggleMetodoPago = useMutation({
+    mutationFn: async ({ id, activo }: { id: string; activo: boolean }) => {
+      const { error } = await supabase.from('metodos_pago').update({ activo }).eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['metodos_pago'] }),
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const deleteMetodoPago = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('metodos_pago').delete().eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const tabs = [
     { id: 'negocio' as Tab, label: 'Mi negocio', icon: Building2 },
     { id: 'categorias' as Tab, label: 'Categorías', icon: Tag },
@@ -901,6 +973,7 @@ export default function ConfigPage() {
     { id: 'grupos' as Tab, label: 'Grupos de estados', icon: Layers },
     { id: 'aging' as Tab, label: 'Aging Profiles', icon: Timer },
     { id: 'archivos' as Tab, label: 'Biblioteca', icon: FolderOpen },
+    { id: 'metodos_pago' as Tab, label: 'Métodos de pago', icon: CreditCard },
   ]
 
   return (
@@ -1763,6 +1836,89 @@ export default function ConfigPage() {
           )}
         </div>
       )}
+      {tab === 'metodos_pago' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <CreditCard size={18} className="text-accent" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Métodos de pago</h2>
+            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{metodosPago.length} método{metodosPago.length !== 1 ? 's' : ''}</span>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Personalizá los métodos de cobro disponibles en ventas y caja. El color se usa en gráficos del dashboard.
+          </p>
+
+          {loadingMetodos ? (
+            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p>
+          ) : (
+            <div className="space-y-2">
+              {(metodosPago as any[]).map((m: any) => (
+                <div key={m.id} className="flex items-center gap-3 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl">
+                  {editMetodoId === m.id ? (
+                    <>
+                      <input type="color" value={editMetodoData.color}
+                        onChange={e => setEditMetodoData(p => ({ ...p, color: e.target.value }))}
+                        className="w-8 h-8 rounded cursor-pointer border-0 p-0 flex-shrink-0" />
+                      <input type="text" value={editMetodoData.nombre}
+                        onChange={e => setEditMetodoData(p => ({ ...p, nombre: e.target.value }))}
+                        className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                      <button onClick={() => updateMetodoPago.mutate(m.id)} disabled={updateMetodoPago.isPending}
+                        className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors">
+                        <Check size={15} />
+                      </button>
+                      <button onClick={() => setEditMetodoId(null)}
+                        className="p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                        <X size={15} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-4 h-4 rounded-full flex-shrink-0 border border-gray-200 dark:border-gray-600" style={{ backgroundColor: m.color }} />
+                      <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-100">{m.nombre}</span>
+                      {m.es_sistema && <span className="text-xs text-gray-400 dark:text-gray-500 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">sistema</span>}
+                      <button onClick={() => toggleMetodoPago.mutate({ id: m.id, activo: !m.activo })}
+                        title={m.activo ? 'Deshabilitar' : 'Habilitar'}
+                        className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${m.activo ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+                        {m.activo ? 'Activo' : 'Inactivo'}
+                      </button>
+                      <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color }) }}
+                        className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                        <Pencil size={14} />
+                      </button>
+                      {!m.es_sistema && (
+                        <button onClick={() => { if (confirm('¿Eliminar este método?')) deleteMetodoPago.mutate(m.id) }}
+                          className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Agregar método personalizado */}
+          <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Agregar método personalizado</p>
+            <div className="flex gap-2">
+              <input type="color" value={nuevoMetodo.color}
+                onChange={e => setNuevoMetodo(p => ({ ...p, color: e.target.value }))}
+                className="w-10 h-10 rounded-lg cursor-pointer border border-gray-200 dark:border-gray-600 p-0.5 flex-shrink-0" />
+              <input type="text" value={nuevoMetodo.nombre}
+                onChange={e => setNuevoMetodo(p => ({ ...p, nombre: e.target.value }))}
+                placeholder="Ej: Cripto, Cheque..."
+                onKeyDown={e => e.key === 'Enter' && addMetodoPago.mutate()}
+                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+              <button onClick={() => addMetodoPago.mutate()}
+                disabled={!nuevoMetodo.nombre.trim() || addMetodoPago.isPending}
+                className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5">
+                <Plus size={14} /> Agregar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
         </div>{/* end content column */}
       </div>{/* end flex gap-6 */}
     </div>

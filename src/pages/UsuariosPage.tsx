@@ -12,12 +12,14 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 
-type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'RRHH'
+type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO'
 const ROLES: Record<UserRole, { label: string; desc: string; color: string }> = {
-  OWNER:      { label: 'Dueño',      desc: 'Acceso completo',           color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
-  SUPERVISOR: { label: 'Supervisor', desc: 'Inventario y movimientos',  color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'        },
-  CAJERO:     { label: 'Cajero',     desc: 'Solo ventas y rebajes',     color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'     },
-  RRHH:       { label: 'RRHH',       desc: 'Gestión de empleados',      color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'     },
+  OWNER:      { label: 'Dueño',      desc: 'Acceso completo',                    color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
+  SUPERVISOR: { label: 'Supervisor', desc: 'Inventario y movimientos',           color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'        },
+  CAJERO:     { label: 'Cajero',     desc: 'Solo ventas y caja',                 color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'     },
+  RRHH:       { label: 'RRHH',       desc: 'Gestión de empleados',               color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'     },
+  CONTADOR:   { label: 'Contador',   desc: 'Dashboard, gastos y reportes',       color: 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400'         },
+  DEPOSITO:   { label: 'Depósito',   desc: 'Productos e inventario',             color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' },
 }
 
 type Permiso = 'no_ver' | 'ver' | 'editar'
@@ -78,6 +80,10 @@ export default function UsuariosPage() {
   const [rolNombre, setRolNombre] = useState('')
   const [rolPermisos, setRolPermisos] = useState<Record<string, Permiso>>(defaultPermisos)
   const [expandedRolId, setExpandedRolId] = useState<string | null>(null)
+
+  // Per-user permisos modal
+  const [userPermisosTarget, setUserPermisosTarget] = useState<any | null>(null)
+  const [userPermisosData, setUserPermisosData] = useState<Record<string, Permiso>>(defaultPermisos)
 
   const { data: usuarios = [], isLoading } = useQuery({
     queryKey: ['usuarios', tenant?.id],
@@ -195,6 +201,41 @@ export default function UsuariosPage() {
     onError: () => toast.error('Error al eliminar'),
   })
 
+  const saveUserPermisos = useMutation({
+    mutationFn: async () => {
+      if (!userPermisosTarget) return
+      const u = userPermisosTarget
+      if (u.rol_custom_id) {
+        const { error } = await supabase.from('roles_custom').update({ permisos: userPermisosData }).eq('id', u.rol_custom_id)
+        if (error) throw error
+      } else {
+        const newId = crypto.randomUUID()
+        const { error: insErr } = await supabase.from('roles_custom').insert({
+          id: newId, tenant_id: tenant!.id,
+          nombre: `${u.nombre_display ?? u.id.slice(0,6)} (custom)`,
+          permisos: userPermisosData, activo: true,
+        })
+        if (insErr) throw insErr
+        const { error: updErr } = await supabase.from('users').update({ rol_custom_id: newId }).eq('id', u.id)
+        if (updErr) throw updErr
+      }
+      logActividad({ entidad: 'usuario', entidad_id: u.id, entidad_nombre: u.nombre_display, accion: 'editar', campo: 'permisos_custom', pagina: '/usuarios' })
+    },
+    onSuccess: () => {
+      toast.success('Permisos actualizados')
+      setUserPermisosTarget(null)
+      qc.invalidateQueries({ queryKey: ['usuarios'] })
+      refetchRoles()
+    },
+    onError: (e: any) => toast.error(e.message ?? 'Error'),
+  })
+
+  function openUserPermisos(u: any) {
+    const rolCustom = rolesCustom.find(r => r.id === u.rol_custom_id)
+    setUserPermisosData({ ...defaultPermisos(), ...(rolCustom?.permisos ?? {}) })
+    setUserPermisosTarget(u)
+  }
+
   const canManage = user?.rol === 'OWNER'
 
   const usuariosFiltrados = filterRol === 'TODOS'
@@ -202,18 +243,18 @@ export default function UsuariosPage() {
     : (usuarios as any[]).filter(u => u.rol === filterRol)
 
   const PERMISOS: Record<string, Partial<Record<UserRole, boolean>>> = {
-    'Ver inventario':       { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
-    'Movimientos de stock': { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
-    'Ventas y caja':        { OWNER: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false },
-    'Gastos':               { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
-    'Clientes':             { OWNER: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false },
-    'Reportes e historial': { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
-    'Métricas e insights':  { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false },
-    'Importar datos':       { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false },
-    'Configuración':        { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false },
-    'Usuarios':             { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false },
-    'RRHH (empleados)':     { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: true  },
-    'Sucursales':           { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false },
+    'Ver inventario':       { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: true  },
+    'Movimientos de stock': { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: true  },
+    'Ventas y caja':        { OWNER: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'Gastos':               { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: true,  DEPOSITO: false },
+    'Clientes':             { OWNER: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'Reportes e historial': { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: true,  DEPOSITO: false },
+    'Métricas e insights':  { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: true,  DEPOSITO: false },
+    'Importar datos':       { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'Configuración':        { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'Usuarios':             { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'RRHH (empleados)':     { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: true,  CONTADOR: false, DEPOSITO: false },
+    'Sucursales':           { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
   }
 
   function formatFechaCorta(iso: string) {
@@ -388,16 +429,10 @@ export default function UsuariosPage() {
                             <option key={r} value={r}>{cfg.label}</option>
                           ))}
                       </select>
-                      {rolesCustom.length > 0 && (
-                        <select
-                          value={u.rol_custom_id ?? ''}
-                          onChange={e => assignRolCustom.mutate({ userId: u.id, rolCustomId: e.target.value || null, nombreUsuario: u.nombre_display })}
-                          title="Rol personalizado"
-                          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
-                          <option value="">Sin rol custom</option>
-                          {rolesCustom.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-                        </select>
-                      )}
+                      <button onClick={() => openUserPermisos(u)} title="Editar permisos del módulo por usuario"
+                        className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                        <Sliders size={15} />
+                      </button>
                       {!esMiUsuario && (
                         <button onClick={() => { if (confirm(`¿Desactivar a ${u.nombre_display}?`)) desactivar.mutate(u.id) }}
                           className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
@@ -544,6 +579,51 @@ export default function UsuariosPage() {
               <button onClick={() => saveRolCustom.mutate()} disabled={saveRolCustom.isPending}
                 className="px-4 py-2 bg-accent text-white rounded-lg text-sm hover:bg-accent/90 disabled:opacity-50">
                 {editingRol ? 'Actualizar' : 'Crear rol'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal permisos por usuario */}
+      {userPermisosTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+              Permisos: {userPermisosTarget.nombre_display}
+            </h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+              Rol base: <span className="font-medium">{ROLES[userPermisosTarget.rol as UserRole]?.label ?? userPermisosTarget.rol}</span>
+              {' · '}Estos permisos sobreescriben el rol para módulos específicos
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {MODULOS.map(m => {
+                const p = userPermisosData[m.key] ?? 'no_ver'
+                return (
+                  <button key={m.key} type="button"
+                    onClick={() => {
+                      const order: Permiso[] = ['no_ver', 'ver', 'editar']
+                      const next = order[(order.indexOf(p) + 1) % order.length]
+                      setUserPermisosData(prev => ({ ...prev, [m.key]: next }))
+                    }}
+                    className="flex items-center justify-between gap-2 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-accent/50 transition-colors text-sm">
+                    <span className="text-gray-700 dark:text-gray-300">{m.label}</span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${PERMISO_COLORS[p]}`}>
+                      {PERMISO_LABELS[p]}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">Click en cada módulo para cambiar. "No ver" = oculta el módulo.</p>
+            <div className="flex gap-2 mt-5 justify-end">
+              <button onClick={() => setUserPermisosTarget(null)}
+                className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400">
+                Cancelar
+              </button>
+              <button onClick={() => saveUserPermisos.mutate()} disabled={saveUserPermisos.isPending}
+                className="px-4 py-2 bg-accent text-white rounded-lg text-sm hover:bg-accent/90 disabled:opacity-50">
+                {saveUserPermisos.isPending ? 'Guardando...' : 'Guardar permisos'}
               </button>
             </div>
           </div>

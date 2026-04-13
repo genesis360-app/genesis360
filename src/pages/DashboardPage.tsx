@@ -65,6 +65,8 @@ export default function DashboardPage() {
   const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
   const [moneda, setMoneda] = useState<Moneda>('ARS')
   const [iva, setIva] = useState<IVAMode>('incluido')
+  const [customDesde, setCustomDesde] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
+  const [customHasta, setCustomHasta] = useState(() => new Date().toISOString())
   const { cotizacion } = useCotizacion()
 
   const { data: stats } = useQuery({
@@ -204,11 +206,12 @@ export default function DashboardPage() {
   })
 
   // ─── KPIs período (Ingreso Neto / Margen / Burn Rate / IVA) ─────────────────
+  const customRange = { desde: customDesde, hasta: customHasta }
   const { data: dashKpis } = useQuery({
-    queryKey: ['dash-kpis', tenant?.id, periodo],
+    queryKey: ['dash-kpis', tenant?.id, periodo, customDesde, customHasta],
     queryFn: async () => {
-      const { desde, hasta } = getFechasDashboard(periodo)
-      const { desde: desdePrev, hasta: hastaPrev } = getFechasAnteriores(periodo)
+      const { desde, hasta } = getFechasDashboard(periodo, customRange)
+      const { desde: desdePrev, hasta: hastaPrev } = getFechasAnteriores(periodo, customRange)
       const desdeDate = desde.split('T')[0]
       const hastaDate = hasta.split('T')[0]
       const desdePrevDate = desdePrev.split('T')[0]
@@ -268,12 +271,12 @@ export default function DashboardPage() {
       // Burn Rate diario
       const totalGastos = (gastosRes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)
       const totalGastosPrev = (gastosPrevRes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)
-      const { desde: d1s, hasta: d2s } = getFechasDashboard(periodo)
+      const { desde: d1s, hasta: d2s } = getFechasDashboard(periodo, customRange)
       const d1 = new Date(d1s), d2 = new Date(d2s)
       const daysInPeriod = Math.max(1, Math.ceil((d2.getTime() - d1.getTime()) / 86400000))
       const daysElapsed = Math.min(daysInPeriod, Math.ceil((Date.now() - d1.getTime()) / 86400000))
       const burnRate = daysElapsed > 0 ? totalGastos / daysElapsed : 0
-      const { desde: dp1s, hasta: dp2s } = getFechasAnteriores(periodo)
+      const { desde: dp1s, hasta: dp2s } = getFechasAnteriores(periodo, customRange)
       const daysPrev = Math.max(1, Math.ceil((new Date(dp2s).getTime() - new Date(dp1s).getTime()) / 86400000))
       const burnRatePrev = daysPrev > 0 ? totalGastosPrev / daysPrev : 0
 
@@ -290,9 +293,9 @@ export default function DashboardPage() {
 
   // ─── Fugas y Movimientos (top 8 por monto) ───────────────────────────────────
   const { data: fugasData = [] } = useQuery({
-    queryKey: ['dash-fugas', tenant?.id, periodo],
+    queryKey: ['dash-fugas', tenant?.id, periodo, customDesde, customHasta],
     queryFn: async () => {
-      const { desde, hasta } = getFechasDashboard(periodo)
+      const { desde, hasta } = getFechasDashboard(periodo, customRange)
       const desdeDate = desde.split('T')[0]
       const hastaDate = hasta.split('T')[0]
       const [{ data: gastos }, { data: ventas }] = await Promise.all([
@@ -614,6 +617,8 @@ export default function DashboardPage() {
         periodo={periodo} setPeriodo={setPeriodo}
         moneda={moneda} setMoneda={setMoneda}
         iva={iva} setIva={setIva}
+        customDesde={customDesde} customHasta={customHasta}
+        onCustomChange={(d, h) => { setCustomDesde(d); setCustomHasta(h) }}
       />
 
       {/* ── 4 KPI Cards ─────────────────────────────────────────────────────── */}

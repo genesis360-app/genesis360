@@ -9,7 +9,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 
 const CATEGORIAS_GASTO = [
-  'Alquiler', 'Servicios (luz/gas/agua/internet)', 'Sueldos y cargas sociales',
+  'Alquiler', 'Servicios (luz/gas/agua/internet)',
   'Compras de mercadería', 'Transporte y logística', 'Mantenimiento y reparaciones',
   'Marketing y publicidad', 'Impuestos y tasas', 'Seguros', 'Insumos y descartables',
   'Honorarios profesionales', 'Otro',

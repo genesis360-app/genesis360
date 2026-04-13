@@ -1,12 +1,17 @@
 // FilterBar — DS Sprint 3: período / moneda / IVA
 
-export type PeriodoDash = 'hoy' | '7d' | '30d' | 'mes' | 'trimestre' | 'año'
+export type PeriodoDash = 'hoy' | '7d' | 'mes' | 'trimestre' | 'año' | 'custom'
 export type Moneda = 'ARS' | 'USD'
 export type IVAMode = 'incluido' | 'excluido'
 
 // ─── Helpers de fechas ────────────────────────────────────────────────────────
 
-export function getFechasDashboard(periodo: PeriodoDash): { desde: string; hasta: string } {
+export function getFechasDashboard(
+  periodo: PeriodoDash,
+  custom?: { desde: string; hasta: string },
+): { desde: string; hasta: string } {
+  if (periodo === 'custom' && custom) return custom
+
   const hoy = new Date()
   const hasta = new Date(hoy)
   hasta.setHours(23, 59, 59, 999)
@@ -20,10 +25,6 @@ export function getFechasDashboard(periodo: PeriodoDash): { desde: string; hasta
       desde = new Date(Date.now() - 7 * 86400000)
       desde.setHours(0, 0, 0, 0)
       break
-    case '30d':
-      desde = new Date(Date.now() - 30 * 86400000)
-      desde.setHours(0, 0, 0, 0)
-      break
     case 'mes':
       desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
       break
@@ -33,13 +34,26 @@ export function getFechasDashboard(periodo: PeriodoDash): { desde: string; hasta
     case 'año':
       desde = new Date(hoy.getFullYear(), 0, 1)
       break
+    default:
+      desde.setHours(0, 0, 0, 0)
   }
 
   return { desde: desde.toISOString(), hasta: hasta.toISOString() }
 }
 
 /** Período anterior equivalente (para comparativa de badges) */
-export function getFechasAnteriores(periodo: PeriodoDash): { desde: string; hasta: string } {
+export function getFechasAnteriores(
+  periodo: PeriodoDash,
+  custom?: { desde: string; hasta: string },
+): { desde: string; hasta: string } {
+  if (periodo === 'custom' && custom) {
+    const ms = new Date(custom.hasta).getTime() - new Date(custom.desde).getTime()
+    return {
+      desde: new Date(new Date(custom.desde).getTime() - ms).toISOString(),
+      hasta: new Date(new Date(custom.desde).getTime() - 1).toISOString(),
+    }
+  }
+
   const hoy = new Date()
 
   switch (periodo) {
@@ -54,12 +68,6 @@ export function getFechasAnteriores(periodo: PeriodoDash): { desde: string; hast
       return {
         desde: new Date(Date.now() - 14 * 86400000).toISOString(),
         hasta: new Date(Date.now() - 7 * 86400000).toISOString(),
-      }
-    }
-    case '30d': {
-      return {
-        desde: new Date(Date.now() - 60 * 86400000).toISOString(),
-        hasta: new Date(Date.now() - 30 * 86400000).toISOString(),
       }
     }
     case 'mes': {
@@ -80,6 +88,8 @@ export function getFechasAnteriores(periodo: PeriodoDash): { desde: string; hast
         hasta: new Date(hoy.getFullYear() - 1, 11, 31, 23, 59, 59).toISOString(),
       }
     }
+    default:
+      return { desde: new Date().toISOString(), hasta: new Date().toISOString() }
   }
 }
 
@@ -88,10 +98,10 @@ export function labelPeriodo(periodo: PeriodoDash): string {
   const map: Record<PeriodoDash, string> = {
     hoy: 'hoy',
     '7d': 'últimos 7 días',
-    '30d': 'últimos 30 días',
     mes: 'este mes',
     trimestre: 'este trimestre',
     año: 'este año',
+    custom: 'rango personalizado',
   }
   return map[periodo]
 }
@@ -105,15 +115,18 @@ interface FilterBarProps {
   setMoneda: (m: Moneda) => void
   iva: IVAMode
   setIva: (i: IVAMode) => void
+  customDesde?: string
+  customHasta?: string
+  onCustomChange?: (desde: string, hasta: string) => void
 }
 
 const PERIODOS: { key: PeriodoDash; label: string }[] = [
   { key: 'hoy',       label: 'Hoy' },
   { key: '7d',        label: '7D' },
-  { key: '30d',       label: '30D' },
   { key: 'mes',       label: 'Mes' },
   { key: 'trimestre', label: 'Trim.' },
   { key: 'año',       label: 'Año' },
+  { key: 'custom',    label: 'Custom' },
 ]
 
 function PillGroup<T extends string>({
@@ -143,10 +156,42 @@ function PillGroup<T extends string>({
   )
 }
 
-export function FilterBar({ periodo, setPeriodo, moneda, setMoneda, iva, setIva }: FilterBarProps) {
+export function FilterBar({
+  periodo, setPeriodo, moneda, setMoneda, iva, setIva,
+  customDesde, customHasta, onCustomChange,
+}: FilterBarProps) {
+  const hoy = new Date().toISOString().split('T')[0]
+
   return (
     <div className="bg-surface border border-border-ds rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
       <PillGroup options={PERIODOS} value={periodo} onChange={setPeriodo} />
+
+      {periodo === 'custom' && (
+        <div className="flex items-center gap-2 text-xs">
+          <input
+            type="date"
+            max={hoy}
+            value={customDesde?.split('T')[0] ?? ''}
+            onChange={e => onCustomChange?.(
+              new Date(e.target.value + 'T00:00:00').toISOString(),
+              customHasta ?? new Date().toISOString(),
+            )}
+            className="border border-border-ds rounded-lg px-2 py-1 text-xs bg-surface text-primary focus:outline-none focus:border-accent"
+          />
+          <span className="text-muted">→</span>
+          <input
+            type="date"
+            max={hoy}
+            value={customHasta?.split('T')[0] ?? ''}
+            onChange={e => onCustomChange?.(
+              customDesde ?? new Date().toISOString(),
+              new Date(e.target.value + 'T23:59:59').toISOString(),
+            )}
+            className="border border-border-ds rounded-lg px-2 py-1 text-xs bg-surface text-primary focus:outline-none focus:border-accent"
+          />
+        </div>
+      )}
+
       <div className="h-5 w-px bg-border-ds hidden sm:block" />
       <PillGroup
         options={[{ key: 'ARS' as Moneda, label: 'ARS' }, { key: 'USD' as Moneda, label: 'USD' }]}

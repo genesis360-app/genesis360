@@ -25,17 +25,17 @@ import { ConfigButton } from '@/components/ConfigButton'
 
 // ─── Orden según DS Sprint 2 ──────────────────────────────────────────────────
 const navItems = [
-  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',      modulo: 'dashboard' },
+  { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',      modulo: 'dashboard',     contadorVisible: true },
   { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas',         modulo: 'ventas',        cajeroVisible: true },
-  { to: '/gastos',        icon: TrendingDown,    label: 'Gastos',         modulo: 'gastos' },
+  { to: '/gastos',        icon: TrendingDown,    label: 'Gastos',         modulo: 'gastos',        contadorVisible: true },
   { to: '/caja',          icon: DollarSign,      label: 'Caja',           modulo: 'caja',          cajeroVisible: true },
-  { to: '/productos',     icon: Package,         label: 'Productos',      modulo: 'inventario' },
-  { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos' },
+  { to: '/productos',     icon: Package,         label: 'Productos',      modulo: 'inventario',    depositoVisible: true },
+  { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos',   depositoVisible: true },
   { to: '/clientes',      icon: Users,           label: 'Clientes',       modulo: 'clientes',      cajeroVisible: true },
-  { to: '/alertas',       icon: Bell,            label: 'Alertas',        modulo: 'alertas',       badge: true },
+  { to: '/alertas',       icon: Bell,            label: 'Alertas',        modulo: 'alertas',       badge: true,           depositoVisible: true },
   { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',           modulo: 'rrhh',          ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
-  { to: '/historial',     icon: ClipboardList,   label: 'Historial',      modulo: 'historial',     supervisorOnly: true, planFeature: 'puede_historial' },
-  { to: '/reportes',      icon: BarChart2,       label: 'Reportes',       modulo: 'reportes',      planFeature: 'puede_reportes' },
+  { to: '/historial',     icon: ClipboardList,   label: 'Historial',      modulo: 'historial',     supervisorOnly: true, planFeature: 'puede_historial', contadorVisible: true },
+  { to: '/reportes',      icon: BarChart2,       label: 'Reportes',       modulo: 'reportes',      planFeature: 'puede_reportes', contadorVisible: true },
   { to: '/sucursales',    icon: Building2,       label: 'Sucursales',     modulo: 'sucursales',    ownerOnly: true },
   { to: '/usuarios',      icon: Shield,          label: 'Usuarios',       modulo: 'usuarios',      ownerOnly: true },
   { to: '/configuracion', icon: Settings,        label: 'Configuración',  modulo: 'configuracion', ownerOnly: true },
@@ -43,6 +43,8 @@ const navItems = [
 
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/mi-cuenta']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
+const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion']
+const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta']
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen]       = useState(false)
@@ -87,6 +89,10 @@ export function AppLayout() {
       navigate('/ventas', { replace: true })
     } else if (user.rol === 'SUPERVISOR' && SUPERVISOR_FORBIDDEN.some(r => pathname.startsWith(r))) {
       navigate('/dashboard', { replace: true })
+    } else if (user.rol === 'CONTADOR' && !CONTADOR_ALLOWED.some(r => pathname.startsWith(r))) {
+      navigate('/dashboard', { replace: true })
+    } else if (user.rol === 'DEPOSITO' && !DEPOSITO_ALLOWED.some(r => pathname.startsWith(r))) {
+      navigate('/inventario', { replace: true })
     } else if (user.permisos_custom) {
       const currentItem = navItems.find(item => pathname.startsWith(item.to))
       if (currentItem && user.permisos_custom[currentItem.modulo] === 'no_ver') {
@@ -167,9 +173,11 @@ export function AppLayout() {
 
         {/* Navegación */}
         <nav className={`flex-1 py-3 space-y-0.5 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-2'}`}>
-          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible, modulo }: any) => {
+          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible, contadorVisible, depositoVisible, modulo }: any) => {
             if (user?.rol === 'RRHH' && !rrhhVisible) return null
             if (user?.rol === 'CAJERO' && !cajeroVisible) return null
+            if (user?.rol === 'CONTADOR' && !contadorVisible) return null
+            if (user?.rol === 'DEPOSITO' && !depositoVisible) return null
             if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN' && user?.rol !== 'RRHH') return null
             if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
             if (user?.permisos_custom?.[modulo] === 'no_ver') return null

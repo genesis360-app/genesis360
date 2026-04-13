@@ -187,7 +187,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.70.0 ✅ | Header reorden [Sucursal][Refresh][Notif][Dark/Light][Ayuda][Config][Avatar] · ConfigButton ícono rueda (Settings) · AvatarDropdown "Gestionar cuentas": localStorage genesis360_saved_accounts · cuenta activa con ✓ · cambio de cuenta vía signOut+navigate · "+ Agregar otra cuenta" | 2026-04 |
 | v0.71.0 ✅ | Seña en caja: ingreso_reserva al crear reserva con efectivo · no-duplicado al despachar (query por concepto) · egreso_devolucion_sena al cancelar · CajaPage saldo/colores actualizados · pagar_nomina_empleado con nuevos tipos (migration 044) · 7 unit tests nuevos (148 total) | 2026-04 |
 | v0.72.0 ✅ | Roles CONTADOR+DEPOSITO + routing AppLayout · Inventario vista Por Ubicación · Clonar KIT modal · Compresión imagen >2MB · FilterBar Custom date range · GastosPage -Sueldos · Métodos de pago ConfigPage+MixCajaChart (migration 045) | 2026-04 |
-| v0.73.0 | Fix sucursal filter (OR NULL para datos previos a multi-sucursal) · Post-venta vuelve a Nueva Venta · Caja polling 10s · CAJERO no abre segunda caja · Cierre caja: labels efectivo + traspasos en saldo · Movimientos sesión: tipo/medio/ticket/hora/totales por método | 2026-04 |
+| v0.73.0 | Fix sucursal filter (OR NULL para datos previos a multi-sucursal) · Post-venta vuelve a Nueva Venta · Caja polling 10s · CAJERO puede abrir 1 caja (no más de 1 propia simultánea) · Cierre caja: labels efectivo + traspasos en saldo · Movimientos sesión: tipo/medio/ticket/hora/totales por método | 2026-04 |
 
 ---
 

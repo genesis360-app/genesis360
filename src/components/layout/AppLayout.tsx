@@ -1,6 +1,6 @@
 import { BRAND, APP_VERSION } from '@/config/brand'
 import { useState, useEffect } from 'react'
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
@@ -133,17 +133,23 @@ export function AppLayout() {
 
         {/* Logo + versión + toggle colapsar */}
         <div className={`flex items-center border-b border-border-ds flex-shrink-0 ${collapsed ? 'justify-center px-2 py-4' : 'gap-3 px-4 py-4'}`}>
-          <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center flex-shrink-0">
-            <Package size={18} className="text-white" />
-          </div>
-          {!collapsed && (
-            <div className="flex flex-col flex-1 min-w-0">
-              <span className="text-primary dark:text-white font-bold text-lg tracking-tight leading-tight truncate">
-                {BRAND.name}
-              </span>
-              <span className="text-muted text-[10px] leading-none">{APP_VERSION}</span>
+          <Link
+            to="/"
+            title="Ir al inicio"
+            className="flex items-center gap-3 flex-1 min-w-0 group"
+          >
+            <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-accent/80 transition-colors">
+              <Package size={18} className="text-white" />
             </div>
-          )}
+            {!collapsed && (
+              <div className="flex flex-col min-w-0">
+                <span className="text-primary dark:text-white font-bold text-lg tracking-tight leading-tight truncate">
+                  {BRAND.name}
+                </span>
+                <span className="text-muted text-[10px] leading-none">{APP_VERSION}</span>
+              </div>
+            )}
+          </Link>
           {!mobile && (
             <button
               onClick={toggleCollapse}

@@ -830,7 +830,7 @@ export default function VentasPage() {
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
       qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
-      setTab('historial')
+      setTab('nueva')
     } catch (err: any) {
       toast.error(err.message ?? 'Error al registrar la venta')
     } finally {

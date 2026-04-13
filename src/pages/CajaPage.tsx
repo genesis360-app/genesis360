@@ -68,6 +68,8 @@ export default function CajaPage() {
       return (data ?? []).map((r: any) => r.caja_id as string)
     },
     enabled: !!tenant,
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
   })
 
   // Sesiones abiertas con datos completos (para modal traspaso)
@@ -114,9 +116,8 @@ export default function CajaPage() {
       return data ?? null
     },
     enabled: !!cajaId,
-    // Sincronización multi-dispositivo: refresca cada 30s y al volver al foco
-    // Así si otro usuario cierra la caja en otra pestaña/dispositivo, se refleja sin recargar
-    refetchInterval: 30_000,
+    // Sincronización multi-dispositivo: refresca cada 10s y al volver al foco
+    refetchInterval: 10_000,
     refetchOnWindowFocus: true,
   })
 
@@ -130,7 +131,7 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!sesionActiva?.id,
-    refetchInterval: 30_000,
+    refetchInterval: 10_000,
     refetchOnWindowFocus: true,
   })
 

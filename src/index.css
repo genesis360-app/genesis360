@@ -7,14 +7,38 @@
    Formato: R G B  (sin comas, sin #)
    ─────────────────────────────────────────────────────────────────────────── */
 :root {
+  /* ── Tokens de marca (existentes) ────────────────────────── */
   --color-primary:   13 13 13;     /* #0D0D0D — negro       */
   --color-accent:    123 0 255;    /* #7B00FF — violeta elé */
   --color-brand-bg:  245 240 255;  /* #F5F0FF — fondo lila  */
+
+  /* ── Design System — light mode ──────────────────────────── */
+  --ds-page:     245 240 255;  /* #F5F0FF — fondo pantalla  */
+  --ds-surface:  255 255 255;  /* #FFFFFF — cards / sidebar  */
+  --ds-muted:    107 114 128;  /* #6B7280 — texto secundario */
+  --ds-border:   229 231 235;  /* #E5E7EB — bordes cards     */
+
+  /* ── Semánticos (iguales en ambos modos) ─────────────────── */
+  --ds-success:  16 185 129;   /* #10B981 emerald-500 */
+  --ds-danger:   239 68 68;    /* #EF4444 red-500     */
+  --ds-warning:  245 158 11;   /* #F59E0B amber-500   */
+  --ds-info:     59 130 246;   /* #3B82F6 blue-500    */
 }
 
 * { box-sizing: border-box; }
 html, body { overflow-x: hidden; }
 body { font-family: 'Inter', system-ui, sans-serif; }
+
+/* ─── Dark mode — tokens DS adaptativos ──────────────────────────────────────
+   Solo cambian los tokens de fondo/superficie/borde.
+   Los semánticos (success/danger/warning/info) son iguales en ambos modos.
+   ─────────────────────────────────────────────────────────────────────────── */
+.dark {
+  --ds-page:    13 13 13;    /* #0D0D0D — negro puro        */
+  --ds-surface: 23 23 23;    /* #171717 neutral-900         */
+  --ds-muted:   156 163 175; /* #9CA3AF gray-400            */
+  --ds-border:  38 38 38;    /* #262626 neutral-800         */
+}
 
 /* ─── Dark mode — overrides globales ─────────────────────────────────────────
    Cubre form controls automáticamente sin necesidad de dark: por elemento.

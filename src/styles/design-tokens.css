@@ -1,0 +1,113 @@
+/*
+ * GENESIS360 — Design System Tokens
+ * Sprint 1 — Foundation
+ *
+ * Este archivo es REFERENCIA y documentación.
+ * Las variables reales están en src/index.css (:root y .dark).
+ * Las clases Tailwind están en tailwind.config.js.
+ *
+ * ─────────────────────────────────────────────────────────────
+ * CÓMO USAR EN COMPONENTES
+ * ─────────────────────────────────────────────────────────────
+ *
+ * FONDOS
+ *   bg-page          → fondo de pantalla (lila suave / negro puro en dark)
+ *   bg-surface       → cards, sidebar, modales (blanco / neutral-900 en dark)
+ *   bg-white         → usar solo cuando el blanco es semántico (no adaptativo)
+ *
+ * TEXTOS
+ *   text-primary     → títulos principales, valores KPI (existente)
+ *   text-muted       → labels, fechas, subtítulos (nuevo DS token)
+ *   text-gray-500    → equivalente a text-muted (Tailwind estándar)
+ *
+ * BORDES
+ *   border-border-ds → borde estándar de cards (adapta light/dark)
+ *   border-gray-200  → equivalente a border-border-ds (Tailwind estándar)
+ *
+ * BRAND
+ *   text-accent / bg-accent / border-accent → violeta #7B00FF
+ *
+ * SEMÁNTICOS (= mismo en light y dark)
+ *   text-success / bg-success/10   → verde  #10B981
+ *   text-danger  / bg-danger/10    → rojo   #EF4444
+ *   text-warning / bg-warning/10   → ámbar  #F59E0B
+ *   text-info    / bg-info/10      → azul   #3B82F6
+ *
+ * TIPOGRAFÍA
+ *   font-sans   → Inter (400/500/600/700) — cuerpo, botones, labels
+ *   font-mono   → JetBrains Mono (400/500) — precios, cantidades, códigos
+ *
+ * ─────────────────────────────────────────────────────────────
+ * JERARQUÍA DE BOTONES
+ * ─────────────────────────────────────────────────────────────
+ *
+ * Primario (CTA — máx 1 por vista):
+ *   bg-accent text-white rounded-md hover:bg-accent/90 hover:shadow-lg
+ *   font-medium px-4 py-2.5 text-sm
+ *
+ * Secundario:
+ *   border border-accent text-accent rounded-md hover:bg-accent/10
+ *   font-medium px-4 py-2.5 text-sm
+ *
+ * Terciario / Ghost:
+ *   text-muted hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md
+ *   font-medium px-3 py-2 text-sm
+ *
+ * ─────────────────────────────────────────────────────────────
+ * CARDS
+ * ─────────────────────────────────────────────────────────────
+ *
+ * Estándar:
+ *   bg-surface border border-border-ds rounded-xl p-5
+ *   (NO shadow — solo borde)
+ *
+ * Con shadow (cuando necesite elevación):
+ *   bg-surface border border-border-ds rounded-xl p-5 shadow-sm
+ *
+ * KPI:
+ *   text-2xl font-semibold text-primary        ← valor principal
+ *   text-sm font-medium text-muted             ← label
+ *   text-xs bg-success/10 text-success px-2 rounded-full ← badge comparativa
+ *
+ * ─────────────────────────────────────────────────────────────
+ * TABS
+ * ─────────────────────────────────────────────────────────────
+ *
+ * Activo:   border-b-2 border-accent text-accent font-medium
+ * Inactivo: text-gray-500 dark:text-gray-400 hover:text-gray-700
+ * Nunca usar pills con fondo (bg-white / bg-gray-800) para tabs principales.
+ *
+ * ─────────────────────────────────────────────────────────────
+ * INPUTS
+ * ─────────────────────────────────────────────────────────────
+ *
+ * Base:
+ *   border border-gray-200 dark:border-gray-700 rounded-xl
+ *   bg-white dark:bg-gray-700 text-sm
+ *   focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20
+ *
+ * ─────────────────────────────────────────────────────────────
+ * COLORES RAW (para referencia)
+ * ─────────────────────────────────────────────────────────────
+ *
+ * Light mode:
+ *   page:     #F5F0FF  (245 240 255)
+ *   surface:  #FFFFFF  (255 255 255)
+ *   muted:    #6B7280  (107 114 128)
+ *   border:   #E5E7EB  (229 231 235)
+ *   accent:   #7B00FF  (123 0 255)
+ *   primary:  #0D0D0D  (13 13 13)
+ *
+ * Dark mode:
+ *   page:     #0D0D0D  (13 13 13)
+ *   surface:  #171717  (23 23 23)
+ *   muted:    #9CA3AF  (156 163 175)
+ *   border:   #262626  (38 38 38)
+ *   accent:   #7B00FF  (123 0 255) ← igual
+ *
+ * Semánticos (iguales en ambos):
+ *   success:  #10B981
+ *   danger:   #EF4444
+ *   warning:  #F59E0B
+ *   info:     #3B82F6
+ */

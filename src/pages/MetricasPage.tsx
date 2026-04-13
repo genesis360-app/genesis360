@@ -616,7 +616,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
                             <span className="text-gray-500 dark:text-gray-400 font-medium ml-2 flex-shrink-0">{m.cantidad} u.</span>
                           </div>
                           <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                            <div className="h-full bg-primary rounded-full"
+                            <div className="h-full bg-accent rounded-full"
                               style={{ width: `${Math.min((m.cantidad / (topMotivos[0]?.cantidad || 1)) * 100, 100)}%` }} />
                           </div>
                         </div>

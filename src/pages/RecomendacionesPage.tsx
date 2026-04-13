@@ -162,8 +162,7 @@ export default function RecomendacionesPage({ hideHeader = false }: { hideHeader
                 <ScoreCircle score={score.total} />
                 <div className="flex-1 w-full space-y-3">
                   {dimensiones.map(d => {
-                    const pct  = (d.valor / d.max) * 100
-                    const color = pct >= 70 ? 'bg-green-50 dark:bg-green-900/200' : pct >= 40 ? 'bg-amber-400' : 'bg-red-400'
+                    const pct = (d.valor / d.max) * 100
                     return (
                       <div key={d.label}>
                         <div className="flex justify-between text-xs mb-1">
@@ -172,7 +171,7 @@ export default function RecomendacionesPage({ hideHeader = false }: { hideHeader
                         </div>
                         <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                           <div
-                            className={`h-full rounded-full ${color} transition-all duration-700`}
+                            className="h-full rounded-full bg-accent transition-all duration-700"
                             style={{ width: `${pct}%` }}
                           />
                         </div>

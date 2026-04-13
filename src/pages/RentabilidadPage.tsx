@@ -263,7 +263,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
                     <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Margen</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
                   {porVenta.map((v: any) => (
                     <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">#{v.numero ?? v.id.slice(-4)}</td>

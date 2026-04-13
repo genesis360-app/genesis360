@@ -348,7 +348,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Migration 025**: tabla `sucursales` (tenant_id, nombre, dirección, teléfono, activo) + `sucursal_id UUID nullable` en 6 tablas operativas: `inventario_lineas`, `movimientos_stock`, `ventas`, `caja_sesiones`, `gastos`, `clientes`. RLS tenant-based. 6 índices.
 - **`authStore`**: nuevos campos `sucursales: Sucursal[]` y `sucursalId: string | null`. `loadUserData` carga sucursales activas y valida que el ID en localStorage sigue siendo válido (se resetea si la sucursal fue eliminada). `setSucursal(id)` persiste en localStorage.
 - **`useSucursalFilter`** (`src/hooks/useSucursalFilter.ts`): `applyFilter(q)` agrega `.eq('sucursal_id', sucursalId)` solo si hay sucursal activa. Sin sucursal seleccionada → vista global.
-- **`SucursalSelector`**: `<select>` en el header (AppLayout), visible solo cuando `sucursales.length > 0`. Primera opción: "Todas las sucursales" (valor vacío = null).
+- **`SucursalSelector`**: `<select>` en el header (AppLayout), visible solo cuando `sucursales.length > 0`. Sin opción "Todas" — siempre debe haber una sucursal seleccionada. `useEffect` en AppLayout auto-selecciona la primera si `sucursalId` es null.
 - **`SucursalesPage`** (`/sucursales`, OWNER-only): CRUD. Tras mutación llama `loadUserData` para sincronizar el selector del header.
 - **Filtros aplicados**:
   - Read: `inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `clientes`. QueryKey incluye `sucursalId` para invalidación automática.
@@ -760,17 +760,22 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 #### Design System Sprint 2 ✅ — Header + Sidebar
 - **Sidebar**: `bg-surface border-r border-border-ds` (blanco light / `#171717` dark). Texto adaptativo: `text-primary dark:text-white` / `text-muted`. Nav items inactivos: `text-gray-700 dark:text-gray-300 hover:bg-accent/10 hover:text-accent`. Nav activo: `bg-accent text-white`.
 - **Nav reordenado**: RRHH sube a posición 9 (después de Alertas), Historial 10, Reportes 11.
-- **"Mi Plan"** fijo en pie del sidebar: link a `/suscripcion` con plan capitalizado. Colapsado: solo `CreditCard` icon.
+- **Sin bloque de perfil en sidebar**: se removieron el NavLink de perfil (avatar+nombre+rol+tenant) y el "Mi Plan" del pie. El sidebar queda: Logo → Nav → CotizacionWidget.
 - **Header**: `bg-surface border-b border-border-ds`. Botones: `text-muted hover:text-primary dark:hover:text-white`. Sin `shadow-sm`.
 - **6 nuevos componentes** (`src/components/`):
   - `AvatarDropdown.tsx`: avatar + dropdown con info usuario (email via `supabase.auth.getSession()`), Perfil, Idioma/País (próximamente), Cerrar sesión.
   - `AyudaModal.tsx`: drawer desde derecha (w-96), FAQs dinámicas por `pathname`, buscador, placeholder videos, form bug-report → `mailto:soporte@genesis360.pro`.
   - `NotificacionesButton.tsx`: campana con badge rojo, popover con datos simulados + marcar como leída. Backend pendiente.
   - `RefreshButton.tsx`: `useQueryClient().invalidateQueries()` + spinner 800ms.
-  - `ConfigButton.tsx`: ícono Settings2 → `/configuracion` (visible solo OWNER/ADMIN).
+  - `ConfigButton.tsx`: ícono Settings → `/configuracion` (visible solo OWNER/ADMIN).
   - `PlanProgressBar.tsx`: barra reutilizable success/warning/danger por % uso. Reemplaza banners inline en ProductosPage e InventarioPage.
-- **Orden header** (izq→der): [hamburger mobile] [spacer] [SucursalSelector] [Config] [Notificaciones] [Ayuda] [Refresh] [Dark/Light] [AvatarDropdown].
-- **Logo sidebar clickeable**: `<Link to="/">` → navega a landing page incluso con sesión activa. Hover: `bg-accent/80`. El toggle colapsar (ChevronLeft/Right) queda separado a la derecha.
+- **Orden header** (izq→der): [hamburger mobile] [spacer] [SucursalSelector] [Refresh] [Notificaciones] [Dark/Light] [Ayuda] [Config] [AvatarDropdown]. Pendiente: reordenar completamente + gestionar cuentas en AvatarDropdown.
+- **Logo sidebar**: `<a href>` → `https://www.genesis360.pro` en dominio app, `/` en dev. El toggle colapsar (ChevronLeft/Right) queda separado a la derecha.
+- **SucursalSelector**: eliminada opción "Todas las sucursales". Auto-selecciona la primera sucursal si no hay ninguna seleccionada. Siempre se trabaja en una sucursal específica.
+- **CotizacionWidget**: colores adaptados para light mode (`text-blue-500 dark:text-blue-300`, etc.).
+- **Sin bordes en tarjetas**: removido `border border-gray-{100,200} dark:border-gray-700` de todas las cards en DashboardPage, MetricasPage, RentabilidadPage, RecomendacionesPage. Solo shadow.
+- **Barras DS homologadas**: todas las barras de progreso usan `bg-accent` (violeta). Corrige clases Tailwind malformadas (`dark:bg-red-900/20/40`, `dark:bg-green-900/200`) que causaban fondo claro + texto claro en dark mode.
+- **Divisores Detalle por venta**: `divide-gray-50` → `divide-gray-200 dark:divide-gray-600` (visibles en ambos modos).
 
 #### Testing por rol
 - [x] Tests E2E para CAJERO: `13_rol_cajero.spec.ts` (v0.64.0) — 20 tests ✅

@@ -810,6 +810,17 @@ export default function VentasPage() {
           usuario_id: user?.id,
         })
       }
+      // Seña en caja: registrar efectivo cobrado al crear la reserva (fire-and-forget)
+      if (estado === 'reservada' && montoEfectivoCaja > 0 && sesionCajaId) {
+        void supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id,
+          sesion_id: sesionCajaId,
+          tipo: 'ingreso_reserva',
+          concepto: `Seña Venta #${venta.numero}`,
+          monto: montoEfectivoCaja,
+          usuario_id: user?.id,
+        }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
+      }
       const msg = estado === 'despachada' ? 'Venta finalizada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
@@ -1225,23 +1236,31 @@ export default function VentasPage() {
         await supabase.from('ventas')
           .update({ estado: 'despachada', despachado_at: new Date().toISOString(), medio_pago: mediosPagoFinal, monto_pagado: montoPagadoFinal })
           .eq('id', ventaId)
-        // Registrar en caja solo el efectivo del saldo (el de la reserva ya fue registrado)
+        // Registrar en caja el efectivo del saldo + la seña si no fue registrada al reservar
         const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
         if (_sesionId) {
           try {
             // Efectivo del saldo cobrado ahora
             const pagosSaldo = saldoMediosPago?.filter(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0) ?? []
             const efectivoSaldo = pagosSaldo.reduce((s, m) => s + parseFloat(m.monto), 0)
-            // Efectivo de la reserva original (nunca fue a caja — las reservas no registran en caja)
-            const efectivoOriginal = (() => {
-              if (venta.medio_pago) {
-                try {
-                  const arr = JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[]
-                  return arr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
-                } catch { return 0 }
-              }
-              return 0
-            })()
+            // Verificar si la seña ya fue registrada en caja al crear la reserva
+            const { data: senaEnCaja } = await supabase.from('caja_movimientos')
+              .select('monto').eq('tenant_id', tenant!.id)
+              .eq('tipo', 'ingreso_reserva')
+              .eq('concepto', `Seña Venta #${venta.numero}`)
+              .maybeSingle()
+            // Si ya está en caja: no duplicar. Si no: incluir seña en el ingreso (reserva sin sesión activa)
+            const efectivoOriginal = senaEnCaja
+              ? 0
+              : (() => {
+                  if (venta.medio_pago) {
+                    try {
+                      const arr = JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[]
+                      return arr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
+                    } catch { return 0 }
+                  }
+                  return 0
+                })()
             const efectivoTotal = efectivoSaldo + efectivoOriginal
             if (efectivoTotal > 0) {
               await supabase.from('caja_movimientos').insert({
@@ -1281,6 +1300,26 @@ export default function VentasPage() {
         await supabase.from('ventas')
           .update({ estado: 'cancelada', cancelado_at: new Date().toISOString() })
           .eq('id', ventaId)
+        // Dev. seña: si la reserva tenía efectivo cobrado → egreso en caja (fire-and-forget)
+        if ((venta.monto_pagado ?? 0) > 0) {
+          const cancelSesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
+          if (cancelSesionId) {
+            try {
+              const prevArr = venta.medio_pago ? JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[] : []
+              const efectivoCobrado = prevArr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
+              if (efectivoCobrado > 0) {
+                void supabase.from('caja_movimientos').insert({
+                  tenant_id: tenant!.id,
+                  sesion_id: cancelSesionId,
+                  tipo: 'egreso_devolucion_sena',
+                  concepto: `Dev. seña Venta #${venta.numero}`,
+                  monto: efectivoCobrado,
+                  usuario_id: user?.id,
+                })
+              }
+            } catch {}
+          }
+        }
 
       } else {
         await supabase.from('ventas').update({ estado: nuevoEstado }).eq('id', ventaId)

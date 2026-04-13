@@ -806,6 +806,15 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ **ConfigButton**: ícono `Settings2` → `Settings` (rueda, igual que sidebar)
 - ✅ **AvatarDropdown — Gestionar cuentas**: al abrir el dropdown guarda cuenta actual en `genesis360_saved_accounts` (localStorage). Muestra cuentas guardadas con avatar/nombre/tenant. Cuenta activa marcada con ✓. Click en otra cuenta → `signOut()` + `navigate('/login?email=...')`. "+ Agregar otra cuenta" → `signOut()` + `navigate('/login')`.
 
+### v0.71.0 ✅ PROD
+- ✅ **Seña en caja** (migration 044): `caja_movimientos.tipo` sin cambio de schema (TEXT libre).
+  - Al crear reserva con efectivo → INSERT `ingreso_reserva` en `caja_movimientos` (fire-and-forget).
+  - Al despachar desde reservada → query `caja_movimientos` por `concepto = 'Seña Venta #N'` para evitar duplicado; si existe → `efectivoOriginal = 0`.
+  - Al cancelar reserva con `monto_pagado > 0` y efectivo en `medio_pago` → INSERT `egreso_devolucion_sena` (fire-and-forget).
+  - `CajaPage.tsx`: saldo usa `tipo IN ('ingreso','ingreso_reserva')` para ingresos y `tipo IN ('egreso','egreso_devolucion_sena')` para egresos. Colores/prefijos actualizados con misma lógica.
+  - `pagar_nomina_empleado` (migration 044): CASE WHEN actualizado con nuevos tipos.
+  - 7 unit tests nuevos en `tests/unit/cajaSeña.test.ts`. Total: **148/148** passing.
+
 ### Restricciones de rutas por rol (AppLayout)
 - **RRHH**: solo `/rrhh` + `/mi-cuenta`. Cualquier otra ruta → redirect `/rrhh`.
 - **CAJERO**: `CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/mi-cuenta']`. Otra ruta → redirect `/ventas`.

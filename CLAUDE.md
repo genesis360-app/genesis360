@@ -724,7 +724,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ **Desarmado inverso KITs**: botón "Desarmar" en tab Kits · modal con preview de componentes · valida stock del KIT · rebaja KIT + ingresa componentes · migration 041: `kitting_log.tipo` (armado/desarmado) + tipo `des_kitting` en `movimientos_stock`
 - ✅ **VentasPage — badge KIT**: badge naranja "KIT" en dropdown de búsqueda de productos
 
-### v0.68.0 — en dev
+### v0.68.0 ✅ PROD
 
 #### IVA por producto (migration 042)
 - `productos.alicuota_iva DECIMAL(5,2) DEFAULT 21 CHECK IN (0, 10.5, 21, 27)`: select en ProductoFormPage (Exento/10.5%/21%/27%). Persiste en DB.
@@ -800,6 +800,11 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] Tests de coherencia de números: `14_coherencia_numeros.spec.ts` (v0.64.0)
 - Usuarios E2E DEV: OWNER `e2e@genesis360.test` · CAJERO `cajero1@local.com` · RRHH `rrhh1@local.com` · SUPERVISOR `supervisor@test.com` — todos con contraseña `123` (via SQL en auth.users)
 - Test regresión v0.57.0: `modificarReserva` con serializado → series disponibles en carrito ✅ (04_ventas.spec.ts)
+
+### v0.70.0 ✅ PROD
+- ✅ **Header reorden**: nuevo orden [SucursalSelector][Refresh][Notificaciones][Dark/Light][Ayuda][Config][AvatarDropdown]
+- ✅ **ConfigButton**: ícono `Settings2` → `Settings` (rueda, igual que sidebar)
+- ✅ **AvatarDropdown — Gestionar cuentas**: al abrir el dropdown guarda cuenta actual en `genesis360_saved_accounts` (localStorage). Muestra cuentas guardadas con avatar/nombre/tenant. Cuenta activa marcada con ✓. Click en otra cuenta → `signOut()` + `navigate('/login?email=...')`. "+ Agregar otra cuenta" → `signOut()` + `navigate('/login')`.
 
 ### Restricciones de rutas por rol (AppLayout)
 - **RRHH**: solo `/rrhh` + `/mi-cuenta`. Cualquier otra ruta → redirect `/rrhh`.

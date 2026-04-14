@@ -1475,7 +1475,7 @@ export default function VentasPage() {
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="font-semibold text-primary font-mono">${p.precio_venta?.toLocaleString('es-AR')}</p>
+                            <p className="font-semibold text-primary">${p.precio_venta?.toLocaleString('es-AR')}</p>
                             <p className="text-xs text-gray-400 dark:text-gray-500">
                               {p.stock_filtrado
                                 ? <span className="text-blue-600 dark:text-blue-400 font-medium">{p.stock_disponible} disp.</span>
@@ -1521,7 +1521,7 @@ export default function VentasPage() {
                       </div>
                       <p className="text-xs font-medium text-primary line-clamp-2 leading-tight w-full">{p.nombre}</p>
                       <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate w-full">{p.sku}</p>
-                      <p className="text-sm font-bold text-primary font-mono mt-1">${p.precio_venta?.toLocaleString('es-AR')}</p>
+                      <p className="text-sm font-bold text-primary mt-1">${p.precio_venta?.toLocaleString('es-AR')}</p>
                       <p className="text-xs mt-0.5">
                         {p.stock_filtrado
                           ? <span className="text-blue-600 dark:text-blue-400 font-medium">{p.stock_disponible} disp.</span>
@@ -1818,17 +1818,17 @@ export default function VentasPage() {
                     <>
                       <div className="flex justify-between text-sm text-muted">
                         <span>Precio lista</span>
-                        <span className="font-mono">${subtotalSinDesc.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        <span>${subtotalSinDesc.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                       {descItemsTotal > 0 && (
                         <div className="flex justify-between text-sm text-info">
                           <span>Desc. por producto</span>
-                          <span className="font-mono">−${descItemsTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                          <span>−${descItemsTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                         </div>
                       )}
                       <div className="flex justify-between text-sm text-muted">
                         <span>Subtotal</span>
-                        <span className="font-mono">${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        <span>${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                     </>
                   )
@@ -1836,12 +1836,12 @@ export default function VentasPage() {
                 {descTotalMonto > 0 && (
                   <div className="flex justify-between text-sm text-success">
                     <span>Desc. general {descuentoTotalTipo === 'pct' ? `(${descTotalVal}%)` : `($${descTotalVal})`}</span>
-                    <span className="font-mono">−${descTotalMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    <span>−${descTotalMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold text-primary text-lg border-t border-border-ds pt-2">
                   <span>Total</span>
-                  <span className="font-mono">${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
                 {/* IVA desglosado por alícuota real */}
                 {total > 0 && (() => {
@@ -2022,7 +2022,7 @@ export default function VentasPage() {
                             </span>
                           )}
                         </div>
-                        <span className="font-bold text-primary font-mono">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        <span className="font-bold text-primary">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-400 dark:text-gray-500">
                         <span>{v.cliente_nombre ?? 'Sin cliente'} {v.medio_pago ? `· ${formatMedioPago(v.medio_pago)}` : ''}</span>

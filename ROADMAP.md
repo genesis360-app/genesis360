@@ -1,6 +1,6 @@
 # Genesis360 — Roadmap RRHH
 
-**Última actualización:** 23 de Marzo, 2026 · **v0.27.0 en PROD**
+**Última actualización:** 13 de Abril, 2026 · **v0.74.0 en DEV · v0.72.0 en PROD**
 
 > Stack, arquitectura y convenciones → [CLAUDE.md](CLAUDE.md) · Workflow de deploy → [WORKFLOW.md](WORKFLOW.md)
 
@@ -34,108 +34,60 @@ Helper: `is_rrhh()` SECURITY DEFINER — devuelve TRUE si rol = 'RRHH' o 'OWNER'
 
 ---
 
-## 🟡 Phase 2 — Nómina + Vacaciones
+## ✅ Phase 2 — Nómina + Vacaciones (PROD)
 
-**Dependencias:** Phase 1
+### 2A · Nómina ✅ (migration 017, v0.32.0)
+- `rrhh_salarios` (periodo, basico, haberes, descuentos, neto, pagado, medio_pago, caja_movimiento_id)
+- `rrhh_conceptos` catálogo de haberes/descuentos por tenant
+- `rrhh_salario_items` con trigger `fn_recalcular_salario`
+- `pagar_nomina_empleado(salario_id, sesion_id, medio_pago)` SECURITY DEFINER — verifica saldo caja
+- UI: tab "Nómina" en RrhhPage · selector mes/año · generar nómina · expandible por empleado · selector medio pago
+- Migration 026 agrega `medio_pago` TEXT CHECK IN ('efectivo','transferencia_banco','mp')
 
-### 2A · Nómina
-```
-Tablas nuevas:
-- rrhh_salarios  (periodo, basico, descuentos, comisiones, neto, estado: borrador/pagada)
-- rrhh_conceptos (tipo: SUELDO, BONO, DESCUENTO, COMISIÓN, etc.)
+### 2B · Vacaciones ✅ (migration 018, v0.33.0)
+- `rrhh_vacaciones_solicitud` (estado pendiente/aprobada/rechazada, dias_habiles, aprobado_por)
+- `rrhh_vacaciones_saldo` (dias_totales, remanente_anterior, dias_usados) UNIQUE per empleado×año
+- `aprobar_vacacion()` / `rechazar_vacacion()` SECURITY DEFINER
+- `calcular_dias_habiles(desde, hasta)` excluye DOW 0 y 6
 
-Flujo:
-1. Plantilla base: básico + descuentos fijos por empleado
-2. Admin carga casos especiales (bonos, descuentos puntuales) antes de cerrar nómina
-3. "Pagar nómina" → crea egreso automático en caja_movimientos
-   Migration: 015_rrhh_nomina.sql
-```
-
-### 2B · Vacaciones
-```
-Tablas nuevas:
-- rrhh_vacaciones_solicitud (empleado, desde, hasta, estado: pendiente/aprobada/rechazada)
-- rrhh_vacaciones_saldo     (empleado, año, dias_totales, dias_usados, remanente_anterior)
-
-Flujo:
-1. RRHH/OWNER crea o aprueba solicitudes (desde RrhhPage)
-2. Si aprobada → descuenta del saldo anual
-3. Días hábiles solamente (excluir fines de semana + feriados)
-4. Remanente año anterior: 50% (configurable por tenant)
-   Migration: 016_rrhh_vacaciones.sql
-```
-
-### 2C · Notificaciones cumpleaños
-```
-- Email automático mensual con lista de cumpleaños del mes
-- Alerta en dashboard: "X cumpleaños este mes"
-- Edge Function: rrhh-notify-birthdays (pg_cron o Vercel Cron)
-```
+### 2C · Cumpleaños automáticos ✅ (migration 022, v0.34.0)
+- EF `birthday-notifications` corre en GitHub Actions cron `0 8 * * *`
+- Tab Cumpleaños en RrhhPage con calendario · widget próximos feriados
+- Feriados AR 2026 cargables con 1 click
 
 ---
 
-## 🔵 Phase 3 — Asistencia + Dashboard RRHH
+## ✅ Phase 3 — Asistencia + Dashboard RRHH (PROD)
 
-**Dependencias:** Phase 1 + 2
+### 3A · Asistencia ✅ (migration 019, v0.33.0)
+- `rrhh_asistencia` UNIQUE(tenant+empleado+fecha) · estados: presente/ausente/tardanza/licencia
+- CRUD con filtro mes+empleado · badges por estado
 
-### 3A · Asistencia
-```
-Tabla nueva:
-- rrhh_asistencia (empleado, fecha, hora_entrada, hora_salida,
-                   estado: presente/ausente/tardanza/licencia, motivo)
-
-Entrada de datos:
-- Opción 1: Admin/RRHH registra manualmente en UI
-- Opción 2: QR code en oficina [futuro]
-  Migration: 017_rrhh_asistencia.sql
-```
-
-### 3B · Dashboard RRHH
-```
-KPIs:
-- Total empleados activos (por departamento)
-- Asistencia mes: % promedio · Tardanzas recurrentes
-- Vacaciones: pendientes vs usadas
-- Nómina próxima: montos + días para pago
-- Cumpleaños próximo mes
-
-Reportes exportables (Excel/PDF):
-- Asistencia mensual · Nómina histórica · Rotación de personal
-```
+### 3B · Dashboard RRHH ✅ (v0.35.0)
+- KPIs: empleados activos, asistencia %, vacaciones pendientes, nómina período
+- Breakdown por departamento · exportar Excel (asistencia + nómina histórica)
 
 ---
 
-## 🔵 Phase 4 — Documentos + Capacitaciones
+## ✅ Phase 4 — Documentos + Capacitaciones (PROD)
 
-**Dependencias:** Phase 1 (independiente de 2 y 3)
+### 4A · Documentos ✅ (migration 022, v0.34.0)
+- `rrhh_documentos` + bucket privado `empleados` (10 MB). URL firmada 300s para descarga.
+- Tab "Documentos" en RrhhPage: upload, lista, Ver, Eliminar
 
-### 4A · Documentos
-```
-Tabla nueva: rrhh_documentos (tipo: CONTRATO/DNI/CARNET_SALUD/etc., file_path, fecha_carga)
-Storage: bucket "empleados" → {tenant_id}/{empleado_id}/{tipo}/{filename}
-Migration: 018_rrhh_documentos.sql
-```
-
-### 4B · Capacitaciones
-```
-Tablas nuevas:
-- rrhh_capacitaciones         (nombre, descripcion, fecha, instructor)
-- rrhh_capacitaciones_registro (empleado, capacitacion, asistio, certificado_url)
-Migration: 019_rrhh_capacitaciones.sql
-```
+### 4B · Capacitaciones ✅ (migration 023, v0.34.0)
+- `rrhh_capacitaciones` (estado planificada/en_curso/completada/cancelada, certificado_path)
+- Tab "Capacitaciones" en RrhhPage: filtro por estado · badge · Ver cert · edit · delete
 
 ---
 
-## 🔵 Phase 5 — Supervisor Self-Service
+## ✅ Phase 5 — Supervisor Self-Service (PROD)
 
-**Dependencias:** Phase 1 + 2 + 3
+(migration 024, v0.35.0)
 
-```
-- Dashboard restringido: SUPERVISOR ve solo su equipo (árbol jerárquico)
-- Aprobar/rechazar vacaciones de subordinados
-- Métricas de su departamento únicamente
-- Requiere actualizar RLS policies para soportar árbol jerárquico
-```
+- `get_supervisor_team_ids()` SECURITY DEFINER · RLS SUPERVISOR en asistencia/vacaciones/empleados
+- Tab "Mi Equipo" en RrhhPage: KPIs asistencia hoy · vacaciones pendientes · aprobar/rechazar
+- Árbol organizacional · tabs por rol (SUPERVISOR ve subconjunto)
 
 ---
 
@@ -188,24 +140,23 @@ Nueva tabla `wms_tareas`:
 - Cross-docking: mercadería entrante → tarea putaway directo a zona despacho sin almacenar.
 - KPIs WMS: tasa de error de picking, tiempo promedio por tarea, utilización de ubicaciones.
 
-### Fase 2.5 — KITs / Kitting (entre Fase 2 y Fase 3)
+### Fase 2.5 — KITs / Kitting ✅ (migration 040+041, v0.65.0–v0.67.0)
 
-Proceso de kitting: combinar N productos existentes → generar un nuevo SKU compuesto (KIT).
-
-- Tabla `kit_recetas` (kit_producto_id, componente_producto_id, cantidad).
-- Movimiento tipo `kitting` en `movimientos_stock`: rebaje de componentes + ingreso del KIT.
-- Desarmado inverso disponible (reverse kitting).
-- UI: sección "KITs" en InventarioPage o página `/kitting`.
-- Pendiente decidir: ¿un KIT tiene precio propio y se puede vender directamente desde Ventas?
+- `kit_recetas` (kit_producto_id, comp_producto_id, cantidad) + `kitting_log` (tipo armado/desarmado)
+- `productos.es_kit BOOLEAN` · tipos `kitting` / `des_kitting` en `movimientos_stock`
+- Tab "Kits" en InventarioPage: CRUD recetas · preview "puede armar N" · modal ejecutar
+- Desarmado inverso: valida stock KIT · rebaja KIT · ingresa componentes
+- Clonar receta entre KITs · badge "KIT" naranja en dropdown ventas
+- KIT como producto vendible (precio/stock se gestiona igual que cualquier SKU)
 
 ### Dependencias entre fases
 
 ```
 Fase 1 ✅ (producto_estructuras) 
   → Fase 2 ✅ (ubicaciones con dimensiones)
-    → Fase 2.5 (KITs / Kitting)
-    → Fase 3 (tareas WMS + picking)
-      → Fase 4 (surtido + cross-docking)
+    → Fase 2.5 ✅ (KITs / Kitting)
+    → Fase 3 🔵 (tareas WMS + picking — pendiente)
+      → Fase 4 🔵 (surtido + cross-docking — largo plazo)
 ```
 
 > **Nota de arquitectura**: el schema actual es compatible con todas las fases.
@@ -217,9 +168,11 @@ Fase 1 ✅ (producto_estructuras)
 ## Orden recomendado
 
 ```
-Phase 1 ✅ → Phase 2 (nómina es core) → Phase 3 (asistencia + métricas)
-                                       → Phase 4 (en paralelo con 3, menos crítica)
-                                                 → Phase 5 (depende de 3)
+Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅
+                        → Phase 4 ✅
+                                  → Phase 5 ✅
+
+Próximo RRHH: Bloque 5 — feriados calendar + CHECK-IN/CHECK-OUT rápido (v0.75.0)
 ```
 
 ---
@@ -268,4 +221,5 @@ const { data } = useQuery({
 | 23-Mar-2026 | 1.0 | Roadmap inicial + Phase 1 RRHH en PROD |
 | 23-Mar-2026 | 1.1 | Actualizado post v0.27.0 · compactado · duplicados eliminados |
 | 04-Apr-2026 | 1.2 | Sección WMS completa (Fases 1–4): estructura de producto ✅ · dimensiones ubicaciones · tareas/picking · cross-docking |
+| 13-Apr-2026 | 1.3 | Phases 2–5 RRHH marcadas ✅ (todas en PROD). WMS Fase 2.5 KITs ✅. Header v0.74.0. Próximo: Bloque 5 RRHH feriados + check-in (v0.75.0) |
 | 04-Apr-2026 | 1.3 | KITs/Kitting agregado como Fase 2.5 · fixes pre-deploy v0.57.0 documentados |

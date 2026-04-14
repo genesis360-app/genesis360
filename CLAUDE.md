@@ -815,7 +815,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - `pagar_nomina_empleado` (migration 044): CASE WHEN actualizado con nuevos tipos.
   - 7 unit tests nuevos en `tests/unit/cajaSeña.test.ts`. Total: **148/148** passing.
 
-### v0.72.0 — en dev
+### v0.72.0 ✅ PROD
 - ✅ **Roles CONTADOR + DEPOSITO**: `UserRole` ampliado · AppLayout `CONTADOR_ALLOWED` (dashboard/gastos/historial/reportes) · `DEPOSITO_ALLOWED` (productos/inventario/alertas) · navItems con flags · UsuariosPage con CRUD de ambos roles + modal permisos por usuario
 - ✅ **Inventario por ubicación**: query `lineasMap` incluye `productos(nombre,sku,unidad_medida)` + `byUbicacion`. Toggle `LayoutList/Building` en tab Inventario. Vista expandible por ubicación con lineas/producto/stock.
 - ✅ **Clonar KIT**: botón Clonar en header KIT (deshabilitado si sin receta) → modal selector de KIT destino → `clonarKitRecetas.mutate({origenId, destinoId})`. Eliminada mutación muerta `clonarKit`.
@@ -823,6 +823,41 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ **FilterBar custom**: eliminado '30D', agregado 'Custom' con date pickers inline. `getFechasDashboard(periodo, customRange?)` y `getFechasAnteriores(periodo, customRange?)`. DashboardPage pasa `customRange`.
 - ✅ **GastosPage**: eliminada categoría 'Sueldos y cargas sociales' (pertenece a RRHH/Nómina).
 - ✅ **Métodos de pago** (migration 045): tabla `metodos_pago` con tenant_id, nombre, color, activo, es_sistema, orden. ConfigPage tab 'Métodos de pago': CRUD + color picker + toggle activo + seed automático de 5 defaults. MixCajaChart usa colores de DB.
+
+### v0.74.0 — en dev
+
+#### Design System Sprint 4 — VentasPage checkout
+- **`VentasPage.tsx`** — 42 reemplazos de tokens DS en checkout, historial y modales:
+  - `bg-white dark:bg-gray-800` → `bg-surface` en todos los panels, cards, dropdowns y modales (8+6+1 ocurrencias)
+  - `border border-gray-100` → `border border-border-ds` en cards del checkout
+  - Section headings `text-gray-700 dark:text-gray-300` → `text-primary`
+  - Product names/totals `text-gray-800 dark:text-gray-100` → `text-primary`
+  - `divide-y divide-gray-50` → `divide-y divide-gray-200 dark:divide-gray-600`
+  - Cart header: `bg-gray-50 dark:bg-gray-700` → `bg-page`
+  - Precio read-only field: → `bg-page text-muted`
+  - Semánticos en totales: `text-gray-600` → `text-muted`, `text-blue-600` → `text-info`, `text-green-600` → `text-success`
+  - `font-mono` en todos los valores numéricos de precio (dropdown, galería, carrito, totales, historial)
+- **Design System Sprint status**: Sprint 1 ✅ Tokens · Sprint 2 ✅ Header+Sidebar · Sprint 3 ✅ Dashboard General · Sprint 4 ✅ Ventas checkout
+
+### v0.74.1 — en dev
+
+#### Fix — Medios de pago no-efectivo registrados en caja
+- **Bug**: pagos con tarjeta, transferencia, MP y otros no quedaban en `caja_movimientos`. Solo el efectivo era registrado. El resumen de movimientos de sesión no mostraba estas operaciones.
+- **Fix `GastosPage.tsx`**: gasto con medio ≠ Efectivo → INSERT `egreso_informativo` con concepto `[MedioPago] Gasto: descripción`.
+- **Fix `VentasPage.tsx` `registrarVenta`**: reserva con parte no-efectiva → INSERT `ingreso_informativo` con concepto `[Tipos] Seña Venta #N` (fire-and-forget).
+- **Fix `VentasPage.tsx` `cambiarEstado`**: al despachar desde historial → INSERT `ingreso_informativo` con no-efectivo del saldo cobrado ahora + no-efectivo original de la reserva (si ya estaba en caja).
+- **Fix `CajaPage.tsx`**: `egreso_informativo` agregado a `TIPO_LABEL` y `extraerMedioPago`; incluido con signo negativo en `totalesMedios`.
+- **Invariante de saldo**: `totalIngresos` y `totalEgresos` para calcular saldo solo incluyen tipos `*` (no `*_informativo`) — el saldo de efectivo no se ve afectado.
+
+### v0.73.0 — en dev
+- ✅ **Fix sucursal filter**: `useSucursalFilter.applyFilter` usa `.or('sucursal_id.eq.{id},sucursal_id.is.null')` — datos previos a multi-sucursal (NULL) siguen visibles con cualquier sucursal seleccionada. Afecta inventario, movimientos, ventas, gastos, clientes.
+- ✅ **Post-venta → Nueva Venta**: tras finalizar/reservar, `setTab('nueva')` en lugar de `'historial'`. El cajero queda listo para seguir vendiendo.
+- ✅ **Caja polling 10s**: `cajasAbiertas`, `sesionActiva`, `caja-movimientos` y el indicador del sidebar pasan de 30–15s → 10s. Movimientos de otro usuario aparecen en ~10s sin F5.
+- ✅ **CAJERO puede abrir 1 caja, no más**: check por `misSesionesAbiertas` (sesiones propias abiertas) en lugar de `cajasAbiertas` (todas del tenant). `puedeAbrirCaja = puedeAdministrarCaja || misSesionesAbiertas.length === 0`. Botón deshabilitado con mensaje "Ya tenés una caja abierta. Cerrala antes de abrir otra." Check en `mutationFn` con query fresca a DB.
+- ✅ **Cierre caja — labels efectivo**: modal de cierre dice "Ingresos efectivo", "Egresos efectivo", "Efectivo esperado", "Efectivo contado en caja". Nota: "Tarjeta, transferencia y MP no se cuentan aquí." Incluye `ingreso_traspaso`/`egreso_traspaso` en el cálculo de saldo.
+- ✅ **Movimientos de sesión enriquecidos**: badge de tipo (Venta/Seña/Egreso/No efectivo/Traspaso), concepto limpio (sin prefijo `[Tipo]`), hora HH:MM:SS, badge de medio de pago, badge `#N` de número de ticket. Al pie del card: "Totales por método" (Efectivo neto, Tarjeta, MP, etc.).
+  - Helpers: `TIPO_LABEL`, `extraerNumeroVenta(concepto)`, `extraerMedioPago(tipo, concepto)` — module-level, sin migration.
+  - `totalesMedios` = IIFE que agrupa por medio con signo (+/-) y excluye `ingreso_apertura` del total por método.
 
 ### Restricciones de rutas por rol (AppLayout)
 - **RRHH**: solo `/rrhh` + `/mi-cuenta`. Cualquier otra ruta → redirect `/rrhh`.

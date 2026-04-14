@@ -124,9 +124,9 @@ export function AppLayout() {
       return (data ?? []).length > 0
     },
     enabled: !!tenant,
-    refetchInterval: 15000,
+    refetchInterval: 10_000,
     refetchOnWindowFocus: true,
-    staleTime: 10000,
+    staleTime: 8_000,
   })
 
   const trialDaysLeft = tenant

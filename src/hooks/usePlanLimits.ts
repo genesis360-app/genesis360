@@ -55,9 +55,11 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
           .eq('id', tenant!.id).single(),
       ])
 
-      const planId = tenantRow?.plan_id ?? 'free'
       const max_usuarios = tenantRow?.max_users ?? 1
       const max_productos = tenantRow?.max_productos ?? 50
+      // Inferir plan desde max_users (el webhook de MP actualiza este campo,
+      // no plan_id que es UUID FK y no matchea las keys de brand.ts)
+      const planId = max_usuarios >= 10 ? 'pro' : max_usuarios >= 2 ? 'basico' : 'free'
       const addonMov = tenantRow?.addon_movimientos ?? 0
 
       // Base del plan + add-ons comprados

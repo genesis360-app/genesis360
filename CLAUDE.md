@@ -839,7 +839,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - `font-mono` en todos los valores numéricos de precio (dropdown, galería, carrito, totales, historial)
 - **Design System Sprint status**: Sprint 1 ✅ Tokens · Sprint 2 ✅ Header+Sidebar · Sprint 3 ✅ Dashboard General · Sprint 4 ✅ Ventas checkout
 
-### v0.74.1 — en dev
+### v0.74.1 ✅ PROD
 
 #### Fix — Medios de pago no-efectivo registrados en caja
 - **Bug**: pagos con tarjeta, transferencia, MP y otros no quedaban en `caja_movimientos`. Solo el efectivo era registrado. El resumen de movimientos de sesión no mostraba estas operaciones.

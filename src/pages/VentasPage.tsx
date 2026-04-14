@@ -1469,7 +1469,7 @@ export default function VentasPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1 flex-wrap">
                               <span className="font-medium truncate">{p.nombre}</span>
-                              <span className="text-gray-400 dark:text-gray-500 text-xs font-mono flex-shrink-0">{p.sku}</span>
+                              <span className="text-gray-400 dark:text-gray-500 text-xs flex-shrink-0">{p.sku}</span>
                               {p.tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1 rounded flex-shrink-0">series</span>}
                               {p.es_kit && <span className="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 px-1 rounded flex-shrink-0" title="Producto KIT — asegurate de tener stock armado">KIT</span>}
                             </div>
@@ -1520,7 +1520,7 @@ export default function VentasPage() {
                         }
                       </div>
                       <p className="text-xs font-medium text-primary line-clamp-2 leading-tight w-full">{p.nombre}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate w-full">{p.sku}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate w-full">{p.sku}</p>
                       <p className="text-sm font-bold text-primary mt-1">${p.precio_venta?.toLocaleString('es-AR')}</p>
                       <p className="text-xs mt-0.5">
                         {p.stock_filtrado
@@ -1549,11 +1549,11 @@ export default function VentasPage() {
                         <div className="flex-1">
                           <p className="font-medium text-primary">{item.nombre}</p>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">{item.sku}</span>
+                            <span className="text-xs text-gray-400 dark:text-gray-500">{item.sku}</span>
                             {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
                               <>
                                 {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
-                                  <span key={fi} className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                                  <span key={fi} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
                                     {f.lpn ?? 'Sin LPN'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
                                   </span>
                                 ))}
@@ -1663,7 +1663,7 @@ export default function VentasPage() {
                               {item.series_seleccionadas.map(sid => {
                                 const s = item.series_disponibles.find(d => d.id === sid)
                                 return s ? (
-                                  <span key={sid} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 px-1.5 py-0.5 rounded font-mono">{s.nro_serie}</span>
+                                  <span key={sid} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 px-1.5 py-0.5 rounded">{s.nro_serie}</span>
                                 ) : null
                               })}
                             </div>
@@ -1677,7 +1677,7 @@ export default function VentasPage() {
                             return (
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {lpns.map(lpn => (
-                                  <span key={lpn} className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                                  <span key={lpn} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
                                     {lpn}
                                   </span>
                                 ))}
@@ -2014,7 +2014,7 @@ export default function VentasPage() {
                       onClick={() => setVentaDetalle(v)}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className="font-mono text-sm font-bold text-primary">#{v.numero}</span>
+                          <span className="text-sm font-bold text-primary">#{v.numero}</span>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${est.bg} ${est.color}`}>{est.label}</span>
                           {v.estado === 'reservada' && calcularSaldoPendiente(v.total ?? 0, v.monto_pagado ?? 0) > 0.5 && (
                             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
@@ -2092,12 +2092,12 @@ export default function VentasPage() {
                       {nrosSerie.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {nrosSerie.map((s: string) => (
-                            <span key={s} className="text-xs font-mono text-purple-600 bg-purple-50 dark:bg-purple-900/20 px-1.5 py-0.5 rounded">{s}</span>
+                            <span key={s} className="text-xs text-purple-600 bg-purple-50 dark:bg-purple-900/20 px-1.5 py-0.5 rounded">{s}</span>
                           ))}
                         </div>
                       )}
                       {nrosSerie.length === 0 && lpn && (
-                        <span className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded mt-1 inline-block">LPN: {lpn}</span>
+                        <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded mt-1 inline-block">LPN: {lpn}</span>
                       )}
                     </div>
                     <p className="font-semibold">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
@@ -2337,7 +2337,7 @@ export default function VentasPage() {
                                       ? it.series_seleccionadas.filter(s => s !== vs.serie_id)
                                       : [...it.series_seleccionadas, vs.serie_id]
                                   }))}
-                                  className={`text-xs px-2 py-0.5 rounded font-mono border transition-colors ${sel ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-400 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+                                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${sel ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-400 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
                                   {vs.nro_serie}
                                 </button>
                               )
@@ -2488,7 +2488,7 @@ export default function VentasPage() {
                   dateStyle: 'full', timeStyle: 'short'
                 })}
               </p>
-              <p className="text-sm font-mono text-gray-500 dark:text-gray-400 mt-1">Venta #{ticketVenta.numero ?? '—'}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Venta #{ticketVenta.numero ?? '—'}</p>
             </div>
 
             {ticketVenta.cliente_nombre && (
@@ -2512,14 +2512,14 @@ export default function VentasPage() {
                         </span>
                       )}
                       {item.tiene_series && (item.series_seleccionadas ?? []).length > 0 && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">
                           S/N: {(item.series_seleccionadas as string[]).join(', ')}
                         </p>
                       )}
                       {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-0.5">
                           {item.lpn_fuentes.slice(0, 3).map((f: LpnFuente, fi: number) => (
-                            <span key={fi} className="text-xs text-blue-600 dark:text-blue-400 font-mono">
+                            <span key={fi} className="text-xs text-blue-600 dark:text-blue-400">
                               LPN: {f.lpn ?? '—'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
                             </span>
                           ))}
@@ -2652,7 +2652,7 @@ export default function VentasPage() {
                         updateItem(seriesModal.itemIdx, 'series_seleccionadas', updated)
                         updateItem(seriesModal.itemIdx, 'cantidad', updated.length)
                       }} />
-                    <span className="font-mono text-sm">{s.nro_serie}</span>
+                    <span className="text-sm">{s.nro_serie}</span>
                     <span className="text-xs text-gray-400 dark:text-gray-500">{s.lpn}</span>
                   </label>
                 )

@@ -813,7 +813,7 @@ export default function InventarioPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-gray-800 dark:text-gray-100">{m.productos?.nombre}</div>
-                          <div className="text-xs text-gray-400 dark:text-gray-500 font-mono">{m.productos?.sku}</div>
+                          <div className="text-xs text-gray-400 dark:text-gray-500">{m.productos?.sku}</div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
@@ -878,7 +878,7 @@ export default function InventarioPage() {
                       <div>
                         <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide">Producto</p>
                         <p className="font-semibold text-gray-800 dark:text-gray-100">{movDetalle.productos?.nombre}</p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{movDetalle.productos?.sku}
+                        <p className="text-xs text-gray-400 dark:text-gray-500">{movDetalle.productos?.sku}
                           {movDetalle.productos?.unidad_medida && <span className="ml-2 text-gray-300">· {movDetalle.productos.unidad_medida}</span>}
                         </p>
                       </div>
@@ -960,13 +960,13 @@ export default function InventarioPage() {
                           {linea.lpn && (
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">LPN / Pallet</p>
-                              <p className="text-sm text-gray-700 dark:text-gray-300 font-mono">{linea.lpn}</p>
+                              <p className="text-sm text-gray-700 dark:text-gray-300">{linea.lpn}</p>
                             </div>
                           )}
                           {linea.nro_lote && (
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Nro. de lote</p>
-                              <p className="text-sm text-gray-700 dark:text-gray-300 font-mono">{linea.nro_lote}</p>
+                              <p className="text-sm text-gray-700 dark:text-gray-300">{linea.nro_lote}</p>
                             </div>
                           )}
                           {linea.fecha_vencimiento && (
@@ -1004,14 +1004,14 @@ export default function InventarioPage() {
                         <div className="flex flex-wrap gap-1.5">
                           {seriesLinea.map((s: any) => (
                             <span key={s.nro_serie}
-                              className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 px-2 py-1 rounded-lg font-mono border border-purple-100">
+                              className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 px-2 py-1 rounded-lg border border-purple-100">
                               {s.nro_serie}
                             </span>
                           ))}
                         </div>
                       </div>
                     )}
-                    <p className="text-xs text-gray-300 font-mono border-t border-gray-100 pt-3">ID: {movDetalle.id}</p>
+                    <p className="text-xs text-gray-300 border-t border-gray-100 pt-3">ID: {movDetalle.id}</p>
                   </div>
                 </div>
               </div>
@@ -1087,7 +1087,7 @@ export default function InventarioPage() {
                       </label>
                       <input type="text" value={form.lpn} onChange={e => setForm(p => ({ ...p, lpn: e.target.value }))}
                         placeholder="Ej: LPN-20260101-A1"
-                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono focus:outline-none focus:border-accent" />
+                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                     </div>
 
                     {tieneSeries ? (
@@ -1101,7 +1101,7 @@ export default function InventarioPage() {
                                 <input type="text" value={s}
                                   onChange={e => { const ns = [...series]; ns[i] = e.target.value; setSeries(ns) }}
                                   placeholder={`Serie ${i + 1}`}
-                                  className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:border-accent" />
+                                  className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
                               </div>
                               {series.length > 1 && (
                                 <button onClick={() => setSeries(series.filter((_, j) => j !== i))}
@@ -1386,9 +1386,9 @@ export default function InventarioPage() {
                                   </span>
                                 </div>
                                 <div className="flex gap-3 mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                  <span className="font-mono">{l.lpn}</span>
+                                  <span>{l.lpn}</span>
                                   {(l.ubicaciones?.prioridad ?? 0) > 0 && (
-                                    <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded font-mono">P{l.ubicaciones.prioridad}</span>
+                                    <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded">P{l.ubicaciones.prioridad}</span>
                                   )}
                                   {l.nro_lote && <span>🏷 {l.nro_lote}</span>}
                                   {l.fecha_vencimiento && <span>📅 {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}
@@ -1414,7 +1414,7 @@ export default function InventarioPage() {
                                     onChange={e => setRebajeSeries(e.target.checked
                                       ? [...rebajeSeries, s.id]
                                       : rebajeSeries.filter(id => id !== s.id))} />
-                                  <span className="font-mono text-sm">{s.nro_serie}</span>
+                                  <span className="text-sm">{s.nro_serie}</span>
                                 </label>
                               ))}
                             </div>
@@ -1585,7 +1585,7 @@ export default function InventarioPage() {
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <span className="font-medium text-sm text-gray-900 dark:text-white">{prod?.nombre ?? l.producto_id}</span>
                                       <span className="text-xs text-gray-400 dark:text-gray-500">{prod?.sku}</span>
-                                      {l.lpn && <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded font-mono">{l.lpn}</span>}
+                                      {l.lpn && <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">{l.lpn}</span>}
                                     </div>
                                     <div className="flex items-center gap-2 flex-wrap text-xs">
                                       {l.estados_inventario && (
@@ -1645,7 +1645,7 @@ export default function InventarioPage() {
 
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
-                          <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{(p as any).sku}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">{(p as any).sku}</p>
                         </div>
 
                         <div className="hidden md:block text-xs text-gray-400 dark:text-gray-500">
@@ -1683,9 +1683,9 @@ export default function InventarioPage() {
                                 <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
                                   <div className="col-span-1">
                                     <div className="flex items-center gap-1.5">
-                                      <span className="font-mono text-xs text-primary font-semibold">{l.lpn}</span>
+                                      <span className="text-xs text-primary font-semibold">{l.lpn}</span>
                                       {(l.ubicaciones?.prioridad ?? 0) > 0 && (
-                                        <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded font-mono" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
+                                        <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
                                       )}
                                     </div>
                                     {l.proveedor_id && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{l.proveedores?.nombre}</p>}
@@ -1717,17 +1717,14 @@ export default function InventarioPage() {
                                   </div>
 
                                   <div className="col-span-1">
-                                    <select
-                                      value={l.estado_id ?? ''}
-                                      onChange={e => cambiarEstadoLinea.mutate({ lineaId: l.id, estadoId: e.target.value })}
-                                      className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 w-full focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
-                                      style={{ color: l.estados_inventario?.color ?? '#6b7280', fontWeight: 500 }}
-                                    >
-                                      <option value="">Sin estado</option>
-                                      {(estados as any[]).map(e => (
-                                        <option key={e.id} value={e.id}>{e.nombre}</option>
-                                      ))}
-                                    </select>
+                                    {l.estados_inventario ? (
+                                      <span className="inline-block text-xs px-2 py-0.5 rounded-lg border"
+                                        style={{ color: l.estados_inventario.color ?? '#6b7280', borderColor: l.estados_inventario.color ?? '#d1d5db', fontWeight: 500 }}>
+                                        {l.estados_inventario.nombre}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-gray-300">—</span>
+                                    )}
                                   </div>
 
                                   <div className="col-span-1">
@@ -1755,7 +1752,7 @@ export default function InventarioPage() {
                                       <div className="space-y-0.5">
                                         {(l.inventario_series ?? []).filter((s: any) => s.activo).map((s: any) => (
                                           <span key={s.id} title={s.reservado ? 'Reservada' : undefined}
-                                            className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono
+                                            className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded
                                               ${s.reservado
                                                 ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 dark:text-orange-400 line-through opacity-70'
                                                 : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
@@ -1769,9 +1766,8 @@ export default function InventarioPage() {
                                   <div className="col-span-1 flex justify-center">
                                     <button
                                       onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: p }) }}
-                                      disabled={(l.cantidad_reservada ?? 0) > 0}
-                                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
-                                      title={(l.cantidad_reservada ?? 0) > 0 ? `${l.cantidad_reservada} unidad(es) reservada(s) — no se puede modificar` : 'Acciones sobre este LPN'}>
+                                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"
+                                      title={(l.cantidad_reservada ?? 0) > 0 ? `${l.cantidad_reservada} reservada(s) — solo movimiento parcial disponible` : 'Acciones sobre este LPN'}>
                                       <Settings2 size={15} />
                                     </button>
                                   </div>

@@ -20,7 +20,8 @@ interface Props {
 export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
-  const [tab, setTab] = useState<AccionTab>('editar')
+  const tieneReservas = (linea.cantidad_reservada ?? 0) > 0
+  const [tab, setTab] = useState<AccionTab>(tieneReservas ? 'mover' : 'editar')
   const tieneSeries = producto.tiene_series
 
   // Editar campos
@@ -260,12 +261,14 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
   const seriesActivas = (linea.inventario_series ?? []).filter((s: any) => s.activo)
 
-  const TABS: { id: AccionTab; label: string; icon: any }[] = [
-    { id: 'editar', label: 'Editar', icon: Edit2 },
-    { id: 'mover', label: 'Mover', icon: ArrowRightLeft },
-    ...(tieneSeries ? [{ id: 'series' as AccionTab, label: 'Series', icon: Hash }] : []),
-    { id: 'eliminar', label: 'Eliminar', icon: Trash2 },
-  ]
+  const TABS: { id: AccionTab; label: string; icon: any }[] = tieneReservas
+    ? [{ id: 'mover', label: 'Mover', icon: ArrowRightLeft }]
+    : [
+        { id: 'editar', label: 'Editar', icon: Edit2 },
+        { id: 'mover', label: 'Mover', icon: ArrowRightLeft },
+        ...(tieneSeries ? [{ id: 'series' as AccionTab, label: 'Series', icon: Hash }] : []),
+        { id: 'eliminar', label: 'Eliminar', icon: Trash2 },
+      ]
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -273,7 +276,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div>
-            <p className="font-bold text-primary font-mono">{linea.lpn}</p>
+            <p className="font-bold text-primary">{linea.lpn}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500">{producto.nombre} · {producto.sku}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
@@ -295,8 +298,20 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           {linea.nro_lote && <span className="flex items-center gap-1"><Tag size={12} /> {linea.nro_lote}</span>}
         </div>
 
+        {/* Banner de restricción cuando hay reservas */}
+        {tieneReservas && (
+          <div className="mx-5 mt-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 rounded-xl px-3 py-2.5 text-xs text-orange-700 dark:text-orange-400 flex items-start gap-2">
+            <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+            <span>
+              Este LPN tiene <strong>{linea.cantidad_reservada}</strong> unidad(es) reservada(s).
+              Solo podés hacer un movimiento parcial para generar un nuevo LPN con las unidades disponibles ({linea.cantidad - linea.cantidad_reservada} u.).
+              No se puede cambiar estado, lote, ubicación ni series hasta que se liberen las reservas.
+            </span>
+          </div>
+        )}
+
         {/* Tabs */}
-        <div className="flex border-b border-gray-100">
+        <div className="flex border-b border-gray-100 mt-3">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-all border-b-2

@@ -857,6 +857,12 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Botón acciones habilitado con reservas**: antes estaba `disabled` si `cantidad_reservada > 0`. Ahora siempre está habilitado.
 - **`LpnAccionesModal` con reservas**: si `linea.cantidad_reservada > 0` → tab inicial = `mover`, solo se muestra tab Mover + banner naranja explicativo. Tabs Editar, Series y Eliminar no aparecen hasta liberar reservas.
 
+#### Fix — Cancelación de reserva con seña + ticket LPN historial
+- **Cancelar reserva con monto cobrado**: confirm dialog ahora advierte "⚠ Esta venta tiene $X cobrado al cliente. Recordá devolver el importe." cuando `monto_pagado > 0`. Post-cancelación: toast rojo 8s con el monto a devolver.
+- **`egreso_informativo` no-efectivo en cancelación**: al cancelar una reserva señada con tarjeta/MP, se inserta `egreso_informativo` con concepto `[Tipo] Dev. seña Venta #N` y monto = `monto_pagado - efectivo_cobrado`. Complementa el `egreso_devolucion_sena` ya existente para efectivo.
+- **Ticket LPN en historial**: "Ver / Imprimir ticket" desde el historial ahora muestra el LPN primario de cada ítem no-serializado. Antes `lpn_fuentes` era `undefined` y el rendering no mostraba ningún LPN. Ahora construye `lpn_fuentes` desde `inventario_lineas.lpn`. Limitación: para ítems multi-LPN el historial solo puede mostrar el LPN principal (deuda técnica: `venta_items.linea_id` es FK simple).
+- **Tests `calcularDevolucion`**: 6 casos nuevos en `cajaSeña.test.ts` — efectivo puro, tarjeta pura, mixto, MP, sin pago, monto=0. Total: **154/154** passing.
+
 ### v0.73.0 — en dev
 - ✅ **Fix sucursal filter**: `useSucursalFilter.applyFilter` usa `.or('sucursal_id.eq.{id},sucursal_id.is.null')` — datos previos a multi-sucursal (NULL) siguen visibles con cualquier sucursal seleccionada. Afecta inventario, movimientos, ventas, gastos, clientes.
 - ✅ **Post-venta → Nueva Venta**: tras finalizar/reservar, `setTab('nueva')` en lugar de `'historial'`. El cajero queda listo para seguir vendiendo.

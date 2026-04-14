@@ -1357,6 +1357,18 @@ export default function VentasPage() {
                   usuario_id: user?.id,
                 })
               }
+              const noCashCancelado = (venta.monto_pagado ?? 0) - efectivoCobrado
+              if (noCashCancelado > 0.01) {
+                const noCashTypes = [...new Set(prevArr.filter(m => m.tipo !== 'Efectivo' && (m.monto ?? 0) > 0).map(m => m.tipo))].join(' + ') || 'No efectivo'
+                void supabase.from('caja_movimientos').insert({
+                  tenant_id: tenant!.id,
+                  sesion_id: cancelSesionId,
+                  tipo: 'egreso_informativo',
+                  concepto: `[${noCashTypes}] Dev. seña Venta #${venta.numero}`,
+                  monto: noCashCancelado,
+                  usuario_id: user?.id,
+                })
+              }
             } catch {}
           }
         }
@@ -2210,6 +2222,7 @@ export default function VentasPage() {
                     const nrosSerie = (item.venta_series ?? [])
                       .map((vs: any) => vs.inventario_series?.nro_serie)
                       .filter(Boolean)
+                    const primaryLpn: string | null = item.inventario_lineas?.lpn ?? null
                     return {
                       nombre: item.productos?.nombre ?? '',
                       cantidad: item.cantidad,
@@ -2219,7 +2232,10 @@ export default function VentasPage() {
                       subtotal: item.subtotal,
                       tiene_series: nrosSerie.length > 0,
                       series_seleccionadas: nrosSerie,
-                      lpn: item.inventario_lineas?.lpn ?? null,
+                      lpn: primaryLpn,
+                      lpn_fuentes: primaryLpn
+                        ? [{ linea_id: item.linea_id ?? null, lpn: primaryLpn, cantidad: item.cantidad }]
+                        : undefined,
                     }
                   })
                   setTicketVenta({ ...ventaDetalle, items })
@@ -2274,8 +2290,17 @@ export default function VentasPage() {
               )}
               {['pendiente', 'reservada'].includes(ventaDetalle.estado) && (
                 <button onClick={() => {
-                  if (confirm('¿Cancelar esta venta? El stock reservado quedará disponible.'))
-                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
+                  const montoCobrado = ventaDetalle.monto_pagado ?? 0
+                  const aviso = montoCobrado > 0
+                    ? `\n\n⚠ Esta venta tiene $${montoCobrado.toLocaleString('es-AR')} cobrado al cliente. Recordá devolver el importe.`
+                    : ''
+                  if (!confirm(`¿Cancelar esta venta? El stock reservado quedará disponible.${aviso}`)) return
+                  cambiarEstado.mutate(
+                    { ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' },
+                    montoCobrado > 0
+                      ? { onSuccess: () => toast.error(`Devolvé $${montoCobrado.toLocaleString('es-AR')} al cliente (seña cobrada)`, { duration: 8000 }) }
+                      : undefined,
+                  )
                 }}
                   disabled={cambiarEstado.isPending}
                   className="w-full border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all">

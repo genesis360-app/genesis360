@@ -550,22 +550,6 @@ export default function VentasPage() {
     setCart(newCart)
   }, [cart, combosDisp, cotizacionUSD])
 
-  // Enter global → Venta directa (solo cuando no hay input/select/button focuseado)
-  const registrarVentaRef = useRef<(estado: 'pendiente' | 'reservada' | 'despachada') => Promise<void>>()
-  registrarVentaRef.current = registrarVenta
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter') return
-      const tag = (document.activeElement as HTMLElement)?.tagName
-      if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(tag ?? '')) return
-      if (tab === 'nueva' && modoVenta === 'despachada' && cart.length > 0 && !saving) {
-        registrarVentaRef.current?.('despachada')
-      }
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [tab, modoVenta, cart.length, saving])
-
   const splitItem = (idx: number) => {
     setCart(prev => {
       const item = prev[idx]
@@ -975,6 +959,22 @@ export default function VentasPage() {
     setDevMediosPago([{ tipo: '', monto: '' }])
     setDevolucionVenta(venta)
   }
+
+  // Enter global → Venta directa (solo cuando no hay input/select/button focuseado)
+  const registrarVentaRef = useRef<(estado: 'pendiente' | 'reservada' | 'despachada') => Promise<void>>()
+  registrarVentaRef.current = registrarVenta
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return
+      const tag = (document.activeElement as HTMLElement)?.tagName
+      if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(tag ?? '')) return
+      if (tab === 'nueva' && modoVenta === 'despachada' && cart.length > 0 && !saving) {
+        registrarVentaRef.current?.('despachada')
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [tab, modoVenta, cart.length, saving])
 
   const procesarDevolucion = async () => {
     if (!devolucionVenta || !tenant) return

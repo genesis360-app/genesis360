@@ -807,18 +807,21 @@ export default function VentasPage() {
       }
       // Registros informativos para medios no-efectivo (no afectan saldo)
       const totalNoCash = total - montoEfectivoCaja
-      if (estado === 'despachada' && sesionCajaId && totalNoCash > 0.01) {
+      // Usar sesionCajaId explícita o primera sesión disponible como fallback
+      const sesionInformativo = sesionCajaId ?? ((sesionesAbiertas as any[])[0]?.id ?? null)
+      if (estado === 'despachada' && sesionInformativo && totalNoCash > 0.01) {
         const tiposNoCash = [...new Set(
           mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo' && m.tipo !== '').map(m => m.tipo)
         )].join(' + ')
-        void supabase.from('caja_movimientos').insert({
+        const { error: errInfo } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id,
-          sesion_id: sesionCajaId,
+          sesion_id: sesionInformativo,
           tipo: 'ingreso_informativo',
           concepto: `[${tiposNoCash || 'No efectivo'}] Venta #${venta.numero}`,
           monto: totalNoCash,
           usuario_id: user?.id,
         })
+        if (errInfo) console.error('[caja] ingreso_informativo error:', errInfo)
       }
       // Seña en caja: registrar efectivo cobrado al crear la reserva (fire-and-forget)
       if (estado === 'reservada' && montoEfectivoCaja > 0 && sesionCajaId) {
@@ -852,7 +855,7 @@ export default function VentasPage() {
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
-      setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('reservada')
+      setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })

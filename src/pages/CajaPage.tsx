@@ -735,7 +735,7 @@ export default function CajaPage() {
                       {(movimientos as any[]).map((m) => {
                         const esEgreso = ['egreso','egreso_devolucion_sena','egreso_traspaso'].includes(m.tipo)
                         const esIngreso = ['ingreso','ingreso_reserva','ingreso_traspaso','ingreso_apertura'].includes(m.tipo)
-                        const esInfo = m.tipo === 'ingreso_informativo'
+                        const esInfo = m.tipo === 'ingreso_informativo' || m.tipo === 'egreso_informativo'
                         const numVenta = extraerNumeroVenta(m.concepto)
                         const medio = extraerMedioPago(m.tipo, m.concepto)
                         const tipoLabel = TIPO_LABEL[m.tipo] ?? m.tipo

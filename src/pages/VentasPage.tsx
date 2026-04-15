@@ -88,7 +88,7 @@ export default function VentasPage() {
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[] } | null>(null)
-  const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('reservada')
+  const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('despachada')
   const [editandoPago, setEditandoPago] = useState(false)
   const [editMontoPagado, setEditMontoPagado] = useState('')
   const [savingMontoPagado, setSavingMontoPagado] = useState(false)
@@ -129,6 +129,16 @@ export default function VentasPage() {
   })
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
   const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
+
+  // Auto-seleccionar sesión de la caja predeterminada del usuario
+  const cajaPrefKey = tenant?.id && user?.id ? `caja_preferida_${tenant.id}_${user.id}` : null
+  useEffect(() => {
+    if (cajaSeleccionadaId || sesionesAbiertas.length === 0 || !cajaPrefKey) return
+    const cajaPrefId = localStorage.getItem(cajaPrefKey)
+    if (!cajaPrefId) return
+    const sesion = (sesionesAbiertas as any[]).find(s => s.caja_id === cajaPrefId)
+    if (sesion) setCajaSeleccionadaId(sesion.id)
+  }, [sesionesAbiertas, cajaPrefKey])
 
   // Historial
   const [searchHistorial, setSearchHistorial] = useState('')
@@ -539,6 +549,22 @@ export default function VentasPage() {
     autoComboSig.current = newSig
     setCart(newCart)
   }, [cart, combosDisp, cotizacionUSD])
+
+  // Enter global → Venta directa (solo cuando no hay input/select/button focuseado)
+  const registrarVentaRef = useRef<(estado: 'pendiente' | 'reservada' | 'despachada') => Promise<void>>()
+  registrarVentaRef.current = registrarVenta
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return
+      const tag = (document.activeElement as HTMLElement)?.tagName
+      if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(tag ?? '')) return
+      if (tab === 'nueva' && modoVenta === 'despachada' && cart.length > 0 && !saving) {
+        registrarVentaRef.current?.('despachada')
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [tab, modoVenta, cart.length, saving])
 
   const splitItem = (idx: number) => {
     setCart(prev => {

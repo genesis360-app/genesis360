@@ -35,4 +35,16 @@ test.describe('Configuración', () => {
       ).toBeVisible({ timeout: 5000 })
     }
   })
+
+  // UAT-CFG-01/02/03: tab Ubicaciones carga y muestra botón eliminar
+  test('UAT-CFG: tab Ubicaciones muestra lista con acciones', async ({ page }) => {
+    const tabUbic = page.getByRole('button', { name: /ubicaci/i }).first()
+    if (await tabUbic.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await tabUbic.click()
+      await page.waitForTimeout(500)
+      await expect(
+        page.getByText(/ubicaci|sin ubicacion/i).first()
+      ).toBeVisible({ timeout: 5000 })
+    }
+  })
 })

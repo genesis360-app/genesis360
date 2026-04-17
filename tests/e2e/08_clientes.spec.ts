@@ -23,6 +23,21 @@ test.describe('Clientes', () => {
     ).toBeVisible({ timeout: 8000 })
   })
 
+  // UAT-CLI-01: la sección de importación debe mencionar la columna dni
+  test('UAT-CLI-01: sección de importación menciona columna dni', async ({ page }) => {
+    // Abrir sección importación
+    const btnImport = page.getByRole('button', { name: /importar|cargar/i }).first()
+    if (await btnImport.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await btnImport.click()
+      await page.waitForTimeout(400)
+      // Debe aparecer texto que incluya "dni" en la descripción de columnas
+      await expect(
+        page.getByText(/dni/i).first()
+      ).toBeVisible({ timeout: 5000 })
+      await page.keyboard.press('Escape')
+    }
+  })
+
   test('crear y eliminar cliente de prueba', async ({ page }) => {
     const nombre = uniqueName('Cliente Test')
 

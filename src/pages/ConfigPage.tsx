@@ -509,10 +509,42 @@ export default function ConfigPage() {
     setEditUbicId(null)
   }
   const deleteUbicacion = async (id: string) => {
-    if (!confirm('¿Eliminar esta ubicación?')) return
     const old = (ubicaciones as any[]).find(u => u.id === id)
+
+    // 1. Bloquear si tiene inventario activo con stock
+    const { count: cntStock } = await supabase.from('inventario_lineas')
+      .select('*', { count: 'exact', head: true })
+      .eq('ubicacion_id', id)
+      .eq('activo', true)
+      .gt('cantidad', 0)
+    if ((cntStock ?? 0) > 0) {
+      toast.error('No se puede eliminar: tiene inventario activo. Vacíala primero.')
+      return
+    }
+
+    // 2. Verificar referencias sin stock (líneas inactivas + productos)
+    const [{ count: cntLineas }, { count: cntProds }] = await Promise.all([
+      supabase.from('inventario_lineas').select('*', { count: 'exact', head: true }).eq('ubicacion_id', id),
+      supabase.from('productos').select('*', { count: 'exact', head: true }).eq('ubicacion_id', id).eq('tenant_id', tenant!.id),
+    ])
+    const totalRef = (cntLineas ?? 0) + (cntProds ?? 0)
+    const msg = totalRef > 0
+      ? `Esta ubicación tiene ${totalRef} referencia(s) sin stock activo que se desvincularán. ¿Confirmar eliminación?`
+      : '¿Eliminar esta ubicación?'
+    if (!confirm(msg)) return
+
+    // 3. Nullificar referencias antes de borrar
+    if ((cntLineas ?? 0) > 0)
+      await supabase.from('inventario_lineas').update({ ubicacion_id: null }).eq('ubicacion_id', id)
+    if ((cntProds ?? 0) > 0)
+      await supabase.from('productos').update({ ubicacion_id: null }).eq('ubicacion_id', id).eq('tenant_id', tenant!.id)
+
     const { error } = await supabase.from('ubicaciones').delete().eq('id', id)
-    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }); logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
+    if (error) { toast.error(error.message); return }
+    toast.success('Ubicación eliminada')
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+    qc.invalidateQueries({ queryKey: ['productos'] })
+    logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' })
   }
   const toggleUbicSurtido = async (u: any) => {
     const nuevo = !u.disponible_surtido

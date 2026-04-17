@@ -35,4 +35,21 @@ test.describe('Movimientos', () => {
       page.getByText(/historial|sin movimiento|ingreso|rebaje/i).first()
     ).toBeVisible({ timeout: 8000 })
   })
+
+  // UAT-INV-02: el modal de rebaje masivo debe poder abrirse y mostrar el buscador
+  test('UAT-INV-02: rebaje masivo abre modal con buscador', async ({ page }) => {
+    const btnRebajeMasivo = page.getByRole('button', { name: /rebaje masivo/i })
+    if (await btnRebajeMasivo.isVisible({ timeout: 5000 }).catch(() => false)) {
+      if (await btnRebajeMasivo.isEnabled()) {
+        await btnRebajeMasivo.click()
+        await expect(
+          page.getByPlaceholder(/buscar y agregar producto/i).first()
+        ).toBeVisible({ timeout: 5000 })
+        // El botón de confirmar debe estar deshabilitado (lista vacía)
+        const btnConfirmar = page.getByRole('button', { name: /confirmar/i })
+        await expect(btnConfirmar).toBeDisabled()
+        await page.keyboard.press('Escape')
+      }
+    }
+  })
 })

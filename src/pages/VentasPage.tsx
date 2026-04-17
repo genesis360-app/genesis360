@@ -81,6 +81,7 @@ export default function VentasPage() {
   const [nuevoClienteForm, setNuevoClienteForm] = useState({ nombre: '', dni: '', telefono: '' })
   const [savingCliente, setSavingCliente] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [lpnPickerIdx, setLpnPickerIdx] = useState<number | null>(null)
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   const [descuentoTotal, setDescuentoTotal] = useState('')
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
@@ -421,8 +422,20 @@ export default function VentasPage() {
     setCart(prev => [...prev, newItem])
   }
 
+  const overrideLpnSource = (cartIdx: number, lineaId: string) => {
+    setCart(prev => prev.map((item, i) => {
+      if (i !== cartIdx || !item.lineas_disponibles) return item
+      const selected = item.lineas_disponibles.find(l => l.id === lineaId)
+      if (!selected) return item
+      const reordered = [selected, ...item.lineas_disponibles.filter(l => l.id !== lineaId)]
+      const fuentes = calcularLpnFuentes(reordered, item.cantidad)
+      return { ...item, lineas_disponibles: reordered, lpn_fuentes: fuentes, linea_id: fuentes[0]?.linea_id, lpn: fuentes[0]?.lpn ?? undefined }
+    }))
+    setLpnPickerIdx(null)
+  }
+
   const handleBarcodeScan = async (code: string) => {
-    setScannerOpen(false)
+    // No cierra el scanner — modo POS persistente
     // Buscar por codigo_barras o SKU exacto
     const { data: prods } = await supabase.from('productos')
       .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva')
@@ -898,6 +911,7 @@ export default function VentasPage() {
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
+      setScannerOpen(false)
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
@@ -1635,20 +1649,58 @@ export default function VentasPage() {
                           <p className="font-medium text-primary">{item.nombre}</p>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-gray-400 dark:text-gray-500">{item.sku}</span>
-                            {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
-                              <>
-                                {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
-                                  <span key={fi} title={f.ubicacion ? `Ubicación: ${f.ubicacion}` : undefined}
-                                    className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
-                                    {f.lpn ?? 'Sin LPN'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
-                                    {f.ubicacion && <span className="text-blue-400 dark:text-blue-500"> · {f.ubicacion}</span>}
-                                  </span>
-                                ))}
-                                {item.lpn_fuentes.length > 3 && (
-                                  <span className="text-xs text-gray-400 dark:text-gray-500">+{item.lpn_fuentes.length - 3} más</span>
-                                )}
-                              </>
-                            )}
+                            {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
+                              const canPick = (item.lineas_disponibles?.length ?? 0) > 1
+                              const isOpen = lpnPickerIdx === idx
+                              return (
+                                <>
+                                  {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
+                                    <span key={fi}
+                                      onClick={canPick ? () => setLpnPickerIdx(isOpen ? null : idx) : undefined}
+                                      title={canPick ? 'Click para cambiar posición de rebaje' : (f.ubicacion ? `Ubicación: ${f.ubicacion}` : undefined)}
+                                      className={`text-xs px-1.5 py-0.5 rounded transition-colors
+                                        ${canPick
+                                          ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 ring-1 ring-blue-200 dark:ring-blue-800'
+                                          : 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'}`}>
+                                      {f.lpn ?? 'Sin LPN'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
+                                      {f.ubicacion && <span className="text-blue-400 dark:text-blue-500"> · {f.ubicacion}</span>}
+                                      {canPick && fi === 0 && <span className="ml-0.5 text-blue-400">▾</span>}
+                                    </span>
+                                  ))}
+                                  {item.lpn_fuentes.length > 3 && (
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">+{item.lpn_fuentes.length - 3} más</span>
+                                  )}
+                                  {/* Picker inline de posición */}
+                                  {isOpen && item.lineas_disponibles && (
+                                    <div className="w-full mt-1 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-xl shadow-lg overflow-hidden">
+                                      <p className="text-xs text-gray-500 dark:text-gray-400 px-3 py-1.5 border-b border-gray-100 dark:border-gray-700 font-medium">
+                                        Elegir posición de rebaje
+                                      </p>
+                                      {item.lineas_disponibles.map((l) => {
+                                        const disp = l.cantidad - (l.cantidad_reservada ?? 0)
+                                        const isActive = item.lineas_disponibles![0].id === l.id
+                                        return (
+                                          <button key={l.id} onClick={() => overrideLpnSource(idx, l.id)}
+                                            className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors
+                                              ${isActive
+                                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
+                                                : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300'}`}>
+                                            <span>
+                                              {l.lpn ?? <span className="text-gray-400 italic">Sin LPN</span>}
+                                              {l.ubicacion && <span className="text-gray-400 dark:text-gray-500 ml-1">· {l.ubicacion}</span>}
+                                              {isActive && <span className="ml-1 text-blue-500">✓</span>}
+                                            </span>
+                                            <span className={`ml-2 shrink-0 ${disp <= 0 ? 'text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                                              {disp}u disp.
+                                            </span>
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+                                </>
+                              )
+                            })()}
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -2766,10 +2818,11 @@ export default function VentasPage() {
         </div>
       )}
 
-      {/* Escáner de código de barras */}
+      {/* Escáner de código de barras — modo POS persistente */}
       {scannerOpen && (
         <BarcodeScanner
-          title="Escanear producto"
+          title="Escáner de venta"
+          persistent
           onDetected={handleBarcodeScan}
           onClose={() => setScannerOpen(false)}
         />

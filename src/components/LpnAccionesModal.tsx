@@ -198,8 +198,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         await supabase.from('inventario_series').update({ activo: false }).eq('linea_id', linea.id)
       }
 
-      // Desactivar línea
-      const { error } = await supabase.from('inventario_lineas').update({ activo: false }).eq('id', linea.id)
+      // Desactivar línea y poner cantidad a 0 para que el trigger recalcule stock_actual
+      const { error } = await supabase.from('inventario_lineas').update({ activo: false, cantidad: 0 }).eq('id', linea.id)
       if (error) throw error
 
       await registrarMovimiento('eliminacion_lpn', cantEliminada, `Eliminación del LPN ${linea.lpn}`, stockAntes)

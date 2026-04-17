@@ -26,7 +26,7 @@ interface FormGasto {
 }
 
 const FORM_VACIO: FormGasto = {
-  descripcion: '', monto: '', categoria: '', medio_pago: 'Efectivo',
+  descripcion: '', monto: '', categoria: '', medio_pago: '',
   fecha: new Date().toISOString().split('T')[0], notas: '',
 }
 
@@ -118,7 +118,7 @@ export default function GastosPage() {
       descripcion: g.descripcion,
       monto: String(g.monto),
       categoria: g.categoria ?? '',
-      medio_pago: g.medio_pago ?? 'Efectivo',
+      medio_pago: g.medio_pago ?? '',
       fecha: g.fecha,
       notas: g.notas ?? '',
     })
@@ -469,6 +469,7 @@ export default function GastosPage() {
                     onChange={e => setForm(f => ({ ...f, medio_pago: e.target.value }))}
                     className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700"
                   >
+                    <option value="">Elegir método…</option>
                     {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                   <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400 pointer-events-none" />

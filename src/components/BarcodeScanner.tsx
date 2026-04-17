@@ -5,6 +5,7 @@ interface Props {
   onDetected: (code: string) => void
   onClose: () => void
   title?: string
+  persistent?: boolean  // mantiene el scanner abierto tras cada detección (modo POS)
 }
 
 // BarcodeDetector no está en todos los typings de TS
@@ -54,7 +55,7 @@ async function getZBarScan() {
   return zbarScanFn
 }
 
-export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un código' }: Props) {
+export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un código', persistent = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -80,7 +81,18 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
     try { navigator.vibrate(60) } catch {}
     setDetected(true)
     cancelAnimationFrame(rafRef.current)
-    setTimeout(() => onDetected(code), 200)
+    setTimeout(() => {
+      onDetected(code)
+      if (persistent) {
+        // Tras 800ms más (1s total) resetear y continuar escaneando
+        setTimeout(() => {
+          detectedRef.current = false
+          processingRef.current = false
+          setDetected(false)
+          startScan()
+        }, 800)
+      }
+    }, 200)
   }
 
   const startScan = () => {
@@ -296,8 +308,10 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
 
             {/* Footer */}
             <div className="px-4 py-3 flex items-center justify-between">
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                {detected ? '¡Código detectado!' : scanning ? 'Apuntá al código...' : 'Iniciando cámara...'}
+              <p className={`text-xs font-medium ${detected ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                {detected
+                  ? (persistent ? '✓ Agregado — listo para el siguiente' : '¡Código detectado!')
+                  : scanning ? 'Apuntá al código...' : 'Iniciando cámara...'}
               </p>
               <div className="flex items-center gap-3">
                 {cameras.length > 1 && (
@@ -306,10 +320,18 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
                     <SwitchCamera size={14} /> Cambiar
                   </button>
                 )}
-                <button onClick={() => setManualMode(true)}
-                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                  <Keyboard size={14} /> Manual
-                </button>
+                {!persistent && (
+                  <button onClick={() => setManualMode(true)}
+                    className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <Keyboard size={14} /> Manual
+                  </button>
+                )}
+                {persistent && (
+                  <button onClick={onClose}
+                    className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 font-medium">
+                    Finalizar venta
+                  </button>
+                )}
               </div>
             </div>
           </>

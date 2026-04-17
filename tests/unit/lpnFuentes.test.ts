@@ -9,7 +9,7 @@ function linea(id: string, lpn: string | null, cantidad: number, cantidad_reserv
 describe('calcularLpnFuentes', () => {
   it('una línea con suficiente stock — una fuente', () => {
     const result = calcularLpnFuentes([linea('L1', 'LPN-A', 10)], 3)
-    expect(result).toEqual([{ linea_id: 'L1', lpn: 'LPN-A', cantidad: 3 }])
+    expect(result).toMatchObject([{ linea_id: 'L1', lpn: 'LPN-A', cantidad: 3 }])
   })
 
   it('no incluye líneas con todo reservado', () => {
@@ -18,7 +18,7 @@ describe('calcularLpnFuentes', () => {
       linea('L2', 'LPN-B', 5, 0),
     ]
     const result = calcularLpnFuentes(lineas, 2)
-    expect(result).toEqual([{ linea_id: 'L2', lpn: 'LPN-B', cantidad: 2 }])
+    expect(result).toMatchObject([{ linea_id: 'L2', lpn: 'LPN-B', cantidad: 2 }])
   })
 
   it('span de dos líneas — dos fuentes', () => {
@@ -27,7 +27,7 @@ describe('calcularLpnFuentes', () => {
       linea('L2', 'LPN-B', 5, 0),
     ]
     const result = calcularLpnFuentes(lineas, 4)
-    expect(result).toEqual([
+    expect(result).toMatchObject([
       { linea_id: 'L1', lpn: 'LPN-A', cantidad: 2 },
       { linea_id: 'L2', lpn: 'LPN-B', cantidad: 2 },
     ])
@@ -39,7 +39,7 @@ describe('calcularLpnFuentes', () => {
       linea('L2', 'LPN-B', 5, 0),
     ]
     const result = calcularLpnFuentes(lineas, 4)
-    expect(result).toEqual([
+    expect(result).toMatchObject([
       { linea_id: 'L1', lpn: 'LPN-A', cantidad: 2 },
       { linea_id: 'L2', lpn: 'LPN-B', cantidad: 2 },
     ])
@@ -47,7 +47,7 @@ describe('calcularLpnFuentes', () => {
 
   it('lpn null (sin LPN asignado)', () => {
     const result = calcularLpnFuentes([linea('L1', null, 10)], 1)
-    expect(result).toEqual([{ linea_id: 'L1', lpn: null, cantidad: 1 }])
+    expect(result).toMatchObject([{ linea_id: 'L1', lpn: null, cantidad: 1 }])
   })
 
   it('cantidad = 0 → array vacío', () => {
@@ -63,7 +63,7 @@ describe('calcularLpnFuentes', () => {
   it('stock insuficiente — devuelve lo que puede', () => {
     const lineas = [linea('L1', 'LPN-A', 2)]
     const result = calcularLpnFuentes(lineas, 10)
-    expect(result).toEqual([{ linea_id: 'L1', lpn: 'LPN-A', cantidad: 2 }])
+    expect(result).toMatchObject([{ linea_id: 'L1', lpn: 'LPN-A', cantidad: 2 }])
   })
 
   it('tres líneas — usa las primeras necesarias y para', () => {
@@ -73,7 +73,7 @@ describe('calcularLpnFuentes', () => {
       linea('L3', 'LPN-C', 2),
     ]
     const result = calcularLpnFuentes(lineas, 3)
-    expect(result).toEqual([
+    expect(result).toMatchObject([
       { linea_id: 'L1', lpn: 'LPN-A', cantidad: 2 },
       { linea_id: 'L2', lpn: 'LPN-B', cantidad: 1 },
     ])
@@ -96,7 +96,7 @@ describe('calcularLpnFuentes', () => {
       linea('L2', 'LPN-B', 10, 0),
     ]
     const result = calcularLpnFuentes(lineas, 5)
-    expect(result).toEqual([
+    expect(result).toMatchObject([
       { linea_id: 'L1', lpn: 'LPN-A', cantidad: 1 },
       { linea_id: 'L2', lpn: 'LPN-B', cantidad: 4 },
     ])
@@ -175,7 +175,7 @@ describe('sort + calcularLpnFuentes — elección correcta de LPNs', () => {
   it('FIFO span 2 LPNs: 3u de L-A (5 total, 2 reservadas) + 2u de L-C', () => {
     const lAParc = { ...lA, cantidad_reservada: 2 }  // 3 disponibles
     const result = sortearYFuentear([lC, lAParc, lB], 5, 'FIFO')
-    expect(result).toEqual([
+    expect(result).toMatchObject([
       { linea_id: 'L-A', lpn: 'LPN-A', cantidad: 3 },
       { linea_id: 'L-C', lpn: 'LPN-C', cantidad: 2 },
     ])

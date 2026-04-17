@@ -21,6 +21,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
 import type { Producto, KitReceta } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 
 type Tab = 'movimientos' | 'inventario' | 'kits'
 type ModalType = 'ingreso' | 'rebaje' | null
@@ -46,6 +47,15 @@ function InfoTip({ text }: { text: string }) {
       )}
     </div>
   )
+}
+
+/** Convierte cantidad ingresada desde unidad alternativa a la unidad base del producto. */
+function resolverCantidad(raw: string, unitAlt: string | null, unitBase: string | null | undefined): number {
+  const n = parseFloat(raw)
+  if (isNaN(n) || n <= 0) return 0
+  if (!unitAlt || !unitBase || unitAlt === unitBase) return n
+  const converted = convertirUnidad(n, unitAlt, unitBase)
+  return converted ?? n
 }
 
 export default function InventarioPage() {
@@ -79,6 +89,8 @@ export default function InventarioPage() {
   const [searchFocused, setSearchFocused] = useState(false)
   const [ingresoMotivoSelect, setIngresoMotivoSelect] = useState('')
   const [rebajeMotivoSelect, setRebajeMotivoSelect] = useState('')
+  const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
+  const [rebajeUnitAlt, setRebajeUnitAlt] = useState<string | null>(null)
 
   // ── Inventario tab state ───────────────────────────────────────────────────
   const [invSearch, setInvSearch] = useState('')
@@ -317,7 +329,7 @@ export default function InventarioPage() {
       const tieneVencimiento = (selectedProduct as any).tiene_vencimiento
       const cant = tieneSeries
         ? series.filter(s => s.trim()).length
-        : parseInt(form.cantidad)
+        : resolverCantidad(form.cantidad, ingresoUnitAlt, (selectedProduct as any).unidad_medida)
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (tieneLote && !form.nroLote.trim()) throw new Error('Este producto requiere número de lote')
       if (tieneVencimiento && !form.fechaVencimiento) throw new Error('Este producto requiere fecha de vencimiento')
@@ -405,7 +417,7 @@ export default function InventarioPage() {
           await supabase.from('inventario_lineas').update({ activo: false }).eq('id', rebajeLinea.id)
         }
       } else {
-        const cant = parseInt(rebajeCantidad)
+        const cant = resolverCantidad(rebajeCantidad, rebajeUnitAlt, (selectedProduct as any).unidad_medida)
         if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
         const disponible = rebajeLinea.cantidad - (rebajeLinea.cantidad_reservada ?? 0)
         if (cant > disponible) throw new Error(`Stock disponible insuficiente: ${disponible} u. (${rebajeLinea.cantidad} total − ${rebajeLinea.cantidad_reservada ?? 0} reservada(s))`)
@@ -413,7 +425,7 @@ export default function InventarioPage() {
         await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', rebajeLinea.id)
       }
 
-      const cant = tieneSeries ? rebajeSeries.length : parseInt(rebajeCantidad)
+      const cant = tieneSeries ? rebajeSeries.length : resolverCantidad(rebajeCantidad, rebajeUnitAlt, (selectedProduct as any).unidad_medida)
       await supabase.from('movimientos_stock').insert({
         tenant_id: tenant!.id,
         producto_id: selectedProduct.id,
@@ -638,6 +650,7 @@ export default function InventarioPage() {
     setRebajeCantidad(''); setRebajeMotivo(''); setRebajeSeries([])
     setRebajeSearch(''); setRebajeGrupoId(null)
     setIngresoMotivoSelect(''); setRebajeMotivoSelect('')
+    setIngresoUnitAlt(null); setRebajeUnitAlt(null)
   }
 
   useModalKeyboard({
@@ -1153,16 +1166,46 @@ export default function InventarioPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="mb-3">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Cantidad{(selectedProduct as any)?.unidad_medida && (
-                            <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">({(selectedProduct as any).unidad_medida})</span>
-                          )}
-                        </label>
-                        <input type="number" onWheel={e => e.currentTarget.blur()} min="1" value={form.cantidad}
-                          onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
-                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
-                      </div>
+                      (() => {
+                        const uBase = (selectedProduct as any)?.unidad_medida ?? null
+                        const alts = uBase ? unidadesCompatibles(uBase) : []
+                        const unitActiva = ingresoUnitAlt ?? uBase
+                        const cantN = parseFloat(form.cantidad)
+                        const hint = ingresoUnitAlt && uBase && form.cantidad && !isNaN(cantN)
+                          ? convertirUnidad(cantN, ingresoUnitAlt, uBase)
+                          : null
+                        return (
+                          <div className="mb-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Cantidad
+                                {unitActiva && <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">({unitActiva})</span>}
+                              </label>
+                              {alts.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-gray-400 dark:text-gray-500">Ingresar en:</span>
+                                  {[uBase!, ...alts].map(u => (
+                                    <button key={u} type="button"
+                                      onClick={() => setIngresoUnitAlt(u === uBase ? null : u)}
+                                      className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
+                                        (ingresoUnitAlt ?? uBase) === u
+                                          ? 'bg-accent text-white border-accent'
+                                          : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent'
+                                      }`}>{u}</button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0.001" step="any"
+                              value={form.cantidad}
+                              onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
+                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
+                            {hint !== null && (
+                              <p className="mt-1 text-xs text-accent">= {hint} {uBase}</p>
+                            )}
+                          </div>
+                        )
+                      })()
                     )}
 
                     <div className="grid grid-cols-2 gap-3 mb-3">
@@ -1457,14 +1500,47 @@ export default function InventarioPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                              Cantidad a rebajar (disponible: {rebajeLinea.cantidad})
-                            </label>
-                            <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max={rebajeLinea.cantidad}
-                              value={rebajeCantidad} onChange={e => setRebajeCantidad(e.target.value)}
-                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
-                          </div>
+                          (() => {
+                            const uBase = (selectedProduct as any)?.unidad_medida ?? null
+                            const alts = uBase ? unidadesCompatibles(uBase) : []
+                            const unitActiva = rebajeUnitAlt ?? uBase
+                            const disponible = rebajeLinea.cantidad - (rebajeLinea.cantidad_reservada ?? 0)
+                            const cantN = parseFloat(rebajeCantidad)
+                            const hint = rebajeUnitAlt && uBase && rebajeCantidad && !isNaN(cantN)
+                              ? convertirUnidad(cantN, rebajeUnitAlt, uBase)
+                              : null
+                            return (
+                              <div className="mb-4">
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    Cantidad a rebajar
+                                    {unitActiva && <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">({unitActiva})</span>}
+                                    <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">— disponible: {disponible}</span>
+                                  </label>
+                                  {alts.length > 0 && (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-gray-400 dark:text-gray-500">Ingresar en:</span>
+                                      {[uBase!, ...alts].map(u => (
+                                        <button key={u} type="button"
+                                          onClick={() => setRebajeUnitAlt(u === uBase ? null : u)}
+                                          className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
+                                            (rebajeUnitAlt ?? uBase) === u
+                                              ? 'bg-accent text-white border-accent'
+                                              : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent'
+                                          }`}>{u}</button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <input type="number" onWheel={e => e.currentTarget.blur()} min="0.001" step="any"
+                                  value={rebajeCantidad} onChange={e => setRebajeCantidad(e.target.value)}
+                                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
+                                {hint !== null && (
+                                  <p className="mt-1 text-xs text-accent">= {hint} {uBase}</p>
+                                )}
+                              </div>
+                            )
+                          })()
                         )}
 
                         <div className="mb-5">

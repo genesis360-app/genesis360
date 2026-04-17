@@ -15,7 +15,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
 
-type ReporteId = 'stock' | 'movimientos' | 'ventas' | 'criticos' | 'rotacion' | 'valorizado'
+type ReporteId = 'stock' | 'movimientos' | 'ventas' | 'criticos' | 'rotacion' | 'valorizado' | 'productos-atributos'
 
 interface ReporteConfig {
   id: ReporteId
@@ -31,7 +31,8 @@ const REPORTES: ReporteConfig[] = [
   { id: 'ventas',     titulo: 'Ventas',                 descripcion: 'Ventas por período, por producto y por cliente',          icon: ShoppingCart,    color: 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' },
   { id: 'criticos',   titulo: 'Productos críticos',     descripcion: 'Productos con stock igual o por debajo del mínimo',       icon: AlertTriangle,   color: 'bg-red-50 dark:bg-red-900/20 text-red-500' },
   { id: 'rotacion',   titulo: 'Rotación de stock',      descripcion: 'Cuánto se vendió de cada producto en el período',         icon: TrendingUp,      color: 'bg-orange-50 text-orange-600' },
-  { id: 'valorizado', titulo: 'Inventario valorizado',  descripcion: 'Stock actual multiplicado por precio de costo',           icon: DollarSign,      color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600' },
+  { id: 'valorizado',          titulo: 'Inventario valorizado',   descripcion: 'Stock actual multiplicado por precio de costo',                    icon: DollarSign,  color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600' },
+  { id: 'productos-atributos', titulo: 'Ficha de productos',      descripcion: 'Todos los productos con precios, categoría, proveedor y atributos', icon: Tag,         color: 'bg-teal-50 dark:bg-teal-900/20 text-teal-600' },
 ]
 
 function formatFecha(fecha: string) {
@@ -230,6 +231,29 @@ export default function ReportesPage() {
       'Valor total venta': p.stock_actual * p.precio_venta,
       Categoría: p.categorias?.nombre ?? '',
     })),
+
+    'productos-atributos': productos.map((p: any) => ({
+      Nombre: p.nombre,
+      SKU: p.sku ?? '',
+      'Código de barras': p.codigo_barras ?? '',
+      Categoría: p.categorias?.nombre ?? '',
+      Proveedor: p.proveedores?.nombre ?? '',
+      'Precio venta': p.precio_venta ?? 0,
+      'Precio costo': p.precio_costo ?? 0,
+      'Alícuota IVA (%)': p.alicuota_iva ?? 21,
+      'Margen objetivo (%)': p.margen_objetivo ?? '',
+      'Stock actual': p.stock_actual ?? 0,
+      'Stock mínimo': p.stock_minimo ?? 0,
+      'Unidad de medida': p.unidad_medida ?? '',
+      'Tiene series': p.tiene_series ? 'Sí' : 'No',
+      'Tiene vencimiento': p.tiene_vencimiento ? 'Sí' : 'No',
+      'Tiene lote': p.tiene_lote ? 'Sí' : 'No',
+      'Regla inventario': p.regla_inventario ?? '',
+      'Es kit': p.es_kit ? 'Sí' : 'No',
+      Descripción: p.descripcion ?? '',
+      Notas: p.notas ?? '',
+      Activo: p.activo ? 'Sí' : 'No',
+    })),
   }
 
   const totalesReporte = {
@@ -245,6 +269,7 @@ export default function ReportesPage() {
       costo: productos.reduce((a: number, p: any) => a + p.stock_actual * p.precio_costo, 0),
       venta: productos.reduce((a: number, p: any) => a + p.stock_actual * p.precio_venta, 0),
     },
+    'productos-atributos': { total: productos.length },
   }
 
   // Breakdown de ventas por método de pago

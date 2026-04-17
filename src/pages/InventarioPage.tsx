@@ -83,6 +83,10 @@ export default function InventarioPage() {
   // ── Inventario tab state ───────────────────────────────────────────────────
   const [invSearch, setInvSearch] = useState('')
   const [filterAlerta, setFilterAlerta] = useState(false)
+  const [filterCat, setFilterCat] = useState('') // '' = todos, '__sin__' = sin categoría, else = id
+  const [filterUbic, setFilterUbic] = useState('') // '' = todos, '__sin__' = sin ubicación, else = id
+  const [filterEstado, setFilterEstado] = useState('') // '' = todos, '__sin__' = sin estado, else = id
+  const [filterProv, setFilterProv] = useState('') // '' = todos, '__sin__' = sin proveedor, else = id
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [invScannerOpen, setInvScannerOpen] = useState(false)
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
@@ -209,7 +213,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('productos')
-        .select('*, categorias(nombre), proveedores(nombre)')
+        .select('*, categorias(id, nombre), proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
@@ -681,6 +685,39 @@ export default function InventarioPage() {
   const filteredInv = productos.filter(p => {
     const stock = getStockTotal(p)
     if (filterAlerta && stock > (p as any).stock_minimo) return false
+    // Filtro por categoría
+    if (filterCat === '__sin__' && (p as any).categoria_id != null) return false
+    if (filterCat && filterCat !== '__sin__' && (p as any).categoria_id !== filterCat) return false
+    // Filtro por proveedor (en lineas del producto)
+    if (filterProv) {
+      const lineas = lineasMap[(p as any).id] ?? []
+      if (filterProv === '__sin__') {
+        if (lineas.some((l: any) => l.proveedor_id != null)) return false
+        if (lineas.length === 0) return false
+      } else {
+        if (!lineas.some((l: any) => l.proveedor_id === filterProv)) return false
+      }
+    }
+    // Filtro por ubicación (en lineas del producto)
+    if (filterUbic) {
+      const lineas = lineasMap[(p as any).id] ?? []
+      if (filterUbic === '__sin__') {
+        if (lineas.some((l: any) => l.ubicacion_id != null)) return false
+        if (lineas.length === 0) return false
+      } else {
+        if (!lineas.some((l: any) => l.ubicacion_id === filterUbic)) return false
+      }
+    }
+    // Filtro por estado (en lineas del producto)
+    if (filterEstado) {
+      const lineas = lineasMap[(p as any).id] ?? []
+      if (filterEstado === '__sin__') {
+        if (lineas.some((l: any) => l.estado_id != null)) return false
+        if (lineas.length === 0) return false
+      } else {
+        if (!lineas.some((l: any) => l.estado_id === filterEstado)) return false
+      }
+    }
     return true
   })
 
@@ -1522,6 +1559,48 @@ export default function InventarioPage() {
                 <Building size={15} />
               </button>
             </div>
+          </div>
+
+          {/* Filtros avanzados */}
+          <div className="flex flex-wrap gap-2">
+            <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
+              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <option value="">Todas las categorías</option>
+              <option value="__sin__">Sin categoría</option>
+              {[...new Map((productos as any[]).filter(p => p.categoria_id).map(p => [p.categoria_id, (p as any).categorias?.nombre ?? p.categoria_id])).entries()].map(([id, nombre]) => (
+                <option key={id} value={id}>{nombre}</option>
+              ))}
+            </select>
+            <select value={filterUbic} onChange={e => setFilterUbic(e.target.value)}
+              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <option value="">Todas las ubicaciones</option>
+              <option value="__sin__">Sin ubicación</option>
+              {(ubicaciones as any[]).map((u: any) => (
+                <option key={u.id} value={u.id}>{u.nombre}</option>
+              ))}
+            </select>
+            <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)}
+              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <option value="">Todos los estados</option>
+              <option value="__sin__">Sin estado</option>
+              {(estados as any[]).map((e: any) => (
+                <option key={e.id} value={e.id}>{e.nombre}</option>
+              ))}
+            </select>
+            <select value={filterProv} onChange={e => setFilterProv(e.target.value)}
+              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <option value="">Todos los proveedores</option>
+              <option value="__sin__">Sin proveedor</option>
+              {(proveedores as any[]).map((pr: any) => (
+                <option key={pr.id} value={pr.id}>{pr.nombre}</option>
+              ))}
+            </select>
+            {(filterCat || filterUbic || filterEstado || filterProv) && (
+              <button onClick={() => { setFilterCat(''); setFilterUbic(''); setFilterEstado(''); setFilterProv('') }}
+                className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors px-2 py-1.5 rounded-lg">
+                × Limpiar filtros
+              </button>
+            )}
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">

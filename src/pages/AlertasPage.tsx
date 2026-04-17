@@ -1,6 +1,6 @@
 // ─── AlertasPage ──────────────────────────────────────────────────────────────
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
@@ -66,6 +66,40 @@ export default function AlertasPage() {
   })
 
   // Clientes con saldo pendiente (ventas pendientes/reservadas con deuda)
+  const { data: lineasSinUbicacion = [], isLoading: loadingSinUbic } = useQuery({
+    queryKey: ['lineas-sin-ubicacion', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('inventario_lineas')
+        .select('id, lpn, nro_lote, cantidad, productos(nombre, sku)')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .is('ubicacion_id', null)
+        .gt('cantidad', 0)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  const { data: lineasSinProveedor = [], isLoading: loadingSinProv } = useQuery({
+    queryKey: ['lineas-sin-proveedor', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('inventario_lineas')
+        .select('id, lpn, nro_lote, cantidad, productos(nombre, sku)')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .is('proveedor_id', null)
+        .gt('cantidad', 0)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
   const { data: clientesConDeuda = [], isLoading: loadingDeuda } = useQuery({
     queryKey: ['clientes-con-deuda', tenant?.id],
     queryFn: async () => {
@@ -104,8 +138,8 @@ export default function AlertasPage() {
     },
   })
 
-  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length
-  const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda
+  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length + lineasSinUbicacion.length + lineasSinProveedor.length
+  const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda || loadingSinUbic || loadingSinProv
 
   return (
     <div className="space-y-6">
@@ -241,6 +275,78 @@ export default function AlertasPage() {
                     className="text-xs bg-yellow-500 dark:bg-yellow-600 text-white px-3 py-1.5 rounded-lg hover:bg-yellow-600 dark:hover:bg-yellow-700 transition-all whitespace-nowrap flex-shrink-0"
                   >
                     Ver ficha
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Inventario sin ubicación */}
+          {lineasSinUbicacion.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                <MapPin size={14} />
+                Inventario sin ubicación ({lineasSinUbicacion.length} LPN{lineasSinUbicacion.length !== 1 ? 's' : ''})
+              </h2>
+              {lineasSinUbicacion.map((l: any) => (
+                <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-purple-100 dark:border-purple-900/30 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <MapPin size={18} className="text-purple-500 dark:text-purple-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">
+                        {l.productos?.nombre ?? 'Producto desconocido'}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {l.productos?.sku && `SKU: ${l.productos.sku} · `}
+                        {l.lpn ? `LPN: ${l.lpn}` : 'Sin LPN'}
+                        {l.nro_lote && ` · Lote: ${l.nro_lote}`}
+                        {` · Cant: ${l.cantidad}`}
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    to="/inventario"
+                    className="text-xs bg-purple-500 dark:bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-600 dark:hover:bg-purple-700 transition-all whitespace-nowrap flex-shrink-0"
+                  >
+                    Ir a inventario
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Inventario sin proveedor */}
+          {lineasSinProveedor.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                <Truck size={14} />
+                Inventario sin proveedor ({lineasSinProveedor.length} LPN{lineasSinProveedor.length !== 1 ? 's' : ''})
+              </h2>
+              {lineasSinProveedor.map((l: any) => (
+                <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-teal-100 dark:border-teal-900/30 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-teal-100 dark:bg-teal-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Truck size={18} className="text-teal-500 dark:text-teal-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">
+                        {l.productos?.nombre ?? 'Producto desconocido'}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {l.productos?.sku && `SKU: ${l.productos.sku} · `}
+                        {l.lpn ? `LPN: ${l.lpn}` : 'Sin LPN'}
+                        {l.nro_lote && ` · Lote: ${l.nro_lote}`}
+                        {` · Cant: ${l.cantidad}`}
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    to="/inventario"
+                    className="text-xs bg-teal-500 dark:bg-teal-600 text-white px-3 py-1.5 rounded-lg hover:bg-teal-600 dark:hover:bg-teal-700 transition-all whitespace-nowrap flex-shrink-0"
+                  >
+                    Ir a inventario
                   </Link>
                 </div>
               ))}

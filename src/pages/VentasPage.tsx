@@ -378,7 +378,7 @@ export default function VentasPage() {
       const grupoActivo2 = ventaGrupoId === 'todos' ? null : ventaGrupoId ? grupos.find(g => g.id === ventaGrupoId) : grupoDefault
       const estadosFiltro2 = grupoActivo2?.estado_ids ?? []
       let lq = supabase.from('inventario_lineas')
-        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
       if (estadosFiltro2.length > 0) lq = lq.in('estado_id', estadosFiltro2)
       const { data: lineasRaw2 } = await lq
@@ -390,6 +390,7 @@ export default function VentasPage() {
         lpn: l.lpn ?? null,
         cantidad: l.cantidad,
         cantidad_reservada: l.cantidad_reservada ?? 0,
+        ubicacion: (l.ubicaciones as any)?.nombre ?? null,
       }))
       lpnFuentes = calcularLpnFuentes(lineasDisponibles, 1)
       primaryLineaId = lpnFuentes[0]?.linea_id
@@ -433,12 +434,39 @@ export default function VentasPage() {
       toast.error(`No se encontró ningún producto con código "${code}"`)
       return
     }
-    // Calcular stock_disponible antes de agregar
-    const p = { ...prods[0], stock_disponible: prods[0].stock_actual }
+    // Calcular stock_disponible real (descuenta reservas) igual que el query de búsqueda
+    const prod = prods[0]
+    const { data: lineasScan } = await supabase.from('inventario_lineas')
+      .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
+      .eq('tenant_id', tenant!.id).eq('producto_id', prod.id).eq('activo', true)
+    let stockDisponibleScan = 0
+    for (const l of lineasScan ?? []) {
+      if ((l.ubicaciones as any)?.disponible_surtido === false) continue
+      const seriesArr = (l.inventario_series ?? []) as any[]
+      if (seriesArr.length > 0) {
+        stockDisponibleScan += seriesArr.filter((s: any) => s.activo && !s.reservado).length
+      } else {
+        stockDisponibleScan += Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0))
+      }
+    }
+    const p = { ...prod, stock_disponible: stockDisponibleScan }
     await agregarProducto(p)
   }
 
   const updateItem = (idx: number, field: keyof CartItem, value: any) => {
+    // Validar stock disponible antes de actualizar cantidad
+    if (field === 'cantidad' && typeof value === 'number' && value > 0) {
+      const item = cart[idx]
+      if (item && !item.tiene_series && item.lineas_disponibles) {
+        const maxDisp = item.lineas_disponibles.reduce(
+          (sum, l) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0
+        )
+        if (value > maxDisp) {
+          toast.error(`Stock máximo disponible: ${maxDisp}`)
+          value = maxDisp
+        }
+      }
+    }
     setCart(prev => prev.map((item, i) => {
       if (i !== idx) return item
       const updated = { ...item, [field]: value }
@@ -714,6 +742,12 @@ export default function VentasPage() {
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
               .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
             const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            // Pre-flight: verificar stock disponible real antes de reservar
+            const stockDisp = lineas.reduce((sum: number, l: any) =>
+              sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
+            if (stockDisp < cant) {
+              throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
+            }
             let restante = cant
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -730,10 +764,19 @@ export default function VentasPage() {
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
               .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
             const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            // Pre-flight: verificar stock disponible real antes de rebajar
+            const stockDisp = lineas.reduce((sum: number, l: any) =>
+              sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
+            if (stockDisp < cant) {
+              throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
+            }
             let restante = cant
             for (const linea of lineas) {
               if (restante <= 0) break
-              const rebajar = Math.min(linea.cantidad, restante)
+              // CRÍTICO: descontar solo del stock disponible (no del reservado para otras ventas)
+              const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
+              const rebajar = Math.min(disponible, restante)
+              if (rebajar <= 0) continue
               const nuevaCant = linea.cantidad - rebajar
               await supabase.from('inventario_lineas')
                 .update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
@@ -805,23 +848,23 @@ export default function VentasPage() {
           usuario_id: user?.id,
         }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
       }
-      // Registros informativos para medios no-efectivo (no afectan saldo)
-      const totalNoCash = total - montoEfectivoCaja
-      // Usar sesionCajaId explícita o primera sesión disponible como fallback
+      // Registros informativos para medios no-efectivo — un insert por método (no afectan saldo)
       const sesionInformativo = sesionCajaId ?? ((sesionesAbiertas as any[])[0]?.id ?? null)
-      if (estado === 'despachada' && sesionInformativo && totalNoCash > 0.01) {
-        const tiposNoCash = [...new Set(
-          mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo' && m.tipo !== '').map(m => m.tipo)
-        )].join(' + ')
-        const { error: errInfo } = await supabase.from('caja_movimientos').insert({
-          tenant_id: tenant!.id,
-          sesion_id: sesionInformativo,
-          tipo: 'ingreso_informativo',
-          concepto: `[${tiposNoCash || 'No efectivo'}] Venta #${venta.numero}`,
-          monto: totalNoCash,
-          usuario_id: user?.id,
-        })
-        if (errInfo) console.error('[caja] ingreso_informativo error:', errInfo)
+      if (estado === 'despachada' && sesionInformativo) {
+        for (const mp of mediosPago) {
+          if (!mp.tipo || mp.tipo === 'Efectivo' || !mp.tipo.trim()) continue
+          const montoMp = parseFloat(mp.monto) || 0
+          if (montoMp <= 0.01) continue
+          const { error: errInfo } = await supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id,
+            sesion_id: sesionInformativo,
+            tipo: 'ingreso_informativo',
+            concepto: `[${mp.tipo}] Venta #${venta.numero}`,
+            monto: montoMp,
+            usuario_id: user?.id,
+          })
+          if (errInfo) console.error('[caja] ingreso_informativo error:', errInfo)
+        }
       }
       // Seña en caja: registrar efectivo cobrado al crear la reserva (fire-and-forget)
       if (estado === 'reservada' && montoEfectivoCaja > 0 && sesionCajaId) {
@@ -834,19 +877,18 @@ export default function VentasPage() {
           usuario_id: user?.id,
         }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
       }
-      // Seña no-efectivo: registrar como ingreso_informativo (fire-and-forget)
+      // Seña no-efectivo: un ingreso_informativo por método (fire-and-forget)
       if (estado === 'reservada' && sesionCajaId) {
-        const totalNoCashSena = total - montoEfectivoCaja
-        if (totalNoCashSena > 0.01) {
-          const tiposNoCash = [...new Set(
-            mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo' && m.tipo !== '').map(m => m.tipo)
-          )].join(' + ')
+        for (const mp of mediosPago) {
+          if (!mp.tipo || mp.tipo === 'Efectivo' || !mp.tipo.trim()) continue
+          const montoMp = parseFloat(mp.monto) || 0
+          if (montoMp <= 0.01) continue
           void supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id,
             sesion_id: sesionCajaId,
             tipo: 'ingreso_informativo',
-            concepto: `[${tiposNoCash || 'No efectivo'}] Seña Venta #${venta.numero}`,
-            monto: totalNoCashSena,
+            concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`,
+            monto: montoMp,
             usuario_id: user?.id,
           })
         }
@@ -1318,26 +1360,28 @@ export default function VentasPage() {
                 usuario_id: user?.id,
               })
             }
-            // No-efectivo: saldo cobrado ahora + no-efectivo original de la reserva
-            const noCashSaldoItems = (saldoMediosPago ?? []).filter(m => m.tipo && m.tipo !== 'Efectivo' && parseFloat(m.monto) > 0)
-            const noCashSaldoTotal = noCashSaldoItems.reduce((s, m) => s + parseFloat(m.monto), 0)
+            // No-efectivo: un insert por método (saldo cobrado ahora + no-efectivo original de reserva)
             const prevArr: { tipo: string; monto: number }[] = venta.medio_pago ? (() => { try { return JSON.parse(venta.medio_pago) } catch { return [] } })() : []
-            // Non-cash original de reserva solo si ya fue registrado como ingreso_informativo (si no hubo sesión al reservar, no está en caja)
-            const noCashOriginalTotal = senaEnCaja
-              ? prevArr.filter(m => m.tipo !== 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
-              : 0
-            const noCashTotal = noCashSaldoTotal + noCashOriginalTotal
-            if (noCashTotal > 0.01) {
-              const tiposNoCash = [...new Set([
-                ...noCashSaldoItems.map(m => m.tipo),
-                ...(senaEnCaja ? prevArr.filter(m => m.tipo !== 'Efectivo').map(m => m.tipo) : []),
-              ].filter(Boolean))].join(' + ')
+            // Acumular por tipo: saldo nuevo + original (si seña fue registrada en caja)
+            const noCashMap: Record<string, number> = {}
+            for (const m of (saldoMediosPago ?? [])) {
+              if (!m.tipo || m.tipo === 'Efectivo') continue
+              const monto = parseFloat(m.monto) || 0
+              if (monto > 0) noCashMap[m.tipo] = (noCashMap[m.tipo] ?? 0) + monto
+            }
+            if (senaEnCaja) {
+              for (const m of prevArr.filter(m => m.tipo !== 'Efectivo')) {
+                noCashMap[m.tipo] = (noCashMap[m.tipo] ?? 0) + (m.monto ?? 0)
+              }
+            }
+            for (const [tipo, monto] of Object.entries(noCashMap)) {
+              if (monto <= 0.01) continue
               void supabase.from('caja_movimientos').insert({
                 tenant_id: tenant!.id,
                 sesion_id: _sesionId,
                 tipo: 'ingreso_informativo',
-                concepto: `[${tiposNoCash || 'No efectivo'}] Venta #${venta.numero}`,
-                monto: noCashTotal,
+                concepto: `[${tipo}] Venta #${venta.numero}`,
+                monto,
                 usuario_id: user?.id,
               })
             }
@@ -1594,8 +1638,10 @@ export default function VentasPage() {
                             {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
                               <>
                                 {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
-                                  <span key={fi} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                                  <span key={fi} title={f.ubicacion ? `Ubicación: ${f.ubicacion}` : undefined}
+                                    className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
                                     {f.lpn ?? 'Sin LPN'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
+                                    {f.ubicacion && <span className="text-blue-400 dark:text-blue-500"> · {f.ubicacion}</span>}
                                   </span>
                                 ))}
                                 {item.lpn_fuentes.length > 3 && (

@@ -266,6 +266,9 @@ export default function CajaPage() {
   const puedeAdministrarCaja = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
   // B2: CAJERO puede abrir 1 caja, pero no más de una simultáneamente
   const puedeAbrirCaja = puedeAdministrarCaja || misSesionesAbiertas.length === 0
+  // CAJERO no puede ver el contenido de cajas abiertas por otro usuario
+  const esCajero = user?.rol === 'CAJERO'
+  const cajaAjenaBloqueada = esCajero && esOtroUsuario
 
   // Mutations
   const abrirCaja = useMutation({
@@ -655,6 +658,20 @@ export default function CajaPage() {
                   )}
                 </div>
               )}
+            </div>
+          ) : cajaAjenaBloqueada ? (
+            /* Caja abierta por otro usuario — CAJERO no puede ver contenido */
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-amber-200 dark:border-amber-800/50 space-y-3 text-center">
+              <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto">
+                <Lock size={22} className="text-amber-500 dark:text-amber-400" />
+              </div>
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Caja abierta por otro usuario</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                <span className="font-medium text-gray-700 dark:text-gray-300">{abrioNombre ?? 'Otro usuario'}</span> tiene esta caja abierta.
+              </p>
+              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-xl px-3 py-2">
+                No tenés permisos para ver el contenido de esta caja. Solo el dueño o un supervisor pueden verla.
+              </p>
             </div>
           ) : (
             /* Caja abierta */

@@ -98,7 +98,7 @@
     <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Reportes</span>
     <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Alertas IA</span>
   </div>
-  <div class="version">Versión del documento: Draft v1.1 — Abril 2026 · App v0.57.0</div>
+  <div class="version">Versión del documento: Draft v1.2 — Abril 2026 · App v0.75.0</div>
   <div class="meta">Genesis360 · app.genesis360.pro · Confidencial</div>
 </div>
 
@@ -502,9 +502,56 @@
 <div class="section page-break">
   <h2>5. Roadmap</h2>
 
-  <p style="margin-bottom:16px;font-size:10pt;color:#555;"><em>Documento actualizado a v0.57.0 · Abril 2026. Las features marcadas ✅ ya están implementadas en PROD.</em></p>
+  <p style="margin-bottom:16px;font-size:10pt;color:#555;"><em>Documento actualizado a v0.75.0 · Abril 2026. Las features marcadas ✅ ya están implementadas en PROD.</em></p>
 
-  <h3>Implementado recientemente (v0.52–v0.57)</h3>
+  <h3>Implementado recientemente (v0.74–v0.75)</h3>
+
+  <div class="module-card">
+    <h4>Fix overselling crítico ✅ (v0.75.0)</h4>
+    <ul>
+      <li>Rebaje ahora descuenta <code>cantidad_reservada</code> correctamente (antes ignoraba reservas activas)</li>
+      <li>Pre-flight validation: error antes de intentar el rebaje si stock insuficiente</li>
+      <li>Cart: cantidad máxima en carrito limitada al stock real disponible</li>
+      <li>Barcode scan: usa stock disponible real (no stock_actual de DB)</li>
+      <li>DB-level safety net: CHECK constraints en <code>inventario_lineas</code> (migration 047)</li>
+      <li>RPC <code>stock_disponible_producto()</code> SECURITY DEFINER para validaciones externas</li>
+    </ul>
+    <span class="badge badge-red">Crítico</span> <span class="badge badge-purple">Implementado</span>
+  </div>
+
+  <div class="module-card">
+    <h4>Nuevas alertas y filtros de inventario ✅ (v0.75.0)</h4>
+    <ul>
+      <li>AlertasPage: sección violeta "LPNs sin ubicación asignada" — líneas activas sin <code>ubicacion_id</code></li>
+      <li>AlertasPage: sección teal "LPNs sin proveedor asignado" — líneas activas sin <code>proveedor_id</code></li>
+      <li>InventarioPage: filtros por categoría / ubicación / estado / proveedor</li>
+      <li>Filtro especial <code>__sin__</code> muestra solo ítems sin X asignado en cada dimensión</li>
+    </ul>
+    <span class="badge badge-purple">Implementado</span>
+  </div>
+
+  <div class="module-card">
+    <h4>Mejoras Caja y Ventas ✅ (v0.74.x–v0.75.0)</h4>
+    <ul>
+      <li>CAJERO: ve cajas abiertas por otros usuarios (nombre + punto verde) pero sin acceso al contenido</li>
+      <li>Caja: totales por método de pago corregidos — un registro por método (antes combinados)</li>
+      <li>Carrito: badge LPN muestra nombre de ubicación en azul claro junto al LPN</li>
+      <li>Reporte "Ficha de productos": 20 campos completos exportable en xlsx/PDF</li>
+    </ul>
+    <span class="badge badge-purple">Implementado</span>
+  </div>
+
+  <div class="module-card">
+    <h4>Conversión de unidades de medida (v0.75.0)</h4>
+    <ul>
+      <li><code>src/lib/unidades.ts</code>: helper para conversiones internas kg↔gr, lt↔ml</li>
+      <li><code>convertirUnidad(cantidad, desde, hasta)</code> → retorna null si no hay conversión disponible</li>
+      <li>Pendiente: integrar en UI de movimientos e ingreso de cantidades</li>
+    </ul>
+    <span class="badge badge-amber">En progreso</span>
+  </div>
+
+  <h3>Implementado anteriormente (v0.52–v0.57)</h3>
 
   <div class="module-card">
     <h4>Mejoras en Clientes y Ventas ✅</h4>

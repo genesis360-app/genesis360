@@ -23,7 +23,7 @@ import type { Producto, KitReceta } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 
-type Tab = 'movimientos' | 'inventario' | 'kits'
+type Tab = 'inventario' | 'agregar' | 'quitar' | 'historial' | 'kits'
 type ModalType = 'ingreso' | 'rebaje' | null
 
 const emptyIngreso = {
@@ -72,7 +72,6 @@ export default function InventarioPage() {
 
   // ── Movimientos tab state ──────────────────────────────────────────────────
   const [modal, setModal] = useState<ModalType>(null)
-  const [movTab, setMovTab] = useState<'ingresos' | 'egresos'>('ingresos')
   const [masivoModal, setMasivoModal] = useState<MasivoTipo | null>(null)
   const [movSearch, setMovSearch] = useState('')
   const [movScannerOpen, setMovScannerOpen] = useState(false)
@@ -683,8 +682,8 @@ export default function InventarioPage() {
   const filteredMov = movimientos.filter(m => {
     const tipo = (m as any).tipo as string
     const esIngreso = tipo === 'ingreso' || tipo === 'kitting'
-    if (movTab === 'ingresos' && !esIngreso) return false
-    if (movTab === 'egresos' && esIngreso) return false
+    if (tab === 'agregar' && !esIngreso) return false
+    if (tab === 'quitar' && esIngreso) return false
     if (!movSearch) return true
     const s = movSearch.toLowerCase()
     return (m as any).productos?.nombre?.toLowerCase().includes(s) ||
@@ -771,59 +770,62 @@ export default function InventarioPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary">Inventario</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
-            {tab === 'movimientos' ? 'Registro de ingresos y rebajes' : 'Líneas de stock y LPNs'}
+            {tab === 'inventario' ? 'Líneas de stock y LPNs' :
+             tab === 'agregar' ? 'Ingresá mercadería al stock' :
+             tab === 'quitar' ? 'Rebajá o ajustá el stock' :
+             tab === 'historial' ? 'Registro de todos los movimientos' :
+             'Armado y desarmado de kits'}
           </p>
         </div>
-        {tab === 'movimientos' && (
+        {tab === 'agregar' && (
           <div className="flex flex-wrap gap-2">
-            {movTab === 'ingresos' ? (
-              <>
-                <button onClick={() => setModal('ingreso')} disabled={limiteAlcanzado}
-                  className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  <ArrowDown size={16} /> Ingreso
-                </button>
-                <button onClick={() => setMasivoModal('ingreso')} disabled={limiteAlcanzado}
-                  className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Ingreso de múltiples SKUs">
-                  <ArrowDown size={16} /> Masivo
-                </button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => setModal('rebaje')} disabled={limiteAlcanzado}
-                  className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  <ArrowUp size={16} /> Rebaje
-                </button>
-                <button onClick={() => setMasivoModal('rebaje')} disabled={limiteAlcanzado}
-                  className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Rebaje de múltiples SKUs">
-                  <ArrowUp size={16} /> Masivo
-                </button>
-              </>
-            )}
+            <button onClick={() => setModal('ingreso')} disabled={limiteAlcanzado}
+              className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              <ArrowDown size={16} /> Ingreso
+            </button>
+            <button onClick={() => setMasivoModal('ingreso')} disabled={limiteAlcanzado}
+              className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Ingreso de múltiples SKUs">
+              <ArrowDown size={16} /> Masivo
+            </button>
+          </div>
+        )}
+        {tab === 'quitar' && (
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setModal('rebaje')} disabled={limiteAlcanzado}
+              className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              <ArrowUp size={16} /> Rebaje
+            </button>
+            <button onClick={() => setMasivoModal('rebaje')} disabled={limiteAlcanzado}
+              className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Rebaje de múltiples SKUs">
+              <ArrowUp size={16} /> Masivo
+            </button>
           </div>
         )}
       </div>
 
       {/* Tabs + vista toggle */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
+        <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto">
           {([
-            { id: 'movimientos' as const, label: 'Movimientos' },
             { id: 'inventario' as const, label: 'Inventario' },
+            { id: 'agregar' as const, label: 'Agregar stock' },
+            { id: 'quitar' as const, label: 'Quitar stock' },
+            { id: 'historial' as const, label: 'Historial' },
             { id: 'kits' as const, label: 'Kits' },
           ]).map(({ id, label }) => (
             <button key={id} onClick={() => setTab(id)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all
+              className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
                 ${tab === id
-                  ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                  ? 'border-accent text-accent'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
               {label}
             </button>
           ))}
         </div>
         {tab === 'inventario' && (
-          <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 flex-shrink-0">
+          <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 flex-shrink-0 mb-px">
             <button onClick={() => setInvVista('producto')} title="Por producto"
               className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'producto' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
               <LayoutList size={15} />
@@ -836,11 +838,11 @@ export default function InventarioPage() {
         )}
       </div>
 
-      {/* ════════════════════════ TAB: MOVIMIENTOS ════════════════════════ */}
-      {tab === 'movimientos' && (
+      {/* ═══════════ TABS: AGREGAR / QUITAR / HISTORIAL ═══════════════════ */}
+      {(tab === 'agregar' || tab === 'quitar' || tab === 'historial') && (
         <>
-          {/* Barra de uso de movimientos */}
-          {limits && (
+          {/* Barra de uso de movimientos — solo en agregar/quitar */}
+          {tab !== 'historial' && limits && (
             <PlanProgressBar
               actual={limits.movimientos_mes}
               max={limits.max_movimientos}
@@ -848,24 +850,6 @@ export default function InventarioPage() {
               addonInfo={limits.addon_movimientos > 0 ? `(incluye ${limits.addon_movimientos} extra)` : undefined}
             />
           )}
-
-          {/* Sub-tabs Ingresos / Egresos */}
-          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
-            <button onClick={() => setMovTab('ingresos')}
-              className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
-                ${movTab === 'ingresos'
-                  ? 'border-accent text-accent'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-              <ArrowDown size={14} /> Ingresos
-            </button>
-            <button onClick={() => setMovTab('egresos')}
-              className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
-                ${movTab === 'egresos'
-                  ? 'border-accent text-accent'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-              <ArrowUp size={14} /> Egresos
-            </button>
-          </div>
 
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />

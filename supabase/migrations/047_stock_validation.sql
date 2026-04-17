@@ -6,6 +6,11 @@
 
 -- 1. Impedir cantidad negativa en inventario_lineas
 ALTER TABLE public.inventario_lineas
+  DROP CONSTRAINT IF EXISTS chk_cantidad_no_negativa,
+  DROP CONSTRAINT IF EXISTS chk_cantidad_mayor_o_igual_reservada,
+  DROP CONSTRAINT IF EXISTS chk_cantidad_reservada_no_negativa;
+
+ALTER TABLE public.inventario_lineas
   ADD CONSTRAINT chk_cantidad_no_negativa
   CHECK (cantidad >= 0);
 

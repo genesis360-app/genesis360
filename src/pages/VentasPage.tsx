@@ -183,23 +183,13 @@ export default function VentasPage() {
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
 
-  // Evita agregar la misma SKU dos veces en scans rápidos (stale closure fix)
-  const pendingAddRef = useRef(new Set<string>())
+  // Cola de scans para procesar secuencialmente (evita duplicados por concurrencia)
+  const scanQueueRef = useRef<string[]>([])
+  const scanProcessingRef = useRef(false)
 
   // Pre-guardado del carrito en localStorage
   const cartDraftKey = tenant?.id ? `carrito_draft_${tenant.id}` : null
-  useEffect(() => {
-    if (!cartDraftKey) return
-    if (cart.length === 0 && !clienteId) { localStorage.removeItem(cartDraftKey); return }
-    const draft = {
-      cart: cart.map(({ lineas_disponibles: _ld, series_disponibles: _sd, ...rest }) => rest),
-      clienteId, clienteNombre, clienteTelefono,
-      mediosPago, notas, modoVenta, descuentoTotal, descuentoTotalTipo,
-    }
-    localStorage.setItem(cartDraftKey, JSON.stringify(draft))
-  }, [cart, clienteId, clienteNombre, clienteTelefono, mediosPago, notas, modoVenta, descuentoTotal, descuentoTotalTipo, cartDraftKey])
-
-  // Restaurar carrito al montar (solo una vez)
+  // Restaurar primero (antes del efecto de guardar) — orden de declaración importa
   const restoredRef = useRef(false)
   useEffect(() => {
     if (!cartDraftKey || restoredRef.current) return
@@ -220,6 +210,18 @@ export default function VentasPage() {
       }
     } catch { localStorage.removeItem(cartDraftKey) }
   }, [cartDraftKey])
+  // Guardar solo cuando hay contenido (nunca borrar aquí — el delete va en sale completion)
+  useEffect(() => {
+    if (!cartDraftKey || !restoredRef.current) return
+    if (cart.length === 0 && !clienteId) return
+    const draft = {
+      cart: cart.map(({ lineas_disponibles: _ld, series_disponibles: _sd, ...rest }) => rest),
+      clienteId, clienteNombre, clienteTelefono,
+      mediosPago, notas, modoVenta, descuentoTotal, descuentoTotalTipo,
+    }
+    localStorage.setItem(cartDraftKey, JSON.stringify(draft))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, clienteId, clienteNombre, clienteTelefono, mediosPago, notas, modoVenta, descuentoTotal, descuentoTotalTipo])
 
   // Foco en buscador de productos
   const [searchFocused, setSearchFocused] = useState(false)
@@ -374,19 +376,14 @@ export default function VentasPage() {
       return
     }
 
-    // Si ya está en el carrito O se está procesando (scan rápido), incrementar
+    // Si ya está en el carrito, incrementar
     const totalEnCarrito = cart.filter(c => c.producto_id === p.id).reduce((a, c) => a + c.cantidad, 0)
-    const isPending = pendingAddRef.current.has(p.id)
-    if (totalEnCarrito > 0 || isPending) {
+    if (totalEnCarrito > 0) {
       if (totalEnCarrito >= stockDisponible) { toast.error(`Stock disponible: ${stockDisponible}`); return }
-      setCart(prev => {
-        const idx = prev.findIndex(c => c.producto_id === p.id)
-        if (idx < 0) return prev
-        return prev.map((c, i) => i === idx ? { ...c, cantidad: c.cantidad + 1 } : c)
-      })
+      const idx = cart.findIndex(c => c.producto_id === p.id)
+      setCart(prev => prev.map((c, i) => i === idx ? { ...c, cantidad: c.cantidad + 1 } : c))
       return
     }
-    pendingAddRef.current.add(p.id)
 
     // Si tiene series, cargar líneas disponibles (filtrando por grupo si aplica)
     let seriesDisp: any[] = []
@@ -465,10 +462,7 @@ export default function VentasPage() {
       series_seleccionadas: [],
       series_disponibles: seriesDisp,
     }
-    setCart(prev => {
-      pendingAddRef.current.delete(p.id)
-      return [...prev, newItem]
-    })
+    setCart(prev => [...prev, newItem])
   }
 
   const overrideLpnSource = (cartIdx: number, lineaId: string) => {
@@ -483,20 +477,13 @@ export default function VentasPage() {
     setLpnPickerIdx(null)
   }
 
-  const handleBarcodeScan = async (code: string) => {
-    // No cierra el scanner — modo POS persistente
-    // Buscar por codigo_barras o SKU exacto
+  const procesarScan = async (code: string) => {
     const { data: prods } = await supabase.from('productos')
       .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva')
       .eq('tenant_id', tenant!.id).eq('activo', true)
       .or(`codigo_barras.eq.${code},sku.eq.${code}`)
       .limit(1)
-
-    if (!prods || prods.length === 0) {
-      toast.error(`No se encontró ningún producto con código "${code}"`)
-      return
-    }
-    // Calcular stock_disponible real (descuenta reservas) igual que el query de búsqueda
+    if (!prods || prods.length === 0) { toast.error(`No se encontró ningún producto con código "${code}"`); return }
     const prod = prods[0]
     const { data: lineasScan } = await supabase.from('inventario_lineas')
       .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
@@ -511,8 +498,22 @@ export default function VentasPage() {
         stockDisponibleScan += Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0))
       }
     }
-    const p = { ...prod, stock_disponible: stockDisponibleScan }
-    await agregarProducto(p)
+    await agregarProducto({ ...prod, stock_disponible: stockDisponibleScan })
+  }
+
+  const handleBarcodeScan = (code: string) => {
+    // Encola el scan — procesa uno a la vez para evitar duplicados por concurrencia
+    scanQueueRef.current.push(code)
+    if (scanProcessingRef.current) return
+    scanProcessingRef.current = true
+    const processNext = async () => {
+      while (scanQueueRef.current.length > 0) {
+        const next = scanQueueRef.current.shift()!
+        await procesarScan(next)
+      }
+      scanProcessingRef.current = false
+    }
+    processNext()
   }
 
   const updateItem = (idx: number, field: keyof CartItem, value: any) => {

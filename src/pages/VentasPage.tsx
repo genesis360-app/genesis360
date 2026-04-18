@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react'
+import { useSearchParams, Link } from 'react-router-dom'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -146,6 +146,9 @@ export default function VentasPage() {
   const [filterEstado, setFilterEstado] = useState<EstadoVenta | ''>('')
   const [filterCategoria, setFilterCategoria] = useState<string>('')
   const [ventaDetalle, setVentaDetalle] = useState<any | null>(null)
+  const [ventasLimit, setVentasLimit] = useState(50)
+  // Resetear paginación cuando cambian los filtros
+  useEffect(() => { setVentasLimit(50) }, [filterEstado, sucursalId])
 
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
@@ -179,6 +182,44 @@ export default function VentasPage() {
   useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
+
+  // Evita agregar la misma SKU dos veces en scans rápidos (stale closure fix)
+  const pendingAddRef = useRef(new Set<string>())
+
+  // Pre-guardado del carrito en localStorage
+  const cartDraftKey = tenant?.id ? `carrito_draft_${tenant.id}` : null
+  useEffect(() => {
+    if (!cartDraftKey) return
+    if (cart.length === 0 && !clienteId) { localStorage.removeItem(cartDraftKey); return }
+    const draft = {
+      cart: cart.map(({ lineas_disponibles: _ld, series_disponibles: _sd, ...rest }) => rest),
+      clienteId, clienteNombre, clienteTelefono,
+      mediosPago, notas, modoVenta, descuentoTotal, descuentoTotalTipo,
+    }
+    localStorage.setItem(cartDraftKey, JSON.stringify(draft))
+  }, [cart, clienteId, clienteNombre, clienteTelefono, mediosPago, notas, modoVenta, descuentoTotal, descuentoTotalTipo, cartDraftKey])
+
+  // Restaurar carrito al montar (solo una vez)
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (!cartDraftKey || restoredRef.current) return
+    restoredRef.current = true
+    const raw = localStorage.getItem(cartDraftKey)
+    if (!raw) return
+    try {
+      const draft = JSON.parse(raw)
+      if (draft.cart?.length > 0) {
+        setCart(draft.cart.map((item: any) => ({ ...item, lineas_disponibles: [], series_disponibles: [] })))
+        if (draft.clienteId) { setClienteId(draft.clienteId); setClienteNombre(draft.clienteNombre ?? ''); setClienteTelefono(draft.clienteTelefono ?? '') }
+        if (draft.mediosPago) setMediosPago(draft.mediosPago)
+        if (draft.notas) setNotas(draft.notas)
+        if (draft.modoVenta) setModoVenta(draft.modoVenta)
+        if (draft.descuentoTotal) setDescuentoTotal(draft.descuentoTotal)
+        if (draft.descuentoTotalTipo) setDescuentoTotalTipo(draft.descuentoTotalTipo)
+        toast('🛒 Se recuperó tu carrito anterior', { duration: 4000 })
+      }
+    } catch { localStorage.removeItem(cartDraftKey) }
+  }, [cartDraftKey])
 
   // Foco en buscador de productos
   const [searchFocused, setSearchFocused] = useState(false)
@@ -291,10 +332,10 @@ export default function VentasPage() {
   })
 
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
-    queryKey: ['ventas', tenant?.id, filterEstado, sucursalId],
+    queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit],
     queryFn: async () => {
       let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
-        .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
+        .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(ventasLimit)
       if (filterEstado) q = q.eq('estado', filterEstado)
       q = applyFilter(q)
       const { data, error } = await q
@@ -333,14 +374,19 @@ export default function VentasPage() {
       return
     }
 
-    // Si ya está en el carrito, incrementar (sumando todas las filas del mismo producto)
+    // Si ya está en el carrito O se está procesando (scan rápido), incrementar
     const totalEnCarrito = cart.filter(c => c.producto_id === p.id).reduce((a, c) => a + c.cantidad, 0)
-    if (totalEnCarrito > 0) {
+    const isPending = pendingAddRef.current.has(p.id)
+    if (totalEnCarrito > 0 || isPending) {
       if (totalEnCarrito >= stockDisponible) { toast.error(`Stock disponible: ${stockDisponible}`); return }
-      const idx = cart.findIndex(c => c.producto_id === p.id)
-      setCart(prev => prev.map((c, i) => i === idx ? { ...c, cantidad: c.cantidad + 1 } : c))
+      setCart(prev => {
+        const idx = prev.findIndex(c => c.producto_id === p.id)
+        if (idx < 0) return prev
+        return prev.map((c, i) => i === idx ? { ...c, cantidad: c.cantidad + 1 } : c)
+      })
       return
     }
+    pendingAddRef.current.add(p.id)
 
     // Si tiene series, cargar líneas disponibles (filtrando por grupo si aplica)
     let seriesDisp: any[] = []
@@ -419,7 +465,10 @@ export default function VentasPage() {
       series_seleccionadas: [],
       series_disponibles: seriesDisp,
     }
-    setCart(prev => [...prev, newItem])
+    setCart(prev => {
+      pendingAddRef.current.delete(p.id)
+      return [...prev, newItem]
+    })
   }
 
   const overrideLpnSource = (cartIdx: number, lineaId: string) => {
@@ -911,6 +960,7 @@ export default function VentasPage() {
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
+      if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -1514,6 +1564,18 @@ export default function VentasPage() {
       </div>
 
       {/* ── NUEVA VENTA ── */}
+      {tab === 'nueva' && sesionesAbiertas.length === 0 && (
+        <div className="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-xl px-4 py-3">
+          <AlertTriangle size={20} className="text-red-600 dark:text-red-400 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold text-red-700 dark:text-red-400">Caja cerrada</p>
+            <p className="text-sm text-red-600 dark:text-red-500">No podés finalizar ventas ni reservar hasta abrir una caja.</p>
+          </div>
+          <Link to="/caja" className="text-sm font-semibold text-red-700 dark:text-red-400 underline hover:no-underline flex-shrink-0">
+            Ir a Caja →
+          </Link>
+        </div>
+      )}
       {tab === 'nueva' && (
         <div className="grid lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-4">
@@ -1641,7 +1703,7 @@ export default function VentasPage() {
                 <div className="px-4 py-3 border-b border-border-ds bg-page">
                   <h2 className="font-semibold text-primary flex items-center gap-2"><Package size={16} /> {cart.length} producto{cart.length !== 1 ? 's' : ''}</h2>
                 </div>
-                <div className="divide-y divide-gray-200 dark:divide-gray-600">
+                <div className="divide-y divide-gray-200 dark:divide-gray-600 max-h-[45vh] overflow-y-auto">
                   {cart.map((item, idx) => (
                     <div key={idx} className="px-4 py-3">
                       <div className="flex items-start gap-3">
@@ -2177,6 +2239,12 @@ export default function VentasPage() {
                     </div>
                   )
                 })}
+                {ventas.length >= ventasLimit && (
+                  <button onClick={() => setVentasLimit(v => v + 50)}
+                    className="w-full py-3 text-sm text-accent hover:bg-accent/5 transition-colors border-t border-gray-100 dark:border-gray-700">
+                    Cargar más ventas
+                  </button>
+                )}
               </div>
             )}
           </div>

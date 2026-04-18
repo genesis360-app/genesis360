@@ -10,10 +10,17 @@ import { UpgradePrompt } from '@/components/UpgradePrompt'
 import toast from 'react-hot-toast'
 
 // ── Constantes ─────────────────────────────────────────────────────────────
-const UNIDADES_VALIDAS = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
-const MONEDAS_VALIDAS  = ['ARS', 'USD']
+const UNIDADES_VALIDAS  = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
+const MONEDAS_VALIDAS   = ['ARS', 'USD']
+const ALICUOTAS_VALIDAS = [0, 10.5, 21, 27]
+const REGLAS_VALIDAS    = ['FIFO', 'FEFO', 'LEFO', 'LIFO', 'Manual']
 
 type ModoSKU = 'crear' | 'actualizar' | 'ambos'
+
+const parseBool = (val: any): boolean => {
+  const s = String(val ?? '').trim().toUpperCase()
+  return s === 'SI' || s === 'SÍ' || s === 'YES' || s === 'TRUE' || s === '1'
+}
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 interface FilaProducto {
@@ -30,6 +37,16 @@ interface FilaProducto {
   stock_minimo: number
   unidad_medida: string
   descripcion?: string
+  alicuota_iva: number
+  margen_objetivo?: number
+  tiene_series: boolean
+  tiene_lote: boolean
+  tiene_vencimiento: boolean
+  regla_inventario?: string
+  es_kit: boolean
+  estr_unidades_por_caja?: number
+  estr_cajas_por_pallet?: number
+  estr_peso_unidad?: number
   estado: 'nuevo' | 'existente' | 'error'
   errores: string[]
 }
@@ -61,20 +78,57 @@ export default function ImportarProductosPage() {
   })
 
   const descargarPlantillaProductos = () => {
+    // ── Hoja principal ──────────────────────────────────────────────────────
+    const headers = [
+      'nombre','sku','codigo_barras','categoria','proveedor',
+      'precio_costo','precio_costo_moneda','precio_venta','precio_venta_moneda',
+      'stock_minimo','unidad_medida','descripcion',
+      'alicuota_iva','margen_objetivo',
+      'tiene_series','tiene_lote','tiene_vencimiento',
+      'regla_inventario','es_kit',
+      'estr_unidades_por_caja','estr_cajas_por_pallet','estr_peso_unidad',
+    ]
     const ws = XLSX.utils.aoa_to_sheet([
-      ['nombre','sku','codigo_barras','categoria','proveedor','precio_costo','precio_costo_moneda','precio_venta','precio_venta_moneda','stock_minimo','unidad_medida','descripcion'],
-      ['Tornillo hexagonal 1/4"','TORN-0001','7791234567890','Ferretería','Proveedor A',150,'ARS',250,'ARS',10,'unidad','Tornillo de acero inoxidable'],
-      ['Pintura blanca 4L','PINT-0001','','Pinturas','',4.5,'USD',1200,'ARS',5,'litro',''],
+      headers,
+      [
+        'Tornillo hexagonal 1/4"','TORN-0001','7791234567890','Ferretería','Proveedor A',
+        150,'ARS',250,'ARS',
+        10,'unidad','Tornillo de acero inoxidable',
+        21,'',
+        'NO','NO','NO',
+        '','NO',
+        50,4,0.5,
+      ],
+      [
+        'Pintura blanca 4L','PINT-0001','','Pinturas','',
+        4.5,'USD',1200,'ARS',
+        5,'litro','',
+        10.5,35,
+        'NO','NO','NO',
+        'FIFO','NO',
+        '','','',
+      ],
     ])
     const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-    ;['A','B','C','D','E','F','G','H','I','J','K','L'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
-    ws['!cols'] = [{ wch:30 },{ wch:15 },{ wch:18 },{ wch:15 },{ wch:15 },{ wch:14 },{ wch:18 },{ wch:14 },{ wch:18 },{ wch:14 },{ wch:15 },{ wch:30 }]
+    const cols = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V']
+    cols.forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
+    ws['!cols'] = [
+      { wch:30 },{ wch:15 },{ wch:18 },{ wch:15 },{ wch:15 },
+      { wch:14 },{ wch:18 },{ wch:14 },{ wch:18 },
+      { wch:14 },{ wch:15 },{ wch:30 },
+      { wch:13 },{ wch:15 },
+      { wch:14 },{ wch:13 },{ wch:16 },
+      { wch:17 },{ wch:10 },
+      { wch:22 },{ wch:22 },{ wch:16 },
+    ]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Productos')
+
+    // ── Hoja de referencia ──────────────────────────────────────────────────
     const wsRef = XLSX.utils.aoa_to_sheet([
-      ['Campo','Requerido','Notas'],
+      ['Campo','Requerido','Valores / Notas'],
       ['nombre','SÍ','Nombre del producto'],
-      ['sku','SÍ','Identificador único (se autogenera si vacío)'],
+      ['sku','no','Identificador único (se autogenera si vacío)'],
       ['codigo_barras','no','Código EAN/UPC'],
       ['categoria','no','Categoría existente o se crea nueva'],
       ['proveedor','no','Proveedor existente o se crea nuevo'],
@@ -83,11 +137,26 @@ export default function ImportarProductosPage() {
       ['precio_venta','no','Número. Ej: 2500'],
       ['precio_venta_moneda','no','ARS (default) o USD'],
       ['stock_minimo','no','Entero. Ej: 5'],
-      ['unidad_medida','no','unidad/kg/g/litro/ml/metro/cm/caja/pack/docena'],
+      ['unidad_medida','no','unidad / kg / g / litro / ml / metro / cm / caja / pack / docena'],
       ['descripcion','no','Texto libre'],
+      ['','',''],
+      ['── Atributos ──','',''],
+      ['alicuota_iva','no','0 / 10.5 / 21 (default) / 27'],
+      ['margen_objetivo','no','Porcentaje objetivo 0–100. Ej: 35'],
+      ['tiene_series','no','SI o NO (default NO). Activa trazabilidad por N/S'],
+      ['tiene_lote','no','SI o NO (default NO). Activa N° de lote'],
+      ['tiene_vencimiento','no','SI o NO (default NO). Activa fecha de vencimiento'],
+      ['regla_inventario','no','FIFO / FEFO / LEFO / LIFO / Manual (vacío = usa default del negocio)'],
+      ['es_kit','no','SI o NO (default NO). Marca el producto como KIT de kitting'],
+      ['','',''],
+      ['── Estructura (opcional) ──','','Solo completa si necesitás datos de embalaje/logística'],
+      ['estr_unidades_por_caja','no','Cuántas unidades entran en una caja. Ej: 50'],
+      ['estr_cajas_por_pallet','no','Cuántas cajas entran en un pallet. Ej: 4'],
+      ['estr_peso_unidad','no','Peso de la unidad en kg. Ej: 0.5'],
     ])
-    wsRef['!cols'] = [{ wch:22 },{ wch:12 },{ wch:55 }]
+    wsRef['!cols'] = [{ wch:26 },{ wch:12 },{ wch:60 }]
     XLSX.utils.book_append_sheet(wb, wsRef, 'Referencia')
+
     XLSX.writeFile(wb, 'plantilla_productos.xlsx')
   }
 
@@ -114,12 +183,39 @@ export default function ImportarProductosPage() {
           const precio_venta_moneda = String(row.precio_venta_moneda || 'ARS').trim().toUpperCase()
           const unidad = String(row.unidad_medida || 'unidad').trim().toLowerCase()
 
+          // alicuota_iva
+          const ivaRaw = parseFloat(String(row.alicuota_iva || '21').replace(',', '.'))
+          const alicuota_iva = isNaN(ivaRaw) ? 21 : ivaRaw
+          if (row.alicuota_iva !== '' && row.alicuota_iva != null && !ALICUOTAS_VALIDAS.includes(alicuota_iva)) {
+            errores.push(`IVA "${row.alicuota_iva}" inválido (0/10.5/21/27)`)
+          }
+
+          // margen_objetivo
+          const margenStr = String(row.margen_objetivo || '').trim()
+          const margen_objetivo = margenStr ? (parseFloat(margenStr.replace(',', '.')) || undefined) : undefined
+          if (margen_objetivo !== undefined && (margen_objetivo < 0 || margen_objetivo > 100)) {
+            errores.push('Margen objetivo debe ser entre 0 y 100')
+          }
+
+          // regla_inventario
+          const reglaRaw = String(row.regla_inventario || '').trim()
+          const reglaMatch = REGLAS_VALIDAS.find(r => r.toUpperCase() === reglaRaw.toUpperCase())
+          const regla_inventario = reglaRaw ? (reglaMatch ?? undefined) : undefined
+          if (reglaRaw && !reglaMatch) {
+            errores.push(`Regla "${reglaRaw}" inválida (FIFO/FEFO/LEFO/LIFO/Manual)`)
+          }
+
+          // estructura
+          const estr_unidades_por_caja = parseFloat(String(row.estr_unidades_por_caja || '').replace(',', '.')) || undefined
+          const estr_cajas_por_pallet  = parseFloat(String(row.estr_cajas_por_pallet  || '').replace(',', '.')) || undefined
+          const estr_peso_unidad       = parseFloat(String(row.estr_peso_unidad        || '').replace(',', '.')) || undefined
+
           if (!nombre) errores.push('Nombre requerido')
           if (precio_costo < 0) errores.push('Precio costo inválido')
           if (precio_venta < 0) errores.push('Precio venta inválido')
           if (unidad && !UNIDADES_VALIDAS.includes(unidad)) errores.push(`Unidad "${unidad}" no válida`)
-          if (!MONEDAS_VALIDAS.includes(precio_costo_moneda)) errores.push(`Moneda costo inválida`)
-          if (!MONEDAS_VALIDAS.includes(precio_venta_moneda)) errores.push(`Moneda venta inválida`)
+          if (!MONEDAS_VALIDAS.includes(precio_costo_moneda)) errores.push('Moneda costo inválida')
+          if (!MONEDAS_VALIDAS.includes(precio_venta_moneda)) errores.push('Moneda venta inválida')
 
           return {
             idx, nombre,
@@ -127,11 +223,23 @@ export default function ImportarProductosPage() {
             codigo_barras: String(row.codigo_barras || '').trim() || undefined,
             categoria: String(row.categoria || '').trim() || undefined,
             proveedor: String(row.proveedor || '').trim() || undefined,
-            precio_costo, precio_costo_moneda: MONEDAS_VALIDAS.includes(precio_costo_moneda) ? precio_costo_moneda : 'ARS',
-            precio_venta, precio_venta_moneda: MONEDAS_VALIDAS.includes(precio_venta_moneda) ? precio_venta_moneda : 'ARS',
+            precio_costo,
+            precio_costo_moneda: MONEDAS_VALIDAS.includes(precio_costo_moneda) ? precio_costo_moneda : 'ARS',
+            precio_venta,
+            precio_venta_moneda: MONEDAS_VALIDAS.includes(precio_venta_moneda) ? precio_venta_moneda : 'ARS',
             stock_minimo: parseInt(String(row.stock_minimo || '0')) || 0,
             unidad_medida: UNIDADES_VALIDAS.includes(unidad) ? unidad : 'unidad',
             descripcion: String(row.descripcion || '').trim() || undefined,
+            alicuota_iva: ALICUOTAS_VALIDAS.includes(alicuota_iva) ? alicuota_iva : 21,
+            margen_objetivo,
+            tiene_series: parseBool(row.tiene_series),
+            tiene_lote: parseBool(row.tiene_lote),
+            tiene_vencimiento: parseBool(row.tiene_vencimiento),
+            regla_inventario,
+            es_kit: parseBool(row.es_kit),
+            estr_unidades_por_caja,
+            estr_cajas_por_pallet,
+            estr_peso_unidad,
             estado: errores.length > 0 ? 'error' : skusExistentes.has(sku) ? 'existente' : 'nuevo',
             errores,
           } as FilaProducto
@@ -164,9 +272,64 @@ export default function ImportarProductosPage() {
           if (existing) { proveedor_id = existing.id }
           else { const { data } = await supabase.from('proveedores').insert({ tenant_id: tenant!.id, nombre: fila.proveedor }).select('id').single(); proveedor_id = data?.id ?? null; qc.invalidateQueries({ queryKey: ['proveedores'] }) }
         }
-        const payload = { tenant_id: tenant!.id, nombre: fila.nombre, sku: fila.sku, codigo_barras: fila.codigo_barras ?? null, categoria_id, proveedor_id, precio_costo: fila.precio_costo, precio_costo_moneda: fila.precio_costo_moneda, precio_venta: fila.precio_venta, precio_venta_moneda: fila.precio_venta_moneda, stock_minimo: fila.stock_minimo, unidad_medida: fila.unidad_medida, descripcion: fila.descripcion ?? null, activo: true }
-        if (fila.estado === 'nuevo') { await supabase.from('productos').insert(payload); creados++ }
-        else { await supabase.from('productos').update(payload).eq('sku', fila.sku).eq('tenant_id', tenant!.id); actualizados++ }
+
+        const payload = {
+          tenant_id: tenant!.id,
+          nombre: fila.nombre,
+          sku: fila.sku,
+          codigo_barras: fila.codigo_barras ?? null,
+          categoria_id,
+          proveedor_id,
+          precio_costo: fila.precio_costo,
+          precio_costo_moneda: fila.precio_costo_moneda,
+          precio_venta: fila.precio_venta,
+          precio_venta_moneda: fila.precio_venta_moneda,
+          stock_minimo: fila.stock_minimo,
+          unidad_medida: fila.unidad_medida,
+          descripcion: fila.descripcion ?? null,
+          activo: true,
+          alicuota_iva: fila.alicuota_iva,
+          margen_objetivo: fila.margen_objetivo ?? null,
+          tiene_series: fila.tiene_series,
+          tiene_lote: fila.tiene_lote,
+          tiene_vencimiento: fila.tiene_vencimiento,
+          regla_inventario: fila.regla_inventario ?? null,
+          es_kit: fila.es_kit,
+        }
+
+        const hasEstr = !!(fila.estr_unidades_por_caja || fila.estr_cajas_por_pallet || fila.estr_peso_unidad)
+        let productoId: string | null = null
+
+        if (fila.estado === 'nuevo') {
+          const { data: inserted } = await supabase.from('productos').insert(payload).select('id').single()
+          productoId = inserted?.id ?? null
+          creados++
+        } else {
+          await supabase.from('productos').update(payload).eq('sku', fila.sku).eq('tenant_id', tenant!.id)
+          if (hasEstr) {
+            const { data: p } = await supabase.from('productos').select('id').eq('sku', fila.sku).eq('tenant_id', tenant!.id).single()
+            productoId = p?.id ?? null
+          }
+          actualizados++
+        }
+
+        if (hasEstr && productoId) {
+          const estrPayload = {
+            tenant_id: tenant!.id,
+            producto_id: productoId,
+            nombre: 'Default',
+            is_default: true,
+            unidades_por_caja: fila.estr_unidades_por_caja ?? null,
+            cajas_por_pallet: fila.estr_cajas_por_pallet ?? null,
+            peso_unidad: fila.estr_peso_unidad ?? null,
+          }
+          const { data: estrExisting } = await supabase.from('producto_estructuras').select('id').eq('producto_id', productoId).eq('is_default', true).maybeSingle()
+          if (estrExisting) {
+            await supabase.from('producto_estructuras').update(estrPayload).eq('id', estrExisting.id)
+          } else {
+            await supabase.from('producto_estructuras').insert(estrPayload)
+          }
+        }
       } catch { errores++ }
     }
     qc.invalidateQueries({ queryKey: ['productos'] })
@@ -194,7 +357,6 @@ export default function ImportarProductosPage() {
       </div>
 
       <>
-
           {resultadoProd && (
             <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-xl p-4 flex items-start gap-3">
               <CheckCircle size={20} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
@@ -263,21 +425,23 @@ export default function ImportarProductosPage() {
                         <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">SKU</th>
                         <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Costo</th>
                         <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Venta</th>
+                        <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">IVA</th>
                         <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Categoría</th>
                         <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-400">Errores</th>
                       </tr></thead>
                       <tbody>
                         {filasProducto.map(f => (
-                          <tr key={f.idx} className={`border-b border-gray-50 ${f.errores.length > 0 ? 'bg-red-50 dark:bg-red-900/20' : f.estado === 'existente' ? 'bg-blue-50 dark:bg-blue-900/20/40' : ''}`}>
+                          <tr key={f.idx} className={`border-b border-gray-50 ${f.errores.length > 0 ? 'bg-red-50 dark:bg-red-900/20' : f.estado === 'existente' ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                             <td className="px-3 py-2">
                               {f.errores.length > 0 ? <span className="flex items-center gap-1 text-red-500"><XCircle size={12} /> Error</span>
                                 : f.estado === 'existente' ? <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400"><RefreshCw size={12} /> Existe</span>
                                 : <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle size={12} /> Nuevo</span>}
                             </td>
                             <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100 max-w-32 truncate">{f.nombre || <span className="text-red-400 italic">vacío</span>}</td>
-                            <td className="px-3 py-2 font-mono text-gray-600 dark:text-gray-400">{f.sku}</td>
+                            <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{f.sku}</td>
                             <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{f.precio_costo > 0 ? `${f.precio_costo_moneda === 'USD' ? 'USD ' : '$'}${f.precio_costo.toLocaleString()}` : '—'}</td>
                             <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{f.precio_venta > 0 ? `${f.precio_venta_moneda === 'USD' ? 'USD ' : '$'}${f.precio_venta.toLocaleString()}` : '—'}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.alicuota_iva}%</td>
                             <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{f.categoria ?? '—'}</td>
                             <td className="px-3 py-2 text-red-500">{f.errores.join(', ') || '—'}</td>
                           </tr>

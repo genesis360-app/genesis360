@@ -36,10 +36,17 @@ function calcularEfectivo(mediosPago: MedioPagoItem[], total: number): number {
   return efectivos.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
 }
 
+const UNIDADES_DECIMALES = new Set(['kg','g','gr','mg','l','lt','ml','m','m2','m3','cm','mm','km'])
+const esDecimal = (u?: string | null) => !!u && UNIDADES_DECIMALES.has(u.toLowerCase())
+const stepCantidad = (u?: string | null) => esDecimal(u) ? 0.001 : 1
+const parseCantidad = (val: string, u?: string | null) =>
+  esDecimal(u) ? Math.max(0.001, parseFloat(val) || 0.001) : Math.max(1, parseInt(val) || 1)
+
 interface CartItem {
   producto_id: string
   nombre: string
   sku: string
+  unidad_medida: string
   precio_unitario: number
   precio_costo: number
   cantidad: number
@@ -445,6 +452,7 @@ export default function VentasPage() {
       producto_id: p.id,
       nombre: p.nombre,
       sku: p.sku,
+      unidad_medida: p.unidad_medida ?? 'unidad',
       precio_unitario: p.precio_venta,
       precio_costo: p.precio_costo ?? 0,
       cantidad: 1,
@@ -1781,14 +1789,17 @@ export default function VentasPage() {
                         {/* Cantidad */}
                         {!item.tiene_series && (
                           <div className="flex items-center gap-1">
-                            <button onClick={() => updateItem(idx, 'cantidad', Math.max(1, item.cantidad - 1))} title="Reducir cantidad"
+                            <button onClick={() => updateItem(idx, 'cantidad', Math.max(stepCantidad(item.unidad_medida), parseFloat((item.cantidad - stepCantidad(item.unidad_medida)).toFixed(3))))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
                             <input
-                              type="number" onWheel={e => e.currentTarget.blur()} min="1" value={item.cantidad}
-                              onChange={e => updateItem(idx, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
-                              className="w-12 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
+                              type="number" onWheel={e => e.currentTarget.blur()}
+                              min={stepCantidad(item.unidad_medida)}
+                              step={stepCantidad(item.unidad_medida)}
+                              value={item.cantidad}
+                              onChange={e => updateItem(idx, 'cantidad', parseCantidad(e.target.value, item.unidad_medida))}
+                              className="w-16 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
                             />
-                            <button onClick={() => updateItem(idx, 'cantidad', item.cantidad + 1)} title="Aumentar cantidad"
+                            <button onClick={() => updateItem(idx, 'cantidad', parseFloat((item.cantidad + stepCantidad(item.unidad_medida)).toFixed(3)))} title="Aumentar cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">+</button>
                           </div>
                         )}

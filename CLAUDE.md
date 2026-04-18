@@ -862,6 +862,16 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Sidebar**: `Truck` icon `/proveedores` (ownerOnly) posicionado entre Clientes y Alertas.
 - **Arquitectura ASN-ready**: OC lifecycle termina en `confirmada` — la recepción y generación de stock es responsabilidad del futuro módulo ASN.
 
+### v0.80.0 — en dev
+
+#### VentasPage — fixes UX
+
+- **Fix scanner duplicados**: `pendingAddRef` (Set por `producto_id`) previene stale closure — scan rápido del mismo producto suma cantidad en lugar de crear línea nueva. Funciona aunque el fetch async aún no terminó.
+- **Historial paginado**: query con `.limit(ventasLimit)` (empieza en 50). Botón "Cargar más ventas" al pie incrementa de 50 en 50. Se resetea al cambiar `filterEstado` o `sucursalId`. Evita traer toda la tabla en negocios con historial largo.
+- **Carrito pre-guardado**: guarda draft en `localStorage` (`carrito_draft_{tenantId}`) en cada cambio de cart/cliente/checkout. Restaura al montar (toast de aviso). Clear automático al finalizar venta. No guarda `lineas_disponibles`/`series_disponibles` (datos grandes y potencialmente stale).
+- **Banner caja cerrada**: aviso rojo prominente (AlertTriangle + texto + link `/caja`) en la parte superior del tab "Nueva venta" cuando no hay sesión abierta.
+- **Scroll independiente carrito**: `max-h-[45vh] overflow-y-auto` en la lista de ítems — los botones de checkout siempre visibles sin scrollear la página entera.
+
 ### v0.79.0 — en dev
 
 #### ImportarProductosPage — template actualizado (22 columnas)

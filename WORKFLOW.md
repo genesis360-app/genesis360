@@ -147,6 +147,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.76.0 ✅ | ProveedoresPage nueva (/proveedores): CRUD extendido (CUIT, razón social, condición IVA, plazo pago, banco/CBU, domicilio) + toggle activo · Órdenes de Compra (lifecycle borrador→enviada→confirmada/cancelada + ítems dinámicos + detalle) · migration 049 PROD ✅ · ConfigPage: tab Proveedores migrada | 2026-04 |
 | v0.77.0 ✅ | BibliotecaPage nueva (/biblioteca): upload, tipos con colores (Cert. AFIP/Contrato/Factura/Manual/Otro), búsqueda+filtro tipo, descarga signed URL 300s · ConfigPage: tab Biblioteca migrada · sin migration (tabla+bucket desde v0.68.0) | 2026-04 |
 | v0.78.0 | InventarioPage: fix filtro __sin__ · búsqueda LPN client-side · acciones LPN vista ubicación · scroll oculto · LPN único por tenant · orden Sin Ubicación primero+A-Z · fix race condition filtros (lineasLoading) · ImportarInventarioPage nueva (/inventario/importar) · ImportarProductosPage: tab inventario eliminada | 2026-04 |
+| v0.79.0 | ImportarProductosPage: template actualizado a 22 columnas — agrega alicuota_iva, margen_objetivo, tiene_series, tiene_lote, tiene_vencimiento, regla_inventario, es_kit, estr_unidades_por_caja, estr_cajas_por_pallet, estr_peso_unidad · crea/actualiza producto_estructuras si hay campos estr_* · hoja Referencia actualizada | 2026-04 |
 
 ---
 

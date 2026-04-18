@@ -862,6 +862,20 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Sidebar**: `Truck` icon `/proveedores` (ownerOnly) posicionado entre Clientes y Alertas.
 - **Arquitectura ASN-ready**: OC lifecycle termina en `confirmada` — la recepción y generación de stock es responsabilidad del futuro módulo ASN.
 
+### v0.79.0 — en dev
+
+#### ImportarProductosPage — template actualizado (22 columnas)
+- **10 columnas nuevas** en plantilla Excel y lógica de importación:
+  - `alicuota_iva`: 0/10.5/21/27 (default 21). Validación estricta.
+  - `margen_objetivo`: porcentaje 0–100, opcional.
+  - `tiene_series`, `tiene_lote`, `tiene_vencimiento`: SI/NO (helper `parseBool` acepta SI/SÍ/YES/TRUE/1).
+  - `regla_inventario`: FIFO/FEFO/LEFO/LIFO/Manual; vacío = usa default del tenant.
+  - `es_kit`: SI/NO.
+  - `estr_unidades_por_caja`, `estr_cajas_por_pallet`, `estr_peso_unidad`: opcionales — si alguno tiene valor, crea/actualiza la estructura default del producto en `producto_estructuras` (upsert: query por `producto_id + is_default=true`, luego UPDATE o INSERT).
+- **Preview table**: columna IVA% visible; `bg-blue-50 dark:bg-blue-900/20` (clase malformada corregida).
+- **Hoja Referencia**: actualizada con todos los campos y valores válidos; secciones separadas para Atributos y Estructura.
+- **Sin migration**: todos los campos ya existían en DB (migrations 015, 031, 040, 042, etc.).
+
 ### v0.78.0 — en dev
 
 #### InventarioPage — fixes y mejoras

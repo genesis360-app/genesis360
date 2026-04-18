@@ -143,6 +143,10 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.74.0 | DS Sprint 4: VentasPage checkout — bg-surface, border-border-ds, text-primary, text-muted, font-mono en precios; modales y historial con tokens DS | 2026-04 |
 | v0.74.1 ✅ | Fix: pagos no-efectivo (tarjeta/MP/etc.) ahora se registran en caja_movimientos como ingreso_informativo/egreso_informativo en ventas, reservas y gastos | 2026-04 |
 | v0.74.2 | Fix: revertir font-mono de VentasPage e InventarioPage · estado LPN read-only (badge) · botón acciones habilitado con reservas · LpnAccionesModal solo muestra tab Mover cuando hay reservas | 2026-04 |
+| v0.75.0 ✅ | InventarioPage: 5 tabs underline (Inventario · Agregar stock · Quitar stock · Historial · Kits) · VentasPage: LPN picker fix (incluye líneas sin ubicación) · GastosPage: IVA deducible + comprobantes adjuntos (Storage) + tab Gastos fijos con CRUD, toggle activo, total estimado, botón "Generar hoy" · migrations 047+048 PROD ✅ | 2026-04 |
+| v0.76.0 ✅ | ProveedoresPage nueva (/proveedores): CRUD extendido (CUIT, razón social, condición IVA, plazo pago, banco/CBU, domicilio) + toggle activo · Órdenes de Compra (lifecycle borrador→enviada→confirmada/cancelada + ítems dinámicos + detalle) · migration 049 PROD ✅ · ConfigPage: tab Proveedores migrada | 2026-04 |
+| v0.77.0 ✅ | BibliotecaPage nueva (/biblioteca): upload, tipos con colores (Cert. AFIP/Contrato/Factura/Manual/Otro), búsqueda+filtro tipo, descarga signed URL 300s · ConfigPage: tab Biblioteca migrada · sin migration (tabla+bucket desde v0.68.0) | 2026-04 |
+| v0.78.0 | InventarioPage: fix filtro __sin__ ubicación/proveedor/estado · búsqueda por LPN client-side + placeholder actualizado · vista por ubicación con acciones LPN · ocultar scroll nativo en tabs · botón Importar en tab Inventario · ImportarProductosPage: leer ?tab=inventario | 2026-04 |
 
 ---
 

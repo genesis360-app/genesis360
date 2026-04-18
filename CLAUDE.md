@@ -849,6 +849,60 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Fix `CajaPage.tsx`**: `egreso_informativo` agregado a `TIPO_LABEL` y `extraerMedioPago`; incluido con signo negativo en `totalesMedios`.
 - **Invariante de saldo**: `totalIngresos` y `totalEgresos` para calcular saldo solo incluyen tipos `*` (no `*_informativo`) — el saldo de efectivo no se ve afectado.
 
+### v0.76.0 ✅ PROD
+
+#### Módulo Proveedores completo (migration 049)
+- **9 campos extendidos en `proveedores`**: `razon_social`, `cuit`, `domicilio`, `condicion_iva` CHECK (Responsable Inscripto/Monotributista/Exento/Consumidor Final), `plazo_pago_dias INT`, `banco`, `cbu`, `notas`, `sucursal_id`.
+- **Tabla `ordenes_compra`**: `tenant_id`, `proveedor_id`, `numero INT` (auto per tenant), `estado CHECK (borrador/enviada/confirmada/cancelada)`, `fecha_esperada`, `notas`, `created_by`. UNIQUE(tenant_id, numero). RLS policy `oc_tenant`.
+- **Tabla `orden_compra_items`**: `orden_compra_id`, `producto_id`, `cantidad`, `precio_unitario`, `notas`. RLS policy `oc_items_tenant`.
+- **Triggers**: `trg_set_oc_numero` BEFORE INSERT (MAX+1 per tenant, numero=0 como placeholder) · `trg_updated_at_oc`.
+- **Interfaces** en `supabase.ts`: `Proveedor` extendida · `EstadoOC = 'borrador'|'enviada'|'confirmada'|'cancelada'` · `OrdenCompra` con join `proveedores` · `OrdenCompraItem` con join `productos`.
+- **`ProveedoresPage.tsx`** nueva (~600 líneas): 2 tabs underline — Proveedores (cards + modal form 12 campos, toggle activo) + Órdenes de Compra (filtros estado/proveedor, cards con lifecycle buttons: Send→enviada / CheckCircle→confirmada / XCircle→cancelar / Trash2→borrar borrador). `InlineOCItems` subcomponent para preview expandible. Modal detalle OC completo.
+- **ConfigPage**: eliminados todos los bloques de proveedores y archivos (state, queries, mutations, JSX, imports `Truck FolderOpen FileText Download`).
+- **Sidebar**: `Truck` icon `/proveedores` (ownerOnly) posicionado entre Clientes y Alertas.
+- **Arquitectura ASN-ready**: OC lifecycle termina en `confirmada` — la recepción y generación de stock es responsabilidad del futuro módulo ASN.
+
+### v0.78.0 — en dev
+
+#### InventarioPage — fixes y mejoras
+
+- **Fix filtro "Sin X"**: los filtros de ubicación, proveedor y estado con opción `__sin__` tenían lógica invertida — excluían el producto si ALGUNA línea tenía el campo, siendo demasiado estricto. Fix: ahora excluye solo si NINGUNA línea tiene ese campo vacío (muestra el producto si tiene al menos una línea sin el campo).
+- **Búsqueda por LPN**: movida de DB-level a client-side en `filteredInv`. Busca por nombre, SKU, código de barras, **ubicación** y **LPN**. La query de productos ya no filtra en DB (evita que búsquedas por LPN retornen vacío). Placeholder actualizado en ambas vistas.
+- **Vista por ubicación — acciones LPN**: cada línea expandida ahora tiene botón `Settings2` que abre `LpnAccionesModal`, igual que la vista por producto. Fix: campos `l.lote`→`l.nro_lote`, `l.vencimiento`→`l.fecha_vencimiento`.
+- **Ocultar scroll nativo en tabs**: `[&::-webkit-scrollbar]:hidden` + `scrollbarWidth: 'none'` en el contenedor `overflow-x-auto` de la barra de pestañas.
+- **Botón Importar en tab Inventario**: header muestra botón "Importar" cuando `tab === 'inventario'` → navega a `/productos/importar?tab=inventario`.
+- **ImportarProductosPage**: lee `?tab=inventario` desde `useSearchParams` y pre-selecciona el tab de inventario al abrir.
+
+### v0.77.0 — en dev
+
+#### Biblioteca de Archivos como módulo del sidebar
+- **`BibliotecaPage.tsx`** nueva (~200 líneas): reutiliza tabla `archivos_biblioteca` y bucket `archivos-biblioteca` de migration 042 (sin nueva migration).
+- **Filtros**: buscador por nombre/descripción + dropdown por tipo.
+- **`TIPO_COLORS`**: colores distintos por tipo (yellow=AFIP, blue=contrato, green=factura_proveedor, purple=manual, gray=otro).
+- **Upload**: `storage.upload(path)` → `archivos_biblioteca.insert()` con rollback si falla la inserción en DB.
+- **Descarga**: `createSignedUrl(path, 300)` → `<a>` programático.
+- **Sidebar**: `FolderOpen` icon `/biblioteca` (ownerOnly) posicionado junto a Proveedores.
+- **ConfigPage**: tab `archivos` eliminada (funcionalidad movida al módulo dedicado).
+
+### v0.75.0 ✅ PROD
+
+#### InventarioPage — reestructura de tabs
+- **5 tabs con estilo underline**: Inventario · Agregar stock · Quitar stock · Historial · Kits
+- **`type Tab`**: `'inventario' | 'agregar' | 'quitar' | 'historial' | 'kits'`
+- Tab default: `'inventario'`. Sub-tabs Ingresos/Egresos eliminados — cada uno es un tab principal.
+- `filteredMov` filtra por `tab === 'agregar'` (ingresos) / `tab === 'quitar'` (egresos) / `historial` (todos).
+- PlanProgressBar solo en `agregar` y `quitar`. Botones de acción en header contextuales por tab.
+- Toggle vista Por producto/Por ubicación mantiene su posición derecha, visible solo en tab `inventario`.
+
+#### VentasPage — LPN picker fix
+- **Fix**: query `lineas_disponibles` usaba `.not('ubicacion_id','is',null)` → excluía líneas sin ubicación → picker invisible aunque hubiera múltiples LPNs. Removido el filtro; el filtro JS `disponible_surtido !== false` ya maneja la lógica correcta.
+
+#### GastosPage — IVA deducible + comprobantes + gastos fijos (migration 048)
+- **IVA deducible**: campo `iva_monto` en formulario (junto al monto). Columna IVA en tabla + total en footer. Card de stats "IVA deducible" del período.
+- **Comprobantes**: `gastos.comprobante_url TEXT` + bucket privado `comprobantes-gastos` (10 MB, img+PDF). Upload en el formulario; ícono 📎 en lista abre URL firmada (300s). Al eliminar gasto también elimina el archivo.
+- **Tab "Gastos fijos"**: tabla `gastos_fijos` (descripcion, monto, iva_monto, categoria, medio_pago, frecuencia mensual/quincenal/semanal, dia_vencimiento, activo). CRUD completo. Toggle activo/inactivo. Total mensual estimado en footer. Botón "Generar hoy" → crea gastos variables para el día de hoy desde todos los fijos activos.
+- **Tabs**: underline "Gastos variables" / "Gastos fijos". Header contextual: `agregar` muestra Ingreso+Masivo; `quitar` muestra Rebaje+Masivo; fijos muestra Nuevo fijo + Generar hoy.
+
 ### v0.74.2 — en dev
 
 #### Fix — Tipografía + restricciones LPN con reservas

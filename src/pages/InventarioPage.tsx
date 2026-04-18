@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
-  MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building,
+  MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -221,16 +221,14 @@ export default function InventarioPage() {
 
   // ── Inventario queries ─────────────────────────────────────────────────────
   const { data: productos = [], isLoading: invLoading } = useQuery({
-    queryKey: ['productos', tenant?.id, invSearch],
+    queryKey: ['productos', tenant?.id],
     queryFn: async () => {
-      let q = supabase
+      const { data, error } = await supabase
         .from('productos')
         .select('*, categorias(id, nombre), proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
-      if (invSearch) q = q.or(`nombre.ilike.%${invSearch}%,sku.ilike.%${invSearch}%,codigo_barras.eq.${invSearch}`)
-      const { data, error } = await q
       if (error) throw error
       return data ?? []
     },
@@ -700,37 +698,43 @@ export default function InventarioPage() {
   }
 
   const filteredInv = productos.filter(p => {
+    // Búsqueda por texto: nombre, SKU, código de barras, ubicación o LPN
+    if (invSearch) {
+      const s = invSearch.toLowerCase()
+      const lineas = lineasMap[(p as any).id] ?? []
+      const matchProd = p.nombre.toLowerCase().includes(s)
+        || ((p as any).sku ?? '').toLowerCase().includes(s)
+        || ((p as any).codigo_barras ?? '') === invSearch
+      const matchLpn = lineas.some((l: any) => (l.lpn ?? '').toLowerCase().includes(s))
+      const matchUbic = lineas.some((l: any) => (l.ubicaciones?.nombre ?? '').toLowerCase().includes(s))
+      if (!matchProd && !matchLpn && !matchUbic) return false
+    }
     const stock = getStockTotal(p)
     if (filterAlerta && stock > (p as any).stock_minimo) return false
     // Filtro por categoría
     if (filterCat === '__sin__' && (p as any).categoria_id != null) return false
     if (filterCat && filterCat !== '__sin__' && (p as any).categoria_id !== filterCat) return false
+    const lineas = lineasMap[(p as any).id] ?? []
     // Filtro por proveedor (en lineas del producto)
     if (filterProv) {
-      const lineas = lineasMap[(p as any).id] ?? []
       if (filterProv === '__sin__') {
-        if (lineas.some((l: any) => l.proveedor_id != null)) return false
-        if (lineas.length === 0) return false
+        if (!lineas.some((l: any) => l.proveedor_id == null)) return false
       } else {
         if (!lineas.some((l: any) => l.proveedor_id === filterProv)) return false
       }
     }
     // Filtro por ubicación (en lineas del producto)
     if (filterUbic) {
-      const lineas = lineasMap[(p as any).id] ?? []
       if (filterUbic === '__sin__') {
-        if (lineas.some((l: any) => l.ubicacion_id != null)) return false
-        if (lineas.length === 0) return false
+        if (!lineas.some((l: any) => l.ubicacion_id == null)) return false
       } else {
         if (!lineas.some((l: any) => l.ubicacion_id === filterUbic)) return false
       }
     }
     // Filtro por estado (en lineas del producto)
     if (filterEstado) {
-      const lineas = lineasMap[(p as any).id] ?? []
       if (filterEstado === '__sin__') {
-        if (lineas.some((l: any) => l.estado_id != null)) return false
-        if (lineas.length === 0) return false
+        if (!lineas.some((l: any) => l.estado_id == null)) return false
       } else {
         if (!lineas.some((l: any) => l.estado_id === filterEstado)) return false
       }
@@ -803,11 +807,18 @@ export default function InventarioPage() {
             </button>
           </div>
         )}
+        {tab === 'inventario' && (
+          <button onClick={() => navigate('/productos/importar?tab=inventario')}
+            className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all"
+            title="Importar stock desde Excel">
+            <Upload size={16} /> Importar
+          </button>
+        )}
       </div>
 
       {/* Tabs + vista toggle */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto">
+        <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' } as any}>
           {([
             { id: 'inventario' as const, label: 'Inventario' },
             { id: 'agregar' as const, label: 'Agregar stock' },
@@ -1644,7 +1655,7 @@ export default function InventarioPage() {
             <div className="relative flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
               <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)}
-                placeholder="Buscar por nombre, SKU o código..."
+                placeholder="Buscar por nombre, SKU, código, ubicación o LPN..."
                 className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
             </div>
             <button onClick={() => setInvScannerOpen(true)}
@@ -1710,7 +1721,10 @@ export default function InventarioPage() {
                 if (ubicNombre.toLowerCase().includes(search)) return true
                 return lineas.some((l: any) => {
                   const prod = l.productos as any
-                  return prod?.nombre?.toLowerCase().includes(search) || prod?.sku?.toLowerCase().includes(search) || (l.lpn ?? '').toLowerCase().includes(search)
+                  return prod?.nombre?.toLowerCase().includes(search)
+                    || prod?.sku?.toLowerCase().includes(search)
+                    || (l.lpn ?? '').toLowerCase().includes(search)
+                    || ((l as any).codigo_barras ?? '') === invSearch
                 })
               })
               if (ubicKeys.length === 0) return (
@@ -1763,16 +1777,22 @@ export default function InventarioPage() {
                                       {l.estados_inventario && (
                                         <span className="px-1.5 py-0.5 rounded text-white text-xs font-medium" style={{ backgroundColor: l.estados_inventario.color ?? '#6b7280' }}>{l.estados_inventario.nombre}</span>
                                       )}
-                                      {l.lote && <span className="text-gray-500 dark:text-gray-400">Lote: {l.lote}</span>}
-                                      {l.vencimiento && <span className="text-gray-500 dark:text-gray-400">Vto: {new Date(l.vencimiento).toLocaleDateString('es-AR')}</span>}
+                                      {l.nro_lote && <span className="text-gray-500 dark:text-gray-400">Lote: {l.nro_lote}</span>}
+                                      {l.fecha_vencimiento && <span className="text-gray-500 dark:text-gray-400">Vto: {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}
+                                      {(l.cantidad_reservada ?? 0) > 0 && (
+                                        <span className="text-amber-500">{disponible} disp. ({l.cantidad_reservada} reserv.)</span>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="text-right flex-shrink-0">
                                     <p className="text-sm font-semibold text-gray-900 dark:text-white">{l.cantidad} {prod?.unidad_medida}</p>
-                                    {(l.cantidad_reservada ?? 0) > 0 && (
-                                      <p className="text-xs text-amber-500">{disponible} disp.</p>
-                                    )}
                                   </div>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: prod }) }}
+                                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors flex-shrink-0"
+                                    title="Acciones sobre este LPN">
+                                    <Settings2 size={15} />
+                                  </button>
                                 </div>
                               )
                             })}

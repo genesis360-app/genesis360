@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, Download, CheckCircle, XCircle, AlertTriangle, FileSpreadsheet, RefreshCw, Boxes } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -81,6 +81,7 @@ interface FilaInventario {
 export default function ImportarProductosPage() {
   const { limits } = usePlanLimits()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { tenant, user } = useAuthStore()
 
   const qc = useQueryClient()
@@ -88,7 +89,9 @@ export default function ImportarProductosPage() {
   const fileRefProd = useRef<HTMLInputElement>(null)
   const fileRefInv  = useRef<HTMLInputElement>(null)
 
-  const [tab, setTab] = useState<TabImport>('productos')
+  const [tab, setTab] = useState<TabImport>(() =>
+    searchParams.get('tab') === 'inventario' ? 'inventario' : 'productos'
+  )
 
   // ── Estado Productos ──────────────────────────────────────────────────────
   const [filasProducto, setFilasProducto] = useState<FilaProducto[]>([])

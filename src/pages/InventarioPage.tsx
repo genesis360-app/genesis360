@@ -332,6 +332,21 @@ export default function InventarioPage() {
       if (tieneLote && !form.nroLote.trim()) throw new Error('Este producto requiere número de lote')
       if (tieneVencimiento && !form.fechaVencimiento) throw new Error('Este producto requiere fecha de vencimiento')
 
+      // Validar unicidad de LPN por tenant
+      if (form.lpn.trim()) {
+        const { data: lpnExiste } = await supabase
+          .from('inventario_lineas')
+          .select('id, productos(nombre)')
+          .eq('tenant_id', tenant!.id)
+          .eq('lpn', form.lpn.trim())
+          .eq('activo', true)
+          .maybeSingle()
+        if (lpnExiste) {
+          const prodNombre = (lpnExiste as any).productos?.nombre ?? 'otro SKU'
+          throw new Error(`El LPN "${form.lpn.trim()}" ya existe en ${prodNombre}`)
+        }
+      }
+
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', selectedProduct.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
 
@@ -1714,7 +1729,8 @@ export default function InventarioPage() {
               </div>
             ) : invVista === 'ubicacion' ? (() => {
               const search = invSearch.toLowerCase()
-              const ubicKeys = Object.keys(ubicacionLineasMap).filter(key => {
+              const ubicKeys = Object.keys(ubicacionLineasMap)
+              .filter(key => {
                 const lineas = ubicacionLineasMap[key]
                 const ubicNombre = key === '__sin_ubicacion__' ? 'Sin ubicación' : (lineas[0]?.ubicaciones?.nombre ?? '')
                 if (!search) return true
@@ -1726,6 +1742,13 @@ export default function InventarioPage() {
                     || (l.lpn ?? '').toLowerCase().includes(search)
                     || ((l as any).codigo_barras ?? '') === invSearch
                 })
+              })
+              .sort((a, b) => {
+                if (a === '__sin_ubicacion__') return -1
+                if (b === '__sin_ubicacion__') return 1
+                const nA = (ubicacionLineasMap[a][0]?.ubicaciones?.nombre ?? '').toLowerCase()
+                const nB = (ubicacionLineasMap[b][0]?.ubicaciones?.nombre ?? '').toLowerCase()
+                return nA.localeCompare(nB, 'es')
               })
               if (ubicKeys.length === 0) return (
                 <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">

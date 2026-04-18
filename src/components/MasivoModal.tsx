@@ -213,6 +213,30 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
         ? items.filter(it => !it.tieneSeries)
         : items
 
+      // Validar unicidad de LPNs antes de procesar (ingreso masivo)
+      if (tipo === 'ingreso') {
+        const lpnsIngresados = itemsAProcess.map(it => it.lpn.trim()).filter(Boolean)
+        // Duplicados dentro del mismo lote
+        const lpnSet = new Set<string>()
+        for (const lpn of lpnsIngresados) {
+          if (lpnSet.has(lpn)) throw new Error(`LPN duplicado en la lista: "${lpn}"`)
+          lpnSet.add(lpn)
+        }
+        // Duplicados contra DB
+        if (lpnsIngresados.length > 0) {
+          const { data: existentes } = await supabase
+            .from('inventario_lineas')
+            .select('lpn, productos(nombre)')
+            .eq('tenant_id', tenant!.id)
+            .in('lpn', lpnsIngresados)
+            .eq('activo', true)
+          if (existentes && existentes.length > 0) {
+            const dup = existentes[0] as any
+            throw new Error(`LPN "${dup.lpn}" ya existe en ${dup.productos?.nombre ?? 'otro SKU'}`)
+          }
+        }
+      }
+
       for (const it of itemsAProcess) {
         const cant = getCantidad(it)
 

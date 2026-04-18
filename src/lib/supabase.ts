@@ -91,6 +91,45 @@ export interface Proveedor {
   telefono?: string
   email?: string
   activo: boolean
+  // Campos extendidos (migration 049)
+  razon_social?: string | null
+  cuit?: string | null
+  domicilio?: string | null
+  condicion_iva?: 'responsable_inscripto' | 'monotributo' | 'exento' | 'consumidor_final' | null
+  plazo_pago_dias?: number | null
+  banco?: string | null
+  cbu?: string | null
+  notas?: string | null
+  sucursal_id?: string | null
+  created_at?: string
+}
+
+export type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada'
+
+export interface OrdenCompra {
+  id: string
+  tenant_id: string
+  proveedor_id: string
+  numero: number
+  estado: EstadoOC
+  fecha_esperada?: string | null
+  notas?: string | null
+  created_by?: string | null
+  created_at: string
+  updated_at: string
+  // joins
+  proveedores?: Pick<Proveedor, 'id' | 'nombre'>
+}
+
+export interface OrdenCompraItem {
+  id: string
+  orden_compra_id: string
+  producto_id: string
+  cantidad: number
+  precio_unitario?: number | null
+  notas?: string | null
+  // joins
+  productos?: Pick<Producto, 'id' | 'nombre' | 'sku' | 'unidad_medida' | 'precio_costo'>
 }
 
 export interface Ubicacion {

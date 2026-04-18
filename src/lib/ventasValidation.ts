@@ -114,12 +114,14 @@ export interface LineaDisponible {
   lpn: string | null
   cantidad: number
   cantidad_reservada: number
+  ubicacion?: string | null   // nombre de la ubicación (para mostrar en carrito)
 }
 
 export interface LpnFuente {
   linea_id: string
   lpn: string | null
   cantidad: number
+  ubicacion?: string | null   // nombre de la ubicación
 }
 
 /**
@@ -136,7 +138,7 @@ export function calcularLpnFuentes(lineas: LineaDisponible[], cantidad: number):
     if (disponible <= 0) continue
     const usar = Math.min(disponible, restante)
     if (usar <= 0) continue
-    fuentes.push({ linea_id: l.id, lpn: l.lpn, cantidad: usar })
+    fuentes.push({ linea_id: l.id, lpn: l.lpn, cantidad: usar, ubicacion: l.ubicacion ?? null })
     restante -= usar
     if (restante <= 0) break
   }

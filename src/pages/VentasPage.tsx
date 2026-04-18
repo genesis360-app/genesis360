@@ -81,6 +81,7 @@ export default function VentasPage() {
   const [nuevoClienteForm, setNuevoClienteForm] = useState({ nombre: '', dni: '', telefono: '' })
   const [savingCliente, setSavingCliente] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [lpnPickerIdx, setLpnPickerIdx] = useState<number | null>(null)
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   const [descuentoTotal, setDescuentoTotal] = useState('')
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
@@ -88,7 +89,7 @@ export default function VentasPage() {
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[] } | null>(null)
-  const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('reservada')
+  const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('despachada')
   const [editandoPago, setEditandoPago] = useState(false)
   const [editMontoPagado, setEditMontoPagado] = useState('')
   const [savingMontoPagado, setSavingMontoPagado] = useState(false)
@@ -129,6 +130,16 @@ export default function VentasPage() {
   })
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
   const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
+
+  // Auto-seleccionar sesión de la caja predeterminada del usuario
+  const cajaPrefKey = tenant?.id && user?.id ? `caja_preferida_${tenant.id}_${user.id}` : null
+  useEffect(() => {
+    if (cajaSeleccionadaId || sesionesAbiertas.length === 0 || !cajaPrefKey) return
+    const cajaPrefId = localStorage.getItem(cajaPrefKey)
+    if (!cajaPrefId) return
+    const sesion = (sesionesAbiertas as any[]).find(s => s.caja_id === cajaPrefId)
+    if (sesion) setCajaSeleccionadaId(sesion.id)
+  }, [sesionesAbiertas, cajaPrefKey])
 
   // Historial
   const [searchHistorial, setSearchHistorial] = useState('')
@@ -368,8 +379,8 @@ export default function VentasPage() {
       const grupoActivo2 = ventaGrupoId === 'todos' ? null : ventaGrupoId ? grupos.find(g => g.id === ventaGrupoId) : grupoDefault
       const estadosFiltro2 = grupoActivo2?.estado_ids ?? []
       let lq = supabase.from('inventario_lineas')
-        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
-        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
+        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
       if (estadosFiltro2.length > 0) lq = lq.in('estado_id', estadosFiltro2)
       const { data: lineasRaw2 } = await lq
       const sortedLineas = (lineasRaw2 ?? [])
@@ -380,6 +391,7 @@ export default function VentasPage() {
         lpn: l.lpn ?? null,
         cantidad: l.cantidad,
         cantidad_reservada: l.cantidad_reservada ?? 0,
+        ubicacion: (l.ubicaciones as any)?.nombre ?? null,
       }))
       lpnFuentes = calcularLpnFuentes(lineasDisponibles, 1)
       primaryLineaId = lpnFuentes[0]?.linea_id
@@ -410,8 +422,20 @@ export default function VentasPage() {
     setCart(prev => [...prev, newItem])
   }
 
+  const overrideLpnSource = (cartIdx: number, lineaId: string) => {
+    setCart(prev => prev.map((item, i) => {
+      if (i !== cartIdx || !item.lineas_disponibles) return item
+      const selected = item.lineas_disponibles.find(l => l.id === lineaId)
+      if (!selected) return item
+      const reordered = [selected, ...item.lineas_disponibles.filter(l => l.id !== lineaId)]
+      const fuentes = calcularLpnFuentes(reordered, item.cantidad)
+      return { ...item, lineas_disponibles: reordered, lpn_fuentes: fuentes, linea_id: fuentes[0]?.linea_id, lpn: fuentes[0]?.lpn ?? undefined }
+    }))
+    setLpnPickerIdx(null)
+  }
+
   const handleBarcodeScan = async (code: string) => {
-    setScannerOpen(false)
+    // No cierra el scanner — modo POS persistente
     // Buscar por codigo_barras o SKU exacto
     const { data: prods } = await supabase.from('productos')
       .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva')
@@ -423,12 +447,39 @@ export default function VentasPage() {
       toast.error(`No se encontró ningún producto con código "${code}"`)
       return
     }
-    // Calcular stock_disponible antes de agregar
-    const p = { ...prods[0], stock_disponible: prods[0].stock_actual }
+    // Calcular stock_disponible real (descuenta reservas) igual que el query de búsqueda
+    const prod = prods[0]
+    const { data: lineasScan } = await supabase.from('inventario_lineas')
+      .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
+      .eq('tenant_id', tenant!.id).eq('producto_id', prod.id).eq('activo', true)
+    let stockDisponibleScan = 0
+    for (const l of lineasScan ?? []) {
+      if ((l.ubicaciones as any)?.disponible_surtido === false) continue
+      const seriesArr = (l.inventario_series ?? []) as any[]
+      if (seriesArr.length > 0) {
+        stockDisponibleScan += seriesArr.filter((s: any) => s.activo && !s.reservado).length
+      } else {
+        stockDisponibleScan += Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0))
+      }
+    }
+    const p = { ...prod, stock_disponible: stockDisponibleScan }
     await agregarProducto(p)
   }
 
   const updateItem = (idx: number, field: keyof CartItem, value: any) => {
+    // Validar stock disponible antes de actualizar cantidad
+    if (field === 'cantidad' && typeof value === 'number' && value > 0) {
+      const item = cart[idx]
+      if (item && !item.tiene_series && item.lineas_disponibles) {
+        const maxDisp = item.lineas_disponibles.reduce(
+          (sum, l) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0
+        )
+        if (value > maxDisp) {
+          toast.error(`Stock máximo disponible: ${maxDisp}`)
+          value = maxDisp
+        }
+      }
+    }
     setCart(prev => prev.map((item, i) => {
       if (i !== idx) return item
       const updated = { ...item, [field]: value }
@@ -704,6 +755,12 @@ export default function VentasPage() {
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
               .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
             const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            // Pre-flight: verificar stock disponible real antes de reservar
+            const stockDisp = lineas.reduce((sum: number, l: any) =>
+              sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
+            if (stockDisp < cant) {
+              throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
+            }
             let restante = cant
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -720,10 +777,19 @@ export default function VentasPage() {
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
               .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
             const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            // Pre-flight: verificar stock disponible real antes de rebajar
+            const stockDisp = lineas.reduce((sum: number, l: any) =>
+              sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
+            if (stockDisp < cant) {
+              throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
+            }
             let restante = cant
             for (const linea of lineas) {
               if (restante <= 0) break
-              const rebajar = Math.min(linea.cantidad, restante)
+              // CRÍTICO: descontar solo del stock disponible (no del reservado para otras ventas)
+              const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
+              const rebajar = Math.min(disponible, restante)
+              if (rebajar <= 0) continue
               const nuevaCant = linea.cantidad - rebajar
               await supabase.from('inventario_lineas')
                 .update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
@@ -795,20 +861,23 @@ export default function VentasPage() {
           usuario_id: user?.id,
         }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
       }
-      // Registros informativos para medios no-efectivo (no afectan saldo)
-      const totalNoCash = total - montoEfectivoCaja
-      if (estado === 'despachada' && sesionCajaId && totalNoCash > 0.01) {
-        const tiposNoCash = [...new Set(
-          mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo' && m.tipo !== '').map(m => m.tipo)
-        )].join(' + ')
-        void supabase.from('caja_movimientos').insert({
-          tenant_id: tenant!.id,
-          sesion_id: sesionCajaId,
-          tipo: 'ingreso_informativo',
-          concepto: `[${tiposNoCash || 'No efectivo'}] Venta #${venta.numero}`,
-          monto: totalNoCash,
-          usuario_id: user?.id,
-        })
+      // Registros informativos para medios no-efectivo — un insert por método (no afectan saldo)
+      const sesionInformativo = sesionCajaId ?? ((sesionesAbiertas as any[])[0]?.id ?? null)
+      if (estado === 'despachada' && sesionInformativo) {
+        for (const mp of mediosPago) {
+          if (!mp.tipo || mp.tipo === 'Efectivo' || !mp.tipo.trim()) continue
+          const montoMp = parseFloat(mp.monto) || 0
+          if (montoMp <= 0.01) continue
+          const { error: errInfo } = await supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id,
+            sesion_id: sesionInformativo,
+            tipo: 'ingreso_informativo',
+            concepto: `[${mp.tipo}] Venta #${venta.numero}`,
+            monto: montoMp,
+            usuario_id: user?.id,
+          })
+          if (errInfo) console.error('[caja] ingreso_informativo error:', errInfo)
+        }
       }
       // Seña en caja: registrar efectivo cobrado al crear la reserva (fire-and-forget)
       if (estado === 'reservada' && montoEfectivoCaja > 0 && sesionCajaId) {
@@ -821,19 +890,18 @@ export default function VentasPage() {
           usuario_id: user?.id,
         }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
       }
-      // Seña no-efectivo: registrar como ingreso_informativo (fire-and-forget)
+      // Seña no-efectivo: un ingreso_informativo por método (fire-and-forget)
       if (estado === 'reservada' && sesionCajaId) {
-        const totalNoCashSena = total - montoEfectivoCaja
-        if (totalNoCashSena > 0.01) {
-          const tiposNoCash = [...new Set(
-            mediosPago.filter(m => m.tipo && m.tipo !== 'Efectivo' && m.tipo !== '').map(m => m.tipo)
-          )].join(' + ')
+        for (const mp of mediosPago) {
+          if (!mp.tipo || mp.tipo === 'Efectivo' || !mp.tipo.trim()) continue
+          const montoMp = parseFloat(mp.monto) || 0
+          if (montoMp <= 0.01) continue
           void supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id,
             sesion_id: sesionCajaId,
             tipo: 'ingreso_informativo',
-            concepto: `[${tiposNoCash || 'No efectivo'}] Seña Venta #${venta.numero}`,
-            monto: totalNoCashSena,
+            concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`,
+            monto: montoMp,
             usuario_id: user?.id,
           })
         }
@@ -842,7 +910,8 @@ export default function VentasPage() {
       toast.success(msg)
       setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
-      setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('reservada')
+      setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
+      setScannerOpen(false)
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
@@ -949,6 +1018,22 @@ export default function VentasPage() {
     setDevMediosPago([{ tipo: '', monto: '' }])
     setDevolucionVenta(venta)
   }
+
+  // Enter global → Venta directa (solo cuando no hay input/select/button focuseado)
+  const registrarVentaRef = useRef<(estado: 'pendiente' | 'reservada' | 'despachada') => Promise<void>>()
+  registrarVentaRef.current = registrarVenta
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return
+      const tag = (document.activeElement as HTMLElement)?.tagName
+      if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(tag ?? '')) return
+      if (tab === 'nueva' && modoVenta === 'despachada' && cart.length > 0 && !saving) {
+        registrarVentaRef.current?.('despachada')
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [tab, modoVenta, cart.length, saving])
 
   const procesarDevolucion = async () => {
     if (!devolucionVenta || !tenant) return
@@ -1289,26 +1374,28 @@ export default function VentasPage() {
                 usuario_id: user?.id,
               })
             }
-            // No-efectivo: saldo cobrado ahora + no-efectivo original de la reserva
-            const noCashSaldoItems = (saldoMediosPago ?? []).filter(m => m.tipo && m.tipo !== 'Efectivo' && parseFloat(m.monto) > 0)
-            const noCashSaldoTotal = noCashSaldoItems.reduce((s, m) => s + parseFloat(m.monto), 0)
+            // No-efectivo: un insert por método (saldo cobrado ahora + no-efectivo original de reserva)
             const prevArr: { tipo: string; monto: number }[] = venta.medio_pago ? (() => { try { return JSON.parse(venta.medio_pago) } catch { return [] } })() : []
-            // Non-cash original de reserva solo si ya fue registrado como ingreso_informativo (si no hubo sesión al reservar, no está en caja)
-            const noCashOriginalTotal = senaEnCaja
-              ? prevArr.filter(m => m.tipo !== 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
-              : 0
-            const noCashTotal = noCashSaldoTotal + noCashOriginalTotal
-            if (noCashTotal > 0.01) {
-              const tiposNoCash = [...new Set([
-                ...noCashSaldoItems.map(m => m.tipo),
-                ...(senaEnCaja ? prevArr.filter(m => m.tipo !== 'Efectivo').map(m => m.tipo) : []),
-              ].filter(Boolean))].join(' + ')
+            // Acumular por tipo: saldo nuevo + original (si seña fue registrada en caja)
+            const noCashMap: Record<string, number> = {}
+            for (const m of (saldoMediosPago ?? [])) {
+              if (!m.tipo || m.tipo === 'Efectivo') continue
+              const monto = parseFloat(m.monto) || 0
+              if (monto > 0) noCashMap[m.tipo] = (noCashMap[m.tipo] ?? 0) + monto
+            }
+            if (senaEnCaja) {
+              for (const m of prevArr.filter(m => m.tipo !== 'Efectivo')) {
+                noCashMap[m.tipo] = (noCashMap[m.tipo] ?? 0) + (m.monto ?? 0)
+              }
+            }
+            for (const [tipo, monto] of Object.entries(noCashMap)) {
+              if (monto <= 0.01) continue
               void supabase.from('caja_movimientos').insert({
                 tenant_id: tenant!.id,
                 sesion_id: _sesionId,
                 tipo: 'ingreso_informativo',
-                concepto: `[${tiposNoCash || 'No efectivo'}] Venta #${venta.numero}`,
-                monto: noCashTotal,
+                concepto: `[${tipo}] Venta #${venta.numero}`,
+                monto,
                 usuario_id: user?.id,
               })
             }
@@ -1354,6 +1441,18 @@ export default function VentasPage() {
                   tipo: 'egreso_devolucion_sena',
                   concepto: `Dev. seña Venta #${venta.numero}`,
                   monto: efectivoCobrado,
+                  usuario_id: user?.id,
+                })
+              }
+              const noCashCancelado = (venta.monto_pagado ?? 0) - efectivoCobrado
+              if (noCashCancelado > 0.01) {
+                const noCashTypes = [...new Set(prevArr.filter(m => m.tipo !== 'Efectivo' && (m.monto ?? 0) > 0).map(m => m.tipo))].join(' + ') || 'No efectivo'
+                void supabase.from('caja_movimientos').insert({
+                  tenant_id: tenant!.id,
+                  sesion_id: cancelSesionId,
+                  tipo: 'egreso_informativo',
+                  concepto: `[${noCashTypes}] Dev. seña Venta #${venta.numero}`,
+                  monto: noCashCancelado,
                   usuario_id: user?.id,
                 })
               }
@@ -1469,13 +1568,13 @@ export default function VentasPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1 flex-wrap">
                               <span className="font-medium truncate">{p.nombre}</span>
-                              <span className="text-gray-400 dark:text-gray-500 text-xs font-mono flex-shrink-0">{p.sku}</span>
+                              <span className="text-gray-400 dark:text-gray-500 text-xs flex-shrink-0">{p.sku}</span>
                               {p.tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1 rounded flex-shrink-0">series</span>}
                               {p.es_kit && <span className="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 px-1 rounded flex-shrink-0" title="Producto KIT — asegurate de tener stock armado">KIT</span>}
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="font-semibold text-primary font-mono">${p.precio_venta?.toLocaleString('es-AR')}</p>
+                            <p className="font-semibold text-primary">${p.precio_venta?.toLocaleString('es-AR')}</p>
                             <p className="text-xs text-gray-400 dark:text-gray-500">
                               {p.stock_filtrado
                                 ? <span className="text-blue-600 dark:text-blue-400 font-medium">{p.stock_disponible} disp.</span>
@@ -1520,8 +1619,8 @@ export default function VentasPage() {
                         }
                       </div>
                       <p className="text-xs font-medium text-primary line-clamp-2 leading-tight w-full">{p.nombre}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate w-full">{p.sku}</p>
-                      <p className="text-sm font-bold text-primary font-mono mt-1">${p.precio_venta?.toLocaleString('es-AR')}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate w-full">{p.sku}</p>
+                      <p className="text-sm font-bold text-primary mt-1">${p.precio_venta?.toLocaleString('es-AR')}</p>
                       <p className="text-xs mt-0.5">
                         {p.stock_filtrado
                           ? <span className="text-blue-600 dark:text-blue-400 font-medium">{p.stock_disponible} disp.</span>
@@ -1549,19 +1648,59 @@ export default function VentasPage() {
                         <div className="flex-1">
                           <p className="font-medium text-primary">{item.nombre}</p>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">{item.sku}</span>
-                            {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
-                              <>
-                                {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
-                                  <span key={fi} className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
-                                    {f.lpn ?? 'Sin LPN'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
-                                  </span>
-                                ))}
-                                {item.lpn_fuentes.length > 3 && (
-                                  <span className="text-xs text-gray-400 dark:text-gray-500">+{item.lpn_fuentes.length - 3} más</span>
-                                )}
-                              </>
-                            )}
+                            <span className="text-xs text-gray-400 dark:text-gray-500">{item.sku}</span>
+                            {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
+                              const canPick = (item.lineas_disponibles?.length ?? 0) > 1
+                              const isOpen = lpnPickerIdx === idx
+                              return (
+                                <>
+                                  {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
+                                    <span key={fi}
+                                      onClick={canPick ? () => setLpnPickerIdx(isOpen ? null : idx) : undefined}
+                                      title={canPick ? 'Click para cambiar posición de rebaje' : (f.ubicacion ? `Ubicación: ${f.ubicacion}` : undefined)}
+                                      className={`text-xs px-1.5 py-0.5 rounded transition-colors
+                                        ${canPick
+                                          ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 ring-1 ring-blue-200 dark:ring-blue-800'
+                                          : 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'}`}>
+                                      {f.lpn ?? 'Sin LPN'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
+                                      {f.ubicacion && <span className="text-blue-400 dark:text-blue-500"> · {f.ubicacion}</span>}
+                                      {canPick && fi === 0 && <span className="ml-0.5 text-blue-400">▾</span>}
+                                    </span>
+                                  ))}
+                                  {item.lpn_fuentes.length > 3 && (
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">+{item.lpn_fuentes.length - 3} más</span>
+                                  )}
+                                  {/* Picker inline de posición */}
+                                  {isOpen && item.lineas_disponibles && (
+                                    <div className="w-full mt-1 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-xl shadow-lg overflow-hidden">
+                                      <p className="text-xs text-gray-500 dark:text-gray-400 px-3 py-1.5 border-b border-gray-100 dark:border-gray-700 font-medium">
+                                        Elegir posición de rebaje
+                                      </p>
+                                      {item.lineas_disponibles.map((l) => {
+                                        const disp = l.cantidad - (l.cantidad_reservada ?? 0)
+                                        const isActive = item.lineas_disponibles![0].id === l.id
+                                        return (
+                                          <button key={l.id} onClick={() => overrideLpnSource(idx, l.id)}
+                                            className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors
+                                              ${isActive
+                                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
+                                                : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300'}`}>
+                                            <span>
+                                              {l.lpn ?? <span className="text-gray-400 italic">Sin LPN</span>}
+                                              {l.ubicacion && <span className="text-gray-400 dark:text-gray-500 ml-1">· {l.ubicacion}</span>}
+                                              {isActive && <span className="ml-1 text-blue-500">✓</span>}
+                                            </span>
+                                            <span className={`ml-2 shrink-0 ${disp <= 0 ? 'text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                                              {disp}u disp.
+                                            </span>
+                                          </button>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+                                </>
+                              )
+                            })()}
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -1663,7 +1802,7 @@ export default function VentasPage() {
                               {item.series_seleccionadas.map(sid => {
                                 const s = item.series_disponibles.find(d => d.id === sid)
                                 return s ? (
-                                  <span key={sid} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 px-1.5 py-0.5 rounded font-mono">{s.nro_serie}</span>
+                                  <span key={sid} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 px-1.5 py-0.5 rounded">{s.nro_serie}</span>
                                 ) : null
                               })}
                             </div>
@@ -1677,7 +1816,7 @@ export default function VentasPage() {
                             return (
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {lpns.map(lpn => (
-                                  <span key={lpn} className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                                  <span key={lpn} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
                                     {lpn}
                                   </span>
                                 ))}
@@ -1818,17 +1957,17 @@ export default function VentasPage() {
                     <>
                       <div className="flex justify-between text-sm text-muted">
                         <span>Precio lista</span>
-                        <span className="font-mono">${subtotalSinDesc.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        <span>${subtotalSinDesc.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                       {descItemsTotal > 0 && (
                         <div className="flex justify-between text-sm text-info">
                           <span>Desc. por producto</span>
-                          <span className="font-mono">−${descItemsTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                          <span>−${descItemsTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                         </div>
                       )}
                       <div className="flex justify-between text-sm text-muted">
                         <span>Subtotal</span>
-                        <span className="font-mono">${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        <span>${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                     </>
                   )
@@ -1836,12 +1975,12 @@ export default function VentasPage() {
                 {descTotalMonto > 0 && (
                   <div className="flex justify-between text-sm text-success">
                     <span>Desc. general {descuentoTotalTipo === 'pct' ? `(${descTotalVal}%)` : `($${descTotalVal})`}</span>
-                    <span className="font-mono">−${descTotalMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    <span>−${descTotalMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold text-primary text-lg border-t border-border-ds pt-2">
                   <span>Total</span>
-                  <span className="font-mono">${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
                 {/* IVA desglosado por alícuota real */}
                 {total > 0 && (() => {
@@ -2014,7 +2153,7 @@ export default function VentasPage() {
                       onClick={() => setVentaDetalle(v)}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className="font-mono text-sm font-bold text-primary">#{v.numero}</span>
+                          <span className="text-sm font-bold text-primary">#{v.numero}</span>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${est.bg} ${est.color}`}>{est.label}</span>
                           {v.estado === 'reservada' && calcularSaldoPendiente(v.total ?? 0, v.monto_pagado ?? 0) > 0.5 && (
                             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
@@ -2022,7 +2161,7 @@ export default function VentasPage() {
                             </span>
                           )}
                         </div>
-                        <span className="font-bold text-primary font-mono">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        <span className="font-bold text-primary">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-400 dark:text-gray-500">
                         <span>{v.cliente_nombre ?? 'Sin cliente'} {v.medio_pago ? `· ${formatMedioPago(v.medio_pago)}` : ''}</span>
@@ -2092,12 +2231,12 @@ export default function VentasPage() {
                       {nrosSerie.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1">
                           {nrosSerie.map((s: string) => (
-                            <span key={s} className="text-xs font-mono text-purple-600 bg-purple-50 dark:bg-purple-900/20 px-1.5 py-0.5 rounded">{s}</span>
+                            <span key={s} className="text-xs text-purple-600 bg-purple-50 dark:bg-purple-900/20 px-1.5 py-0.5 rounded">{s}</span>
                           ))}
                         </div>
                       )}
                       {nrosSerie.length === 0 && lpn && (
-                        <span className="text-xs font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded mt-1 inline-block">LPN: {lpn}</span>
+                        <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded mt-1 inline-block">LPN: {lpn}</span>
                       )}
                     </div>
                     <p className="font-semibold">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
@@ -2210,6 +2349,7 @@ export default function VentasPage() {
                     const nrosSerie = (item.venta_series ?? [])
                       .map((vs: any) => vs.inventario_series?.nro_serie)
                       .filter(Boolean)
+                    const primaryLpn: string | null = item.inventario_lineas?.lpn ?? null
                     return {
                       nombre: item.productos?.nombre ?? '',
                       cantidad: item.cantidad,
@@ -2219,7 +2359,10 @@ export default function VentasPage() {
                       subtotal: item.subtotal,
                       tiene_series: nrosSerie.length > 0,
                       series_seleccionadas: nrosSerie,
-                      lpn: item.inventario_lineas?.lpn ?? null,
+                      lpn: primaryLpn,
+                      lpn_fuentes: primaryLpn
+                        ? [{ linea_id: item.linea_id ?? null, lpn: primaryLpn, cantidad: item.cantidad }]
+                        : undefined,
                     }
                   })
                   setTicketVenta({ ...ventaDetalle, items })
@@ -2274,8 +2417,17 @@ export default function VentasPage() {
               )}
               {['pendiente', 'reservada'].includes(ventaDetalle.estado) && (
                 <button onClick={() => {
-                  if (confirm('¿Cancelar esta venta? El stock reservado quedará disponible.'))
-                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
+                  const montoCobrado = ventaDetalle.monto_pagado ?? 0
+                  const aviso = montoCobrado > 0
+                    ? `\n\n⚠ Esta venta tiene $${montoCobrado.toLocaleString('es-AR')} cobrado al cliente. Recordá devolver el importe.`
+                    : ''
+                  if (!confirm(`¿Cancelar esta venta? El stock reservado quedará disponible.${aviso}`)) return
+                  cambiarEstado.mutate(
+                    { ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' },
+                    montoCobrado > 0
+                      ? { onSuccess: () => toast.error(`Devolvé $${montoCobrado.toLocaleString('es-AR')} al cliente (seña cobrada)`, { duration: 8000 }) }
+                      : undefined,
+                  )
                 }}
                   disabled={cambiarEstado.isPending}
                   className="w-full border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all">
@@ -2337,7 +2489,7 @@ export default function VentasPage() {
                                       ? it.series_seleccionadas.filter(s => s !== vs.serie_id)
                                       : [...it.series_seleccionadas, vs.serie_id]
                                   }))}
-                                  className={`text-xs px-2 py-0.5 rounded font-mono border transition-colors ${sel ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-400 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+                                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${sel ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-400 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
                                   {vs.nro_serie}
                                 </button>
                               )
@@ -2488,7 +2640,7 @@ export default function VentasPage() {
                   dateStyle: 'full', timeStyle: 'short'
                 })}
               </p>
-              <p className="text-sm font-mono text-gray-500 dark:text-gray-400 mt-1">Venta #{ticketVenta.numero ?? '—'}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Venta #{ticketVenta.numero ?? '—'}</p>
             </div>
 
             {ticketVenta.cliente_nombre && (
@@ -2512,14 +2664,14 @@ export default function VentasPage() {
                         </span>
                       )}
                       {item.tiene_series && (item.series_seleccionadas ?? []).length > 0 && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mt-0.5 truncate">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">
                           S/N: {(item.series_seleccionadas as string[]).join(', ')}
                         </p>
                       )}
                       {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-0.5">
                           {item.lpn_fuentes.slice(0, 3).map((f: LpnFuente, fi: number) => (
-                            <span key={fi} className="text-xs text-blue-600 dark:text-blue-400 font-mono">
+                            <span key={fi} className="text-xs text-blue-600 dark:text-blue-400">
                               LPN: {f.lpn ?? '—'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
                             </span>
                           ))}
@@ -2652,7 +2804,7 @@ export default function VentasPage() {
                         updateItem(seriesModal.itemIdx, 'series_seleccionadas', updated)
                         updateItem(seriesModal.itemIdx, 'cantidad', updated.length)
                       }} />
-                    <span className="font-mono text-sm">{s.nro_serie}</span>
+                    <span className="text-sm">{s.nro_serie}</span>
                     <span className="text-xs text-gray-400 dark:text-gray-500">{s.lpn}</span>
                   </label>
                 )
@@ -2666,10 +2818,11 @@ export default function VentasPage() {
         </div>
       )}
 
-      {/* Escáner de código de barras */}
+      {/* Escáner de código de barras — modo POS persistente */}
       {scannerOpen && (
         <BarcodeScanner
-          title="Escanear producto"
+          title="Escáner de venta"
+          persistent
           onDetected={handleBarcodeScan}
           onClose={() => setScannerOpen(false)}
         />

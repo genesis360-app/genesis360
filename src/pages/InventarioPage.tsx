@@ -21,8 +21,9 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
 import type { Producto, KitReceta } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 
-type Tab = 'movimientos' | 'inventario' | 'kits'
+type Tab = 'inventario' | 'agregar' | 'quitar' | 'historial' | 'kits'
 type ModalType = 'ingreso' | 'rebaje' | null
 
 const emptyIngreso = {
@@ -46,6 +47,15 @@ function InfoTip({ text }: { text: string }) {
       )}
     </div>
   )
+}
+
+/** Convierte cantidad ingresada desde unidad alternativa a la unidad base del producto. */
+function resolverCantidad(raw: string, unitAlt: string | null, unitBase: string | null | undefined): number {
+  const n = parseFloat(raw)
+  if (isNaN(n) || n <= 0) return 0
+  if (!unitAlt || !unitBase || unitAlt === unitBase) return n
+  const converted = convertirUnidad(n, unitAlt, unitBase)
+  return converted ?? n
 }
 
 export default function InventarioPage() {
@@ -79,10 +89,16 @@ export default function InventarioPage() {
   const [searchFocused, setSearchFocused] = useState(false)
   const [ingresoMotivoSelect, setIngresoMotivoSelect] = useState('')
   const [rebajeMotivoSelect, setRebajeMotivoSelect] = useState('')
+  const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
+  const [rebajeUnitAlt, setRebajeUnitAlt] = useState<string | null>(null)
 
   // ── Inventario tab state ───────────────────────────────────────────────────
   const [invSearch, setInvSearch] = useState('')
   const [filterAlerta, setFilterAlerta] = useState(false)
+  const [filterCat, setFilterCat] = useState('') // '' = todos, '__sin__' = sin categoría, else = id
+  const [filterUbic, setFilterUbic] = useState('') // '' = todos, '__sin__' = sin ubicación, else = id
+  const [filterEstado, setFilterEstado] = useState('') // '' = todos, '__sin__' = sin estado, else = id
+  const [filterProv, setFilterProv] = useState('') // '' = todos, '__sin__' = sin proveedor, else = id
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [invScannerOpen, setInvScannerOpen] = useState(false)
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
@@ -209,7 +225,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('productos')
-        .select('*, categorias(nombre), proveedores(nombre)')
+        .select('*, categorias(id, nombre), proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
@@ -313,7 +329,7 @@ export default function InventarioPage() {
       const tieneVencimiento = (selectedProduct as any).tiene_vencimiento
       const cant = tieneSeries
         ? series.filter(s => s.trim()).length
-        : parseInt(form.cantidad)
+        : resolverCantidad(form.cantidad, ingresoUnitAlt, (selectedProduct as any).unidad_medida)
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (tieneLote && !form.nroLote.trim()) throw new Error('Este producto requiere número de lote')
       if (tieneVencimiento && !form.fechaVencimiento) throw new Error('Este producto requiere fecha de vencimiento')
@@ -401,7 +417,7 @@ export default function InventarioPage() {
           await supabase.from('inventario_lineas').update({ activo: false }).eq('id', rebajeLinea.id)
         }
       } else {
-        const cant = parseInt(rebajeCantidad)
+        const cant = resolverCantidad(rebajeCantidad, rebajeUnitAlt, (selectedProduct as any).unidad_medida)
         if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
         const disponible = rebajeLinea.cantidad - (rebajeLinea.cantidad_reservada ?? 0)
         if (cant > disponible) throw new Error(`Stock disponible insuficiente: ${disponible} u. (${rebajeLinea.cantidad} total − ${rebajeLinea.cantidad_reservada ?? 0} reservada(s))`)
@@ -409,7 +425,7 @@ export default function InventarioPage() {
         await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', rebajeLinea.id)
       }
 
-      const cant = tieneSeries ? rebajeSeries.length : parseInt(rebajeCantidad)
+      const cant = tieneSeries ? rebajeSeries.length : resolverCantidad(rebajeCantidad, rebajeUnitAlt, (selectedProduct as any).unidad_medida)
       await supabase.from('movimientos_stock').insert({
         tenant_id: tenant!.id,
         producto_id: selectedProduct.id,
@@ -634,6 +650,7 @@ export default function InventarioPage() {
     setRebajeCantidad(''); setRebajeMotivo(''); setRebajeSeries([])
     setRebajeSearch(''); setRebajeGrupoId(null)
     setIngresoMotivoSelect(''); setRebajeMotivoSelect('')
+    setIngresoUnitAlt(null); setRebajeUnitAlt(null)
   }
 
   useModalKeyboard({
@@ -663,6 +680,10 @@ export default function InventarioPage() {
 
   // ── Computed values ────────────────────────────────────────────────────────
   const filteredMov = movimientos.filter(m => {
+    const tipo = (m as any).tipo as string
+    const esIngreso = tipo === 'ingreso' || tipo === 'kitting'
+    if (tab === 'agregar' && !esIngreso) return false
+    if (tab === 'quitar' && esIngreso) return false
     if (!movSearch) return true
     const s = movSearch.toLowerCase()
     return (m as any).productos?.nombre?.toLowerCase().includes(s) ||
@@ -681,6 +702,39 @@ export default function InventarioPage() {
   const filteredInv = productos.filter(p => {
     const stock = getStockTotal(p)
     if (filterAlerta && stock > (p as any).stock_minimo) return false
+    // Filtro por categoría
+    if (filterCat === '__sin__' && (p as any).categoria_id != null) return false
+    if (filterCat && filterCat !== '__sin__' && (p as any).categoria_id !== filterCat) return false
+    // Filtro por proveedor (en lineas del producto)
+    if (filterProv) {
+      const lineas = lineasMap[(p as any).id] ?? []
+      if (filterProv === '__sin__') {
+        if (lineas.some((l: any) => l.proveedor_id != null)) return false
+        if (lineas.length === 0) return false
+      } else {
+        if (!lineas.some((l: any) => l.proveedor_id === filterProv)) return false
+      }
+    }
+    // Filtro por ubicación (en lineas del producto)
+    if (filterUbic) {
+      const lineas = lineasMap[(p as any).id] ?? []
+      if (filterUbic === '__sin__') {
+        if (lineas.some((l: any) => l.ubicacion_id != null)) return false
+        if (lineas.length === 0) return false
+      } else {
+        if (!lineas.some((l: any) => l.ubicacion_id === filterUbic)) return false
+      }
+    }
+    // Filtro por estado (en lineas del producto)
+    if (filterEstado) {
+      const lineas = lineasMap[(p as any).id] ?? []
+      if (filterEstado === '__sin__') {
+        if (lineas.some((l: any) => l.estado_id != null)) return false
+        if (lineas.length === 0) return false
+      } else {
+        if (!lineas.some((l: any) => l.estado_id === filterEstado)) return false
+      }
+    }
     return true
   })
 
@@ -716,10 +770,14 @@ export default function InventarioPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary">Inventario</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
-            {tab === 'movimientos' ? 'Registro de ingresos y rebajes' : 'Líneas de stock y LPNs'}
+            {tab === 'inventario' ? 'Líneas de stock y LPNs' :
+             tab === 'agregar' ? 'Ingresá mercadería al stock' :
+             tab === 'quitar' ? 'Rebajá o ajustá el stock' :
+             tab === 'historial' ? 'Registro de todos los movimientos' :
+             'Armado y desarmado de kits'}
           </p>
         </div>
-        {tab === 'movimientos' && (
+        {tab === 'agregar' && (
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setModal('ingreso')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
@@ -730,6 +788,10 @@ export default function InventarioPage() {
               title="Ingreso de múltiples SKUs">
               <ArrowDown size={16} /> Masivo
             </button>
+          </div>
+        )}
+        {tab === 'quitar' && (
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => setModal('rebaje')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               <ArrowUp size={16} /> Rebaje
@@ -743,28 +805,44 @@ export default function InventarioPage() {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-fit">
-        {([
-          { id: 'movimientos' as const, label: 'Movimientos' },
-          { id: 'inventario' as const, label: 'Inventario' },
-          { id: 'kits' as const, label: 'Kits' },
-        ]).map(({ id, label }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all
-              ${tab === id
-                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-            {label}
-          </button>
-        ))}
+      {/* Tabs + vista toggle */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto">
+          {([
+            { id: 'inventario' as const, label: 'Inventario' },
+            { id: 'agregar' as const, label: 'Agregar stock' },
+            { id: 'quitar' as const, label: 'Quitar stock' },
+            { id: 'historial' as const, label: 'Historial' },
+            { id: 'kits' as const, label: 'Kits' },
+          ]).map(({ id, label }) => (
+            <button key={id} onClick={() => setTab(id)}
+              className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
+                ${tab === id
+                  ? 'border-accent text-accent'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {tab === 'inventario' && (
+          <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 flex-shrink-0 mb-px">
+            <button onClick={() => setInvVista('producto')} title="Por producto"
+              className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'producto' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+              <LayoutList size={15} />
+            </button>
+            <button onClick={() => setInvVista('ubicacion')} title="Por ubicación"
+              className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'ubicacion' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+              <Building size={15} />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* ════════════════════════ TAB: MOVIMIENTOS ════════════════════════ */}
-      {tab === 'movimientos' && (
+      {/* ═══════════ TABS: AGREGAR / QUITAR / HISTORIAL ═══════════════════ */}
+      {(tab === 'agregar' || tab === 'quitar' || tab === 'historial') && (
         <>
-          {/* Barra de uso de movimientos */}
-          {limits && (
+          {/* Barra de uso de movimientos — solo en agregar/quitar */}
+          {tab !== 'historial' && limits && (
             <PlanProgressBar
               actual={limits.movimientos_mes}
               max={limits.max_movimientos}
@@ -813,7 +891,7 @@ export default function InventarioPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-medium text-gray-800 dark:text-gray-100">{m.productos?.nombre}</div>
-                          <div className="text-xs text-gray-400 dark:text-gray-500 font-mono">{m.productos?.sku}</div>
+                          <div className="text-xs text-gray-400 dark:text-gray-500">{m.productos?.sku}</div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
@@ -878,7 +956,7 @@ export default function InventarioPage() {
                       <div>
                         <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide">Producto</p>
                         <p className="font-semibold text-gray-800 dark:text-gray-100">{movDetalle.productos?.nombre}</p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{movDetalle.productos?.sku}
+                        <p className="text-xs text-gray-400 dark:text-gray-500">{movDetalle.productos?.sku}
                           {movDetalle.productos?.unidad_medida && <span className="ml-2 text-gray-300">· {movDetalle.productos.unidad_medida}</span>}
                         </p>
                       </div>
@@ -960,13 +1038,13 @@ export default function InventarioPage() {
                           {linea.lpn && (
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">LPN / Pallet</p>
-                              <p className="text-sm text-gray-700 dark:text-gray-300 font-mono">{linea.lpn}</p>
+                              <p className="text-sm text-gray-700 dark:text-gray-300">{linea.lpn}</p>
                             </div>
                           )}
                           {linea.nro_lote && (
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Nro. de lote</p>
-                              <p className="text-sm text-gray-700 dark:text-gray-300 font-mono">{linea.nro_lote}</p>
+                              <p className="text-sm text-gray-700 dark:text-gray-300">{linea.nro_lote}</p>
                             </div>
                           )}
                           {linea.fecha_vencimiento && (
@@ -1004,14 +1082,14 @@ export default function InventarioPage() {
                         <div className="flex flex-wrap gap-1.5">
                           {seriesLinea.map((s: any) => (
                             <span key={s.nro_serie}
-                              className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 px-2 py-1 rounded-lg font-mono border border-purple-100">
+                              className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 px-2 py-1 rounded-lg border border-purple-100">
                               {s.nro_serie}
                             </span>
                           ))}
                         </div>
                       </div>
                     )}
-                    <p className="text-xs text-gray-300 font-mono border-t border-gray-100 pt-3">ID: {movDetalle.id}</p>
+                    <p className="text-xs text-gray-300 border-t border-gray-100 pt-3">ID: {movDetalle.id}</p>
                   </div>
                 </div>
               </div>
@@ -1087,7 +1165,7 @@ export default function InventarioPage() {
                       </label>
                       <input type="text" value={form.lpn} onChange={e => setForm(p => ({ ...p, lpn: e.target.value }))}
                         placeholder="Ej: LPN-20260101-A1"
-                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono focus:outline-none focus:border-accent" />
+                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                     </div>
 
                     {tieneSeries ? (
@@ -1101,7 +1179,7 @@ export default function InventarioPage() {
                                 <input type="text" value={s}
                                   onChange={e => { const ns = [...series]; ns[i] = e.target.value; setSeries(ns) }}
                                   placeholder={`Serie ${i + 1}`}
-                                  className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:border-accent" />
+                                  className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
                               </div>
                               {series.length > 1 && (
                                 <button onClick={() => setSeries(series.filter((_, j) => j !== i))}
@@ -1116,16 +1194,46 @@ export default function InventarioPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="mb-3">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Cantidad{(selectedProduct as any)?.unidad_medida && (
-                            <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">({(selectedProduct as any).unidad_medida})</span>
-                          )}
-                        </label>
-                        <input type="number" onWheel={e => e.currentTarget.blur()} min="1" value={form.cantidad}
-                          onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
-                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
-                      </div>
+                      (() => {
+                        const uBase = (selectedProduct as any)?.unidad_medida ?? null
+                        const alts = uBase ? unidadesCompatibles(uBase) : []
+                        const unitActiva = ingresoUnitAlt ?? uBase
+                        const cantN = parseFloat(form.cantidad)
+                        const hint = ingresoUnitAlt && uBase && form.cantidad && !isNaN(cantN)
+                          ? convertirUnidad(cantN, ingresoUnitAlt, uBase)
+                          : null
+                        return (
+                          <div className="mb-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Cantidad
+                                {unitActiva && <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">({unitActiva})</span>}
+                              </label>
+                              {alts.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-xs text-gray-400 dark:text-gray-500">Ingresar en:</span>
+                                  {[uBase!, ...alts].map(u => (
+                                    <button key={u} type="button"
+                                      onClick={() => setIngresoUnitAlt(u === uBase ? null : u)}
+                                      className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
+                                        (ingresoUnitAlt ?? uBase) === u
+                                          ? 'bg-accent text-white border-accent'
+                                          : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent'
+                                      }`}>{u}</button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0.001" step="any"
+                              value={form.cantidad}
+                              onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
+                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
+                            {hint !== null && (
+                              <p className="mt-1 text-xs text-accent">= {hint} {uBase}</p>
+                            )}
+                          </div>
+                        )
+                      })()
                     )}
 
                     <div className="grid grid-cols-2 gap-3 mb-3">
@@ -1386,9 +1494,9 @@ export default function InventarioPage() {
                                   </span>
                                 </div>
                                 <div className="flex gap-3 mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                  <span className="font-mono">{l.lpn}</span>
+                                  <span>{l.lpn}</span>
                                   {(l.ubicaciones?.prioridad ?? 0) > 0 && (
-                                    <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded font-mono">P{l.ubicaciones.prioridad}</span>
+                                    <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded">P{l.ubicaciones.prioridad}</span>
                                   )}
                                   {l.nro_lote && <span>🏷 {l.nro_lote}</span>}
                                   {l.fecha_vencimiento && <span>📅 {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}
@@ -1414,20 +1522,53 @@ export default function InventarioPage() {
                                     onChange={e => setRebajeSeries(e.target.checked
                                       ? [...rebajeSeries, s.id]
                                       : rebajeSeries.filter(id => id !== s.id))} />
-                                  <span className="font-mono text-sm">{s.nro_serie}</span>
+                                  <span className="text-sm">{s.nro_serie}</span>
                                 </label>
                               ))}
                             </div>
                           </div>
                         ) : (
-                          <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                              Cantidad a rebajar (disponible: {rebajeLinea.cantidad})
-                            </label>
-                            <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max={rebajeLinea.cantidad}
-                              value={rebajeCantidad} onChange={e => setRebajeCantidad(e.target.value)}
-                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
-                          </div>
+                          (() => {
+                            const uBase = (selectedProduct as any)?.unidad_medida ?? null
+                            const alts = uBase ? unidadesCompatibles(uBase) : []
+                            const unitActiva = rebajeUnitAlt ?? uBase
+                            const disponible = rebajeLinea.cantidad - (rebajeLinea.cantidad_reservada ?? 0)
+                            const cantN = parseFloat(rebajeCantidad)
+                            const hint = rebajeUnitAlt && uBase && rebajeCantidad && !isNaN(cantN)
+                              ? convertirUnidad(cantN, rebajeUnitAlt, uBase)
+                              : null
+                            return (
+                              <div className="mb-4">
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    Cantidad a rebajar
+                                    {unitActiva && <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">({unitActiva})</span>}
+                                    <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">— disponible: {disponible}</span>
+                                  </label>
+                                  {alts.length > 0 && (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-gray-400 dark:text-gray-500">Ingresar en:</span>
+                                      {[uBase!, ...alts].map(u => (
+                                        <button key={u} type="button"
+                                          onClick={() => setRebajeUnitAlt(u === uBase ? null : u)}
+                                          className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
+                                            (rebajeUnitAlt ?? uBase) === u
+                                              ? 'bg-accent text-white border-accent'
+                                              : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent'
+                                          }`}>{u}</button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <input type="number" onWheel={e => e.currentTarget.blur()} min="0.001" step="any"
+                                  value={rebajeCantidad} onChange={e => setRebajeCantidad(e.target.value)}
+                                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
+                                {hint !== null && (
+                                  <p className="mt-1 text-xs text-accent">= {hint} {uBase}</p>
+                                )}
+                              </div>
+                            )
+                          })()
                         )}
 
                         <div className="mb-5">
@@ -1511,17 +1652,48 @@ export default function InventarioPage() {
               title="Escanear código de barras">
               <Camera size={17} />
             </button>
-            {/* Vista toggle */}
-            <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 flex-shrink-0">
-              <button onClick={() => setInvVista('producto')} title="Por producto"
-                className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'producto' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                <LayoutList size={15} />
+          </div>
+
+          {/* Filtros avanzados */}
+          <div className="flex flex-wrap gap-2">
+            <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
+              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <option value="">Todas las categorías</option>
+              <option value="__sin__">Sin categoría</option>
+              {[...new Map((productos as any[]).filter(p => p.categoria_id).map(p => [p.categoria_id, (p as any).categorias?.nombre ?? p.categoria_id])).entries()].map(([id, nombre]) => (
+                <option key={id} value={id}>{nombre}</option>
+              ))}
+            </select>
+            <select value={filterUbic} onChange={e => setFilterUbic(e.target.value)}
+              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <option value="">Todas las ubicaciones</option>
+              <option value="__sin__">Sin ubicación</option>
+              {(ubicaciones as any[]).map((u: any) => (
+                <option key={u.id} value={u.id}>{u.nombre}</option>
+              ))}
+            </select>
+            <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)}
+              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <option value="">Todos los estados</option>
+              <option value="__sin__">Sin estado</option>
+              {(estados as any[]).map((e: any) => (
+                <option key={e.id} value={e.id}>{e.nombre}</option>
+              ))}
+            </select>
+            <select value={filterProv} onChange={e => setFilterProv(e.target.value)}
+              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              <option value="">Todos los proveedores</option>
+              <option value="__sin__">Sin proveedor</option>
+              {(proveedores as any[]).map((pr: any) => (
+                <option key={pr.id} value={pr.id}>{pr.nombre}</option>
+              ))}
+            </select>
+            {(filterCat || filterUbic || filterEstado || filterProv) && (
+              <button onClick={() => { setFilterCat(''); setFilterUbic(''); setFilterEstado(''); setFilterProv('') }}
+                className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors px-2 py-1.5 rounded-lg">
+                × Limpiar filtros
               </button>
-              <button onClick={() => setInvVista('ubicacion')} title="Por ubicación"
-                className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'ubicacion' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                <Building size={15} />
-              </button>
-            </div>
+            )}
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -1585,7 +1757,7 @@ export default function InventarioPage() {
                                     <div className="flex items-center gap-2 flex-wrap">
                                       <span className="font-medium text-sm text-gray-900 dark:text-white">{prod?.nombre ?? l.producto_id}</span>
                                       <span className="text-xs text-gray-400 dark:text-gray-500">{prod?.sku}</span>
-                                      {l.lpn && <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded font-mono">{l.lpn}</span>}
+                                      {l.lpn && <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">{l.lpn}</span>}
                                     </div>
                                     <div className="flex items-center gap-2 flex-wrap text-xs">
                                       {l.estados_inventario && (
@@ -1645,7 +1817,7 @@ export default function InventarioPage() {
 
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
-                          <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{(p as any).sku}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">{(p as any).sku}</p>
                         </div>
 
                         <div className="hidden md:block text-xs text-gray-400 dark:text-gray-500">
@@ -1683,9 +1855,9 @@ export default function InventarioPage() {
                                 <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
                                   <div className="col-span-1">
                                     <div className="flex items-center gap-1.5">
-                                      <span className="font-mono text-xs text-primary font-semibold">{l.lpn}</span>
+                                      <span className="text-xs text-primary font-semibold">{l.lpn}</span>
                                       {(l.ubicaciones?.prioridad ?? 0) > 0 && (
-                                        <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded font-mono" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
+                                        <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
                                       )}
                                     </div>
                                     {l.proveedor_id && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{l.proveedores?.nombre}</p>}
@@ -1717,17 +1889,14 @@ export default function InventarioPage() {
                                   </div>
 
                                   <div className="col-span-1">
-                                    <select
-                                      value={l.estado_id ?? ''}
-                                      onChange={e => cambiarEstadoLinea.mutate({ lineaId: l.id, estadoId: e.target.value })}
-                                      className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 w-full focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
-                                      style={{ color: l.estados_inventario?.color ?? '#6b7280', fontWeight: 500 }}
-                                    >
-                                      <option value="">Sin estado</option>
-                                      {(estados as any[]).map(e => (
-                                        <option key={e.id} value={e.id}>{e.nombre}</option>
-                                      ))}
-                                    </select>
+                                    {l.estados_inventario ? (
+                                      <span className="inline-block text-xs px-2 py-0.5 rounded-lg border"
+                                        style={{ color: l.estados_inventario.color ?? '#6b7280', borderColor: l.estados_inventario.color ?? '#d1d5db', fontWeight: 500 }}>
+                                        {l.estados_inventario.nombre}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-gray-300">—</span>
+                                    )}
                                   </div>
 
                                   <div className="col-span-1">
@@ -1755,7 +1924,7 @@ export default function InventarioPage() {
                                       <div className="space-y-0.5">
                                         {(l.inventario_series ?? []).filter((s: any) => s.activo).map((s: any) => (
                                           <span key={s.id} title={s.reservado ? 'Reservada' : undefined}
-                                            className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono
+                                            className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded
                                               ${s.reservado
                                                 ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 dark:text-orange-400 line-through opacity-70'
                                                 : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
@@ -1769,9 +1938,8 @@ export default function InventarioPage() {
                                   <div className="col-span-1 flex justify-center">
                                     <button
                                       onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: p }) }}
-                                      disabled={(l.cantidad_reservada ?? 0) > 0}
-                                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-gray-400 disabled:hover:bg-transparent"
-                                      title={(l.cantidad_reservada ?? 0) > 0 ? `${l.cantidad_reservada} unidad(es) reservada(s) — no se puede modificar` : 'Acciones sobre este LPN'}>
+                                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"
+                                      title={(l.cantidad_reservada ?? 0) > 0 ? `${l.cantidad_reservada} reservada(s) — solo movimiento parcial disponible` : 'Acciones sobre este LPN'}>
                                       <Settings2 size={15} />
                                     </button>
                                   </div>

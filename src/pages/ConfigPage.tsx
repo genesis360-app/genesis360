@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, Truck, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, FolderOpen, FileText, Download, ShieldCheck, KeyRound, CreditCard } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, FolderOpen, FileText, Download, ShieldCheck, KeyRound, CreditCard } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -11,7 +11,7 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'archivos' | 'metodos_pago'
+type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'archivos' | 'metodos_pago'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
 const COLORES = [
@@ -423,28 +423,6 @@ export default function ConfigPage() {
     if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['categorias'] }); logActividad({ entidad: 'categoria', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
-  // Proveedores
-  const { data: proveedores = [], isLoading: loadingProv } = useQuery({
-    queryKey: ['proveedores', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('proveedores').select('*').eq('tenant_id', tenant!.id).order('nombre'); return (data ?? []) as Item[] },
-    enabled: !!tenant,
-  })
-  const addProveedor = async (nombre: string, contacto?: string) => {
-    const { error } = await supabase.from('proveedores').insert({ tenant_id: tenant!.id, nombre, contacto })
-    if (error) toast.error(error.message); else { toast.success('Proveedor agregado'); qc.invalidateQueries({ queryKey: ['proveedores'] }); logActividad({ entidad: 'proveedor', entidad_nombre: nombre, accion: 'crear', pagina: '/configuracion' }) }
-  }
-  const updateProveedor = async (id: string, nombre: string, contacto?: string) => {
-    const old = (proveedores as Item[]).find(p => p.id === id)
-    const { error } = await supabase.from('proveedores').update({ nombre, contacto }).eq('id', id)
-    if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['proveedores'] }); logActividad({ entidad: 'proveedor', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
-  }
-  const deleteProveedor = async (id: string) => {
-    if (!confirm('¿Eliminar este proveedor?')) return
-    const old = (proveedores as Item[]).find(p => p.id === id)
-    const { error } = await supabase.from('proveedores').delete().eq('id', id)
-    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['proveedores'] }); logActividad({ entidad: 'proveedor', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
-  }
-
   // Ubicaciones
   const { data: ubicaciones = [], isLoading: loadingUbic } = useQuery({
     queryKey: ['ubicaciones', tenant?.id],
@@ -509,10 +487,42 @@ export default function ConfigPage() {
     setEditUbicId(null)
   }
   const deleteUbicacion = async (id: string) => {
-    if (!confirm('¿Eliminar esta ubicación?')) return
     const old = (ubicaciones as any[]).find(u => u.id === id)
+
+    // 1. Bloquear si tiene inventario activo con stock
+    const { count: cntStock } = await supabase.from('inventario_lineas')
+      .select('*', { count: 'exact', head: true })
+      .eq('ubicacion_id', id)
+      .eq('activo', true)
+      .gt('cantidad', 0)
+    if ((cntStock ?? 0) > 0) {
+      toast.error('No se puede eliminar: tiene inventario activo. Vacíala primero.')
+      return
+    }
+
+    // 2. Verificar referencias sin stock (líneas inactivas + productos)
+    const [{ count: cntLineas }, { count: cntProds }] = await Promise.all([
+      supabase.from('inventario_lineas').select('*', { count: 'exact', head: true }).eq('ubicacion_id', id),
+      supabase.from('productos').select('*', { count: 'exact', head: true }).eq('ubicacion_id', id).eq('tenant_id', tenant!.id),
+    ])
+    const totalRef = (cntLineas ?? 0) + (cntProds ?? 0)
+    const msg = totalRef > 0
+      ? `Esta ubicación tiene ${totalRef} referencia(s) sin stock activo que se desvincularán. ¿Confirmar eliminación?`
+      : '¿Eliminar esta ubicación?'
+    if (!confirm(msg)) return
+
+    // 3. Nullificar referencias antes de borrar
+    if ((cntLineas ?? 0) > 0)
+      await supabase.from('inventario_lineas').update({ ubicacion_id: null }).eq('ubicacion_id', id)
+    if ((cntProds ?? 0) > 0)
+      await supabase.from('productos').update({ ubicacion_id: null }).eq('ubicacion_id', id).eq('tenant_id', tenant!.id)
+
     const { error } = await supabase.from('ubicaciones').delete().eq('id', id)
-    if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['ubicaciones'] }); logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
+    if (error) { toast.error(error.message); return }
+    toast.success('Ubicación eliminada')
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+    qc.invalidateQueries({ queryKey: ['productos'] })
+    logActividad({ entidad: 'ubicacion', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' })
   }
   const toggleUbicSurtido = async (u: any) => {
     const nuevo = !u.disponible_surtido
@@ -965,7 +975,6 @@ export default function ConfigPage() {
   const tabs = [
     { id: 'negocio' as Tab, label: 'Mi negocio', icon: Building2 },
     { id: 'categorias' as Tab, label: 'Categorías', icon: Tag },
-    { id: 'proveedores' as Tab, label: 'Proveedores', icon: Truck },
     { id: 'ubicaciones' as Tab, label: 'Ubicaciones', icon: MapPin },
     { id: 'estados' as Tab, label: 'Estados', icon: CircleDot },
     { id: 'motivos' as Tab, label: 'Motivos', icon: MessageSquare },
@@ -1214,17 +1223,6 @@ export default function ConfigPage() {
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{categorias.length} cargadas</span>
           </div>
           <ListaABM items={categorias} loading={loadingCat} withDescription onAdd={addCategoria} onUpdate={updateCategoria} onDelete={deleteCategoria} />
-        </div>
-      )}
-
-      {tab === 'proveedores' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-4">
-            <Truck size={18} className="text-accent" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Proveedores</h2>
-            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{proveedores.length} cargados</span>
-          </div>
-          <ListaABM items={proveedores} loading={loadingProv} withDescription onAdd={addProveedor} onUpdate={updateProveedor} onDelete={deleteProveedor} />
         </div>
       )}
 

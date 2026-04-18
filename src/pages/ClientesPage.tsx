@@ -15,6 +15,7 @@ import toast from 'react-hot-toast'
 interface FilaCliente {
   idx: number
   nombre: string
+  dni?: string
   telefono?: string
   email?: string
   notas?: string
@@ -193,12 +194,12 @@ export default function ClientesPage() {
   // ── Importación masiva ───────────────────────────────────────────────────
   const descargarPlantilla = () => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['nombre', 'telefono', 'email', 'notas'],
-      ['Juan Pérez', '+54 11 1234-5678', 'juan@email.com', 'Cliente frecuente'],
-      ['María García', '', 'maria@empresa.com', ''],
+      ['nombre', 'dni', 'telefono', 'email', 'notas'],
+      ['Juan Pérez', '20123456', '+54 11 1234-5678', 'juan@email.com', 'Cliente frecuente'],
+      ['María García', '27654321', '', 'maria@empresa.com', ''],
     ])
     const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-    ;['A', 'B', 'C', 'D'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
+    ;['A', 'B', 'C', 'D', 'E'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
     ws['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 28 }, { wch: 35 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
@@ -224,6 +225,7 @@ export default function ClientesPage() {
           return {
             idx,
             nombre,
+            dni: String(row.dni || '').trim() || undefined,
             telefono: String(row.telefono || '').trim() || undefined,
             email: String(row.email || '').trim() || undefined,
             notas: String(row.notas || '').trim() || undefined,
@@ -245,9 +247,11 @@ export default function ClientesPage() {
         const { error } = await supabase.from('clientes').insert({
           tenant_id: tenant!.id,
           nombre: fila.nombre,
+          dni: fila.dni ?? null,
           telefono: fila.telefono ?? null,
           email: fila.email ?? null,
           notas: fila.notas ?? null,
+          sucursal_id: sucursalId || null,
         })
         if (error) throw error
         creados++
@@ -595,6 +599,7 @@ export default function ClientesPage() {
                       <thead>
                         <tr className="bg-gray-50 dark:bg-gray-700 text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                           <th className="px-3 py-2 text-left">Nombre</th>
+                          <th className="px-3 py-2 text-left hidden sm:table-cell">DNI</th>
                           <th className="px-3 py-2 text-left hidden sm:table-cell">Teléfono</th>
                           <th className="px-3 py-2 text-left hidden sm:table-cell">Email</th>
                           <th className="px-3 py-2 text-left">Estado</th>
@@ -604,6 +609,7 @@ export default function ClientesPage() {
                         {filasImport.slice(0, 50).map(f => (
                           <tr key={f.idx} className={f.estado === 'error' ? 'bg-red-50 dark:bg-red-900/20' : f.estado === 'duplicado' ? 'bg-amber-50 dark:bg-amber-900/20/50' : ''}>
                             <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{f.nombre || <span className="text-gray-400 dark:text-gray-500 italic">—</span>}</td>
+                            <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.dni ?? '—'}</td>
                             <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.telefono ?? '—'}</td>
                             <td className="px-3 py-2 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{f.email ?? '—'}</td>
                             <td className="px-3 py-2">
@@ -641,7 +647,7 @@ export default function ClientesPage() {
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>
                   <FileSpreadsheet size={32} className="text-gray-300 mx-auto mb-2" />
                   <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click para subir tu Excel</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Columnas: nombre, telefono, email, notas</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Columnas: nombre, dni, telefono, email, notas</p>
                 </div>
               )}
             </div>

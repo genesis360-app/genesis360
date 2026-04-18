@@ -1,6 +1,6 @@
 # Genesis360 — Roadmap RRHH
 
-**Última actualización:** 13 de Abril, 2026 · **v0.74.0 en DEV · v0.72.0 en PROD**
+**Última actualización:** 17 de Abril, 2026 · **v0.75.0 en DEV · v0.74.2 en PROD**
 
 > Stack, arquitectura y convenciones → [CLAUDE.md](CLAUDE.md) · Workflow de deploy → [WORKFLOW.md](WORKFLOW.md)
 
@@ -177,49 +177,4 @@ Próximo RRHH: Bloque 5 — feriados calendar + CHECK-IN/CHECK-OUT rápido (v0.7
 
 ---
 
-## Patrones de código reutilizables
-
-```typescript
-// Nueva tabla RRHH (patrón estándar)
-CREATE TABLE IF NOT EXISTS rrhh_nueva (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  // ... campos específicos
-  activo BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-ALTER TABLE rrhh_nueva ENABLE ROW LEVEL SECURITY;
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='rrhh_nueva' AND policyname='rrhh_nueva_tenant') THEN
-    CREATE POLICY "rrhh_nueva_tenant" ON rrhh_nueva
-      USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
-      WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
-  END IF;
-END $$;
-CREATE INDEX IF NOT EXISTS idx_rrhh_nueva_tenant ON rrhh_nueva(tenant_id);
-
-// Query estándar en componente
-const { data } = useQuery({
-  queryKey: ['rrhh_nueva', tenant?.id],
-  queryFn: async () => {
-    const { data, error } = await supabase.from('rrhh_nueva')
-      .select('*').eq('tenant_id', tenant!.id).eq('activo', true)
-    if (error) throw error
-    return (data ?? [])
-  },
-  enabled: !!tenant,
-})
-```
-
----
-
-## Changelog
-
-| Fecha | Versión | Cambios |
-|-------|---------|---------|
-| 23-Mar-2026 | 1.0 | Roadmap inicial + Phase 1 RRHH en PROD |
-| 23-Mar-2026 | 1.1 | Actualizado post v0.27.0 · compactado · duplicados eliminados |
-| 04-Apr-2026 | 1.2 | Sección WMS completa (Fases 1–4): estructura de producto ✅ · dimensiones ubicaciones · tareas/picking · cross-docking |
-| 13-Apr-2026 | 1.3 | Phases 2–5 RRHH marcadas ✅ (todas en PROD). WMS Fase 2.5 KITs ✅. Header v0.74.0. Próximo: Bloque 5 RRHH feriados + check-in (v0.75.0) |
-| 04-Apr-2026 | 1.3 | KITs/Kitting agregado como Fase 2.5 · fixes pre-deploy v0.57.0 documentados |
+> Patrones de código (tabla RRHH, queries estándar) → ver [CLAUDE.md](CLAUDE.md) § Arquitectura multi-tenant.

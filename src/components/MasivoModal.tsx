@@ -190,8 +190,10 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
       if (tipo === 'rebaje' && it.tieneSeries) continue  // se ignoran en rebaje
       const cant = getCantidad(it)
       if (cant <= 0) return `${it.productoNombre}: ingresá una cantidad válida.`
+      // Para rebaje: el disponible real es stock_actual (el trigger ya no incluye reservados en la suma)
+      // pero la validación pre-fetch usa stockActual como proxy; la línea puede fallar más adelante si hay reservas
       if (tipo === 'rebaje' && cant > it.stockActual)
-        return `${it.productoNombre}: stock insuficiente (disponible: ${it.stockActual}).`
+        return `${it.productoNombre}: stock insuficiente (stock: ${it.stockActual}).`
       if (tipo === 'ingreso' && it.tieneLote && !it.nroLote.trim())
         return `${it.productoNombre}: requiere número de lote.`
       if (tipo === 'ingreso' && it.tieneVencimiento && !it.fechaVencimiento)
@@ -273,23 +275,29 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
           // REBAJE — auto-FIFO desde líneas existentes
           const { data: lineasRaw } = await supabase.from('inventario_lineas')
             .select('*, ubicaciones(prioridad)')
+            .eq('tenant_id', tenant!.id)
             .eq('producto_id', it.productoId)
             .eq('activo', true)
             .gt('cantidad', 0)
           const { data: prodInfo } = await supabase.from('productos')
             .select('regla_inventario, tiene_vencimiento').eq('id', it.productoId).single()
           const sortFn = getRebajeSort(prodInfo?.regla_inventario, tenant!.regla_inventario, prodInfo?.tiene_vencimiento ?? false)
-          const lineas = (lineasRaw ?? []).sort(sortFn)
+          // Solo líneas con disponible > 0 (cantidad − cantidad_reservada)
+          const lineas = (lineasRaw ?? [])
+            .filter((l: any) => (l.cantidad - (l.cantidad_reservada ?? 0)) > 0)
+            .sort(sortFn)
 
           let restante = cant
           let primeraLinea: any = null
           for (const linea of lineas) {
             if (restante <= 0) break
-            const consume = Math.min(restante, linea.cantidad)
+            const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
+            const consume = Math.min(restante, disponible)
             const nuevaCant = linea.cantidad - consume
-            await supabase.from('inventario_lineas')
+            const { error: lineaErr } = await supabase.from('inventario_lineas')
               .update({ cantidad: nuevaCant, activo: nuevaCant > 0 })
               .eq('id', linea.id)
+            if (lineaErr) throw new Error(`${it.productoNombre}: error al actualizar línea — ${lineaErr.message}`)
             restante -= consume
             if (!primeraLinea) primeraLinea = linea
           }

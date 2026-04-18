@@ -85,3 +85,50 @@ describe('extractEfectivoPagado', () => {
     expect(extractEfectivoPagado(null)).toBe(0)
   })
 })
+
+// ─── calcularDevolucion al cancelar reserva ───────────────────────────────────
+// Replica la lógica de VentasPage: egreso_devolucion_sena (efectivo) +
+// egreso_informativo (no-efectivo) al cancelar una venta con monto_pagado > 0.
+
+function calcularDevolucion(mediosPagoJson: string | null, montoPagado: number) {
+  if (!mediosPagoJson || montoPagado <= 0) return { efectivo: 0, noCash: 0 }
+  try {
+    const arr = JSON.parse(mediosPagoJson) as { tipo: string; monto: number }[]
+    const efectivo = arr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0)
+    const noCash = montoPagado - efectivo
+    return { efectivo: Math.max(0, efectivo), noCash: Math.max(0, noCash) }
+  } catch {
+    return { efectivo: 0, noCash: 0 }
+  }
+}
+
+describe('calcularDevolucion al cancelar reserva', () => {
+  it('seña 100% efectivo → devolucion_sena = total, no-cash = 0', () => {
+    const json = JSON.stringify([{ tipo: 'Efectivo', monto: 500 }])
+    expect(calcularDevolucion(json, 500)).toEqual({ efectivo: 500, noCash: 0 })
+  })
+
+  it('seña 100% tarjeta → devolucion_sena = 0, informativo = total', () => {
+    const json = JSON.stringify([{ tipo: 'Tarjeta', monto: 500 }])
+    expect(calcularDevolucion(json, 500)).toEqual({ efectivo: 0, noCash: 500 })
+  })
+
+  it('seña mixta efectivo + tarjeta → split correcto', () => {
+    const json = JSON.stringify([{ tipo: 'Efectivo', monto: 300 }, { tipo: 'Tarjeta', monto: 200 }])
+    expect(calcularDevolucion(json, 500)).toEqual({ efectivo: 300, noCash: 200 })
+  })
+
+  it('seña MP → devolucion_sena = 0, informativo = total', () => {
+    const json = JSON.stringify([{ tipo: 'Mercado Pago', monto: 1200 }])
+    expect(calcularDevolucion(json, 1200)).toEqual({ efectivo: 0, noCash: 1200 })
+  })
+
+  it('sin pago → no devuelve nada', () => {
+    expect(calcularDevolucion(null, 0)).toEqual({ efectivo: 0, noCash: 0 })
+  })
+
+  it('monto_pagado = 0 aunque haya JSON → no devuelve nada', () => {
+    const json = JSON.stringify([{ tipo: 'Efectivo', monto: 0 }])
+    expect(calcularDevolucion(json, 0)).toEqual({ efectivo: 0, noCash: 0 })
+  })
+})

@@ -839,7 +839,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - `font-mono` en todos los valores numéricos de precio (dropdown, galería, carrito, totales, historial)
 - **Design System Sprint status**: Sprint 1 ✅ Tokens · Sprint 2 ✅ Header+Sidebar · Sprint 3 ✅ Dashboard General · Sprint 4 ✅ Ventas checkout
 
-### v0.74.1 — en dev
+### v0.74.1 ✅ PROD
 
 #### Fix — Medios de pago no-efectivo registrados en caja
 - **Bug**: pagos con tarjeta, transferencia, MP y otros no quedaban en `caja_movimientos`. Solo el efectivo era registrado. El resumen de movimientos de sesión no mostraba estas operaciones.
@@ -848,6 +848,28 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Fix `VentasPage.tsx` `cambiarEstado`**: al despachar desde historial → INSERT `ingreso_informativo` con no-efectivo del saldo cobrado ahora + no-efectivo original de la reserva (si ya estaba en caja).
 - **Fix `CajaPage.tsx`**: `egreso_informativo` agregado a `TIPO_LABEL` y `extraerMedioPago`; incluido con signo negativo en `totalesMedios`.
 - **Invariante de saldo**: `totalIngresos` y `totalEgresos` para calcular saldo solo incluyen tipos `*` (no `*_informativo`) — el saldo de efectivo no se ve afectado.
+
+### v0.74.2 — en dev
+
+#### Fix — Tipografía + restricciones LPN con reservas
+- **`font-mono` revertido**: eliminado de todos los valores en `VentasPage.tsx` e `InventarioPage.tsx` (LPN, SKU, N/S, tickets, totales, precios). Vuelve a la tipografía del sistema (v0.72/v0.73). Solo permanece en inputs de formularios donde el monoespaciado ayuda a la edición.
+- **Inventario tab Inventario — estado read-only**: el `<select>` inline de estado reemplazado por un badge de solo lectura con el color del estado. Para cambiar estado → Acciones del LPN (engranaje).
+- **Botón acciones habilitado con reservas**: antes estaba `disabled` si `cantidad_reservada > 0`. Ahora siempre está habilitado.
+- **`LpnAccionesModal` con reservas**: si `linea.cantidad_reservada > 0` → tab inicial = `mover`, solo se muestra tab Mover + banner naranja explicativo. Tabs Editar, Series y Eliminar no aparecen hasta liberar reservas.
+
+#### Fix — Cancelación de reserva con seña + ticket LPN historial
+- **Cancelar reserva con monto cobrado**: confirm dialog ahora advierte "⚠ Esta venta tiene $X cobrado al cliente. Recordá devolver el importe." cuando `monto_pagado > 0`. Post-cancelación: toast rojo 8s con el monto a devolver.
+- **`egreso_informativo` no-efectivo en cancelación**: al cancelar una reserva señada con tarjeta/MP, se inserta `egreso_informativo` con concepto `[Tipo] Dev. seña Venta #N` y monto = `monto_pagado - efectivo_cobrado`. Complementa el `egreso_devolucion_sena` ya existente para efectivo.
+- **Ticket LPN en historial**: "Ver / Imprimir ticket" desde el historial ahora muestra el LPN primario de cada ítem no-serializado. Antes `lpn_fuentes` era `undefined` y el rendering no mostraba ningún LPN. Ahora construye `lpn_fuentes` desde `inventario_lineas.lpn`. Limitación: para ítems multi-LPN el historial solo puede mostrar el LPN principal (deuda técnica: `venta_items.linea_id` es FK simple).
+- **Tests `calcularDevolucion`**: 6 casos nuevos en `cajaSeña.test.ts` — efectivo puro, tarjeta pura, mixto, MP, sin pago, monto=0. Total: **154/154** passing.
+
+#### Monitoreo operativo — EF `monitoring-check` + GitHub Action
+- **EF `monitoring-check`** (`supabase/functions/monitoring-check/index.ts`): se ejecuta sin JWT. Usa service role para consultar: reservas viejas >5d, stock crítico (stock_actual ≤ stock_minimo), cajas abiertas >16h, ventas finalizadas del día. Envía email HTML via Resend con KPIs + tablas de detalle.
+- **Umbrales**: `UMBRAL_RESERVAS_DIAS = 5` · `UMBRAL_CAJA_HORAS = 16` — constantes al tope del archivo, fáciles de ajustar.
+- **Email**: subject `✅ Todo en orden` si sin alertas · `⚠️ N alerta(s)` si hay. `ALERT_EMAIL = gaston.otranto@gmail.com`.
+- **GitHub Action** `.github/workflows/monitoring-check.yml`: cron `0 12 * * *` (12 UTC = 9 AM Argentina). Reutiliza secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY` ya configurados.
+- **Deploy**: EF deployada en DEV ✅. **Pendiente PROD**: `npx supabase functions deploy monitoring-check --project-ref jjffnbrdjchquexdfgwq --no-verify-jwt` + configurar secret `RESEND_API_KEY` en PROD.
+- **Snippets SQL** (guardados en Supabase PROD → SQL Editor): 2.1 caja activa · 2.2 reservas viejas · 2.3 stock crítico · 2.4 ventas diarias · 2.5 rebajes manuales · 2.6 actividad usuarios · 2.7 tenants · 2.8 consumo free plan.
 
 ### v0.73.0 — en dev
 - ✅ **Fix sucursal filter**: `useSucursalFilter.applyFilter` usa `.or('sucursal_id.eq.{id},sucursal_id.is.null')` — datos previos a multi-sucursal (NULL) siguen visibles con cualquier sucursal seleccionada. Afecta inventario, movimientos, ventas, gastos, clientes.

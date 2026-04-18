@@ -1,0 +1,21 @@
+name: Monitoring Check
+
+on:
+  schedule:
+    # Todos los días a las 12:00 UTC (9:00 AM Argentina)
+    - cron: '0 12 * * *'
+  workflow_dispatch:  # Permite ejecución manual desde GitHub Actions
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call monitoring-check Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/monitoring-check" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

@@ -380,7 +380,7 @@ export default function VentasPage() {
       const estadosFiltro2 = grupoActivo2?.estado_ids ?? []
       let lq = supabase.from('inventario_lineas')
         .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
-        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+        .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
       if (estadosFiltro2.length > 0) lq = lq.in('estado_id', estadosFiltro2)
       const { data: lineasRaw2 } = await lq
       const sortedLineas = (lineasRaw2 ?? [])

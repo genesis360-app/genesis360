@@ -872,6 +872,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Ocultar scroll nativo en tabs**: `[&::-webkit-scrollbar]:hidden` + `scrollbarWidth: 'none'` en el contenedor `overflow-x-auto` de la barra de pestañas.
 - **Botón Importar en tab Inventario**: header muestra botón "Importar" cuando `tab === 'inventario'` → navega a `/productos/importar?tab=inventario`.
 - **ImportarProductosPage**: lee `?tab=inventario` desde `useSearchParams` y pre-selecciona el tab de inventario al abrir.
+- **LPN único por tenant**: validación en `ingresoMutation` y `MasivoModal` — antes de insertar, consulta `inventario_lineas WHERE lpn = X AND tenant_id = Y AND activo = true`. Error descriptivo con el producto que ya lo tiene. MasivoModal también detecta duplicados dentro del mismo lote (sin tocar DB).
+- **Vista por ubicación — orden**: "Sin ubicación" primero, luego A-Z con `localeCompare('es')`.
 
 ### v0.77.0 — en dev
 

@@ -862,6 +862,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Sidebar**: `Truck` icon `/proveedores` (ownerOnly) posicionado entre Clientes y Alertas.
 - **Arquitectura ASN-ready**: OC lifecycle termina en `confirmada` — la recepción y generación de stock es responsabilidad del futuro módulo ASN.
 
+### v0.81.0 — en dev
+
+#### VentasPage — fixes y cantidades decimales
+
+- **Fix carrito draft (localStorage)**: bug de orden de efectos — el save effect borraba el draft antes de que el restore lo leyera. Fix: restore declarado antes que save en el código; `cartDraftKey` omitido de las deps del save effect (evita que se dispare cuando carga el tenant).
+- **Fix scanner cola secuencial**: `pendingAddRef` no funcionaba cuando el segundo scan llegaba antes de que el primero terminara su fetch de líneas (findIndex devolvía -1 y el incremento era no-op). Reemplazado por `scanQueueRef` + `scanProcessingRef`: los scans se encolan y `processNext()` los procesa de a uno, garantizando que el segundo scan ve el carrito ya actualizado por el primero.
+- **Cantidades decimales en carrito**: `UNIDADES_DECIMALES` (kg, g, gr, mg, l, lt, ml, m, m2, m3, cm, mm, km — case-insensitive). `CartItem` agrega `unidad_medida`. Helpers `esDecimal()`, `stepCantidad()`, `parseCantidad()`. Input: `step` y `min` dinámicos; `parseInt` → `parseFloat`; ancho `w-16`. Botones +/− respetan el step (0.001 para decimales, 1 para enteros).
+
 ### v0.80.0 — en dev
 
 #### VentasPage — fixes UX

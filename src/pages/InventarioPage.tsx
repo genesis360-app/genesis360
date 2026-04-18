@@ -235,7 +235,7 @@ export default function InventarioPage() {
     enabled: !!tenant && tab === 'inventario',
   })
 
-  const { data: lineasData = { byProducto: {} as Record<string, any[]>, byUbicacion: {} as Record<string, any[]> } } = useQuery({
+  const { data: lineasData = { byProducto: {} as Record<string, any[]>, byUbicacion: {} as Record<string, any[]> }, isLoading: lineasLoading } = useQuery({
     queryKey: ['inventario_lineas_all', tenant?.id, sucursalId],
     queryFn: async () => {
       let q = supabase
@@ -823,7 +823,7 @@ export default function InventarioPage() {
           </div>
         )}
         {tab === 'inventario' && (
-          <button onClick={() => navigate('/productos/importar?tab=inventario')}
+          <button onClick={() => navigate('/inventario/importar')}
             className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all"
             title="Importar stock desde Excel">
             <Upload size={16} /> Importar
@@ -1723,7 +1723,7 @@ export default function InventarioPage() {
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-            {invLoading ? (
+            {(invLoading || lineasLoading) ? (
               <div className="flex items-center justify-center py-16">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>

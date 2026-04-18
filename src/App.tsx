@@ -16,7 +16,8 @@ const DashboardPage    = lazy(() => import('@/pages/DashboardPage'))
 const ProductosPage    = lazy(() => import('@/pages/ProductosPage'))
 const InventarioPage   = lazy(() => import('@/pages/InventarioPage'))
 const ProductoFormPage = lazy(() => import('@/pages/ProductoFormPage'))
-const ImportarProductosPage = lazy(() => import('@/pages/ImportarProductosPage'))
+const ImportarProductosPage  = lazy(() => import('@/pages/ImportarProductosPage'))
+const ImportarInventarioPage = lazy(() => import('@/pages/ImportarInventarioPage'))
 const CajaPage             = lazy(() => import('@/pages/CajaPage'))
 const MetricasPage         = lazy(() => import('@/pages/MetricasPage'))
 const VentasPage       = lazy(() => import('@/pages/VentasPage'))
@@ -114,7 +115,7 @@ function App() {
                   <Route path="/inventario" element={<InventarioPage />} />
                   {/* Redirects para compatibilidad con URLs viejas */}
                   <Route path="/inventario/nuevo" element={<Navigate to="/productos/nuevo" replace />} />
-                  <Route path="/inventario/importar" element={<Navigate to="/productos/importar" replace />} />
+                  <Route path="/inventario/importar" element={<ImportarInventarioPage />} />
                   <Route path="/inventario/:id/editar" element={<ProductoFormPage />} />
                   <Route path="/movimientos" element={<Navigate to="/inventario" replace />} />
                   <Route path="/ventas" element={<VentasPage />} />

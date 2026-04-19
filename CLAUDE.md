@@ -872,6 +872,28 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Sidebar**: `Truck` icon `/proveedores` (ownerOnly) posicionado entre Clientes y Alertas.
 - **Arquitectura ASN-ready**: OC lifecycle termina en `confirmada` — la recepción y generación de stock es responsabilidad del futuro módulo ASN.
 
+### v0.83.0 — en dev
+
+#### Conteo de inventario + Estructura LPN (migration 050)
+
+- **Migration 050 bundled**: nuevos estados OC (`recibida_parcial`, `recibida`) + tablas `recepciones` + `recepcion_items` (ASN futuro) + `inventario_lineas.estructura_id UUID FK → producto_estructuras` + tablas `inventario_conteos` + `inventario_conteo_items`. RLS y triggers en todas. DEV ✅.
+- **Tab "Conteo"** en `InventarioPage`: nuevo tab con ícono `ClipboardList`.
+  - Toggle tipo: **Por ubicación** (selecciona ubicación) / **Por producto** (selecciona producto).
+  - Botón "Cargar stock" → `cargarLineasParaConteo()`: query `inventario_lineas` filtrando por `ubicacion_id` o `producto_id`, construye tabla de conteo con `cantidad_esperada` = stock actual.
+  - Tabla editable por LPN: nombre, SKU, LPN, stock esperado, campo "Contado" (input numérico).
+  - Color diferencias: verde (=esperado), ámbar (contado ≠ esperado), rojo (contado < 0).
+  - **Guardar borrador**: `inventario_conteos.estado = 'borrador'` + `inventario_conteo_items` — no afecta stock.
+  - **Finalizar y ajustar**: `estado = 'finalizado'`, aplica ajustes secuenciales: `cantidad_contada > esperada` → movimiento `ajuste_ingreso`; `cantidad_contada < esperada` → movimiento `ajuste_rebaje`. `ajuste_aplicado = true`.
+  - **Historial de conteos**: query `conteoHistorial` paginada; tarjetas expandibles con detalle de ítems y diferencias.
+- **Tab "Estructura"** en `LpnAccionesModal`: nueva pestaña con ícono `Layers`.
+  - Query `estructuras`: `producto_estructuras WHERE producto_id = producto.id`.
+  - Si hay más de 0 estructuras: cards con nombre, badge "Default", dimensiones por nivel.
+  - Radio selector para cambiar la estructura asignada al LPN (o "Sin estructura").
+  - Mutation `guardarEstructura`: `UPDATE inventario_lineas SET estructura_id = X WHERE id = linea.id`.
+  - Tab visible solo cuando no hay reservas activas (misma lógica que otras tabs).
+- **Interfaces TS nuevas** en `supabase.ts`: `InventarioConteo` + `InventarioConteoItem`.
+- **Tipos de movimiento**: `ajuste_ingreso` y `ajuste_rebaje` no estaban como valores del CHECK — usar `motivo` en `movimientos_stock` para identificarlos (tipo `ingreso` / `rebaje`).
+
 ### v0.82.0 — en dev
 
 #### InventarioPage — series overflow, QR LPN, masivo inline, iconos

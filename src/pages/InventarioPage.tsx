@@ -4,7 +4,7 @@ import {
   ArrowDown, ArrowUp, Search, Plus, Minus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
-  ShoppingBasket, CheckCircle2, ChevronLeft,
+  ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -20,11 +20,11 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
-import type { Producto, KitReceta } from '@/lib/supabase'
+import type { Producto, KitReceta, InventarioConteo } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 
-type Tab = 'inventario' | 'agregar' | 'quitar' | 'historial' | 'kits'
+type Tab = 'inventario' | 'agregar' | 'quitar' | 'historial' | 'kits' | 'conteo'
 type ModalType = 'ingreso' | 'rebaje' | null
 
 const emptyIngreso = {
@@ -157,6 +157,19 @@ export default function InventarioPage() {
   const [clonarDestinoId, setClonarDestinoId] = useState('')
   const [desarmarCantidad, setDesarmarCantidad] = useState('1')
   const [desarmarNotas, setDesarmarNotas] = useState('')
+
+  // ── Conteo tab state ───────────────────────────────────────────────────────
+  type ConteoRow = {
+    linea_id: string; producto_id: string; nombre: string; sku: string
+    unidad_medida: string; lpn: string; cantidad_esperada: number; cantidad_contada: string
+  }
+  const [conteoTipo, setConteoTipo] = useState<'ubicacion' | 'producto'>('ubicacion')
+  const [conteoRefId, setConteoRefId] = useState('')
+  const [conteoRows, setConteoRows] = useState<ConteoRow[]>([])
+  const [conteoNotas, setConteoNotas] = useState('')
+  const [showConteoForm, setShowConteoForm] = useState(false)
+  const [conteoExpandedId, setConteoExpandedId] = useState<string | null>(null)
+  const [conteoLoading, setConteoLoading] = useState(false)
 
   // ── Shared queries ─────────────────────────────────────────────────────────
   const { data: estados = [] } = useQuery({
@@ -349,6 +362,31 @@ export default function InventarioPage() {
       return data ?? []
     },
     enabled: !!tenant && !!showRecetaForm && recetaCompSearch.length > 1,
+  })
+
+  // ── Conteo queries ─────────────────────────────────────────────────────────
+  const { data: conteoHistorial = [] } = useQuery({
+    queryKey: ['conteo-historial', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('inventario_conteos')
+        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida))')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at', { ascending: false })
+        .limit(30)
+      return (data ?? []) as InventarioConteo[]
+    },
+    enabled: !!tenant && tab === 'conteo',
+  })
+
+  const { data: productosParaConteo = [] } = useQuery({
+    queryKey: ['productos-para-conteo', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos')
+        .select('id, nombre, sku').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'conteo',
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -700,6 +738,124 @@ export default function InventarioPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Conteo helpers ─────────────────────────────────────────────────────────
+  const cargarLineasParaConteo = async () => {
+    if (!conteoRefId || !tenant) return
+    setConteoLoading(true)
+    try {
+      let q = supabase.from('inventario_lineas')
+        .select('id, producto_id, lpn, cantidad, activo, productos(nombre,sku,unidad_medida), inventario_series(id,activo)')
+        .eq('tenant_id', tenant.id).eq('activo', true)
+      if (conteoTipo === 'ubicacion') {
+        if (conteoRefId === '__sin__') q = (q as any).is('ubicacion_id', null)
+        else q = q.eq('ubicacion_id', conteoRefId)
+      } else {
+        q = q.eq('producto_id', conteoRefId)
+      }
+      const { data } = await q
+      const rows: ConteoRow[] = (data ?? []).map((l: any) => {
+        const prod = l.productos ?? {}
+        const seriesActivas = (l.inventario_series ?? []).filter((s: any) => s.activo).length
+        const cantEsperada = seriesActivas > 0 ? seriesActivas : (l.cantidad ?? 0)
+        return {
+          linea_id: l.id,
+          producto_id: l.producto_id,
+          nombre: prod.nombre ?? '',
+          sku: prod.sku ?? '',
+          unidad_medida: prod.unidad_medida ?? '',
+          lpn: l.lpn ?? '',
+          cantidad_esperada: cantEsperada,
+          cantidad_contada: String(cantEsperada),
+        }
+      })
+      if (rows.length === 0) toast('No hay stock en esta ubicación/producto', { icon: 'ℹ️' })
+      setConteoRows(rows)
+    } finally {
+      setConteoLoading(false)
+    }
+  }
+
+  const resetConteoForm = () => {
+    setShowConteoForm(false); setConteoRows([]); setConteoNotas(''); setConteoRefId('')
+  }
+
+  const guardarConteoBorrador = useMutation({
+    mutationFn: async () => {
+      if (conteoRows.length === 0) throw new Error('Cargá el stock antes de guardar')
+      const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
+        tenant_id: tenant!.id, tipo: conteoTipo,
+        ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
+        producto_id: conteoTipo === 'producto' ? conteoRefId : null,
+        estado: 'borrador', notas: conteoNotas || null, ajuste_aplicado: false,
+        created_by: user?.id, sucursal_id: sucursalId || null,
+      }).select().single()
+      if (cErr) throw cErr
+      const { error: iErr } = await supabase.from('inventario_conteo_items').insert(
+        conteoRows.map(row => ({
+          conteo_id: conteo.id, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
+          lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
+          cantidad_contada: parseFloat(row.cantidad_contada) || 0,
+        }))
+      )
+      if (iErr) throw iErr
+    },
+    onSuccess: () => {
+      toast.success('Conteo guardado como borrador')
+      qc.invalidateQueries({ queryKey: ['conteo-historial'] })
+      resetConteoForm()
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const finalizarConteoYAplicar = useMutation({
+    mutationFn: async () => {
+      if (conteoRows.length === 0) throw new Error('Cargá el stock antes de finalizar')
+      const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
+        tenant_id: tenant!.id, tipo: conteoTipo,
+        ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
+        producto_id: conteoTipo === 'producto' ? conteoRefId : null,
+        estado: 'finalizado', notas: conteoNotas || null, ajuste_aplicado: true,
+        created_by: user?.id, sucursal_id: sucursalId || null,
+      }).select().single()
+      if (cErr) throw cErr
+      await supabase.from('inventario_conteo_items').insert(
+        conteoRows.map(row => ({
+          conteo_id: conteo.id, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
+          lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
+          cantidad_contada: parseFloat(row.cantidad_contada) || 0,
+        }))
+      )
+      let ajustes = 0
+      for (const row of conteoRows) {
+        const contada = parseFloat(row.cantidad_contada) || 0
+        const diff = contada - row.cantidad_esperada
+        if (Math.abs(diff) < 0.001) continue
+        await supabase.from('inventario_lineas').update({ cantidad: contada, activo: contada > 0 }).eq('id', row.linea_id)
+        const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', row.producto_id).single()
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id, producto_id: row.producto_id,
+          tipo: diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje', cantidad: Math.abs(diff),
+          stock_antes: prodAntes?.stock_actual ?? 0,
+          stock_despues: Math.max(0, (prodAntes?.stock_actual ?? 0) + diff),
+          motivo: `Conteo de inventario${row.lpn ? ` — LPN ${row.lpn}` : ` — ${row.sku}`}`,
+          usuario_id: user?.id, linea_id: row.linea_id, sucursal_id: sucursalId || null,
+        })
+        ajustes++
+      }
+      return ajustes
+    },
+    onSuccess: (ajustes) => {
+      toast.success(`Conteo finalizado — ${ajustes} ajuste${ajustes !== 1 ? 's' : ''} aplicado${ajustes !== 1 ? 's' : ''}`)
+      qc.invalidateQueries({ queryKey: ['conteo-historial'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['alertas'] })
+      resetConteoForm()
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const closeModal = () => {
     setModal(null); setSelectedProduct(null)
     setForm(emptyIngreso); setSeries([''])
@@ -982,6 +1138,7 @@ export default function InventarioPage() {
              tab === 'agregar' ? 'Ingresá mercadería al stock' :
              tab === 'quitar' ? 'Rebajá o ajustá el stock' :
              tab === 'historial' ? 'Registro de todos los movimientos' :
+             tab === 'conteo' ? 'Verificá el stock real contra el esperado' :
              'Armado y desarmado de kits'}
           </p>
         </div>
@@ -1016,6 +1173,12 @@ export default function InventarioPage() {
             </button>
           </div>
         )}
+        {tab === 'conteo' && !showConteoForm && (
+          <button onClick={() => setShowConteoForm(true)}
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            <Plus size={16} /> Nuevo conteo
+          </button>
+        )}
         {tab === 'inventario' && (
           <button onClick={() => navigate('/inventario/importar')}
             className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all"
@@ -1034,6 +1197,7 @@ export default function InventarioPage() {
             { id: 'quitar' as const, label: 'Quitar stock' },
             { id: 'historial' as const, label: 'Historial' },
             { id: 'kits' as const, label: 'Kits' },
+            { id: 'conteo' as const, label: 'Conteo' },
           ]).map(({ id, label }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
@@ -2741,6 +2905,245 @@ export default function InventarioPage() {
               </div>
             )
           })()}
+        </>
+      )}
+
+      {/* ═══════════ TAB: CONTEO ═══════════════════════════════════════════ */}
+      {tab === 'conteo' && (
+        <div className="space-y-4">
+          {showConteoForm ? (
+            <div className="space-y-4">
+              {/* Encabezado */}
+              <div className="flex items-center gap-3">
+                <button onClick={resetConteoForm}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                  <ChevronLeft size={16} /> Cancelar
+                </button>
+                <span className="text-sm font-semibold text-primary">Nuevo conteo</span>
+              </div>
+
+              {/* Toggle tipo */}
+              <div className="flex gap-2">
+                {(['ubicacion', 'producto'] as const).map(t => (
+                  <button key={t} onClick={() => { setConteoTipo(t); setConteoRefId(''); setConteoRows([]) }}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border-2
+                      ${conteoTipo === t ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
+                    {t === 'ubicacion' ? '📍 Por ubicación' : '📦 Por producto'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Selector + botón cargar */}
+              <div className="flex gap-2">
+                <select value={conteoRefId}
+                  onChange={e => { setConteoRefId(e.target.value); setConteoRows([]) }}
+                  className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:border-accent">
+                  {conteoTipo === 'ubicacion' ? (
+                    <>
+                      <option value="">Seleccioná una ubicación</option>
+                      <option value="__sin__">Sin ubicación</option>
+                      {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </>
+                  ) : (
+                    <>
+                      <option value="">Seleccioná un producto</option>
+                      {(productosParaConteo as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.sku}</option>)}
+                    </>
+                  )}
+                </select>
+                <button onClick={cargarLineasParaConteo} disabled={!conteoRefId || conteoLoading}
+                  className="px-4 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {conteoLoading ? 'Cargando...' : 'Cargar stock'}
+                </button>
+              </div>
+
+              {/* Tabla de conteo */}
+              {conteoRows.length > 0 && (
+                <>
+                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm min-w-[560px]">
+                        <thead>
+                          <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400">Producto</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">LPN</th>
+                            <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Esperado</th>
+                            <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">Contado</th>
+                            <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Diferencia</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {conteoRows.map((row, idx) => {
+                            const contada = parseFloat(row.cantidad_contada) || 0
+                            const diff = contada - row.cantidad_esperada
+                            const sinDiff = Math.abs(diff) < 0.001
+                            return (
+                              <tr key={row.linea_id} className="border-b border-gray-100 dark:border-gray-700 last:border-0">
+                                <td className="px-3 py-2.5">
+                                  <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{row.nombre}</p>
+                                  <p className="text-xs text-gray-400">{row.sku}{row.unidad_medida ? ` · ${row.unidad_medida}` : ''}</p>
+                                </td>
+                                <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 font-mono">{row.lpn || '—'}</td>
+                                <td className="px-3 py-2.5 text-right text-sm text-gray-600 dark:text-gray-300">{row.cantidad_esperada}</td>
+                                <td className="px-3 py-2.5">
+                                  <input type="number" min="0" step="0.001"
+                                    onWheel={e => e.currentTarget.blur()}
+                                    value={row.cantidad_contada}
+                                    onChange={e => {
+                                      const updated = [...conteoRows]
+                                      updated[idx] = { ...row, cantidad_contada: e.target.value }
+                                      setConteoRows(updated)
+                                    }}
+                                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent bg-white dark:bg-gray-700" />
+                                </td>
+                                <td className={`px-3 py-2.5 text-right text-sm font-semibold
+                                  ${sinDiff ? 'text-gray-300 dark:text-gray-600' : diff > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                                  {sinDiff ? <Check size={14} className="inline" /> : `${diff > 0 ? '+' : ''}${diff % 1 === 0 ? diff : diff.toFixed(3)}`}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-gray-50 dark:bg-gray-700">
+                            <td colSpan={2} className="px-3 py-2 text-xs text-gray-500">{conteoRows.length} línea{conteoRows.length !== 1 ? 's' : ''}</td>
+                            <td className="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300">
+                              {conteoRows.reduce((s, r) => s + r.cantidad_esperada, 0)}
+                            </td>
+                            <td className="px-3 py-2 text-center text-xs font-semibold text-gray-600 dark:text-gray-300">
+                              {conteoRows.reduce((s, r) => s + (parseFloat(r.cantidad_contada) || 0), 0).toFixed(3).replace(/\.?0+$/, '')}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs font-semibold">
+                              {(() => {
+                                const totalDiff = conteoRows.reduce((s, r) => s + ((parseFloat(r.cantidad_contada) || 0) - r.cantidad_esperada), 0)
+                                return <span className={totalDiff === 0 ? 'text-gray-400' : totalDiff > 0 ? 'text-green-600' : 'text-red-500'}>
+                                  {totalDiff === 0 ? '✓' : `${totalDiff > 0 ? '+' : ''}${totalDiff % 1 === 0 ? totalDiff : totalDiff.toFixed(3)}`}
+                                </span>
+                              })()}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div>
+                    <textarea value={conteoNotas} onChange={e => setConteoNotas(e.target.value)}
+                      placeholder="Notas del conteo (opcional)..."
+                      rows={2}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 resize-none" />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button onClick={() => guardarConteoBorrador.mutate()}
+                      disabled={guardarConteoBorrador.isPending}
+                      className="flex-1 py-2.5 border-2 border-accent text-accent rounded-xl text-sm font-semibold hover:bg-accent/5 transition-all disabled:opacity-50">
+                      {guardarConteoBorrador.isPending ? 'Guardando...' : 'Guardar borrador'}
+                    </button>
+                    <button onClick={() => finalizarConteoYAplicar.mutate()}
+                      disabled={finalizarConteoYAplicar.isPending}
+                      className="flex-1 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
+                      {finalizarConteoYAplicar.isPending ? 'Aplicando...' : 'Finalizar y aplicar ajustes'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            /* ── HISTORIAL DE CONTEOS ── */
+            <div className="space-y-3">
+              {conteoHistorial.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                  <ClipboardList size={36} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No hay conteos registrados</p>
+                  <p className="text-xs mt-1">Hacé clic en "Nuevo conteo" para empezar</p>
+                </div>
+              ) : (
+                conteoHistorial.map(c => {
+                  const items = c.inventario_conteo_items ?? []
+                  const conDiff = items.filter(i => Math.abs(i.cantidad_contada - i.cantidad_esperada) >= 0.001)
+                  const isExpanded = conteoExpandedId === c.id
+                  return (
+                    <div key={c.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                      <button onClick={() => setConteoExpandedId(isExpanded ? null : c.id)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-left">
+                        <ClipboardList size={16} className="text-accent flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">
+                              {c.tipo === 'ubicacion'
+                                ? `Por ubicación: ${(c as any).ubicaciones?.nombre ?? 'Sin ubicación'}`
+                                : `Por producto: ${(c as any).productos?.nombre ?? '—'}`}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium
+                              ${c.estado === 'finalizado' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'}`}>
+                              {c.estado === 'finalizado' ? 'Finalizado' : 'Borrador'}
+                            </span>
+                            {c.ajuste_aplicado && (
+                              <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full">
+                                Ajustado
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                            {new Date(c.created_at).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                            {' · '}{items.length} línea{items.length !== 1 ? 's' : ''}
+                            {conDiff.length > 0 && <span className="text-red-500 ml-1">· {conDiff.length} con diferencia</span>}
+                          </p>
+                        </div>
+                        <ChevronRight size={16} className={`text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      </button>
+
+                      {isExpanded && items.length > 0 && (
+                        <div className="border-t border-gray-100 dark:border-gray-700">
+                          {c.notas && (
+                            <p className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 italic">{c.notas}</p>
+                          )}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs min-w-[480px]">
+                              <thead>
+                                <tr className="bg-gray-50 dark:bg-gray-700/50">
+                                  <th className="text-left px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Producto</th>
+                                  <th className="text-left px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">LPN</th>
+                                  <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Esperado</th>
+                                  <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Contado</th>
+                                  <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Diferencia</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.map(item => {
+                                  const diff = item.cantidad_contada - item.cantidad_esperada
+                                  const sinDiff = Math.abs(diff) < 0.001
+                                  return (
+                                    <tr key={item.id} className="border-t border-gray-100 dark:border-gray-700">
+                                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                                        {(item as any).productos?.nombre ?? '—'}
+                                        <span className="text-gray-400 ml-1">{(item as any).productos?.sku}</span>
+                                      </td>
+                                      <td className="px-3 py-2 text-gray-400 font-mono">{item.lpn || '—'}</td>
+                                      <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.cantidad_esperada}</td>
+                                      <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.cantidad_contada}</td>
+                                      <td className={`px-3 py-2 text-right font-semibold
+                                        ${sinDiff ? 'text-gray-300 dark:text-gray-600' : diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                        {sinDiff ? '✓' : `${diff > 0 ? '+' : ''}${diff % 1 === 0 ? diff : diff.toFixed(3)}`}
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
           {showDesarmarModal && desarmarKitId && (() => {
             const kit = kitsProductos.find((k: any) => k.id === desarmarKitId)
@@ -2809,8 +3212,6 @@ export default function InventarioPage() {
               </div>
             )
           })()}
-        </>
-      )}
     </div>
   )
 }

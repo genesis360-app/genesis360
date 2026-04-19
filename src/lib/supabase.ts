@@ -212,6 +212,35 @@ export interface ProductoEstructura {
   updated_at: string
 }
 
+export interface InventarioConteo {
+  id: string
+  tenant_id: string
+  tipo: 'ubicacion' | 'producto'
+  ubicacion_id?: string | null
+  producto_id?: string | null
+  estado: 'borrador' | 'finalizado'
+  notas?: string | null
+  ajuste_aplicado: boolean
+  sucursal_id?: string | null
+  created_by?: string | null
+  created_at: string
+  updated_at: string
+  ubicaciones?: { nombre: string }
+  productos?: { nombre: string; sku: string }
+  inventario_conteo_items?: InventarioConteoItem[]
+}
+
+export interface InventarioConteoItem {
+  id: string
+  conteo_id: string
+  inventario_linea_id?: string | null
+  producto_id: string
+  lpn?: string | null
+  cantidad_esperada: number
+  cantidad_contada: number
+  productos?: { nombre: string; sku: string; unidad_medida: string }
+}
+
 export interface MovimientoStock {
   id: string
   tenant_id: string

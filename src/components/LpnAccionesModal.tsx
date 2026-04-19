@@ -2,15 +2,16 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
-  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown, QrCode
+  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown, QrCode, Layers
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { LpnQR } from '@/components/LpnQR'
 import toast from 'react-hot-toast'
+import type { ProductoEstructura } from '@/lib/supabase'
 
-type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar'
+type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar' | 'estructura'
 
 interface Props {
   linea: any
@@ -47,6 +48,9 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   const [editSerieId, setEditSerieId] = useState<string | null>(null)
   const [editSerieNro, setEditSerieNro] = useState('')
 
+  // Estructura
+  const [estructuraId, setEstructuraId] = useState<string>(linea.estructura_id ?? '')
+
   // Cargar catálogos
   const { data: estados = [] } = useQuery({
     queryKey: ['estados_inventario', tenant?.id],
@@ -64,10 +68,37 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     enabled: !!tenant,
   })
 
+  const { data: estructuras = [] } = useQuery({
+    queryKey: ['producto-estructuras', producto.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_estructuras')
+        .select('*').eq('producto_id', producto.id).order('is_default', { ascending: false }).order('nombre')
+      return (data ?? []) as ProductoEstructura[]
+    },
+    enabled: !!tenant,
+  })
+
   const invalidar = () => {
     qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
     qc.invalidateQueries({ queryKey: ['productos'] })
   }
+
+  const guardarEstructura = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('inventario_lineas')
+        .update({ estructura_id: estructuraId || null })
+        .eq('id', linea.id)
+      if (error) throw error
+      logActividad({
+        entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre,
+        accion: 'editar', campo: 'estructura_id',
+        valor_anterior: linea.estructura_id ?? null,
+        valor_nuevo: estructuraId || null, pagina: '/inventario',
+      })
+    },
+    onSuccess: () => { toast.success('Estructura asignada'); invalidar() },
+    onError: (e: Error) => toast.error(e.message),
+  })
 
   const registrarMovimiento = async (tipo: string, cantidad: number, motivo: string, stockAntes: number) => {
     await supabase.from('movimientos_stock').insert({
@@ -269,6 +300,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         { id: 'editar', label: 'Editar', icon: Edit2 },
         { id: 'mover', label: 'Mover', icon: ArrowRightLeft },
         ...(tieneSeries ? [{ id: 'series' as AccionTab, label: 'Series', icon: Hash }] : []),
+        { id: 'estructura' as AccionTab, label: 'Estructura', icon: Layers },
         { id: 'eliminar', label: 'Eliminar', icon: Trash2 },
       ]
 
@@ -508,6 +540,86 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── ESTRUCTURA ── */}
+          {tab === 'estructura' && (
+            <div className="space-y-4">
+              {estructuras.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 dark:text-gray-500">
+                  <Layers size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Este producto no tiene estructuras definidas</p>
+                  <p className="text-xs mt-1">Podés agregar estructuras desde la pestaña Productos</p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                      Estructura asignada a este LPN
+                    </label>
+                    <div className="space-y-2">
+                      {estructuras.map(e => {
+                        const isCurrent = estructuraId === e.id
+                        return (
+                          <button key={e.id} onClick={() => setEstructuraId(e.id)}
+                            className={`w-full text-left px-3 py-3 rounded-xl border-2 transition-all
+                              ${isCurrent
+                                ? 'border-accent bg-accent/5 dark:bg-accent/10'
+                                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Layers size={14} className={isCurrent ? 'text-accent' : 'text-gray-400'} />
+                                <span className={`text-sm font-medium ${isCurrent ? 'text-accent' : 'text-gray-700 dark:text-gray-300'}`}>
+                                  {e.nombre}
+                                </span>
+                                {e.is_default && (
+                                  <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">
+                                    Default
+                                  </span>
+                                )}
+                              </div>
+                              {isCurrent && <span className="text-xs text-accent font-semibold">✓ Seleccionada</span>}
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5">
+                              {e.unidades_por_caja && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  {e.unidades_por_caja} u/caja
+                                </span>
+                              )}
+                              {e.cajas_por_pallet && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  {e.cajas_por_pallet} cajas/pallet
+                                </span>
+                              )}
+                              {e.peso_unidad && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  {e.peso_unidad} kg/u
+                                </span>
+                              )}
+                              {e.alto_caja && e.ancho_caja && e.largo_caja && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  Caja: {e.alto_caja}×{e.ancho_caja}×{e.largo_caja} cm
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })}
+                      {estructuraId && (
+                        <button onClick={() => setEstructuraId('')}
+                          className="w-full text-left px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 hover:border-gray-300 transition-all">
+                          Sin estructura asignada
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={() => guardarEstructura.mutate()} disabled={guardarEstructura.isPending}
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                    <Save size={15} /> {guardarEstructura.isPending ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </>
+              )}
             </div>
           )}
 

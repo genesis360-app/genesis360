@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
-  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown
+  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown, QrCode
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
+import { LpnQR } from '@/components/LpnQR'
 import toast from 'react-hot-toast'
 
 type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar'
@@ -39,6 +40,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   // Mover stock parcial
   const [cantMover, setCantMover] = useState('')
   const [ubicDestino, setUbicDestino] = useState('')
+  const [showQR, setShowQR] = useState(false)
 
   // Series
   const [newSerie, setNewSerie] = useState('')
@@ -271,6 +273,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       ]
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
@@ -279,7 +282,15 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
             <p className="font-bold text-primary">{linea.lpn}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500">{producto.nombre} · {producto.sku}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setShowQR(true)} title="Generar QR del LPN"
+              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+              <QrCode size={18} />
+            </button>
+            <button onClick={onClose} className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Info rápida */}
@@ -527,5 +538,15 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         </div>
       </div>
     </div>
+
+    {showQR && (
+      <LpnQR
+        lpn={linea.lpn}
+        productoNombre={producto.nombre}
+        sku={producto.sku}
+        onClose={() => setShowQR(false)}
+      />
+    )}
+    </>
   )
 }

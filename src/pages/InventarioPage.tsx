@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
+  ArrowDown, ArrowUp, Search, Plus, Minus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
+  ShoppingBasket, CheckCircle2, ChevronLeft,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -102,6 +103,35 @@ export default function InventarioPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [invScannerOpen, setInvScannerOpen] = useState(false)
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
+  const [seriesModal, setSeriesModal] = useState<{ lpn: string; series: any[] } | null>(null)
+
+  // ── Masivo inline (Agregar Stock) ──────────────────────────────────────────
+  type MasivoRow = {
+    _id: string
+    producto_id: string
+    nombre: string
+    sku: string
+    unidad_medida: string | null
+    tiene_series: boolean
+    tiene_lote: boolean
+    tiene_vencimiento: boolean
+    cantidad: string
+    estado_id: string
+    ubicacion_id: string
+    nro_lote: string
+    fecha_vencimiento: string
+    lpn: string
+    series_txt: string
+    showExtra: boolean
+  }
+  const [masivoInline, setMasivoInline] = useState(false)
+  const [masivoRows, setMasivoRows] = useState<MasivoRow[]>([])
+  const [masivoSearch, setMasivoSearch] = useState('')
+  const [masivoScannerOpen, setMasivoScannerOpen] = useState(false)
+  const [masivoFocusIdx, setMasivoFocusIdx] = useState<number | null>(null)
+  const [masivoSearchFocused, setMasivoSearchFocused] = useState(false)
+  const masivoSearchRef = useRef<HTMLInputElement>(null)
+  const masivoQtyRefs = useRef<(HTMLInputElement | null)[]>([])
 
   // ── Kits tab state ─────────────────────────────────────────────────────────
   const [kitExpandedId, setKitExpandedId] = useState<string | null>(null)
@@ -168,6 +198,20 @@ export default function InventarioPage() {
       return (data ?? []) as unknown as Producto[]
     },
     enabled: !!tenant && (form.productoSearch.length > 0 || searchFocused),
+  })
+
+  const { data: masivoBusqueda = [] } = useQuery({
+    queryKey: ['productos-masivo-busqueda', tenant?.id, masivoSearch],
+    queryFn: async () => {
+      let q = supabase.from('productos')
+        .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, precio_costo, precio_venta')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(5)
+      if (masivoSearch.length > 0)
+        q = q.or(`nombre.ilike.%${masivoSearch}%,sku.ilike.%${masivoSearch}%,codigo_barras.eq.${masivoSearch}`)
+      const { data } = await q
+      return (data ?? []) as unknown as Producto[]
+    },
+    enabled: !!tenant && masivoInline && (masivoSearch.length > 0 || masivoSearchFocused),
   })
 
   const { data: motivos = [] } = useQuery({
@@ -691,6 +735,151 @@ export default function InventarioPage() {
     setForm(f => ({ ...f, productoSearch: '', ubicacionId: (prod as any).ubicacion_id ?? f.ubicacionId }))
   }
 
+  // ── Masivo inline helpers ─────────────────────────────────────────────────
+  const addMasivoRow = (prod: any) => {
+    setMasivoRows(prev => {
+      // Same SKU + no lote required → increment quantity
+      const existingIdx = prev.findIndex(r => r.producto_id === prod.id && !r.nro_lote && !prod.tiene_lote && !prod.tiene_series)
+      if (existingIdx >= 0) {
+        const updated = [...prev]
+        const prevCant = parseFloat(updated[existingIdx].cantidad) || 0
+        updated[existingIdx] = { ...updated[existingIdx], cantidad: String(prevCant + 1) }
+        setMasivoFocusIdx(existingIdx)
+        return updated
+      }
+      const newRow: MasivoRow = {
+        _id: crypto.randomUUID(),
+        producto_id: prod.id,
+        nombre: prod.nombre,
+        sku: prod.sku,
+        unidad_medida: prod.unidad_medida ?? null,
+        tiene_series: prod.tiene_series ?? false,
+        tiene_lote: prod.tiene_lote ?? false,
+        tiene_vencimiento: prod.tiene_vencimiento ?? false,
+        cantidad: '1',
+        estado_id: '',
+        ubicacion_id: '',
+        nro_lote: '',
+        fecha_vencimiento: '',
+        lpn: '',
+        series_txt: '',
+        showExtra: !!(prod.tiene_lote || prod.tiene_vencimiento || prod.tiene_series),
+      }
+      setMasivoFocusIdx(prev.length)
+      return [...prev, newRow]
+    })
+    setMasivoSearch('')
+    setTimeout(() => masivoSearchRef.current?.focus(), 50)
+  }
+
+  const handleMasivoScan = async (code: string) => {
+    setMasivoScannerOpen(false)
+    const { data: prods } = await supabase.from('productos')
+      .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, precio_costo, precio_venta')
+      .eq('tenant_id', tenant!.id).eq('activo', true)
+      .or(`codigo_barras.eq.${code},sku.eq.${code}`)
+      .limit(1)
+    if (!prods || prods.length === 0) {
+      toast.error(`No se encontró ningún producto con código "${code}"`)
+      setTimeout(() => masivoSearchRef.current?.focus(), 50)
+      return
+    }
+    addMasivoRow(prods[0])
+  }
+
+  // Focus effect: when masivoFocusIdx changes, focus the qty input
+  useEffect(() => {
+    if (masivoFocusIdx !== null) {
+      setTimeout(() => {
+        masivoQtyRefs.current[masivoFocusIdx]?.focus()
+        masivoQtyRefs.current[masivoFocusIdx]?.select()
+        setMasivoFocusIdx(null)
+      }, 50)
+    }
+  }, [masivoFocusIdx])
+
+  const procesarMasivoIngreso = useMutation({
+    mutationFn: async () => {
+      if (limits && !limits.puede_crear_movimiento)
+        throw new Error('Límite de movimientos del plan alcanzado')
+      if (masivoRows.length === 0) throw new Error('Agregá al menos un producto')
+      const errores: string[] = []
+      let exitos = 0
+
+      for (const row of masivoRows) {
+        try {
+          const cant = row.tiene_series
+            ? row.series_txt.split('\n').filter(s => s.trim()).length
+            : Math.max(0, parseFloat(row.cantidad) || 0)
+          if (!cant || cant <= 0) { errores.push(`${row.sku}: cantidad inválida`); continue }
+          if (row.tiene_lote && !row.nro_lote.trim()) { errores.push(`${row.sku}: requiere lote`); continue }
+          if (row.tiene_vencimiento && !row.fecha_vencimiento) { errores.push(`${row.sku}: requiere vencimiento`); continue }
+
+          const { data: prodAntes } = await supabase.from('productos').select('stock_actual,precio_costo,precio_venta').eq('id', row.producto_id).single()
+          const stockAntes = prodAntes?.stock_actual ?? 0
+
+          const { data: linea, error: lineaError } = await supabase.from('inventario_lineas').insert({
+            tenant_id: tenant!.id,
+            producto_id: row.producto_id,
+            lpn: row.lpn || null,
+            cantidad: row.tiene_series ? 0 : cant,
+            estado_id: row.estado_id || null,
+            ubicacion_id: row.ubicacion_id || null,
+            nro_lote: row.nro_lote || null,
+            fecha_vencimiento: row.fecha_vencimiento || null,
+            precio_costo_snapshot: (prodAntes as any)?.precio_costo ?? null,
+            precio_venta_snapshot: (prodAntes as any)?.precio_venta ?? null,
+          }).select().single()
+          if (lineaError) { errores.push(`${row.sku}: ${lineaError.message}`); continue }
+
+          if (row.tiene_series) {
+            const seriesValidas = row.series_txt.split('\n').filter(s => s.trim())
+            if (seriesValidas.length === 0) { errores.push(`${row.sku}: sin series`); continue }
+            const { error: seriesError } = await supabase.from('inventario_series').insert(
+              seriesValidas.map(nro => ({
+                tenant_id: tenant!.id,
+                producto_id: row.producto_id,
+                linea_id: linea.id,
+                nro_serie: nro.trim(),
+                estado_id: row.estado_id || null,
+              }))
+            )
+            if (seriesError) { errores.push(`${row.sku}: ${seriesError.message}`); continue }
+          }
+
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant!.id,
+            producto_id: row.producto_id,
+            tipo: 'ingreso',
+            cantidad: cant,
+            stock_antes: stockAntes,
+            stock_despues: stockAntes + cant,
+            usuario_id: user?.id,
+            linea_id: linea.id,
+            sucursal_id: sucursalId || null,
+          })
+          exitos++
+        } catch (e: any) {
+          errores.push(`${row.sku}: ${e.message}`)
+        }
+      }
+
+      if (exitos === 0 && errores.length > 0) throw new Error(errores.join(' · '))
+      return { exitos, errores }
+    },
+    onSuccess: ({ exitos, errores }) => {
+      if (errores.length > 0) toast.error(`${exitos} OK · Errores: ${errores.join(' · ')}`, { duration: 8000 })
+      else toast.success(`${exitos} ingreso${exitos !== 1 ? 's' : ''} registrado${exitos !== 1 ? 's' : ''}`)
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['alertas'] })
+      setMasivoRows([])
+      setMasivoInline(false)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   // ── Computed values ────────────────────────────────────────────────────────
   const filteredMov = movimientos.filter(m => {
     const tipo = (m as any).tipo as string
@@ -796,16 +985,21 @@ export default function InventarioPage() {
              'Armado y desarmado de kits'}
           </p>
         </div>
-        {tab === 'agregar' && (
+        {tab === 'agregar' && !masivoInline && (
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setModal('ingreso')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-              <ArrowDown size={16} /> Ingreso
+              <Plus size={16} /> Ingreso
             </button>
-            <button onClick={() => setMasivoModal('ingreso')} disabled={limiteAlcanzado}
+            <button onClick={() => { setMasivoInline(true); setMasivoRows([]) }} disabled={limiteAlcanzado}
               className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Ingreso de múltiples SKUs">
-              <ArrowDown size={16} /> Masivo
+              title="Recepción de múltiples SKUs">
+              <Plus size={16} /> Masivo
+            </button>
+            <button onClick={() => navigate('/recepciones')}
+              className="flex items-center gap-2 border-2 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              title="Módulo de recepción / ASN">
+              <ShoppingBasket size={16} /> ASN
             </button>
           </div>
         )}
@@ -813,12 +1007,12 @@ export default function InventarioPage() {
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setModal('rebaje')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-              <ArrowUp size={16} /> Rebaje
+              <Minus size={16} /> Rebaje
             </button>
             <button onClick={() => setMasivoModal('rebaje')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               title="Rebaje de múltiples SKUs">
-              <ArrowUp size={16} /> Masivo
+              <Minus size={16} /> Masivo
             </button>
           </div>
         )}
@@ -877,6 +1071,205 @@ export default function InventarioPage() {
             />
           )}
 
+          {/* ── MASIVO INLINE VIEW (solo agregar) ─── */}
+          {tab === 'agregar' && masivoInline ? (
+            <div className="space-y-3">
+              {/* Barra superior masivo */}
+              <div className="flex items-center gap-3">
+                <button onClick={() => { setMasivoInline(false); setMasivoRows([]); setMasivoSearch('') }}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                  <ChevronLeft size={16} /> Cancelar
+                </button>
+                <span className="text-sm font-semibold text-primary">Recepción masiva</span>
+                {masivoRows.length > 0 && (
+                  <span className="ml-auto text-xs text-gray-400">{masivoRows.length} SKU{masivoRows.length !== 1 ? 's' : ''}</span>
+                )}
+              </div>
+
+              {/* Buscador + scanner */}
+              <div className="relative flex gap-2">
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    ref={masivoSearchRef}
+                    type="text"
+                    value={masivoSearch}
+                    onChange={e => setMasivoSearch(e.target.value)}
+                    onFocus={() => setMasivoSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setMasivoSearchFocused(false), 150)}
+                    placeholder="Escanear o buscar SKU / nombre..."
+                    autoFocus
+                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
+                  />
+                  {/* Dropdown sugerencias */}
+                  {(masivoSearchFocused || masivoSearch.length > 0) && masivoBusqueda.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 overflow-hidden">
+                      {masivoBusqueda.map((p: any) => (
+                        <button key={p.id} onMouseDown={() => addMasivoRow(p)}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 text-left">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
+                            <p className="text-xs text-gray-400">{p.sku}{p.tiene_series ? ' · Serializado' : ''}{p.tiene_lote ? ' · Lote' : ''}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => setMasivoScannerOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 dark:text-gray-400 hover:text-accent hover:border-accent transition-colors"
+                  title="Escanear código">
+                  <Camera size={18} />
+                </button>
+              </div>
+
+              {/* Tabla de filas */}
+              {masivoRows.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[640px]">
+                      <thead>
+                        <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-8">#</th>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400">Producto</th>
+                          <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">Cantidad</th>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-36">Estado</th>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-36">Ubicación</th>
+                          <th className="px-3 py-2.5 w-8" />
+                          <th className="px-3 py-2.5 w-8" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {masivoRows.map((row, idx) => (
+                          <Fragment key={row._id}>
+                            <tr className="border-b border-gray-100 dark:border-gray-700">
+                              <td className="px-3 py-2 text-xs text-gray-400 text-center">{idx + 1}</td>
+                              <td className="px-3 py-2">
+                                <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{row.nombre}</p>
+                                <p className="text-xs text-gray-400">{row.sku}{row.unidad_medida ? ` · ${row.unidad_medida}` : ''}</p>
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.tiene_series ? (
+                                  <span className="text-xs text-gray-400 block text-center">ver abajo</span>
+                                ) : (
+                                  <input
+                                    type="number"
+                                    ref={el => { masivoQtyRefs.current[idx] = el }}
+                                    min="0.001" step="1"
+                                    value={row.cantidad}
+                                    onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, cantidad: e.target.value } : r))}
+                                    onWheel={e => e.currentTarget.blur()}
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); masivoSearchRef.current?.focus() } }}
+                                    className="w-full text-center px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
+                                  />
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <select value={row.estado_id}
+                                  onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, estado_id: e.target.value } : r))}
+                                  className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                                  <option value="">Sin estado</option>
+                                  {estados.map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                                </select>
+                              </td>
+                              <td className="px-3 py-2">
+                                <select value={row.ubicacion_id}
+                                  onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, ubicacion_id: e.target.value } : r))}
+                                  className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                                  <option value="">Sin ubic.</option>
+                                  {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                </select>
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <button
+                                  onClick={() => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, showExtra: !r.showExtra } : r))}
+                                  title="Lote / Vencimiento / LPN / Series"
+                                  className={`p-1 rounded transition-colors ${row.showExtra ? 'text-accent' : 'text-gray-400 hover:text-gray-600'}`}>
+                                  <ChevronDown size={14} className={`transition-transform ${row.showExtra ? 'rotate-180' : ''}`} />
+                                </button>
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <button onClick={() => setMasivoRows(prev => prev.filter((_, i) => i !== idx))}
+                                  className="p-1 text-gray-300 hover:text-red-500 transition-colors">
+                                  <X size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                            {row.showExtra && (
+                              <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+                                <td />
+                                <td colSpan={6} className="px-3 py-2.5">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                    {(row.tiene_lote || !row.tiene_series) && (
+                                      <div>
+                                        <label className="block text-gray-500 mb-1">Nro. lote{row.tiene_lote ? ' *' : ''}</label>
+                                        <input type="text" value={row.nro_lote} placeholder="LOT-001"
+                                          onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, nro_lote: e.target.value } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                      </div>
+                                    )}
+                                    {(row.tiene_vencimiento || !row.tiene_series) && (
+                                      <div>
+                                        <label className="block text-gray-500 mb-1">Vencimiento{row.tiene_vencimiento ? ' *' : ''}</label>
+                                        <input type="date" value={row.fecha_vencimiento}
+                                          onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, fecha_vencimiento: e.target.value } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                      </div>
+                                    )}
+                                    {!row.tiene_series && (
+                                      <div>
+                                        <label className="block text-gray-500 mb-1">LPN</label>
+                                        <input type="text" value={row.lpn} placeholder="LPN-001"
+                                          onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, lpn: e.target.value } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800 font-mono" />
+                                      </div>
+                                    )}
+                                    {row.tiene_series && (
+                                      <div className="col-span-4">
+                                        <label className="block text-gray-500 mb-1">Números de serie (uno por línea)</label>
+                                        <textarea rows={3} value={row.series_txt} placeholder={"SN-001\nSN-002\nSN-003"}
+                                          onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, series_txt: e.target.value } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800 font-mono text-xs resize-none" />
+                                        <p className="text-gray-400 mt-0.5">{row.series_txt.split('\n').filter(s => s.trim()).length} series</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Botón procesar */}
+              {masivoRows.length > 0 && (
+                <button
+                  onClick={() => procesarMasivoIngreso.mutate()}
+                  disabled={procesarMasivoIngreso.isPending || (limits ? !limits.puede_crear_movimiento : false)}
+                  className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                  {procesarMasivoIngreso.isPending ? (
+                    <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Procesando...</>
+                  ) : (
+                    <><CheckCircle2 size={16} /> Procesar {masivoRows.length} ingreso{masivoRows.length !== 1 ? 's' : ''}</>
+                  )}
+                </button>
+              )}
+
+              {masivoScannerOpen && (
+                <BarcodeScanner
+                  title="Escanear producto"
+                  onDetected={handleMasivoScan}
+                  onClose={() => setMasivoScannerOpen(false)}
+                />
+              )}
+            </div>
+          ) : (
+          /* ── VISTA NORMAL (historial de movimientos) ── */
+          <>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
             <input type="text" value={movSearch} onChange={e => setMovSearch(e.target.value)}
@@ -1649,6 +2042,8 @@ export default function InventarioPage() {
               onClose={() => setMovScannerOpen(false)}
             />
           )}
+          </>
+          )} {/* end masivo ternary */}
         </>
       )}
 
@@ -1963,19 +2358,31 @@ export default function InventarioPage() {
                                   </div>
 
                                   <div className="col-span-1">
-                                    {tieneSerieProd ? (
-                                      <div className="space-y-0.5">
-                                        {(l.inventario_series ?? []).filter((s: any) => s.activo).map((s: any) => (
-                                          <span key={s.id} title={s.reservado ? 'Reservada' : undefined}
-                                            className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded
-                                              ${s.reservado
-                                                ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 dark:text-orange-400 line-through opacity-70'
-                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
-                                            <Hash size={9} />{s.nro_serie}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    ) : <span className="text-xs text-gray-300">—</span>}
+                                    {tieneSerieProd ? (() => {
+                                      const seriesActivas = (l.inventario_series ?? []).filter((s: any) => s.activo)
+                                      const visible = seriesActivas.slice(0, 5)
+                                      const resto = seriesActivas.length - 5
+                                      return (
+                                        <div className="space-y-0.5">
+                                          {visible.map((s: any) => (
+                                            <span key={s.id} title={s.reservado ? 'Reservada' : undefined}
+                                              className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded
+                                                ${s.reservado
+                                                  ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 dark:text-orange-400 line-through opacity-70'
+                                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
+                                              <Hash size={9} />{s.nro_serie}
+                                            </span>
+                                          ))}
+                                          {resto > 0 && (
+                                            <button
+                                              onClick={e => { e.stopPropagation(); setSeriesModal({ lpn: l.lpn, series: seriesActivas }) }}
+                                              className="text-xs text-accent hover:underline font-medium">
+                                              +{resto} más
+                                            </button>
+                                          )}
+                                        </div>
+                                      )
+                                    })() : <span className="text-xs text-gray-300">—</span>}
                                   </div>
 
                                   <div className="col-span-1 flex justify-center">
@@ -2006,6 +2413,36 @@ export default function InventarioPage() {
               onDetected={code => { setInvSearch(code); setInvScannerOpen(false) }}
               onClose={() => setInvScannerOpen(false)}
             />
+          )}
+
+          {/* Modal todas las series de un LPN */}
+          {seriesModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+              onClick={() => setSeriesModal(null)}>
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm max-h-[80vh] flex flex-col"
+                onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+                  <div>
+                    <p className="font-bold text-primary text-sm">{seriesModal.lpn}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{seriesModal.series.length} series</p>
+                  </div>
+                  <button onClick={() => setSeriesModal(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                    <X size={17} className="text-gray-500" />
+                  </button>
+                </div>
+                <div className="overflow-y-auto p-4 flex flex-wrap gap-1.5">
+                  {seriesModal.series.map((s: any) => (
+                    <span key={s.id} title={s.reservado ? 'Reservada' : undefined}
+                      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded
+                        ${s.reservado
+                          ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 line-through opacity-70'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
+                      <Hash size={9} />{s.nro_serie}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
         </>
       )}

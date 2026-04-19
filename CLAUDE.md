@@ -256,6 +256,16 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - `actividadLog`: + `vacacion` y `asistencia` en EntidadLog.
 - `calcularDiasHabilesFrontend(desde, hasta)`: helper frontend, excluye sábado y domingo.
 
+### Módulo Recepciones / ASN (pendiente — migration 050)
+
+- **Decisión**: módulos separados pero vinculados. OC en `/proveedores` (OWNER/SUPERVISOR — compromiso comercial). Recepciones en `/recepciones` (DEPOSITO+OWNER+SUPERVISOR — operación de almacén). La recepción puede ocurrir sin OC.
+- **Vínculo OC→Recepción**: OC confirmada → botón "Recibir mercadería" → `/recepciones/nuevo?oc_id=XXX` pre-popula ítems. Campo "Contra OC" opcional en recepción (dropdown OCs confirmadas del proveedor).
+- **Al confirmar recepción**: genera ingreso en `inventario_lineas` (reutiliza lógica de `procesarMasivoIngreso`) + actualiza estado OC a `recibida_parcial` o `recibida`.
+- **Nuevos estados `ordenes_compra`**: agregar `recibida_parcial` y `recibida` al CHECK constraint.
+- **Tablas nuevas**: `recepciones` (tenant_id, numero auto, oc_id nullable, proveedor_id, estado, sucursal_id) + `recepcion_items` (recepcion_id, producto_id, oc_item_id nullable, cantidad_esperada, cantidad_recibida, estado_id, ubicacion_id, nro_lote, fecha_vencimiento, lpn, series_txt, inventario_linea_id).
+- **Roles con acceso**: OWNER · SUPERVISOR · DEPOSITO (ya en `DEPOSITO_ALLOWED`).
+- **Botón ASN**: ya conectado en InventarioPage tab Agregar Stock → `/recepciones` (v0.82.0).
+
 ### Marketplace (migración 020)
 - **Campos en `productos`**: `publicado_marketplace BOOLEAN`, `precio_marketplace DECIMAL(12,2)`, `stock_reservado_marketplace INT`, `descripcion_marketplace TEXT`.
 - **Campos en `tenants`**: `marketplace_activo BOOLEAN`, `marketplace_webhook_url TEXT`.

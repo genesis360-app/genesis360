@@ -862,6 +862,16 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Sidebar**: `Truck` icon `/proveedores` (ownerOnly) posicionado entre Clientes y Alertas.
 - **Arquitectura ASN-ready**: OC lifecycle termina en `confirmada` — la recepción y generación de stock es responsabilidad del futuro módulo ASN.
 
+### v0.82.0 — en dev
+
+#### InventarioPage — series overflow, QR LPN, masivo inline, iconos
+
+- **Series overflow**: chips con primeras 5 series activas + badge `+N más` que abre modal con lista completa. Evita que LPNs con miles de series colapsen la vista.
+- **LpnQR.tsx** (nuevo componente): genera QR del LPN con `qrcode`, descarga PNG y ventana imprimible. Botón `QrCode` en el header de `LpnAccionesModal` (izquierda de la X).
+- **Masivo Agregar Stock — vista inline**: el botón "Masivo" ya no abre `MasivoModal`; cambia a una vista en página con buscador + scanner, tabla editable (SKU / Cantidad / Estado / Ubicación / acordeón extras: lote, vencimiento, LPN, series). Flujo: escanear → foco en Cantidad → Enter → vuelve al buscador. Mismo SKU sin lote suma cantidad en lugar de nueva fila. Botón "Procesar N ingresos" al pie. Masivo rebaje sigue usando `MasivoModal`.
+- **Iconos botones**: Ingreso y Masivo ingreso: `ArrowDown` → `Plus`. Rebaje y Masivo rebaje: `ArrowUp` → `Minus`.
+- **Botón ASN**: ícono `ShoppingBasket` en tab Agregar Stock → navega a `/recepciones` (módulo futuro).
+
 ### v0.81.0 — en dev
 
 #### VentasPage — fixes y cantidades decimales

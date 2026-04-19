@@ -150,6 +150,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.79.0 | ImportarProductosPage: template actualizado a 22 columnas — agrega alicuota_iva, margen_objetivo, tiene_series, tiene_lote, tiene_vencimiento, regla_inventario, es_kit, estr_unidades_por_caja, estr_cajas_por_pallet, estr_peso_unidad · crea/actualiza producto_estructuras si hay campos estr_* · hoja Referencia actualizada | 2026-04 |
 | v0.80.0 | VentasPage: fix scanner duplicados (pendingAddRef) · historial paginado limit 50 + "Cargar más" · carrito pre-guardado localStorage (restaura al entrar, limpia al vender) · banner caja cerrada visible arriba · scroll independiente lista ítems carrito (max-h-[45vh]) | 2026-04 |
 | v0.81.0 | Fix: carrito draft (efecto restore antes que save, cartDraftKey omitido de deps) · Fix: scanner cola secuencial (scanQueueRef procesa de a uno, elimina duplicados por concurrencia) · Cantidades decimales en carrito para KG/L/m3/g/ml/m/m2/cm/mm (UNIDADES_DECIMALES, step/min dinámico, parseFloat) | 2026-04 |
+| v0.82.0 | InventarioPage: series overflow → 5 chips + "+N más" modal completo · LpnQR.tsx: QR de LPN en LpnAccionesModal (generar/descargar/imprimir) · Masivo Agregar Stock: vista inline grilla (scanner + tabla SKU/Cant/Estado/Ubic/extras acordeón) con cola secuencial de scans y Enter para siguiente SKU · Iconos ingreso/rebaje: ArrowDown/Up → Plus/Minus · Botón ASN → /recepciones (módulo futuro) | 2026-04 |
 
 ---
 

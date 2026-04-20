@@ -872,6 +872,14 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Sidebar**: `Truck` icon `/proveedores` (ownerOnly) posicionado entre Clientes y Alertas.
 - **Arquitectura ASN-ready**: OC lifecycle termina en `confirmada` — la recepción y generación de stock es responsabilidad del futuro módulo ASN.
 
+### v0.84.0 — en dev
+
+#### Sprint A inventario (migration 051)
+
+- **I-03 — LPN vencidos**: `fecha_vencimiento < hoy` excluye líneas en ventas (4 puntos: `agregarProducto`, `cambiarEstado` reservar, `cambiarEstado` despachar, despacho directo). AlertasPage sección roja "LPNs vencidos" con botón "Ver LPN" → `/inventario?search=LPN-XXX`. Badge `useAlertas` incluye conteo. `InventarioPage` lee `?search=` al montar y pre-filtra.
+- **I-06 — Mover LPN a otra sucursal**: selector de sucursal destino en tab Mover de `LpnAccionesModal` (visible solo con ≥2 sucursales configuradas). Nuevo LPN hereda `sucursal_id` seleccionada.
+- **I-08 — Over-receipt configurable**: migration 051 `tenants.permite_over_receipt BOOLEAN DEFAULT FALSE`. Toggle en ConfigPage → Negocio. Validación en `RecepcionesPage` (pendiente, módulo futuro).
+
 ### v0.83.0 — en dev
 
 #### Conteo de inventario + Estructura LPN (migration 050)

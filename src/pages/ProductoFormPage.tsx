@@ -28,7 +28,7 @@ export default function ProductoFormPage() {
   const isEditing = !!id
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, sucursales } = useAuthStore()
   const { limits } = usePlanLimits()
   const { cotizacion: cotizacionNum } = useCotizacion()
   const [showLimitModal, setShowLimitModal] = useState(false)
@@ -45,6 +45,9 @@ export default function ProductoFormPage() {
     descripcion_marketplace: '',
   })
   const [showMarketplace, setShowMarketplace] = useState(false)
+  // Stock mínimo por sucursal (solo cuando editando)
+  const [stockMinimosSucursal, setStockMinimosSucursal] = useState<Record<string, string>>({})
+  const [savingMinimos, setSavingMinimos] = useState(false)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
@@ -105,6 +108,30 @@ export default function ProductoFormPage() {
     },
     enabled: !!tenant,
   })
+
+  const { data: stockMinimosSucursalData = [] } = useQuery({
+    queryKey: ['producto-stock-minimo-sucursal', id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('producto_stock_minimo_sucursal')
+        .select('*')
+        .eq('tenant_id', tenant!.id)
+        .eq('producto_id', id!)
+      return data ?? []
+    },
+    enabled: isEditing && !!tenant,
+  })
+
+  // Inicializar los valores editables cuando llegan los datos
+  useEffect(() => {
+    if (stockMinimosSucursalData.length > 0) {
+      const map: Record<string, string> = {}
+      stockMinimosSucursalData.forEach((r: any) => {
+        map[r.sucursal_id] = String(r.stock_minimo)
+      })
+      setStockMinimosSucursal(map)
+    }
+  }, [stockMinimosSucursalData])
 
   const { data: productoData } = useQuery({
     queryKey: ['producto', id],
@@ -371,6 +398,29 @@ export default function ProductoFormPage() {
   }
 
   const canEdit = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
+
+  const saveMinimos = async () => {
+    if (!id || !tenant) return
+    setSavingMinimos(true)
+    try {
+      for (const suc of sucursales) {
+        const val = parseInt(stockMinimosSucursal[suc.id] ?? '')
+        if (isNaN(val)) continue
+        await supabase.from('producto_stock_minimo_sucursal').upsert({
+          tenant_id: tenant.id,
+          producto_id: id,
+          sucursal_id: suc.id,
+          stock_minimo: val,
+        }, { onConflict: 'tenant_id,producto_id,sucursal_id' })
+      }
+      toast.success('Mínimos por sucursal guardados')
+      qc.invalidateQueries({ queryKey: ['producto-stock-minimo-sucursal', id] })
+    } catch {
+      toast.error('Error al guardar mínimos')
+    } finally {
+      setSavingMinimos(false)
+    }
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -689,6 +739,33 @@ export default function ProductoFormPage() {
                   <span>Para ingresar stock, usá <strong>Movimientos → Ingreso</strong> una vez creado el producto.</span>
                 </div>
               )}
+              {/* Stock mínimo por sucursal — solo cuando hay sucursales configuradas y editando */}
+              {isEditing && sucursales.length > 0 && (
+                <div className="border border-gray-100 dark:border-gray-700 rounded-xl p-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Stock mínimo por sucursal</h3>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Override del valor global para cada sucursal. Dejá vacío para usar el global ({form.stock_minimo || '0'}).</p>
+                  <div className="space-y-2">
+                    {sucursales.map(suc => (
+                      <div key={suc.id} className="flex items-center gap-3">
+                        <span className="flex-1 text-sm text-gray-600 dark:text-gray-400">{suc.nombre}</span>
+                        <input
+                          type="number" min="0" onWheel={e => e.currentTarget.blur()}
+                          placeholder={form.stock_minimo || '0'}
+                          value={stockMinimosSucursal[suc.id] ?? ''}
+                          onChange={e => setStockMinimosSucursal(p => ({ ...p, [suc.id]: e.target.value }))}
+                          disabled={!canEdit}
+                          className="w-24 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 text-center" />
+                      </div>
+                    ))}
+                  </div>
+                  {canEdit && (
+                    <button type="button" onClick={saveMinimos} disabled={savingMinimos}
+                      className="text-sm px-4 py-1.5 bg-accent hover:bg-accent/90 text-white rounded-lg disabled:opacity-50 transition-all">
+                      {savingMinimos ? 'Guardando...' : 'Guardar mínimos'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -898,7 +975,7 @@ export default function ProductoFormPage() {
         {canEdit && (
           <div className="flex gap-3 justify-end">
             <button type="button" onClick={() => navigate('/productos')}
-              className="px-6 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all">
+              className="px-6 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:border-gray-300 dark:hover:border-gray-500 transition-all">
               Cancelar
             </button>
             <button type="submit" disabled={saving}

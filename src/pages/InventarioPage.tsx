@@ -361,6 +361,19 @@ export default function InventarioPage() {
     enabled: !!tenant && tab === 'kits',
   })
 
+  const { data: kitsEnArmado = [] } = useQuery({
+    queryKey: ['kits-en-armado', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('kitting_log')
+        .select('*, kit:kit_producto_id(nombre, sku)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'en_armado')
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'kits',
+  })
+
   const { data: compsBusqueda = [] } = useQuery({
     queryKey: ['productos-comps-busqueda', tenant?.id, recetaCompSearch, showRecetaForm],
     queryFn: async () => {
@@ -424,6 +437,31 @@ export default function InventarioPage() {
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (tieneLote && !form.nroLote.trim()) throw new Error('Este producto requiere número de lote')
       if (tieneVencimiento && !form.fechaVencimiento) throw new Error('Este producto requiere fecha de vencimiento')
+
+      // I-05: Validar mono_sku en la ubicación seleccionada
+      if (form.ubicacionId) {
+        const { data: ubicData } = await supabase
+          .from('ubicaciones')
+          .select('mono_sku, nombre')
+          .eq('id', form.ubicacionId)
+          .single()
+        if (ubicData?.mono_sku) {
+          const { data: otraLinea } = await supabase
+            .from('inventario_lineas')
+            .select('producto_id, productos(nombre, sku)')
+            .eq('tenant_id', tenant!.id)
+            .eq('ubicacion_id', form.ubicacionId)
+            .eq('activo', true)
+            .neq('producto_id', selectedProduct.id)
+            .gt('cantidad', 0)
+            .limit(1)
+            .maybeSingle()
+          if (otraLinea) {
+            const otro = (otraLinea as any).productos?.nombre ?? 'otro producto'
+            throw new Error(`La ubicación "${ubicData.nombre}" es Mono-SKU y ya tiene "${otro}"`)
+          }
+        }
+      }
 
       // Validar unicidad de LPN por tenant
       if (form.lpn.trim()) {
@@ -604,23 +642,25 @@ export default function InventarioPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const ejecutarKitting = useMutation({
+  const iniciarArmado = useMutation({
     mutationFn: async () => {
       const cant = parseFloat(kittingCantidad)
       if (!kittingKitId || isNaN(cant) || cant <= 0) throw new Error('Datos inválidos')
       const recetas = recetasMap[kittingKitId] ?? []
       if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
 
-      // 1. Verificar stock suficiente de cada componente
+      // 1. Verificar stock disponible (neto de reservas) de cada componente
       for (const r of recetas) {
         const comp = r.componente as any
         const requerido = r.cantidad * cant
-        if ((comp?.stock_actual ?? 0) < requerido) {
+        const disponible = (comp?.stock_actual ?? 0) - 0 // stock_actual ya tiene en cuenta reservas en el trigger
+        if (disponible < requerido) {
           throw new Error(`Stock insuficiente de ${comp?.nombre ?? r.comp_producto_id}: necesitás ${requerido} ${comp?.unidad_medida ?? ''}, hay ${comp?.stock_actual ?? 0}`)
         }
       }
 
-      // 2. Rebaje de cada componente
+      // 2. Reservar componentes (incrementar cantidad_reservada en sus líneas)
+      const componentesReservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = []
       for (const r of recetas) {
         const cantComp = r.cantidad * cant
         const { data: lineas } = await supabase.from('inventario_lineas')
@@ -631,51 +671,115 @@ export default function InventarioPage() {
         let restante = cantComp
         for (const linea of lineas ?? []) {
           if (restante <= 0) break
-          const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
-          const aRebajar = Math.min(disponible, restante)
-          if (aRebajar <= 0) continue
-          await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
-          restante -= aRebajar
+          const disponibleLinea = linea.cantidad - (linea.cantidad_reservada ?? 0)
+          const aReservar = Math.min(disponibleLinea, restante)
+          if (aReservar <= 0) continue
+          await supabase.from('inventario_lineas')
+            .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + aReservar })
+            .eq('id', linea.id)
+          componentesReservados.push({ linea_id: linea.id, comp_producto_id: r.comp_producto_id, cantidad: aReservar })
+          restante -= aReservar
         }
-
-        await supabase.from('movimientos_stock').insert({
-          tenant_id: tenant!.id, producto_id: r.comp_producto_id,
-          tipo: 'rebaje', cantidad: cantComp,
-          stock_antes: 0, stock_despues: 0, // triggers recalculan
-          motivo: `Kitting x${cant} [${kittingKitId}]`,
-          usuario_id: user?.id ?? null,
-        })
       }
 
-      // 3. Ingreso del KIT
-      await supabase.from('inventario_lineas').insert({
-        tenant_id: tenant!.id, producto_id: kittingKitId, cantidad: cant,
-        ubicacion_id: kittingUbicacionId || null,
-        activo: true,
-      })
-      await supabase.from('movimientos_stock').insert({
-        tenant_id: tenant!.id, producto_id: kittingKitId,
-        tipo: 'kitting', cantidad: cant,
-        stock_antes: 0, stock_despues: 0,
-        motivo: kittingNotas || `Kitting x${cant}`,
-        usuario_id: user?.id ?? null,
-      })
-
-      // 4. Log
+      // 3. Crear kitting_log en estado 'en_armado'
       await supabase.from('kitting_log').insert({
         tenant_id: tenant!.id, kit_producto_id: kittingKitId,
         cantidad_kits: cant, ubicacion_id: kittingUbicacionId || null,
         usuario_id: user?.id ?? null, notas: kittingNotas || null,
+        tipo: 'armado', estado: 'en_armado',
+        componentes_reservados: componentesReservados,
       })
     },
     onSuccess: () => {
-      toast.success('Kitting realizado con éxito')
-      qc.invalidateQueries({ queryKey: ['productos'] })
+      toast.success('Armado iniciado — componentes reservados')
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
-      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['kits-en-armado'] })
       qc.invalidateQueries({ queryKey: ['kits-productos'] })
       setShowKittingModal(false)
       setKittingCantidad('1'); setKittingUbicacionId(''); setKittingNotas('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const confirmarArmado = useMutation({
+    mutationFn: async (logId: string) => {
+      const log = kitsEnArmado.find((l: any) => l.id === logId) as any
+      if (!log) throw new Error('Armado no encontrado')
+      const reservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = log.componentes_reservados ?? []
+
+      // 1. Rebaje de componentes (descontar de cantidad + liberar reserva)
+      const cantsByComp: Record<string, number> = {}
+      for (const entry of reservados) {
+        const { data: linea } = await supabase.from('inventario_lineas')
+          .select('cantidad, cantidad_reservada').eq('id', entry.linea_id).single()
+        if (!linea) continue
+        await supabase.from('inventario_lineas').update({
+          cantidad: linea.cantidad - entry.cantidad,
+          cantidad_reservada: Math.max(0, (linea.cantidad_reservada ?? 0) - entry.cantidad),
+        }).eq('id', entry.linea_id)
+        cantsByComp[entry.comp_producto_id] = (cantsByComp[entry.comp_producto_id] ?? 0) + entry.cantidad
+      }
+      for (const [prodId, cantTotal] of Object.entries(cantsByComp)) {
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id, producto_id: prodId,
+          tipo: 'rebaje', cantidad: cantTotal,
+          stock_antes: 0, stock_despues: 0,
+          motivo: `Kitting x${log.cantidad_kits} [${log.kit_producto_id}]`,
+          usuario_id: user?.id ?? null,
+        })
+      }
+
+      // 2. Ingreso del KIT
+      await supabase.from('inventario_lineas').insert({
+        tenant_id: tenant!.id, producto_id: log.kit_producto_id,
+        cantidad: log.cantidad_kits, ubicacion_id: log.ubicacion_id ?? null, activo: true,
+      })
+      await supabase.from('movimientos_stock').insert({
+        tenant_id: tenant!.id, producto_id: log.kit_producto_id,
+        tipo: 'kitting', cantidad: log.cantidad_kits,
+        stock_antes: 0, stock_despues: 0,
+        motivo: log.notas || `Kitting x${log.cantidad_kits}`,
+        usuario_id: user?.id ?? null,
+      })
+
+      // 3. Marcar log como completado
+      await supabase.from('kitting_log').update({ estado: 'completado' }).eq('id', logId)
+    },
+    onSuccess: () => {
+      toast.success('KIT armado y stock ingresado')
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['kits-en-armado'] })
+      qc.invalidateQueries({ queryKey: ['kits-productos'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const cancelarArmado = useMutation({
+    mutationFn: async (logId: string) => {
+      const log = kitsEnArmado.find((l: any) => l.id === logId) as any
+      if (!log) throw new Error('Armado no encontrado')
+      const reservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = log.componentes_reservados ?? []
+
+      // Liberar cantidad_reservada en cada línea
+      for (const entry of reservados) {
+        const { data: linea } = await supabase.from('inventario_lineas')
+          .select('cantidad_reservada').eq('id', entry.linea_id).single()
+        if (!linea) continue
+        await supabase.from('inventario_lineas').update({
+          cantidad_reservada: Math.max(0, (linea.cantidad_reservada ?? 0) - entry.cantidad),
+        }).eq('id', entry.linea_id)
+      }
+
+      await supabase.from('kitting_log').update({ estado: 'cancelado' }).eq('id', logId)
+    },
+    onSuccess: () => {
+      toast.success('Armado cancelado — componentes liberados')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['kits-en-armado'] })
+      qc.invalidateQueries({ queryKey: ['kits-productos'] })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -2633,6 +2737,44 @@ export default function InventarioPage() {
             </div>
           </div>
 
+          {/* Armados en progreso */}
+          {kitsEnArmado.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                <Clock size={14} /> En Armado ({kitsEnArmado.length})
+              </h3>
+              {kitsEnArmado.map((log: any) => (
+                <div key={log.id} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 truncate">
+                      {log.kit?.nombre ?? log.kit_producto_id}
+                    </p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                      {log.cantidad_kits} {log.kit?.sku ?? ''} · {new Date(log.created_at).toLocaleDateString('es-AR')}
+                    </p>
+                    {log.notas && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{log.notas}</p>}
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => confirmarArmado.mutate(log.id)}
+                      disabled={confirmarArmado.isPending}
+                      title="Confirmar armado — rebaja componentes e ingresa KIT"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition-all">
+                      <Check size={12} /> Confirmar
+                    </button>
+                    <button
+                      onClick={() => cancelarArmado.mutate(log.id)}
+                      disabled={cancelarArmado.isPending}
+                      title="Cancelar armado — libera componentes reservados"
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 text-xs font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-all">
+                      <X size={12} /> Cancelar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Buscador + botón nuevo KIT */}
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -2797,7 +2939,7 @@ export default function InventarioPage() {
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
                   <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
                     <div>
-                      <h3 className="font-bold text-gray-900 dark:text-white">Ejecutar Kitting</h3>
+                      <h3 className="font-bold text-gray-900 dark:text-white">Iniciar Armado</h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{kit?.nombre}</p>
                     </div>
                     <button onClick={() => setShowKittingModal(false)} className="text-gray-400 hover:text-gray-600">
@@ -2859,10 +3001,10 @@ export default function InventarioPage() {
                         className="flex-1 px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
                         Cancelar
                       </button>
-                      <button onClick={() => ejecutarKitting.mutate()}
-                        disabled={ejecutarKitting.isPending || !kittingCantidad || parseFloat(kittingCantidad) <= 0}
+                      <button onClick={() => iniciarArmado.mutate()}
+                        disabled={iniciarArmado.isPending || !kittingCantidad || parseFloat(kittingCantidad) <= 0}
                         className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-50 text-sm py-2.5">
-                        {ejecutarKitting.isPending ? 'Procesando...' : <><Play size={15} /> Ejecutar</>}
+                        {iniciarArmado.isPending ? 'Reservando...' : <><Play size={15} /> Iniciar armado</>}
                       </button>
                     </div>
                   </div>

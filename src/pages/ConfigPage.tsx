@@ -444,6 +444,7 @@ export default function ConfigPage() {
   const [editUbicPeso, setEditUbicPeso] = useState('')
   const [editUbicPallets, setEditUbicPallets] = useState('')
   const [editUbicWmsOpen, setEditUbicWmsOpen] = useState(false)
+  const [editUbicMonoSku, setEditUbicMonoSku] = useState(false)
   const [ubicSearch, setUbicSearch] = useState('')
 
   const addUbicacion = async () => {
@@ -467,6 +468,7 @@ export default function ConfigPage() {
     setEditUbicPeso(u.peso_max_kg != null ? String(u.peso_max_kg) : '')
     setEditUbicPallets(u.capacidad_pallets != null ? String(u.capacidad_pallets) : '')
     setEditUbicWmsOpen(!!(u.tipo_ubicacion || u.alto_cm || u.ancho_cm || u.largo_cm || u.peso_max_kg || u.capacidad_pallets))
+    setEditUbicMonoSku(u.mono_sku ?? false)
   }
   const saveUbicacion = async (id: string) => {
     const old = (ubicaciones as any[]).find(u => u.id === id)
@@ -480,6 +482,7 @@ export default function ConfigPage() {
       largo_cm: editUbicLargo ? parseFloat(editUbicLargo) : null,
       peso_max_kg: editUbicPeso ? parseFloat(editUbicPeso) : null,
       capacidad_pallets: editUbicPallets ? parseInt(editUbicPallets) : null,
+      mono_sku: editUbicMonoSku,
     }).eq('id', id)
     if (error) { toast.error(error.message); return }
     toast.success('Actualizada')
@@ -1258,6 +1261,13 @@ export default function ConfigPage() {
                               className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
+                        {/* Mono-SKU toggle */}
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-gray-600 dark:text-gray-400 pt-1">
+                          <input type="checkbox" checked={editUbicMonoSku} onChange={e => setEditUbicMonoSku(e.target.checked)}
+                            className="w-3.5 h-3.5 rounded accent-accent" />
+                          <Tag size={11} />
+                          Mono-SKU (un solo producto en esta ubicación)
+                        </label>
                       </div>
                     ) : (
                       <>
@@ -1271,6 +1281,11 @@ export default function ConfigPage() {
                           {(u.alto_cm || u.ancho_cm || u.largo_cm) && (
                             <span className="ml-1 text-xs text-gray-400 dark:text-gray-500" title="Dimensiones alto × ancho × largo">
                               <Ruler size={10} className="inline mb-0.5" /> {[u.alto_cm, u.ancho_cm, u.largo_cm].filter(Boolean).join('×')} cm
+                            </span>
+                          )}
+                          {u.mono_sku && (
+                            <span className="ml-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded" title="Mono-SKU: solo un producto">
+                              <Tag size={9} className="inline mb-0.5 mr-0.5" />Mono-SKU
                             </span>
                           )}
                         </div>

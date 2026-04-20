@@ -149,6 +149,8 @@ export interface Ubicacion {
   largo_cm?: number | null
   peso_max_kg?: number | null
   capacidad_pallets?: number | null
+  // Sprint B
+  mono_sku?: boolean
 }
 
 export interface Producto {
@@ -361,6 +363,19 @@ export interface KittingLog {
   ubicacion_id?: string | null
   usuario_id?: string | null
   notas?: string | null
+  tipo?: 'armado' | 'desarmado'
+  estado?: 'en_armado' | 'completado' | 'cancelado'
+  componentes_reservados?: { linea_id: string; comp_producto_id: string; cantidad: number }[] | null
   created_at: string
   kit?: Pick<Producto, 'nombre' | 'sku'>
+}
+
+export interface ProductoStockMinimoSucursal {
+  id: string
+  tenant_id: string
+  producto_id: string
+  sucursal_id: string
+  stock_minimo: number
+  created_at: string
+  sucursales?: Pick<Sucursal, 'nombre'>
 }

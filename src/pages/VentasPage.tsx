@@ -39,8 +39,10 @@ function calcularEfectivo(mediosPago: MedioPagoItem[], total: number): number {
 const UNIDADES_DECIMALES = new Set(['kg','g','gr','mg','l','lt','ml','m','m2','m3','cm','mm','km'])
 const esDecimal = (u?: string | null) => !!u && UNIDADES_DECIMALES.has(u.toLowerCase())
 const stepCantidad = (u?: string | null) => esDecimal(u) ? 0.001 : 1
-const parseCantidad = (val: string, u?: string | null) =>
-  esDecimal(u) ? Math.max(0.001, parseFloat(val) || 0.001) : Math.max(1, parseInt(val) || 1)
+const parseCantidad = (val: string, u?: string | null) => {
+  const normalized = val.replace(',', '.')
+  return esDecimal(u) ? Math.max(0.001, parseFloat(normalized) || 0.001) : Math.max(1, parseInt(normalized) || 1)
+}
 
 interface CartItem {
   producto_id: string
@@ -186,7 +188,8 @@ export default function VentasPage() {
   }
 
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
-  useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
+  useModalKeyboard({ isOpen: ticketVenta !== null, onClose: () => setTicketVenta(null) })
+  useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
 
@@ -538,6 +541,17 @@ export default function VentasPage() {
           toast.error(`Stock máximo disponible: ${maxDisp}`)
           value = maxDisp
         }
+      }
+    }
+    // Clamp descuento: pct máx 100%, monto máx subtotal del item
+    if (field === 'descuento' && typeof value === 'number') {
+      const item = cart[idx]
+      if (item) {
+        const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+        const base = item.precio_unitario * cant
+        const tipo = item.descuento_tipo
+        if (tipo === 'pct') value = Math.min(100, Math.max(0, value))
+        else value = Math.min(base, Math.max(0, value))
       }
     }
     setCart(prev => prev.map((item, i) => {
@@ -973,9 +987,11 @@ export default function VentasPage() {
           })
         }
       }
-      const msg = estado === 'despachada' ? 'Venta finalizada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
+      const msg = estado === 'despachada' ? 'Venta finalizada' : estado === 'reservada' ? 'Venta reservada' : 'Presupuesto guardado'
       toast.success(msg)
-      setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
+      if (estado !== 'pendiente') {
+        setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
+      }
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
@@ -1809,9 +1825,7 @@ export default function VentasPage() {
                             <button onClick={() => updateItem(idx, 'cantidad', Math.max(stepCantidad(item.unidad_medida), parseFloat((item.cantidad - stepCantidad(item.unidad_medida)).toFixed(3))))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
                             <input
-                              type="number" onWheel={e => e.currentTarget.blur()}
-                              min={stepCantidad(item.unidad_medida)}
-                              step={stepCantidad(item.unidad_medida)}
+                              type="text" inputMode="decimal"
                               value={item.cantidad}
                               onChange={e => updateItem(idx, 'cantidad', parseCantidad(e.target.value, item.unidad_medida))}
                               className="w-16 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
@@ -2018,8 +2032,14 @@ export default function VentasPage() {
                     </div>
                   )}
                   <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={descuentoTotal}
-                      onChange={e => setDescuentoTotal(e.target.value)}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0"
+                      max={descuentoTotalTipo === 'pct' ? 100 : subtotal}
+                      value={descuentoTotal}
+                      onChange={e => {
+                        const v = parseFloat(e.target.value) || 0
+                        const max = descuentoTotalTipo === 'pct' ? 100 : subtotal
+                        setDescuentoTotal(String(Math.min(v, max) || e.target.value))
+                      }}
                       placeholder="0"
                       className="flex-1 px-3 py-2.5 text-sm focus:outline-none" />
                     <button onClick={() => setDescuentoTotalTipo(t => t === 'pct' ? 'monto' : 'pct')}
@@ -2468,7 +2488,13 @@ export default function VentasPage() {
                 <Printer size={15} /> Ver / Imprimir ticket
               </button>
               {ventaDetalle.estado === 'pendiente' && (
-                <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })}
+                <button onClick={() => {
+                  if (!(ventaDetalle.monto_pagado > 0)) {
+                    toast.error('Para reservar stock debés registrar un pago. Editá el monto cobrado primero.')
+                    return
+                  }
+                  cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })
+                }}
                   disabled={cambiarEstado.isPending}
                   className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
                   Reservar stock
@@ -2729,7 +2755,8 @@ export default function VentasPage() {
       {/* Modal TICKET */}
       {ticketVenta && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm p-6" id="ticket-print">
+          <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm flex flex-col max-h-[90vh]" id="ticket-print">
+            <div className="overflow-y-auto flex-1 p-6 pb-2">
             <div className="text-center mb-4 border-b border-dashed border-gray-300 dark:border-gray-600 pb-4">
               <p className="text-lg font-bold text-primary">{tenant?.nombre ?? 'Genesis360'}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -2815,6 +2842,38 @@ export default function VentasPage() {
                       <span>−${(ticketVenta.subtotal * ticketVenta.descuento_total / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                     </div>
                   )}
+                  {(() => {
+                    // Desglose IVA por tasa
+                    const items: any[] = ticketVenta.items ?? []
+                    const ivaMap: Record<number, number> = {}
+                    let totalIva = 0
+                    for (const item of items) {
+                      const tasa = item.alicuota_iva ?? 21
+                      if (tasa <= 0) continue
+                      const cant = item.tiene_series ? item.series_seleccionadas?.length ?? 0 : item.cantidad
+                      const sub = item.subtotal ?? item.precio_unitario * cant
+                      const iva = sub - sub / (1 + tasa / 100)
+                      ivaMap[tasa] = (ivaMap[tasa] ?? 0) + iva
+                      totalIva += iva
+                    }
+                    const tasas = Object.keys(ivaMap).map(Number).filter(t => ivaMap[t] > 0.01)
+                    if (tasas.length === 0) return null
+                    const neto = (ticketVenta.total ?? 0) - totalIva
+                    return (
+                      <div className="space-y-0.5 text-xs text-gray-400 dark:text-gray-500 border-t border-dashed border-gray-200 dark:border-gray-700 pt-2 mt-1">
+                        <div className="flex justify-between">
+                          <span>Neto (sin IVA)</span>
+                          <span>${neto.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                        </div>
+                        {tasas.sort((a, b) => a - b).map(tasa => (
+                          <div key={tasa} className="flex justify-between">
+                            <span>IVA {tasa}%</span>
+                            <span>${ivaMap[tasa].toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                   <div className="flex justify-between font-bold text-primary text-base">
                     <span>TOTAL</span>
                     <span>${ticketVenta.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
@@ -2848,8 +2907,9 @@ export default function VentasPage() {
             <p className="text-center text-xs text-gray-300 mt-4 border-t border-dashed border-gray-200 dark:border-gray-700 pt-3">
               ¡Gracias por su compra!
             </p>
+            </div>{/* end scroll area */}
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2 p-4 pt-2 border-t border-gray-100 dark:border-gray-700 shrink-0">
               <button onClick={() => window.print()}
                 className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <Printer size={15} /> Imprimir

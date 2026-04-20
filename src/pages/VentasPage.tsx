@@ -11,7 +11,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, restaurarMediosPago, calcularLpnFuentes, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial'
@@ -36,13 +36,7 @@ function calcularEfectivo(mediosPago: MedioPagoItem[], total: number): number {
   return efectivos.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
 }
 
-const UNIDADES_DECIMALES = new Set(['kg','g','gr','mg','l','lt','ml','m','m2','m3','cm','mm','km'])
-const esDecimal = (u?: string | null) => !!u && UNIDADES_DECIMALES.has(u.toLowerCase())
 const stepCantidad = (u?: string | null) => esDecimal(u) ? 0.001 : 1
-const parseCantidad = (val: string, u?: string | null) => {
-  const normalized = val.replace(',', '.')
-  return esDecimal(u) ? Math.max(0.001, parseFloat(normalized) || 0.001) : Math.max(1, parseInt(normalized) || 1)
-}
 
 interface CartItem {
   producto_id: string
@@ -536,7 +530,7 @@ export default function VentasPage() {
     // Validar stock disponible antes de actualizar cantidad
     if (field === 'cantidad' && typeof value === 'number' && value > 0) {
       const item = cart[idx]
-      if (item && !item.tiene_series && item.lineas_disponibles) {
+      if (item && !item.tiene_series && item.lineas_disponibles && item.lineas_disponibles.length > 0) {
         const maxDisp = item.lineas_disponibles.reduce(
           (sum, l) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0
         )
@@ -555,6 +549,27 @@ export default function VentasPage() {
         const tipo = item.descuento_tipo
         if (tipo === 'pct') value = Math.min(100, Math.max(0, value))
         else value = Math.min(base, Math.max(0, value))
+      }
+    }
+    // Al cambiar el tipo de descuento, clampear el valor actual al nuevo límite
+    if (field === 'descuento_tipo') {
+      const item = cart[idx]
+      if (item) {
+        const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+        const base = item.precio_unitario * cant
+        const nuevoTipo = value as DescTipo
+        const descActual = item.descuento
+        if (nuevoTipo === 'pct') {
+          // Si venía de monto, el número puede ser mayor a 100; clampearlo
+          const clampedPct = Math.min(100, Math.max(0, descActual))
+          setCart(prev => prev.map((it, i) => i !== idx ? it : { ...it, descuento_tipo: nuevoTipo, descuento: clampedPct }))
+          return
+        } else {
+          // Si venía de pct, convertir el porcentaje a monto para no perder contexto
+          const montoEquivalente = Math.min(base, Math.max(0, descActual <= 100 ? base * descActual / 100 : descActual))
+          setCart(prev => prev.map((it, i) => i !== idx ? it : { ...it, descuento_tipo: nuevoTipo, descuento: parseFloat(montoEquivalente.toFixed(2)) }))
+          return
+        }
       }
     }
     setCart(prev => prev.map((item, i) => {
@@ -726,6 +741,10 @@ export default function VentasPage() {
       if (item.tiene_series && item.series_seleccionadas.length !== item.cantidad) {
         toast.error(`Seleccioná ${item.cantidad} serie(s) para ${item.nombre}`); return
       }
+      // Validar cantidad válida (NaN o ≤ 0 no deben llegar al DB)
+      if (!item.cantidad || item.cantidad <= 0 || isNaN(item.cantidad)) {
+        toast.error(`Cantidad inválida para "${item.nombre}". Corregila antes de guardar.`); return
+      }
     }
     // Cliente obligatorio para pendiente y reservada
     if ((estado === 'pendiente' || estado === 'reservada') && !clienteId) {
@@ -790,7 +809,11 @@ export default function VentasPage() {
         }
       })
       const { data: insertedItems, error: itemsError } = await supabase.from('venta_items').insert(itemPayloads).select()
-      if (itemsError) throw itemsError
+      if (itemsError) {
+        // Rollback: eliminar el header de venta para no dejar una venta sin líneas
+        await supabase.from('ventas').delete().eq('id', venta.id)
+        throw itemsError
+      }
 
       // ─── Fase 2: series + lineas en paralelo por item (distintos productos) ──
       const _hoy = new Date().toISOString().split('T')[0]
@@ -1793,10 +1816,15 @@ export default function VentasPage() {
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
                             <input
                               key={`qty-${idx}-${item.cantidad}-${item.producto_id}`}
-                              type="text" inputMode="decimal"
-                              defaultValue={item.cantidad}
+                              type="text"
+                              inputMode={esDecimal(item.unidad_medida) ? 'decimal' : 'numeric'}
+                              defaultValue={esDecimal(item.unidad_medida) ? item.cantidad.toString().replace('.', ',') : item.cantidad.toString()}
                               onBlur={e => updateItem(idx, 'cantidad', parseCantidad(e.target.value, item.unidad_medida))}
-                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); return }
+                                // Para UOM enteras: bloquear punto y coma
+                                if (!esDecimal(item.unidad_medida) && (e.key === '.' || e.key === ',')) e.preventDefault()
+                              }}
                               className="w-16 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
                             />
                             <button onClick={() => updateItem(idx, 'cantidad', parseFloat((item.cantidad + stepCantidad(item.unidad_medida)).toFixed(3)))} title="Aumentar cantidad"
@@ -2760,18 +2788,6 @@ export default function VentasPage() {
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">
                           S/N: {(item.series_seleccionadas as string[]).join(', ')}
                         </p>
-                      )}
-                      {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-0.5">
-                          {item.lpn_fuentes.slice(0, 3).map((f: LpnFuente, fi: number) => (
-                            <span key={fi} className="text-xs text-blue-600 dark:text-blue-400">
-                              LPN: {f.lpn ?? '—'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
-                            </span>
-                          ))}
-                          {item.lpn_fuentes.length > 3 && (
-                            <span className="text-xs text-gray-400 dark:text-gray-500">+{item.lpn_fuentes.length - 3} más</span>
-                          )}
-                        </div>
                       )}
                     </div>
                     <div className="text-right whitespace-nowrap">

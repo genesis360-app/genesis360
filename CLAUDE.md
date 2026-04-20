@@ -882,6 +882,19 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **fix — security_invoker view** (migration 053): `stock_por_producto` recreada con `WITH (security_invoker = true)` — elimina warning del Security Advisor de Supabase.
 - **fix — APP_VERSION**: bump a `v0.85.0` en `src/config/brand.ts`.
 
+### v0.85.2 — en dev
+
+#### Fixes VentasPage (bugs de cantidad, descuento y venta sin líneas)
+
+- **Descuento: cambio de tipo clampea el valor**: al cambiar de `$` a `%`, si el monto era mayor a 100 queda clampeado a 100%. Al cambiar de `%` a `$`, convierte el porcentaje a monto equivalente sobre el subtotal del ítem. Antes era posible tener >100% tras el cambio de tipo.
+- **LPN eliminado del ticket**: el ticket del cliente ya no muestra los LPNs internos (son datos de almacén, no relevantes para el cliente).
+- **Cantidad decimal: display con coma**: el input de cantidad muestra `defaultValue` con coma como separador (ej: `1,5` en vez de `1.5`).
+- **Cantidad entero: bloquea punto y coma**: para UOM no-decimales (unidades, etc.) el `onKeyDown` previene ingreso de `.` o `,`, evitando que quede `2,5` en pantalla.
+- **Stock guard tras restore del carrito**: `updateItem` solo valida stock contra `lineas_disponibles` si tiene al menos una entrada (`length > 0`). Antes, el carrito restaurado desde localStorage (con `lineas_disponibles: []`) causaba que el stock máximo disponible fuera 0.
+- **Venta sin líneas imposible**: antes si `venta_items` fallaba (ej: tipo integer en DB), el header `ventas` quedaba huérfano y era finalizable. Ahora: (a) validación previa de cantidad (NaN / ≤ 0 bloqueados), (b) rollback DELETE del header si el insert de items falla.
+- **Migration 054**: `venta_items.cantidad INT → DECIMAL(14,4)` — permite guardar cantidades decimales para productos con UOM kg, g, l, etc.
+- **`esDecimal` + `parseCantidad` extraídas a `ventasValidation.ts`**: funciones puras accesibles desde tests. 24 nuevos unit tests (`ventasCantidad.test.ts`). Total: **178/178** passing.
+
 ### v0.85.1 — en dev
 
 #### Fixes VentasPage

@@ -483,7 +483,7 @@ CREATE TABLE venta_items (
   venta_id               UUID NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
   producto_id            UUID NOT NULL REFERENCES productos(id),
   linea_id               UUID REFERENCES inventario_lineas(id),
-  cantidad               INT NOT NULL DEFAULT 1,
+  cantidad               DECIMAL(14,4) NOT NULL DEFAULT 1,
   precio_unitario        DECIMAL(12,2) NOT NULL,
   descuento              DECIMAL(5,2) NOT NULL DEFAULT 0,
   subtotal               DECIMAL(12,2) NOT NULL,

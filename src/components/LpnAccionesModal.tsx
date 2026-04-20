@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
-  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown, QrCode, Layers
+  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown, QrCode, Layers, ClipboardList
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -26,6 +26,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   const tieneReservas = (linea.cantidad_reservada ?? 0) > 0
   const [tab, setTab] = useState<AccionTab>(tieneReservas ? 'mover' : 'editar')
   const tieneSeries = producto.tiene_series
+  const esDeposito = user?.rol === 'DEPOSITO'
 
   // Editar campos
   const [editForm, setEditForm] = useState({
@@ -102,24 +103,38 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const registrarMovimiento = async (tipo: string, cantidad: number, motivo: string, stockAntes: number) => {
+  const registrarMovimiento = async (tipo: string, cantidad: number, motivo: string, stockAntes: number, stockDespues?: number) => {
     await supabase.from('movimientos_stock').insert({
       tenant_id: tenant!.id,
       producto_id: producto.id,
       tipo,
       cantidad,
       stock_antes: stockAntes,
-      stock_despues: stockAntes, // el trigger lo actualiza
+      stock_despues: stockDespues ?? stockAntes,
       motivo,
       usuario_id: user?.id,
     })
   }
 
+  const crearAutorizacion = async (tipo: string, datosCambio: Record<string, any>, notas?: string) => {
+    const { error } = await supabase.from('autorizaciones_inventario').insert({
+      tenant_id: tenant!.id,
+      tipo,
+      linea_id: linea.id,
+      datos_cambio: datosCambio,
+      estado: 'pendiente',
+      solicitado_por: user?.id,
+      notas: notas ?? null,
+    })
+    if (error) throw error
+  }
+
   // ── Guardar edición ──────────────────────────────────────────────────────────
   const guardarEdicion = useMutation({
     mutationFn: async () => {
-      const cantNueva = tieneSeries ? linea.cantidad : parseInt(editForm.cantidad)
+      const cantNueva = tieneSeries ? linea.cantidad : parseFloat(editForm.cantidad)
       const cantVieja = linea.cantidad
+      const cantCambio = !tieneSeries && cantNueva !== cantVieja
 
       if (!tieneSeries && (isNaN(cantNueva) || cantNueva < 0))
         throw new Error('Cantidad inválida')
@@ -129,6 +144,24 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         throw new Error('Este producto requiere número de lote')
       if (producto.tiene_vencimiento && !editForm.fecha_vencimiento)
         throw new Error('Este producto requiere fecha de vencimiento')
+
+      // DEPOSITO: si cambia cantidad → crear solicitud de autorización en vez de ejecutar
+      if (esDeposito && cantCambio) {
+        await crearAutorizacion('ajuste_cantidad', {
+          cantidad_anterior: cantVieja,
+          cantidad_nueva: cantNueva,
+        })
+        // Guardar igual todos los otros campos (no la cantidad)
+        await supabase.from('inventario_lineas').update({
+          lpn: editForm.lpn || linea.lpn,
+          estado_id: editForm.estado_id || null,
+          ubicacion_id: editForm.ubicacion_id || null,
+          proveedor_id: editForm.proveedor_id || null,
+          nro_lote: editForm.nro_lote || null,
+          fecha_vencimiento: editForm.fecha_vencimiento || null,
+        }).eq('id', linea.id)
+        return { esAutorizacion: true }
+      }
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
@@ -144,17 +177,16 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       }).eq('id', linea.id)
       if (error) throw error
 
-      // Registrar en historial si cambió la cantidad
-      if (!tieneSeries && cantNueva !== cantVieja) {
+      // Registrar en historial solo si cambió la cantidad (ajuste válido en movimientos_stock)
+      if (cantCambio) {
         const diff = cantNueva - cantVieja
         await registrarMovimiento(
           diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje',
           Math.abs(diff),
           `Ajuste manual de cantidad en LPN ${linea.lpn}`,
-          stockAntes
+          stockAntes,
+          Math.max(0, stockAntes + diff)
         )
-      } else {
-        await registrarMovimiento('edicion_lpn', 0, `Edición de datos del LPN ${linea.lpn}`, stockAntes)
       }
 
       // Audit log: loguear cada campo modificado
@@ -175,7 +207,17 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if ((editForm.fecha_vencimiento || '') !== oldVenc)
         logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'fecha_vencimiento', valor_anterior: oldVenc || null, valor_nuevo: editForm.fecha_vencimiento || null, pagina: '/inventario' })
     },
-    onSuccess: () => { toast.success('LPN actualizado'); invalidar(); onClose() },
+    onSuccess: (result: any) => {
+      if (result?.esAutorizacion) {
+        toast.success('Solicitud de ajuste enviada — pendiente de aprobación')
+        invalidar()
+        onClose()
+      } else {
+        toast.success('LPN actualizado')
+        invalidar()
+        onClose()
+      }
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -213,7 +255,6 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       })
       if (e2) throw e2
 
-      await registrarMovimiento('traslado', cant, `Traslado parcial de ${linea.lpn} → ${newLpn} (${cant} u.)`, stockAntes)
       const ubicNombre = (ubicaciones as any[]).find(u => u.id === ubicDestino)?.nombre ?? ubicDestino
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'traslado', valor_anterior: `${linea.lpn} (${linea.cantidad} u.)`, valor_nuevo: `${newLpn} → ${ubicNombre} (${cant} u.)`, pagina: '/inventario' })
     },
@@ -224,25 +265,41 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   // ── Eliminar LPN ────────────────────────────────────────────────────────────
   const eliminarLpn = useMutation({
     mutationFn: async () => {
-      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
-      const stockAntes = prodAntes?.stock_actual ?? 0
       const cantEliminada = tieneSeries
         ? (linea.inventario_series ?? []).filter((s: any) => s.activo).length
         : linea.cantidad
 
-      // Desactivar series si las tiene
+      // DEPOSITO: crear solicitud de autorización en vez de ejecutar
+      if (esDeposito) {
+        await crearAutorizacion('eliminar_lpn', { lpn: linea.lpn, cantidad: cantEliminada })
+        return { esAutorizacion: true }
+      }
+
+      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
+      const stockAntes = prodAntes?.stock_actual ?? 0
+
       if (tieneSeries) {
         await supabase.from('inventario_series').update({ activo: false }).eq('linea_id', linea.id)
       }
-
-      // Desactivar línea y poner cantidad a 0 para que el trigger recalcule stock_actual
       const { error } = await supabase.from('inventario_lineas').update({ activo: false, cantidad: 0 }).eq('id', linea.id)
       if (error) throw error
 
-      await registrarMovimiento('eliminacion_lpn', cantEliminada, `Eliminación del LPN ${linea.lpn}`, stockAntes)
+      if (cantEliminada > 0) {
+        await registrarMovimiento('rebaje', cantEliminada, `Eliminación del LPN ${linea.lpn}`, stockAntes, Math.max(0, stockAntes - cantEliminada))
+      }
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'eliminar', valor_anterior: `LPN ${linea.lpn} (${cantEliminada} u.)`, pagina: '/inventario' })
     },
-    onSuccess: () => { toast.success('LPN eliminado'); invalidar(); onClose() },
+    onSuccess: (result: any) => {
+      if (result?.esAutorizacion) {
+        toast.success('Solicitud de eliminación enviada — pendiente de aprobación')
+        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+        onClose()
+      } else {
+        toast.success('LPN eliminado')
+        invalidar()
+        onClose()
+      }
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -261,7 +318,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (error) throw error
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
-      await registrarMovimiento('ingreso_serie', 1, `Serie ${newSerie.trim()} agregada al LPN ${linea.lpn}`, prodAntes?.stock_actual ?? 0)
+      const stockAntes = prodAntes?.stock_actual ?? 0
+      await registrarMovimiento('ingreso', 1, `Serie ${newSerie.trim()} agregada al LPN ${linea.lpn}`, stockAntes, stockAntes + 1)
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie', valor_nuevo: newSerie.trim(), pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('Serie agregada'); setNewSerie(''); invalidar() },
@@ -275,8 +333,6 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (error?.code === '23505') throw new Error('Esa serie ya existe')
       if (error) throw error
 
-      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
-      await registrarMovimiento('edicion_serie', 0, `Serie editada en LPN ${linea.lpn}: → ${nroNuevo.trim()}`, prodAntes?.stock_actual ?? 0)
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie', valor_nuevo: nroNuevo.trim(), pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('Serie actualizada'); setEditSerieId(null); invalidar() },
@@ -285,14 +341,30 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
   const eliminarSerie = useMutation({
     mutationFn: async (serieId: string) => {
+      const serie = (linea.inventario_series ?? []).find((s: any) => s.id === serieId)
+
+      // DEPOSITO: crear solicitud de autorización en vez de ejecutar
+      if (esDeposito) {
+        await crearAutorizacion('eliminar_serie', { serie_id: serieId, nro_serie: serie?.nro_serie ?? '' })
+        return { esAutorizacion: true }
+      }
+
       const { error } = await supabase.from('inventario_series').update({ activo: false }).eq('id', serieId)
       if (error) throw error
-      const serie = (linea.inventario_series ?? []).find((s: any) => s.id === serieId)
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
-      await registrarMovimiento('eliminacion_serie', 1, `Serie eliminada del LPN ${linea.lpn}`, prodAntes?.stock_actual ?? 0)
+      const stockAntes = prodAntes?.stock_actual ?? 0
+      await registrarMovimiento('rebaje', 1, `Serie ${serie?.nro_serie ?? serieId} eliminada del LPN ${linea.lpn}`, stockAntes, Math.max(0, stockAntes - 1))
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie_eliminada', valor_anterior: serie?.nro_serie ?? serieId, pagina: '/inventario' })
     },
-    onSuccess: () => { toast.success('Serie eliminada'); invalidar() },
+    onSuccess: (result: any) => {
+      if (result?.esAutorizacion) {
+        toast.success('Solicitud de eliminación de serie enviada — pendiente de aprobación')
+        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+      } else {
+        toast.success('Serie eliminada')
+        invalidar()
+      }
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -643,24 +715,44 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           {/* ── ELIMINAR ── */}
           {tab === 'eliminar' && (
             <div className="space-y-4">
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl p-4 text-center">
-                <AlertTriangle size={28} className="text-red-500 mx-auto mb-2" />
-                <p className="font-semibold text-red-700 dark:text-red-400">Eliminar LPN {linea.lpn}</p>
-                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                  Se eliminarán {tieneSeries ? `${seriesActivas.length} series` : `${linea.cantidad} unidades`} del inventario.
-                  Esta acción quedará registrada en el historial.
-                </p>
-              </div>
+              {esDeposito ? (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl p-4 text-center">
+                  <ClipboardList size={28} className="text-blue-500 mx-auto mb-2" />
+                  <p className="font-semibold text-blue-700 dark:text-blue-400">Solicitar eliminación del LPN {linea.lpn}</p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    Como DEPOSITO, la eliminación requiere aprobación de un OWNER o SUPERVISOR.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl p-4 text-center">
+                  <AlertTriangle size={28} className="text-red-500 mx-auto mb-2" />
+                  <p className="font-semibold text-red-700 dark:text-red-400">Eliminar LPN {linea.lpn}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                    Se eliminarán {tieneSeries ? `${seriesActivas.length} series` : `${linea.cantidad} unidades`} del inventario.
+                    Esta acción quedará registrada en el historial.
+                  </p>
+                </div>
+              )}
               {(linea.cantidad_reservada ?? 0) > 0 && (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                   <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
                   Este LPN tiene {linea.cantidad_reservada} unidad(es) reservada(s) en ventas pendientes. Eliminarlo puede afectar esas ventas.
                 </div>
               )}
-              <button onClick={() => { if (confirm(`¿Eliminar definitivamente el LPN ${linea.lpn}?`)) eliminarLpn.mutate() }}
+              <button
+                onClick={() => {
+                  const msg = esDeposito
+                    ? `¿Enviar solicitud de eliminación del LPN ${linea.lpn}?`
+                    : `¿Eliminar definitivamente el LPN ${linea.lpn}?`
+                  if (confirm(msg)) eliminarLpn.mutate()
+                }}
                 disabled={eliminarLpn.isPending}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                <Trash2 size={15} /> {eliminarLpn.isPending ? 'Eliminando...' : 'Confirmar eliminación'}
+                className={`w-full font-semibold py-3 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2 text-white
+                  ${esDeposito ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                {esDeposito
+                  ? <><ClipboardList size={15} /> {eliminarLpn.isPending ? 'Enviando...' : 'Enviar solicitud'}</>
+                  : <><Trash2 size={15} /> {eliminarLpn.isPending ? 'Eliminando...' : 'Confirmar eliminación'}</>
+                }
               </button>
             </div>
           )}

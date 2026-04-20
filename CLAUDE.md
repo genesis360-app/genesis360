@@ -882,6 +882,21 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **fix — security_invoker view** (migration 053): `stock_por_producto` recreada con `WITH (security_invoker = true)` — elimina warning del Security Advisor de Supabase.
 - **fix — APP_VERSION**: bump a `v0.85.0` en `src/config/brand.ts`.
 
+### v0.86.0 — en dev
+
+#### Sprint C inventario — Tab Autorizaciones DEPOSITO (migrations 055+056)
+
+- **Migration 055**: `movimientos_stock.tipo` CHECK ampliado (`ajuste_ingreso`, `ajuste_rebaje`, `traslado`). `cantidad INT → DECIMAL(14,4)` — soporta UOM decimales (kg, l, g, etc.).
+- **Migration 056**: tabla `autorizaciones_inventario` (tipo CHECK('ajuste_cantidad','eliminar_serie','eliminar_lpn'), linea_id, datos_cambio JSONB, estado pendiente/aprobada/rechazada, solicitado_por, aprobado_por, motivo_rechazo). RLS tenant. Índice (tenant_id, estado). Trigger updated_at.
+- **LpnAccionesModal — DEPOSITO interception**: `esDeposito = user?.rol === 'DEPOSITO'`. `guardarEdicion`: si cantidad cambia → `crearAutorizacion('ajuste_cantidad', {cantidad_anterior, cantidad_nueva})` + guarda otros campos sin tocar cantidad. `eliminarLpn`: DEPOSITO → solicita autorización; OWNER/SUPERVISOR → ejecuta. `eliminarSerie`: DEPOSITO → solicita autorización; OWNER/SUPERVISOR → ejecuta. Tab Eliminar: DEPOSITO ve UI azul "Solicitar eliminación" (ClipboardList); no-DEPOSITO ve UI roja.
+- **Fix historial — conteo y ajuste LPN**: `movimientos_stock.tipo` CHECK ahora incluye `ajuste_ingreso`/`ajuste_rebaje` → conteos y ajustes de LPN quedan en `/historial` y tab Historial de InventarioPage.
+- **Fix registrarMovimiento**: `stock_despues` ahora calculado correctamente (`stockAntes + diff`); antes siempre era igual a `stockAntes`.
+- **Fix tipos inválidos**: removidos `edicion_lpn`, `edicion_serie` (cantidad=0 violaba CHECK); `traslado` en `moverStock` eliminado (no afecta stock neto). Solo `actividadLog` en operaciones sin cambio de stock.
+- **Tab Autorizaciones en InventarioPage**: visible para OWNER/SUPERVISOR/ADMIN. Pills Pendientes/Aprobadas/Rechazadas. Cards por solicitud: tipo badge, producto/SKU, LPN, datos del cambio solicitado, solicitante, fecha. Aprobar (ejecuta acción + inserta movimiento válido + marca aprobada). Rechazar (inline motivo_rechazo).
+- **Reorden de tabs**: Inventario → Agregar Stock → Quitar Stock → Kits → Conteos → Historial → Autorizaciones.
+- **Historial filtros**: rango de fechas (desde/hasta), categoría de producto, tipo, motivo (búsqueda de texto). Badge "Conteo" detectado por prefijo en motivo.
+- **`getTipoBadge(tipo, motivo)`**: helper en InventarioPage — distingue "Conteo" vs "Ajuste ±" para `ajuste_ingreso`/`ajuste_rebaje` según prefijo del motivo.
+
 ### v0.85.3 — en dev
 
 #### Fix: cálculo de margen strip IVA (ProductoFormPage, MetricasPage, DashboardPage, useRecomendaciones)

@@ -24,7 +24,7 @@ import type { Producto, KitReceta, InventarioConteo } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 
-type Tab = 'inventario' | 'agregar' | 'quitar' | 'historial' | 'kits' | 'conteo'
+type Tab = 'inventario' | 'agregar' | 'quitar' | 'kits' | 'conteo' | 'historial' | 'autorizaciones'
 type ModalType = 'ingreso' | 'rebaje' | null
 
 const emptyIngreso = {
@@ -182,6 +182,18 @@ export default function InventarioPage() {
   const [conteoExpandedId, setConteoExpandedId] = useState<string | null>(null)
   const [conteoLoading, setConteoLoading] = useState(false)
 
+  // ── Historial filters ──────────────────────────────────────────────────────
+  const [filterHistFechaDesde, setFilterHistFechaDesde] = useState('')
+  const [filterHistFechaHasta, setFilterHistFechaHasta] = useState('')
+  const [filterHistCatId, setFilterHistCatId] = useState('')
+  const [filterHistTipo, setFilterHistTipo] = useState('')
+  const [filterHistMotivo, setFilterHistMotivo] = useState('')
+
+  // ── Autorizaciones tab state ───────────────────────────────────────────────
+  const [autEstado, setAutEstado] = useState<'pendiente' | 'aprobada' | 'rechazada'>('pendiente')
+  const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
+  const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
+
   // ── Shared queries ─────────────────────────────────────────────────────────
   const { data: estados = [] } = useQuery({
     queryKey: ['estados_inventario', tenant?.id],
@@ -198,7 +210,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('movimientos_stock')
-        .select('*, productos(nombre,sku,unidad_medida), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie)), ventas(numero)')
+        .select('*, productos(nombre,sku,unidad_medida,categoria_id,categorias(id,nombre)), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie)), ventas(numero)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -411,6 +423,113 @@ export default function InventarioPage() {
       return data ?? []
     },
     enabled: !!tenant && tab === 'conteo',
+  })
+
+  // ── Historial categorías (lazy, solo cuando tab='historial') ──────────────
+  const { data: categoriasHistorial = [] } = useQuery({
+    queryKey: ['categorias-historial', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categorias').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'historial',
+  })
+
+  // ── Autorizaciones (lazy, solo OWNER/SUPERVISOR/ADMIN) ─────────────────────
+  const puedeVerAutorizaciones = ['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
+
+  const { data: autorizaciones = [], isLoading: autLoading, refetch: refetchAut } = useQuery({
+    queryKey: ['autorizaciones_inventario', tenant?.id, autEstado],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('autorizaciones_inventario')
+        .select('*, inventario_lineas(lpn, cantidad, producto_id, productos(nombre, sku, unidad_medida)), users!solicitado_por(nombre_display)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', autEstado)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'autorizaciones' && puedeVerAutorizaciones,
+  })
+
+  const aprobarAutorizacion = useMutation({
+    mutationFn: async (aut: any) => {
+      const linea = aut.inventario_lineas
+      if (aut.tipo === 'ajuste_cantidad') {
+        const { cantidad_nueva, cantidad_anterior } = aut.datos_cambio
+        const { error } = await supabase.from('inventario_lineas').update({ cantidad: cantidad_nueva }).eq('id', aut.linea_id)
+        if (error) throw error
+        const diff = cantidad_nueva - cantidad_anterior
+        if (Math.abs(diff) > 0.001) {
+          const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
+          const stockAntes = prod?.stock_actual ?? 0
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant!.id, producto_id: linea?.producto_id,
+            tipo: diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje',
+            cantidad: Math.abs(diff),
+            stock_antes: stockAntes,
+            stock_despues: Math.max(0, stockAntes + diff),
+            motivo: `Ajuste aprobado — LPN ${linea?.lpn}`,
+            usuario_id: user?.id,
+          })
+        }
+      } else if (aut.tipo === 'eliminar_serie') {
+        const { serie_id } = aut.datos_cambio
+        const { error } = await supabase.from('inventario_series').update({ activo: false }).eq('id', serie_id)
+        if (error) throw error
+        const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
+        const stockAntes = prod?.stock_actual ?? 0
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id, producto_id: linea?.producto_id,
+          tipo: 'rebaje', cantidad: 1,
+          stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - 1),
+          motivo: `Serie eliminada (aprobada) — LPN ${linea?.lpn}`,
+          usuario_id: user?.id,
+        })
+      } else if (aut.tipo === 'eliminar_lpn') {
+        const cantEliminada = aut.datos_cambio.cantidad ?? linea?.cantidad ?? 0
+        await supabase.from('inventario_series').update({ activo: false }).eq('linea_id', aut.linea_id)
+        const { error } = await supabase.from('inventario_lineas').update({ activo: false, cantidad: 0 }).eq('id', aut.linea_id)
+        if (error) throw error
+        if (cantEliminada > 0) {
+          const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
+          const stockAntes = prod?.stock_actual ?? 0
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant!.id, producto_id: linea?.producto_id,
+            tipo: 'rebaje', cantidad: cantEliminada,
+            stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - cantEliminada),
+            motivo: `LPN eliminado (aprobado) — ${linea?.lpn}`,
+            usuario_id: user?.id,
+          })
+        }
+      }
+      await supabase.from('autorizaciones_inventario').update({ estado: 'aprobada', aprobado_por: user?.id }).eq('id', aut.id)
+    },
+    onSuccess: () => {
+      toast.success('Autorización aprobada y ejecutada')
+      qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const rechazarAutorizacion = useMutation({
+    mutationFn: async ({ id, motivo }: { id: string; motivo: string }) => {
+      if (!motivo.trim()) throw new Error('Ingresá un motivo de rechazo')
+      await supabase.from('autorizaciones_inventario').update({
+        estado: 'rechazada', aprobado_por: user?.id, motivo_rechazo: motivo,
+      }).eq('id', id)
+    },
+    onSuccess: () => {
+      toast.success('Autorización rechazada')
+      setAutRechazoId(null)
+      setAutMotivoRechazo('')
+      qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -1151,12 +1270,31 @@ export default function InventarioPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function getTipoBadge(tipo: string, motivo: string | null) {
+    const isConteo = (motivo ?? '').startsWith('Conteo')
+    if (tipo === 'ajuste_ingreso') return { label: isConteo ? 'Conteo' : 'Ajuste +', bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-400' }
+    if (tipo === 'ajuste_rebaje') return { label: isConteo ? 'Conteo' : 'Ajuste -', bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' }
+    if (tipo === 'ingreso') return { label: 'Ingreso', bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400' }
+    if (tipo === 'kitting') return { label: 'Kitting', bg: 'bg-violet-100 dark:bg-violet-900/30', text: 'text-violet-700 dark:text-violet-400' }
+    if (tipo === 'des_kitting') return { label: 'Desarmado', bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400' }
+    if (tipo === 'ajuste') return { label: 'Ajuste', bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' }
+    return { label: 'Rebaje', bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400' }
+  }
+
   // ── Computed values ────────────────────────────────────────────────────────
   const filteredMov = movimientos.filter(m => {
     const tipo = (m as any).tipo as string
-    const esIngreso = tipo === 'ingreso' || tipo === 'kitting'
-    if (tab === 'agregar' && !esIngreso) return false
-    if (tab === 'quitar' && esIngreso) return false
+    if (tab === 'agregar') return tipo === 'ingreso' || tipo === 'kitting'
+    if (tab === 'quitar') return tipo === 'rebaje' || tipo === 'des_kitting'
+    // historial: todos los tipos, con filtros adicionales
+    if (tab === 'historial') {
+      if (filterHistFechaDesde && m.created_at < filterHistFechaDesde) return false
+      if (filterHistFechaHasta && m.created_at > filterHistFechaHasta + 'T23:59:59') return false
+      if (filterHistTipo && tipo !== filterHistTipo) return false
+      if (filterHistCatId && (m as any).productos?.categoria_id !== filterHistCatId) return false
+      if (filterHistMotivo && !(m as any).motivo?.toLowerCase().includes(filterHistMotivo.toLowerCase())) return false
+    }
     if (!movSearch) return true
     const s = movSearch.toLowerCase()
     return (m as any).productos?.nombre?.toLowerCase().includes(s) ||
@@ -1252,8 +1390,9 @@ export default function InventarioPage() {
             {tab === 'inventario' ? 'Líneas de stock y LPNs' :
              tab === 'agregar' ? 'Ingresá mercadería al stock' :
              tab === 'quitar' ? 'Rebajá o ajustá el stock' :
-             tab === 'historial' ? 'Registro de todos los movimientos' :
              tab === 'conteo' ? 'Verificá el stock real contra el esperado' :
+             tab === 'historial' ? 'Registro de todos los movimientos' :
+             tab === 'autorizaciones' ? 'Solicitudes de ajuste o eliminación pendientes de aprobación' :
              'Armado y desarmado de kits'}
           </p>
         </div>
@@ -1310,9 +1449,10 @@ export default function InventarioPage() {
             { id: 'inventario' as const, label: 'Inventario' },
             { id: 'agregar' as const, label: 'Agregar stock' },
             { id: 'quitar' as const, label: 'Quitar stock' },
-            { id: 'historial' as const, label: 'Historial' },
             { id: 'kits' as const, label: 'Kits' },
-            { id: 'conteo' as const, label: 'Conteo' },
+            { id: 'conteo' as const, label: 'Conteos' },
+            { id: 'historial' as const, label: 'Historial' },
+            ...(puedeVerAutorizaciones ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones' }] : []),
           ]).map(({ id, label }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
@@ -1556,6 +1696,58 @@ export default function InventarioPage() {
               className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
           </div>
 
+          {/* ── Filtros adicionales solo en tab Historial ── */}
+          {tab === 'historial' && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
+                <input type="date" value={filterHistFechaDesde} onChange={e => setFilterHistFechaDesde(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
+                <input type="date" value={filterHistFechaHasta} onChange={e => setFilterHistFechaHasta(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
+                <select value={filterHistCatId} onChange={e => setFilterHistCatId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  <option value="">Todas</option>
+                  {(categoriasHistorial as any[]).map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
+                <select value={filterHistTipo} onChange={e => setFilterHistTipo(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  <option value="">Todos</option>
+                  <option value="ingreso">Ingreso</option>
+                  <option value="rebaje">Rebaje</option>
+                  <option value="ajuste_ingreso">Ajuste +</option>
+                  <option value="ajuste_rebaje">Ajuste -</option>
+                  <option value="kitting">Kitting</option>
+                  <option value="des_kitting">Desarmado</option>
+                  <option value="ajuste">Ajuste (genérico)</option>
+                </select>
+              </div>
+              <div className="col-span-2 sm:col-span-4">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Motivo</label>
+                <input type="text" value={filterHistMotivo} onChange={e => setFilterHistMotivo(e.target.value)}
+                  placeholder="Buscar en el motivo..."
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+              </div>
+              {(filterHistFechaDesde || filterHistFechaHasta || filterHistCatId || filterHistTipo || filterHistMotivo) && (
+                <div className="col-span-2 sm:col-span-4 flex justify-end">
+                  <button onClick={() => { setFilterHistFechaDesde(''); setFilterHistFechaHasta(''); setFilterHistCatId(''); setFilterHistTipo(''); setFilterHistMotivo('') }}
+                    className="text-xs text-accent hover:underline">Limpiar filtros</button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {movLoading ? (
               <div className="flex items-center justify-center py-16">
@@ -1581,7 +1773,9 @@ export default function InventarioPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredMov.map((m: any) => (
+                    {filteredMov.map((m: any) => {
+                      const badge = getTipoBadge(m.tipo, m.motivo)
+                      return (
                       <tr key={m.id} onClick={() => setMovDetalle(m)}
                         className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">
@@ -1592,10 +1786,8 @@ export default function InventarioPage() {
                           <div className="text-xs text-gray-400 dark:text-gray-500">{m.productos?.sku}</div>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
-                            ${m.tipo === 'ingreso' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'}`}>
-                            {m.tipo === 'ingreso' ? <ArrowDown size={11} /> : <ArrowUp size={11} />}
-                            {m.tipo}
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
+                            {badge.label}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{m.cantidad}</td>
@@ -1614,7 +1806,8 @@ export default function InventarioPage() {
                         </td>
                         <td className="px-4 py-3 text-gray-300"><ChevronRight size={14} /></td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -3293,6 +3486,114 @@ export default function InventarioPage() {
                   )
                 })
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════ TAB: AUTORIZACIONES ═══════════════════════════════════ */}
+      {tab === 'autorizaciones' && puedeVerAutorizaciones && (
+        <div className="space-y-4">
+          {/* Estado selector */}
+          <div className="flex gap-2">
+            {(['pendiente', 'aprobada', 'rechazada'] as const).map(e => (
+              <button key={e} onClick={() => setAutEstado(e)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors capitalize
+                  ${autEstado === e ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+                {e === 'pendiente' ? 'Pendientes' : e === 'aprobada' ? 'Aprobadas' : 'Rechazadas'}
+              </button>
+            ))}
+          </div>
+
+          {autLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : autorizaciones.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay solicitudes {autEstado === 'pendiente' ? 'pendientes' : autEstado === 'aprobada' ? 'aprobadas' : 'rechazadas'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(autorizaciones as any[]).map(aut => {
+                const linea = aut.inventario_lineas
+                const prod = linea?.productos
+                const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad'
+                  : aut.tipo === 'eliminar_serie' ? 'Eliminar serie'
+                  : 'Eliminar LPN'
+                const tipoColor = aut.tipo === 'ajuste_cantidad'
+                  ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
+                  : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                return (
+                  <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${tipoColor}`}>{tipoLabel}</span>
+                          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
+                            {prod?.nombre ?? '—'}
+                          </span>
+                          <span className="text-xs text-gray-400">{prod?.sku}</span>
+                        </div>
+                        <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                          <p>LPN: <span className="font-mono font-medium">{linea?.lpn ?? '—'}</span></p>
+                          {aut.tipo === 'ajuste_cantidad' && (
+                            <p>
+                              Cantidad: <span className="line-through">{aut.datos_cambio.cantidad_anterior}</span>
+                              {' → '}
+                              <span className="font-semibold text-orange-600">{aut.datos_cambio.cantidad_nueva}</span>
+                              {' '}{prod?.unidad_medida}
+                            </p>
+                          )}
+                          {aut.tipo === 'eliminar_serie' && (
+                            <p>Serie: <span className="font-mono">{aut.datos_cambio.nro_serie}</span></p>
+                          )}
+                          {aut.tipo === 'eliminar_lpn' && (
+                            <p>{aut.datos_cambio.cantidad} unidades a eliminar</p>
+                          )}
+                          <p>Solicitado por: {aut.users?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                          {aut.notas && <p>Notas: {aut.notas}</p>}
+                          {aut.motivo_rechazo && <p className="text-red-500">Motivo rechazo: {aut.motivo_rechazo}</p>}
+                        </div>
+                      </div>
+
+                      {autEstado === 'pendiente' && (
+                        <div className="flex flex-col gap-2 flex-shrink-0">
+                          <button onClick={() => { if (confirm(`¿Aprobar y ejecutar: ${tipoLabel} en ${linea?.lpn}?`)) aprobarAutorizacion.mutate(aut) }}
+                            disabled={aprobarAutorizacion.isPending}
+                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                            <CheckCircle2 size={13} /> Aprobar
+                          </button>
+                          {autRechazoId === aut.id ? (
+                            <div className="space-y-1.5">
+                              <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
+                                placeholder="Motivo de rechazo..."
+                                className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                              <div className="flex gap-1">
+                                <button onClick={() => rechazarAutorizacion.mutate({ id: aut.id, motivo: autMotivoRechazo })}
+                                  disabled={rechazarAutorizacion.isPending || !autMotivoRechazo.trim()}
+                                  className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
+                                  Confirmar
+                                </button>
+                                <button onClick={() => { setAutRechazoId(null); setAutMotivoRechazo('') }}
+                                  className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button onClick={() => setAutRechazoId(aut.id)}
+                              className="flex items-center gap-1.5 border border-red-300 text-red-600 dark:text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                              <X size={13} /> Rechazar
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

@@ -25,10 +25,13 @@ CREATE TABLE recepciones (
 
 CREATE OR REPLACE FUNCTION trg_fn_set_recepcion_numero()
 RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  v_numero INT;
 BEGIN
   IF NEW.numero = 0 THEN
-    SELECT COALESCE(MAX(numero), 0) + 1 INTO NEW.numero
+    SELECT COALESCE(MAX(numero), 0) + 1 INTO v_numero
     FROM recepciones WHERE tenant_id = NEW.tenant_id;
+    NEW.numero := v_numero;
   END IF;
   RETURN NEW;
 END;

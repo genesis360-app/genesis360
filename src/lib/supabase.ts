@@ -38,6 +38,7 @@ export interface Tenant {
   marketplace_activo?: boolean
   marketplace_webhook_url?: string
   session_timeout_minutes?: number | null
+  permite_over_receipt?: boolean
   created_at: string
 }
 

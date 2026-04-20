@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown, ArrowUp, Search, Plus, Minus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
@@ -62,6 +62,7 @@ function resolverCantidad(raw: string, unitAlt: string | null, unitBase: string 
 export default function InventarioPage() {
   const { tenant, user } = useAuthStore()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { cotizacion: cotizacionNum } = useCotizacion()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
@@ -104,6 +105,16 @@ export default function InventarioPage() {
   const [invScannerOpen, setInvScannerOpen] = useState(false)
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
   const [seriesModal, setSeriesModal] = useState<{ lpn: string; series: any[] } | null>(null)
+
+  // Pre-fill search from ?search= URL param (e.g. link desde AlertasPage)
+  useEffect(() => {
+    const s = searchParams.get('search')
+    if (s) {
+      setTab('inventario')
+      setInvSearch(s)
+      setSearchParams({}, { replace: true })
+    }
+  }, [])
 
   // ── Masivo inline (Agregar Stock) ──────────────────────────────────────────
   type MasivoRow = {

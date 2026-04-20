@@ -383,6 +383,7 @@ export default function ConfigPage() {
   const [bizTipoSelect, setBizTipoSelect] = useState(_enLista ? _currentTipo : (_currentTipo ? 'Otro' : ''))
   const [bizTipoPersonalizado, setBizTipoPersonalizado] = useState(_enLista ? '' : _currentTipo)
   const [bizRegla, setBizRegla] = useState(tenant?.regla_inventario ?? 'FIFO')
+  const [bizOverReceipt, setBizOverReceipt] = useState(tenant?.permite_over_receipt ?? false)
   const [bizTimeout, setBizTimeout] = useState<string>(
     tenant?.session_timeout_minutes != null ? String(tenant.session_timeout_minutes) : 'nunca'
   )
@@ -394,7 +395,7 @@ export default function ConfigPage() {
       : bizTipoSelect
     const sessionTimeoutMinutes = bizTimeout === 'nunca' ? null : parseInt(bizTimeout)
     const { data, error } = await supabase.from('tenants')
-      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla, session_timeout_minutes: sessionTimeoutMinutes })
+      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla, session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt })
       .eq('id', tenant!.id).select().single()
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Datos actualizados') }
@@ -1002,6 +1003,19 @@ export default function ConfigPage() {
               <option value="60">1 hora</option>
             </select>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si el usuario no tiene actividad por este tiempo, la sesión se cierra automáticamente.</p>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Permitir over-receipt</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Al recibir mercadería, permite ingresar más cantidad de la pedida en la OC. Genera alerta de excedente.</p>
+            </div>
+            <button type="button" disabled={!canEdit} onClick={() => setBizOverReceipt(p => !p)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none
+                ${bizOverReceipt ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}
+                ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform
+                ${bizOverReceipt ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plan actual</label>

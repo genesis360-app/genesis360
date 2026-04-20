@@ -433,8 +433,10 @@ export default function VentasPage() {
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
       if (estadosFiltro2.length > 0) lq = lq.in('estado_id', estadosFiltro2)
       const { data: lineasRaw2 } = await lq
+      const hoyStr = new Date().toISOString().split('T')[0]
       const sortedLineas = (lineasRaw2 ?? [])
         .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+        .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= hoyStr)
         .sort(sortLineas)
       lineasDisponibles = sortedLineas.map((l: any) => ({
         id: l.id,
@@ -808,11 +810,15 @@ export default function VentasPage() {
 
         if (!item.tiene_series) {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
+          const _hoy = new Date().toISOString().split('T')[0]
           if (estado === 'reservada') {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
               .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            const lineas = (lineasRaw ?? [])
+              .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoy)
+              .sort(sortLineas)
             // Pre-flight: verificar stock disponible real antes de reservar
             const stockDisp = lineas.reduce((sum: number, l: any) =>
               sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
@@ -834,7 +840,10 @@ export default function VentasPage() {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
               .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            const lineas = (lineasRaw ?? [])
+              .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoy)
+              .sort(sortLineas)
             // Pre-flight: verificar stock disponible real antes de rebajar
             const stockDisp = lineas.reduce((sum: number, l: any) =>
               sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
@@ -1322,7 +1331,11 @@ export default function VentasPage() {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            const _hoyStr = new Date().toISOString().split('T')[0]
+            const lineas = (lineasRaw ?? [])
+              .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoyStr)
+              .sort(sortLineas)
             let restante = item.cantidad
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -1352,7 +1365,11 @@ export default function VentasPage() {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            const _hoyStr2 = new Date().toISOString().split('T')[0]
+            const lineas = (lineasRaw ?? [])
+              .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoyStr2)
+              .sort(sortLineas)
             let restante = item.cantidad
             for (const linea of lineas) {
               if (restante <= 0) break

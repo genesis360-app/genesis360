@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import type { Sucursal } from '@/lib/supabase'
 import { logActividad } from '@/lib/actividadLog'
 import { LpnQR } from '@/components/LpnQR'
 import toast from 'react-hot-toast'
@@ -20,7 +21,7 @@ interface Props {
 }
 
 export function LpnAccionesModal({ linea, producto, onClose }: Props) {
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, sucursales } = useAuthStore()
   const qc = useQueryClient()
   const tieneReservas = (linea.cantidad_reservada ?? 0) > 0
   const [tab, setTab] = useState<AccionTab>(tieneReservas ? 'mover' : 'editar')
@@ -41,6 +42,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   // Mover stock parcial
   const [cantMover, setCantMover] = useState('')
   const [ubicDestino, setUbicDestino] = useState('')
+  const [sucursalDestino, setSucursalDestino] = useState(linea.sucursal_id ?? '')
   const [showQR, setShowQR] = useState(false)
 
   // Series
@@ -184,6 +186,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (cant >= linea.cantidad) throw new Error('La cantidad a mover debe ser menor al total del LPN')
       if (!ubicDestino) throw new Error('Seleccioná una ubicación destino')
+      const sucursalFinal = sucursalDestino || linea.sucursal_id || null
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
@@ -203,6 +206,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         cantidad: cant,
         estado_id: linea.estado_id || null,
         ubicacion_id: ubicDestino,
+        sucursal_id: sucursalFinal,
         proveedor_id: linea.proveedor_id || null,
         nro_lote: linea.nro_lote || null,
         fecha_vencimiento: linea.fecha_vencimiento || null,
@@ -469,6 +473,19 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       value={cantMover} onChange={e => setCantMover(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="0" />
                   </div>
+                  {sucursales.length > 1 && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sucursal destino</label>
+                      <select value={sucursalDestino} onChange={e => { setSucursalDestino(e.target.value); setUbicDestino('') }}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                        {(sucursales as Sucursal[]).map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.nombre}{s.id === (linea.sucursal_id ?? '') ? ' (actual)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ubicación destino</label>
                     <select value={ubicDestino} onChange={e => setUbicDestino(e.target.value)}

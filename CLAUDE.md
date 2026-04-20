@@ -879,6 +879,8 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **I-04 — stock_minimo por sucursal**: tabla `producto_stock_minimo_sucursal(tenant_id, producto_id, sucursal_id, stock_minimo)` con UNIQUE + RLS. UI en ProductoFormPage: sección "Stock mínimo por sucursal" visible cuando `isEditing && sucursales.length > 0`. Input por sucursal con placeholder = valor global. Botón "Guardar mínimos" independiente. Fallback al global si no hay override.
 - **I-05 — Mono-SKU en ubicaciones**: `ubicaciones.mono_sku BOOLEAN DEFAULT FALSE`. Toggle checkbox en formulario de edición de ConfigPage → Ubicaciones. Badge ámbar "Mono-SKU" en vista de lista. Validación en `ingresoMutation` de InventarioPage: si la ubicación tiene `mono_sku=true` y ya tiene un producto distinto con stock > 0, lanza error descriptivo.
 - **I-09 — En Armado kitting**: `kitting_log.estado CHECK('en_armado','completado','cancelado')` + `componentes_reservados JSONB`. Flujo en 2 fases: "Iniciar armado" incrementa `cantidad_reservada` en líneas de componentes y crea `kitting_log` con `estado='en_armado'`; sección "En Armado" en tab Kits muestra armados activos con botones Confirmar (rebaja componentes + ingresa KIT + `estado='completado'`) y Cancelar (libera reservas + `estado='cancelado'`).
+- **fix — security_invoker view** (migration 053): `stock_por_producto` recreada con `WITH (security_invoker = true)` — elimina warning del Security Advisor de Supabase.
+- **fix — APP_VERSION**: bump a `v0.85.0` en `src/config/brand.ts`.
 
 ### v0.84.0 — en dev
 

@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v0.85.2'
+export const APP_VERSION = 'v0.85.3'
 
 export const MP_PLAN_IDS: Record<string, string> = {
   basico: '836c7829f7e944c9ac58d7c0c67a513b',

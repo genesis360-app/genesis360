@@ -882,6 +882,19 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **fix — security_invoker view** (migration 053): `stock_por_producto` recreada con `WITH (security_invoker = true)` — elimina warning del Security Advisor de Supabase.
 - **fix — APP_VERSION**: bump a `v0.85.0` en `src/config/brand.ts`.
 
+### v0.85.3 — en dev
+
+#### Fix: cálculo de margen strip IVA (ProductoFormPage, MetricasPage, DashboardPage, useRecomendaciones)
+
+- **Fórmula corregida**: `precio_venta` en DB incluye IVA. Fórmula anterior `(venta - costo) / costo` sobreestimaba el margen (142% en lugar de 100%). Nueva fórmula: `precio_neto = precio_venta / (1 + iva/100)` → `markup% = (neto - costo) / costo × 100`.
+- **Precio sugerido en ProductoFormPage**: con margen objetivo y alícuota configurada → `costo × (1 + margen%) × (1 + iva%)`. Muestra hint azul debajo del campo.
+- **Ganancia en ProductoFormPage**: `precio_venta / ivaFactor - precio_costo` (neto, no precio con IVA).
+- **MetricasPage — margenProductos**: usa `iva_monto` de `venta_items` para obtener el neto histórico. Markup sobre costo.
+- **MetricasPage — gananciaNeta**: strip IVA de ventas antes de restar costo y gastos (`totalVentas - ivaVentasPeriodo - costoVentas - gastosTotal`).
+- **MetricasPage — insightsMargen**: usa `alicuota_iva` del producto para el margen actual. Markup.
+- **DashboardPage — margenContrib**: `(totalVentasNeto - totalCosto) / totalCosto × 100` donde `totalVentasNeto = totalVentas - ivaVentas`. Misma lógica en período anterior.
+- **useRecomendaciones — regla margen-realizado-bajo**: `totalNeto = totalFacturado - totalIva`; umbral 15% sobre markup de neto.
+
 ### v0.85.2 — en dev
 
 #### Fixes VentasPage (bugs de cantidad, descuento y venta sin líneas)

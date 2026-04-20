@@ -81,7 +81,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     queryKey: ['metricas-ventas', tenant?.id, periodo, fechaDesdeCustom, fechaHastaCustom],
     queryFn: async () => {
       let q = supabase.from('ventas')
-        .select('*, venta_items(producto_id, cantidad, subtotal, precio_unitario, descuento, productos(nombre, sku, precio_costo, categoria_id))')
+        .select('*, venta_items(producto_id, cantidad, subtotal, precio_unitario, iva_monto, descuento, productos(nombre, sku, precio_costo, categoria_id))')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', getFechaDesde())
@@ -111,7 +111,7 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     queryKey: ['metricas-productos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('productos')
-        .select('id, nombre, sku, precio_costo, precio_venta, stock_actual, updated_at, categoria_id, margen_objetivo')
+        .select('id, nombre, sku, precio_costo, precio_venta, stock_actual, updated_at, categoria_id, margen_objetivo, alicuota_iva')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },
@@ -191,8 +191,8 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     ? totalVentasAnt / ventasAnteriores.length : 0
   const varTicket = ticketAnt > 0 ? ((ticketPromedio - ticketAnt) / ticketAnt) * 100 : 0
 
-  // Productos más vendidos
-  const rankingProductos: Record<string, { nombre: string; sku: string; cantidad: number; total: number; costo: number; categoria_id: string | null }> = {}
+  // Productos más vendidos — total es subtotal con IVA; ivaMonto acumula el IVA para extraer el neto
+  const rankingProductos: Record<string, { nombre: string; sku: string; cantidad: number; total: number; ivaMonto: number; costo: number; categoria_id: string | null }> = {}
   ventasPeriodo.forEach((v: any) => {
     ;(v.venta_items ?? []).forEach((item: any) => {
       const pid = item.producto_id ?? item.productos?.sku
@@ -201,13 +201,14 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
         rankingProductos[pid] = {
           nombre: item.productos?.nombre ?? '',
           sku: item.productos?.sku ?? '',
-          cantidad: 0, total: 0,
+          cantidad: 0, total: 0, ivaMonto: 0,
           costo: item.productos?.precio_costo ?? 0,
           categoria_id: item.productos?.categoria_id ?? null,
         }
       }
       rankingProductos[pid].cantidad += item.cantidad ?? 0
       rankingProductos[pid].total += item.subtotal ?? 0
+      rankingProductos[pid].ivaMonto += item.iva_monto ?? 0
     })
   })
   const topProductos = Object.values(rankingProductos)
@@ -270,25 +271,33 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
       return new Date(a.ultimaVenta).getTime() - new Date(b.ultimaVenta).getTime()
     })
 
-  // Margen por producto (top vendidos)
+  // Margen por producto (top vendidos) — markup sobre costo, usando precio neto sin IVA
   const margenProductos = topProductos
     .filter(p => p.costo > 0)
-    .map(p => ({
-      nombre: p.nombre.length > 20 ? p.nombre.slice(0, 20) + '...' : p.nombre,
-      margen: p.total > 0 ? Math.round(((p.total - p.costo * p.cantidad) / p.total) * 100) : 0,
-      total: p.total,
-    }))
+    .map(p => {
+      const totalNeto = p.total - p.ivaMonto
+      const markup = (p.costo * p.cantidad) > 0
+        ? Math.round(((totalNeto - p.costo * p.cantidad) / (p.costo * p.cantidad)) * 100)
+        : 0
+      return {
+        nombre: p.nombre.length > 20 ? p.nombre.slice(0, 20) + '...' : p.nombre,
+        margen: markup,
+        total: p.total,
+      }
+    })
     .sort((a, b) => b.margen - a.margen)
 
-  // Costo de ventas y ganancia neta
+  // Costo de ventas y ganancia neta — strip IVA de totalVentas para comparar manzanas con manzanas
+  const ivaVentasPeriodo = Object.values(rankingProductos).reduce((a, p) => a + p.ivaMonto, 0)
   const costoVentas = Object.values(rankingProductos).reduce((a, p) => a + p.costo * p.cantidad, 0)
-  const gananciaNeta = totalVentas - costoVentas - gastosTotal
+  const gananciaNeta = (totalVentas - ivaVentasPeriodo) - costoVentas - gastosTotal
 
-  // Insights de margen objetivo
+  // Insights de margen objetivo — mismo markup que ProductoFormPage: (neto - costo) / costo
   const insightsMargen = (productos as any[])
     .filter(p => p.margen_objetivo != null && p.precio_costo > 0 && p.precio_venta > 0)
     .map(p => {
-      const margenActual = ((p.precio_venta - p.precio_costo) / p.precio_venta) * 100
+      const ivaF = 1 + ((p.alicuota_iva ?? 21) as number) / 100
+      const margenActual = ((p.precio_venta / ivaF - p.precio_costo) / p.precio_costo) * 100
       return {
         id: p.id, nombre: p.nombre, sku: p.sku,
         margenActual: Math.round(margenActual * 10) / 10,

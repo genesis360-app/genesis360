@@ -173,10 +173,25 @@ export default function ProductoFormPage() {
     }
   }, [productoData])
 
+  const ivaFactor = 1 + (parseFloat(form.alicuota_iva) || 0) / 100
+
+  // Markup = (precio neto sin IVA − costo) / costo × 100
+  // precio_venta en DB siempre incluye IVA → hay que extraer el neto
   const margen = (() => {
     const costo = parseFloat(form.precio_costo)
     const venta = parseFloat(form.precio_venta)
-    if (costo > 0 && venta > 0) return (((venta - costo) / costo) * 100).toFixed(1)
+    if (costo > 0 && venta > 0) {
+      const neto = venta / ivaFactor
+      return (((neto - costo) / costo) * 100).toFixed(1)
+    }
+    return null
+  })()
+
+  // Precio sugerido según margen objetivo: costo × (1 + obj%) × (1 + IVA%)
+  const precioSugerido = (() => {
+    const costo = parseFloat(form.precio_costo)
+    const obj = parseFloat(form.margen_objetivo)
+    if (costo > 0 && obj > 0) return (costo * (1 + obj / 100) * ivaFactor)
     return null
   })()
 
@@ -685,9 +700,14 @@ export default function ProductoFormPage() {
                     )
                   })()}
                   <span className="text-xs opacity-70">
-                    (ganancia: ${(parseFloat(form.precio_venta) - parseFloat(form.precio_costo)).toFixed(2)})
+                    (ganancia neta: ${(parseFloat(form.precio_venta) / ivaFactor - parseFloat(form.precio_costo)).toFixed(2)})
                   </span>
                 </div>
+              )}
+              {precioSugerido !== null && (
+                <p className="text-xs text-blue-600 dark:text-blue-400 px-1">
+                  💡 Precio sugerido con {form.margen_objetivo}% de margen{parseFloat(form.alicuota_iva) > 0 ? ` + IVA ${form.alicuota_iva}%` : ''}: <span className="font-semibold">${precioSugerido.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </p>
               )}
               <div className="grid grid-cols-2 gap-4">
                 <div>

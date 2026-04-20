@@ -224,7 +224,7 @@ export default function DashboardPage() {
           .gte('created_at', desdePrev).lte('created_at', hastaPrev),
         supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico, iva_monto')
           .eq('tenant_id', tenant!.id).gte('created_at', desde).lte('created_at', hasta),
-        supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico')
+        supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico, iva_monto')
           .eq('tenant_id', tenant!.id).gte('created_at', desdePrev).lte('created_at', hastaPrev),
         supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id)
           .gte('fecha', desdeDate).lte('fecha', hastaDate),
@@ -248,9 +248,9 @@ export default function DashboardPage() {
         movsPrev?.forEach(m => { ingresoNetoPrev += m.tipo === 'ingreso' ? (m.monto ?? 0) : -(m.monto ?? 0) })
       }
 
-      // Margen de contribución
+      // Margen de contribución (markup sobre costo, usando neto sin IVA)
       let totalVentas = 0, totalCosto = 0, ivaVentas = 0
-      let totalVentasPrev = 0, totalCostoPrev = 0
+      let totalVentasPrev = 0, totalCostoPrev = 0, ivaVentasPrev = 0
       viRes.data?.forEach((vi: any) => {
         const sub = (vi.precio_unitario ?? 0) * (vi.cantidad ?? 0)
         totalVentas += sub
@@ -261,12 +261,15 @@ export default function DashboardPage() {
         const sub = (vi.precio_unitario ?? 0) * (vi.cantidad ?? 0)
         totalVentasPrev += sub
         if (vi.precio_costo_historico) totalCostoPrev += vi.precio_costo_historico * vi.cantidad
+        if (vi.iva_monto) ivaVentasPrev += vi.iva_monto
       })
 
-      const margenContrib = totalVentas > 0 && totalCosto > 0
-        ? ((totalVentas - totalCosto) / totalVentas) * 100 : null
-      const margenContribPrev = totalVentasPrev > 0 && totalCostoPrev > 0
-        ? ((totalVentasPrev - totalCostoPrev) / totalVentasPrev) * 100 : null
+      const totalVentasNeto = totalVentas - ivaVentas
+      const totalVentasNetoPrev = totalVentasPrev - ivaVentasPrev
+      const margenContrib = totalVentasNeto > 0 && totalCosto > 0
+        ? ((totalVentasNeto - totalCosto) / totalCosto) * 100 : null
+      const margenContribPrev = totalVentasNetoPrev > 0 && totalCostoPrev > 0
+        ? ((totalVentasNetoPrev - totalCostoPrev) / totalCostoPrev) * 100 : null
 
       // Burn Rate diario
       const totalGastos = (gastosRes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)

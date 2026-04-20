@@ -223,7 +223,10 @@ export default function VentasPage() {
   // Guardar solo cuando hay contenido (nunca borrar aquí — el delete va en sale completion)
   useEffect(() => {
     if (!cartDraftKey || !restoredRef.current) return
-    if (cart.length === 0 && !clienteId) return
+    if (cart.length === 0 && !clienteId) {
+      if (cartDraftKey) localStorage.removeItem(cartDraftKey)
+      return
+    }
     const draft = {
       cart: cart.map(({ lineas_disponibles: _ld, series_disponibles: _sd, ...rest }) => rest),
       clienteId, clienteNombre, clienteTelefono,
@@ -766,144 +769,108 @@ export default function VentasPage() {
       }).select().single()
       if (ventaError) throw ventaError
 
-      // Crear items
-      for (const item of cart) {
+      // ─── Fase 1: batch insert venta_items ────────────────────────────────────
+      const itemPayloads = cart.map(item => {
         const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
         const itemSubtotal = getItemSubtotal(item)
-
-        // Calcular linea_id para trazabilidad LPN→venta
-        let ventaItemLineaId: string | null = null
-        if (item.tiene_series && item.series_seleccionadas.length > 0) {
-          const firstSerie = item.series_disponibles.find((s: any) => s.id === item.series_seleccionadas[0])
-          ventaItemLineaId = firstSerie?.linea_id ?? null
-          const allSameLinea = item.series_seleccionadas.every(sid => {
-            const s = item.series_disponibles.find((d: any) => d.id === sid)
-            return s?.linea_id === ventaItemLineaId
-          })
-          if (!allSameLinea) ventaItemLineaId = null
-        } else {
-          ventaItemLineaId = item.linea_id ?? null
-        }
-
         const ivaRate = item.alicuota_iva ?? 21
         const ivaMonto = ivaRate > 0 ? itemSubtotal - itemSubtotal / (1 + ivaRate / 100) : 0
+        let lineaId: string | null = item.linea_id ?? null
+        if (item.tiene_series && item.series_seleccionadas.length > 0) {
+          const first = item.series_disponibles.find((s: any) => s.id === item.series_seleccionadas[0])
+          lineaId = first?.linea_id ?? null
+          if (!item.series_seleccionadas.every(sid => item.series_disponibles.find((d: any) => d.id === sid)?.linea_id === lineaId))
+            lineaId = null
+        }
+        return {
+          tenant_id: tenant!.id, venta_id: venta.id, producto_id: item.producto_id, linea_id: lineaId,
+          cantidad: cant, precio_unitario: item.precio_unitario, precio_costo_historico: item.precio_costo || null,
+          descuento: item.descuento_tipo === 'pct' ? item.descuento : 0, subtotal: itemSubtotal,
+          alicuota_iva: ivaRate, iva_monto: parseFloat(ivaMonto.toFixed(2)),
+        }
+      })
+      const { data: insertedItems, error: itemsError } = await supabase.from('venta_items').insert(itemPayloads).select()
+      if (itemsError) throw itemsError
 
-        const { data: ventaItem, error: itemError } = await supabase.from('venta_items').insert({
-          tenant_id: tenant!.id,
-          venta_id: venta.id,
-          producto_id: item.producto_id,
-          linea_id: ventaItemLineaId,
-          cantidad: cant,
-          precio_unitario: item.precio_unitario,
-          precio_costo_historico: item.precio_costo || null,
-          descuento: item.descuento_tipo === 'pct' ? item.descuento : 0,
-          subtotal: itemSubtotal,
-          alicuota_iva: ivaRate,
-          iva_monto: parseFloat(ivaMonto.toFixed(2)),
-        }).select().single()
-        if (itemError) throw itemError
+      // ─── Fase 2: series + lineas en paralelo por item (distintos productos) ──
+      const _hoy = new Date().toISOString().split('T')[0]
+      await Promise.all(cart.map(async (item, i) => {
+        const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+        const ventaItemId = insertedItems![i].id
 
-        // Guardar series seleccionadas
         if (item.tiene_series && item.series_seleccionadas.length > 0) {
           const { error: seriesError } = await supabase.from('venta_series').insert(
             item.series_seleccionadas.map(sid => ({
-              tenant_id: tenant!.id,
-              venta_id: venta.id,
-              venta_item_id: ventaItem.id,
-              serie_id: sid,
+              tenant_id: tenant!.id, venta_id: venta.id, venta_item_id: ventaItemId, serie_id: sid,
             }))
           )
           if (seriesError) throw seriesError
-
-          if (estado === 'reservada') {
+          if (estado === 'reservada')
             await supabase.from('inventario_series').update({ reservado: true }).in('id', item.series_seleccionadas)
-          } else if (estado === 'despachada') {
+          else if (estado === 'despachada')
             await supabase.from('inventario_series').update({ activo: false, reservado: false }).in('id', item.series_seleccionadas)
-          }
         }
 
-        if (!item.tiene_series) {
+        if (!item.tiene_series && (estado === 'reservada' || estado === 'despachada')) {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
-          const _hoy = new Date().toISOString().split('T')[0]
-          if (estado === 'reservada') {
-            const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? [])
-              .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
-              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoy)
-              .sort(sortLineas)
-            // Pre-flight: verificar stock disponible real antes de reservar
-            const stockDisp = lineas.reduce((sum: number, l: any) =>
-              sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
-            if (stockDisp < cant) {
-              throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
-            }
-            let restante = cant
-            for (const linea of lineas) {
-              if (restante <= 0) break
-              const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
-              const areservar = Math.min(disponible, restante)
+          const { data: lineasRaw } = await supabase.from('inventario_lineas')
+            .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+            .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+          const lineas = (lineasRaw ?? [])
+            .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+            .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoy)
+            .sort(sortLineas)
+          const stockDisp = lineas.reduce((sum: number, l: any) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0)
+          if (stockDisp < cant) throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
+
+          let restante = cant
+          for (const linea of lineas) {
+            if (restante <= 0) break
+            if (estado === 'reservada') {
+              const areservar = Math.min(linea.cantidad - (linea.cantidad_reservada ?? 0), restante)
               if (areservar > 0) {
-                await supabase.from('inventario_lineas')
-                  .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar }).eq('id', linea.id)
+                await supabase.from('inventario_lineas').update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar }).eq('id', linea.id)
                 restante -= areservar
               }
-            }
-          } else if (estado === 'despachada') {
-            const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? [])
-              .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
-              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoy)
-              .sort(sortLineas)
-            // Pre-flight: verificar stock disponible real antes de rebajar
-            const stockDisp = lineas.reduce((sum: number, l: any) =>
-              sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
-            if (stockDisp < cant) {
-              throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
-            }
-            let restante = cant
-            for (const linea of lineas) {
-              if (restante <= 0) break
-              // CRÍTICO: descontar solo del stock disponible (no del reservado para otras ventas)
+            } else {
               const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
               const rebajar = Math.min(disponible, restante)
               if (rebajar <= 0) continue
               const nuevaCant = linea.cantidad - rebajar
-              await supabase.from('inventario_lineas')
-                .update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
+              await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
               restante -= rebajar
             }
           }
         }
-        // B1: Sincronizar stock_actual y registrar movimiento al despachar
-        if (estado === 'despachada') {
-          const { data: prodData } = await supabase.from('productos')
-            .select('stock_actual, stock_minimo, nombre, sku').eq('id', item.producto_id).single()
-          if (prodData) {
+      }))
+
+      // ─── Fase 3: stock_actual + movimientos en paralelo (solo despachada) ────
+      if (estado === 'despachada') {
+        const productIds = [...new Set(cart.filter(i => !i.tiene_series).map(i => i.producto_id))]
+        if (productIds.length > 0) {
+          const { data: prodsData } = await supabase.from('productos')
+            .select('id, stock_actual, stock_minimo, nombre, sku').in('id', productIds)
+          const prodMap = Object.fromEntries((prodsData ?? []).map(p => [p.id, p]))
+          const movimientosRows: any[] = []
+          await Promise.all(cart.filter(i => !i.tiene_series).map(async item => {
+            const cant = item.cantidad
+            const prodData = prodMap[item.producto_id]
+            if (!prodData) return
             const stockAntes = prodData.stock_actual
             const stockDespues = Math.max(0, stockAntes - cant)
             await supabase.from('productos').update({ stock_actual: stockDespues }).eq('id', item.producto_id)
-            await supabase.from('movimientos_stock').insert({
-              tenant_id: tenant!.id,
-              producto_id: item.producto_id,
-              tipo: 'rebaje',
-              cantidad: cant,
-              stock_antes: stockAntes,
-              stock_despues: stockDespues,
-              motivo: `Venta #${venta.numero}`,
-              usuario_id: user?.id,
-              venta_id: venta.id,
+            movimientosRows.push({
+              tenant_id: tenant!.id, producto_id: item.producto_id, tipo: 'rebaje', cantidad: cant,
+              stock_antes: stockAntes, stock_despues: stockDespues,
+              motivo: `Venta #${venta.numero}`, usuario_id: user?.id, venta_id: venta.id,
             })
-            // Alerta de stock bajo (fire-and-forget)
-            if (stockDespues <= (prodData.stock_minimo ?? 0)) {
+            if (stockDespues <= (prodData.stock_minimo ?? 0))
               stockAlertas.push({ nombre: prodData.nombre, sku: prodData.sku ?? '', stock_actual: stockDespues, stock_minimo: prodData.stock_minimo ?? 0 })
-            }
-          }
+          }))
+          if (movimientosRows.length > 0)
+            await supabase.from('movimientos_stock').insert(movimientosRows)
         }
-      } // cierre del for (const item of cart)
+      }
 
       // Emails transaccionales (fire-and-forget, no bloquean el flujo)
       const { data: { user: authUser } } = await supabase.auth.getUser()
@@ -1825,9 +1792,11 @@ export default function VentasPage() {
                             <button onClick={() => updateItem(idx, 'cantidad', Math.max(stepCantidad(item.unidad_medida), parseFloat((item.cantidad - stepCantidad(item.unidad_medida)).toFixed(3))))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
                             <input
+                              key={`qty-${idx}-${item.cantidad}-${item.producto_id}`}
                               type="text" inputMode="decimal"
-                              value={item.cantidad}
-                              onChange={e => updateItem(idx, 'cantidad', parseCantidad(e.target.value, item.unidad_medida))}
+                              defaultValue={item.cantidad}
+                              onBlur={e => updateItem(idx, 'cantidad', parseCantidad(e.target.value, item.unidad_medida))}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                               className="w-16 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
                             />
                             <button onClick={() => updateItem(idx, 'cantidad', parseFloat((item.cantidad + stepCantidad(item.unidad_medida)).toFixed(3)))} title="Aumentar cantidad"

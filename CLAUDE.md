@@ -882,6 +882,20 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **fix — security_invoker view** (migration 053): `stock_por_producto` recreada con `WITH (security_invoker = true)` — elimina warning del Security Advisor de Supabase.
 - **fix — APP_VERSION**: bump a `v0.85.0` en `src/config/brand.ts`.
 
+### v0.85.1 — en dev
+
+#### Fixes VentasPage
+
+- **Ticket modal scrollable**: `max-h-[90vh] flex flex-col` + `overflow-y-auto flex-1` en contenido — botones Imprimir/Cerrar siempre visibles sin importar cuántos items tenga el ticket.
+- **ESC prioridad modal**: `ticketVenta` tiene su propio `useModalKeyboard`. `ventaDetalle` keyboard solo activo cuando `ticketVenta === null` — ESC cierra el modal más interno primero.
+- **Decimal punto y coma**: input cantidad usa `defaultValue + onBlur` en vez de `value + onChange` — el usuario puede escribir "1.5" o "1,5" sin que React resetee el punto durante la edición.
+- **Descuento clamped**: por item, `pct` máx 100% y `monto` máx subtotal del item. Global: igual con atributo `max` en el input.
+- **IVA separado en ticket**: antes del TOTAL aparece línea "Neto (sin IVA)" + líneas "IVA X%" agrupadas por tasa.
+- **Presupuesto no genera ticket**: `setTicketVenta` solo se llama si `estado !== 'pendiente'`.
+- **Reservar desde historial sin pago bloqueado**: botón "Reservar stock" verifica `monto_pagado > 0` antes de ejecutar, muestra toast descriptivo.
+- **Draft carrito vacío**: al vaciar el carrito se borra el draft de localStorage en vez de saltear el save — evita restaurar items ya eliminados al volver a la página.
+- **Performance venta directa**: batch insert `venta_items` (1 llamada en vez de N), `Promise.all` por item para series+lineas, batch read `productos` + `Promise.all` para updates + batch insert `movimientos_stock` — de ~80 llamadas secuenciales a ~6 para carrito de 14 items.
+
 ### v0.84.0 — en dev
 
 #### Sprint A inventario (migration 051)

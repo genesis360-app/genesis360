@@ -882,6 +882,18 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **fix — security_invoker view** (migration 053): `stock_por_producto` recreada con `WITH (security_invoker = true)` — elimina warning del Security Advisor de Supabase.
 - **fix — APP_VERSION**: bump a `v0.85.0` en `src/config/brand.ts`.
 
+### v0.87.0 — en dev
+
+#### Sprint D inventario — Combinar LPNs + LPN Madre (migration 057)
+
+- **Migration 057**: `inventario_lineas.parent_lpn_id TEXT DEFAULT NULL` + índice `WHERE parent_lpn_id IS NOT NULL`.
+- **Checkboxes en tabla LPN**: grid-cols-7 → grid-cols-8; checkbox header (seleccionar todo del producto) + checkbox por fila. Selección resaltada con borde `border-accent/50`. Validación: solo LPNs del mismo producto.
+- **Barra flotante de acción**: aparece en la parte inferior cuando ≥2 LPNs seleccionados. Muestra conteo + botones "Limpiar" y "Combinar".
+- **Modal Combinar** con dos modos:
+  - **Fusionar**: todo el stock pasa al LPN destino (radio selector). Los otros quedan `activo=false, cantidad=0`. Inserta `ajuste_ingreso` en destino. Muestra stock resultante en tiempo real.
+  - **LPN Madre**: asigna `parent_lpn_id` a los LPNs seleccionados. No mueve stock. Los hijos muestran "↳ PLT-001" debajo del LPN en la tabla.
+- **Restricción fusionar**: todos los LPNs deben ser del mismo `producto_id` (validado en UI y `mutationFn`).
+
 ### v0.86.0 — en dev
 
 #### Sprint C inventario — Tab Autorizaciones DEPOSITO (migrations 055+056)

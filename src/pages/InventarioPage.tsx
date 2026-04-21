@@ -194,6 +194,15 @@ export default function InventarioPage() {
   const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
   const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
 
+  // ── Combinar LPNs state (Sprint D) ─────────────────────────────────────────
+  type SelectedLinea = { id: string; lpn: string; cantidad: number; producto_id: string; nro_lote: string | null; fecha_vencimiento: string | null }
+  const [selectedLineas, setSelectedLineas] = useState<string[]>([])
+  const [selectedLineasInfo, setSelectedLineasInfo] = useState<SelectedLinea[]>([])
+  const [showCombinarModal, setShowCombinarModal] = useState(false)
+  const [combinarMode, setCombinarMode] = useState<'fusionar' | 'madre'>('fusionar')
+  const [combinarDestinoId, setCombinarDestinoId] = useState('')
+  const [combinarParentLpn, setCombinarParentLpn] = useState('')
+
   // ── Shared queries ─────────────────────────────────────────────────────────
   const { data: estados = [] } = useQuery({
     queryKey: ['estados_inventario', tenant?.id],
@@ -528,6 +537,75 @@ export default function InventarioPage() {
       setAutRechazoId(null)
       setAutMotivoRechazo('')
       qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ── Combinar LPNs mutations (Sprint D) ────────────────────────────────────
+  const fusionarLineas = useMutation({
+    mutationFn: async () => {
+      if (selectedLineas.length < 2) throw new Error('Seleccioná al menos 2 LPNs')
+      const dest = selectedLineasInfo.find(l => l.id === combinarDestinoId)
+      if (!dest) throw new Error('Seleccioná el LPN destino')
+      const sources = selectedLineasInfo.filter(l => l.id !== combinarDestinoId)
+      const productoIds = new Set(selectedLineasInfo.map(l => l.producto_id))
+      if (productoIds.size > 1) throw new Error('Solo podés fusionar LPNs del mismo producto')
+      const totalTransfer = sources.reduce((sum, l) => sum + l.cantidad, 0)
+
+      const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', dest.producto_id).single()
+      const stockAntes = prod?.stock_actual ?? 0
+
+      const { error: e1 } = await supabase.from('inventario_lineas')
+        .update({ cantidad: dest.cantidad + totalTransfer, updated_at: new Date().toISOString() })
+        .eq('id', dest.id)
+      if (e1) throw e1
+
+      const { error: e2 } = await supabase.from('inventario_lineas')
+        .update({ activo: false, cantidad: 0, updated_at: new Date().toISOString() })
+        .in('id', sources.map(l => l.id))
+      if (e2) throw e2
+
+      await supabase.from('movimientos_stock').insert({
+        tenant_id: tenant!.id,
+        producto_id: dest.producto_id,
+        tipo: 'ajuste_ingreso',
+        cantidad: totalTransfer,
+        stock_antes: stockAntes,
+        stock_despues: stockAntes + totalTransfer,
+        motivo: `Fusión LPN — recibe de ${sources.map(l => l.lpn).join(', ')}`,
+        usuario_id: user?.id,
+        linea_id: dest.id,
+        sucursal_id: sucursalId || null,
+      })
+    },
+    onSuccess: () => {
+      toast.success('LPNs fusionados correctamente')
+      setSelectedLineas([])
+      setSelectedLineasInfo([])
+      setShowCombinarModal(false)
+      setCombinarDestinoId('')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const asignarMadre = useMutation({
+    mutationFn: async () => {
+      if (!combinarParentLpn.trim()) throw new Error('Ingresá el LPN madre')
+      const { error } = await supabase.from('inventario_lineas')
+        .update({ parent_lpn_id: combinarParentLpn.trim(), updated_at: new Date().toISOString() })
+        .in('id', selectedLineas)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('LPN Madre asignado')
+      setSelectedLineas([])
+      setSelectedLineasInfo([])
+      setShowCombinarModal(false)
+      setCombinarParentLpn('')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -2751,8 +2829,29 @@ export default function InventarioPage() {
                             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Sin líneas de inventario. Registrá un ingreso para este producto.</p>
                           ) : (
                             <div className="overflow-x-auto -mx-4 px-4">
-                            <div className="space-y-2 min-w-[640px]">
-                              <div className="grid grid-cols-7 gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1">
+                            <div className="space-y-2 min-w-[680px]">
+                              <div className="grid grid-cols-8 gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1">
+                                <span className="col-span-1 flex items-center">
+                                  <input type="checkbox" className="rounded accent-accent"
+                                    title="Seleccionar todos"
+                                    checked={lineas.length > 0 && lineas.every((l: any) => selectedLineas.includes(l.id))}
+                                    onChange={e => {
+                                      if (e.target.checked) {
+                                        const otroProducto = selectedLineasInfo.some(x => x.producto_id !== p.id)
+                                        if (otroProducto) { toast.error('Ya hay LPNs de otro producto seleccionados'); return }
+                                        setSelectedLineas(prev => [...new Set([...prev, ...lineas.map((l: any) => l.id)])])
+                                        setSelectedLineasInfo(prev => {
+                                          const existing = new Set(prev.map(x => x.id))
+                                          return [...prev, ...lineas.filter((l: any) => !existing.has(l.id)).map((l: any) => ({ id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento }))]
+                                        })
+                                      } else {
+                                        const ids = new Set(lineas.map((l: any) => l.id))
+                                        setSelectedLineas(prev => prev.filter(id => !ids.has(id)))
+                                        setSelectedLineasInfo(prev => prev.filter(x => !ids.has(x.id)))
+                                      }
+                                    }}
+                                  />
+                                </span>
                                 <span className="col-span-1">LPN</span>
                                 <span className="col-span-1 text-right">Cantidad</span>
                                 <span className="col-span-1">Estado</span>
@@ -2762,7 +2861,24 @@ export default function InventarioPage() {
                                 <span className="col-span-1 text-center">Acciones</span>
                               </div>
                               {lineas.map((l: any) => (
-                                <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
+                                <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid grid-cols-8 gap-2 items-center text-sm transition-colors
+                                  ${selectedLineas.includes(l.id) ? 'border-accent/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}`}>
+                                  <div className="col-span-1 flex items-center">
+                                    <input type="checkbox" className="rounded accent-accent"
+                                      checked={selectedLineas.includes(l.id)}
+                                      onChange={e => {
+                                        if (e.target.checked) {
+                                          const otroProducto = selectedLineasInfo.length > 0 && selectedLineasInfo.some(x => x.producto_id !== l.producto_id)
+                                          if (otroProducto) { toast.error('Solo podés combinar LPNs del mismo producto'); return }
+                                          setSelectedLineas(prev => [...prev, l.id])
+                                          setSelectedLineasInfo(prev => [...prev, { id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento }])
+                                        } else {
+                                          setSelectedLineas(prev => prev.filter(id => id !== l.id))
+                                          setSelectedLineasInfo(prev => prev.filter(x => x.id !== l.id))
+                                        }
+                                      }}
+                                    />
+                                  </div>
                                   <div className="col-span-1">
                                     <div className="flex items-center gap-1.5">
                                       <span className="text-xs text-primary font-semibold">{l.lpn}</span>
@@ -2770,6 +2886,9 @@ export default function InventarioPage() {
                                         <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
                                       )}
                                     </div>
+                                    {l.parent_lpn_id && (
+                                      <p className="text-xs text-purple-500 dark:text-purple-400">↳ {l.parent_lpn_id}</p>
+                                    )}
                                     {l.proveedor_id && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{l.proveedores?.nombre}</p>}
                                   </div>
 
@@ -2885,6 +3004,149 @@ export default function InventarioPage() {
               onDetected={code => { setInvSearch(code); setInvScannerOpen(false) }}
               onClose={() => setInvScannerOpen(false)}
             />
+          )}
+
+          {/* Barra flotante — LPNs seleccionados */}
+          {selectedLineas.length >= 2 && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-gray-800 border border-accent/40 rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-4">
+              <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                <span className="font-bold text-accent">{selectedLineas.length}</span> LPNs seleccionados
+              </span>
+              <button
+                onClick={() => { setSelectedLineas([]); setSelectedLineasInfo([]) }}
+                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1 rounded transition-colors">
+                Limpiar
+              </button>
+              <button
+                onClick={() => { setCombinarDestinoId(''); setCombinarMode('fusionar'); setShowCombinarModal(true) }}
+                className="bg-accent text-white text-sm px-4 py-1.5 rounded-xl font-medium flex items-center gap-1.5 hover:bg-accent/90 transition-colors">
+                <Combine size={14} /> Combinar
+              </button>
+            </div>
+          )}
+
+          {/* Modal Combinar LPNs */}
+          {showCombinarModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+              onClick={() => setShowCombinarModal(false)}>
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col"
+                onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+                  <div>
+                    <p className="font-bold text-primary">Combinar LPNs</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{selectedLineas.length} LPNs seleccionados</p>
+                  </div>
+                  <button onClick={() => setShowCombinarModal(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                    <X size={17} className="text-gray-500" />
+                  </button>
+                </div>
+
+                <div className="p-5 overflow-y-auto flex-1 space-y-4">
+                  {/* Lista de LPNs seleccionados */}
+                  <div className="space-y-1.5">
+                    {selectedLineasInfo.map(l => (
+                      <div key={l.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-sm">
+                        <span className="font-medium text-primary">{l.lpn}</span>
+                        <div className="text-right">
+                          <span className="text-gray-600 dark:text-gray-400">{l.cantidad} u.</span>
+                          {l.nro_lote && <p className="text-xs text-gray-400">Lote: {l.nro_lote}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Toggle modo */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Modo</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => setCombinarMode('fusionar')}
+                        className={`p-3 rounded-xl border text-sm font-medium text-left transition-colors
+                          ${combinarMode === 'fusionar' ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'}`}>
+                        <Combine size={16} className="mb-1.5" />
+                        <p>Fusionar</p>
+                        <p className="text-xs font-normal mt-0.5 text-gray-400">Todo el stock pasa a un LPN</p>
+                      </button>
+                      <button onClick={() => setCombinarMode('madre')}
+                        className={`p-3 rounded-xl border text-sm font-medium text-left transition-colors
+                          ${combinarMode === 'madre' ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'}`}>
+                        <Layers size={16} className="mb-1.5" />
+                        <p>LPN Madre</p>
+                        <p className="text-xs font-normal mt-0.5 text-gray-400">Agrupa bajo un pallet padre</p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Fusionar: elegir destino */}
+                  {combinarMode === 'fusionar' && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">LPN destino (recibe todo el stock)</p>
+                      {new Set(selectedLineasInfo.map(l => l.producto_id)).size > 1 ? (
+                        <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
+                          Solo podés fusionar LPNs del mismo producto.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {selectedLineasInfo.map(l => (
+                            <label key={l.id}
+                              className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors
+                                ${combinarDestinoId === l.id ? 'border-accent bg-accent/10' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
+                              <input type="radio" name="destino" value={l.id}
+                                checked={combinarDestinoId === l.id}
+                                onChange={() => setCombinarDestinoId(l.id)}
+                                className="accent-accent" />
+                              <span className="flex-1 text-sm font-medium text-primary">{l.lpn}</span>
+                              <span className="text-sm text-gray-600 dark:text-gray-400">{l.cantidad} u.</span>
+                            </label>
+                          ))}
+                          {combinarDestinoId && (
+                            <p className="text-xs text-gray-500 mt-2 px-1">
+                              Stock final en <span className="font-semibold">{selectedLineasInfo.find(l => l.id === combinarDestinoId)?.lpn}</span>:&nbsp;
+                              <span className="font-bold text-green-600 dark:text-green-400">
+                                {selectedLineasInfo.reduce((s, l) => s + l.cantidad, 0)} u.
+                              </span>
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* LPN Madre: input código padre */}
+                  {combinarMode === 'madre' && (
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-2">Código LPN Madre</label>
+                      <input type="text" value={combinarParentLpn} onChange={e => setCombinarParentLpn(e.target.value)}
+                        placeholder="Ej: PLT-001"
+                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent" />
+                      <p className="text-xs text-gray-400 mt-1.5">
+                        Los LPNs seleccionados quedan asociados a este pallet/contenedor. No mueve stock.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 flex gap-3 flex-shrink-0">
+                  <button onClick={() => setShowCombinarModal(false)}
+                    className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Cancelar
+                  </button>
+                  <button
+                    disabled={
+                      (combinarMode === 'fusionar' && (!combinarDestinoId || new Set(selectedLineasInfo.map(l => l.producto_id)).size > 1)) ||
+                      (combinarMode === 'madre' && !combinarParentLpn.trim()) ||
+                      fusionarLineas.isPending || asignarMadre.isPending
+                    }
+                    onClick={() => combinarMode === 'fusionar' ? fusionarLineas.mutate() : asignarMadre.mutate()}
+                    className="flex-1 bg-accent text-white rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-accent/90 transition-colors">
+                    {fusionarLineas.isPending || asignarMadre.isPending ? (
+                      <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <><Combine size={15} /> {combinarMode === 'fusionar' ? 'Fusionar' : 'Asignar Madre'}</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Modal todas las series de un LPN */}

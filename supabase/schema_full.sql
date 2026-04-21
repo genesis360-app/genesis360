@@ -1727,6 +1727,12 @@ CREATE TABLE IF NOT EXISTS metodos_pago (
 ALTER TABLE metodos_pago ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_metodos_pago_tenant ON metodos_pago(tenant_id);
 
+-- ─── Migration 057: Sprint D — LPN Madre ─────────────────────────────────────
+ALTER TABLE inventario_lineas ADD COLUMN IF NOT EXISTS parent_lpn_id TEXT DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_lineas_parent_lpn
+  ON inventario_lineas(tenant_id, parent_lpn_id)
+  WHERE parent_lpn_id IS NOT NULL;
+
 -- ─── Migration 055: movimientos_stock tipos + DECIMAL cantidad ────────────────
 ALTER TABLE movimientos_stock DROP CONSTRAINT IF EXISTS movimientos_stock_tipo_check;
 ALTER TABLE movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check

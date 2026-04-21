@@ -2,14 +2,17 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
-  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown
+  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown, QrCode, Layers, ClipboardList
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import type { Sucursal } from '@/lib/supabase'
 import { logActividad } from '@/lib/actividadLog'
+import { LpnQR } from '@/components/LpnQR'
 import toast from 'react-hot-toast'
+import type { ProductoEstructura } from '@/lib/supabase'
 
-type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar'
+type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar' | 'estructura'
 
 interface Props {
   linea: any
@@ -18,11 +21,12 @@ interface Props {
 }
 
 export function LpnAccionesModal({ linea, producto, onClose }: Props) {
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, sucursales } = useAuthStore()
   const qc = useQueryClient()
   const tieneReservas = (linea.cantidad_reservada ?? 0) > 0
   const [tab, setTab] = useState<AccionTab>(tieneReservas ? 'mover' : 'editar')
   const tieneSeries = producto.tiene_series
+  const esDeposito = user?.rol === 'DEPOSITO'
 
   // Editar campos
   const [editForm, setEditForm] = useState({
@@ -39,11 +43,16 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   // Mover stock parcial
   const [cantMover, setCantMover] = useState('')
   const [ubicDestino, setUbicDestino] = useState('')
+  const [sucursalDestino, setSucursalDestino] = useState(linea.sucursal_id ?? '')
+  const [showQR, setShowQR] = useState(false)
 
   // Series
   const [newSerie, setNewSerie] = useState('')
   const [editSerieId, setEditSerieId] = useState<string | null>(null)
   const [editSerieNro, setEditSerieNro] = useState('')
+
+  // Estructura
+  const [estructuraId, setEstructuraId] = useState<string>(linea.estructura_id ?? '')
 
   // Cargar catálogos
   const { data: estados = [] } = useQuery({
@@ -62,29 +71,70 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     enabled: !!tenant,
   })
 
+  const { data: estructuras = [] } = useQuery({
+    queryKey: ['producto-estructuras', producto.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_estructuras')
+        .select('*').eq('producto_id', producto.id).order('is_default', { ascending: false }).order('nombre')
+      return (data ?? []) as ProductoEstructura[]
+    },
+    enabled: !!tenant,
+  })
+
   const invalidar = () => {
     qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
     qc.invalidateQueries({ queryKey: ['productos'] })
   }
 
-  const registrarMovimiento = async (tipo: string, cantidad: number, motivo: string, stockAntes: number) => {
+  const guardarEstructura = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from('inventario_lineas')
+        .update({ estructura_id: estructuraId || null })
+        .eq('id', linea.id)
+      if (error) throw error
+      logActividad({
+        entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre,
+        accion: 'editar', campo: 'estructura_id',
+        valor_anterior: linea.estructura_id ?? null,
+        valor_nuevo: estructuraId || null, pagina: '/inventario',
+      })
+    },
+    onSuccess: () => { toast.success('Estructura asignada'); invalidar() },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const registrarMovimiento = async (tipo: string, cantidad: number, motivo: string, stockAntes: number, stockDespues?: number) => {
     await supabase.from('movimientos_stock').insert({
       tenant_id: tenant!.id,
       producto_id: producto.id,
       tipo,
       cantidad,
       stock_antes: stockAntes,
-      stock_despues: stockAntes, // el trigger lo actualiza
+      stock_despues: stockDespues ?? stockAntes,
       motivo,
       usuario_id: user?.id,
     })
   }
 
+  const crearAutorizacion = async (tipo: string, datosCambio: Record<string, any>, notas?: string) => {
+    const { error } = await supabase.from('autorizaciones_inventario').insert({
+      tenant_id: tenant!.id,
+      tipo,
+      linea_id: linea.id,
+      datos_cambio: datosCambio,
+      estado: 'pendiente',
+      solicitado_por: user?.id,
+      notas: notas ?? null,
+    })
+    if (error) throw error
+  }
+
   // ── Guardar edición ──────────────────────────────────────────────────────────
   const guardarEdicion = useMutation({
     mutationFn: async () => {
-      const cantNueva = tieneSeries ? linea.cantidad : parseInt(editForm.cantidad)
+      const cantNueva = tieneSeries ? linea.cantidad : parseFloat(editForm.cantidad)
       const cantVieja = linea.cantidad
+      const cantCambio = !tieneSeries && cantNueva !== cantVieja
 
       if (!tieneSeries && (isNaN(cantNueva) || cantNueva < 0))
         throw new Error('Cantidad inválida')
@@ -94,6 +144,24 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         throw new Error('Este producto requiere número de lote')
       if (producto.tiene_vencimiento && !editForm.fecha_vencimiento)
         throw new Error('Este producto requiere fecha de vencimiento')
+
+      // DEPOSITO: si cambia cantidad → crear solicitud de autorización en vez de ejecutar
+      if (esDeposito && cantCambio) {
+        await crearAutorizacion('ajuste_cantidad', {
+          cantidad_anterior: cantVieja,
+          cantidad_nueva: cantNueva,
+        })
+        // Guardar igual todos los otros campos (no la cantidad)
+        await supabase.from('inventario_lineas').update({
+          lpn: editForm.lpn || linea.lpn,
+          estado_id: editForm.estado_id || null,
+          ubicacion_id: editForm.ubicacion_id || null,
+          proveedor_id: editForm.proveedor_id || null,
+          nro_lote: editForm.nro_lote || null,
+          fecha_vencimiento: editForm.fecha_vencimiento || null,
+        }).eq('id', linea.id)
+        return { esAutorizacion: true }
+      }
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
@@ -109,17 +177,16 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       }).eq('id', linea.id)
       if (error) throw error
 
-      // Registrar en historial si cambió la cantidad
-      if (!tieneSeries && cantNueva !== cantVieja) {
+      // Registrar en historial solo si cambió la cantidad (ajuste válido en movimientos_stock)
+      if (cantCambio) {
         const diff = cantNueva - cantVieja
         await registrarMovimiento(
           diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje',
           Math.abs(diff),
           `Ajuste manual de cantidad en LPN ${linea.lpn}`,
-          stockAntes
+          stockAntes,
+          Math.max(0, stockAntes + diff)
         )
-      } else {
-        await registrarMovimiento('edicion_lpn', 0, `Edición de datos del LPN ${linea.lpn}`, stockAntes)
       }
 
       // Audit log: loguear cada campo modificado
@@ -140,7 +207,17 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if ((editForm.fecha_vencimiento || '') !== oldVenc)
         logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'fecha_vencimiento', valor_anterior: oldVenc || null, valor_nuevo: editForm.fecha_vencimiento || null, pagina: '/inventario' })
     },
-    onSuccess: () => { toast.success('LPN actualizado'); invalidar(); onClose() },
+    onSuccess: (result: any) => {
+      if (result?.esAutorizacion) {
+        toast.success('Solicitud de ajuste enviada — pendiente de aprobación')
+        invalidar()
+        onClose()
+      } else {
+        toast.success('LPN actualizado')
+        invalidar()
+        onClose()
+      }
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -151,6 +228,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (cant >= linea.cantidad) throw new Error('La cantidad a mover debe ser menor al total del LPN')
       if (!ubicDestino) throw new Error('Seleccioná una ubicación destino')
+      const sucursalFinal = sucursalDestino || linea.sucursal_id || null
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
@@ -170,13 +248,13 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         cantidad: cant,
         estado_id: linea.estado_id || null,
         ubicacion_id: ubicDestino,
+        sucursal_id: sucursalFinal,
         proveedor_id: linea.proveedor_id || null,
         nro_lote: linea.nro_lote || null,
         fecha_vencimiento: linea.fecha_vencimiento || null,
       })
       if (e2) throw e2
 
-      await registrarMovimiento('traslado', cant, `Traslado parcial de ${linea.lpn} → ${newLpn} (${cant} u.)`, stockAntes)
       const ubicNombre = (ubicaciones as any[]).find(u => u.id === ubicDestino)?.nombre ?? ubicDestino
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'traslado', valor_anterior: `${linea.lpn} (${linea.cantidad} u.)`, valor_nuevo: `${newLpn} → ${ubicNombre} (${cant} u.)`, pagina: '/inventario' })
     },
@@ -187,25 +265,41 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   // ── Eliminar LPN ────────────────────────────────────────────────────────────
   const eliminarLpn = useMutation({
     mutationFn: async () => {
-      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
-      const stockAntes = prodAntes?.stock_actual ?? 0
       const cantEliminada = tieneSeries
         ? (linea.inventario_series ?? []).filter((s: any) => s.activo).length
         : linea.cantidad
 
-      // Desactivar series si las tiene
+      // DEPOSITO: crear solicitud de autorización en vez de ejecutar
+      if (esDeposito) {
+        await crearAutorizacion('eliminar_lpn', { lpn: linea.lpn, cantidad: cantEliminada })
+        return { esAutorizacion: true }
+      }
+
+      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
+      const stockAntes = prodAntes?.stock_actual ?? 0
+
       if (tieneSeries) {
         await supabase.from('inventario_series').update({ activo: false }).eq('linea_id', linea.id)
       }
-
-      // Desactivar línea y poner cantidad a 0 para que el trigger recalcule stock_actual
       const { error } = await supabase.from('inventario_lineas').update({ activo: false, cantidad: 0 }).eq('id', linea.id)
       if (error) throw error
 
-      await registrarMovimiento('eliminacion_lpn', cantEliminada, `Eliminación del LPN ${linea.lpn}`, stockAntes)
+      if (cantEliminada > 0) {
+        await registrarMovimiento('rebaje', cantEliminada, `Eliminación del LPN ${linea.lpn}`, stockAntes, Math.max(0, stockAntes - cantEliminada))
+      }
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'eliminar', valor_anterior: `LPN ${linea.lpn} (${cantEliminada} u.)`, pagina: '/inventario' })
     },
-    onSuccess: () => { toast.success('LPN eliminado'); invalidar(); onClose() },
+    onSuccess: (result: any) => {
+      if (result?.esAutorizacion) {
+        toast.success('Solicitud de eliminación enviada — pendiente de aprobación')
+        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+        onClose()
+      } else {
+        toast.success('LPN eliminado')
+        invalidar()
+        onClose()
+      }
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -224,7 +318,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (error) throw error
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
-      await registrarMovimiento('ingreso_serie', 1, `Serie ${newSerie.trim()} agregada al LPN ${linea.lpn}`, prodAntes?.stock_actual ?? 0)
+      const stockAntes = prodAntes?.stock_actual ?? 0
+      await registrarMovimiento('ingreso', 1, `Serie ${newSerie.trim()} agregada al LPN ${linea.lpn}`, stockAntes, stockAntes + 1)
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie', valor_nuevo: newSerie.trim(), pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('Serie agregada'); setNewSerie(''); invalidar() },
@@ -238,8 +333,6 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (error?.code === '23505') throw new Error('Esa serie ya existe')
       if (error) throw error
 
-      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
-      await registrarMovimiento('edicion_serie', 0, `Serie editada en LPN ${linea.lpn}: → ${nroNuevo.trim()}`, prodAntes?.stock_actual ?? 0)
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie', valor_nuevo: nroNuevo.trim(), pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('Serie actualizada'); setEditSerieId(null); invalidar() },
@@ -248,14 +341,30 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
   const eliminarSerie = useMutation({
     mutationFn: async (serieId: string) => {
+      const serie = (linea.inventario_series ?? []).find((s: any) => s.id === serieId)
+
+      // DEPOSITO: crear solicitud de autorización en vez de ejecutar
+      if (esDeposito) {
+        await crearAutorizacion('eliminar_serie', { serie_id: serieId, nro_serie: serie?.nro_serie ?? '' })
+        return { esAutorizacion: true }
+      }
+
       const { error } = await supabase.from('inventario_series').update({ activo: false }).eq('id', serieId)
       if (error) throw error
-      const serie = (linea.inventario_series ?? []).find((s: any) => s.id === serieId)
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
-      await registrarMovimiento('eliminacion_serie', 1, `Serie eliminada del LPN ${linea.lpn}`, prodAntes?.stock_actual ?? 0)
+      const stockAntes = prodAntes?.stock_actual ?? 0
+      await registrarMovimiento('rebaje', 1, `Serie ${serie?.nro_serie ?? serieId} eliminada del LPN ${linea.lpn}`, stockAntes, Math.max(0, stockAntes - 1))
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie_eliminada', valor_anterior: serie?.nro_serie ?? serieId, pagina: '/inventario' })
     },
-    onSuccess: () => { toast.success('Serie eliminada'); invalidar() },
+    onSuccess: (result: any) => {
+      if (result?.esAutorizacion) {
+        toast.success('Solicitud de eliminación de serie enviada — pendiente de aprobación')
+        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+      } else {
+        toast.success('Serie eliminada')
+        invalidar()
+      }
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -267,10 +376,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         { id: 'editar', label: 'Editar', icon: Edit2 },
         { id: 'mover', label: 'Mover', icon: ArrowRightLeft },
         ...(tieneSeries ? [{ id: 'series' as AccionTab, label: 'Series', icon: Hash }] : []),
+        { id: 'estructura' as AccionTab, label: 'Estructura', icon: Layers },
         { id: 'eliminar', label: 'Eliminar', icon: Trash2 },
       ]
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
@@ -279,7 +390,15 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
             <p className="font-bold text-primary">{linea.lpn}</p>
             <p className="text-xs text-gray-400 dark:text-gray-500">{producto.nombre} · {producto.sku}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setShowQR(true)} title="Generar QR del LPN"
+              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+              <QrCode size={18} />
+            </button>
+            <button onClick={onClose} className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Info rápida */}
@@ -426,6 +545,19 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       value={cantMover} onChange={e => setCantMover(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="0" />
                   </div>
+                  {sucursales.length > 1 && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sucursal destino</label>
+                      <select value={sucursalDestino} onChange={e => { setSucursalDestino(e.target.value); setUbicDestino('') }}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                        {(sucursales as Sucursal[]).map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.nombre}{s.id === (linea.sucursal_id ?? '') ? ' (actual)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ubicación destino</label>
                     <select value={ubicDestino} onChange={e => setUbicDestino(e.target.value)}
@@ -500,32 +632,142 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
             </div>
           )}
 
+          {/* ── ESTRUCTURA ── */}
+          {tab === 'estructura' && (
+            <div className="space-y-4">
+              {estructuras.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 dark:text-gray-500">
+                  <Layers size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Este producto no tiene estructuras definidas</p>
+                  <p className="text-xs mt-1">Podés agregar estructuras desde la pestaña Productos</p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                      Estructura asignada a este LPN
+                    </label>
+                    <div className="space-y-2">
+                      {estructuras.map(e => {
+                        const isCurrent = estructuraId === e.id
+                        return (
+                          <button key={e.id} onClick={() => setEstructuraId(e.id)}
+                            className={`w-full text-left px-3 py-3 rounded-xl border-2 transition-all
+                              ${isCurrent
+                                ? 'border-accent bg-accent/5 dark:bg-accent/10'
+                                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Layers size={14} className={isCurrent ? 'text-accent' : 'text-gray-400'} />
+                                <span className={`text-sm font-medium ${isCurrent ? 'text-accent' : 'text-gray-700 dark:text-gray-300'}`}>
+                                  {e.nombre}
+                                </span>
+                                {e.is_default && (
+                                  <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">
+                                    Default
+                                  </span>
+                                )}
+                              </div>
+                              {isCurrent && <span className="text-xs text-accent font-semibold">✓ Seleccionada</span>}
+                            </div>
+                            <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5">
+                              {e.unidades_por_caja && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  {e.unidades_por_caja} u/caja
+                                </span>
+                              )}
+                              {e.cajas_por_pallet && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  {e.cajas_por_pallet} cajas/pallet
+                                </span>
+                              )}
+                              {e.peso_unidad && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  {e.peso_unidad} kg/u
+                                </span>
+                              )}
+                              {e.alto_caja && e.ancho_caja && e.largo_caja && (
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  Caja: {e.alto_caja}×{e.ancho_caja}×{e.largo_caja} cm
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })}
+                      {estructuraId && (
+                        <button onClick={() => setEstructuraId('')}
+                          className="w-full text-left px-3 py-2.5 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 hover:border-gray-300 transition-all">
+                          Sin estructura asignada
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={() => guardarEstructura.mutate()} disabled={guardarEstructura.isPending}
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                    <Save size={15} /> {guardarEstructura.isPending ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           {/* ── ELIMINAR ── */}
           {tab === 'eliminar' && (
             <div className="space-y-4">
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl p-4 text-center">
-                <AlertTriangle size={28} className="text-red-500 mx-auto mb-2" />
-                <p className="font-semibold text-red-700 dark:text-red-400">Eliminar LPN {linea.lpn}</p>
-                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                  Se eliminarán {tieneSeries ? `${seriesActivas.length} series` : `${linea.cantidad} unidades`} del inventario.
-                  Esta acción quedará registrada en el historial.
-                </p>
-              </div>
+              {esDeposito ? (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl p-4 text-center">
+                  <ClipboardList size={28} className="text-blue-500 mx-auto mb-2" />
+                  <p className="font-semibold text-blue-700 dark:text-blue-400">Solicitar eliminación del LPN {linea.lpn}</p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    Como DEPOSITO, la eliminación requiere aprobación de un OWNER o SUPERVISOR.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl p-4 text-center">
+                  <AlertTriangle size={28} className="text-red-500 mx-auto mb-2" />
+                  <p className="font-semibold text-red-700 dark:text-red-400">Eliminar LPN {linea.lpn}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                    Se eliminarán {tieneSeries ? `${seriesActivas.length} series` : `${linea.cantidad} unidades`} del inventario.
+                    Esta acción quedará registrada en el historial.
+                  </p>
+                </div>
+              )}
               {(linea.cantidad_reservada ?? 0) > 0 && (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                   <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
                   Este LPN tiene {linea.cantidad_reservada} unidad(es) reservada(s) en ventas pendientes. Eliminarlo puede afectar esas ventas.
                 </div>
               )}
-              <button onClick={() => { if (confirm(`¿Eliminar definitivamente el LPN ${linea.lpn}?`)) eliminarLpn.mutate() }}
+              <button
+                onClick={() => {
+                  const msg = esDeposito
+                    ? `¿Enviar solicitud de eliminación del LPN ${linea.lpn}?`
+                    : `¿Eliminar definitivamente el LPN ${linea.lpn}?`
+                  if (confirm(msg)) eliminarLpn.mutate()
+                }}
                 disabled={eliminarLpn.isPending}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                <Trash2 size={15} /> {eliminarLpn.isPending ? 'Eliminando...' : 'Confirmar eliminación'}
+                className={`w-full font-semibold py-3 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2 text-white
+                  ${esDeposito ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                {esDeposito
+                  ? <><ClipboardList size={15} /> {eliminarLpn.isPending ? 'Enviando...' : 'Enviar solicitud'}</>
+                  : <><Trash2 size={15} /> {eliminarLpn.isPending ? 'Eliminando...' : 'Confirmar eliminación'}</>
+                }
               </button>
             </div>
           )}
         </div>
       </div>
     </div>
+
+    {showQR && (
+      <LpnQR
+        lpn={linea.lpn}
+        productoNombre={producto.nombre}
+        sku={producto.sku}
+        onClose={() => setShowQR(false)}
+      />
+    )}
+    </>
   )
 }

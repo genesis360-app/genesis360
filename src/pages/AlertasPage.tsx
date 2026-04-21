@@ -1,6 +1,6 @@
 // ─── AlertasPage ──────────────────────────────────────────────────────────────
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
@@ -100,6 +100,25 @@ export default function AlertasPage() {
     enabled: !!tenant,
   })
 
+  const { data: lpnsVencidos = [], isLoading: loadingVencidos } = useQuery({
+    queryKey: ['lpns-vencidos', tenant?.id],
+    queryFn: async () => {
+      const hoy = new Date().toISOString().split('T')[0]
+      const { data, error } = await supabase
+        .from('inventario_lineas')
+        .select('id, lpn, cantidad, fecha_vencimiento, productos(id, nombre, sku)')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .gt('cantidad', 0)
+        .not('fecha_vencimiento', 'is', null)
+        .lt('fecha_vencimiento', hoy)
+        .order('fecha_vencimiento', { ascending: true })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
   const { data: clientesConDeuda = [], isLoading: loadingDeuda } = useQuery({
     queryKey: ['clientes-con-deuda', tenant?.id],
     queryFn: async () => {
@@ -138,8 +157,8 @@ export default function AlertasPage() {
     },
   })
 
-  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length + lineasSinUbicacion.length + lineasSinProveedor.length
-  const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda || loadingSinUbic || loadingSinProv
+  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length + lineasSinUbicacion.length + lineasSinProveedor.length + lpnsVencidos.length
+  const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda || loadingSinUbic || loadingSinProv || loadingVencidos
 
   return (
     <div className="space-y-6">
@@ -159,6 +178,40 @@ export default function AlertasPage() {
         </div>
       ) : (
         <div className="space-y-6">
+
+          {/* LPNs vencidos */}
+          {lpnsVencidos.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
+                <CalendarX size={14} />
+                LPNs vencidos ({lpnsVencidos.length})
+              </h2>
+              {lpnsVencidos.map((l: any) => (
+                <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-red-200 dark:border-red-900/40 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <CalendarX size={18} className="text-red-500 dark:text-red-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">
+                        {l.lpn}
+                        <span className="font-normal text-gray-500 dark:text-gray-400"> — {(l.productos as any)?.nombre}</span>
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {(l.productos as any)?.sku} · {l.cantidad} u. · Vencido el {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    to={`/inventario?search=${encodeURIComponent(l.lpn)}`}
+                    className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    Ver LPN
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Reservas sin despachar */}
           {reservasViejas.length > 0 && (

@@ -79,7 +79,7 @@ export function useRecomendaciones() {
           .gte('created_at', inicioMesAnt).lte('created_at', finMesAnt),
 
         supabase.from('venta_items')
-          .select('producto_id, cantidad, precio_unitario, precio_costo_historico, productos(nombre)')
+          .select('producto_id, cantidad, precio_unitario, iva_monto, precio_costo_historico, productos(nombre)')
           .eq('tenant_id', tenant!.id)
           .gte('created_at', hace30dias),
 
@@ -333,12 +333,14 @@ export function useRecomendaciones() {
       })
     }
 
-    // 9. Margen realizado bajo (últimos 30 días)
+    // 9. Margen realizado bajo (últimos 30 días) — markup sobre costo, usando neto sin IVA
     const itemsConCosto = (ventaItems30d as any[]).filter(i => i.precio_costo_historico > 0 && i.precio_unitario > 0)
     if (itemsConCosto.length > 0) {
       const totalFacturado = itemsConCosto.reduce((a, i) => a + i.precio_unitario * i.cantidad, 0)
+      const totalIva       = itemsConCosto.reduce((a, i) => a + (i.iva_monto ?? 0), 0)
+      const totalNeto      = totalFacturado - totalIva
       const totalCosto     = itemsConCosto.reduce((a, i) => a + i.precio_costo_historico * i.cantidad, 0)
-      const margenRealizado = totalFacturado > 0 ? (totalFacturado - totalCosto) / totalFacturado * 100 : null
+      const margenRealizado = totalCosto > 0 ? (totalNeto - totalCosto) / totalCosto * 100 : null
       if (margenRealizado !== null && margenRealizado < 15) {
         list.push({
           id: 'margen-realizado-bajo',
@@ -349,7 +351,7 @@ export function useRecomendaciones() {
           impacto: `${(15 - margenRealizado).toFixed(1)}pp por debajo del mínimo recomendado`,
           accion: 'Ver rentabilidad',
           link: '/rentabilidad',
-          valor: totalFacturado * 0.15,
+          valor: totalCosto * 0.15,
         })
       }
     }

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react'
+import { useSearchParams, Link } from 'react-router-dom'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -11,7 +11,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, restaurarMediosPago, calcularLpnFuentes, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial'
@@ -36,10 +36,13 @@ function calcularEfectivo(mediosPago: MedioPagoItem[], total: number): number {
   return efectivos.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
 }
 
+const stepCantidad = (u?: string | null) => esDecimal(u) ? 0.001 : 1
+
 interface CartItem {
   producto_id: string
   nombre: string
   sku: string
+  unidad_medida: string
   precio_unitario: number
   precio_costo: number
   cantidad: number
@@ -146,6 +149,9 @@ export default function VentasPage() {
   const [filterEstado, setFilterEstado] = useState<EstadoVenta | ''>('')
   const [filterCategoria, setFilterCategoria] = useState<string>('')
   const [ventaDetalle, setVentaDetalle] = useState<any | null>(null)
+  const [ventasLimit, setVentasLimit] = useState(50)
+  // Resetear paginación cuando cambian los filtros
+  useEffect(() => { setVentasLimit(50) }, [filterEstado, sucursalId])
 
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
@@ -176,9 +182,53 @@ export default function VentasPage() {
   }
 
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
-  useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
+  useModalKeyboard({ isOpen: ticketVenta !== null, onClose: () => setTicketVenta(null) })
+  useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
+
+  // Cola de scans para procesar secuencialmente (evita duplicados por concurrencia)
+  const scanQueueRef = useRef<string[]>([])
+  const scanProcessingRef = useRef(false)
+
+  // Pre-guardado del carrito en localStorage
+  const cartDraftKey = tenant?.id ? `carrito_draft_${tenant.id}` : null
+  // Restaurar primero (antes del efecto de guardar) — orden de declaración importa
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (!cartDraftKey || restoredRef.current) return
+    restoredRef.current = true
+    const raw = localStorage.getItem(cartDraftKey)
+    if (!raw) return
+    try {
+      const draft = JSON.parse(raw)
+      if (draft.cart?.length > 0) {
+        setCart(draft.cart.map((item: any) => ({ ...item, lineas_disponibles: [], series_disponibles: [] })))
+        if (draft.clienteId) { setClienteId(draft.clienteId); setClienteNombre(draft.clienteNombre ?? ''); setClienteTelefono(draft.clienteTelefono ?? '') }
+        if (draft.mediosPago) setMediosPago(draft.mediosPago)
+        if (draft.notas) setNotas(draft.notas)
+        if (draft.modoVenta) setModoVenta(draft.modoVenta)
+        if (draft.descuentoTotal) setDescuentoTotal(draft.descuentoTotal)
+        if (draft.descuentoTotalTipo) setDescuentoTotalTipo(draft.descuentoTotalTipo)
+        toast('🛒 Se recuperó tu carrito anterior', { duration: 4000 })
+      }
+    } catch { localStorage.removeItem(cartDraftKey) }
+  }, [cartDraftKey])
+  // Guardar solo cuando hay contenido (nunca borrar aquí — el delete va en sale completion)
+  useEffect(() => {
+    if (!cartDraftKey || !restoredRef.current) return
+    if (cart.length === 0 && !clienteId) {
+      if (cartDraftKey) localStorage.removeItem(cartDraftKey)
+      return
+    }
+    const draft = {
+      cart: cart.map(({ lineas_disponibles: _ld, series_disponibles: _sd, ...rest }) => rest),
+      clienteId, clienteNombre, clienteTelefono,
+      mediosPago, notas, modoVenta, descuentoTotal, descuentoTotalTipo,
+    }
+    localStorage.setItem(cartDraftKey, JSON.stringify(draft))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, clienteId, clienteNombre, clienteTelefono, mediosPago, notas, modoVenta, descuentoTotal, descuentoTotalTipo])
 
   // Foco en buscador de productos
   const [searchFocused, setSearchFocused] = useState(false)
@@ -291,10 +341,10 @@ export default function VentasPage() {
   })
 
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
-    queryKey: ['ventas', tenant?.id, filterEstado, sucursalId],
+    queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit],
     queryFn: async () => {
       let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
-        .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
+        .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(ventasLimit)
       if (filterEstado) q = q.eq('estado', filterEstado)
       q = applyFilter(q)
       const { data, error } = await q
@@ -333,7 +383,7 @@ export default function VentasPage() {
       return
     }
 
-    // Si ya está en el carrito, incrementar (sumando todas las filas del mismo producto)
+    // Si ya está en el carrito, incrementar
     const totalEnCarrito = cart.filter(c => c.producto_id === p.id).reduce((a, c) => a + c.cantidad, 0)
     if (totalEnCarrito > 0) {
       if (totalEnCarrito >= stockDisponible) { toast.error(`Stock disponible: ${stockDisponible}`); return }
@@ -383,8 +433,10 @@ export default function VentasPage() {
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
       if (estadosFiltro2.length > 0) lq = lq.in('estado_id', estadosFiltro2)
       const { data: lineasRaw2 } = await lq
+      const hoyStr = new Date().toISOString().split('T')[0]
       const sortedLineas = (lineasRaw2 ?? [])
         .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+        .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= hoyStr)
         .sort(sortLineas)
       lineasDisponibles = sortedLineas.map((l: any) => ({
         id: l.id,
@@ -402,6 +454,7 @@ export default function VentasPage() {
       producto_id: p.id,
       nombre: p.nombre,
       sku: p.sku,
+      unidad_medida: p.unidad_medida ?? 'unidad',
       precio_unitario: p.precio_venta,
       precio_costo: p.precio_costo ?? 0,
       cantidad: 1,
@@ -434,20 +487,13 @@ export default function VentasPage() {
     setLpnPickerIdx(null)
   }
 
-  const handleBarcodeScan = async (code: string) => {
-    // No cierra el scanner — modo POS persistente
-    // Buscar por codigo_barras o SKU exacto
+  const procesarScan = async (code: string) => {
     const { data: prods } = await supabase.from('productos')
       .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva')
       .eq('tenant_id', tenant!.id).eq('activo', true)
       .or(`codigo_barras.eq.${code},sku.eq.${code}`)
       .limit(1)
-
-    if (!prods || prods.length === 0) {
-      toast.error(`No se encontró ningún producto con código "${code}"`)
-      return
-    }
-    // Calcular stock_disponible real (descuenta reservas) igual que el query de búsqueda
+    if (!prods || prods.length === 0) { toast.error(`No se encontró ningún producto con código "${code}"`); return }
     const prod = prods[0]
     const { data: lineasScan } = await supabase.from('inventario_lineas')
       .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
@@ -462,21 +508,67 @@ export default function VentasPage() {
         stockDisponibleScan += Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0))
       }
     }
-    const p = { ...prod, stock_disponible: stockDisponibleScan }
-    await agregarProducto(p)
+    await agregarProducto({ ...prod, stock_disponible: stockDisponibleScan })
+  }
+
+  const handleBarcodeScan = (code: string) => {
+    // Encola el scan — procesa uno a la vez para evitar duplicados por concurrencia
+    scanQueueRef.current.push(code)
+    if (scanProcessingRef.current) return
+    scanProcessingRef.current = true
+    const processNext = async () => {
+      while (scanQueueRef.current.length > 0) {
+        const next = scanQueueRef.current.shift()!
+        await procesarScan(next)
+      }
+      scanProcessingRef.current = false
+    }
+    processNext()
   }
 
   const updateItem = (idx: number, field: keyof CartItem, value: any) => {
     // Validar stock disponible antes de actualizar cantidad
     if (field === 'cantidad' && typeof value === 'number' && value > 0) {
       const item = cart[idx]
-      if (item && !item.tiene_series && item.lineas_disponibles) {
+      if (item && !item.tiene_series && item.lineas_disponibles && item.lineas_disponibles.length > 0) {
         const maxDisp = item.lineas_disponibles.reduce(
           (sum, l) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0
         )
         if (value > maxDisp) {
           toast.error(`Stock máximo disponible: ${maxDisp}`)
           value = maxDisp
+        }
+      }
+    }
+    // Clamp descuento: pct máx 100%, monto máx subtotal del item
+    if (field === 'descuento' && typeof value === 'number') {
+      const item = cart[idx]
+      if (item) {
+        const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+        const base = item.precio_unitario * cant
+        const tipo = item.descuento_tipo
+        if (tipo === 'pct') value = Math.min(100, Math.max(0, value))
+        else value = Math.min(base, Math.max(0, value))
+      }
+    }
+    // Al cambiar el tipo de descuento, clampear el valor actual al nuevo límite
+    if (field === 'descuento_tipo') {
+      const item = cart[idx]
+      if (item) {
+        const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+        const base = item.precio_unitario * cant
+        const nuevoTipo = value as DescTipo
+        const descActual = item.descuento
+        if (nuevoTipo === 'pct') {
+          // Si venía de monto, el número puede ser mayor a 100; clampearlo
+          const clampedPct = Math.min(100, Math.max(0, descActual))
+          setCart(prev => prev.map((it, i) => i !== idx ? it : { ...it, descuento_tipo: nuevoTipo, descuento: clampedPct }))
+          return
+        } else {
+          // Si venía de pct, convertir el porcentaje a monto para no perder contexto
+          const montoEquivalente = Math.min(base, Math.max(0, descActual <= 100 ? base * descActual / 100 : descActual))
+          setCart(prev => prev.map((it, i) => i !== idx ? it : { ...it, descuento_tipo: nuevoTipo, descuento: parseFloat(montoEquivalente.toFixed(2)) }))
+          return
         }
       }
     }
@@ -649,6 +741,10 @@ export default function VentasPage() {
       if (item.tiene_series && item.series_seleccionadas.length !== item.cantidad) {
         toast.error(`Seleccioná ${item.cantidad} serie(s) para ${item.nombre}`); return
       }
+      // Validar cantidad válida (NaN o ≤ 0 no deben llegar al DB)
+      if (!item.cantidad || item.cantidad <= 0 || isNaN(item.cantidad)) {
+        toast.error(`Cantidad inválida para "${item.nombre}". Corregila antes de guardar.`); return
+      }
     }
     // Cliente obligatorio para pendiente y reservada
     if ((estado === 'pendiente' || estado === 'reservada') && !clienteId) {
@@ -692,137 +788,112 @@ export default function VentasPage() {
       }).select().single()
       if (ventaError) throw ventaError
 
-      // Crear items
-      for (const item of cart) {
+      // ─── Fase 1: batch insert venta_items ────────────────────────────────────
+      const itemPayloads = cart.map(item => {
         const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
         const itemSubtotal = getItemSubtotal(item)
-
-        // Calcular linea_id para trazabilidad LPN→venta
-        let ventaItemLineaId: string | null = null
-        if (item.tiene_series && item.series_seleccionadas.length > 0) {
-          const firstSerie = item.series_disponibles.find((s: any) => s.id === item.series_seleccionadas[0])
-          ventaItemLineaId = firstSerie?.linea_id ?? null
-          const allSameLinea = item.series_seleccionadas.every(sid => {
-            const s = item.series_disponibles.find((d: any) => d.id === sid)
-            return s?.linea_id === ventaItemLineaId
-          })
-          if (!allSameLinea) ventaItemLineaId = null
-        } else {
-          ventaItemLineaId = item.linea_id ?? null
-        }
-
         const ivaRate = item.alicuota_iva ?? 21
         const ivaMonto = ivaRate > 0 ? itemSubtotal - itemSubtotal / (1 + ivaRate / 100) : 0
+        let lineaId: string | null = item.linea_id ?? null
+        if (item.tiene_series && item.series_seleccionadas.length > 0) {
+          const first = item.series_disponibles.find((s: any) => s.id === item.series_seleccionadas[0])
+          lineaId = first?.linea_id ?? null
+          if (!item.series_seleccionadas.every(sid => item.series_disponibles.find((d: any) => d.id === sid)?.linea_id === lineaId))
+            lineaId = null
+        }
+        return {
+          tenant_id: tenant!.id, venta_id: venta.id, producto_id: item.producto_id, linea_id: lineaId,
+          cantidad: cant, precio_unitario: item.precio_unitario, precio_costo_historico: item.precio_costo || null,
+          descuento: item.descuento_tipo === 'pct' ? item.descuento : 0, subtotal: itemSubtotal,
+          alicuota_iva: ivaRate, iva_monto: parseFloat(ivaMonto.toFixed(2)),
+        }
+      })
+      const { data: insertedItems, error: itemsError } = await supabase.from('venta_items').insert(itemPayloads).select()
+      if (itemsError) {
+        // Rollback: eliminar el header de venta para no dejar una venta sin líneas
+        await supabase.from('ventas').delete().eq('id', venta.id)
+        throw itemsError
+      }
 
-        const { data: ventaItem, error: itemError } = await supabase.from('venta_items').insert({
-          tenant_id: tenant!.id,
-          venta_id: venta.id,
-          producto_id: item.producto_id,
-          linea_id: ventaItemLineaId,
-          cantidad: cant,
-          precio_unitario: item.precio_unitario,
-          precio_costo_historico: item.precio_costo || null,
-          descuento: item.descuento_tipo === 'pct' ? item.descuento : 0,
-          subtotal: itemSubtotal,
-          alicuota_iva: ivaRate,
-          iva_monto: parseFloat(ivaMonto.toFixed(2)),
-        }).select().single()
-        if (itemError) throw itemError
+      // ─── Fase 2: series + lineas en paralelo por item (distintos productos) ──
+      const _hoy = new Date().toISOString().split('T')[0]
+      await Promise.all(cart.map(async (item, i) => {
+        const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+        const ventaItemId = insertedItems![i].id
 
-        // Guardar series seleccionadas
         if (item.tiene_series && item.series_seleccionadas.length > 0) {
           const { error: seriesError } = await supabase.from('venta_series').insert(
             item.series_seleccionadas.map(sid => ({
-              tenant_id: tenant!.id,
-              venta_id: venta.id,
-              venta_item_id: ventaItem.id,
-              serie_id: sid,
+              tenant_id: tenant!.id, venta_id: venta.id, venta_item_id: ventaItemId, serie_id: sid,
             }))
           )
           if (seriesError) throw seriesError
-
-          if (estado === 'reservada') {
+          if (estado === 'reservada')
             await supabase.from('inventario_series').update({ reservado: true }).in('id', item.series_seleccionadas)
-          } else if (estado === 'despachada') {
+          else if (estado === 'despachada')
             await supabase.from('inventario_series').update({ activo: false, reservado: false }).in('id', item.series_seleccionadas)
-          }
         }
 
-        if (!item.tiene_series) {
+        if (!item.tiene_series && (estado === 'reservada' || estado === 'despachada')) {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
-          if (estado === 'reservada') {
-            const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
-            // Pre-flight: verificar stock disponible real antes de reservar
-            const stockDisp = lineas.reduce((sum: number, l: any) =>
-              sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
-            if (stockDisp < cant) {
-              throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
-            }
-            let restante = cant
-            for (const linea of lineas) {
-              if (restante <= 0) break
-              const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
-              const areservar = Math.min(disponible, restante)
+          const { data: lineasRaw } = await supabase.from('inventario_lineas')
+            .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+            .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+          const lineas = (lineasRaw ?? [])
+            .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+            .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoy)
+            .sort(sortLineas)
+          const stockDisp = lineas.reduce((sum: number, l: any) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0)
+          if (stockDisp < cant) throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
+
+          let restante = cant
+          for (const linea of lineas) {
+            if (restante <= 0) break
+            if (estado === 'reservada') {
+              const areservar = Math.min(linea.cantidad - (linea.cantidad_reservada ?? 0), restante)
               if (areservar > 0) {
-                await supabase.from('inventario_lineas')
-                  .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar }).eq('id', linea.id)
+                await supabase.from('inventario_lineas').update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar }).eq('id', linea.id)
                 restante -= areservar
               }
-            }
-          } else if (estado === 'despachada') {
-            const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)').eq('producto_id', item.producto_id)
-              .eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
-            // Pre-flight: verificar stock disponible real antes de rebajar
-            const stockDisp = lineas.reduce((sum: number, l: any) =>
-              sum + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
-            if (stockDisp < cant) {
-              throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
-            }
-            let restante = cant
-            for (const linea of lineas) {
-              if (restante <= 0) break
-              // CRÍTICO: descontar solo del stock disponible (no del reservado para otras ventas)
+            } else {
               const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
               const rebajar = Math.min(disponible, restante)
               if (rebajar <= 0) continue
               const nuevaCant = linea.cantidad - rebajar
-              await supabase.from('inventario_lineas')
-                .update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
+              await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
               restante -= rebajar
             }
           }
         }
-        // B1: Sincronizar stock_actual y registrar movimiento al despachar
-        if (estado === 'despachada') {
-          const { data: prodData } = await supabase.from('productos')
-            .select('stock_actual, stock_minimo, nombre, sku').eq('id', item.producto_id).single()
-          if (prodData) {
+      }))
+
+      // ─── Fase 3: stock_actual + movimientos en paralelo (solo despachada) ────
+      if (estado === 'despachada') {
+        const productIds = [...new Set(cart.filter(i => !i.tiene_series).map(i => i.producto_id))]
+        if (productIds.length > 0) {
+          const { data: prodsData } = await supabase.from('productos')
+            .select('id, stock_actual, stock_minimo, nombre, sku').in('id', productIds)
+          const prodMap = Object.fromEntries((prodsData ?? []).map(p => [p.id, p]))
+          const movimientosRows: any[] = []
+          await Promise.all(cart.filter(i => !i.tiene_series).map(async item => {
+            const cant = item.cantidad
+            const prodData = prodMap[item.producto_id]
+            if (!prodData) return
             const stockAntes = prodData.stock_actual
             const stockDespues = Math.max(0, stockAntes - cant)
             await supabase.from('productos').update({ stock_actual: stockDespues }).eq('id', item.producto_id)
-            await supabase.from('movimientos_stock').insert({
-              tenant_id: tenant!.id,
-              producto_id: item.producto_id,
-              tipo: 'rebaje',
-              cantidad: cant,
-              stock_antes: stockAntes,
-              stock_despues: stockDespues,
-              motivo: `Venta #${venta.numero}`,
-              usuario_id: user?.id,
-              venta_id: venta.id,
+            movimientosRows.push({
+              tenant_id: tenant!.id, producto_id: item.producto_id, tipo: 'rebaje', cantidad: cant,
+              stock_antes: stockAntes, stock_despues: stockDespues,
+              motivo: `Venta #${venta.numero}`, usuario_id: user?.id, venta_id: venta.id,
             })
-            // Alerta de stock bajo (fire-and-forget)
-            if (stockDespues <= (prodData.stock_minimo ?? 0)) {
+            if (stockDespues <= (prodData.stock_minimo ?? 0))
               stockAlertas.push({ nombre: prodData.nombre, sku: prodData.sku ?? '', stock_actual: stockDespues, stock_minimo: prodData.stock_minimo ?? 0 })
-            }
-          }
+          }))
+          if (movimientosRows.length > 0)
+            await supabase.from('movimientos_stock').insert(movimientosRows)
         }
-      } // cierre del for (const item of cart)
+      }
 
       // Emails transaccionales (fire-and-forget, no bloquean el flujo)
       const { data: { user: authUser } } = await supabase.auth.getUser()
@@ -906,11 +977,14 @@ export default function VentasPage() {
           })
         }
       }
-      const msg = estado === 'despachada' ? 'Venta finalizada' : estado === 'reservada' ? 'Venta reservada' : 'Venta registrada'
+      const msg = estado === 'despachada' ? 'Venta finalizada' : estado === 'reservada' ? 'Venta reservada' : 'Presupuesto guardado'
       toast.success(msg)
-      setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
+      if (estado !== 'pendiente') {
+        setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
+      }
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
+      if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -1263,7 +1337,11 @@ export default function VentasPage() {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            const _hoyStr = new Date().toISOString().split('T')[0]
+            const lineas = (lineasRaw ?? [])
+              .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoyStr)
+              .sort(sortLineas)
             let restante = item.cantidad
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -1293,7 +1371,11 @@ export default function VentasPage() {
             const { data: lineasRaw } = await supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
-            const lineas = (lineasRaw ?? []).filter((l: any) => l.ubicaciones?.disponible_surtido !== false).sort(sortLineas)
+            const _hoyStr2 = new Date().toISOString().split('T')[0]
+            const lineas = (lineasRaw ?? [])
+              .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoyStr2)
+              .sort(sortLineas)
             let restante = item.cantidad
             for (const linea of lineas) {
               if (restante <= 0) break
@@ -1514,6 +1596,18 @@ export default function VentasPage() {
       </div>
 
       {/* ── NUEVA VENTA ── */}
+      {tab === 'nueva' && sesionesAbiertas.length === 0 && (
+        <div className="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700 rounded-xl px-4 py-3">
+          <AlertTriangle size={20} className="text-red-600 dark:text-red-400 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold text-red-700 dark:text-red-400">Caja cerrada</p>
+            <p className="text-sm text-red-600 dark:text-red-500">No podés finalizar ventas ni reservar hasta abrir una caja.</p>
+          </div>
+          <Link to="/caja" className="text-sm font-semibold text-red-700 dark:text-red-400 underline hover:no-underline flex-shrink-0">
+            Ir a Caja →
+          </Link>
+        </div>
+      )}
       {tab === 'nueva' && (
         <div className="grid lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-4">
@@ -1641,7 +1735,7 @@ export default function VentasPage() {
                 <div className="px-4 py-3 border-b border-border-ds bg-page">
                   <h2 className="font-semibold text-primary flex items-center gap-2"><Package size={16} /> {cart.length} producto{cart.length !== 1 ? 's' : ''}</h2>
                 </div>
-                <div className="divide-y divide-gray-200 dark:divide-gray-600">
+                <div className="divide-y divide-gray-200 dark:divide-gray-600 max-h-[45vh] overflow-y-auto">
                   {cart.map((item, idx) => (
                     <div key={idx} className="px-4 py-3">
                       <div className="flex items-start gap-3">
@@ -1718,14 +1812,22 @@ export default function VentasPage() {
                         {/* Cantidad */}
                         {!item.tiene_series && (
                           <div className="flex items-center gap-1">
-                            <button onClick={() => updateItem(idx, 'cantidad', Math.max(1, item.cantidad - 1))} title="Reducir cantidad"
+                            <button onClick={() => updateItem(idx, 'cantidad', Math.max(stepCantidad(item.unidad_medida), parseFloat((item.cantidad - stepCantidad(item.unidad_medida)).toFixed(3))))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
                             <input
-                              type="number" onWheel={e => e.currentTarget.blur()} min="1" value={item.cantidad}
-                              onChange={e => updateItem(idx, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
-                              className="w-12 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
+                              key={`qty-${idx}-${item.cantidad}-${item.producto_id}`}
+                              type="text"
+                              inputMode={esDecimal(item.unidad_medida) ? 'decimal' : 'numeric'}
+                              defaultValue={esDecimal(item.unidad_medida) ? item.cantidad.toString().replace('.', ',') : item.cantidad.toString()}
+                              onBlur={e => updateItem(idx, 'cantidad', parseCantidad(e.target.value, item.unidad_medida))}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); return }
+                                // Para UOM enteras: bloquear punto y coma
+                                if (!esDecimal(item.unidad_medida) && (e.key === '.' || e.key === ',')) e.preventDefault()
+                              }}
+                              className="w-16 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
                             />
-                            <button onClick={() => updateItem(idx, 'cantidad', item.cantidad + 1)} title="Aumentar cantidad"
+                            <button onClick={() => updateItem(idx, 'cantidad', parseFloat((item.cantidad + stepCantidad(item.unidad_medida)).toFixed(3)))} title="Aumentar cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">+</button>
                           </div>
                         )}
@@ -1927,8 +2029,14 @@ export default function VentasPage() {
                     </div>
                   )}
                   <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={descuentoTotal}
-                      onChange={e => setDescuentoTotal(e.target.value)}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0"
+                      max={descuentoTotalTipo === 'pct' ? 100 : subtotal}
+                      value={descuentoTotal}
+                      onChange={e => {
+                        const v = parseFloat(e.target.value) || 0
+                        const max = descuentoTotalTipo === 'pct' ? 100 : subtotal
+                        setDescuentoTotal(String(Math.min(v, max) || e.target.value))
+                      }}
                       placeholder="0"
                       className="flex-1 px-3 py-2.5 text-sm focus:outline-none" />
                     <button onClick={() => setDescuentoTotalTipo(t => t === 'pct' ? 'monto' : 'pct')}
@@ -2177,6 +2285,12 @@ export default function VentasPage() {
                     </div>
                   )
                 })}
+                {ventas.length >= ventasLimit && (
+                  <button onClick={() => setVentasLimit(v => v + 50)}
+                    className="w-full py-3 text-sm text-accent hover:bg-accent/5 transition-colors border-t border-gray-100 dark:border-gray-700">
+                    Cargar más ventas
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -2371,7 +2485,13 @@ export default function VentasPage() {
                 <Printer size={15} /> Ver / Imprimir ticket
               </button>
               {ventaDetalle.estado === 'pendiente' && (
-                <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })}
+                <button onClick={() => {
+                  if (!(ventaDetalle.monto_pagado > 0)) {
+                    toast.error('Para reservar stock debés registrar un pago. Editá el monto cobrado primero.')
+                    return
+                  }
+                  cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })
+                }}
                   disabled={cambiarEstado.isPending}
                   className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
                   Reservar stock
@@ -2632,7 +2752,8 @@ export default function VentasPage() {
       {/* Modal TICKET */}
       {ticketVenta && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm p-6" id="ticket-print">
+          <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm flex flex-col max-h-[90vh]" id="ticket-print">
+            <div className="overflow-y-auto flex-1 p-6 pb-2">
             <div className="text-center mb-4 border-b border-dashed border-gray-300 dark:border-gray-600 pb-4">
               <p className="text-lg font-bold text-primary">{tenant?.nombre ?? 'Genesis360'}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -2667,18 +2788,6 @@ export default function VentasPage() {
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">
                           S/N: {(item.series_seleccionadas as string[]).join(', ')}
                         </p>
-                      )}
-                      {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-0.5">
-                          {item.lpn_fuentes.slice(0, 3).map((f: LpnFuente, fi: number) => (
-                            <span key={fi} className="text-xs text-blue-600 dark:text-blue-400">
-                              LPN: {f.lpn ?? '—'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
-                            </span>
-                          ))}
-                          {item.lpn_fuentes.length > 3 && (
-                            <span className="text-xs text-gray-400 dark:text-gray-500">+{item.lpn_fuentes.length - 3} más</span>
-                          )}
-                        </div>
                       )}
                     </div>
                     <div className="text-right whitespace-nowrap">
@@ -2718,6 +2827,38 @@ export default function VentasPage() {
                       <span>−${(ticketVenta.subtotal * ticketVenta.descuento_total / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                     </div>
                   )}
+                  {(() => {
+                    // Desglose IVA por tasa
+                    const items: any[] = ticketVenta.items ?? []
+                    const ivaMap: Record<number, number> = {}
+                    let totalIva = 0
+                    for (const item of items) {
+                      const tasa = item.alicuota_iva ?? 21
+                      if (tasa <= 0) continue
+                      const cant = item.tiene_series ? item.series_seleccionadas?.length ?? 0 : item.cantidad
+                      const sub = item.subtotal ?? item.precio_unitario * cant
+                      const iva = sub - sub / (1 + tasa / 100)
+                      ivaMap[tasa] = (ivaMap[tasa] ?? 0) + iva
+                      totalIva += iva
+                    }
+                    const tasas = Object.keys(ivaMap).map(Number).filter(t => ivaMap[t] > 0.01)
+                    if (tasas.length === 0) return null
+                    const neto = (ticketVenta.total ?? 0) - totalIva
+                    return (
+                      <div className="space-y-0.5 text-xs text-gray-400 dark:text-gray-500 border-t border-dashed border-gray-200 dark:border-gray-700 pt-2 mt-1">
+                        <div className="flex justify-between">
+                          <span>Neto (sin IVA)</span>
+                          <span>${neto.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                        </div>
+                        {tasas.sort((a, b) => a - b).map(tasa => (
+                          <div key={tasa} className="flex justify-between">
+                            <span>IVA {tasa}%</span>
+                            <span>${ivaMap[tasa].toLocaleString('es-AR', { maximumFractionDigits: 2 })}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                   <div className="flex justify-between font-bold text-primary text-base">
                     <span>TOTAL</span>
                     <span>${ticketVenta.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
@@ -2751,8 +2892,9 @@ export default function VentasPage() {
             <p className="text-center text-xs text-gray-300 mt-4 border-t border-dashed border-gray-200 dark:border-gray-700 pt-3">
               ¡Gracias por su compra!
             </p>
+            </div>{/* end scroll area */}
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2 p-4 pt-2 border-t border-gray-100 dark:border-gray-700 shrink-0">
               <button onClick={() => window.print()}
                 className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <Printer size={15} /> Imprimir

@@ -145,6 +145,22 @@ export function calcularLpnFuentes(lineas: LineaDisponible[], cantidad: number):
   return fuentes
 }
 
+const UNIDADES_DECIMALES_SET = new Set(['kg','g','gr','mg','l','lt','ml','m','m2','m3','cm','mm','km'])
+
+/** Devuelve true si la unidad de medida admite cantidades decimales. */
+export const esDecimal = (u?: string | null): boolean =>
+  !!u && UNIDADES_DECIMALES_SET.has(u.toLowerCase())
+
+/** Parsea un string de cantidad ingresado por el usuario.
+ *  Acepta punto y coma como separador decimal.
+ *  Para UOM decimales retorna un float ≥ 0.001; para enteras retorna un int ≥ 1. */
+export function parseCantidad(val: string, u?: string | null): number {
+  const normalized = val.replace(',', '.')
+  return esDecimal(u)
+    ? Math.max(0.001, parseFloat(normalized) || 0.001)
+    : Math.max(1, parseInt(normalized) || 1)
+}
+
 export function validarMediosPago(
   estado: EstadoVenta,
   mediosPago: MedioPagoItem[],

@@ -1,0 +1,107 @@
+import { useEffect, useRef, useState } from 'react'
+import QRCode from 'qrcode'
+import { QrCode, Download, X, Printer } from 'lucide-react'
+import { BRAND } from '../config/brand'
+
+interface Props {
+  lpn: string
+  productoNombre: string
+  sku: string
+  onClose: () => void
+}
+
+export function LpnQR({ lpn, productoNombre, sku, onClose }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [dataUrl, setDataUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!canvasRef.current) return
+    QRCode.toCanvas(canvasRef.current, lpn, {
+      width: 220,
+      margin: 2,
+      color: { dark: BRAND.color.primary, light: '#FFFFFF' },
+    }).then(() => {
+      setDataUrl(canvasRef.current!.toDataURL('image/png'))
+    })
+  }, [lpn])
+
+  const descargar = () => {
+    if (!dataUrl) return
+    const a = document.createElement('a')
+    a.href = dataUrl
+    a.download = `qr-lpn-${lpn}.png`
+    a.click()
+  }
+
+  const imprimir = () => {
+    if (!dataUrl) return
+    const win = window.open('', '_blank')
+    if (!win) return
+    win.document.write(`
+      <html><head><title>QR LPN ${lpn}</title>
+      <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column;
+               align-items: center; justify-content: center; min-height: 100vh;
+               margin: 0; background: white; }
+        img { width: 200px; height: 200px; }
+        p { margin: 4px 0; text-align: center; }
+        .lpn { font-size: 15px; font-weight: 700; color: ${BRAND.color.primary}; font-family: monospace; }
+        .nombre { font-size: 12px; color: #374151; max-width: 200px; }
+        .sku { font-size: 11px; color: #6b7280; font-family: monospace; }
+      </style>
+      </head><body>
+        <img src="${dataUrl}" />
+        <p class="lpn">${lpn}</p>
+        <p class="nombre">${productoNombre}</p>
+        <p class="sku">${sku}</p>
+        <script>window.onload = () => { window.print(); window.close(); }<\/script>
+      </body></html>
+    `)
+    win.document.close()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-xs overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <QrCode size={17} className="text-accent" />
+            <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">QR del LPN</span>
+          </div>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <X size={17} className="text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-6 flex flex-col items-center gap-3">
+          <canvas ref={canvasRef} className="rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm" />
+          <div className="text-center">
+            <p className="font-bold text-gray-900 dark:text-white font-mono">{lpn}</p>
+            <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">{productoNombre}</p>
+            <p className="text-xs text-gray-400 font-mono mt-0.5">{sku}</p>
+          </div>
+          <p className="text-xs text-gray-400 text-center px-4">
+            Escaneá este QR para identificar el LPN en almacén
+          </p>
+        </div>
+
+        <div className="flex gap-2 px-4 pb-4">
+          <button
+            onClick={descargar}
+            disabled={!dataUrl}
+            className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-600 rounded-xl py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40"
+          >
+            <Download size={15} /> Descargar
+          </button>
+          <button
+            onClick={imprimir}
+            disabled={!dataUrl}
+            className="flex-1 flex items-center justify-center gap-2 bg-primary text-white rounded-xl py-2.5 text-sm font-medium hover:bg-accent disabled:opacity-40"
+          >
+            <Printer size={15} /> Imprimir
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -38,6 +38,7 @@ export interface Tenant {
   marketplace_activo?: boolean
   marketplace_webhook_url?: string
   session_timeout_minutes?: number | null
+  permite_over_receipt?: boolean
   created_at: string
 }
 
@@ -148,6 +149,8 @@ export interface Ubicacion {
   largo_cm?: number | null
   peso_max_kg?: number | null
   capacidad_pallets?: number | null
+  // Sprint B
+  mono_sku?: boolean
 }
 
 export interface Producto {
@@ -210,6 +213,35 @@ export interface ProductoEstructura {
   largo_pallet?: number | null
   created_at: string
   updated_at: string
+}
+
+export interface InventarioConteo {
+  id: string
+  tenant_id: string
+  tipo: 'ubicacion' | 'producto'
+  ubicacion_id?: string | null
+  producto_id?: string | null
+  estado: 'borrador' | 'finalizado'
+  notas?: string | null
+  ajuste_aplicado: boolean
+  sucursal_id?: string | null
+  created_by?: string | null
+  created_at: string
+  updated_at: string
+  ubicaciones?: { nombre: string }
+  productos?: { nombre: string; sku: string }
+  inventario_conteo_items?: InventarioConteoItem[]
+}
+
+export interface InventarioConteoItem {
+  id: string
+  conteo_id: string
+  inventario_linea_id?: string | null
+  producto_id: string
+  lpn?: string | null
+  cantidad_esperada: number
+  cantidad_contada: number
+  productos?: { nombre: string; sku: string; unidad_medida: string }
 }
 
 export interface MovimientoStock {
@@ -331,6 +363,19 @@ export interface KittingLog {
   ubicacion_id?: string | null
   usuario_id?: string | null
   notas?: string | null
+  tipo?: 'armado' | 'desarmado'
+  estado?: 'en_armado' | 'completado' | 'cancelado'
+  componentes_reservados?: { linea_id: string; comp_producto_id: string; cantidad: number }[] | null
   created_at: string
   kit?: Pick<Producto, 'nombre' | 'sku'>
+}
+
+export interface ProductoStockMinimoSucursal {
+  id: string
+  tenant_id: string
+  producto_id: string
+  sucursal_id: string
+  stock_minimo: number
+  created_at: string
+  sucursales?: Pick<Sucursal, 'nombre'>
 }

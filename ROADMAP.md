@@ -1,6 +1,6 @@
 # Genesis360 — Roadmap RRHH
 
-**Última actualización:** 17 de Abril, 2026 · **v0.75.0 en DEV · v0.74.2 en PROD**
+**Última actualización:** 18 de Abril, 2026 · **v0.77.0 en DEV · v0.76.0 en PROD**
 
 > Stack, arquitectura y convenciones → [CLAUDE.md](CLAUDE.md) · Workflow de deploy → [WORKFLOW.md](WORKFLOW.md)
 
@@ -172,7 +172,7 @@ Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅
                         → Phase 4 ✅
                                   → Phase 5 ✅
 
-Próximo RRHH: Bloque 5 — feriados calendar + CHECK-IN/CHECK-OUT rápido (v0.75.0)
+Próximo RRHH: Bloque 5 — CHECK-IN/CHECK-OUT rápido (v0.76.0)
 ```
 
 ---

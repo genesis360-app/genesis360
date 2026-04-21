@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, FolderOpen, FileText, Download, ShieldCheck, KeyRound, CreditCard } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -11,7 +11,7 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'archivos' | 'metodos_pago'
+type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'metodos_pago'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
 const COLORES = [
@@ -383,6 +383,7 @@ export default function ConfigPage() {
   const [bizTipoSelect, setBizTipoSelect] = useState(_enLista ? _currentTipo : (_currentTipo ? 'Otro' : ''))
   const [bizTipoPersonalizado, setBizTipoPersonalizado] = useState(_enLista ? '' : _currentTipo)
   const [bizRegla, setBizRegla] = useState(tenant?.regla_inventario ?? 'FIFO')
+  const [bizOverReceipt, setBizOverReceipt] = useState(tenant?.permite_over_receipt ?? false)
   const [bizTimeout, setBizTimeout] = useState<string>(
     tenant?.session_timeout_minutes != null ? String(tenant.session_timeout_minutes) : 'nunca'
   )
@@ -394,7 +395,7 @@ export default function ConfigPage() {
       : bizTipoSelect
     const sessionTimeoutMinutes = bizTimeout === 'nunca' ? null : parseInt(bizTimeout)
     const { data, error } = await supabase.from('tenants')
-      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla, session_timeout_minutes: sessionTimeoutMinutes })
+      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla, session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt })
       .eq('id', tenant!.id).select().single()
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Datos actualizados') }
@@ -443,6 +444,7 @@ export default function ConfigPage() {
   const [editUbicPeso, setEditUbicPeso] = useState('')
   const [editUbicPallets, setEditUbicPallets] = useState('')
   const [editUbicWmsOpen, setEditUbicWmsOpen] = useState(false)
+  const [editUbicMonoSku, setEditUbicMonoSku] = useState(false)
   const [ubicSearch, setUbicSearch] = useState('')
 
   const addUbicacion = async () => {
@@ -466,6 +468,7 @@ export default function ConfigPage() {
     setEditUbicPeso(u.peso_max_kg != null ? String(u.peso_max_kg) : '')
     setEditUbicPallets(u.capacidad_pallets != null ? String(u.capacidad_pallets) : '')
     setEditUbicWmsOpen(!!(u.tipo_ubicacion || u.alto_cm || u.ancho_cm || u.largo_cm || u.peso_max_kg || u.capacidad_pallets))
+    setEditUbicMonoSku(u.mono_sku ?? false)
   }
   const saveUbicacion = async (id: string) => {
     const old = (ubicaciones as any[]).find(u => u.id === id)
@@ -479,6 +482,7 @@ export default function ConfigPage() {
       largo_cm: editUbicLargo ? parseFloat(editUbicLargo) : null,
       peso_max_kg: editUbicPeso ? parseFloat(editUbicPeso) : null,
       capacidad_pallets: editUbicPallets ? parseInt(editUbicPallets) : null,
+      mono_sku: editUbicMonoSku,
     }).eq('id', id)
     if (error) { toast.error(error.message); return }
     toast.success('Actualizada')
@@ -830,76 +834,6 @@ export default function ConfigPage() {
     }
   }
 
-  // ── Biblioteca de Archivos ──────────────────────────────────────────────
-  const TIPO_LABELS: Record<string, string> = {
-    certificado_afip_crt: 'Cert. AFIP (.crt)',
-    certificado_afip_key: 'Cert. AFIP (.key)',
-    contrato: 'Contrato',
-    factura_proveedor: 'Factura proveedor',
-    manual: 'Manual',
-    otro: 'Otro',
-  }
-  const [archivoForm, setArchivoForm] = useState({ nombre: '', tipo: 'otro', descripcion: '' })
-  const [archivoFile, setArchivoFile] = useState<File | null>(null)
-  const [uploadingArchivo, setUploadingArchivo] = useState(false)
-
-  const { data: archivos = [], isLoading: loadingArchivos } = useQuery({
-    queryKey: ['archivos_biblioteca', tenant?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from('archivos_biblioteca')
-        .select('*').eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
-      return data ?? []
-    },
-    enabled: !!tenant && tab === 'archivos',
-  })
-
-  const uploadArchivo = async () => {
-    if (!archivoFile || !archivoForm.nombre.trim()) return
-    setUploadingArchivo(true)
-    try {
-      const ext = archivoFile.name.split('.').pop() ?? 'bin'
-      const path = `${tenant!.id}/${Date.now()}.${ext}`
-      const { error: storageErr } = await supabase.storage
-        .from('archivos-biblioteca').upload(path, archivoFile)
-      if (storageErr) throw storageErr
-      const { error: dbErr } = await supabase.from('archivos_biblioteca').insert({
-        tenant_id: tenant!.id,
-        nombre: archivoForm.nombre.trim(),
-        tipo: archivoForm.tipo,
-        descripcion: archivoForm.descripcion.trim() || null,
-        storage_path: path,
-        tamanio: archivoFile.size,
-        mime_type: archivoFile.type || null,
-        created_by: user?.id,
-      })
-      if (dbErr) { await supabase.storage.from('archivos-biblioteca').remove([path]); throw dbErr }
-      toast.success('Archivo subido')
-      setArchivoForm({ nombre: '', tipo: 'otro', descripcion: '' })
-      setArchivoFile(null)
-      qc.invalidateQueries({ queryKey: ['archivos_biblioteca'] })
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error al subir archivo')
-    } finally {
-      setUploadingArchivo(false)
-    }
-  }
-
-  const viewArchivo = async (path: string, nombre: string) => {
-    const { data, error } = await supabase.storage.from('archivos-biblioteca').createSignedUrl(path, 300)
-    if (error || !data?.signedUrl) { toast.error('No se pudo generar el enlace'); return }
-    const a = document.createElement('a')
-    a.href = data.signedUrl; a.download = nombre; a.target = '_blank'
-    document.body.appendChild(a); a.click(); document.body.removeChild(a)
-  }
-
-  const deleteArchivo = async (id: string, path: string) => {
-    if (!confirm('¿Eliminar este archivo?')) return
-    await supabase.storage.from('archivos-biblioteca').remove([path])
-    const { error } = await supabase.from('archivos_biblioteca').delete().eq('id', id)
-    if (error) toast.error(error.message)
-    else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['archivos_biblioteca'] }) }
-  }
-
   // ── Métodos de pago ─────────────────────────────────────────────────────────
   const [nuevoMetodo, setNuevoMetodo] = useState({ nombre: '', color: '#22c55e' })
   const [editMetodoId, setEditMetodoId] = useState<string | null>(null)
@@ -981,7 +915,6 @@ export default function ConfigPage() {
     { id: 'combos' as Tab, label: 'Combos', icon: Gift },
     { id: 'grupos' as Tab, label: 'Grupos de estados', icon: Layers },
     { id: 'aging' as Tab, label: 'Aging Profiles', icon: Timer },
-    { id: 'archivos' as Tab, label: 'Biblioteca', icon: FolderOpen },
     { id: 'metodos_pago' as Tab, label: 'Métodos de pago', icon: CreditCard },
   ]
 
@@ -1073,6 +1006,19 @@ export default function ConfigPage() {
               <option value="60">1 hora</option>
             </select>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si el usuario no tiene actividad por este tiempo, la sesión se cierra automáticamente.</p>
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Permitir over-receipt</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Al recibir mercadería, permite ingresar más cantidad de la pedida en la OC. Genera alerta de excedente.</p>
+            </div>
+            <button type="button" disabled={!canEdit} onClick={() => setBizOverReceipt(p => !p)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none
+                ${bizOverReceipt ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}
+                ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform
+                ${bizOverReceipt ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plan actual</label>
@@ -1315,6 +1261,13 @@ export default function ConfigPage() {
                               className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
+                        {/* Mono-SKU toggle */}
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-gray-600 dark:text-gray-400 pt-1">
+                          <input type="checkbox" checked={editUbicMonoSku} onChange={e => setEditUbicMonoSku(e.target.checked)}
+                            className="w-3.5 h-3.5 rounded accent-accent" />
+                          <Tag size={11} />
+                          Mono-SKU (un solo producto en esta ubicación)
+                        </label>
                       </div>
                     ) : (
                       <>
@@ -1328,6 +1281,11 @@ export default function ConfigPage() {
                           {(u.alto_cm || u.ancho_cm || u.largo_cm) && (
                             <span className="ml-1 text-xs text-gray-400 dark:text-gray-500" title="Dimensiones alto × ancho × largo">
                               <Ruler size={10} className="inline mb-0.5" /> {[u.alto_cm, u.ancho_cm, u.largo_cm].filter(Boolean).join('×')} cm
+                            </span>
+                          )}
+                          {u.mono_sku && (
+                            <span className="ml-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded" title="Mono-SKU: solo un producto">
+                              <Tag size={9} className="inline mb-0.5 mr-0.5" />Mono-SKU
                             </span>
                           )}
                         </div>
@@ -1743,93 +1701,6 @@ export default function ConfigPage() {
                   </div>
                 )
               })}
-            </div>
-          )}
-        </div>
-      )}
-      {tab === 'archivos' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
-          <div className="flex items-center gap-2 mb-1">
-            <FolderOpen size={18} className="text-accent" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Biblioteca de Archivos</h2>
-            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{(archivos as any[]).length} archivo{(archivos as any[]).length !== 1 ? 's' : ''}</span>
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            Almacená certificados AFIP, contratos, facturas de proveedor y otros documentos del negocio.
-          </p>
-
-          {/* Upload form */}
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nombre *</label>
-                <input type="text" value={archivoForm.nombre}
-                  onChange={e => setArchivoForm(p => ({ ...p, nombre: e.target.value }))}
-                  placeholder="Ej: Certificado AFIP 2025"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-600 dark:text-white" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo</label>
-                <select value={archivoForm.tipo}
-                  onChange={e => setArchivoForm(p => ({ ...p, tipo: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-600 dark:text-white">
-                  {Object.entries(TIPO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Descripción (opcional)</label>
-              <input type="text" value={archivoForm.descripcion}
-                onChange={e => setArchivoForm(p => ({ ...p, descripcion: e.target.value }))}
-                placeholder="Ej: Certificado para facturación electrónica"
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-600 dark:text-white" />
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="flex-1 flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 dark:border-gray-500 rounded-lg cursor-pointer hover:bg-white dark:hover:bg-gray-600 transition-colors text-sm text-gray-500 dark:text-gray-400">
-                <Upload size={15} />
-                {archivoFile ? archivoFile.name : 'Seleccionar archivo (máx. 10 MB)'}
-                <input type="file" className="hidden" onChange={e => setArchivoFile(e.target.files?.[0] ?? null)} />
-              </label>
-              <button onClick={uploadArchivo}
-                disabled={!archivoFile || !archivoForm.nombre.trim() || uploadingArchivo}
-                className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1.5 whitespace-nowrap">
-                <Upload size={14} /> {uploadingArchivo ? 'Subiendo...' : 'Subir archivo'}
-              </button>
-            </div>
-          </div>
-
-          {/* File list */}
-          {loadingArchivos ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p>
-          ) : (archivos as any[]).length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay archivos aún.</p>
-          ) : (
-            <div className="space-y-2">
-              {(archivos as any[]).map((a: any) => (
-                <div key={a.id} className="flex items-center gap-3 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                  <FileText size={16} className="text-accent flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{a.nombre}</span>
-                      <span className="text-xs bg-accent/10 text-accent px-2 py-0.5 rounded-full flex-shrink-0">{TIPO_LABELS[a.tipo] ?? a.tipo}</span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      {a.descripcion && <span className="text-xs text-gray-400 dark:text-gray-500 truncate">{a.descripcion}</span>}
-                      {a.tamanio && <span className="text-xs text-gray-300 dark:text-gray-600">{(a.tamanio / 1024).toFixed(0)} KB</span>}
-                    </div>
-                  </div>
-                  <button onClick={() => viewArchivo(a.storage_path, a.nombre)}
-                    title="Descargar / Ver"
-                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent transition-colors rounded">
-                    <Download size={15} />
-                  </button>
-                  <button onClick={() => deleteArchivo(a.id, a.storage_path)}
-                    title="Eliminar"
-                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors rounded">
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ))}
             </div>
           )}
         </div>

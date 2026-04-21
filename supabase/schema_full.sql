@@ -74,7 +74,7 @@ CREATE TABLE users (
   id             UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   tenant_id      UUID REFERENCES tenants(id) ON DELETE CASCADE,
   rol            TEXT NOT NULL DEFAULT 'CAJERO'
-    CHECK (rol IN ('OWNER','SUPERVISOR','CAJERO','ADMIN')),
+    CHECK (rol IN ('OWNER','SUPERVISOR','CAJERO','ADMIN','RRHH','DEPOSITO','CONTADOR')),
   nombre_display TEXT,
   activo         BOOLEAN DEFAULT TRUE,
   created_at     TIMESTAMPTZ DEFAULT NOW()
@@ -483,7 +483,7 @@ CREATE TABLE venta_items (
   venta_id               UUID NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
   producto_id            UUID NOT NULL REFERENCES productos(id),
   linea_id               UUID REFERENCES inventario_lineas(id),
-  cantidad               INT NOT NULL DEFAULT 1,
+  cantidad               DECIMAL(14,4) NOT NULL DEFAULT 1,
   precio_unitario        DECIMAL(12,2) NOT NULL,
   descuento              DECIMAL(5,2) NOT NULL DEFAULT 0,
   subtotal               DECIMAL(12,2) NOT NULL,
@@ -1627,7 +1627,7 @@ CREATE INDEX IF NOT EXISTS idx_kitting_log_kit    ON kitting_log(kit_producto_id
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS session_timeout_minutes INT DEFAULT NULL;
 ALTER TABLE movimientos_stock DROP CONSTRAINT IF EXISTS movimientos_stock_tipo_check;
 ALTER TABLE movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check
-  CHECK (tipo IN ('ingreso', 'rebaje', 'ajuste', 'kitting', 'des_kitting'));
+  CHECK (tipo IN ('ingreso', 'rebaje', 'ajuste', 'kitting', 'des_kitting', 'ajuste_ingreso', 'ajuste_rebaje', 'traslado'));
 ALTER TABLE kitting_log ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'armado' CHECK (tipo IN ('armado', 'desarmado'));
 
 -- ─── Migration 042: IVA + archivos_biblioteca + auto-resolve alertas ─────────
@@ -1726,3 +1726,51 @@ CREATE TABLE IF NOT EXISTS metodos_pago (
 );
 ALTER TABLE metodos_pago ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_metodos_pago_tenant ON metodos_pago(tenant_id);
+
+-- ─── Migration 058: Ampliar users.rol CHECK ──────────────────────────────────
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_rol_check;
+ALTER TABLE users ADD CONSTRAINT users_rol_check
+  CHECK (rol IN ('OWNER', 'SUPERVISOR', 'CAJERO', 'ADMIN', 'RRHH', 'DEPOSITO', 'CONTADOR'));
+
+-- ─── Migration 057: Sprint D — LPN Madre ─────────────────────────────────────
+ALTER TABLE inventario_lineas ADD COLUMN IF NOT EXISTS parent_lpn_id TEXT DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_lineas_parent_lpn
+  ON inventario_lineas(tenant_id, parent_lpn_id)
+  WHERE parent_lpn_id IS NOT NULL;
+
+-- ─── Migration 055: movimientos_stock tipos + DECIMAL cantidad ────────────────
+ALTER TABLE movimientos_stock DROP CONSTRAINT IF EXISTS movimientos_stock_tipo_check;
+ALTER TABLE movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check
+  CHECK (tipo IN ('ingreso', 'rebaje', 'ajuste', 'kitting', 'des_kitting', 'ajuste_ingreso', 'ajuste_rebaje', 'traslado'));
+ALTER TABLE movimientos_stock
+  ALTER COLUMN cantidad TYPE DECIMAL(14,4) USING cantidad::DECIMAL(14,4);
+
+-- ─── Migration 056: Sprint C — Tab Autorizaciones DEPOSITO ───────────────────
+CREATE TABLE IF NOT EXISTS autorizaciones_inventario (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id),
+  tipo             TEXT NOT NULL CHECK (tipo IN ('ajuste_cantidad', 'eliminar_serie', 'eliminar_lpn')),
+  linea_id         UUID NOT NULL REFERENCES inventario_lineas(id),
+  datos_cambio     JSONB NOT NULL DEFAULT '{}',
+  estado           TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente', 'aprobada', 'rechazada')),
+  solicitado_por   UUID REFERENCES users(id),
+  aprobado_por     UUID REFERENCES users(id),
+  motivo_rechazo   TEXT,
+  notas            TEXT,
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE autorizaciones_inventario ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'autorizaciones_inventario' AND policyname = 'aut_inv_tenant'
+  ) THEN
+    CREATE POLICY aut_inv_tenant ON autorizaciones_inventario
+      FOR ALL USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_aut_inv_tenant_estado ON autorizaciones_inventario(tenant_id, estado);
+CREATE TRIGGER trg_updated_at_aut_inv
+  BEFORE UPDATE ON autorizaciones_inventario
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();

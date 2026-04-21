@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect, Fragment } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  ArrowDown, ArrowUp, Search, Plus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
+  ArrowDown, ArrowUp, Search, Plus, Minus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
-  MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building,
+  MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
+  ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -19,11 +20,11 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
-import type { Producto, KitReceta } from '@/lib/supabase'
+import type { Producto, KitReceta, InventarioConteo } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 
-type Tab = 'inventario' | 'agregar' | 'quitar' | 'historial' | 'kits'
+type Tab = 'inventario' | 'agregar' | 'quitar' | 'kits' | 'conteo' | 'historial' | 'autorizaciones'
 type ModalType = 'ingreso' | 'rebaje' | null
 
 const emptyIngreso = {
@@ -61,6 +62,7 @@ function resolverCantidad(raw: string, unitAlt: string | null, unitBase: string 
 export default function InventarioPage() {
   const { tenant, user } = useAuthStore()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { cotizacion: cotizacionNum } = useCotizacion()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
@@ -102,6 +104,45 @@ export default function InventarioPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [invScannerOpen, setInvScannerOpen] = useState(false)
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
+  const [seriesModal, setSeriesModal] = useState<{ lpn: string; series: any[] } | null>(null)
+
+  // Pre-fill search from ?search= URL param (e.g. link desde AlertasPage)
+  useEffect(() => {
+    const s = searchParams.get('search')
+    if (s) {
+      setTab('inventario')
+      setInvSearch(s)
+      setSearchParams({}, { replace: true })
+    }
+  }, [])
+
+  // ── Masivo inline (Agregar Stock) ──────────────────────────────────────────
+  type MasivoRow = {
+    _id: string
+    producto_id: string
+    nombre: string
+    sku: string
+    unidad_medida: string | null
+    tiene_series: boolean
+    tiene_lote: boolean
+    tiene_vencimiento: boolean
+    cantidad: string
+    estado_id: string
+    ubicacion_id: string
+    nro_lote: string
+    fecha_vencimiento: string
+    lpn: string
+    series_txt: string
+    showExtra: boolean
+  }
+  const [masivoInline, setMasivoInline] = useState(false)
+  const [masivoRows, setMasivoRows] = useState<MasivoRow[]>([])
+  const [masivoSearch, setMasivoSearch] = useState('')
+  const [masivoScannerOpen, setMasivoScannerOpen] = useState(false)
+  const [masivoFocusIdx, setMasivoFocusIdx] = useState<number | null>(null)
+  const [masivoSearchFocused, setMasivoSearchFocused] = useState(false)
+  const masivoSearchRef = useRef<HTMLInputElement>(null)
+  const masivoQtyRefs = useRef<(HTMLInputElement | null)[]>([])
 
   // ── Kits tab state ─────────────────────────────────────────────────────────
   const [kitExpandedId, setKitExpandedId] = useState<string | null>(null)
@@ -128,6 +169,40 @@ export default function InventarioPage() {
   const [desarmarCantidad, setDesarmarCantidad] = useState('1')
   const [desarmarNotas, setDesarmarNotas] = useState('')
 
+  // ── Conteo tab state ───────────────────────────────────────────────────────
+  type ConteoRow = {
+    linea_id: string; producto_id: string; nombre: string; sku: string
+    unidad_medida: string; lpn: string; cantidad_esperada: number; cantidad_contada: string
+  }
+  const [conteoTipo, setConteoTipo] = useState<'ubicacion' | 'producto'>('ubicacion')
+  const [conteoRefId, setConteoRefId] = useState('')
+  const [conteoRows, setConteoRows] = useState<ConteoRow[]>([])
+  const [conteoNotas, setConteoNotas] = useState('')
+  const [showConteoForm, setShowConteoForm] = useState(false)
+  const [conteoExpandedId, setConteoExpandedId] = useState<string | null>(null)
+  const [conteoLoading, setConteoLoading] = useState(false)
+
+  // ── Historial filters ──────────────────────────────────────────────────────
+  const [filterHistFechaDesde, setFilterHistFechaDesde] = useState('')
+  const [filterHistFechaHasta, setFilterHistFechaHasta] = useState('')
+  const [filterHistCatId, setFilterHistCatId] = useState('')
+  const [filterHistTipo, setFilterHistTipo] = useState('')
+  const [filterHistMotivo, setFilterHistMotivo] = useState('')
+
+  // ── Autorizaciones tab state ───────────────────────────────────────────────
+  const [autEstado, setAutEstado] = useState<'pendiente' | 'aprobada' | 'rechazada'>('pendiente')
+  const [autRechazoId, setAutRechazoId] = useState<string | null>(null)
+  const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
+
+  // ── Combinar LPNs state (Sprint D) ─────────────────────────────────────────
+  type SelectedLinea = { id: string; lpn: string; cantidad: number; producto_id: string; nro_lote: string | null; fecha_vencimiento: string | null }
+  const [selectedLineas, setSelectedLineas] = useState<string[]>([])
+  const [selectedLineasInfo, setSelectedLineasInfo] = useState<SelectedLinea[]>([])
+  const [showCombinarModal, setShowCombinarModal] = useState(false)
+  const [combinarMode, setCombinarMode] = useState<'fusionar' | 'madre'>('fusionar')
+  const [combinarDestinoId, setCombinarDestinoId] = useState('')
+  const [combinarParentLpn, setCombinarParentLpn] = useState('')
+
   // ── Shared queries ─────────────────────────────────────────────────────────
   const { data: estados = [] } = useQuery({
     queryKey: ['estados_inventario', tenant?.id],
@@ -144,7 +219,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('movimientos_stock')
-        .select('*, productos(nombre,sku,unidad_medida), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie)), ventas(numero)')
+        .select('*, productos(nombre,sku,unidad_medida,categoria_id,categorias(id,nombre)), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie)), ventas(numero)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -168,6 +243,20 @@ export default function InventarioPage() {
       return (data ?? []) as unknown as Producto[]
     },
     enabled: !!tenant && (form.productoSearch.length > 0 || searchFocused),
+  })
+
+  const { data: masivoBusqueda = [] } = useQuery({
+    queryKey: ['productos-masivo-busqueda', tenant?.id, masivoSearch],
+    queryFn: async () => {
+      let q = supabase.from('productos')
+        .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, precio_costo, precio_venta')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(5)
+      if (masivoSearch.length > 0)
+        q = q.or(`nombre.ilike.%${masivoSearch}%,sku.ilike.%${masivoSearch}%,codigo_barras.eq.${masivoSearch}`)
+      const { data } = await q
+      return (data ?? []) as unknown as Producto[]
+    },
+    enabled: !!tenant && masivoInline && (masivoSearch.length > 0 || masivoSearchFocused),
   })
 
   const { data: motivos = [] } = useQuery({
@@ -221,23 +310,21 @@ export default function InventarioPage() {
 
   // ── Inventario queries ─────────────────────────────────────────────────────
   const { data: productos = [], isLoading: invLoading } = useQuery({
-    queryKey: ['productos', tenant?.id, invSearch],
+    queryKey: ['productos', tenant?.id],
     queryFn: async () => {
-      let q = supabase
+      const { data, error } = await supabase
         .from('productos')
         .select('*, categorias(id, nombre), proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
-      if (invSearch) q = q.or(`nombre.ilike.%${invSearch}%,sku.ilike.%${invSearch}%,codigo_barras.eq.${invSearch}`)
-      const { data, error } = await q
       if (error) throw error
       return data ?? []
     },
     enabled: !!tenant && tab === 'inventario',
   })
 
-  const { data: lineasData = { byProducto: {} as Record<string, any[]>, byUbicacion: {} as Record<string, any[]> } } = useQuery({
+  const { data: lineasData = { byProducto: {} as Record<string, any[]>, byUbicacion: {} as Record<string, any[]> }, isLoading: lineasLoading } = useQuery({
     queryKey: ['inventario_lineas_all', tenant?.id, sucursalId],
     queryFn: async () => {
       let q = supabase
@@ -295,6 +382,19 @@ export default function InventarioPage() {
     enabled: !!tenant && tab === 'kits',
   })
 
+  const { data: kitsEnArmado = [] } = useQuery({
+    queryKey: ['kits-en-armado', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('kitting_log')
+        .select('*, kit:kit_producto_id(nombre, sku)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'en_armado')
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'kits',
+  })
+
   const { data: compsBusqueda = [] } = useQuery({
     queryKey: ['productos-comps-busqueda', tenant?.id, recetaCompSearch, showRecetaForm],
     queryFn: async () => {
@@ -307,6 +407,207 @@ export default function InventarioPage() {
       return data ?? []
     },
     enabled: !!tenant && !!showRecetaForm && recetaCompSearch.length > 1,
+  })
+
+  // ── Conteo queries ─────────────────────────────────────────────────────────
+  const { data: conteoHistorial = [] } = useQuery({
+    queryKey: ['conteo-historial', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('inventario_conteos')
+        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida))')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at', { ascending: false })
+        .limit(30)
+      return (data ?? []) as InventarioConteo[]
+    },
+    enabled: !!tenant && tab === 'conteo',
+  })
+
+  const { data: productosParaConteo = [] } = useQuery({
+    queryKey: ['productos-para-conteo', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos')
+        .select('id, nombre, sku').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'conteo',
+  })
+
+  // ── Historial categorías (lazy, solo cuando tab='historial') ──────────────
+  const { data: categoriasHistorial = [] } = useQuery({
+    queryKey: ['categorias-historial', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categorias').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'historial',
+  })
+
+  // ── Autorizaciones (lazy, solo OWNER/SUPERVISOR/ADMIN) ─────────────────────
+  const puedeVerAutorizaciones = ['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
+
+  const { data: autorizaciones = [], isLoading: autLoading, refetch: refetchAut } = useQuery({
+    queryKey: ['autorizaciones_inventario', tenant?.id, autEstado],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('autorizaciones_inventario')
+        .select('*, inventario_lineas(lpn, cantidad, producto_id, productos(nombre, sku, unidad_medida)), users!solicitado_por(nombre_display)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', autEstado)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'autorizaciones' && puedeVerAutorizaciones,
+  })
+
+  const aprobarAutorizacion = useMutation({
+    mutationFn: async (aut: any) => {
+      const linea = aut.inventario_lineas
+      if (aut.tipo === 'ajuste_cantidad') {
+        const { cantidad_nueva, cantidad_anterior } = aut.datos_cambio
+        const { error } = await supabase.from('inventario_lineas').update({ cantidad: cantidad_nueva }).eq('id', aut.linea_id)
+        if (error) throw error
+        const diff = cantidad_nueva - cantidad_anterior
+        if (Math.abs(diff) > 0.001) {
+          const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
+          const stockAntes = prod?.stock_actual ?? 0
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant!.id, producto_id: linea?.producto_id,
+            tipo: diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje',
+            cantidad: Math.abs(diff),
+            stock_antes: stockAntes,
+            stock_despues: Math.max(0, stockAntes + diff),
+            motivo: `Ajuste aprobado — LPN ${linea?.lpn}`,
+            usuario_id: user?.id,
+          })
+        }
+      } else if (aut.tipo === 'eliminar_serie') {
+        const { serie_id } = aut.datos_cambio
+        const { error } = await supabase.from('inventario_series').update({ activo: false }).eq('id', serie_id)
+        if (error) throw error
+        const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
+        const stockAntes = prod?.stock_actual ?? 0
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id, producto_id: linea?.producto_id,
+          tipo: 'rebaje', cantidad: 1,
+          stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - 1),
+          motivo: `Serie eliminada (aprobada) — LPN ${linea?.lpn}`,
+          usuario_id: user?.id,
+        })
+      } else if (aut.tipo === 'eliminar_lpn') {
+        const cantEliminada = aut.datos_cambio.cantidad ?? linea?.cantidad ?? 0
+        await supabase.from('inventario_series').update({ activo: false }).eq('linea_id', aut.linea_id)
+        const { error } = await supabase.from('inventario_lineas').update({ activo: false, cantidad: 0 }).eq('id', aut.linea_id)
+        if (error) throw error
+        if (cantEliminada > 0) {
+          const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
+          const stockAntes = prod?.stock_actual ?? 0
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant!.id, producto_id: linea?.producto_id,
+            tipo: 'rebaje', cantidad: cantEliminada,
+            stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - cantEliminada),
+            motivo: `LPN eliminado (aprobado) — ${linea?.lpn}`,
+            usuario_id: user?.id,
+          })
+        }
+      }
+      await supabase.from('autorizaciones_inventario').update({ estado: 'aprobada', aprobado_por: user?.id }).eq('id', aut.id)
+    },
+    onSuccess: () => {
+      toast.success('Autorización aprobada y ejecutada')
+      qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const rechazarAutorizacion = useMutation({
+    mutationFn: async ({ id, motivo }: { id: string; motivo: string }) => {
+      if (!motivo.trim()) throw new Error('Ingresá un motivo de rechazo')
+      await supabase.from('autorizaciones_inventario').update({
+        estado: 'rechazada', aprobado_por: user?.id, motivo_rechazo: motivo,
+      }).eq('id', id)
+    },
+    onSuccess: () => {
+      toast.success('Autorización rechazada')
+      setAutRechazoId(null)
+      setAutMotivoRechazo('')
+      qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ── Combinar LPNs mutations (Sprint D) ────────────────────────────────────
+  const fusionarLineas = useMutation({
+    mutationFn: async () => {
+      if (selectedLineas.length < 2) throw new Error('Seleccioná al menos 2 LPNs')
+      const dest = selectedLineasInfo.find(l => l.id === combinarDestinoId)
+      if (!dest) throw new Error('Seleccioná el LPN destino')
+      const sources = selectedLineasInfo.filter(l => l.id !== combinarDestinoId)
+      const productoIds = new Set(selectedLineasInfo.map(l => l.producto_id))
+      if (productoIds.size > 1) throw new Error('Solo podés fusionar LPNs del mismo producto')
+      const totalTransfer = sources.reduce((sum, l) => sum + l.cantidad, 0)
+
+      const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', dest.producto_id).single()
+      const stockAntes = prod?.stock_actual ?? 0
+
+      const { error: e1 } = await supabase.from('inventario_lineas')
+        .update({ cantidad: dest.cantidad + totalTransfer, updated_at: new Date().toISOString() })
+        .eq('id', dest.id)
+      if (e1) throw e1
+
+      const { error: e2 } = await supabase.from('inventario_lineas')
+        .update({ activo: false, cantidad: 0, updated_at: new Date().toISOString() })
+        .in('id', sources.map(l => l.id))
+      if (e2) throw e2
+
+      await supabase.from('movimientos_stock').insert({
+        tenant_id: tenant!.id,
+        producto_id: dest.producto_id,
+        tipo: 'ajuste_ingreso',
+        cantidad: totalTransfer,
+        stock_antes: stockAntes,
+        stock_despues: stockAntes + totalTransfer,
+        motivo: `Fusión LPN — recibe de ${sources.map(l => l.lpn).join(', ')}`,
+        usuario_id: user?.id,
+        linea_id: dest.id,
+        sucursal_id: sucursalId || null,
+      })
+    },
+    onSuccess: () => {
+      toast.success('LPNs fusionados correctamente')
+      setSelectedLineas([])
+      setSelectedLineasInfo([])
+      setShowCombinarModal(false)
+      setCombinarDestinoId('')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const asignarMadre = useMutation({
+    mutationFn: async () => {
+      if (!combinarParentLpn.trim()) throw new Error('Ingresá el LPN madre')
+      const { error } = await supabase.from('inventario_lineas')
+        .update({ parent_lpn_id: combinarParentLpn.trim(), updated_at: new Date().toISOString() })
+        .in('id', selectedLineas)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('LPN Madre asignado')
+      setSelectedLineas([])
+      setSelectedLineasInfo([])
+      setShowCombinarModal(false)
+      setCombinarParentLpn('')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -333,6 +634,46 @@ export default function InventarioPage() {
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (tieneLote && !form.nroLote.trim()) throw new Error('Este producto requiere número de lote')
       if (tieneVencimiento && !form.fechaVencimiento) throw new Error('Este producto requiere fecha de vencimiento')
+
+      // I-05: Validar mono_sku en la ubicación seleccionada
+      if (form.ubicacionId) {
+        const { data: ubicData } = await supabase
+          .from('ubicaciones')
+          .select('mono_sku, nombre')
+          .eq('id', form.ubicacionId)
+          .single()
+        if (ubicData?.mono_sku) {
+          const { data: otraLinea } = await supabase
+            .from('inventario_lineas')
+            .select('producto_id, productos(nombre, sku)')
+            .eq('tenant_id', tenant!.id)
+            .eq('ubicacion_id', form.ubicacionId)
+            .eq('activo', true)
+            .neq('producto_id', selectedProduct.id)
+            .gt('cantidad', 0)
+            .limit(1)
+            .maybeSingle()
+          if (otraLinea) {
+            const otro = (otraLinea as any).productos?.nombre ?? 'otro producto'
+            throw new Error(`La ubicación "${ubicData.nombre}" es Mono-SKU y ya tiene "${otro}"`)
+          }
+        }
+      }
+
+      // Validar unicidad de LPN por tenant
+      if (form.lpn.trim()) {
+        const { data: lpnExiste } = await supabase
+          .from('inventario_lineas')
+          .select('id, productos(nombre)')
+          .eq('tenant_id', tenant!.id)
+          .eq('lpn', form.lpn.trim())
+          .eq('activo', true)
+          .maybeSingle()
+        if (lpnExiste) {
+          const prodNombre = (lpnExiste as any).productos?.nombre ?? 'otro SKU'
+          throw new Error(`El LPN "${form.lpn.trim()}" ya existe en ${prodNombre}`)
+        }
+      }
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', selectedProduct.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
@@ -498,23 +839,25 @@ export default function InventarioPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const ejecutarKitting = useMutation({
+  const iniciarArmado = useMutation({
     mutationFn: async () => {
       const cant = parseFloat(kittingCantidad)
       if (!kittingKitId || isNaN(cant) || cant <= 0) throw new Error('Datos inválidos')
       const recetas = recetasMap[kittingKitId] ?? []
       if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
 
-      // 1. Verificar stock suficiente de cada componente
+      // 1. Verificar stock disponible (neto de reservas) de cada componente
       for (const r of recetas) {
         const comp = r.componente as any
         const requerido = r.cantidad * cant
-        if ((comp?.stock_actual ?? 0) < requerido) {
+        const disponible = (comp?.stock_actual ?? 0) - 0 // stock_actual ya tiene en cuenta reservas en el trigger
+        if (disponible < requerido) {
           throw new Error(`Stock insuficiente de ${comp?.nombre ?? r.comp_producto_id}: necesitás ${requerido} ${comp?.unidad_medida ?? ''}, hay ${comp?.stock_actual ?? 0}`)
         }
       }
 
-      // 2. Rebaje de cada componente
+      // 2. Reservar componentes (incrementar cantidad_reservada en sus líneas)
+      const componentesReservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = []
       for (const r of recetas) {
         const cantComp = r.cantidad * cant
         const { data: lineas } = await supabase.from('inventario_lineas')
@@ -525,51 +868,115 @@ export default function InventarioPage() {
         let restante = cantComp
         for (const linea of lineas ?? []) {
           if (restante <= 0) break
-          const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
-          const aRebajar = Math.min(disponible, restante)
-          if (aRebajar <= 0) continue
-          await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
-          restante -= aRebajar
+          const disponibleLinea = linea.cantidad - (linea.cantidad_reservada ?? 0)
+          const aReservar = Math.min(disponibleLinea, restante)
+          if (aReservar <= 0) continue
+          await supabase.from('inventario_lineas')
+            .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + aReservar })
+            .eq('id', linea.id)
+          componentesReservados.push({ linea_id: linea.id, comp_producto_id: r.comp_producto_id, cantidad: aReservar })
+          restante -= aReservar
         }
-
-        await supabase.from('movimientos_stock').insert({
-          tenant_id: tenant!.id, producto_id: r.comp_producto_id,
-          tipo: 'rebaje', cantidad: cantComp,
-          stock_antes: 0, stock_despues: 0, // triggers recalculan
-          motivo: `Kitting x${cant} [${kittingKitId}]`,
-          usuario_id: user?.id ?? null,
-        })
       }
 
-      // 3. Ingreso del KIT
-      await supabase.from('inventario_lineas').insert({
-        tenant_id: tenant!.id, producto_id: kittingKitId, cantidad: cant,
-        ubicacion_id: kittingUbicacionId || null,
-        activo: true,
-      })
-      await supabase.from('movimientos_stock').insert({
-        tenant_id: tenant!.id, producto_id: kittingKitId,
-        tipo: 'kitting', cantidad: cant,
-        stock_antes: 0, stock_despues: 0,
-        motivo: kittingNotas || `Kitting x${cant}`,
-        usuario_id: user?.id ?? null,
-      })
-
-      // 4. Log
+      // 3. Crear kitting_log en estado 'en_armado'
       await supabase.from('kitting_log').insert({
         tenant_id: tenant!.id, kit_producto_id: kittingKitId,
         cantidad_kits: cant, ubicacion_id: kittingUbicacionId || null,
         usuario_id: user?.id ?? null, notas: kittingNotas || null,
+        tipo: 'armado', estado: 'en_armado',
+        componentes_reservados: componentesReservados,
       })
     },
     onSuccess: () => {
-      toast.success('Kitting realizado con éxito')
-      qc.invalidateQueries({ queryKey: ['productos'] })
+      toast.success('Armado iniciado — componentes reservados')
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
-      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['kits-en-armado'] })
       qc.invalidateQueries({ queryKey: ['kits-productos'] })
       setShowKittingModal(false)
       setKittingCantidad('1'); setKittingUbicacionId(''); setKittingNotas('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const confirmarArmado = useMutation({
+    mutationFn: async (logId: string) => {
+      const log = kitsEnArmado.find((l: any) => l.id === logId) as any
+      if (!log) throw new Error('Armado no encontrado')
+      const reservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = log.componentes_reservados ?? []
+
+      // 1. Rebaje de componentes (descontar de cantidad + liberar reserva)
+      const cantsByComp: Record<string, number> = {}
+      for (const entry of reservados) {
+        const { data: linea } = await supabase.from('inventario_lineas')
+          .select('cantidad, cantidad_reservada').eq('id', entry.linea_id).single()
+        if (!linea) continue
+        await supabase.from('inventario_lineas').update({
+          cantidad: linea.cantidad - entry.cantidad,
+          cantidad_reservada: Math.max(0, (linea.cantidad_reservada ?? 0) - entry.cantidad),
+        }).eq('id', entry.linea_id)
+        cantsByComp[entry.comp_producto_id] = (cantsByComp[entry.comp_producto_id] ?? 0) + entry.cantidad
+      }
+      for (const [prodId, cantTotal] of Object.entries(cantsByComp)) {
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id, producto_id: prodId,
+          tipo: 'rebaje', cantidad: cantTotal,
+          stock_antes: 0, stock_despues: 0,
+          motivo: `Kitting x${log.cantidad_kits} [${log.kit_producto_id}]`,
+          usuario_id: user?.id ?? null,
+        })
+      }
+
+      // 2. Ingreso del KIT
+      await supabase.from('inventario_lineas').insert({
+        tenant_id: tenant!.id, producto_id: log.kit_producto_id,
+        cantidad: log.cantidad_kits, ubicacion_id: log.ubicacion_id ?? null, activo: true,
+      })
+      await supabase.from('movimientos_stock').insert({
+        tenant_id: tenant!.id, producto_id: log.kit_producto_id,
+        tipo: 'kitting', cantidad: log.cantidad_kits,
+        stock_antes: 0, stock_despues: 0,
+        motivo: log.notas || `Kitting x${log.cantidad_kits}`,
+        usuario_id: user?.id ?? null,
+      })
+
+      // 3. Marcar log como completado
+      await supabase.from('kitting_log').update({ estado: 'completado' }).eq('id', logId)
+    },
+    onSuccess: () => {
+      toast.success('KIT armado y stock ingresado')
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['kits-en-armado'] })
+      qc.invalidateQueries({ queryKey: ['kits-productos'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const cancelarArmado = useMutation({
+    mutationFn: async (logId: string) => {
+      const log = kitsEnArmado.find((l: any) => l.id === logId) as any
+      if (!log) throw new Error('Armado no encontrado')
+      const reservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = log.componentes_reservados ?? []
+
+      // Liberar cantidad_reservada en cada línea
+      for (const entry of reservados) {
+        const { data: linea } = await supabase.from('inventario_lineas')
+          .select('cantidad_reservada').eq('id', entry.linea_id).single()
+        if (!linea) continue
+        await supabase.from('inventario_lineas').update({
+          cantidad_reservada: Math.max(0, (linea.cantidad_reservada ?? 0) - entry.cantidad),
+        }).eq('id', entry.linea_id)
+      }
+
+      await supabase.from('kitting_log').update({ estado: 'cancelado' }).eq('id', logId)
+    },
+    onSuccess: () => {
+      toast.success('Armado cancelado — componentes liberados')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['kits-en-armado'] })
+      qc.invalidateQueries({ queryKey: ['kits-productos'] })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -643,6 +1050,124 @@ export default function InventarioPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Conteo helpers ─────────────────────────────────────────────────────────
+  const cargarLineasParaConteo = async () => {
+    if (!conteoRefId || !tenant) return
+    setConteoLoading(true)
+    try {
+      let q = supabase.from('inventario_lineas')
+        .select('id, producto_id, lpn, cantidad, activo, productos(nombre,sku,unidad_medida), inventario_series(id,activo)')
+        .eq('tenant_id', tenant.id).eq('activo', true)
+      if (conteoTipo === 'ubicacion') {
+        if (conteoRefId === '__sin__') q = (q as any).is('ubicacion_id', null)
+        else q = q.eq('ubicacion_id', conteoRefId)
+      } else {
+        q = q.eq('producto_id', conteoRefId)
+      }
+      const { data } = await q
+      const rows: ConteoRow[] = (data ?? []).map((l: any) => {
+        const prod = l.productos ?? {}
+        const seriesActivas = (l.inventario_series ?? []).filter((s: any) => s.activo).length
+        const cantEsperada = seriesActivas > 0 ? seriesActivas : (l.cantidad ?? 0)
+        return {
+          linea_id: l.id,
+          producto_id: l.producto_id,
+          nombre: prod.nombre ?? '',
+          sku: prod.sku ?? '',
+          unidad_medida: prod.unidad_medida ?? '',
+          lpn: l.lpn ?? '',
+          cantidad_esperada: cantEsperada,
+          cantidad_contada: String(cantEsperada),
+        }
+      })
+      if (rows.length === 0) toast('No hay stock en esta ubicación/producto', { icon: 'ℹ️' })
+      setConteoRows(rows)
+    } finally {
+      setConteoLoading(false)
+    }
+  }
+
+  const resetConteoForm = () => {
+    setShowConteoForm(false); setConteoRows([]); setConteoNotas(''); setConteoRefId('')
+  }
+
+  const guardarConteoBorrador = useMutation({
+    mutationFn: async () => {
+      if (conteoRows.length === 0) throw new Error('Cargá el stock antes de guardar')
+      const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
+        tenant_id: tenant!.id, tipo: conteoTipo,
+        ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
+        producto_id: conteoTipo === 'producto' ? conteoRefId : null,
+        estado: 'borrador', notas: conteoNotas || null, ajuste_aplicado: false,
+        created_by: user?.id, sucursal_id: sucursalId || null,
+      }).select().single()
+      if (cErr) throw cErr
+      const { error: iErr } = await supabase.from('inventario_conteo_items').insert(
+        conteoRows.map(row => ({
+          conteo_id: conteo.id, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
+          lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
+          cantidad_contada: parseFloat(row.cantidad_contada) || 0,
+        }))
+      )
+      if (iErr) throw iErr
+    },
+    onSuccess: () => {
+      toast.success('Conteo guardado como borrador')
+      qc.invalidateQueries({ queryKey: ['conteo-historial'] })
+      resetConteoForm()
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const finalizarConteoYAplicar = useMutation({
+    mutationFn: async () => {
+      if (conteoRows.length === 0) throw new Error('Cargá el stock antes de finalizar')
+      const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
+        tenant_id: tenant!.id, tipo: conteoTipo,
+        ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
+        producto_id: conteoTipo === 'producto' ? conteoRefId : null,
+        estado: 'finalizado', notas: conteoNotas || null, ajuste_aplicado: true,
+        created_by: user?.id, sucursal_id: sucursalId || null,
+      }).select().single()
+      if (cErr) throw cErr
+      await supabase.from('inventario_conteo_items').insert(
+        conteoRows.map(row => ({
+          conteo_id: conteo.id, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
+          lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
+          cantidad_contada: parseFloat(row.cantidad_contada) || 0,
+        }))
+      )
+      let ajustes = 0
+      for (const row of conteoRows) {
+        const contada = parseFloat(row.cantidad_contada) || 0
+        const diff = contada - row.cantidad_esperada
+        if (Math.abs(diff) < 0.001) continue
+        await supabase.from('inventario_lineas').update({ cantidad: contada, activo: contada > 0 }).eq('id', row.linea_id)
+        const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', row.producto_id).single()
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id, producto_id: row.producto_id,
+          tipo: diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje', cantidad: Math.abs(diff),
+          stock_antes: prodAntes?.stock_actual ?? 0,
+          stock_despues: Math.max(0, (prodAntes?.stock_actual ?? 0) + diff),
+          motivo: `Conteo de inventario${row.lpn ? ` — LPN ${row.lpn}` : ` — ${row.sku}`}`,
+          usuario_id: user?.id, linea_id: row.linea_id, sucursal_id: sucursalId || null,
+        })
+        ajustes++
+      }
+      return ajustes
+    },
+    onSuccess: (ajustes) => {
+      toast.success(`Conteo finalizado — ${ajustes} ajuste${ajustes !== 1 ? 's' : ''} aplicado${ajustes !== 1 ? 's' : ''}`)
+      qc.invalidateQueries({ queryKey: ['conteo-historial'] })
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['alertas'] })
+      resetConteoForm()
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const closeModal = () => {
     setModal(null); setSelectedProduct(null)
     setForm(emptyIngreso); setSeries([''])
@@ -678,12 +1203,176 @@ export default function InventarioPage() {
     setForm(f => ({ ...f, productoSearch: '', ubicacionId: (prod as any).ubicacion_id ?? f.ubicacionId }))
   }
 
+  // ── Masivo inline helpers ─────────────────────────────────────────────────
+  const addMasivoRow = (prod: any) => {
+    setMasivoRows(prev => {
+      // Same SKU + no lote required → increment quantity
+      const existingIdx = prev.findIndex(r => r.producto_id === prod.id && !r.nro_lote && !prod.tiene_lote && !prod.tiene_series)
+      if (existingIdx >= 0) {
+        const updated = [...prev]
+        const prevCant = parseFloat(updated[existingIdx].cantidad) || 0
+        updated[existingIdx] = { ...updated[existingIdx], cantidad: String(prevCant + 1) }
+        setMasivoFocusIdx(existingIdx)
+        return updated
+      }
+      const newRow: MasivoRow = {
+        _id: crypto.randomUUID(),
+        producto_id: prod.id,
+        nombre: prod.nombre,
+        sku: prod.sku,
+        unidad_medida: prod.unidad_medida ?? null,
+        tiene_series: prod.tiene_series ?? false,
+        tiene_lote: prod.tiene_lote ?? false,
+        tiene_vencimiento: prod.tiene_vencimiento ?? false,
+        cantidad: '1',
+        estado_id: '',
+        ubicacion_id: '',
+        nro_lote: '',
+        fecha_vencimiento: '',
+        lpn: '',
+        series_txt: '',
+        showExtra: !!(prod.tiene_lote || prod.tiene_vencimiento || prod.tiene_series),
+      }
+      setMasivoFocusIdx(prev.length)
+      return [...prev, newRow]
+    })
+    setMasivoSearch('')
+    setTimeout(() => masivoSearchRef.current?.focus(), 50)
+  }
+
+  const handleMasivoScan = async (code: string) => {
+    setMasivoScannerOpen(false)
+    const { data: prods } = await supabase.from('productos')
+      .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, precio_costo, precio_venta')
+      .eq('tenant_id', tenant!.id).eq('activo', true)
+      .or(`codigo_barras.eq.${code},sku.eq.${code}`)
+      .limit(1)
+    if (!prods || prods.length === 0) {
+      toast.error(`No se encontró ningún producto con código "${code}"`)
+      setTimeout(() => masivoSearchRef.current?.focus(), 50)
+      return
+    }
+    addMasivoRow(prods[0])
+  }
+
+  // Focus effect: when masivoFocusIdx changes, focus the qty input
+  useEffect(() => {
+    if (masivoFocusIdx !== null) {
+      setTimeout(() => {
+        masivoQtyRefs.current[masivoFocusIdx]?.focus()
+        masivoQtyRefs.current[masivoFocusIdx]?.select()
+        setMasivoFocusIdx(null)
+      }, 50)
+    }
+  }, [masivoFocusIdx])
+
+  const procesarMasivoIngreso = useMutation({
+    mutationFn: async () => {
+      if (limits && !limits.puede_crear_movimiento)
+        throw new Error('Límite de movimientos del plan alcanzado')
+      if (masivoRows.length === 0) throw new Error('Agregá al menos un producto')
+      const errores: string[] = []
+      let exitos = 0
+
+      for (const row of masivoRows) {
+        try {
+          const cant = row.tiene_series
+            ? row.series_txt.split('\n').filter(s => s.trim()).length
+            : Math.max(0, parseFloat(row.cantidad) || 0)
+          if (!cant || cant <= 0) { errores.push(`${row.sku}: cantidad inválida`); continue }
+          if (row.tiene_lote && !row.nro_lote.trim()) { errores.push(`${row.sku}: requiere lote`); continue }
+          if (row.tiene_vencimiento && !row.fecha_vencimiento) { errores.push(`${row.sku}: requiere vencimiento`); continue }
+
+          const { data: prodAntes } = await supabase.from('productos').select('stock_actual,precio_costo,precio_venta').eq('id', row.producto_id).single()
+          const stockAntes = prodAntes?.stock_actual ?? 0
+
+          const { data: linea, error: lineaError } = await supabase.from('inventario_lineas').insert({
+            tenant_id: tenant!.id,
+            producto_id: row.producto_id,
+            lpn: row.lpn || null,
+            cantidad: row.tiene_series ? 0 : cant,
+            estado_id: row.estado_id || null,
+            ubicacion_id: row.ubicacion_id || null,
+            nro_lote: row.nro_lote || null,
+            fecha_vencimiento: row.fecha_vencimiento || null,
+            precio_costo_snapshot: (prodAntes as any)?.precio_costo ?? null,
+            precio_venta_snapshot: (prodAntes as any)?.precio_venta ?? null,
+          }).select().single()
+          if (lineaError) { errores.push(`${row.sku}: ${lineaError.message}`); continue }
+
+          if (row.tiene_series) {
+            const seriesValidas = row.series_txt.split('\n').filter(s => s.trim())
+            if (seriesValidas.length === 0) { errores.push(`${row.sku}: sin series`); continue }
+            const { error: seriesError } = await supabase.from('inventario_series').insert(
+              seriesValidas.map(nro => ({
+                tenant_id: tenant!.id,
+                producto_id: row.producto_id,
+                linea_id: linea.id,
+                nro_serie: nro.trim(),
+                estado_id: row.estado_id || null,
+              }))
+            )
+            if (seriesError) { errores.push(`${row.sku}: ${seriesError.message}`); continue }
+          }
+
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant!.id,
+            producto_id: row.producto_id,
+            tipo: 'ingreso',
+            cantidad: cant,
+            stock_antes: stockAntes,
+            stock_despues: stockAntes + cant,
+            usuario_id: user?.id,
+            linea_id: linea.id,
+            sucursal_id: sucursalId || null,
+          })
+          exitos++
+        } catch (e: any) {
+          errores.push(`${row.sku}: ${e.message}`)
+        }
+      }
+
+      if (exitos === 0 && errores.length > 0) throw new Error(errores.join(' · '))
+      return { exitos, errores }
+    },
+    onSuccess: ({ exitos, errores }) => {
+      if (errores.length > 0) toast.error(`${exitos} OK · Errores: ${errores.join(' · ')}`, { duration: 8000 })
+      else toast.success(`${exitos} ingreso${exitos !== 1 ? 's' : ''} registrado${exitos !== 1 ? 's' : ''}`)
+      qc.invalidateQueries({ queryKey: ['movimientos'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      qc.invalidateQueries({ queryKey: ['alertas'] })
+      setMasivoRows([])
+      setMasivoInline(false)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function getTipoBadge(tipo: string, motivo: string | null) {
+    const isConteo = (motivo ?? '').startsWith('Conteo')
+    if (tipo === 'ajuste_ingreso') return { label: isConteo ? 'Conteo' : 'Ajuste +', bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-400' }
+    if (tipo === 'ajuste_rebaje') return { label: isConteo ? 'Conteo' : 'Ajuste -', bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' }
+    if (tipo === 'ingreso') return { label: 'Ingreso', bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400' }
+    if (tipo === 'kitting') return { label: 'Kitting', bg: 'bg-violet-100 dark:bg-violet-900/30', text: 'text-violet-700 dark:text-violet-400' }
+    if (tipo === 'des_kitting') return { label: 'Desarmado', bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400' }
+    if (tipo === 'ajuste') return { label: 'Ajuste', bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' }
+    return { label: 'Rebaje', bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400' }
+  }
+
   // ── Computed values ────────────────────────────────────────────────────────
   const filteredMov = movimientos.filter(m => {
     const tipo = (m as any).tipo as string
-    const esIngreso = tipo === 'ingreso' || tipo === 'kitting'
-    if (tab === 'agregar' && !esIngreso) return false
-    if (tab === 'quitar' && esIngreso) return false
+    if (tab === 'agregar') return tipo === 'ingreso' || tipo === 'kitting'
+    if (tab === 'quitar') return tipo === 'rebaje' || tipo === 'des_kitting'
+    // historial: todos los tipos, con filtros adicionales
+    if (tab === 'historial') {
+      if (filterHistFechaDesde && m.created_at < filterHistFechaDesde) return false
+      if (filterHistFechaHasta && m.created_at > filterHistFechaHasta + 'T23:59:59') return false
+      if (filterHistTipo && tipo !== filterHistTipo) return false
+      if (filterHistCatId && (m as any).productos?.categoria_id !== filterHistCatId) return false
+      if (filterHistMotivo && !(m as any).motivo?.toLowerCase().includes(filterHistMotivo.toLowerCase())) return false
+    }
     if (!movSearch) return true
     const s = movSearch.toLowerCase()
     return (m as any).productos?.nombre?.toLowerCase().includes(s) ||
@@ -700,37 +1389,43 @@ export default function InventarioPage() {
   }
 
   const filteredInv = productos.filter(p => {
+    // Búsqueda por texto: nombre, SKU, código de barras, ubicación o LPN
+    if (invSearch) {
+      const s = invSearch.toLowerCase()
+      const lineas = lineasMap[(p as any).id] ?? []
+      const matchProd = p.nombre.toLowerCase().includes(s)
+        || ((p as any).sku ?? '').toLowerCase().includes(s)
+        || ((p as any).codigo_barras ?? '') === invSearch
+      const matchLpn = lineas.some((l: any) => (l.lpn ?? '').toLowerCase().includes(s))
+      const matchUbic = lineas.some((l: any) => (l.ubicaciones?.nombre ?? '').toLowerCase().includes(s))
+      if (!matchProd && !matchLpn && !matchUbic) return false
+    }
     const stock = getStockTotal(p)
     if (filterAlerta && stock > (p as any).stock_minimo) return false
     // Filtro por categoría
     if (filterCat === '__sin__' && (p as any).categoria_id != null) return false
     if (filterCat && filterCat !== '__sin__' && (p as any).categoria_id !== filterCat) return false
+    const lineas = lineasMap[(p as any).id] ?? []
     // Filtro por proveedor (en lineas del producto)
     if (filterProv) {
-      const lineas = lineasMap[(p as any).id] ?? []
       if (filterProv === '__sin__') {
-        if (lineas.some((l: any) => l.proveedor_id != null)) return false
-        if (lineas.length === 0) return false
+        if (!lineas.some((l: any) => l.proveedor_id == null)) return false
       } else {
         if (!lineas.some((l: any) => l.proveedor_id === filterProv)) return false
       }
     }
     // Filtro por ubicación (en lineas del producto)
     if (filterUbic) {
-      const lineas = lineasMap[(p as any).id] ?? []
       if (filterUbic === '__sin__') {
-        if (lineas.some((l: any) => l.ubicacion_id != null)) return false
-        if (lineas.length === 0) return false
+        if (!lineas.some((l: any) => l.ubicacion_id == null)) return false
       } else {
         if (!lineas.some((l: any) => l.ubicacion_id === filterUbic)) return false
       }
     }
     // Filtro por estado (en lineas del producto)
     if (filterEstado) {
-      const lineas = lineasMap[(p as any).id] ?? []
       if (filterEstado === '__sin__') {
-        if (lineas.some((l: any) => l.estado_id != null)) return false
-        if (lineas.length === 0) return false
+        if (!lineas.some((l: any) => l.estado_id == null)) return false
       } else {
         if (!lineas.some((l: any) => l.estado_id === filterEstado)) return false
       }
@@ -773,20 +1468,27 @@ export default function InventarioPage() {
             {tab === 'inventario' ? 'Líneas de stock y LPNs' :
              tab === 'agregar' ? 'Ingresá mercadería al stock' :
              tab === 'quitar' ? 'Rebajá o ajustá el stock' :
+             tab === 'conteo' ? 'Verificá el stock real contra el esperado' :
              tab === 'historial' ? 'Registro de todos los movimientos' :
+             tab === 'autorizaciones' ? 'Solicitudes de ajuste o eliminación pendientes de aprobación' :
              'Armado y desarmado de kits'}
           </p>
         </div>
-        {tab === 'agregar' && (
+        {tab === 'agregar' && !masivoInline && (
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setModal('ingreso')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-              <ArrowDown size={16} /> Ingreso
+              <Plus size={16} /> Ingreso
             </button>
-            <button onClick={() => setMasivoModal('ingreso')} disabled={limiteAlcanzado}
+            <button onClick={() => { setMasivoInline(true); setMasivoRows([]) }} disabled={limiteAlcanzado}
               className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Ingreso de múltiples SKUs">
-              <ArrowDown size={16} /> Masivo
+              title="Recepción de múltiples SKUs">
+              <Plus size={16} /> Masivo
+            </button>
+            <button onClick={() => navigate('/recepciones')}
+              className="flex items-center gap-2 border-2 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              title="Módulo de recepción / ASN">
+              <ShoppingBasket size={16} /> ASN
             </button>
           </div>
         )}
@@ -794,26 +1496,41 @@ export default function InventarioPage() {
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setModal('rebaje')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-              <ArrowUp size={16} /> Rebaje
+              <Minus size={16} /> Rebaje
             </button>
             <button onClick={() => setMasivoModal('rebaje')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               title="Rebaje de múltiples SKUs">
-              <ArrowUp size={16} /> Masivo
+              <Minus size={16} /> Masivo
             </button>
           </div>
+        )}
+        {tab === 'conteo' && !showConteoForm && (
+          <button onClick={() => setShowConteoForm(true)}
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+            <Plus size={16} /> Nuevo conteo
+          </button>
+        )}
+        {tab === 'inventario' && (
+          <button onClick={() => navigate('/inventario/importar')}
+            className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all"
+            title="Importar stock desde Excel">
+            <Upload size={16} /> Importar
+          </button>
         )}
       </div>
 
       {/* Tabs + vista toggle */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto">
+        <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' } as any}>
           {([
             { id: 'inventario' as const, label: 'Inventario' },
             { id: 'agregar' as const, label: 'Agregar stock' },
             { id: 'quitar' as const, label: 'Quitar stock' },
-            { id: 'historial' as const, label: 'Historial' },
             { id: 'kits' as const, label: 'Kits' },
+            { id: 'conteo' as const, label: 'Conteos' },
+            { id: 'historial' as const, label: 'Historial' },
+            ...(puedeVerAutorizaciones ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones' }] : []),
           ]).map(({ id, label }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
@@ -851,12 +1568,263 @@ export default function InventarioPage() {
             />
           )}
 
+          {/* ── MASIVO INLINE VIEW (solo agregar) ─── */}
+          {tab === 'agregar' && masivoInline ? (
+            <div className="space-y-3">
+              {/* Barra superior masivo */}
+              <div className="flex items-center gap-3">
+                <button onClick={() => { setMasivoInline(false); setMasivoRows([]); setMasivoSearch('') }}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                  <ChevronLeft size={16} /> Cancelar
+                </button>
+                <span className="text-sm font-semibold text-primary">Recepción masiva</span>
+                {masivoRows.length > 0 && (
+                  <span className="ml-auto text-xs text-gray-400">{masivoRows.length} SKU{masivoRows.length !== 1 ? 's' : ''}</span>
+                )}
+              </div>
+
+              {/* Buscador + scanner */}
+              <div className="relative flex gap-2">
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    ref={masivoSearchRef}
+                    type="text"
+                    value={masivoSearch}
+                    onChange={e => setMasivoSearch(e.target.value)}
+                    onFocus={() => setMasivoSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setMasivoSearchFocused(false), 150)}
+                    placeholder="Escanear o buscar SKU / nombre..."
+                    autoFocus
+                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
+                  />
+                  {/* Dropdown sugerencias */}
+                  {(masivoSearchFocused || masivoSearch.length > 0) && masivoBusqueda.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 overflow-hidden">
+                      {masivoBusqueda.map((p: any) => (
+                        <button key={p.id} onMouseDown={() => addMasivoRow(p)}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700 text-left">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
+                            <p className="text-xs text-gray-400">{p.sku}{p.tiene_series ? ' · Serializado' : ''}{p.tiene_lote ? ' · Lote' : ''}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => setMasivoScannerOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 dark:text-gray-400 hover:text-accent hover:border-accent transition-colors"
+                  title="Escanear código">
+                  <Camera size={18} />
+                </button>
+              </div>
+
+              {/* Tabla de filas */}
+              {masivoRows.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[640px]">
+                      <thead>
+                        <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-8">#</th>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400">Producto</th>
+                          <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">Cantidad</th>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-36">Estado</th>
+                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-36">Ubicación</th>
+                          <th className="px-3 py-2.5 w-8" />
+                          <th className="px-3 py-2.5 w-8" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {masivoRows.map((row, idx) => (
+                          <Fragment key={row._id}>
+                            <tr className="border-b border-gray-100 dark:border-gray-700">
+                              <td className="px-3 py-2 text-xs text-gray-400 text-center">{idx + 1}</td>
+                              <td className="px-3 py-2">
+                                <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{row.nombre}</p>
+                                <p className="text-xs text-gray-400">{row.sku}{row.unidad_medida ? ` · ${row.unidad_medida}` : ''}</p>
+                              </td>
+                              <td className="px-3 py-2">
+                                {row.tiene_series ? (
+                                  <span className="text-xs text-gray-400 block text-center">ver abajo</span>
+                                ) : (
+                                  <input
+                                    type="number"
+                                    ref={el => { masivoQtyRefs.current[idx] = el }}
+                                    min="0.001" step="1"
+                                    value={row.cantidad}
+                                    onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, cantidad: e.target.value } : r))}
+                                    onWheel={e => e.currentTarget.blur()}
+                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); masivoSearchRef.current?.focus() } }}
+                                    className="w-full text-center px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
+                                  />
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <select value={row.estado_id}
+                                  onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, estado_id: e.target.value } : r))}
+                                  className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                                  <option value="">Sin estado</option>
+                                  {estados.map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                                </select>
+                              </td>
+                              <td className="px-3 py-2">
+                                <select value={row.ubicacion_id}
+                                  onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, ubicacion_id: e.target.value } : r))}
+                                  className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                                  <option value="">Sin ubic.</option>
+                                  {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                </select>
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <button
+                                  onClick={() => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, showExtra: !r.showExtra } : r))}
+                                  title="Lote / Vencimiento / LPN / Series"
+                                  className={`p-1 rounded transition-colors ${row.showExtra ? 'text-accent' : 'text-gray-400 hover:text-gray-600'}`}>
+                                  <ChevronDown size={14} className={`transition-transform ${row.showExtra ? 'rotate-180' : ''}`} />
+                                </button>
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <button onClick={() => setMasivoRows(prev => prev.filter((_, i) => i !== idx))}
+                                  className="p-1 text-gray-300 hover:text-red-500 transition-colors">
+                                  <X size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                            {row.showExtra && (
+                              <tr className="border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+                                <td />
+                                <td colSpan={6} className="px-3 py-2.5">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                    {(row.tiene_lote || !row.tiene_series) && (
+                                      <div>
+                                        <label className="block text-gray-500 mb-1">Nro. lote{row.tiene_lote ? ' *' : ''}</label>
+                                        <input type="text" value={row.nro_lote} placeholder="LOT-001"
+                                          onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, nro_lote: e.target.value } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                      </div>
+                                    )}
+                                    {(row.tiene_vencimiento || !row.tiene_series) && (
+                                      <div>
+                                        <label className="block text-gray-500 mb-1">Vencimiento{row.tiene_vencimiento ? ' *' : ''}</label>
+                                        <input type="date" value={row.fecha_vencimiento}
+                                          onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, fecha_vencimiento: e.target.value } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                      </div>
+                                    )}
+                                    {!row.tiene_series && (
+                                      <div>
+                                        <label className="block text-gray-500 mb-1">LPN</label>
+                                        <input type="text" value={row.lpn} placeholder="LPN-001"
+                                          onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, lpn: e.target.value } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800 font-mono" />
+                                      </div>
+                                    )}
+                                    {row.tiene_series && (
+                                      <div className="col-span-4">
+                                        <label className="block text-gray-500 mb-1">Números de serie (uno por línea)</label>
+                                        <textarea rows={3} value={row.series_txt} placeholder={"SN-001\nSN-002\nSN-003"}
+                                          onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, series_txt: e.target.value } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800 font-mono text-xs resize-none" />
+                                        <p className="text-gray-400 mt-0.5">{row.series_txt.split('\n').filter(s => s.trim()).length} series</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Botón procesar */}
+              {masivoRows.length > 0 && (
+                <button
+                  onClick={() => procesarMasivoIngreso.mutate()}
+                  disabled={procesarMasivoIngreso.isPending || (limits ? !limits.puede_crear_movimiento : false)}
+                  className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                  {procesarMasivoIngreso.isPending ? (
+                    <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Procesando...</>
+                  ) : (
+                    <><CheckCircle2 size={16} /> Procesar {masivoRows.length} ingreso{masivoRows.length !== 1 ? 's' : ''}</>
+                  )}
+                </button>
+              )}
+
+              {masivoScannerOpen && (
+                <BarcodeScanner
+                  title="Escanear producto"
+                  onDetected={handleMasivoScan}
+                  onClose={() => setMasivoScannerOpen(false)}
+                />
+              )}
+            </div>
+          ) : (
+          /* ── VISTA NORMAL (historial de movimientos) ── */
+          <>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
             <input type="text" value={movSearch} onChange={e => setMovSearch(e.target.value)}
               placeholder="Buscar por producto o SKU..."
               className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
           </div>
+
+          {/* ── Filtros adicionales solo en tab Historial ── */}
+          {tab === 'historial' && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
+                <input type="date" value={filterHistFechaDesde} onChange={e => setFilterHistFechaDesde(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
+                <input type="date" value={filterHistFechaHasta} onChange={e => setFilterHistFechaHasta(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
+                <select value={filterHistCatId} onChange={e => setFilterHistCatId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  <option value="">Todas</option>
+                  {(categoriasHistorial as any[]).map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
+                <select value={filterHistTipo} onChange={e => setFilterHistTipo(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  <option value="">Todos</option>
+                  <option value="ingreso">Ingreso</option>
+                  <option value="rebaje">Rebaje</option>
+                  <option value="ajuste_ingreso">Ajuste +</option>
+                  <option value="ajuste_rebaje">Ajuste -</option>
+                  <option value="kitting">Kitting</option>
+                  <option value="des_kitting">Desarmado</option>
+                  <option value="ajuste">Ajuste (genérico)</option>
+                </select>
+              </div>
+              <div className="col-span-2 sm:col-span-4">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Motivo</label>
+                <input type="text" value={filterHistMotivo} onChange={e => setFilterHistMotivo(e.target.value)}
+                  placeholder="Buscar en el motivo..."
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+              </div>
+              {(filterHistFechaDesde || filterHistFechaHasta || filterHistCatId || filterHistTipo || filterHistMotivo) && (
+                <div className="col-span-2 sm:col-span-4 flex justify-end">
+                  <button onClick={() => { setFilterHistFechaDesde(''); setFilterHistFechaHasta(''); setFilterHistCatId(''); setFilterHistTipo(''); setFilterHistMotivo('') }}
+                    className="text-xs text-accent hover:underline">Limpiar filtros</button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {movLoading ? (
@@ -883,7 +1851,9 @@ export default function InventarioPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredMov.map((m: any) => (
+                    {filteredMov.map((m: any) => {
+                      const badge = getTipoBadge(m.tipo, m.motivo)
+                      return (
                       <tr key={m.id} onClick={() => setMovDetalle(m)}
                         className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">
@@ -894,10 +1864,8 @@ export default function InventarioPage() {
                           <div className="text-xs text-gray-400 dark:text-gray-500">{m.productos?.sku}</div>
                         </td>
                         <td className="px-4 py-3 text-center">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
-                            ${m.tipo === 'ingreso' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'}`}>
-                            {m.tipo === 'ingreso' ? <ArrowDown size={11} /> : <ArrowUp size={11} />}
-                            {m.tipo}
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}>
+                            {badge.label}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{m.cantidad}</td>
@@ -916,7 +1884,8 @@ export default function InventarioPage() {
                         </td>
                         <td className="px-4 py-3 text-gray-300"><ChevronRight size={14} /></td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1623,6 +2592,8 @@ export default function InventarioPage() {
               onClose={() => setMovScannerOpen(false)}
             />
           )}
+          </>
+          )} {/* end masivo ternary */}
         </>
       )}
 
@@ -1644,7 +2615,7 @@ export default function InventarioPage() {
             <div className="relative flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
               <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)}
-                placeholder="Buscar por nombre, SKU o código..."
+                placeholder="Buscar por nombre, SKU, código, ubicación o LPN..."
                 className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
             </div>
             <button onClick={() => setInvScannerOpen(true)}
@@ -1697,21 +2668,32 @@ export default function InventarioPage() {
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-            {invLoading ? (
+            {(invLoading || lineasLoading) ? (
               <div className="flex items-center justify-center py-16">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>
             ) : invVista === 'ubicacion' ? (() => {
               const search = invSearch.toLowerCase()
-              const ubicKeys = Object.keys(ubicacionLineasMap).filter(key => {
+              const ubicKeys = Object.keys(ubicacionLineasMap)
+              .filter(key => {
                 const lineas = ubicacionLineasMap[key]
                 const ubicNombre = key === '__sin_ubicacion__' ? 'Sin ubicación' : (lineas[0]?.ubicaciones?.nombre ?? '')
                 if (!search) return true
                 if (ubicNombre.toLowerCase().includes(search)) return true
                 return lineas.some((l: any) => {
                   const prod = l.productos as any
-                  return prod?.nombre?.toLowerCase().includes(search) || prod?.sku?.toLowerCase().includes(search) || (l.lpn ?? '').toLowerCase().includes(search)
+                  return prod?.nombre?.toLowerCase().includes(search)
+                    || prod?.sku?.toLowerCase().includes(search)
+                    || (l.lpn ?? '').toLowerCase().includes(search)
+                    || ((l as any).codigo_barras ?? '') === invSearch
                 })
+              })
+              .sort((a, b) => {
+                if (a === '__sin_ubicacion__') return -1
+                if (b === '__sin_ubicacion__') return 1
+                const nA = (ubicacionLineasMap[a][0]?.ubicaciones?.nombre ?? '').toLowerCase()
+                const nB = (ubicacionLineasMap[b][0]?.ubicaciones?.nombre ?? '').toLowerCase()
+                return nA.localeCompare(nB, 'es')
               })
               if (ubicKeys.length === 0) return (
                 <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
@@ -1763,16 +2745,22 @@ export default function InventarioPage() {
                                       {l.estados_inventario && (
                                         <span className="px-1.5 py-0.5 rounded text-white text-xs font-medium" style={{ backgroundColor: l.estados_inventario.color ?? '#6b7280' }}>{l.estados_inventario.nombre}</span>
                                       )}
-                                      {l.lote && <span className="text-gray-500 dark:text-gray-400">Lote: {l.lote}</span>}
-                                      {l.vencimiento && <span className="text-gray-500 dark:text-gray-400">Vto: {new Date(l.vencimiento).toLocaleDateString('es-AR')}</span>}
+                                      {l.nro_lote && <span className="text-gray-500 dark:text-gray-400">Lote: {l.nro_lote}</span>}
+                                      {l.fecha_vencimiento && <span className="text-gray-500 dark:text-gray-400">Vto: {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}
+                                      {(l.cantidad_reservada ?? 0) > 0 && (
+                                        <span className="text-amber-500">{disponible} disp. ({l.cantidad_reservada} reserv.)</span>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="text-right flex-shrink-0">
                                     <p className="text-sm font-semibold text-gray-900 dark:text-white">{l.cantidad} {prod?.unidad_medida}</p>
-                                    {(l.cantidad_reservada ?? 0) > 0 && (
-                                      <p className="text-xs text-amber-500">{disponible} disp.</p>
-                                    )}
                                   </div>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: prod }) }}
+                                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors flex-shrink-0"
+                                    title="Acciones sobre este LPN">
+                                    <Settings2 size={15} />
+                                  </button>
                                 </div>
                               )
                             })}
@@ -1841,8 +2829,29 @@ export default function InventarioPage() {
                             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Sin líneas de inventario. Registrá un ingreso para este producto.</p>
                           ) : (
                             <div className="overflow-x-auto -mx-4 px-4">
-                            <div className="space-y-2 min-w-[640px]">
-                              <div className="grid grid-cols-7 gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1">
+                            <div className="space-y-2 min-w-[680px]">
+                              <div className="grid grid-cols-8 gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1">
+                                <span className="col-span-1 flex items-center">
+                                  <input type="checkbox" className="rounded accent-accent"
+                                    title="Seleccionar todos"
+                                    checked={lineas.length > 0 && lineas.every((l: any) => selectedLineas.includes(l.id))}
+                                    onChange={e => {
+                                      if (e.target.checked) {
+                                        const otroProducto = selectedLineasInfo.some(x => x.producto_id !== p.id)
+                                        if (otroProducto) { toast.error('Ya hay LPNs de otro producto seleccionados'); return }
+                                        setSelectedLineas(prev => [...new Set([...prev, ...lineas.map((l: any) => l.id)])])
+                                        setSelectedLineasInfo(prev => {
+                                          const existing = new Set(prev.map(x => x.id))
+                                          return [...prev, ...lineas.filter((l: any) => !existing.has(l.id)).map((l: any) => ({ id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento }))]
+                                        })
+                                      } else {
+                                        const ids = new Set(lineas.map((l: any) => l.id))
+                                        setSelectedLineas(prev => prev.filter(id => !ids.has(id)))
+                                        setSelectedLineasInfo(prev => prev.filter(x => !ids.has(x.id)))
+                                      }
+                                    }}
+                                  />
+                                </span>
                                 <span className="col-span-1">LPN</span>
                                 <span className="col-span-1 text-right">Cantidad</span>
                                 <span className="col-span-1">Estado</span>
@@ -1852,7 +2861,24 @@ export default function InventarioPage() {
                                 <span className="col-span-1 text-center">Acciones</span>
                               </div>
                               {lineas.map((l: any) => (
-                                <div key={l.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 px-3 py-2.5 grid grid-cols-7 gap-2 items-center text-sm">
+                                <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid grid-cols-8 gap-2 items-center text-sm transition-colors
+                                  ${selectedLineas.includes(l.id) ? 'border-accent/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}`}>
+                                  <div className="col-span-1 flex items-center">
+                                    <input type="checkbox" className="rounded accent-accent"
+                                      checked={selectedLineas.includes(l.id)}
+                                      onChange={e => {
+                                        if (e.target.checked) {
+                                          const otroProducto = selectedLineasInfo.length > 0 && selectedLineasInfo.some(x => x.producto_id !== l.producto_id)
+                                          if (otroProducto) { toast.error('Solo podés combinar LPNs del mismo producto'); return }
+                                          setSelectedLineas(prev => [...prev, l.id])
+                                          setSelectedLineasInfo(prev => [...prev, { id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento }])
+                                        } else {
+                                          setSelectedLineas(prev => prev.filter(id => id !== l.id))
+                                          setSelectedLineasInfo(prev => prev.filter(x => x.id !== l.id))
+                                        }
+                                      }}
+                                    />
+                                  </div>
                                   <div className="col-span-1">
                                     <div className="flex items-center gap-1.5">
                                       <span className="text-xs text-primary font-semibold">{l.lpn}</span>
@@ -1860,6 +2886,9 @@ export default function InventarioPage() {
                                         <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
                                       )}
                                     </div>
+                                    {l.parent_lpn_id && (
+                                      <p className="text-xs text-purple-500 dark:text-purple-400">↳ {l.parent_lpn_id}</p>
+                                    )}
                                     {l.proveedor_id && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{l.proveedores?.nombre}</p>}
                                   </div>
 
@@ -1920,19 +2949,31 @@ export default function InventarioPage() {
                                   </div>
 
                                   <div className="col-span-1">
-                                    {tieneSerieProd ? (
-                                      <div className="space-y-0.5">
-                                        {(l.inventario_series ?? []).filter((s: any) => s.activo).map((s: any) => (
-                                          <span key={s.id} title={s.reservado ? 'Reservada' : undefined}
-                                            className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded
-                                              ${s.reservado
-                                                ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 dark:text-orange-400 line-through opacity-70'
-                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
-                                            <Hash size={9} />{s.nro_serie}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    ) : <span className="text-xs text-gray-300">—</span>}
+                                    {tieneSerieProd ? (() => {
+                                      const seriesActivas = (l.inventario_series ?? []).filter((s: any) => s.activo)
+                                      const visible = seriesActivas.slice(0, 5)
+                                      const resto = seriesActivas.length - 5
+                                      return (
+                                        <div className="space-y-0.5">
+                                          {visible.map((s: any) => (
+                                            <span key={s.id} title={s.reservado ? 'Reservada' : undefined}
+                                              className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded
+                                                ${s.reservado
+                                                  ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 dark:text-orange-400 line-through opacity-70'
+                                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
+                                              <Hash size={9} />{s.nro_serie}
+                                            </span>
+                                          ))}
+                                          {resto > 0 && (
+                                            <button
+                                              onClick={e => { e.stopPropagation(); setSeriesModal({ lpn: l.lpn, series: seriesActivas }) }}
+                                              className="text-xs text-accent hover:underline font-medium">
+                                              +{resto} más
+                                            </button>
+                                          )}
+                                        </div>
+                                      )
+                                    })() : <span className="text-xs text-gray-300">—</span>}
                                   </div>
 
                                   <div className="col-span-1 flex justify-center">
@@ -1964,6 +3005,179 @@ export default function InventarioPage() {
               onClose={() => setInvScannerOpen(false)}
             />
           )}
+
+          {/* Barra flotante — LPNs seleccionados */}
+          {selectedLineas.length >= 2 && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-gray-800 border border-accent/40 rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-4">
+              <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                <span className="font-bold text-accent">{selectedLineas.length}</span> LPNs seleccionados
+              </span>
+              <button
+                onClick={() => { setSelectedLineas([]); setSelectedLineasInfo([]) }}
+                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1 rounded transition-colors">
+                Limpiar
+              </button>
+              <button
+                onClick={() => { setCombinarDestinoId(''); setCombinarMode('fusionar'); setShowCombinarModal(true) }}
+                className="bg-accent text-white text-sm px-4 py-1.5 rounded-xl font-medium flex items-center gap-1.5 hover:bg-accent/90 transition-colors">
+                <Combine size={14} /> Combinar
+              </button>
+            </div>
+          )}
+
+          {/* Modal Combinar LPNs */}
+          {showCombinarModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+              onClick={() => setShowCombinarModal(false)}>
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col"
+                onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+                  <div>
+                    <p className="font-bold text-primary">Combinar LPNs</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{selectedLineas.length} LPNs seleccionados</p>
+                  </div>
+                  <button onClick={() => setShowCombinarModal(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                    <X size={17} className="text-gray-500" />
+                  </button>
+                </div>
+
+                <div className="p-5 overflow-y-auto flex-1 space-y-4">
+                  {/* Lista de LPNs seleccionados */}
+                  <div className="space-y-1.5">
+                    {selectedLineasInfo.map(l => (
+                      <div key={l.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-sm">
+                        <span className="font-medium text-primary">{l.lpn}</span>
+                        <div className="text-right">
+                          <span className="text-gray-600 dark:text-gray-400">{l.cantidad} u.</span>
+                          {l.nro_lote && <p className="text-xs text-gray-400">Lote: {l.nro_lote}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Toggle modo */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Modo</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => setCombinarMode('fusionar')}
+                        className={`p-3 rounded-xl border text-sm font-medium text-left transition-colors
+                          ${combinarMode === 'fusionar' ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'}`}>
+                        <Combine size={16} className="mb-1.5" />
+                        <p>Fusionar</p>
+                        <p className="text-xs font-normal mt-0.5 text-gray-400">Todo el stock pasa a un LPN</p>
+                      </button>
+                      <button onClick={() => setCombinarMode('madre')}
+                        className={`p-3 rounded-xl border text-sm font-medium text-left transition-colors
+                          ${combinarMode === 'madre' ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'}`}>
+                        <Layers size={16} className="mb-1.5" />
+                        <p>LPN Madre</p>
+                        <p className="text-xs font-normal mt-0.5 text-gray-400">Agrupa bajo un pallet padre</p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Fusionar: elegir destino */}
+                  {combinarMode === 'fusionar' && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">LPN destino (recibe todo el stock)</p>
+                      {new Set(selectedLineasInfo.map(l => l.producto_id)).size > 1 ? (
+                        <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2">
+                          Solo podés fusionar LPNs del mismo producto.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {selectedLineasInfo.map(l => (
+                            <label key={l.id}
+                              className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors
+                                ${combinarDestinoId === l.id ? 'border-accent bg-accent/10' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
+                              <input type="radio" name="destino" value={l.id}
+                                checked={combinarDestinoId === l.id}
+                                onChange={() => setCombinarDestinoId(l.id)}
+                                className="accent-accent" />
+                              <span className="flex-1 text-sm font-medium text-primary">{l.lpn}</span>
+                              <span className="text-sm text-gray-600 dark:text-gray-400">{l.cantidad} u.</span>
+                            </label>
+                          ))}
+                          {combinarDestinoId && (
+                            <p className="text-xs text-gray-500 mt-2 px-1">
+                              Stock final en <span className="font-semibold">{selectedLineasInfo.find(l => l.id === combinarDestinoId)?.lpn}</span>:&nbsp;
+                              <span className="font-bold text-green-600 dark:text-green-400">
+                                {selectedLineasInfo.reduce((s, l) => s + l.cantidad, 0)} u.
+                              </span>
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* LPN Madre: input código padre */}
+                  {combinarMode === 'madre' && (
+                    <div>
+                      <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-2">Código LPN Madre</label>
+                      <input type="text" value={combinarParentLpn} onChange={e => setCombinarParentLpn(e.target.value)}
+                        placeholder="Ej: PLT-001"
+                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent" />
+                      <p className="text-xs text-gray-400 mt-1.5">
+                        Los LPNs seleccionados quedan asociados a este pallet/contenedor. No mueve stock.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 flex gap-3 flex-shrink-0">
+                  <button onClick={() => setShowCombinarModal(false)}
+                    className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Cancelar
+                  </button>
+                  <button
+                    disabled={
+                      (combinarMode === 'fusionar' && (!combinarDestinoId || new Set(selectedLineasInfo.map(l => l.producto_id)).size > 1)) ||
+                      (combinarMode === 'madre' && !combinarParentLpn.trim()) ||
+                      fusionarLineas.isPending || asignarMadre.isPending
+                    }
+                    onClick={() => combinarMode === 'fusionar' ? fusionarLineas.mutate() : asignarMadre.mutate()}
+                    className="flex-1 bg-accent text-white rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-accent/90 transition-colors">
+                    {fusionarLineas.isPending || asignarMadre.isPending ? (
+                      <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <><Combine size={15} /> {combinarMode === 'fusionar' ? 'Fusionar' : 'Asignar Madre'}</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal todas las series de un LPN */}
+          {seriesModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+              onClick={() => setSeriesModal(null)}>
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm max-h-[80vh] flex flex-col"
+                onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+                  <div>
+                    <p className="font-bold text-primary text-sm">{seriesModal.lpn}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{seriesModal.series.length} series</p>
+                  </div>
+                  <button onClick={() => setSeriesModal(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                    <X size={17} className="text-gray-500" />
+                  </button>
+                </div>
+                <div className="overflow-y-auto p-4 flex flex-wrap gap-1.5">
+                  {seriesModal.series.map((s: any) => (
+                    <span key={s.id} title={s.reservado ? 'Reservada' : undefined}
+                      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded
+                        ${s.reservado
+                          ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-500 line-through opacity-70'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
+                      <Hash size={9} />{s.nro_serie}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -1977,6 +3191,44 @@ export default function InventarioPage() {
               <p className="mt-0.5 text-blue-700 dark:text-blue-400">Un KIT es un producto armado a partir de otros SKUs. Al ejecutar el kitting, se rebajan los componentes y se ingresa el KIT terminado al stock.</p>
             </div>
           </div>
+
+          {/* Armados en progreso */}
+          {kitsEnArmado.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-2">
+                <Clock size={14} /> En Armado ({kitsEnArmado.length})
+              </h3>
+              {kitsEnArmado.map((log: any) => (
+                <div key={log.id} className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-300 truncate">
+                      {log.kit?.nombre ?? log.kit_producto_id}
+                    </p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                      {log.cantidad_kits} {log.kit?.sku ?? ''} · {new Date(log.created_at).toLocaleDateString('es-AR')}
+                    </p>
+                    {log.notas && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{log.notas}</p>}
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => confirmarArmado.mutate(log.id)}
+                      disabled={confirmarArmado.isPending}
+                      title="Confirmar armado — rebaja componentes e ingresa KIT"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50 transition-all">
+                      <Check size={12} /> Confirmar
+                    </button>
+                    <button
+                      onClick={() => cancelarArmado.mutate(log.id)}
+                      disabled={cancelarArmado.isPending}
+                      title="Cancelar armado — libera componentes reservados"
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 text-xs font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 transition-all">
+                      <X size={12} /> Cancelar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Buscador + botón nuevo KIT */}
           <div className="flex gap-2">
@@ -2142,7 +3394,7 @@ export default function InventarioPage() {
                 <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
                   <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
                     <div>
-                      <h3 className="font-bold text-gray-900 dark:text-white">Ejecutar Kitting</h3>
+                      <h3 className="font-bold text-gray-900 dark:text-white">Iniciar Armado</h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{kit?.nombre}</p>
                     </div>
                     <button onClick={() => setShowKittingModal(false)} className="text-gray-400 hover:text-gray-600">
@@ -2204,10 +3456,10 @@ export default function InventarioPage() {
                         className="flex-1 px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
                         Cancelar
                       </button>
-                      <button onClick={() => ejecutarKitting.mutate()}
-                        disabled={ejecutarKitting.isPending || !kittingCantidad || parseFloat(kittingCantidad) <= 0}
+                      <button onClick={() => iniciarArmado.mutate()}
+                        disabled={iniciarArmado.isPending || !kittingCantidad || parseFloat(kittingCantidad) <= 0}
                         className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-50 text-sm py-2.5">
-                        {ejecutarKitting.isPending ? 'Procesando...' : <><Play size={15} /> Ejecutar</>}
+                        {iniciarArmado.isPending ? 'Reservando...' : <><Play size={15} /> Iniciar armado</>}
                       </button>
                     </div>
                   </div>
@@ -2261,6 +3513,353 @@ export default function InventarioPage() {
               </div>
             )
           })()}
+        </>
+      )}
+
+      {/* ═══════════ TAB: CONTEO ═══════════════════════════════════════════ */}
+      {tab === 'conteo' && (
+        <div className="space-y-4">
+          {showConteoForm ? (
+            <div className="space-y-4">
+              {/* Encabezado */}
+              <div className="flex items-center gap-3">
+                <button onClick={resetConteoForm}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                  <ChevronLeft size={16} /> Cancelar
+                </button>
+                <span className="text-sm font-semibold text-primary">Nuevo conteo</span>
+              </div>
+
+              {/* Toggle tipo */}
+              <div className="flex gap-2">
+                {(['ubicacion', 'producto'] as const).map(t => (
+                  <button key={t} onClick={() => { setConteoTipo(t); setConteoRefId(''); setConteoRows([]) }}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border-2
+                      ${conteoTipo === t ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
+                    {t === 'ubicacion' ? '📍 Por ubicación' : '📦 Por producto'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Selector + botón cargar */}
+              <div className="flex gap-2">
+                <select value={conteoRefId}
+                  onChange={e => { setConteoRefId(e.target.value); setConteoRows([]) }}
+                  className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:border-accent">
+                  {conteoTipo === 'ubicacion' ? (
+                    <>
+                      <option value="">Seleccioná una ubicación</option>
+                      <option value="__sin__">Sin ubicación</option>
+                      {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </>
+                  ) : (
+                    <>
+                      <option value="">Seleccioná un producto</option>
+                      {(productosParaConteo as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.sku}</option>)}
+                    </>
+                  )}
+                </select>
+                <button onClick={cargarLineasParaConteo} disabled={!conteoRefId || conteoLoading}
+                  className="px-4 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {conteoLoading ? 'Cargando...' : 'Cargar stock'}
+                </button>
+              </div>
+
+              {/* Tabla de conteo */}
+              {conteoRows.length > 0 && (
+                <>
+                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm min-w-[560px]">
+                        <thead>
+                          <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400">Producto</th>
+                            <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">LPN</th>
+                            <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Esperado</th>
+                            <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">Contado</th>
+                            <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Diferencia</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {conteoRows.map((row, idx) => {
+                            const contada = parseFloat(row.cantidad_contada) || 0
+                            const diff = contada - row.cantidad_esperada
+                            const sinDiff = Math.abs(diff) < 0.001
+                            return (
+                              <tr key={row.linea_id} className="border-b border-gray-100 dark:border-gray-700 last:border-0">
+                                <td className="px-3 py-2.5">
+                                  <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{row.nombre}</p>
+                                  <p className="text-xs text-gray-400">{row.sku}{row.unidad_medida ? ` · ${row.unidad_medida}` : ''}</p>
+                                </td>
+                                <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 font-mono">{row.lpn || '—'}</td>
+                                <td className="px-3 py-2.5 text-right text-sm text-gray-600 dark:text-gray-300">{row.cantidad_esperada}</td>
+                                <td className="px-3 py-2.5">
+                                  <input type="number" min="0" step="0.001"
+                                    onWheel={e => e.currentTarget.blur()}
+                                    value={row.cantidad_contada}
+                                    onChange={e => {
+                                      const updated = [...conteoRows]
+                                      updated[idx] = { ...row, cantidad_contada: e.target.value }
+                                      setConteoRows(updated)
+                                    }}
+                                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent bg-white dark:bg-gray-700" />
+                                </td>
+                                <td className={`px-3 py-2.5 text-right text-sm font-semibold
+                                  ${sinDiff ? 'text-gray-300 dark:text-gray-600' : diff > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                                  {sinDiff ? <Check size={14} className="inline" /> : `${diff > 0 ? '+' : ''}${diff % 1 === 0 ? diff : diff.toFixed(3)}`}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-gray-50 dark:bg-gray-700">
+                            <td colSpan={2} className="px-3 py-2 text-xs text-gray-500">{conteoRows.length} línea{conteoRows.length !== 1 ? 's' : ''}</td>
+                            <td className="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300">
+                              {conteoRows.reduce((s, r) => s + r.cantidad_esperada, 0)}
+                            </td>
+                            <td className="px-3 py-2 text-center text-xs font-semibold text-gray-600 dark:text-gray-300">
+                              {conteoRows.reduce((s, r) => s + (parseFloat(r.cantidad_contada) || 0), 0).toFixed(3).replace(/\.?0+$/, '')}
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs font-semibold">
+                              {(() => {
+                                const totalDiff = conteoRows.reduce((s, r) => s + ((parseFloat(r.cantidad_contada) || 0) - r.cantidad_esperada), 0)
+                                return <span className={totalDiff === 0 ? 'text-gray-400' : totalDiff > 0 ? 'text-green-600' : 'text-red-500'}>
+                                  {totalDiff === 0 ? '✓' : `${totalDiff > 0 ? '+' : ''}${totalDiff % 1 === 0 ? totalDiff : totalDiff.toFixed(3)}`}
+                                </span>
+                              })()}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div>
+                    <textarea value={conteoNotas} onChange={e => setConteoNotas(e.target.value)}
+                      placeholder="Notas del conteo (opcional)..."
+                      rows={2}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 resize-none" />
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button onClick={() => guardarConteoBorrador.mutate()}
+                      disabled={guardarConteoBorrador.isPending}
+                      className="flex-1 py-2.5 border-2 border-accent text-accent rounded-xl text-sm font-semibold hover:bg-accent/5 transition-all disabled:opacity-50">
+                      {guardarConteoBorrador.isPending ? 'Guardando...' : 'Guardar borrador'}
+                    </button>
+                    <button onClick={() => finalizarConteoYAplicar.mutate()}
+                      disabled={finalizarConteoYAplicar.isPending}
+                      className="flex-1 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
+                      {finalizarConteoYAplicar.isPending ? 'Aplicando...' : 'Finalizar y aplicar ajustes'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            /* ── HISTORIAL DE CONTEOS ── */
+            <div className="space-y-3">
+              {conteoHistorial.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                  <ClipboardList size={36} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No hay conteos registrados</p>
+                  <p className="text-xs mt-1">Hacé clic en "Nuevo conteo" para empezar</p>
+                </div>
+              ) : (
+                conteoHistorial.map(c => {
+                  const items = c.inventario_conteo_items ?? []
+                  const conDiff = items.filter(i => Math.abs(i.cantidad_contada - i.cantidad_esperada) >= 0.001)
+                  const isExpanded = conteoExpandedId === c.id
+                  return (
+                    <div key={c.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                      <button onClick={() => setConteoExpandedId(isExpanded ? null : c.id)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-left">
+                        <ClipboardList size={16} className="text-accent flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">
+                              {c.tipo === 'ubicacion'
+                                ? `Por ubicación: ${(c as any).ubicaciones?.nombre ?? 'Sin ubicación'}`
+                                : `Por producto: ${(c as any).productos?.nombre ?? '—'}`}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium
+                              ${c.estado === 'finalizado' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'}`}>
+                              {c.estado === 'finalizado' ? 'Finalizado' : 'Borrador'}
+                            </span>
+                            {c.ajuste_aplicado && (
+                              <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full">
+                                Ajustado
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                            {new Date(c.created_at).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                            {' · '}{items.length} línea{items.length !== 1 ? 's' : ''}
+                            {conDiff.length > 0 && <span className="text-red-500 ml-1">· {conDiff.length} con diferencia</span>}
+                          </p>
+                        </div>
+                        <ChevronRight size={16} className={`text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                      </button>
+
+                      {isExpanded && items.length > 0 && (
+                        <div className="border-t border-gray-100 dark:border-gray-700">
+                          {c.notas && (
+                            <p className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 italic">{c.notas}</p>
+                          )}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs min-w-[480px]">
+                              <thead>
+                                <tr className="bg-gray-50 dark:bg-gray-700/50">
+                                  <th className="text-left px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Producto</th>
+                                  <th className="text-left px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">LPN</th>
+                                  <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Esperado</th>
+                                  <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Contado</th>
+                                  <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Diferencia</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {items.map(item => {
+                                  const diff = item.cantidad_contada - item.cantidad_esperada
+                                  const sinDiff = Math.abs(diff) < 0.001
+                                  return (
+                                    <tr key={item.id} className="border-t border-gray-100 dark:border-gray-700">
+                                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                                        {(item as any).productos?.nombre ?? '—'}
+                                        <span className="text-gray-400 ml-1">{(item as any).productos?.sku}</span>
+                                      </td>
+                                      <td className="px-3 py-2 text-gray-400 font-mono">{item.lpn || '—'}</td>
+                                      <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.cantidad_esperada}</td>
+                                      <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.cantidad_contada}</td>
+                                      <td className={`px-3 py-2 text-right font-semibold
+                                        ${sinDiff ? 'text-gray-300 dark:text-gray-600' : diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                        {sinDiff ? '✓' : `${diff > 0 ? '+' : ''}${diff % 1 === 0 ? diff : diff.toFixed(3)}`}
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════ TAB: AUTORIZACIONES ═══════════════════════════════════ */}
+      {tab === 'autorizaciones' && puedeVerAutorizaciones && (
+        <div className="space-y-4">
+          {/* Estado selector */}
+          <div className="flex gap-2">
+            {(['pendiente', 'aprobada', 'rechazada'] as const).map(e => (
+              <button key={e} onClick={() => setAutEstado(e)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors capitalize
+                  ${autEstado === e ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+                {e === 'pendiente' ? 'Pendientes' : e === 'aprobada' ? 'Aprobadas' : 'Rechazadas'}
+              </button>
+            ))}
+          </div>
+
+          {autLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : autorizaciones.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay solicitudes {autEstado === 'pendiente' ? 'pendientes' : autEstado === 'aprobada' ? 'aprobadas' : 'rechazadas'}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {(autorizaciones as any[]).map(aut => {
+                const linea = aut.inventario_lineas
+                const prod = linea?.productos
+                const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad'
+                  : aut.tipo === 'eliminar_serie' ? 'Eliminar serie'
+                  : 'Eliminar LPN'
+                const tipoColor = aut.tipo === 'ajuste_cantidad'
+                  ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
+                  : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                return (
+                  <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${tipoColor}`}>{tipoLabel}</span>
+                          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
+                            {prod?.nombre ?? '—'}
+                          </span>
+                          <span className="text-xs text-gray-400">{prod?.sku}</span>
+                        </div>
+                        <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                          <p>LPN: <span className="font-mono font-medium">{linea?.lpn ?? '—'}</span></p>
+                          {aut.tipo === 'ajuste_cantidad' && (
+                            <p>
+                              Cantidad: <span className="line-through">{aut.datos_cambio.cantidad_anterior}</span>
+                              {' → '}
+                              <span className="font-semibold text-orange-600">{aut.datos_cambio.cantidad_nueva}</span>
+                              {' '}{prod?.unidad_medida}
+                            </p>
+                          )}
+                          {aut.tipo === 'eliminar_serie' && (
+                            <p>Serie: <span className="font-mono">{aut.datos_cambio.nro_serie}</span></p>
+                          )}
+                          {aut.tipo === 'eliminar_lpn' && (
+                            <p>{aut.datos_cambio.cantidad} unidades a eliminar</p>
+                          )}
+                          <p>Solicitado por: {aut.users?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+                          {aut.notas && <p>Notas: {aut.notas}</p>}
+                          {aut.motivo_rechazo && <p className="text-red-500">Motivo rechazo: {aut.motivo_rechazo}</p>}
+                        </div>
+                      </div>
+
+                      {autEstado === 'pendiente' && (
+                        <div className="flex flex-col gap-2 flex-shrink-0">
+                          <button onClick={() => { if (confirm(`¿Aprobar y ejecutar: ${tipoLabel} en ${linea?.lpn}?`)) aprobarAutorizacion.mutate(aut) }}
+                            disabled={aprobarAutorizacion.isPending}
+                            className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                            <CheckCircle2 size={13} /> Aprobar
+                          </button>
+                          {autRechazoId === aut.id ? (
+                            <div className="space-y-1.5">
+                              <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
+                                placeholder="Motivo de rechazo..."
+                                className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                              <div className="flex gap-1">
+                                <button onClick={() => rechazarAutorizacion.mutate({ id: aut.id, motivo: autMotivoRechazo })}
+                                  disabled={rechazarAutorizacion.isPending || !autMotivoRechazo.trim()}
+                                  className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
+                                  Confirmar
+                                </button>
+                                <button onClick={() => { setAutRechazoId(null); setAutMotivoRechazo('') }}
+                                  className="px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button onClick={() => setAutRechazoId(aut.id)}
+                              className="flex items-center gap-1.5 border border-red-300 text-red-600 dark:text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                              <X size={13} /> Rechazar
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
           {showDesarmarModal && desarmarKitId && (() => {
             const kit = kitsProductos.find((k: any) => k.id === desarmarKitId)
@@ -2329,8 +3928,6 @@ export default function InventarioPage() {
               </div>
             )
           })()}
-        </>
-      )}
     </div>
   )
 }

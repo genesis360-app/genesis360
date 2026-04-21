@@ -256,6 +256,16 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - `actividadLog`: + `vacacion` y `asistencia` en EntidadLog.
 - `calcularDiasHabilesFrontend(desde, hasta)`: helper frontend, excluye sábado y domingo.
 
+### Módulo Recepciones / ASN (pendiente — migration 050)
+
+- **Decisión**: módulos separados pero vinculados. OC en `/proveedores` (OWNER/SUPERVISOR — compromiso comercial). Recepciones en `/recepciones` (DEPOSITO+OWNER+SUPERVISOR — operación de almacén). La recepción puede ocurrir sin OC.
+- **Vínculo OC→Recepción**: OC confirmada → botón "Recibir mercadería" → `/recepciones/nuevo?oc_id=XXX` pre-popula ítems. Campo "Contra OC" opcional en recepción (dropdown OCs confirmadas del proveedor).
+- **Al confirmar recepción**: genera ingreso en `inventario_lineas` (reutiliza lógica de `procesarMasivoIngreso`) + actualiza estado OC a `recibida_parcial` o `recibida`.
+- **Nuevos estados `ordenes_compra`**: agregar `recibida_parcial` y `recibida` al CHECK constraint.
+- **Tablas nuevas**: `recepciones` (tenant_id, numero auto, oc_id nullable, proveedor_id, estado, sucursal_id) + `recepcion_items` (recepcion_id, producto_id, oc_item_id nullable, cantidad_esperada, cantidad_recibida, estado_id, ubicacion_id, nro_lote, fecha_vencimiento, lpn, series_txt, inventario_linea_id).
+- **Roles con acceso**: OWNER · SUPERVISOR · DEPOSITO (ya en `DEPOSITO_ALLOWED`).
+- **Botón ASN**: ya conectado en InventarioPage tab Agregar Stock → `/recepciones` (v0.82.0).
+
 ### Marketplace (migración 020)
 - **Campos en `productos`**: `publicado_marketplace BOOLEAN`, `precio_marketplace DECIMAL(12,2)`, `stock_reservado_marketplace INT`, `descripcion_marketplace TEXT`.
 - **Campos en `tenants`**: `marketplace_activo BOOLEAN`, `marketplace_webhook_url TEXT`.
@@ -848,6 +858,213 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Fix `VentasPage.tsx` `cambiarEstado`**: al despachar desde historial → INSERT `ingreso_informativo` con no-efectivo del saldo cobrado ahora + no-efectivo original de la reserva (si ya estaba en caja).
 - **Fix `CajaPage.tsx`**: `egreso_informativo` agregado a `TIPO_LABEL` y `extraerMedioPago`; incluido con signo negativo en `totalesMedios`.
 - **Invariante de saldo**: `totalIngresos` y `totalEgresos` para calcular saldo solo incluyen tipos `*` (no `*_informativo`) — el saldo de efectivo no se ve afectado.
+
+### v0.76.0 ✅ PROD
+
+#### Módulo Proveedores completo (migration 049)
+- **9 campos extendidos en `proveedores`**: `razon_social`, `cuit`, `domicilio`, `condicion_iva` CHECK (Responsable Inscripto/Monotributista/Exento/Consumidor Final), `plazo_pago_dias INT`, `banco`, `cbu`, `notas`, `sucursal_id`.
+- **Tabla `ordenes_compra`**: `tenant_id`, `proveedor_id`, `numero INT` (auto per tenant), `estado CHECK (borrador/enviada/confirmada/cancelada)`, `fecha_esperada`, `notas`, `created_by`. UNIQUE(tenant_id, numero). RLS policy `oc_tenant`.
+- **Tabla `orden_compra_items`**: `orden_compra_id`, `producto_id`, `cantidad`, `precio_unitario`, `notas`. RLS policy `oc_items_tenant`.
+- **Triggers**: `trg_set_oc_numero` BEFORE INSERT (MAX+1 per tenant, numero=0 como placeholder) · `trg_updated_at_oc`.
+- **Interfaces** en `supabase.ts`: `Proveedor` extendida · `EstadoOC = 'borrador'|'enviada'|'confirmada'|'cancelada'` · `OrdenCompra` con join `proveedores` · `OrdenCompraItem` con join `productos`.
+- **`ProveedoresPage.tsx`** nueva (~600 líneas): 2 tabs underline — Proveedores (cards + modal form 12 campos, toggle activo) + Órdenes de Compra (filtros estado/proveedor, cards con lifecycle buttons: Send→enviada / CheckCircle→confirmada / XCircle→cancelar / Trash2→borrar borrador). `InlineOCItems` subcomponent para preview expandible. Modal detalle OC completo.
+- **ConfigPage**: eliminados todos los bloques de proveedores y archivos (state, queries, mutations, JSX, imports `Truck FolderOpen FileText Download`).
+- **Sidebar**: `Truck` icon `/proveedores` (ownerOnly) posicionado entre Clientes y Alertas.
+- **Arquitectura ASN-ready**: OC lifecycle termina en `confirmada` — la recepción y generación de stock es responsabilidad del futuro módulo ASN.
+
+### v0.85.0 — en dev
+
+#### Sprint B inventario (migration 052)
+
+- **I-04 — stock_minimo por sucursal**: tabla `producto_stock_minimo_sucursal(tenant_id, producto_id, sucursal_id, stock_minimo)` con UNIQUE + RLS. UI en ProductoFormPage: sección "Stock mínimo por sucursal" visible cuando `isEditing && sucursales.length > 0`. Input por sucursal con placeholder = valor global. Botón "Guardar mínimos" independiente. Fallback al global si no hay override.
+- **I-05 — Mono-SKU en ubicaciones**: `ubicaciones.mono_sku BOOLEAN DEFAULT FALSE`. Toggle checkbox en formulario de edición de ConfigPage → Ubicaciones. Badge ámbar "Mono-SKU" en vista de lista. Validación en `ingresoMutation` de InventarioPage: si la ubicación tiene `mono_sku=true` y ya tiene un producto distinto con stock > 0, lanza error descriptivo.
+- **I-09 — En Armado kitting**: `kitting_log.estado CHECK('en_armado','completado','cancelado')` + `componentes_reservados JSONB`. Flujo en 2 fases: "Iniciar armado" incrementa `cantidad_reservada` en líneas de componentes y crea `kitting_log` con `estado='en_armado'`; sección "En Armado" en tab Kits muestra armados activos con botones Confirmar (rebaja componentes + ingresa KIT + `estado='completado'`) y Cancelar (libera reservas + `estado='cancelado'`).
+- **fix — security_invoker view** (migration 053): `stock_por_producto` recreada con `WITH (security_invoker = true)` — elimina warning del Security Advisor de Supabase.
+- **fix — APP_VERSION**: bump a `v0.85.0` en `src/config/brand.ts`.
+
+### v0.87.0 — en dev
+
+#### Sprint D inventario — Combinar LPNs + LPN Madre (migration 057)
+
+- **Migration 057**: `inventario_lineas.parent_lpn_id TEXT DEFAULT NULL` + índice `WHERE parent_lpn_id IS NOT NULL`.
+- **Checkboxes en tabla LPN**: grid-cols-7 → grid-cols-8; checkbox header (seleccionar todo del producto) + checkbox por fila. Selección resaltada con borde `border-accent/50`. Validación: solo LPNs del mismo producto.
+- **Barra flotante de acción**: aparece en la parte inferior cuando ≥2 LPNs seleccionados. Muestra conteo + botones "Limpiar" y "Combinar".
+- **Modal Combinar** con dos modos:
+  - **Fusionar**: todo el stock pasa al LPN destino (radio selector). Los otros quedan `activo=false, cantidad=0`. Inserta `ajuste_ingreso` en destino. Muestra stock resultante en tiempo real.
+  - **LPN Madre**: asigna `parent_lpn_id` a los LPNs seleccionados. No mueve stock. Los hijos muestran "↳ PLT-001" debajo del LPN en la tabla.
+- **Restricción fusionar**: todos los LPNs deben ser del mismo `producto_id` (validado en UI y `mutationFn`).
+
+### v0.86.0 — en dev
+
+#### Sprint C inventario — Tab Autorizaciones DEPOSITO (migrations 055+056)
+
+- **Migration 055**: `movimientos_stock.tipo` CHECK ampliado (`ajuste_ingreso`, `ajuste_rebaje`, `traslado`). `cantidad INT → DECIMAL(14,4)` — soporta UOM decimales (kg, l, g, etc.).
+- **Migration 056**: tabla `autorizaciones_inventario` (tipo CHECK('ajuste_cantidad','eliminar_serie','eliminar_lpn'), linea_id, datos_cambio JSONB, estado pendiente/aprobada/rechazada, solicitado_por, aprobado_por, motivo_rechazo). RLS tenant. Índice (tenant_id, estado). Trigger updated_at.
+- **LpnAccionesModal — DEPOSITO interception**: `esDeposito = user?.rol === 'DEPOSITO'`. `guardarEdicion`: si cantidad cambia → `crearAutorizacion('ajuste_cantidad', {cantidad_anterior, cantidad_nueva})` + guarda otros campos sin tocar cantidad. `eliminarLpn`: DEPOSITO → solicita autorización; OWNER/SUPERVISOR → ejecuta. `eliminarSerie`: DEPOSITO → solicita autorización; OWNER/SUPERVISOR → ejecuta. Tab Eliminar: DEPOSITO ve UI azul "Solicitar eliminación" (ClipboardList); no-DEPOSITO ve UI roja.
+- **Fix historial — conteo y ajuste LPN**: `movimientos_stock.tipo` CHECK ahora incluye `ajuste_ingreso`/`ajuste_rebaje` → conteos y ajustes de LPN quedan en `/historial` y tab Historial de InventarioPage.
+- **Fix registrarMovimiento**: `stock_despues` ahora calculado correctamente (`stockAntes + diff`); antes siempre era igual a `stockAntes`.
+- **Fix tipos inválidos**: removidos `edicion_lpn`, `edicion_serie` (cantidad=0 violaba CHECK); `traslado` en `moverStock` eliminado (no afecta stock neto). Solo `actividadLog` en operaciones sin cambio de stock.
+- **Tab Autorizaciones en InventarioPage**: visible para OWNER/SUPERVISOR/ADMIN. Pills Pendientes/Aprobadas/Rechazadas. Cards por solicitud: tipo badge, producto/SKU, LPN, datos del cambio solicitado, solicitante, fecha. Aprobar (ejecuta acción + inserta movimiento válido + marca aprobada). Rechazar (inline motivo_rechazo).
+- **Reorden de tabs**: Inventario → Agregar Stock → Quitar Stock → Kits → Conteos → Historial → Autorizaciones.
+- **Historial filtros**: rango de fechas (desde/hasta), categoría de producto, tipo, motivo (búsqueda de texto). Badge "Conteo" detectado por prefijo en motivo.
+- **`getTipoBadge(tipo, motivo)`**: helper en InventarioPage — distingue "Conteo" vs "Ajuste ±" para `ajuste_ingreso`/`ajuste_rebaje` según prefijo del motivo.
+
+### v0.85.3 — en dev
+
+#### Fix: cálculo de margen strip IVA (ProductoFormPage, MetricasPage, DashboardPage, useRecomendaciones)
+
+- **Fórmula corregida**: `precio_venta` en DB incluye IVA. Fórmula anterior `(venta - costo) / costo` sobreestimaba el margen (142% en lugar de 100%). Nueva fórmula: `precio_neto = precio_venta / (1 + iva/100)` → `markup% = (neto - costo) / costo × 100`.
+- **Precio sugerido en ProductoFormPage**: con margen objetivo y alícuota configurada → `costo × (1 + margen%) × (1 + iva%)`. Muestra hint azul debajo del campo.
+- **Ganancia en ProductoFormPage**: `precio_venta / ivaFactor - precio_costo` (neto, no precio con IVA).
+- **MetricasPage — margenProductos**: usa `iva_monto` de `venta_items` para obtener el neto histórico. Markup sobre costo.
+- **MetricasPage — gananciaNeta**: strip IVA de ventas antes de restar costo y gastos (`totalVentas - ivaVentasPeriodo - costoVentas - gastosTotal`).
+- **MetricasPage — insightsMargen**: usa `alicuota_iva` del producto para el margen actual. Markup.
+- **DashboardPage — margenContrib**: `(totalVentasNeto - totalCosto) / totalCosto × 100` donde `totalVentasNeto = totalVentas - ivaVentas`. Misma lógica en período anterior.
+- **useRecomendaciones — regla margen-realizado-bajo**: `totalNeto = totalFacturado - totalIva`; umbral 15% sobre markup de neto.
+
+### v0.85.2 — en dev
+
+#### Fixes VentasPage (bugs de cantidad, descuento y venta sin líneas)
+
+- **Descuento: cambio de tipo clampea el valor**: al cambiar de `$` a `%`, si el monto era mayor a 100 queda clampeado a 100%. Al cambiar de `%` a `$`, convierte el porcentaje a monto equivalente sobre el subtotal del ítem. Antes era posible tener >100% tras el cambio de tipo.
+- **LPN eliminado del ticket**: el ticket del cliente ya no muestra los LPNs internos (son datos de almacén, no relevantes para el cliente).
+- **Cantidad decimal: display con coma**: el input de cantidad muestra `defaultValue` con coma como separador (ej: `1,5` en vez de `1.5`).
+- **Cantidad entero: bloquea punto y coma**: para UOM no-decimales (unidades, etc.) el `onKeyDown` previene ingreso de `.` o `,`, evitando que quede `2,5` en pantalla.
+- **Stock guard tras restore del carrito**: `updateItem` solo valida stock contra `lineas_disponibles` si tiene al menos una entrada (`length > 0`). Antes, el carrito restaurado desde localStorage (con `lineas_disponibles: []`) causaba que el stock máximo disponible fuera 0.
+- **Venta sin líneas imposible**: antes si `venta_items` fallaba (ej: tipo integer en DB), el header `ventas` quedaba huérfano y era finalizable. Ahora: (a) validación previa de cantidad (NaN / ≤ 0 bloqueados), (b) rollback DELETE del header si el insert de items falla.
+- **Migration 054**: `venta_items.cantidad INT → DECIMAL(14,4)` — permite guardar cantidades decimales para productos con UOM kg, g, l, etc.
+- **`esDecimal` + `parseCantidad` extraídas a `ventasValidation.ts`**: funciones puras accesibles desde tests. 24 nuevos unit tests (`ventasCantidad.test.ts`). Total: **178/178** passing.
+
+### v0.85.1 — en dev
+
+#### Fixes VentasPage
+
+- **Ticket modal scrollable**: `max-h-[90vh] flex flex-col` + `overflow-y-auto flex-1` en contenido — botones Imprimir/Cerrar siempre visibles sin importar cuántos items tenga el ticket.
+- **ESC prioridad modal**: `ticketVenta` tiene su propio `useModalKeyboard`. `ventaDetalle` keyboard solo activo cuando `ticketVenta === null` — ESC cierra el modal más interno primero.
+- **Decimal punto y coma**: input cantidad usa `defaultValue + onBlur` en vez de `value + onChange` — el usuario puede escribir "1.5" o "1,5" sin que React resetee el punto durante la edición.
+- **Descuento clamped**: por item, `pct` máx 100% y `monto` máx subtotal del item. Global: igual con atributo `max` en el input.
+- **IVA separado en ticket**: antes del TOTAL aparece línea "Neto (sin IVA)" + líneas "IVA X%" agrupadas por tasa.
+- **Presupuesto no genera ticket**: `setTicketVenta` solo se llama si `estado !== 'pendiente'`.
+- **Reservar desde historial sin pago bloqueado**: botón "Reservar stock" verifica `monto_pagado > 0` antes de ejecutar, muestra toast descriptivo.
+- **Draft carrito vacío**: al vaciar el carrito se borra el draft de localStorage en vez de saltear el save — evita restaurar items ya eliminados al volver a la página.
+- **Performance venta directa**: batch insert `venta_items` (1 llamada en vez de N), `Promise.all` por item para series+lineas, batch read `productos` + `Promise.all` para updates + batch insert `movimientos_stock` — de ~80 llamadas secuenciales a ~6 para carrito de 14 items.
+
+### v0.84.0 — en dev
+
+#### Sprint A inventario (migration 051)
+
+- **I-03 — LPN vencidos**: `fecha_vencimiento < hoy` excluye líneas en ventas (4 puntos: `agregarProducto`, `cambiarEstado` reservar, `cambiarEstado` despachar, despacho directo). AlertasPage sección roja "LPNs vencidos" con botón "Ver LPN" → `/inventario?search=LPN-XXX`. Badge `useAlertas` incluye conteo. `InventarioPage` lee `?search=` al montar y pre-filtra.
+- **I-06 — Mover LPN a otra sucursal**: selector de sucursal destino en tab Mover de `LpnAccionesModal` (visible solo con ≥2 sucursales configuradas). Nuevo LPN hereda `sucursal_id` seleccionada.
+- **I-08 — Over-receipt configurable**: migration 051 `tenants.permite_over_receipt BOOLEAN DEFAULT FALSE`. Toggle en ConfigPage → Negocio. Validación en `RecepcionesPage` (pendiente, módulo futuro).
+
+### v0.83.0 — en dev
+
+#### Conteo de inventario + Estructura LPN (migration 050)
+
+- **Migration 050 bundled**: nuevos estados OC (`recibida_parcial`, `recibida`) + tablas `recepciones` + `recepcion_items` (ASN futuro) + `inventario_lineas.estructura_id UUID FK → producto_estructuras` + tablas `inventario_conteos` + `inventario_conteo_items`. RLS y triggers en todas. DEV ✅.
+- **Tab "Conteo"** en `InventarioPage`: nuevo tab con ícono `ClipboardList`.
+  - Toggle tipo: **Por ubicación** (selecciona ubicación) / **Por producto** (selecciona producto).
+  - Botón "Cargar stock" → `cargarLineasParaConteo()`: query `inventario_lineas` filtrando por `ubicacion_id` o `producto_id`, construye tabla de conteo con `cantidad_esperada` = stock actual.
+  - Tabla editable por LPN: nombre, SKU, LPN, stock esperado, campo "Contado" (input numérico).
+  - Color diferencias: verde (=esperado), ámbar (contado ≠ esperado), rojo (contado < 0).
+  - **Guardar borrador**: `inventario_conteos.estado = 'borrador'` + `inventario_conteo_items` — no afecta stock.
+  - **Finalizar y ajustar**: `estado = 'finalizado'`, aplica ajustes secuenciales: `cantidad_contada > esperada` → movimiento `ajuste_ingreso`; `cantidad_contada < esperada` → movimiento `ajuste_rebaje`. `ajuste_aplicado = true`.
+  - **Historial de conteos**: query `conteoHistorial` paginada; tarjetas expandibles con detalle de ítems y diferencias.
+- **Tab "Estructura"** en `LpnAccionesModal`: nueva pestaña con ícono `Layers`.
+  - Query `estructuras`: `producto_estructuras WHERE producto_id = producto.id`.
+  - Si hay más de 0 estructuras: cards con nombre, badge "Default", dimensiones por nivel.
+  - Radio selector para cambiar la estructura asignada al LPN (o "Sin estructura").
+  - Mutation `guardarEstructura`: `UPDATE inventario_lineas SET estructura_id = X WHERE id = linea.id`.
+  - Tab visible solo cuando no hay reservas activas (misma lógica que otras tabs).
+- **Interfaces TS nuevas** en `supabase.ts`: `InventarioConteo` + `InventarioConteoItem`.
+- **Tipos de movimiento**: `ajuste_ingreso` y `ajuste_rebaje` no estaban como valores del CHECK — usar `motivo` en `movimientos_stock` para identificarlos (tipo `ingreso` / `rebaje`).
+
+### v0.82.0 — en dev
+
+#### InventarioPage — series overflow, QR LPN, masivo inline, iconos
+
+- **Series overflow**: chips con primeras 5 series activas + badge `+N más` que abre modal con lista completa. Evita que LPNs con miles de series colapsen la vista.
+- **LpnQR.tsx** (nuevo componente): genera QR del LPN con `qrcode`, descarga PNG y ventana imprimible. Botón `QrCode` en el header de `LpnAccionesModal` (izquierda de la X).
+- **Masivo Agregar Stock — vista inline**: el botón "Masivo" ya no abre `MasivoModal`; cambia a una vista en página con buscador + scanner, tabla editable (SKU / Cantidad / Estado / Ubicación / acordeón extras: lote, vencimiento, LPN, series). Flujo: escanear → foco en Cantidad → Enter → vuelve al buscador. Mismo SKU sin lote suma cantidad en lugar de nueva fila. Botón "Procesar N ingresos" al pie. Masivo rebaje sigue usando `MasivoModal`.
+- **Iconos botones**: Ingreso y Masivo ingreso: `ArrowDown` → `Plus`. Rebaje y Masivo rebaje: `ArrowUp` → `Minus`.
+- **Botón ASN**: ícono `ShoppingBasket` en tab Agregar Stock → navega a `/recepciones` (módulo futuro).
+
+### v0.81.0 — en dev
+
+#### VentasPage — fixes y cantidades decimales
+
+- **Fix carrito draft (localStorage)**: bug de orden de efectos — el save effect borraba el draft antes de que el restore lo leyera. Fix: restore declarado antes que save en el código; `cartDraftKey` omitido de las deps del save effect (evita que se dispare cuando carga el tenant).
+- **Fix scanner cola secuencial**: `pendingAddRef` no funcionaba cuando el segundo scan llegaba antes de que el primero terminara su fetch de líneas (findIndex devolvía -1 y el incremento era no-op). Reemplazado por `scanQueueRef` + `scanProcessingRef`: los scans se encolan y `processNext()` los procesa de a uno, garantizando que el segundo scan ve el carrito ya actualizado por el primero.
+- **Cantidades decimales en carrito**: `UNIDADES_DECIMALES` (kg, g, gr, mg, l, lt, ml, m, m2, m3, cm, mm, km — case-insensitive). `CartItem` agrega `unidad_medida`. Helpers `esDecimal()`, `stepCantidad()`, `parseCantidad()`. Input: `step` y `min` dinámicos; `parseInt` → `parseFloat`; ancho `w-16`. Botones +/− respetan el step (0.001 para decimales, 1 para enteros).
+
+### v0.80.0 — en dev
+
+#### VentasPage — fixes UX
+
+- **Fix scanner duplicados**: `pendingAddRef` (Set por `producto_id`) previene stale closure — scan rápido del mismo producto suma cantidad en lugar de crear línea nueva. Funciona aunque el fetch async aún no terminó.
+- **Historial paginado**: query con `.limit(ventasLimit)` (empieza en 50). Botón "Cargar más ventas" al pie incrementa de 50 en 50. Se resetea al cambiar `filterEstado` o `sucursalId`. Evita traer toda la tabla en negocios con historial largo.
+- **Carrito pre-guardado**: guarda draft en `localStorage` (`carrito_draft_{tenantId}`) en cada cambio de cart/cliente/checkout. Restaura al montar (toast de aviso). Clear automático al finalizar venta. No guarda `lineas_disponibles`/`series_disponibles` (datos grandes y potencialmente stale).
+- **Banner caja cerrada**: aviso rojo prominente (AlertTriangle + texto + link `/caja`) en la parte superior del tab "Nueva venta" cuando no hay sesión abierta.
+- **Scroll independiente carrito**: `max-h-[45vh] overflow-y-auto` en la lista de ítems — los botones de checkout siempre visibles sin scrollear la página entera.
+
+### v0.79.0 — en dev
+
+#### ImportarProductosPage — template actualizado (22 columnas)
+- **10 columnas nuevas** en plantilla Excel y lógica de importación:
+  - `alicuota_iva`: 0/10.5/21/27 (default 21). Validación estricta.
+  - `margen_objetivo`: porcentaje 0–100, opcional.
+  - `tiene_series`, `tiene_lote`, `tiene_vencimiento`: SI/NO (helper `parseBool` acepta SI/SÍ/YES/TRUE/1).
+  - `regla_inventario`: FIFO/FEFO/LEFO/LIFO/Manual; vacío = usa default del tenant.
+  - `es_kit`: SI/NO.
+  - `estr_unidades_por_caja`, `estr_cajas_por_pallet`, `estr_peso_unidad`: opcionales — si alguno tiene valor, crea/actualiza la estructura default del producto en `producto_estructuras` (upsert: query por `producto_id + is_default=true`, luego UPDATE o INSERT).
+- **Preview table**: columna IVA% visible; `bg-blue-50 dark:bg-blue-900/20` (clase malformada corregida).
+- **Hoja Referencia**: actualizada con todos los campos y valores válidos; secciones separadas para Atributos y Estructura.
+- **Sin migration**: todos los campos ya existían en DB (migrations 015, 031, 040, 042, etc.).
+
+### v0.78.0 — en dev
+
+#### InventarioPage — fixes y mejoras
+
+- **Fix filtro "Sin X"**: los filtros de ubicación, proveedor y estado con opción `__sin__` tenían lógica invertida — excluían el producto si ALGUNA línea tenía el campo, siendo demasiado estricto. Fix: ahora excluye solo si NINGUNA línea tiene ese campo vacío (muestra el producto si tiene al menos una línea sin el campo).
+- **Búsqueda por LPN**: movida de DB-level a client-side en `filteredInv`. Busca por nombre, SKU, código de barras, **ubicación** y **LPN**. La query de productos ya no filtra en DB (evita que búsquedas por LPN retornen vacío). Placeholder actualizado en ambas vistas.
+- **Vista por ubicación — acciones LPN**: cada línea expandida ahora tiene botón `Settings2` que abre `LpnAccionesModal`, igual que la vista por producto. Fix: campos `l.lote`→`l.nro_lote`, `l.vencimiento`→`l.fecha_vencimiento`.
+- **Ocultar scroll nativo en tabs**: `[&::-webkit-scrollbar]:hidden` + `scrollbarWidth: 'none'` en el contenedor `overflow-x-auto` de la barra de pestañas.
+- **Botón Importar en tab Inventario**: header muestra botón "Importar" cuando `tab === 'inventario'` → navega a `/inventario/importar`.
+- **`ImportarInventarioPage.tsx`** nueva: importación masiva de stock extraída de `ImportarProductosPage` como módulo dedicado en ruta `/inventario/importar`. Back button → `/inventario`.
+- **`ImportarProductosPage`**: tab Inventario eliminada, queda solo catálogo de productos. Ruta `/productos/importar`.
+- **LPN único por tenant**: validación en `ingresoMutation` y `MasivoModal` — antes de insertar, consulta `inventario_lineas WHERE lpn = X AND tenant_id = Y AND activo = true`. Error descriptivo con el producto que ya lo tiene. MasivoModal también detecta duplicados dentro del mismo lote (sin tocar DB).
+- **Vista por ubicación — orden**: "Sin ubicación" primero, luego A-Z con `localeCompare('es')`.
+- **Fix race condition filtros**: `isLoading: lineasLoading` en query `inventario_lineas_all`; spinner combina `invLoading || lineasLoading` — evita render con `lineasMap` vacío mientras `lineasData` carga.
+
+### v0.77.0 — en dev
+
+#### Biblioteca de Archivos como módulo del sidebar
+- **`BibliotecaPage.tsx`** nueva (~200 líneas): reutiliza tabla `archivos_biblioteca` y bucket `archivos-biblioteca` de migration 042 (sin nueva migration).
+- **Filtros**: buscador por nombre/descripción + dropdown por tipo.
+- **`TIPO_COLORS`**: colores distintos por tipo (yellow=AFIP, blue=contrato, green=factura_proveedor, purple=manual, gray=otro).
+- **Upload**: `storage.upload(path)` → `archivos_biblioteca.insert()` con rollback si falla la inserción en DB.
+- **Descarga**: `createSignedUrl(path, 300)` → `<a>` programático.
+- **Sidebar**: `FolderOpen` icon `/biblioteca` (ownerOnly) posicionado junto a Proveedores.
+- **ConfigPage**: tab `archivos` eliminada (funcionalidad movida al módulo dedicado).
+
+### v0.75.0 ✅ PROD
+
+#### InventarioPage — reestructura de tabs
+- **5 tabs con estilo underline**: Inventario · Agregar stock · Quitar stock · Historial · Kits
+- **`type Tab`**: `'inventario' | 'agregar' | 'quitar' | 'historial' | 'kits'`
+- Tab default: `'inventario'`. Sub-tabs Ingresos/Egresos eliminados — cada uno es un tab principal.
+- `filteredMov` filtra por `tab === 'agregar'` (ingresos) / `tab === 'quitar'` (egresos) / `historial` (todos).
+- PlanProgressBar solo en `agregar` y `quitar`. Botones de acción en header contextuales por tab.
+- Toggle vista Por producto/Por ubicación mantiene su posición derecha, visible solo en tab `inventario`.
+
+#### VentasPage — LPN picker fix
+- **Fix**: query `lineas_disponibles` usaba `.not('ubicacion_id','is',null)` → excluía líneas sin ubicación → picker invisible aunque hubiera múltiples LPNs. Removido el filtro; el filtro JS `disponible_surtido !== false` ya maneja la lógica correcta.
+
+#### GastosPage — IVA deducible + comprobantes + gastos fijos (migration 048)
+- **IVA deducible**: campo `iva_monto` en formulario (junto al monto). Columna IVA en tabla + total en footer. Card de stats "IVA deducible" del período.
+- **Comprobantes**: `gastos.comprobante_url TEXT` + bucket privado `comprobantes-gastos` (10 MB, img+PDF). Upload en el formulario; ícono 📎 en lista abre URL firmada (300s). Al eliminar gasto también elimina el archivo.
+- **Tab "Gastos fijos"**: tabla `gastos_fijos` (descripcion, monto, iva_monto, categoria, medio_pago, frecuencia mensual/quincenal/semanal, dia_vencimiento, activo). CRUD completo. Toggle activo/inactivo. Total mensual estimado en footer. Botón "Generar hoy" → crea gastos variables para el día de hoy desde todos los fijos activos.
+- **Tabs**: underline "Gastos variables" / "Gastos fijos". Header contextual: `agregar` muestra Ingreso+Masivo; `quitar` muestra Rebaje+Masivo; fijos muestra Nuevo fijo + Generar hoy.
 
 ### v0.74.2 — en dev
 

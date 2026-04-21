@@ -13,10 +13,13 @@ export function useAlertas() {
       const fechaLimite = new Date()
       fechaLimite.setDate(fechaLimite.getDate() - RESERVAS_DIAS_LIMITE)
 
+      const hoy = new Date().toISOString().split('T')[0]
+
       const [
         { count: countAlertas },
         { count: countReservas },
         { count: countSinCategoria },
+        { count: countVencidos },
         clientesDeudaData,
       ] = await Promise.all([
         supabase
@@ -37,6 +40,14 @@ export function useAlertas() {
           .eq('activo', true)
           .is('categoria_id', null),
         supabase
+          .from('inventario_lineas')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant!.id)
+          .eq('activo', true)
+          .gt('cantidad', 0)
+          .not('fecha_vencimiento', 'is', null)
+          .lt('fecha_vencimiento', hoy),
+        supabase
           .from('ventas')
           .select('id, total, monto_pagado, cliente_id')
           .eq('tenant_id', tenant!.id)
@@ -51,7 +62,7 @@ export function useAlertas() {
         if (saldo >= 0.5 && v.cliente_id) clientesUnicos.add(v.cliente_id)
       }
 
-      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + clientesUnicos.size
+      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + (countVencidos ?? 0) + clientesUnicos.size
     },
     enabled: !!tenant,
     refetchInterval: 30000,

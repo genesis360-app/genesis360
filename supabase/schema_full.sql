@@ -74,7 +74,7 @@ CREATE TABLE users (
   id             UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   tenant_id      UUID REFERENCES tenants(id) ON DELETE CASCADE,
   rol            TEXT NOT NULL DEFAULT 'CAJERO'
-    CHECK (rol IN ('OWNER','SUPERVISOR','CAJERO','ADMIN')),
+    CHECK (rol IN ('OWNER','SUPERVISOR','CAJERO','ADMIN','RRHH','DEPOSITO','CONTADOR')),
   nombre_display TEXT,
   activo         BOOLEAN DEFAULT TRUE,
   created_at     TIMESTAMPTZ DEFAULT NOW()
@@ -1726,6 +1726,11 @@ CREATE TABLE IF NOT EXISTS metodos_pago (
 );
 ALTER TABLE metodos_pago ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_metodos_pago_tenant ON metodos_pago(tenant_id);
+
+-- ─── Migration 058: Ampliar users.rol CHECK ──────────────────────────────────
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_rol_check;
+ALTER TABLE users ADD CONSTRAINT users_rol_check
+  CHECK (rol IN ('OWNER', 'SUPERVISOR', 'CAJERO', 'ADMIN', 'RRHH', 'DEPOSITO', 'CONTADOR'));
 
 -- ─── Migration 057: Sprint D — LPN Madre ─────────────────────────────────────
 ALTER TABLE inventario_lineas ADD COLUMN IF NOT EXISTS parent_lpn_id TEXT DEFAULT NULL;

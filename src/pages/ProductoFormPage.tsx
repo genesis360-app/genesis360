@@ -56,7 +56,8 @@ export default function ProductoFormPage() {
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<string | null>(null)
   const [scanPhotoCount, setScanPhotoCount] = useState(0)
-  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false) // 0=ninguna, 1=primera sacada, listo para segunda
+  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false)
+  const [skuTaken, setSkuTaken] = useState(false)
 
   // USD mode (usa cotización global del sidebar)
   const [usdModoCosto, setUsdModoCosto] = useState(false)
@@ -173,6 +174,19 @@ export default function ProductoFormPage() {
     }
   }, [productoData])
 
+  // SKU uniqueness check (debounced, excludes current product when editing)
+  useEffect(() => {
+    const sku = form.sku.trim().toUpperCase()
+    if (!sku || !tenant) { setSkuTaken(false); return }
+    const timer = setTimeout(async () => {
+      let q = supabase.from('productos').select('id').eq('tenant_id', tenant.id).eq('sku', sku)
+      if (isEditing && id) q = q.neq('id', id)
+      const { data } = await q.maybeSingle()
+      setSkuTaken(!!data)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [form.sku, tenant, isEditing, id])
+
   const ivaFactor = 1 + (parseFloat(form.alicuota_iva) || 0) / 100
 
   // Markup = (precio neto sin IVA − costo) / costo × 100
@@ -195,17 +209,20 @@ export default function ProductoFormPage() {
     return null
   })()
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.size > 2 * 1024 * 1024) { toast.error('La imagen no puede superar 2MB'); return }
-    setImageFile(file)
-    setImagePreview(URL.createObjectURL(file))
+    const compressed = file.size > 1.5 * 1024 * 1024
+      ? await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 1200, useWebWorker: true })
+      : file
+    setImageFile(compressed)
+    setImagePreview(URL.createObjectURL(compressed))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.nombre.trim()) return toast.error('El nombre es obligatorio')
+    if (skuTaken) return toast.error('El SKU ya está en uso. Elegí otro o dejalo vacío para autogenerar.')
 
     // Verificar límite de productos solo al crear (no al editar)
     if (!isEditing && limits && !limits.puede_crear_producto) {
@@ -229,12 +246,9 @@ export default function ProductoFormPage() {
 
       let imagen_url = existingImageUrl
       if (imageFile) {
-        const fileToUpload = imageFile.size > 2 * 1024 * 1024
-          ? await imageCompression(imageFile, { maxSizeMB: 1.5, maxWidthOrHeight: 1200, useWebWorker: true })
-          : imageFile
-        const ext = fileToUpload.name.split('.').pop()
+        const ext = imageFile.name.split('.').pop()
         const path = `${tenant!.id}/${Date.now()}.${ext}`
-        const { error: uploadError } = await supabase.storage.from('productos').upload(path, fileToUpload, { upsert: true })
+        const { error: uploadError } = await supabase.storage.from('productos').upload(path, imageFile, { upsert: true })
         if (uploadError) throw uploadError
         const { data: urlData } = supabase.storage.from('productos').getPublicUrl(path)
         imagen_url = urlData.publicUrl
@@ -524,12 +538,12 @@ export default function ProductoFormPage() {
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SKU <span className="text-gray-400 text-xs font-normal">(auto si vacío)</span></label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SKU <span className="text-gray-400 text-xs font-normal">(autogenera si vacío)</span></label>
                   <div className="flex gap-2">
                     <input type="text" value={form.sku} disabled={!canEdit}
                       onChange={e => setForm(p => ({ ...p, sku: e.target.value.toUpperCase() }))}
-                      placeholder="Vacío = SKU-00001 automático"
-                      className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                      placeholder="Ej: SKU-00001"
+                      className={`flex-1 px-4 py-2.5 border rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 ${skuTaken ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`} />
                     {!isEditing && (
                       <button type="button" onClick={() => setForm(p => ({ ...p, sku: generateSKU(form.nombre) }))}
                         title="Generar SKU automático"
@@ -538,6 +552,7 @@ export default function ProductoFormPage() {
                       </button>
                     )}
                   </div>
+                  {skuTaken && <p className="text-xs text-red-500 mt-1">Este SKU ya está en uso por otro producto.</p>}
                 </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código de barras</label>

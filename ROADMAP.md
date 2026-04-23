@@ -1,6 +1,6 @@
-# Genesis360 — Roadmap RRHH
+# Genesis360 — Roadmap
 
-**Última actualización:** 18 de Abril, 2026 · **v0.77.0 en DEV · v0.76.0 en PROD**
+**Última actualización:** 23 de Abril, 2026 · **v0.89.0 en PROD**
 
 > Stack, arquitectura y convenciones → [CLAUDE.md](CLAUDE.md) · Workflow de deploy → [WORKFLOW.md](WORKFLOW.md)
 
@@ -174,6 +174,82 @@ Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅
 
 Próximo RRHH: Bloque 5 — CHECK-IN/CHECK-OUT rápido (v0.76.0)
 ```
+
+---
+
+---
+
+## Integraciones Externas
+
+> Orden de implementación acordado: **TiendaNube → MercadoPago → MELI**
+
+### Fase 0 — Schema fundacional ✅ (migration 060, v0.88.0)
+
+- **pgcrypto**: habilitado en DEV + PROD (prerequisito para cifrado futuro de tokens).
+- **ALTER TABLE `ventas`**: columnas `origen` (TiendaNube/MercadoPago/Manual), `tracking_id`, `tracking_url`, `costo_envio_logistica`, `marketing_metadata JSONB`, `id_pago_externo`, `money_release_date`, `cae`, `vencimiento_cae`, `tipo_comprobante`, `numero_comprobante`, `link_factura_pdf`.
+- **ALTER TABLE `clientes`**: columnas `telefono_normalizado`, `marketing_optin`.
+- **`integration_job_queue`**: cola async genérica para jobs de integración con retries (`max_retries=3`, `next_retry_at`, `payload JSONB`, `error TEXT`). Jobs se encolan y un worker los procesa — nunca llamadas síncronas a APIs externas.
+- **`ventas_externas_logs`**: idempotencia para webhooks entrantes. UNIQUE(tenant_id, integracion, webhook_external_id). Evita duplicar ventas si el webhook se reintenta.
+
+### Fase OAuth ✅ (migration 061, v0.89.0)
+
+#### Credenciales
+- **`tiendanube_credentials`**: tenant_id, sucursal_id, store_id BIGINT, store_name, store_url, access_token, conectado, UNIQUE(tenant_id, sucursal_id). Token permanente (TN no expira).
+- **`mercadopago_credentials`**: tenant_id, sucursal_id, seller_id BIGINT, seller_email, access_token, refresh_token, public_key, expires_at, conectado, UNIQUE(tenant_id, sucursal_id). Token expira en 180 días.
+- **`inventario_tn_map`**: mapeo producto Genesis360 ↔ producto TiendaNube por sucursal. sync_stock, sync_precio, ultimo_sync_at.
+
+#### Edge Functions OAuth
+- **`tn-oauth-callback`**: recibe `?code&state` → intercambia code por token en TN → obtiene store info → upsert en `tiendanube_credentials`. `user_id` (= store_id) viene del cuerpo del token response, NO de la URL.
+- **`mp-oauth-callback`**: recibe `?code&state&error?` → intercambia code en MP → calcula `expires_at` → obtiene seller email → upsert en `mercadopago_credentials`.
+- Ambas deployadas con `--no-verify-jwt` en DEV + PROD.
+
+#### UI ConfigPage tab "Integraciones"
+- Cards por sucursal mostrando estado de conexión (sin exponer tokens).
+- Botón Conectar → OAuth redirect. Botón Desconectar → UPDATE `conectado=false`.
+- Badge expiración para MP. Datos del seller/store visibles post-conexión.
+
+#### Configuración de secretos
+- `TN_CLIENT_SECRET` en Supabase EF secrets (DEV + PROD).
+- `MP_CLIENT_SECRET` en Supabase EF secrets (DEV + PROD).
+- `APP_URL` en Supabase EF secrets: DEV = `https://genesis360-git-dev-tongas86s-projects.vercel.app` · PROD = `https://app.genesis360.pro`.
+- `VITE_TN_APP_ID=30376` · `VITE_MP_CLIENT_ID=7675256842462289` en Vercel (frontend, no secretos).
+
+### Fase 1 — TiendaNube webhooks + sync stock (pendiente)
+
+#### 1A — Webhook TiendaNube (EF `webhooks/tiendanube`)
+- Recibe `order/created` + `order/paid` de TN.
+- Verifica HMAC con `TN_CLIENT_SECRET` (seguridad).
+- Inserta en `ventas_externas_logs` (idempotencia por `webhook_external_id`).
+- Crea venta en Genesis360 con `origen='TiendaNube'`.
+- Encola job en `integration_job_queue` para decrementar stock.
+
+#### 1B — Sync stock → TiendaNube (EF worker)
+- Trigger en `inventario_lineas` → inserta job en `integration_job_queue`.
+- Worker EF procesa jobs → actualiza stock en TN via `PUT /v1/{store_id}/products/{tn_product_id}/variants/{tn_variant_id}` con `{ stock: N }`.
+- Solo para productos mapeados en `inventario_tn_map`.
+
+### Fase 2 — MercadoPago IPN webhooks (pendiente)
+
+#### 2A — Webhook MP IPN (EF `webhooks/mp-ipn`)
+- Recibe notificaciones de pagos de MP.
+- Verifica con `x-signature` header (HMAC).
+- Consulta `GET /v1/payments/{id}` con access_token del tenant.
+- Actualiza `ventas.id_pago_externo` + `ventas.money_release_date`.
+- No procesa cobros en nombre de otros — solo notificaciones de estado de pagos.
+
+### Fase 3 — MELI (largo plazo)
+
+- Registro como desarrollador en MELI Partners.
+- OAuth similar a TiendaNube/MP.
+- Webhooks de órdenes + sync stock.
+- Mapeo de productos Genesis360 ↔ listings MELI.
+
+### Notas de arquitectura
+
+- **Nunca** llamadas síncronas a APIs externas en el flujo de venta — siempre via `integration_job_queue`.
+- Tokens almacenados en texto plano en DB (pgcrypto instalado para cifrado futuro cuando el volumen lo justifique).
+- Un tenant puede tener múltiples sucursales, cada una con sus propias credenciales por plataforma.
+- La recepción de webhooks TN/MP no requiere JWT (`--no-verify-jwt`); la autenticidad se verifica via HMAC.
 
 ---
 

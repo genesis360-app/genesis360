@@ -37,6 +37,7 @@ interface FilaProducto {
   stock_minimo: number
   unidad_medida: string
   descripcion?: string
+  notas?: string
   alicuota_iva: number
   margen_objetivo?: number
   tiene_series: boolean
@@ -82,7 +83,7 @@ export default function ImportarProductosPage() {
     const headers = [
       'nombre','sku','codigo_barras','categoria','proveedor',
       'precio_costo','precio_costo_moneda','precio_venta','precio_venta_moneda',
-      'stock_minimo','unidad_medida','descripcion',
+      'stock_minimo','unidad_medida','descripcion','notas',
       'alicuota_iva','margen_objetivo',
       'tiene_series','tiene_lote','tiene_vencimiento',
       'regla_inventario','es_kit',
@@ -93,7 +94,7 @@ export default function ImportarProductosPage() {
       [
         'Tornillo hexagonal 1/4"','TORN-0001','7791234567890','Ferretería','Proveedor A',
         150,'ARS',250,'ARS',
-        10,'unidad','Tornillo de acero inoxidable',
+        10,'unidad','Tornillo de acero inoxidable','',
         21,'',
         'NO','NO','NO',
         '','NO',
@@ -102,7 +103,7 @@ export default function ImportarProductosPage() {
       [
         'Pintura blanca 4L','PINT-0001','','Pinturas','',
         4.5,'USD',1200,'ARS',
-        5,'litro','',
+        5,'litro','','',
         10.5,35,
         'NO','NO','NO',
         'FIFO','NO',
@@ -110,12 +111,12 @@ export default function ImportarProductosPage() {
       ],
     ])
     const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-    const cols = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V']
+    const cols = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W']
     cols.forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
     ws['!cols'] = [
       { wch:30 },{ wch:15 },{ wch:18 },{ wch:15 },{ wch:15 },
       { wch:14 },{ wch:18 },{ wch:14 },{ wch:18 },
-      { wch:14 },{ wch:15 },{ wch:30 },
+      { wch:14 },{ wch:15 },{ wch:30 },{ wch:25 },
       { wch:13 },{ wch:15 },
       { wch:14 },{ wch:13 },{ wch:16 },
       { wch:17 },{ wch:10 },
@@ -138,7 +139,8 @@ export default function ImportarProductosPage() {
       ['precio_venta_moneda','no','ARS (default) o USD'],
       ['stock_minimo','no','Entero. Ej: 5'],
       ['unidad_medida','no','unidad / kg / g / litro / ml / metro / cm / caja / pack / docena'],
-      ['descripcion','no','Texto libre'],
+      ['descripcion','no','Texto libre (descripción del producto)'],
+      ['notas','no','Notas internas (no visible en ventas)'],
       ['','',''],
       ['── Atributos ──','',''],
       ['alicuota_iva','no','0 / 10.5 / 21 (default) / 27'],
@@ -230,6 +232,7 @@ export default function ImportarProductosPage() {
             stock_minimo: parseInt(String(row.stock_minimo || '0')) || 0,
             unidad_medida: UNIDADES_VALIDAS.includes(unidad) ? unidad : 'unidad',
             descripcion: String(row.descripcion || '').trim() || undefined,
+            notas: String(row.notas || '').trim() || undefined,
             alicuota_iva: ALICUOTAS_VALIDAS.includes(alicuota_iva) ? alicuota_iva : 21,
             margen_objetivo,
             tiene_series: parseBool(row.tiene_series),
@@ -287,6 +290,7 @@ export default function ImportarProductosPage() {
           stock_minimo: fila.stock_minimo,
           unidad_medida: fila.unidad_medida,
           descripcion: fila.descripcion ?? null,
+          notas: fila.notas ?? null,
           activo: true,
           alicuota_iva: fila.alicuota_iva,
           margen_objetivo: fila.margen_objetivo ?? null,

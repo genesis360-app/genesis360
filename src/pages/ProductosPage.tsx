@@ -2,11 +2,12 @@ import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Plus, Search, Package, AlertTriangle, Camera, ChevronDown, ChevronRight,
-  Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler,
+  Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import toast from 'react-hot-toast'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
@@ -409,7 +410,7 @@ function EstrCard({
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function ProductosPage() {
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { limits } = usePlanLimits()
@@ -423,6 +424,12 @@ export default function ProductosPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
+
+  // OC rápida
+  const [ocModal, setOcModal] = useState<{ productoId: string; nombre: string; sku: string; proveedorId: string } | null>(null)
+  const [ocProveedor, setOcProveedor] = useState('')
+  const [ocCantidad, setOcCantidad] = useState('1')
+  const [ocPrecio, setOcPrecio] = useState('')
 
   // Tab Estructura
   const [estrSearch, setEstrSearch] = useState('')
@@ -508,12 +515,65 @@ export default function ProductosPage() {
     enabled: !!tenant && !!estrProductoId,
   })
 
+  const { data: proveedoresOC = [] } = useQuery({
+    queryKey: ['proveedores-oc', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('proveedores').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && !!ocModal,
+  })
+
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const invalidar = () => {
     qc.invalidateQueries({ queryKey: ['producto-estructuras', tenant?.id, estrProductoId] })
     if (expandedId) qc.invalidateQueries({ queryKey: ['estructura-default', tenant?.id, expandedId] })
   }
+
+  const agregarAOC = useMutation({
+    mutationFn: async ({ productoId, proveedorId, cantidad, precio }: { productoId: string; proveedorId: string; cantidad: number; precio: number | null }) => {
+      // Find existing borrador OC for this proveedor
+      const { data: existingOC } = await supabase
+        .from('ordenes_compra')
+        .select('id, numero')
+        .eq('tenant_id', tenant!.id)
+        .eq('proveedor_id', proveedorId)
+        .eq('estado', 'borrador')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      let ocId = existingOC?.id ?? null
+      let ocNumero = existingOC?.numero ?? null
+
+      if (!ocId) {
+        const { data: newOC, error } = await supabase
+          .from('ordenes_compra')
+          .insert({ tenant_id: tenant!.id, proveedor_id: proveedorId, estado: 'borrador', created_by: user!.id })
+          .select('id, numero')
+          .single()
+        if (error) throw error
+        ocId = newOC.id
+        ocNumero = newOC.numero
+      }
+
+      const { error: itemError } = await supabase.from('orden_compra_items').insert({
+        orden_compra_id: ocId,
+        producto_id: productoId,
+        cantidad,
+        precio_unitario: precio,
+      })
+      if (itemError) throw itemError
+      return ocNumero
+    },
+    onSuccess: (ocNumero) => {
+      const prov = proveedoresOC.find((p: any) => p.id === ocProveedor)
+      toast.success(`Agregado a OC #${ocNumero}${prov ? ` — ${prov.nombre}` : ''}`)
+      setOcModal(null)
+    },
+    onError: () => toast.error('No se pudo agregar a la OC'),
+  })
 
   const crearMut = useMutation({
     mutationFn: async (form: EstrForm) => {
@@ -830,6 +890,9 @@ export default function ProductosPage() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
                           <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{(p as any).sku}</p>
+                          {(p as any).codigo_barras && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{(p as any).codigo_barras}</p>
+                          )}
                         </div>
 
                         <div className="hidden md:block text-xs text-gray-400 dark:text-gray-500">
@@ -855,6 +918,18 @@ export default function ProductosPage() {
                           </span>
                         </div>
 
+                        <button
+                          onClick={e => {
+                            e.stopPropagation()
+                            setOcModal({ productoId: p.id, nombre: p.nombre, sku: (p as any).sku, proveedorId: (p as any).proveedor_id ?? '' })
+                            setOcProveedor((p as any).proveedor_id ?? '')
+                            setOcCantidad('1')
+                            setOcPrecio(String((p as any).precio_costo ?? ''))
+                          }}
+                          title="Agregar a Orden de Compra"
+                          className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent dark:hover:text-accent hover:bg-accent/10 rounded-lg transition-colors flex-shrink-0">
+                          <ShoppingCart size={15} />
+                        </button>
                         <Link to={`/productos/${p.id}/editar`}
                           onClick={e => e.stopPropagation()}
                           className="text-xs text-accent hover:underline flex-shrink-0 hidden sm:block">
@@ -904,9 +979,9 @@ export default function ProductosPage() {
                               </div>
                             )}
                             {(p as any).codigo_barras && (
-                              <div>
+                              <div className="col-span-2 sm:col-span-1">
                                 <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Código de barras</p>
-                                <p className="text-gray-700 dark:text-gray-300 font-mono text-xs">{(p as any).codigo_barras}</p>
+                                <p className="text-gray-700 dark:text-gray-300 font-mono text-xs break-all">{(p as any).codigo_barras}</p>
                               </div>
                             )}
                             {(p as any).notas && (
@@ -993,6 +1068,64 @@ export default function ProductosPage() {
           onDetected={code => { setSearch(code); setScannerOpen(false) }}
           onClose={() => setScannerOpen(false)}
         />
+      )}
+
+      {/* Modal OC rápida */}
+      {ocModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100">Agregar a Orden de Compra</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">{ocModal.sku} — {ocModal.nombre}</p>
+              </div>
+              <button onClick={() => setOcModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X size={18} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proveedor <span className="text-red-500">*</span></label>
+                <select value={ocProveedor} onChange={e => setOcProveedor(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700">
+                  <option value="">Seleccionar proveedor...</option>
+                  {(proveedoresOC as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cantidad</label>
+                  <input type="number" min="1" value={ocCantidad} onChange={e => setOcCantidad(e.target.value)}
+                    onWheel={e => e.currentTarget.blur()}
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio unitario <span className="text-gray-400 text-xs">(opcional)</span></label>
+                  <input type="number" min="0" value={ocPrecio} onChange={e => setOcPrecio(e.target.value)}
+                    placeholder="0"
+                    onWheel={e => e.currentTarget.blur()}
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Se agrega a la OC borrador del proveedor, o crea una nueva si no existe.</p>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setOcModal(null)}
+                  className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  Cancelar
+                </button>
+                <button
+                  disabled={!ocProveedor || !ocCantidad || Number(ocCantidad) <= 0 || agregarAOC.isPending}
+                  onClick={() => agregarAOC.mutate({
+                    productoId: ocModal.productoId,
+                    proveedorId: ocProveedor,
+                    cantidad: Number(ocCantidad),
+                    precio: ocPrecio ? Number(ocPrecio) : null,
+                  })}
+                  className="flex-1 px-4 py-2.5 bg-accent text-white rounded-xl text-sm font-medium hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                  {agregarAOC.isPending ? 'Agregando...' : 'Agregar a OC'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

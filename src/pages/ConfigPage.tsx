@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -11,7 +11,7 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'metodos_pago'
+type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'metodos_pago' | 'integraciones'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
 const COLORES = [
@@ -369,10 +369,24 @@ function MarketplaceSection() {
 }
 
 export default function ConfigPage() {
-  const [tab, setTab] = useState<Tab>('negocio')
-  const { tenant, user, setTenant } = useAuthStore()
+  const searchParams = new URLSearchParams(window.location.search)
+  const initialTab = searchParams.get('tab') as Tab | null
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'negocio')
+  const { tenant, user, setTenant, sucursales } = useAuthStore()
   const qc = useQueryClient()
   const canEdit = user?.rol === 'OWNER'
+
+  // Mostrar resultado de OAuth al volver del redirect
+  useState(() => {
+    if (searchParams.get('tn') === 'ok') toast.success('TiendaNube conectada correctamente')
+    if (searchParams.get('mp') === 'ok') toast.success('MercadoPago conectado correctamente')
+    const err = searchParams.get('error')
+    if (err) toast.error(decodeURIComponent(err))
+    // Limpiar params de la URL sin recargar
+    if (searchParams.has('tn') || searchParams.has('mp') || searchParams.has('error')) {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  })
 
   const [bizForm, setBizForm] = useState({ nombre: tenant?.nombre ?? '' })
   const [savingBiz, setSavingBiz] = useState(false)
@@ -906,6 +920,64 @@ export default function ConfigPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ─── Integraciones ────────────────────────────────────────────────────────
+  const { data: tnCreds = [], isLoading: tnLoading } = useQuery({
+    queryKey: ['tn_credentials', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('tiendanube_credentials')
+        .select('id, sucursal_id, store_id, store_name, store_url, conectado, conectado_at')
+        .eq('tenant_id', tenant!.id)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'integraciones',
+  })
+
+  const { data: mpCreds = [], isLoading: mpLoading } = useQuery({
+    queryKey: ['mp_credentials', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('mercadopago_credentials')
+        .select('id, sucursal_id, seller_id, seller_email, expires_at, conectado, conectado_at')
+        .eq('tenant_id', tenant!.id)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'integraciones',
+  })
+
+  const desconectarTN = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('tiendanube_credentials').delete().eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('TiendaNube desconectada'); qc.invalidateQueries({ queryKey: ['tn_credentials'] }) },
+    onError: () => toast.error('Error al desconectar'),
+  })
+
+  const desconectarMP = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('mercadopago_credentials').delete().eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('MercadoPago desconectado'); qc.invalidateQueries({ queryKey: ['mp_credentials'] }) },
+    onError: () => toast.error('Error al desconectar'),
+  })
+
+  const getTnOAuthUrl = (sucursalId: string) => {
+    const appId = import.meta.env.VITE_TN_APP_ID
+    if (!appId || !tenant) return null
+    const state = btoa(`${tenant.id}:${sucursalId}`)
+    return `https://www.tiendanube.com/apps/${appId}/authorize?state=${state}`
+  }
+
+  const getMpOAuthUrl = (sucursalId: string) => {
+    const clientId = import.meta.env.VITE_MP_CLIENT_ID
+    if (!clientId || !tenant) return null
+    const redirectUri = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mp-oauth-callback`
+    const state = btoa(`${tenant.id}:${sucursalId}`)
+    return `https://auth.mercadopago.com.ar/authorization?client_id=${clientId}&response_type=code&platform_id=mp&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
+  }
+
   const tabs = [
     { id: 'negocio' as Tab, label: 'Mi negocio', icon: Building2 },
     { id: 'categorias' as Tab, label: 'Categorías', icon: Tag },
@@ -916,6 +988,7 @@ export default function ConfigPage() {
     { id: 'grupos' as Tab, label: 'Grupos de estados', icon: Layers },
     { id: 'aging' as Tab, label: 'Aging Profiles', icon: Timer },
     { id: 'metodos_pago' as Tab, label: 'Métodos de pago', icon: CreditCard },
+    { id: 'integraciones' as Tab, label: 'Integraciones', icon: Plug },
   ]
 
   return (
@@ -1784,6 +1857,180 @@ export default function ConfigPage() {
                 <Plus size={14} /> Agregar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'integraciones' && (
+        <div className="space-y-6">
+          <div className="flex items-center gap-2">
+            <Plug size={18} className="text-accent" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Integraciones externas</h2>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Conectá cada sucursal con sus cuentas externas. Los tokens se guardan de forma segura y nunca son visibles en la interfaz.
+          </p>
+
+          {/* ── TiendaNube ── */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[#95BF47]/10 flex items-center justify-center flex-shrink-0">
+                <Store size={16} className="text-[#95BF47]" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">TiendaNube</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Sincronización de stock y recepción de órdenes</p>
+              </div>
+            </div>
+
+            {!import.meta.env.VITE_TN_APP_ID && (
+              <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2.5">
+                <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Falta configurar <code className="bg-amber-100 dark:bg-amber-800/40 px-1 rounded">VITE_TN_APP_ID</code> en las variables de entorno.
+                </p>
+              </div>
+            )}
+
+            {tnLoading ? (
+              <p className="text-sm text-gray-400 text-center py-2">Cargando...</p>
+            ) : sucursales.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Primero configurá al menos una sucursal</p>
+            ) : (
+              <div className="space-y-2">
+                {sucursales.filter(s => s.activo).map(suc => {
+                  const cred = (tnCreds as any[]).find((c: any) => c.sucursal_id === suc.id)
+                  return (
+                    <div key={suc.id} className="flex items-center gap-3 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{suc.nombre}</p>
+                        {cred && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
+                            {cred.store_name || `Store ID: ${cred.store_id}`}
+                            {cred.store_url && ` · ${cred.store_url}`}
+                          </p>
+                        )}
+                      </div>
+                      {cred?.conectado ? (
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                            <CheckCircle2 size={13} /> Conectada
+                          </span>
+                          <button
+                            onClick={() => { if (confirm(`¿Desconectar TiendaNube de ${suc.nombre}?`)) desconectarTN.mutate(cred.id) }}
+                            disabled={desconectarTN.isPending}
+                            title="Desconectar"
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                            <Unplug size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        (() => {
+                          const tnUrl = getTnOAuthUrl(suc.id)
+                          return tnUrl ? (
+                            <a href={tnUrl}
+                              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#95BF47] hover:bg-[#7ea83a] text-white rounded-lg font-medium transition-colors">
+                              <Plug size={12} /> Conectar
+                            </a>
+                          ) : (
+                            <span className="text-xs text-gray-400 dark:text-gray-500 italic">Falta VITE_TN_APP_ID</span>
+                          )
+                        })()
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── MercadoPago ── */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[#009EE3]/10 flex items-center justify-center flex-shrink-0">
+                <Wallet size={16} className="text-[#009EE3]" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">MercadoPago</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Notificaciones de pagos recibidos (IPN)</p>
+              </div>
+            </div>
+
+            {!import.meta.env.VITE_MP_CLIENT_ID && (
+              <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2.5">
+                <AlertCircle size={14} className="text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  Falta configurar <code className="bg-amber-100 dark:bg-amber-800/40 px-1 rounded">VITE_MP_CLIENT_ID</code> en las variables de entorno.
+                  Obtenelo en{' '}
+                  <a href="https://developers.mercadopago.com" target="_blank" rel="noopener noreferrer"
+                    className="underline font-medium inline-flex items-center gap-0.5">
+                    developers.mercadopago.com <ExternalLink size={10} />
+                  </a>
+                </p>
+              </div>
+            )}
+
+            {mpLoading ? (
+              <p className="text-sm text-gray-400 text-center py-2">Cargando...</p>
+            ) : sucursales.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Primero configurá al menos una sucursal</p>
+            ) : (
+              <div className="space-y-2">
+                {sucursales.filter(s => s.activo).map(suc => {
+                  const cred = (mpCreds as any[]).find((c: any) => c.sucursal_id === suc.id)
+                  const oauthUrl = getMpOAuthUrl(suc.id)
+                  const vencido = cred?.expires_at && new Date(cred.expires_at) < new Date()
+                  return (
+                    <div key={suc.id} className="flex items-center gap-3 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{suc.nombre}</p>
+                        {cred && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
+                            {cred.seller_email || `Seller ID: ${cred.seller_id}`}
+                            {cred.expires_at && (
+                              <span className={vencido ? 'text-red-500 ml-1' : 'ml-1'}>
+                                · Token {vencido ? 'vencido' : `vence ${new Date(cred.expires_at).toLocaleDateString('es-AR')}`}
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                      {cred?.conectado ? (
+                        <div className="flex items-center gap-2">
+                          <span className={`flex items-center gap-1 text-xs font-medium ${vencido ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
+                            {vencido ? <AlertCircle size={13} /> : <CheckCircle2 size={13} />}
+                            {vencido ? 'Vencido' : 'Conectado'}
+                          </span>
+                          {oauthUrl && (
+                            <a href={oauthUrl}
+                              title="Reconectar"
+                              className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                              <Plug size={14} />
+                            </a>
+                          )}
+                          <button
+                            onClick={() => { if (confirm(`¿Desconectar MercadoPago de ${suc.nombre}?`)) desconectarMP.mutate(cred.id) }}
+                            disabled={desconectarMP.isPending}
+                            title="Desconectar"
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                            <Unplug size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        oauthUrl ? (
+                          <a href={oauthUrl}
+                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#009EE3] hover:bg-[#0088cc] text-white rounded-lg font-medium transition-colors">
+                            <Plug size={12} /> Conectar
+                          </a>
+                        ) : (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 italic">Falta VITE_MP_CLIENT_ID</span>
+                        )
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

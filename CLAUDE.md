@@ -220,7 +220,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Movimientos UX**: búsqueda limita a 5 resultados; label Cantidad muestra UoM; motivos predefinidos → text field oculto salvo "Otro"; mensaje "Sin datos de línea" distingue linea_id null vs linea eliminada.
 - **Reportes fixes**: Stock actual agrega N° Lote + Vencimiento + expande por series serializadas; Ventas parsea JSON de medio_pago; Estados exporta correctamente (quitado filtro activo).
 
-### v0.32.0 — Dark mode completo + RRHH Phase 2A Nómina (en dev)
+### v0.32.0 — Dark mode completo + RRHH Phase 2A Nómina ✅ PROD
 - **Dark mode completo**: `index.css` overrides globales (inputs/selects/textareas/scrollbar). 30+ archivos (páginas + componentes) con `dark:bg-*`, `dark:text-*`, `dark:border-*`, `dark:hover:*` y variantes de estado (red/amber/green/blue).
 - **RRHH Phase 2A — Nómina** (migración 017):
   - `rrhh_conceptos`: catálogo de haberes/descuentos reutilizables por tenant. RLS + índices.
@@ -231,7 +231,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - Catálogo de conceptos CRUD colapsable dentro de la tab.
   - `actividadLog`: + `nomina` en EntidadLog, + `pagar` en AccionLog.
 
-### v0.34.0 — RRHH Phase 3B Dashboard (en dev)
+### v0.34.0 — RRHH Phase 3B Dashboard ✅ PROD
 - **Tab Dashboard** en RrhhPage (primera tab, con `LayoutDashboard` icon). Seleccionable mes de referencia.
 - **KPIs empleados**: total activos, nuevos este mes, cumpleaños del mes, cantidad de departamentos.
 - **KPIs asistencia**: % presencia, presentes/tardanzas/ausentes/licencias del mes seleccionado.
@@ -242,7 +242,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - Queries: `dashAsist`, `dashVac`, `dashNomina` (enabled solo cuando tab='dashboard').
 - Funciones: `exportAsistenciaMes()`, `exportNominaHistorica()` (on-demand, query fresca).
 
-### v0.33.0 — RRHH Phase 2B Vacaciones + Phase 3A Asistencia (en dev)
+### v0.33.0 — RRHH Phase 2B Vacaciones + Phase 3A Asistencia ✅ PROD
 - **RRHH Phase 2B — Vacaciones** (migración 018):
   - `rrhh_vacaciones_solicitud`: estado `pendiente/aprobada/rechazada`, dias_habiles calculados (excluye fines de semana), aprobado_por + aprobado_at.
   - `rrhh_vacaciones_saldo`: días totales asignados × año + remanente anterior + días usados. UNIQUE(tenant+empleado+anio).
@@ -327,7 +327,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Tabs por rol**: SUPERVISOR ve solo `equipo, asistencia, vacaciones, cumpleanos`. OWNER/RRHH ven todos los tabs.
 - **esSupervisor / esRrhhAdmin**: variables booleanas derivadas de `user?.rol` usadas para filtrar tabs y lógica.
 
-### v0.41.0 — Insights automáticos + Mi Plan + Tests (en dev)
+### v0.41.0 — Insights automáticos + Mi Plan + Tests ✅ PROD
 
 #### Insights automáticos
 - **`useRecomendaciones`** extendido con 4 reglas nuevas (11 reglas en total):
@@ -446,7 +446,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Rebrand completo Stokio → Genesis360**: `index.html` (`<title>`), `package.json` (`name`), `brand.ts` (comentarios), `useRecomendaciones`, `RecomendacionesPage`, `SuscripcionPage`, `VentasPage` (fallback ticket), EF `send-email` (`BRAND`, `APP_URL`), EF `invite-user`, `crear-suscripcion`, `mp-addon` (fallbacks `APP_URL`), `schema_full.sql`, `CLAUDE.md`, `WORKFLOW.md`, `ROADMAP.md`.
 - [x] **Header UX — sucursal activa**: el nombre en el header (antes `BRAND.name`) ahora muestra la sucursal seleccionada, o el nombre del tenant en vista global. Fallback a `BRAND.name` si los datos aún no cargaron.
 
-### v0.46.0 — Tests E2E + Caja + Multi-dominio (en dev)
+### v0.46.0 — Tests E2E + Caja + Multi-dominio ✅ PROD
 - [x] **Tests E2E funcionales**: `playwright.config.ts` + `auth.setup.ts` fix `__dirname` ES module; walkthrough marcado como visto en localStorage antes de tests; `waitForApp` flexible (aside o networkidle); 49/49 passing.
 - [x] **Login form accesibilidad**: `htmlFor`+`id` en inputs email y password (requerido por `getByLabel` en Playwright).
 - [x] **Fix ventas sin caja**: bloqueo de `despachada` y `reservada` ahora aplica independientemente del medio de pago. Antes solo bloqueaba con efectivo. Widget de estado de caja siempre visible en checkout.
@@ -565,7 +565,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - [x] **Dashboard consolida Rentabilidad y Recomendaciones**: tabs adicionales en DashboardPage usando `hideHeader` prop. `RentabilidadPage` y `RecomendacionesPage` soportan `hideHeader`.
 - [x] **ConfigPage layout**: reemplaza `max-w-2xl` por `max-w-5xl` con sidebar vertical de tabs en desktop (`hidden lg:flex flex-col w-44 sticky`) y tabs horizontales en mobile (`lg:hidden`).
 
-### v0.63.0 — en dev
+### v0.63.0 ✅ PROD
 
 #### Restricciones de menú por rol
 - **Rol RRHH**: ve solo `/rrhh` en sidebar. Cualquier otra ruta → redirect a `/rrhh`. Flag `rrhhVisible: true` en navItem para bypass de `ownerOnly`.
@@ -596,7 +596,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Flecha volver**: `← Volver` con `navigate(-1)` al tope. Elimina link del pie.
 - **Auto-redirect post-pago**: `useEffect` auto-dispara verificación cuando `status=approved`. Muestra spinner. Fix: `loadUserData` usaba `tenant.id` en lugar de `user.id`.
 
-### v0.62.0 — en dev
+### v0.62.0 ✅ PROD
 
 - **Bug RRHH UPDATE empleado**: `setFormData(emp)` cargaba joins (`puesto`, `departamento`, `supervisor`). Fix: destruturar y excluir antes de `.insert()` / `.update()` en `saveEmpleado.mutationFn`.
 - **SKU automático secuencial**: si campo vacío al guardar → consulta `productos WHERE sku LIKE 'SKU-%'`, extrae MAX numérico, genera `SKU-XXXXX` (5 dígitos zero-padded). Lógica pura extraída a `src/lib/skuAuto.ts` → `calcularSiguienteSKU(skus: string[]): string`.
@@ -834,7 +834,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - ✅ **GastosPage**: eliminada categoría 'Sueldos y cargas sociales' (pertenece a RRHH/Nómina).
 - ✅ **Métodos de pago** (migration 045): tabla `metodos_pago` con tenant_id, nombre, color, activo, es_sistema, orden. ConfigPage tab 'Métodos de pago': CRUD + color picker + toggle activo + seed automático de 5 defaults. MixCajaChart usa colores de DB.
 
-### v0.74.0 — en dev
+### v0.74.0 ✅ PROD
 
 #### Design System Sprint 4 — VentasPage checkout
 - **`VentasPage.tsx`** — 42 reemplazos de tokens DS en checkout, historial y modales:
@@ -872,7 +872,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Sidebar**: `Truck` icon `/proveedores` (ownerOnly) posicionado entre Clientes y Alertas.
 - **Arquitectura ASN-ready**: OC lifecycle termina en `confirmada` — la recepción y generación de stock es responsabilidad del futuro módulo ASN.
 
-### v0.85.0 — en dev
+### v0.85.0 ✅ PROD
 
 #### Sprint B inventario (migration 052)
 
@@ -882,7 +882,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **fix — security_invoker view** (migration 053): `stock_por_producto` recreada con `WITH (security_invoker = true)` — elimina warning del Security Advisor de Supabase.
 - **fix — APP_VERSION**: bump a `v0.85.0` en `src/config/brand.ts`.
 
-### v0.87.0 — en dev
+### v0.87.0 ✅ PROD
 
 #### Sprint D inventario — Combinar LPNs + LPN Madre (migration 057)
 
@@ -894,7 +894,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
   - **LPN Madre**: asigna `parent_lpn_id` a los LPNs seleccionados. No mueve stock. Los hijos muestran "↳ PLT-001" debajo del LPN en la tabla.
 - **Restricción fusionar**: todos los LPNs deben ser del mismo `producto_id` (validado en UI y `mutationFn`).
 
-### v0.86.0 — en dev
+### v0.86.0 ✅ PROD
 
 #### Sprint C inventario — Tab Autorizaciones DEPOSITO (migrations 055+056)
 
@@ -909,7 +909,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Historial filtros**: rango de fechas (desde/hasta), categoría de producto, tipo, motivo (búsqueda de texto). Badge "Conteo" detectado por prefijo en motivo.
 - **`getTipoBadge(tipo, motivo)`**: helper en InventarioPage — distingue "Conteo" vs "Ajuste ±" para `ajuste_ingreso`/`ajuste_rebaje` según prefijo del motivo.
 
-### v0.85.3 — en dev
+### v0.85.3 ✅ PROD
 
 #### Fix: cálculo de margen strip IVA (ProductoFormPage, MetricasPage, DashboardPage, useRecomendaciones)
 
@@ -922,7 +922,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **DashboardPage — margenContrib**: `(totalVentasNeto - totalCosto) / totalCosto × 100` donde `totalVentasNeto = totalVentas - ivaVentas`. Misma lógica en período anterior.
 - **useRecomendaciones — regla margen-realizado-bajo**: `totalNeto = totalFacturado - totalIva`; umbral 15% sobre markup de neto.
 
-### v0.85.2 — en dev
+### v0.85.2 ✅ PROD
 
 #### Fixes VentasPage (bugs de cantidad, descuento y venta sin líneas)
 
@@ -935,7 +935,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Migration 054**: `venta_items.cantidad INT → DECIMAL(14,4)` — permite guardar cantidades decimales para productos con UOM kg, g, l, etc.
 - **`esDecimal` + `parseCantidad` extraídas a `ventasValidation.ts`**: funciones puras accesibles desde tests. 24 nuevos unit tests (`ventasCantidad.test.ts`). Total: **178/178** passing.
 
-### v0.85.1 — en dev
+### v0.85.1 ✅ PROD
 
 #### Fixes VentasPage
 
@@ -949,7 +949,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Draft carrito vacío**: al vaciar el carrito se borra el draft de localStorage en vez de saltear el save — evita restaurar items ya eliminados al volver a la página.
 - **Performance venta directa**: batch insert `venta_items` (1 llamada en vez de N), `Promise.all` por item para series+lineas, batch read `productos` + `Promise.all` para updates + batch insert `movimientos_stock` — de ~80 llamadas secuenciales a ~6 para carrito de 14 items.
 
-### v0.84.0 — en dev
+### v0.84.0 ✅ PROD
 
 #### Sprint A inventario (migration 051)
 
@@ -957,7 +957,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **I-06 — Mover LPN a otra sucursal**: selector de sucursal destino en tab Mover de `LpnAccionesModal` (visible solo con ≥2 sucursales configuradas). Nuevo LPN hereda `sucursal_id` seleccionada.
 - **I-08 — Over-receipt configurable**: migration 051 `tenants.permite_over_receipt BOOLEAN DEFAULT FALSE`. Toggle en ConfigPage → Negocio. Validación en `RecepcionesPage` (pendiente, módulo futuro).
 
-### v0.83.0 — en dev
+### v0.83.0 ✅ PROD
 
 #### Conteo de inventario + Estructura LPN (migration 050)
 
@@ -979,7 +979,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Interfaces TS nuevas** en `supabase.ts`: `InventarioConteo` + `InventarioConteoItem`.
 - **Tipos de movimiento**: `ajuste_ingreso` y `ajuste_rebaje` no estaban como valores del CHECK — usar `motivo` en `movimientos_stock` para identificarlos (tipo `ingreso` / `rebaje`).
 
-### v0.82.0 — en dev
+### v0.82.0 ✅ PROD
 
 #### InventarioPage — series overflow, QR LPN, masivo inline, iconos
 
@@ -989,7 +989,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Iconos botones**: Ingreso y Masivo ingreso: `ArrowDown` → `Plus`. Rebaje y Masivo rebaje: `ArrowUp` → `Minus`.
 - **Botón ASN**: ícono `ShoppingBasket` en tab Agregar Stock → navega a `/recepciones` (módulo futuro).
 
-### v0.81.0 — en dev
+### v0.81.0 ✅ PROD
 
 #### VentasPage — fixes y cantidades decimales
 
@@ -997,7 +997,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Fix scanner cola secuencial**: `pendingAddRef` no funcionaba cuando el segundo scan llegaba antes de que el primero terminara su fetch de líneas (findIndex devolvía -1 y el incremento era no-op). Reemplazado por `scanQueueRef` + `scanProcessingRef`: los scans se encolan y `processNext()` los procesa de a uno, garantizando que el segundo scan ve el carrito ya actualizado por el primero.
 - **Cantidades decimales en carrito**: `UNIDADES_DECIMALES` (kg, g, gr, mg, l, lt, ml, m, m2, m3, cm, mm, km — case-insensitive). `CartItem` agrega `unidad_medida`. Helpers `esDecimal()`, `stepCantidad()`, `parseCantidad()`. Input: `step` y `min` dinámicos; `parseInt` → `parseFloat`; ancho `w-16`. Botones +/− respetan el step (0.001 para decimales, 1 para enteros).
 
-### v0.80.0 — en dev
+### v0.80.0 ✅ PROD
 
 #### VentasPage — fixes UX
 
@@ -1007,7 +1007,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Banner caja cerrada**: aviso rojo prominente (AlertTriangle + texto + link `/caja`) en la parte superior del tab "Nueva venta" cuando no hay sesión abierta.
 - **Scroll independiente carrito**: `max-h-[45vh] overflow-y-auto` en la lista de ítems — los botones de checkout siempre visibles sin scrollear la página entera.
 
-### v0.79.0 — en dev
+### v0.79.0 ✅ PROD
 
 #### ImportarProductosPage — template actualizado (22 columnas)
 - **10 columnas nuevas** en plantilla Excel y lógica de importación:
@@ -1021,7 +1021,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Hoja Referencia**: actualizada con todos los campos y valores válidos; secciones separadas para Atributos y Estructura.
 - **Sin migration**: todos los campos ya existían en DB (migrations 015, 031, 040, 042, etc.).
 
-### v0.78.0 — en dev
+### v0.78.0 ✅ PROD
 
 #### InventarioPage — fixes y mejoras
 
@@ -1036,7 +1036,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Vista por ubicación — orden**: "Sin ubicación" primero, luego A-Z con `localeCompare('es')`.
 - **Fix race condition filtros**: `isLoading: lineasLoading` en query `inventario_lineas_all`; spinner combina `invLoading || lineasLoading` — evita render con `lineasMap` vacío mientras `lineasData` carga.
 
-### v0.77.0 — en dev
+### v0.77.0 ✅ PROD
 
 #### Biblioteca de Archivos como módulo del sidebar
 - **`BibliotecaPage.tsx`** nueva (~200 líneas): reutiliza tabla `archivos_biblioteca` y bucket `archivos-biblioteca` de migration 042 (sin nueva migration).
@@ -1066,7 +1066,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Tab "Gastos fijos"**: tabla `gastos_fijos` (descripcion, monto, iva_monto, categoria, medio_pago, frecuencia mensual/quincenal/semanal, dia_vencimiento, activo). CRUD completo. Toggle activo/inactivo. Total mensual estimado en footer. Botón "Generar hoy" → crea gastos variables para el día de hoy desde todos los fijos activos.
 - **Tabs**: underline "Gastos variables" / "Gastos fijos". Header contextual: `agregar` muestra Ingreso+Masivo; `quitar` muestra Rebaje+Masivo; fijos muestra Nuevo fijo + Generar hoy.
 
-### v0.74.2 — en dev
+### v0.74.2 ✅ PROD
 
 #### Fix — Tipografía + restricciones LPN con reservas
 - **`font-mono` revertido**: eliminado de todos los valores en `VentasPage.tsx` e `InventarioPage.tsx` (LPN, SKU, N/S, tickets, totales, precios). Vuelve a la tipografía del sistema (v0.72/v0.73). Solo permanece en inputs de formularios donde el monoespaciado ayuda a la edición.
@@ -1088,7 +1088,7 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **Deploy**: EF deployada en DEV ✅. **Pendiente PROD**: `npx supabase functions deploy monitoring-check --project-ref jjffnbrdjchquexdfgwq --no-verify-jwt` + configurar secret `RESEND_API_KEY` en PROD.
 - **Snippets SQL** (guardados en Supabase PROD → SQL Editor): 2.1 caja activa · 2.2 reservas viejas · 2.3 stock crítico · 2.4 ventas diarias · 2.5 rebajes manuales · 2.6 actividad usuarios · 2.7 tenants · 2.8 consumo free plan.
 
-### v0.73.0 — en dev
+### v0.73.0 ✅ PROD
 - ✅ **Fix sucursal filter**: `useSucursalFilter.applyFilter` usa `.or('sucursal_id.eq.{id},sucursal_id.is.null')` — datos previos a multi-sucursal (NULL) siguen visibles con cualquier sucursal seleccionada. Afecta inventario, movimientos, ventas, gastos, clientes.
 - ✅ **Post-venta → Nueva Venta**: tras finalizar/reservar, `setTab('nueva')` en lugar de `'historial'`. El cajero queda listo para seguir vendiendo.
 - ✅ **Caja polling 10s**: `cajasAbiertas`, `sesionActiva`, `caja-movimientos` y el indicador del sidebar pasan de 30–15s → 10s. Movimientos de otro usuario aparecen en ~10s sin F5.

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -9,6 +10,7 @@ import {
   Truck, Plus, Pencil, Trash2, Search, ChevronDown, ChevronUp,
   FileText, Send, CheckCircle, XCircle, Package, Hash, Calendar,
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
+  Warehouse,
 } from 'lucide-react'
 
 type Tab = 'proveedores' | 'ordenes'
@@ -70,6 +72,7 @@ let itemKey = 0
 export default function ProveedoresPage() {
   const { tenant } = useAuthStore()
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   const [tab, setTab] = useState<Tab>('proveedores')
 
@@ -614,6 +617,15 @@ export default function ProveedoresPage() {
                             title="Confirmar"
                           >
                             <CheckCircle className="w-4 h-4" />
+                          </button>
+                        )}
+                        {oc.estado === 'confirmada' && (
+                          <button
+                            onClick={() => navigate(`/recepciones?oc_id=${oc.id}&proveedor_id=${oc.proveedor_id}`)}
+                            className="p-1.5 rounded text-accent hover:bg-accent/10"
+                            title="Recibir mercadería"
+                          >
+                            <Warehouse className="w-4 h-4" />
                           </button>
                         )}
                         {(oc.estado === 'borrador' || oc.estado === 'enviada' || oc.estado === 'confirmada') && (

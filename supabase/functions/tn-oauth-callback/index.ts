@@ -8,7 +8,11 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const TN_APP_ID      = '30376'
 const TN_TOKEN_URL   = 'https://www.tiendanube.com/apps/authorize/token'
+const TN_API_BASE    = 'https://api.tiendanube.com/v1'
+const TN_USER_AGENT  = 'Genesis360 (gaston.otranto@gmail.com)'
 const APP_URL        = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'
+// URL de la EF que recibe los webhooks de TN (se construye desde SUPABASE_URL auto-inyectada)
+const WEBHOOK_URL    = `${Deno.env.get('SUPABASE_URL') ?? 'https://jjffnbrdjchquexdfgwq.supabase.co'}/functions/v1/tn-webhook`
 
 serve(async (req) => {
   const url = new URL(req.url)
@@ -111,6 +115,10 @@ serve(async (req) => {
     return redirectError('Error guardando la conexión')
   }
 
+  // Registrar webhooks en TiendaNube para este store
+  // TN ignora duplicados — si el webhook ya existe, responde 422 (lo ignoramos)
+  await registerTnWebhooks(storeId, accessToken)
+
   // Redirigir al usuario de vuelta a la tab Integraciones
   return Response.redirect(`${APP_URL}/configuracion?tab=integraciones&tn=ok`, 302)
 })
@@ -118,4 +126,29 @@ serve(async (req) => {
 function redirectError(msg: string): Response {
   const encoded = encodeURIComponent(msg)
   return Response.redirect(`${APP_URL}/configuracion?tab=integraciones&error=${encoded}`, 302)
+}
+
+async function registerTnWebhooks(storeId: number, accessToken: string): Promise<void> {
+  const events = ['order/created', 'order/paid']
+  for (const event of events) {
+    try {
+      const res = await fetch(`${TN_API_BASE}/${storeId}/webhooks`, {
+        method: 'POST',
+        headers: {
+          'Authentication': `bearer ${accessToken}`,
+          'User-Agent':     TN_USER_AGENT,
+          'Content-Type':   'application/json',
+        },
+        body: JSON.stringify({ event, url: WEBHOOK_URL }),
+      })
+      if (!res.ok && res.status !== 422) {
+        // 422 = ya existe, lo ignoramos
+        console.warn(`No se pudo registrar webhook TN [${event}]:`, await res.text())
+      } else {
+        console.log(`Webhook TN registrado: ${event}`)
+      }
+    } catch (e) {
+      console.warn(`Error registrando webhook TN [${event}]:`, e)
+    }
+  }
 }

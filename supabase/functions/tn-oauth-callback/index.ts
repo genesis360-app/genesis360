@@ -1,0 +1,121 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+
+// Secrets requeridos:
+//   TN_CLIENT_SECRET  — client secret de la app Genesis360 en TN Partners
+// Env vars (auto-inyectadas por Supabase):
+//   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
+
+const TN_APP_ID      = '30376'
+const TN_TOKEN_URL   = 'https://www.tiendanube.com/apps/authorize/token'
+const APP_URL        = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'
+
+serve(async (req) => {
+  const url = new URL(req.url)
+
+  // TN redirige aquí con ?code=XXX&user_id=XXX&state=base64(tenantId:sucursalId)
+  const code      = url.searchParams.get('code')
+  const tnUserId  = url.searchParams.get('user_id')   // = store_id en TN
+  const stateB64  = url.searchParams.get('state')
+
+  if (!code || !tnUserId || !stateB64) {
+    return new Response('Parámetros faltantes', { status: 400 })
+  }
+
+  // Decodificar state → tenantId:sucursalId
+  let tenantId: string, sucursalId: string
+  try {
+    const decoded = atob(stateB64)
+    ;[tenantId, sucursalId] = decoded.split(':')
+    if (!tenantId || !sucursalId) throw new Error('state inválido')
+  } catch {
+    return new Response('State inválido', { status: 400 })
+  }
+
+  const clientSecret = Deno.env.get('TN_CLIENT_SECRET')
+  if (!clientSecret) {
+    console.error('TN_CLIENT_SECRET no configurado')
+    return new Response('Configuración incompleta', { status: 500 })
+  }
+
+  // Intercambiar code por access_token
+  const tokenRes = await fetch(TN_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id:     TN_APP_ID,
+      client_secret: clientSecret,
+      grant_type:    'authorization_code',
+      code,
+    }),
+  })
+
+  if (!tokenRes.ok) {
+    const err = await tokenRes.text()
+    console.error('Error intercambiando token TN:', err)
+    return redirectError('Error al conectar con TiendaNube')
+  }
+
+  const tokenData = await tokenRes.json()
+  // TN devuelve: { access_token, token_type, scope, user_id }
+  const accessToken = tokenData.access_token as string
+  const storeId     = parseInt(tnUserId, 10)
+
+  if (!accessToken) {
+    return redirectError('TiendaNube no devolvió access_token')
+  }
+
+  // Obtener info de la tienda para guardar nombre y URL
+  let storeName: string | null = null
+  let storeUrl:  string | null = null
+  try {
+    const storeRes = await fetch(`https://api.tiendanube.com/v1/${storeId}/store`, {
+      headers: {
+        'Authentication': `bearer ${accessToken}`,
+        'User-Agent':     'Genesis360 (gaston.otranto@gmail.com)',
+      },
+    })
+    if (storeRes.ok) {
+      const storeData = await storeRes.json()
+      storeName = storeData.name?.es ?? storeData.name?.en ?? null
+      storeUrl  = storeData.original_domain ?? null
+    }
+  } catch (e) {
+    console.warn('No se pudo obtener info de la tienda TN:', e)
+  }
+
+  // Guardar credenciales (upsert por tenant_id + sucursal_id)
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  )
+
+  const { error } = await supabase
+    .from('tiendanube_credentials')
+    .upsert(
+      {
+        tenant_id:    tenantId,
+        sucursal_id:  sucursalId,
+        store_id:     storeId,
+        store_name:   storeName,
+        store_url:    storeUrl,
+        access_token: accessToken,
+        conectado:    true,
+        conectado_at: new Date().toISOString(),
+      },
+      { onConflict: 'tenant_id,sucursal_id' },
+    )
+
+  if (error) {
+    console.error('Error guardando credenciales TN:', error)
+    return redirectError('Error guardando la conexión')
+  }
+
+  // Redirigir al usuario de vuelta a la tab Integraciones
+  return Response.redirect(`${APP_URL}/configuracion?tab=integraciones&tn=ok`, 302)
+})
+
+function redirectError(msg: string): Response {
+  const encoded = encodeURIComponent(msg)
+  return Response.redirect(`${APP_URL}/configuracion?tab=integraciones&error=${encoded}`, 302)
+}

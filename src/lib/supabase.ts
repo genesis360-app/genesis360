@@ -417,3 +417,78 @@ export interface ProductoStockMinimoSucursal {
   created_at: string
   sucursales?: Pick<Sucursal, 'nombre'>
 }
+
+// ─── Integraciones externas ───────────────────────────────────────────────────
+
+export type IntegracionTipo = 'meli' | 'tiendanube' | 'mp' | 'andreani' | 'correo_argentino' | 'shopify' | 'woocommerce'
+export type OrigenVenta = 'POS' | 'MELI' | 'TiendaNube' | 'Shopify' | 'WooCommerce' | 'MP'
+export type JobStatus = 'pending' | 'processing' | 'done' | 'failed'
+
+export interface IntegrationJobQueue {
+  id: string
+  tenant_id: string
+  sucursal_id?: string | null
+  integracion: IntegracionTipo
+  tipo: string
+  payload: Record<string, unknown>
+  endpoint?: string | null
+  status: JobStatus
+  retries: number
+  max_retries: number
+  next_attempt_at: string
+  error_last?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface VentaExternaLog {
+  id: string
+  tenant_id: string
+  integracion: IntegracionTipo
+  webhook_external_id: string
+  venta_id?: string | null
+  payload_raw?: Record<string, unknown> | null
+  procesado_at: string
+}
+
+export interface TiendanubeCredentials {
+  id: string
+  tenant_id: string
+  sucursal_id: string
+  store_id: number
+  store_name?: string | null
+  store_url?: string | null
+  /** access_token nunca expuesto al frontend — solo estado de conexión */
+  conectado: boolean
+  conectado_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MercadopagoCredentials {
+  id: string
+  tenant_id: string
+  sucursal_id: string
+  seller_id: number
+  seller_email?: string | null
+  /** access_token nunca expuesto al frontend */
+  expires_at?: string | null
+  conectado: boolean
+  conectado_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface InventarioTnMap {
+  id: string
+  tenant_id: string
+  sucursal_id: string
+  producto_id: string
+  tn_product_id: number
+  tn_variant_id?: number | null
+  sync_stock: boolean
+  sync_precio: boolean
+  ultimo_sync_at?: string | null
+  created_at: string
+  productos?: Pick<Producto, 'nombre' | 'sku'>
+}

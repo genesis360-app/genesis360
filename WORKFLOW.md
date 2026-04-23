@@ -157,6 +157,8 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.85.1–v0.85.3 ✅ | VentasPage fixes: ticket scrollable, ESC prioridad, cantidad decimal punto/coma, descuento cambio tipo, stock guard, venta sin líneas imposible, batch inserts · Fix margen strip IVA en ProductoFormPage+MetricasPage+DashboardPage+useRecomendaciones · Migration 054 venta_items.cantidad DECIMAL PROD ✅ | 2026-04 |
 | v0.86.0 ✅ | Sprint C inventario: Tab Autorizaciones DEPOSITO — DEPOSITO solicita, OWNER/SUPERVISOR aprueba/rechaza · Fix historial conteo y ajuste LPN · Filtros historial (fecha/cat/tipo/motivo) · Reorden tabs · Migrations 055+056 PROD ✅ | 2026-04 |
 | v0.87.0 ✅ | Sprint D inventario: Combinar LPNs + LPN Madre — checkboxes, barra flotante, modal Fusionar (transfiere stock) + LPN Madre (parent_lpn_id sin mover stock) · Fix users.rol CHECK (RRHH/DEPOSITO/CONTADOR) · Migrations 057+058 PROD ✅ | 2026-04 |
+| v0.88.0 ✅ | Módulo Recepciones (/recepciones): lista + form + confirmar contra OC · Botón "Recibir mercadería" en OC confirmadas · Genera inventario_lineas + movimientos_stock · Estados OC recibida_parcial/recibida · ImportarProductosPage: campo notas (col W) · ProductosPage: barcode mobile, SKU uniqueness, foto compresión, botón OC rápida · Migration 059 PROD ✅ | 2026-04 |
+| v0.89.0 ✅ | Integraciones OAuth: tab Integraciones en ConfigPage · TiendaNube OAuth (EF tn-oauth-callback, token permanente) · MercadoPago OAuth (EF mp-oauth-callback, IPN notifications) · Fase 0 schema (pgcrypto + columnas ventas/clientes + integration_job_queue + ventas_externas_logs) · Migrations 060+061 PROD ✅ · PR #65 | 2026-04 |
 
 ---
 

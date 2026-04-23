@@ -163,13 +163,13 @@ serve(async (req) => {
 
     productoId = mapped?.producto_id ?? null
 
-    // Intento 2: fallback por SKU
+    // Intento 2: fallback por SKU (case-insensitive)
     if (!productoId && item.sku) {
       const { data: bySku } = await supabase
         .from('productos')
         .select('id')
         .eq('tenant_id', tenant_id)
-        .eq('sku', item.sku)
+        .ilike('sku', item.sku)
         .maybeSingle()
       productoId = bySku?.id ?? null
     }

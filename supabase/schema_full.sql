@@ -1774,3 +1774,250 @@ CREATE INDEX IF NOT EXISTS idx_aut_inv_tenant_estado ON autorizaciones_inventari
 CREATE TRIGGER trg_updated_at_aut_inv
   BEFORE UPDATE ON autorizaciones_inventario
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+-- ─── Migration 060: Fase 0 — Fundamentos de Integraciones ───────────────────
+-- Prerequisito para todas las integraciones externas (MELI, TN, MP, etc.)
+-- 1. pgcrypto (encriptación de tokens)
+-- 2. ventas — columnas adicionales para e-commerce
+-- 3. clientes — normalización y marketing
+-- 4. integration_job_queue — cola genérica async
+-- 5. ventas_externas_logs — idempotencia de webhooks
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- 1. pgcrypto (necesario para PGP_SYM_ENCRYPT en tablas de credenciales)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2. ventas — columnas para origen, tracking y facturación
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE ventas
+  ADD COLUMN IF NOT EXISTS origen TEXT DEFAULT 'POS',
+  ADD COLUMN IF NOT EXISTS tracking_id TEXT,
+  ADD COLUMN IF NOT EXISTS tracking_url TEXT,
+  ADD COLUMN IF NOT EXISTS costo_envio_logistica DECIMAL(12,2),
+  ADD COLUMN IF NOT EXISTS marketing_metadata JSONB,
+  ADD COLUMN IF NOT EXISTS id_pago_externo TEXT,
+  ADD COLUMN IF NOT EXISTS money_release_date DATE,
+  ADD COLUMN IF NOT EXISTS cae VARCHAR,
+  ADD COLUMN IF NOT EXISTS vencimiento_cae DATE,
+  ADD COLUMN IF NOT EXISTS tipo_comprobante TEXT,
+  ADD COLUMN IF NOT EXISTS numero_comprobante TEXT,
+  ADD COLUMN IF NOT EXISTS link_factura_pdf TEXT;
+
+-- origen: de dónde vino la venta
+ALTER TABLE ventas
+  ADD CONSTRAINT ventas_origen_check
+  CHECK (origen IN ('POS', 'MELI', 'TiendaNube', 'Shopify', 'WooCommerce', 'MP'));
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 3. clientes — normalización de teléfono y optin de marketing
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE clientes
+  ADD COLUMN IF NOT EXISTS telefono_normalizado TEXT,
+  ADD COLUMN IF NOT EXISTS marketing_optin BOOLEAN DEFAULT TRUE;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 4. integration_job_queue — cola async genérica para todas las integraciones
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS integration_job_queue (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  sucursal_id     UUID REFERENCES sucursales(id) ON DELETE SET NULL,
+  integracion     TEXT NOT NULL,  -- 'meli' | 'tiendanube' | 'mp' | 'andreani' | etc.
+  tipo            TEXT NOT NULL,  -- 'sync_stock' | 'sync_precio' | 'crear_envio' | etc.
+  payload         JSONB NOT NULL DEFAULT '{}',
+  endpoint        TEXT,
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'done', 'failed')),
+  retries         INT NOT NULL DEFAULT 0,
+  max_retries     INT NOT NULL DEFAULT 5,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  error_last      TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_queue_pending
+  ON integration_job_queue (tenant_id, integracion, next_attempt_at)
+  WHERE status IN ('pending', 'processing');
+
+ALTER TABLE integration_job_queue ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'integration_job_queue' AND policyname = 'job_queue_tenant'
+  ) THEN
+    CREATE POLICY job_queue_tenant ON integration_job_queue
+      USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION fn_updated_at_job_queue()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_updated_at_job_queue ON integration_job_queue;
+CREATE TRIGGER trg_updated_at_job_queue
+  BEFORE UPDATE ON integration_job_queue
+  FOR EACH ROW EXECUTE FUNCTION fn_updated_at_job_queue();
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 5. ventas_externas_logs — idempotencia de webhooks entrantes
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ventas_externas_logs (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id            UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  integracion          TEXT NOT NULL,  -- 'meli' | 'tiendanube' | 'mp' | etc.
+  webhook_external_id  TEXT NOT NULL,  -- ID único del evento en la plataforma externa
+  venta_id             UUID REFERENCES ventas(id) ON DELETE SET NULL,
+  payload_raw          JSONB,
+  procesado_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, integracion, webhook_external_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ventas_externas_logs_lookup
+  ON ventas_externas_logs (tenant_id, integracion, webhook_external_id);
+
+ALTER TABLE ventas_externas_logs ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'ventas_externas_logs' AND policyname = 'ventas_externas_tenant'
+  ) THEN
+    CREATE POLICY ventas_externas_tenant ON ventas_externas_logs
+      USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;
+
+-- ─── Migration 061: Credenciales TiendaNube + MercadoPago + Mapeo TN ─────────
+-- Tablas de credenciales OAuth por sucursal.
+-- SEGURIDAD: access_token y campos sensibles nunca expuestos al frontend.
+-- Las Edge Functions los leen vía service role key.
+-- El frontend solo consulta campos de estado (conectado, store_id, expires_at).
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 1. tiendanube_credentials
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS tiendanube_credentials (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  sucursal_id     UUID NOT NULL REFERENCES sucursales(id) ON DELETE CASCADE,
+  store_id        BIGINT NOT NULL,           -- ID de la tienda en TN
+  store_name      TEXT,                      -- nombre visible al usuario
+  store_url       TEXT,                      -- URL de la tienda (ej: mitienda.mitiendanube.com)
+  access_token    TEXT NOT NULL,             -- token permanente (sin expiración en TN)
+  conectado       BOOLEAN NOT NULL DEFAULT TRUE,
+  conectado_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, sucursal_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tn_creds_tenant ON tiendanube_credentials (tenant_id);
+
+ALTER TABLE tiendanube_credentials ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'tiendanube_credentials' AND policyname = 'tn_creds_tenant'
+  ) THEN
+    -- Solo OWNER/SUPERVISOR pueden ver el estado de conexión (no los tokens)
+    CREATE POLICY tn_creds_tenant ON tiendanube_credentials
+      USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION fn_updated_at_tn_creds()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_updated_at_tn_creds ON tiendanube_credentials;
+CREATE TRIGGER trg_updated_at_tn_creds
+  BEFORE UPDATE ON tiendanube_credentials
+  FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2. mercadopago_credentials
+-- Solo para recibir notificaciones IPN de pagos (no cobrar en nombre de otros).
+-- access_token del vendedor obtenido vía OAuth estándar de MP.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS mercadopago_credentials (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  sucursal_id     UUID NOT NULL REFERENCES sucursales(id) ON DELETE CASCADE,
+  seller_id       BIGINT NOT NULL,           -- user_id de MP del vendedor
+  seller_email    TEXT,                      -- email de la cuenta MP
+  access_token    TEXT NOT NULL,             -- token OAuth del vendedor
+  refresh_token   TEXT,                      -- para renovar (expira en 180 días en MP)
+  public_key      TEXT,                      -- public_key del vendedor (para checkout)
+  expires_at      TIMESTAMPTZ,               -- cuándo vence el access_token
+  conectado       BOOLEAN NOT NULL DEFAULT TRUE,
+  conectado_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, sucursal_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mp_creds_tenant ON mercadopago_credentials (tenant_id);
+-- Índice para encontrar tokens próximos a vencer (cron de refresh)
+CREATE INDEX IF NOT EXISTS idx_mp_creds_expires ON mercadopago_credentials (expires_at)
+  WHERE conectado = TRUE;
+
+ALTER TABLE mercadopago_credentials ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'mercadopago_credentials' AND policyname = 'mp_creds_tenant'
+  ) THEN
+    CREATE POLICY mp_creds_tenant ON mercadopago_credentials
+      USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION fn_updated_at_mp_creds()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_updated_at_mp_creds ON mercadopago_credentials;
+CREATE TRIGGER trg_updated_at_mp_creds
+  BEFORE UPDATE ON mercadopago_credentials
+  FOR EACH ROW EXECUTE FUNCTION fn_updated_at_mp_creds();
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 3. inventario_tn_map — mapeo producto Genesis360 ↔ producto TiendaNube
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inventario_tn_map (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  sucursal_id     UUID NOT NULL REFERENCES sucursales(id) ON DELETE CASCADE,
+  producto_id     UUID NOT NULL REFERENCES productos(id) ON DELETE CASCADE,
+  tn_product_id   BIGINT NOT NULL,           -- ID del producto en TN
+  tn_variant_id   BIGINT,                    -- ID de la variante (null si sin variantes)
+  sync_stock      BOOLEAN NOT NULL DEFAULT TRUE,   -- sincronizar stock hacia TN
+  sync_precio     BOOLEAN NOT NULL DEFAULT FALSE,  -- sincronizar precio hacia TN
+  ultimo_sync_at  TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, sucursal_id, producto_id),
+  UNIQUE (tenant_id, sucursal_id, tn_product_id, tn_variant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tn_map_producto ON inventario_tn_map (tenant_id, producto_id);
+CREATE INDEX IF NOT EXISTS idx_tn_map_tn_product ON inventario_tn_map (tenant_id, tn_product_id);
+
+ALTER TABLE inventario_tn_map ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'inventario_tn_map' AND policyname = 'tn_map_tenant'
+  ) THEN
+    CREATE POLICY tn_map_tenant ON inventario_tn_map
+      USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;

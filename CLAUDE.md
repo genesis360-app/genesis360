@@ -387,6 +387,54 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - UI: `medioPagoNomina` state en RrhhPage; select junto al selector de caja. Fila pagada muestra el medio de pago.
 - **Historial de sueldos**: `historialEmpleadoId` state + `historialSueldos` query (enabled solo cuando `showHistorialSueldos && historialEmpleadoId`). Tabla colapsable con período, básico, haberes, descuentos, neto, estado, medio de pago.
 
+### v0.88.0 ✅ PROD
+
+#### Módulo Recepciones (migration 059)
+- **`RecepcionesPage.tsx`** nueva (`/recepciones`): lista de recepciones + form de carga con pre-populado desde OC. Botón "Recibir mercadería" en OC confirmadas de ProveedoresPage.
+- **Al confirmar recepción**: genera `inventario_lineas` + `movimientos_stock` + actualiza estado OC a `recibida_parcial` (si quedan ítems pendientes) o `recibida`.
+- **Migration 059**: `ordenes_compra.estado` CHECK ampliado con `recibida_parcial` y `recibida`.
+- **AppLayout**: navItem Recepciones (`supervisorOnly: true, depositoVisible: true`) + `/recepciones` en `DEPOSITO_ALLOWED`.
+- **supabase.ts**: `EstadoOC` extendido · interfaces `Recepcion` + `RecepcionItem`.
+
+#### Mejoras ProductosPage
+- **Barcode mobile**: visible debajo de SKU en card header.
+- **SKU uniqueness**: validación debounced 400ms, borde rojo + bloquea submit si duplicado.
+- **Foto compresión**: `handleImageChange` comprime ≥1.5MB → max 1200px.
+- **Botón OC rápida**: modal (proveedor + cantidad + precio opcional) → crea/agrega a OC borrador.
+- **ImportarProductosPage**: campo `notas` en template Excel (col W, 23 columnas total).
+
+### v0.89.0 ✅ PROD
+
+#### Fase 0 Integraciones (migration 060)
+- `CREATE EXTENSION pgcrypto` — prerequisito para credenciales encriptadas.
+- `ALTER TABLE ventas`: `origen TEXT DEFAULT 'POS' CHECK IN ('POS','MELI','TiendaNube','Shopify','WooCommerce','MP')` + `tracking_id`, `tracking_url`, `costo_envio_logistica`, `marketing_metadata`, `id_pago_externo`, `money_release_date`, `cae`, `vencimiento_cae`, `tipo_comprobante`, `numero_comprobante`, `link_factura_pdf`.
+- `ALTER TABLE clientes`: `telefono_normalizado TEXT` + `marketing_optin BOOLEAN DEFAULT TRUE`.
+- Tabla `integration_job_queue`: cola async genérica (integracion, tipo, payload, status, retries, next_attempt_at). RLS tenant.
+- Tabla `ventas_externas_logs`: idempotencia webhooks entrantes. UNIQUE(tenant_id, integracion, webhook_external_id).
+
+#### Credenciales OAuth (migration 061)
+- `tiendanube_credentials`: token permanente por sucursal. UNIQUE(tenant_id, sucursal_id).
+- `mercadopago_credentials`: OAuth estándar, `expires_at` (180 días). Índice en `expires_at` para cron refresh.
+- `inventario_tn_map`: mapeo producto Genesis360 ↔ TN (tn_product_id + tn_variant_id). Flags `sync_stock` y `sync_precio`.
+- Todas con RLS tenant. Frontend solo consulta campos de estado, nunca `access_token`.
+
+#### EF `tn-oauth-callback` + `mp-oauth-callback`
+- Ambas sin JWT (`--no-verify-jwt`). Reciben el redirect OAuth, intercambian code por token, upsert en tabla de credenciales, redirigen a `APP_URL/configuracion?tab=integraciones&tn=ok`.
+- `state` = `btoa(tenantId:sucursalId)` — identifica qué sucursal está conectando.
+- TN: `user_id` viene en la respuesta del token (no en la URL). MP: `expires_in` → calcular `expires_at`.
+- Secrets: `TN_CLIENT_SECRET`, `MP_CLIENT_SECRET`, `APP_URL` en Supabase EF secrets (nunca en Vercel).
+
+#### ConfigPage tab Integraciones
+- Tab nueva `integraciones` (icono `Plug`).
+- TiendaNube (verde `#95BF47`): botón "Conectar" → OAuth redirect con `state`. Badge "Conectada" + fecha. Desconectar elimina la fila.
+- MercadoPago (azul `#009EE3`): ídem. Muestra `seller_email` + fecha vencimiento token. Badge "Vencido" si `expires_at < now()`.
+- Banner amarillo si faltan env vars (`VITE_TN_APP_ID` / `VITE_MP_CLIENT_ID`).
+- Toast de resultado al volver del OAuth (`?tn=ok`, `?mp=ok`, `?error=...`).
+
+#### Registros de apps externas
+- **TiendaNube Partners**: App ID `30376`. Redirect URI PROD: `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/tn-oauth-callback`. Permisos: Edit Products + Edit Orders + View Customers.
+- **MP Developers**: Client ID `7675256842462289`. Redirect URIs DEV + PROD configuradas. Permisos: read + offline_access + write.
+
 ## Backlog pendiente
 
 ### UX / Config

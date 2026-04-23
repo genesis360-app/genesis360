@@ -13,12 +13,12 @@ const APP_URL        = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'
 serve(async (req) => {
   const url = new URL(req.url)
 
-  // TN redirige aquí con ?code=XXX&user_id=XXX&state=base64(tenantId:sucursalId)
-  const code      = url.searchParams.get('code')
-  const tnUserId  = url.searchParams.get('user_id')   // = store_id en TN
-  const stateB64  = url.searchParams.get('state')
+  // TN redirige aquí con ?code=XXX&state=base64(tenantId:sucursalId)
+  // user_id viene en la respuesta del token, no en la URL
+  const code     = url.searchParams.get('code')
+  const stateB64 = url.searchParams.get('state')
 
-  if (!code || !tnUserId || !stateB64) {
+  if (!code || !stateB64) {
     return new Response('Parámetros faltantes', { status: 400 })
   }
 
@@ -59,7 +59,7 @@ serve(async (req) => {
   const tokenData = await tokenRes.json()
   // TN devuelve: { access_token, token_type, scope, user_id }
   const accessToken = tokenData.access_token as string
-  const storeId     = parseInt(tnUserId, 10)
+  const storeId     = tokenData.user_id as number
 
   if (!accessToken) {
     return redirectError('TiendaNube no devolvió access_token')

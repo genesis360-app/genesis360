@@ -105,7 +105,45 @@ export interface Proveedor {
   created_at?: string
 }
 
-export type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada'
+export type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada' | 'recibida_parcial' | 'recibida'
+
+export type EstadoRecepcion = 'borrador' | 'confirmada' | 'cancelada'
+
+export interface Recepcion {
+  id: string
+  tenant_id: string
+  numero: number
+  oc_id?: string | null
+  proveedor_id?: string | null
+  estado: EstadoRecepcion
+  notas?: string | null
+  sucursal_id?: string | null
+  created_by?: string | null
+  created_at: string
+  updated_at: string
+  // joins
+  proveedores?: { nombre: string } | null
+  ordenes_compra?: { numero: number } | null
+}
+
+export interface RecepcionItem {
+  id: string
+  recepcion_id: string
+  producto_id: string
+  oc_item_id?: string | null
+  cantidad_esperada: number
+  cantidad_recibida: number
+  estado_id?: string | null
+  ubicacion_id?: string | null
+  nro_lote?: string | null
+  fecha_vencimiento?: string | null
+  lpn?: string | null
+  series_txt?: string | null
+  inventario_linea_id?: string | null
+  precio_costo?: number | null
+  // joins
+  productos?: Pick<Producto, 'id' | 'nombre' | 'sku' | 'unidad_medida'>
+}
 
 export interface OrdenCompra {
   id: string

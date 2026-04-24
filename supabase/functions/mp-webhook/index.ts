@@ -145,7 +145,20 @@ serve(async (req) => {
                   payload: { payment_id: paymentId, monto: payment.transaction_amount, venta_id: venta.id },
                 })
               } else {
-                console.warn('Venta no encontrada para external_reference:', ref)
+                // Venta aún no existe (venta directa con pre-venta UUID).
+                // Guardar pago para que el frontend lo detecte y aplique al finalizar.
+                console.log('Venta no existe aún, guardando pago pre-venta:', ref)
+                await supabase.from('ventas_externas_logs').insert({
+                  tenant_id: sellerCred.tenant_id,
+                  integracion: 'MercadoPago',
+                  webhook_external_id: `mp-preventa-${ref}`,
+                  payload: {
+                    payment_id: paymentId,
+                    monto: payment.transaction_amount,
+                    pre_venta_id: ref,
+                    money_release_date: payment.money_release_date ?? null,
+                  },
+                })
               }
             }
           }

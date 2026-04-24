@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink } from 'lucide-react'
+import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -116,6 +117,31 @@ export default function VentasPage() {
   const [devSaving, setDevSaving] = useState(false)
   const [devComprobante, setDevComprobante] = useState<any | null>(null)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
+
+  // MP link de pago
+  const [mpLinkModal, setMpLinkModal] = useState<{ ventaId: string; monto: number; initPoint: string; qrDataUrl: string } | null>(null)
+  const [generandoMpLink, setGenerandoMpLink] = useState(false)
+
+  const generarLinkMP = async (ventaId: string, monto: number) => {
+    if (!monto || monto <= 0) { toast.error('Ingresá un monto para generar el link'); return }
+    setGenerandoMpLink(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mp-crear-link-pago`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ venta_id: ventaId, monto }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al generar link')
+      const qrDataUrl = await QRCode.toDataURL(json.init_point, { width: 220, margin: 2 })
+      setMpLinkModal({ ventaId, monto, initPoint: json.init_point, qrDataUrl })
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setGenerandoMpLink(false)
+    }
+  }
 
   // Caja abierta
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -2398,6 +2424,12 @@ export default function VentasPage() {
                         <span className="font-bold text-orange-600 dark:text-orange-400">${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                     )}
+                    {saldo > 0.5 && (
+                      <button onClick={() => generarLinkMP(ventaDetalle.id, saldo)} disabled={generandoMpLink}
+                        className="flex items-center gap-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium disabled:opacity-50 transition-colors">
+                        <QrCode size={12} /> {generandoMpLink ? 'Generando...' : `Cobrar $${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })} con MP`}
+                      </button>
+                    )}
                     {editandoPago ? (
                       <div className="flex gap-2 items-center pt-1">
                         <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={ventaDetalle.total} value={editMontoPagado}
@@ -3022,6 +3054,13 @@ export default function VentasPage() {
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
                       onChange={e => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m) } : s)}
                       className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    {mp.tipo === 'Mercado Pago' && parseFloat(mp.monto) > 0 && (
+                      <button onClick={() => generarLinkMP(saldoModal.ventaId, parseFloat(mp.monto))} disabled={generandoMpLink}
+                        title="Generar QR / link MP"
+                        className="p-1.5 text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg flex-shrink-0 disabled:opacity-50 transition-colors">
+                        <QrCode size={16} />
+                      </button>
+                    )}
                     {saldoModal.mediosPago.length > 1 && (
                       <button onClick={() => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.filter((_, i) => i !== idx) } : s)}
                         className="text-gray-400 hover:text-red-500"><X size={16} /></button>
@@ -3056,6 +3095,47 @@ export default function VentasPage() {
           </div>
         )
       })()}
+      {/* Modal QR / link MP */}
+      {mpLinkModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-primary text-base flex items-center gap-2">
+                <QrCode size={16} className="text-blue-500" /> Cobrar con Mercado Pago
+              </h3>
+              <button onClick={() => setMpLinkModal(null)} className="text-gray-400 hover:text-gray-600 p-1"><X size={18} /></button>
+            </div>
+
+            <div className="text-center">
+              <p className="text-2xl font-bold text-primary">
+                ${mpLinkModal.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">El cliente escaneá el QR o usá el link</p>
+            </div>
+
+            {/* QR */}
+            <div className="flex justify-center">
+              <img src={mpLinkModal.qrDataUrl} alt="QR Mercado Pago" className="rounded-xl border border-gray-100 dark:border-gray-700" width={220} height={220} />
+            </div>
+
+            {/* Acciones */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => { navigator.clipboard.writeText(mpLinkModal.initPoint); toast.success('Link copiado') }}
+                className="flex-1 flex items-center justify-center gap-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                <Copy size={14} /> Copiar link
+              </button>
+              <a href={mpLinkModal.initPoint} target="_blank" rel="noreferrer"
+                className="flex-1 flex items-center justify-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+                <ExternalLink size={14} /> Abrir en MP
+              </a>
+            </div>
+            <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+              El pago se registra automáticamente al confirmar
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

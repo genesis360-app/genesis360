@@ -153,23 +153,37 @@ export default function VentasPage() {
     await generarLinkMP(id, monto)
   }
 
-  // Polling: mientras el modal QR está abierto, consulta cada 4s si llegó el pago
+  // Polling: mientras el modal QR está abierto, consulta cada 4s si llegó el pago.
+  // Chequea tanto la venta (reservas) como ventas_externas_logs (ventas directas con pre-UUID).
   useEffect(() => {
     if (!mpLinkModal) { setMpPagoRecibido(false); return }
     const ventaId = mpLinkModal.ventaId
     const interval = setInterval(async () => {
-      const { data } = await supabase
+      // Caso 1: venta ya existe → id_pago_externo seteado (reservas y ventas ya creadas)
+      const { data: ventaData } = await supabase
         .from('ventas')
-        .select('id_pago_externo, monto_pagado, total, estado')
+        .select('id_pago_externo, monto_pagado')
         .eq('id', ventaId)
         .maybeSingle()
-      if (data?.id_pago_externo) {
+      if (ventaData?.id_pago_externo) {
         setMpPagoRecibido(true)
         clearInterval(interval)
-        // Refrescar ventaDetalle si estamos en el modal de historial
         if (ventaDetalle?.id === ventaId) {
-          setVentaDetalle((prev: any) => prev ? { ...prev, monto_pagado: data.monto_pagado } : prev)
+          setVentaDetalle((prev: any) => prev ? { ...prev, monto_pagado: ventaData.monto_pagado } : prev)
         }
+        return
+      }
+      // Caso 2: venta directa aún no creada → buscar log pre-venta
+      const { data: logData } = await supabase
+        .from('ventas_externas_logs')
+        .select('id')
+        .eq('tenant_id', tenant!.id)
+        .eq('integracion', 'MercadoPago')
+        .eq('webhook_external_id', `mp-preventa-${ventaId}`)
+        .maybeSingle()
+      if (logData) {
+        setMpPagoRecibido(true)
+        clearInterval(interval)
       }
     }, 4000)
     return () => clearInterval(interval)
@@ -868,6 +882,25 @@ export default function VentasPage() {
         ...(estado === 'despachada' ? { despachado_at: new Date().toISOString() } : {}),
       }).select().single()
       if (ventaError) throw ventaError
+
+      // Si el QR de MP fue pagado antes de crear la venta, aplicar monto_pagado del log
+      if (preVentaId) {
+        const { data: preLog } = await supabase
+          .from('ventas_externas_logs')
+          .select('payload')
+          .eq('tenant_id', tenant!.id)
+          .eq('integracion', 'MercadoPago')
+          .eq('webhook_external_id', `mp-preventa-${preVentaId}`)
+          .maybeSingle()
+        if (preLog?.payload) {
+          const p = preLog.payload as any
+          await supabase.from('ventas').update({
+            monto_pagado: Math.min(Number(p.monto ?? 0), total),
+            id_pago_externo: String(p.payment_id),
+            money_release_date: p.money_release_date ?? null,
+          }).eq('id', venta.id)
+        }
+      }
 
       // ─── Fase 1: batch insert venta_items ────────────────────────────────────
       const itemPayloads = cart.map(item => {
@@ -3179,7 +3212,7 @@ export default function VentasPage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   ${mpLinkModal.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} confirmado por MercadoPago
                 </p>
-                {/* Si hay ventaDetalle abierto → finalizar desde el modal */}
+                {/* Reserva abierta en historial → finalizar con cambiarEstado */}
                 {ventaDetalle?.id === mpLinkModal.ventaId ? (
                   <button
                     onClick={() => {
@@ -3189,6 +3222,14 @@ export default function VentasPage() {
                     disabled={cambiarEstado.isPending}
                     className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                     <Truck size={15} /> Finalizar venta (rebaje stock)
+                  </button>
+                ) : preVentaId === mpLinkModal.ventaId ? (
+                  /* Venta directa: preVentaId reservado, finalizar con registrarVenta */
+                  <button
+                    onClick={() => { setMpLinkModal(null); registrarVentaRef.current?.('despachada') }}
+                    disabled={saving}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                    <Truck size={15} /> {saving ? 'Procesando...' : 'Finalizar venta (rebaje stock)'}
                   </button>
                 ) : (
                   <button onClick={() => setMpLinkModal(null)}

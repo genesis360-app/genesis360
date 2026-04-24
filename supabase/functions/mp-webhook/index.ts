@@ -70,17 +70,73 @@ serve(async (req) => {
       const paymentId = data?.id
       if (!paymentId) throw new Error('No payment id')
 
+      // Detectar si el pago es de un seller conectado (venta) o de la plataforma (addon/suscripción)
+      // MP incluye user_id en el payload: si coincide con un seller en mercadopago_credentials → pago de venta
+      const sellerId: number | undefined = event.user_id
+      let sellerCred: { tenant_id: string; access_token: string } | null = null
+
+      if (sellerId) {
+        const { data: sc } = await supabase
+          .from('mercadopago_credentials')
+          .select('tenant_id, access_token')
+          .eq('seller_id', sellerId)
+          .eq('conectado', true)
+          .maybeSingle()
+        sellerCred = sc ?? null
+      }
+
+      // Usar token del seller si es pago de venta, token de plataforma si es pago de Genesis360
+      const tokenToUse = sellerCred?.access_token ?? mpToken
       const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-        headers: { Authorization: `Bearer ${mpToken}` },
+        headers: { Authorization: `Bearer ${tokenToUse}` },
       })
       const payment = await mpRes.json()
-      console.log('Payment status:', payment.status, 'ref:', payment.external_reference)
+      console.log('Payment status:', payment.status, 'ref:', payment.external_reference, 'seller:', sellerId ?? 'platform')
 
-      if (payment.status === 'approved' && payment.external_reference) {
+      if (sellerCred && payment.status === 'approved') {
+        // Pago de venta de un seller conectado → actualizar venta
+        const ref: string | null = payment.external_reference ?? null
+        let ventaId: string | null = null
+
+        if (ref) {
+          // Intentar match por venta id directo (UUID)
+          const { data: v1 } = await supabase
+            .from('ventas').select('id')
+            .eq('tenant_id', sellerCred.tenant_id).eq('id', ref).maybeSingle()
+          ventaId = v1?.id ?? null
+
+          if (!ventaId) {
+            // Fallback por tracking_id
+            const { data: v2 } = await supabase
+              .from('ventas').select('id')
+              .eq('tenant_id', sellerCred.tenant_id).eq('tracking_id', ref).maybeSingle()
+            ventaId = v2?.id ?? null
+          }
+        }
+
+        if (ventaId) {
+          await supabase.from('ventas').update({
+            id_pago_externo:    String(paymentId),
+            money_release_date: payment.money_release_date ?? null,
+          }).eq('id', ventaId)
+          console.log(`Venta ${ventaId} actualizada con pago MP ${paymentId}`)
+        }
+
+        // Log idempotencia
+        const webhookKey = `mp-payment-${paymentId}`
+        await supabase.from('ventas_externas_logs').insert({
+          tenant_id:           sellerCred.tenant_id,
+          integracion:         'MercadoPago',
+          webhook_external_id: webhookKey,
+          venta_id:            ventaId,
+          payload_raw:         payment,
+        }).onConflict('tenant_id,integracion,webhook_external_id').ignoreDuplicates()
+
+      } else if (!sellerCred && payment.status === 'approved' && payment.external_reference) {
+        // Pago de plataforma Genesis360 (addon / suscripción)
         const ref: string = payment.external_reference
 
         if (ref.endsWith('|addon_movimientos')) {
-          // Add-on de movimientos: incrementar addon_movimientos en +500
           const tenantId = ref.replace('|addon_movimientos', '')
           const { data: tenantRow } = await supabase.from('tenants')
             .select('addon_movimientos').eq('id', tenantId).single()
@@ -90,7 +146,6 @@ serve(async (req) => {
           }).eq('id', tenantId)
           console.log(`Tenant ${tenantId} addon_movimientos: ${actual} → ${actual + 500}`)
         } else {
-          // Pago de suscripción normal
           await supabase.from('tenants').update({
             subscription_status: 'active',
           }).eq('id', ref)

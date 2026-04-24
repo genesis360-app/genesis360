@@ -294,6 +294,19 @@ export default function VentasPage() {
       // Calcular stock disponible por producto según el grupo activo
       const productoIds = prods.map((p: any) => p.id)
 
+      // Estados habilitados para venta (es_disponible_venta = true)
+      const { data: estadosVentaData } = await supabase
+        .from('estados_inventario')
+        .select('id')
+        .eq('tenant_id', tenant!.id)
+        .eq('es_disponible_venta', true)
+      const estadosVentaIds = (estadosVentaData ?? []).map((e: any) => e.id)
+
+      // Intersección: grupo activo ∩ estados habilitados para venta
+      const estadosFinal = estadosFiltro.length > 0
+        ? estadosFiltro.filter(id => estadosVentaIds.includes(id))
+        : estadosVentaIds
+
       // Traer líneas activas de estos productos con ubicación disponible para surtido
       let lineasQuery = supabase.from('inventario_lineas')
         .select('producto_id, cantidad, cantidad_reservada, estado_id, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
@@ -302,9 +315,9 @@ export default function VentasPage() {
         .in('producto_id', productoIds)
         .not('ubicacion_id', 'is', null)
 
-      // Si hay filtro de grupo, filtrar por estado
-      if (estadosFiltro.length > 0) {
-        lineasQuery = lineasQuery.in('estado_id', estadosFiltro)
+      // Filtrar por estados válidos (grupo ∩ disponible_venta, o solo disponible_venta si sin grupo)
+      if (estadosFinal.length > 0) {
+        lineasQuery = lineasQuery.in('estado_id', estadosFinal)
       }
 
       const { data: lineas } = await lineasQuery
@@ -434,13 +447,18 @@ export default function VentasPage() {
         : ventaGrupoId ? grupos.find(g => g.id === ventaGrupoId) : grupoDefault
       const estadosFiltro = grupoActivo?.estado_ids ?? []
 
+      // Estados habilitados para venta
+      const { data: evData } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
+      const evIds = (evData ?? []).map((e: any) => e.id)
+      const estadosFinal = estadosFiltro.length > 0 ? estadosFiltro.filter(id => evIds.includes(id)) : evIds
+
       let lineasQuery = supabase.from('inventario_lineas')
         .select('id, lpn, estado_id, ubicaciones(disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
         .eq('producto_id', p.id).eq('activo', true)
         .not('ubicacion_id', 'is', null)
 
-      if (estadosFiltro.length > 0) {
-        lineasQuery = lineasQuery.in('estado_id', estadosFiltro)
+      if (estadosFinal.length > 0) {
+        lineasQuery = lineasQuery.in('estado_id', estadosFinal)
       }
 
       const { data: lineas } = await lineasQuery
@@ -462,10 +480,14 @@ export default function VentasPage() {
       const sortLineas = getRebajeSort(p.regla_inventario, tenant!.regla_inventario, p.tiene_vencimiento ?? false)
       const grupoActivo2 = ventaGrupoId === 'todos' ? null : ventaGrupoId ? grupos.find(g => g.id === ventaGrupoId) : grupoDefault
       const estadosFiltro2 = grupoActivo2?.estado_ids ?? []
+      // Estados habilitados para venta (reutiliza evIds del bloque anterior si ya fue calculado, o re-query)
+      const { data: evData2 } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
+      const evIds2 = (evData2 ?? []).map((e: any) => e.id)
+      const estadosFinal2 = estadosFiltro2.length > 0 ? estadosFiltro2.filter(id => evIds2.includes(id)) : evIds2
       let lq = supabase.from('inventario_lineas')
         .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
-      if (estadosFiltro2.length > 0) lq = lq.in('estado_id', estadosFiltro2)
+      if (estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
       const { data: lineasRaw2 } = await lq
       const hoyStr = new Date().toISOString().split('T')[0]
       const sortedLineas = (lineasRaw2 ?? [])

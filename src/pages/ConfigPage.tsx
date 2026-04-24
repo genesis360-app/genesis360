@@ -11,7 +11,8 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'grupos' | 'aging' | 'metodos_pago' | 'integraciones'
+type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'metodos_pago' | 'integraciones'
+type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
 const COLORES = [
@@ -372,6 +373,7 @@ export default function ConfigPage() {
   const searchParams = new URLSearchParams(window.location.search)
   const initialTab = searchParams.get('tab') as Tab | null
   const [tab, setTab] = useState<Tab>(initialTab ?? 'negocio')
+  const [estadosSubTab, setEstadosSubTab] = useState<EstadosSubTab>('estados')
   const { tenant, user, setTenant, sucursales } = useAuthStore()
   const qc = useQueryClient()
   const canEdit = user?.rol === 'OWNER'
@@ -590,6 +592,11 @@ export default function ConfigPage() {
     toast.success(estadoId ? 'Estado de devolución configurado' : 'Estado de devolución desasignado')
     qc.invalidateQueries({ queryKey: ['estados_inventario'] })
   }
+  const toggleDisponibleTN = async (estadoId: string, value: boolean) => {
+    const { error } = await supabase.from('estados_inventario').update({ es_disponible_tn: value }).eq('id', estadoId)
+    if (error) toast.error(error.message)
+    else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
+  }
 
   // Motivos
   const { data: motivos = [], isLoading: loadingMotivos } = useQuery({
@@ -696,7 +703,7 @@ export default function ConfigPage() {
       if (error) throw error
       return (data ?? []) as Grupo[]
     },
-    enabled: !!tenant && tab === 'grupos',
+    enabled: !!tenant && tab === 'estados' && estadosSubTab === 'grupos',
   })
 
   const resetGrupoForm = () => {
@@ -1044,8 +1051,6 @@ export default function ConfigPage() {
     { id: 'estados' as Tab, label: 'Estados', icon: CircleDot },
     { id: 'motivos' as Tab, label: 'Motivos', icon: MessageSquare },
     { id: 'combos' as Tab, label: 'Combos', icon: Gift },
-    { id: 'grupos' as Tab, label: 'Grupos de estados', icon: Layers },
-    { id: 'aging' as Tab, label: 'Aging Profiles', icon: Timer },
     { id: 'metodos_pago' as Tab, label: 'Métodos de pago', icon: CreditCard },
     { id: 'integraciones' as Tab, label: 'Integraciones', icon: Plug },
   ]
@@ -1449,34 +1454,338 @@ export default function ConfigPage() {
       )}
 
       {tab === 'estados' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <CircleDot size={18} className="text-accent" />
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Estados de inventario</h2>
-              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{estados.length} cargados</span>
-            </div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Definen la condición del producto: Disponible, Dañado, Reservado, En tránsito, etc.</p>
-            <ListaABM items={estados} loading={loadingEstados} withColor onAdd={addEstado} onUpdate={updateEstado} onDelete={deleteEstado} />
+        <div className="space-y-4">
+          {/* Sub-tab navigation */}
+          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
+            {([
+              { id: 'estados' as EstadosSubTab, label: 'Estados', icon: CircleDot },
+              { id: 'grupos' as EstadosSubTab, label: 'Grupos de estados', icon: Layers },
+              { id: 'progresion' as EstadosSubTab, label: 'Progresión de estado', icon: Timer },
+            ] as const).map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={() => setEstadosSubTab(id)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all
+                  ${estadosSubTab === id
+                    ? 'border-accent text-accent'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                <Icon size={14} />{label}
+              </button>
+            ))}
           </div>
 
-          {/* Estado para devoluciones */}
-          {estados.length > 0 && (
-            <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
-              <div className="flex items-center gap-2 mb-1">
-                <RotateCcw size={15} className="text-orange-500" />
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Estado para ítems devueltos</p>
+          {/* Sub-tab: Estados */}
+          {estadosSubTab === 'estados' && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <CircleDot size={18} className="text-accent" />
+                  <h2 className="font-semibold text-gray-700 dark:text-gray-300">Estados de inventario</h2>
+                  <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{estados.length} cargados</span>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Definen la condición del producto: Disponible, Dañado, Reservado, En tránsito, etc.</p>
+                <ListaABM items={estados} loading={loadingEstados} withColor onAdd={addEstado} onUpdate={updateEstado} onDelete={deleteEstado} />
               </div>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">El stock devuelto ingresará con este estado. Solo uno puede estar activo.</p>
-              <select
-                value={(estados as any[]).find(e => e.es_devolucion)?.id ?? ''}
-                onChange={e => setEstadoDevolucion(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
-                <option value="">Sin configurar</option>
-                {(estados as any[]).map((e: any) => (
-                  <option key={e.id} value={e.id}>{e.nombre}</option>
-                ))}
-              </select>
+
+              {/* Estado para devoluciones */}
+              {estados.length > 0 && (
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <RotateCcw size={15} className="text-orange-500" />
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Estado para ítems devueltos</p>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">El stock devuelto ingresará con este estado. Solo uno puede estar activo.</p>
+                  <select
+                    value={(estados as any[]).find(e => e.es_devolucion)?.id ?? ''}
+                    onChange={e => setEstadoDevolucion(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                    <option value="">Sin configurar</option>
+                    {(estados as any[]).map((e: any) => (
+                      <option key={e.id} value={e.id}>{e.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Disponible para TiendaNube */}
+              {estados.length > 0 && (
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Store size={15} className="text-blue-500" />
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Disponible para TiendaNube</p>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                    Solo los estados activados cuentan como stock disponible al sincronizar con TiendaNube.
+                    Desactivá estados como "Bloqueado" o "En análisis" para que no inflen el stock publicado.
+                  </p>
+                  <div className="space-y-1">
+                    {(estados as any[]).map((e: any) => (
+                      <label key={e.id} className="flex items-center gap-3 cursor-pointer px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={e.es_disponible_tn !== false}
+                          onChange={() => toggleDisponibleTN(e.id, !(e.es_disponible_tn !== false))}
+                          className="w-4 h-4 rounded text-accent accent-accent focus:ring-accent" />
+                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
+                        <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">{e.nombre}</span>
+                        {e.es_disponible_tn === false && (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 italic">excluido</span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sub-tab: Grupos de estados */}
+          {estadosSubTab === 'grupos' && (
+            <div className="space-y-4">
+              {(estados as EstadoSimple[]).length === 0 && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+                  ⚠️ Primero creá estados en la pestaña <strong>Estados</strong> para poder armar grupos.
+                </div>
+              )}
+
+              {!grupoShowForm && (
+                <div className="flex justify-end">
+                  <button onClick={() => setGrupoShowForm(true)}
+                    className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
+                    <Plus size={16} /> Nuevo grupo
+                  </button>
+                </div>
+              )}
+
+              {grupoShowForm && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent/30 space-y-4">
+                  <h2 className="font-semibold text-gray-700 dark:text-gray-300">{grupoEditId ? 'Editar grupo' : 'Nuevo grupo'}</h2>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
+                      <input type="text" value={grupoForm.nombre} onChange={e => setGrupoForm(p => ({ ...p, nombre: e.target.value }))}
+                        placeholder="Ej: Disponible para venta"
+                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción (opcional)</label>
+                      <input type="text" value={grupoForm.descripcion} onChange={e => setGrupoForm(p => ({ ...p, descripcion: e.target.value }))}
+                        placeholder="Ej: Estados vendibles"
+                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Estados incluidos *
+                      <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">({grupoForm.estadosIds.length} seleccionado{grupoForm.estadosIds.length !== 1 ? 's' : ''})</span>
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {(estados as EstadoSimple[]).map(e => {
+                        const selected = grupoForm.estadosIds.includes(e.id)
+                        return (
+                          <button key={e.id} type="button" onClick={() => toggleGrupoEstado(e.id)}
+                            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
+                              ${selected ? 'border-accent bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}>
+                            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
+                            <span className="truncate">{e.nombre}</span>
+                            {selected && <Check size={13} className="text-accent ml-auto flex-shrink-0" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-3 cursor-pointer p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl">
+                    <div className="relative">
+                      <input type="checkbox" checked={grupoForm.es_default} onChange={e => setGrupoForm(p => ({ ...p, es_default: e.target.checked }))} className="sr-only" />
+                      <div className={`w-10 h-5 rounded-full transition-colors ${grupoForm.es_default ? 'bg-amber-50 dark:bg-amber-900/200' : 'bg-gray-300'}`}>
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${grupoForm.es_default ? 'translate-x-5' : ''}`} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-400">Filtro por defecto</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">Aparecerá preseleccionado en Rebaje y Ventas</p>
+                    </div>
+                  </label>
+                  <div className="flex gap-3 justify-end">
+                    <button onClick={resetGrupoForm} className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 text-sm">Cancelar</button>
+                    <button onClick={() => saveGrupo.mutate()} disabled={saveGrupo.isPending}
+                      className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
+                      {saveGrupo.isPending ? 'Guardando...' : grupoEditId ? 'Guardar cambios' : 'Crear grupo'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {loadingGrupos ? (
+                <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
+              ) : grupos.length === 0 && !grupoShowForm ? (
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-10 shadow-sm border border-gray-100 text-center text-gray-400 dark:text-gray-500">
+                  <Layers size={36} className="mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">No hay grupos creados</p>
+                  <p className="text-sm mt-1">Creá un grupo para usarlo como filtro rápido en Rebaje y Ventas</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {grupos.map(grupo => {
+                    const estadosGrupo = grupo.grupo_estado_items
+                      .map(i => (estados as EstadoSimple[]).find(e => e.id === i.estado_id))
+                      .filter(Boolean) as EstadoSimple[]
+                    return (
+                      <div key={grupo.id} className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border transition-all ${grupo.es_default ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/20/30' : 'border-gray-100'}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-gray-800 dark:text-gray-100">{grupo.nombre}</h3>
+                              {grupo.es_default && <span className="flex items-center gap-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium"><Star size={10} /> Default</span>}
+                            </div>
+                            {grupo.descripcion && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{grupo.descripcion}</p>}
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {estadosGrupo.length === 0
+                                ? <span className="text-xs text-gray-400 dark:text-gray-500 italic">Sin estados asignados</span>
+                                : estadosGrupo.map(e => (
+                                  <span key={e.id} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium text-white" style={{ backgroundColor: e.color }}>{e.nombre}</span>
+                                ))}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {!grupo.es_default && (
+                              <button onClick={() => setGrupoDefault.mutate(grupo.id)} title="Marcar como default" className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-amber-500 hover:bg-amber-50 dark:bg-amber-900/20 rounded-lg transition-colors"><StarOff size={15} /></button>
+                            )}
+                            <button onClick={() => startEditGrupo(grupo)} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"><Pencil size={15} /></button>
+                            <button onClick={() => { if (confirm('¿Eliminar este grupo?')) deleteGrupo.mutate(grupo.id) }} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={15} /></button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sub-tab: Progresión de estado (ex Aging Profiles) */}
+          {estadosSubTab === 'progresion' && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2 mb-1">
+                <Timer size={18} className="text-accent" />
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Progresión de estado</h2>
+                <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{agingProfiles.length} perfiles</span>
+                <button onClick={processAging} disabled={processingAging}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-medium rounded-lg transition-all disabled:opacity-50">
+                  <Play size={12} /> {processingAging ? 'Procesando...' : 'Procesar ahora'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+                Define reglas automáticas de cambio de estado según los días restantes hasta vencimiento.
+                La regla con el menor umbral que cubra los días restantes es la que se aplica.
+                Ej: con DISPONIBLE/365, PRÓX. VENCER/90, VENCIDO/0 → ítem con 50 días → "PRÓX. VENCER".
+              </p>
+
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4">
+                <div className="flex gap-2">
+                  <input type="text" value={newAgingNombre} onChange={e => setNewAgingNombre(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addAgingProfile()}
+                    placeholder="Nombre del perfil (ej: DISP-365)"
+                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                  <button onClick={addAgingProfile} disabled={!newAgingNombre.trim()}
+                    className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                    <Plus size={15} /> Agregar
+                  </button>
+                </div>
+              </div>
+
+              {loadingAging ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p> : (
+                <div className="space-y-3">
+                  {agingProfiles.length === 0 && (
+                    <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay perfiles. Creá uno para empezar.</p>
+                  )}
+                  {(agingProfiles as any[]).map((ap: any) => {
+                    const reglas = (agingReglas as any[]).filter((r: any) => r.profile_id === ap.id).sort((a: any, b: any) => b.dias - a.dias)
+                    const expanded = agingExpanded.has(ap.id)
+                    return (
+                      <div key={ap.id} className="border border-gray-100 rounded-xl overflow-hidden">
+                        <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-700 cursor-pointer select-none"
+                          onClick={() => { if (editAgingId !== ap.id) toggleAgingExpand(ap.id) }}>
+                          <span className="text-gray-400 dark:text-gray-500">{expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+                          {editAgingId === ap.id ? (
+                            <>
+                              <input type="text" value={editAgingNombre} onChange={e => setEditAgingNombre(e.target.value)}
+                                onClick={e => e.stopPropagation()}
+                                className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                              <button onClick={e => { e.stopPropagation(); saveAgingProfile(ap.id) }} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:text-green-400 p-1"><Check size={14} /></button>
+                              <button onClick={e => { e.stopPropagation(); setEditAgingId(null) }} className="text-gray-400 dark:text-gray-500 p-1"><X size={14} /></button>
+                            </>
+                          ) : (
+                            <>
+                              <span className="flex-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{ap.nombre}</span>
+                              <span className="text-xs text-gray-400 dark:text-gray-500 mr-1">{reglas.length} regla{reglas.length !== 1 ? 's' : ''}</span>
+                              <button onClick={e => { e.stopPropagation(); setEditAgingId(ap.id); setEditAgingNombre(ap.nombre) }} className="text-gray-400 dark:text-gray-500 hover:text-accent p-1"><Pencil size={13} /></button>
+                              <button onClick={e => { e.stopPropagation(); deleteAgingProfile(ap.id) }} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={13} /></button>
+                            </>
+                          )}
+                        </div>
+
+                        {expanded && (
+                          <div className="p-4 space-y-3">
+                            {reglas.length === 0 && (
+                              <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">Sin reglas. Agregá al menos una para activar la progresión.</p>
+                            )}
+                            {reglas.length > 0 && (
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100">
+                                    <th className="text-left pb-2 font-medium">Estado de inventario</th>
+                                    <th className="text-center pb-2 font-medium w-36">Días hasta vencimiento ≤</th>
+                                    <th className="w-8" />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {reglas.map((r: any) => (
+                                    <tr key={r.id} className="border-b border-gray-50 last:border-0">
+                                      <td className="py-2 pr-4">
+                                        <span className="inline-flex items-center gap-1.5">
+                                          {r.estados_inventario?.color && (
+                                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: r.estados_inventario.color }} />
+                                          )}
+                                          <span className="text-gray-700 dark:text-gray-300">{r.estados_inventario?.nombre ?? '—'}</span>
+                                        </span>
+                                      </td>
+                                      <td className="py-2 text-center font-mono text-gray-600 dark:text-gray-400">{r.dias}</td>
+                                      <td className="py-2 text-right">
+                                        <button onClick={() => deleteAgingRegla(r.id)} className="text-gray-300 hover:text-red-500 p-1 transition-colors"><Trash2 size={13} /></button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                            {addRuleProfileId === ap.id ? (
+                              <div className="flex gap-2 mt-1 items-center">
+                                <select value={addRuleEstadoId} onChange={e => setAddRuleEstadoId(e.target.value)}
+                                  className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                                  <option value="">— Estado —</option>
+                                  {(estados as any[]).map((e: any) => (
+                                    <option key={e.id} value={e.id}>{e.nombre}</option>
+                                  ))}
+                                </select>
+                                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={addRuleDias} onChange={e => setAddRuleDias(e.target.value)}
+                                  placeholder="Días" className="w-24 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent" />
+                                <button onClick={() => addAgingRegla(ap.id)} disabled={!addRuleEstadoId || addRuleDias === ''}
+                                  className="p-1.5 bg-accent text-white rounded-lg disabled:opacity-40"><Check size={14} /></button>
+                                <button onClick={() => { setAddRuleProfileId(null); setAddRuleEstadoId(''); setAddRuleDias('') }}
+                                  className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 rounded-lg"><X size={14} /></button>
+                              </div>
+                            ) : (
+                              <button onClick={() => { setAddRuleProfileId(ap.id); setAddRuleEstadoId(''); setAddRuleDias('') }}
+                                className="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 font-medium mt-1">
+                                <Plus size={13} /> Agregar regla
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1583,256 +1892,6 @@ export default function ConfigPage() {
                   </button>
                 </div>
               ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === 'grupos' && (
-        <div className="space-y-4">
-          {(estados as EstadoSimple[]).length === 0 && (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
-              ⚠️ Primero creá estados en la pestaña <strong>Estados</strong> para poder armar grupos.
-            </div>
-          )}
-
-          {!grupoShowForm && (
-            <div className="flex justify-end">
-              <button onClick={() => setGrupoShowForm(true)}
-                className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
-                <Plus size={16} /> Nuevo grupo
-              </button>
-            </div>
-          )}
-
-          {grupoShowForm && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent/30 space-y-4">
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300">{grupoEditId ? 'Editar grupo' : 'Nuevo grupo'}</h2>
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
-                  <input type="text" value={grupoForm.nombre} onChange={e => setGrupoForm(p => ({ ...p, nombre: e.target.value }))}
-                    placeholder="Ej: Disponible para venta"
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción (opcional)</label>
-                  <input type="text" value={grupoForm.descripcion} onChange={e => setGrupoForm(p => ({ ...p, descripcion: e.target.value }))}
-                    placeholder="Ej: Estados vendibles"
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Estados incluidos *
-                  <span className="text-gray-400 dark:text-gray-500 font-normal ml-1">({grupoForm.estadosIds.length} seleccionado{grupoForm.estadosIds.length !== 1 ? 's' : ''})</span>
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {(estados as EstadoSimple[]).map(e => {
-                    const selected = grupoForm.estadosIds.includes(e.id)
-                    return (
-                      <button key={e.id} type="button" onClick={() => toggleGrupoEstado(e.id)}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
-                          ${selected ? 'border-accent bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}>
-                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
-                        <span className="truncate">{e.nombre}</span>
-                        {selected && <Check size={13} className="text-accent ml-auto flex-shrink-0" />}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              <label className="flex items-center gap-3 cursor-pointer p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl">
-                <div className="relative">
-                  <input type="checkbox" checked={grupoForm.es_default} onChange={e => setGrupoForm(p => ({ ...p, es_default: e.target.checked }))} className="sr-only" />
-                  <div className={`w-10 h-5 rounded-full transition-colors ${grupoForm.es_default ? 'bg-amber-50 dark:bg-amber-900/200' : 'bg-gray-300'}`}>
-                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${grupoForm.es_default ? 'translate-x-5' : ''}`} />
-                  </div>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-400">Filtro por defecto</p>
-                  <p className="text-xs text-amber-600 dark:text-amber-400">Aparecerá preseleccionado en Rebaje y Ventas</p>
-                </div>
-              </label>
-              <div className="flex gap-3 justify-end">
-                <button onClick={resetGrupoForm} className="px-5 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold rounded-xl hover:border-gray-300 dark:border-gray-600 text-sm">Cancelar</button>
-                <button onClick={() => saveGrupo.mutate()} disabled={saveGrupo.isPending}
-                  className="px-5 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl text-sm transition-all disabled:opacity-50">
-                  {saveGrupo.isPending ? 'Guardando...' : grupoEditId ? 'Guardar cambios' : 'Crear grupo'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {loadingGrupos ? (
-            <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
-          ) : grupos.length === 0 && !grupoShowForm ? (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-10 shadow-sm border border-gray-100 text-center text-gray-400 dark:text-gray-500">
-              <Layers size={36} className="mx-auto mb-3 opacity-30" />
-              <p className="font-medium">No hay grupos creados</p>
-              <p className="text-sm mt-1">Creá un grupo para usarlo como filtro rápido en Rebaje y Ventas</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {grupos.map(grupo => {
-                const estadosGrupo = grupo.grupo_estado_items
-                  .map(i => (estados as EstadoSimple[]).find(e => e.id === i.estado_id))
-                  .filter(Boolean) as EstadoSimple[]
-                return (
-                  <div key={grupo.id} className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border transition-all ${grupo.es_default ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/20/30' : 'border-gray-100'}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-gray-800 dark:text-gray-100">{grupo.nombre}</h3>
-                          {grupo.es_default && <span className="flex items-center gap-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium"><Star size={10} /> Default</span>}
-                        </div>
-                        {grupo.descripcion && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{grupo.descripcion}</p>}
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {estadosGrupo.length === 0
-                            ? <span className="text-xs text-gray-400 dark:text-gray-500 italic">Sin estados asignados</span>
-                            : estadosGrupo.map(e => (
-                              <span key={e.id} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium text-white" style={{ backgroundColor: e.color }}>{e.nombre}</span>
-                            ))}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {!grupo.es_default && (
-                          <button onClick={() => setGrupoDefault.mutate(grupo.id)} title="Marcar como default" className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-amber-500 hover:bg-amber-50 dark:bg-amber-900/20 rounded-lg transition-colors"><StarOff size={15} /></button>
-                        )}
-                        <button onClick={() => startEditGrupo(grupo)} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"><Pencil size={15} /></button>
-                        <button onClick={() => { if (confirm('¿Eliminar este grupo?')) deleteGrupo.mutate(grupo.id) }} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={15} /></button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === 'aging' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-1">
-            <Timer size={18} className="text-accent" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Aging Profiles</h2>
-            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{agingProfiles.length} perfiles</span>
-            <button onClick={processAging} disabled={processingAging}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-medium rounded-lg transition-all disabled:opacity-50">
-              <Play size={12} /> {processingAging ? 'Procesando...' : 'Procesar aging ahora'}
-            </button>
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
-            Define reglas automáticas de cambio de estado según los días restantes hasta vencimiento.
-            La regla con el menor umbral que cubra los días restantes es la que se aplica.
-            Ej: con DISPONIBLE/365, PRÓX. VENCER/90, VENCIDO/0 → ítem con 50 días → "PRÓX. VENCER".
-          </p>
-
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4">
-            <div className="flex gap-2">
-              <input type="text" value={newAgingNombre} onChange={e => setNewAgingNombre(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && addAgingProfile()}
-                placeholder="Nombre del aging profile (ej: DISP-365)"
-                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
-              <button onClick={addAgingProfile} disabled={!newAgingNombre.trim()}
-                className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
-                <Plus size={15} /> Agregar
-              </button>
-            </div>
-          </div>
-
-          {loadingAging ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p> : (
-            <div className="space-y-3">
-              {agingProfiles.length === 0 && (
-                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay aging profiles. Creá uno para empezar.</p>
-              )}
-              {(agingProfiles as any[]).map((ap: any) => {
-                const reglas = (agingReglas as any[]).filter((r: any) => r.profile_id === ap.id).sort((a: any, b: any) => b.dias - a.dias)
-                const expanded = agingExpanded.has(ap.id)
-                return (
-                  <div key={ap.id} className="border border-gray-100 rounded-xl overflow-hidden">
-                    <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 dark:bg-gray-700 cursor-pointer select-none"
-                      onClick={() => { if (editAgingId !== ap.id) toggleAgingExpand(ap.id) }}>
-                      <span className="text-gray-400 dark:text-gray-500">{expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
-                      {editAgingId === ap.id ? (
-                        <>
-                          <input type="text" value={editAgingNombre} onChange={e => setEditAgingNombre(e.target.value)}
-                            onClick={e => e.stopPropagation()}
-                            className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
-                          <button onClick={e => { e.stopPropagation(); saveAgingProfile(ap.id) }} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:text-green-400 p-1"><Check size={14} /></button>
-                          <button onClick={e => { e.stopPropagation(); setEditAgingId(null) }} className="text-gray-400 dark:text-gray-500 p-1"><X size={14} /></button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="flex-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{ap.nombre}</span>
-                          <span className="text-xs text-gray-400 dark:text-gray-500 mr-1">{reglas.length} regla{reglas.length !== 1 ? 's' : ''}</span>
-                          <button onClick={e => { e.stopPropagation(); setEditAgingId(ap.id); setEditAgingNombre(ap.nombre) }} className="text-gray-400 dark:text-gray-500 hover:text-accent p-1"><Pencil size={13} /></button>
-                          <button onClick={e => { e.stopPropagation(); deleteAgingProfile(ap.id) }} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={13} /></button>
-                        </>
-                      )}
-                    </div>
-
-                    {expanded && (
-                      <div className="p-4 space-y-3">
-                        {reglas.length === 0 && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">Sin reglas. Agregá al menos una para activar el aging.</p>
-                        )}
-                        {reglas.length > 0 && (
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100">
-                                <th className="text-left pb-2 font-medium">Estado de inventario</th>
-                                <th className="text-center pb-2 font-medium w-36">Días hasta vencimiento ≤</th>
-                                <th className="w-8" />
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {reglas.map((r: any) => (
-                                <tr key={r.id} className="border-b border-gray-50 last:border-0">
-                                  <td className="py-2 pr-4">
-                                    <span className="inline-flex items-center gap-1.5">
-                                      {r.estados_inventario?.color && (
-                                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: r.estados_inventario.color }} />
-                                      )}
-                                      <span className="text-gray-700 dark:text-gray-300">{r.estados_inventario?.nombre ?? '—'}</span>
-                                    </span>
-                                  </td>
-                                  <td className="py-2 text-center font-mono text-gray-600 dark:text-gray-400">{r.dias}</td>
-                                  <td className="py-2 text-right">
-                                    <button onClick={() => deleteAgingRegla(r.id)} className="text-gray-300 hover:text-red-500 p-1 transition-colors"><Trash2 size={13} /></button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
-                        {addRuleProfileId === ap.id ? (
-                          <div className="flex gap-2 mt-1 items-center">
-                            <select value={addRuleEstadoId} onChange={e => setAddRuleEstadoId(e.target.value)}
-                              className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
-                              <option value="">— Estado —</option>
-                              {(estados as any[]).map((e: any) => (
-                                <option key={e.id} value={e.id}>{e.nombre}</option>
-                              ))}
-                            </select>
-                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={addRuleDias} onChange={e => setAddRuleDias(e.target.value)}
-                              placeholder="Días" className="w-24 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent" />
-                            <button onClick={() => addAgingRegla(ap.id)} disabled={!addRuleEstadoId || addRuleDias === ''}
-                              className="p-1.5 bg-accent text-white rounded-lg disabled:opacity-40"><Check size={14} /></button>
-                            <button onClick={() => { setAddRuleProfileId(null); setAddRuleEstadoId(''); setAddRuleDias('') }}
-                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400 rounded-lg"><X size={14} /></button>
-                          </div>
-                        ) : (
-                          <button onClick={() => { setAddRuleProfileId(ap.id); setAddRuleEstadoId(''); setAddRuleDias('') }}
-                            className="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 font-medium mt-1">
-                            <Plus size={13} /> Agregar regla
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
             </div>
           )}
         </div>

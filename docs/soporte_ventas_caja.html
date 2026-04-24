@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guía de Soporte — Ventas y Caja · Genesis360</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; color: #1a1a2e; background: #f8f9fc; padding: 40px 24px; }
+    .page { max-width: 860px; margin: 0 auto; }
+    .header { background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%); color: white; border-radius: 12px; padding: 32px 36px; margin-bottom: 32px; }
+    .header h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+    .header p { font-size: 14px; opacity: 0.85; }
+    .header .meta { margin-top: 16px; font-size: 12px; opacity: 0.7; display: flex; gap: 24px; }
+    .section { background: white; border-radius: 10px; padding: 28px 32px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .section h2 { font-size: 17px; font-weight: 700; color: #4f46e5; border-bottom: 2px solid #ede9fe; padding-bottom: 10px; margin-bottom: 20px; }
+    .section h3 { font-size: 14px; font-weight: 700; color: #1a1a2e; margin: 20px 0 10px; }
+    .section h3:first-child { margin-top: 0; }
+    ol.steps { padding-left: 0; list-style: none; counter-reset: step; }
+    ol.steps li { counter-increment: step; display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
+    ol.steps li::before { content: counter(step); min-width: 28px; height: 28px; background: #6d28d9; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+    ol.steps li .text { padding-top: 4px; line-height: 1.6; }
+    ul.list { padding-left: 20px; }
+    ul.list li { margin-bottom: 8px; line-height: 1.6; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-purple { background: #ede9fe; color: #5b21b6; }
+    .badge-gray { background: #f3f4f6; color: #374151; }
+    .info-box { border-left: 4px solid #6d28d9; background: #f5f3ff; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; line-height: 1.6; }
+    .warning-box { border-left: 4px solid #f59e0b; background: #fffbeb; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; line-height: 1.6; }
+    .error-box { border-left: 4px solid #ef4444; background: #fef2f2; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+    th { background: #f5f3ff; color: #4f46e5; font-weight: 700; text-align: left; padding: 10px 12px; border-bottom: 2px solid #ede9fe; }
+    td { padding: 9px 12px; border-bottom: 1px solid #f1f0f5; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    code { background: #f1f0f5; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px; color: #4f46e5; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+    @media print { body { background: white; padding: 20px; } .section { box-shadow: none; border: 1px solid #e5e7eb; } .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    .footer { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+    .kbd { display: inline-block; background: #e5e7eb; border: 1px solid #9ca3af; border-radius: 4px; padding: 1px 6px; font-family: monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>Ventas y Caja — Guía de Soporte</h1>
+    <p>Flujos de venta, reservas, despacho, devoluciones y gestión de caja en Genesis360</p>
+    <div class="meta"><span>Genesis360 v0.90.0</span><span>Abril 2026</span><span>soporte@genesis360.pro</span></div>
+  </div>
+
+  <!-- ESTADOS DE VENTA -->
+  <div class="section">
+    <h2>Estados de una venta</h2>
+    <table>
+      <thead><tr><th>Estado</th><th>Significado</th><th>Stock</th><th>Caja</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-gray">Pendiente</span></td><td>Pedido sin pago. Puede no tener cliente ni medio de pago.</td><td>No reservado</td><td>Sin movimiento</td></tr>
+        <tr><td><span class="badge badge-blue">Reservada</span></td><td>Pago parcial o total confirmado. Cliente obligatorio.</td><td>Reservado</td><td>Seña registrada si hay efectivo</td></tr>
+        <tr><td><span class="badge badge-green">Finalizada</span></td><td>Mercadería entregada. Stock descontado definitivamente.</td><td>Descontado</td><td>Ingreso registrado</td></tr>
+        <tr><td><span class="badge badge-red">Cancelada</span></td><td>Venta anulada. Se libera la reserva de stock.</td><td>Liberado</td><td>Devolución si había seña efectivo</td></tr>
+        <tr><td><span class="badge badge-amber">Devuelta</span></td><td>Venta finalizada con devolución total.</td><td>Reingresado</td><td>Egreso registrado</td></tr>
+      </tbody>
+    </table>
+    <div class="info-box"><strong>Regla clave:</strong> El stock físico solo se descuenta definitivamente cuando la venta pasa a <strong>Finalizada</strong>. En estado <strong>Reservada</strong> el stock está comprometido (<code>cantidad_reservada</code>) pero no descontado.</div>
+  </div>
+
+  <!-- FLUJOS PRINCIPALES -->
+  <div class="section">
+    <h2>Flujos de venta</h2>
+
+    <h3>Venta directa (el caso más común)</h3>
+    <ol class="steps">
+      <li><div class="text">Andá a <strong>Ventas → Nueva venta</strong>. Buscá y agregá productos al carrito.</div></li>
+      <li><div class="text">Seleccioná el cliente (obligatorio para Reservar; opcional para Finalizar directo).</div></li>
+      <li><div class="text">Elegí el modo: <strong>"Venta directa"</strong> — cobra el total en el momento y finaliza.</div></li>
+      <li><div class="text">Ingresá el medio de pago y el monto. Si el cliente paga con más efectivo del total, el sistema calcula el vuelto automáticamente.</div></li>
+      <li><div class="text">Hacé click en <strong>"Venta directa"</strong>. Se genera el ticket y la venta queda <span class="badge badge-green">Finalizada</span>.</div></li>
+    </ol>
+
+    <h3 style="margin-top:20px">Reserva (pago diferido o parcial)</h3>
+    <ol class="steps">
+      <li><div class="text">Mismo flujo hasta el modo. Seleccioná <strong>"Reservar"</strong>.</div></li>
+      <li><div class="text">El cliente es <strong>obligatorio</strong> para reservar.</div></li>
+      <li><div class="text">Podés cobrar una seña (monto parcial) o el total. El sistema guarda <code>monto_pagado</code>.</div></li>
+      <li><div class="text">La venta queda <span class="badge badge-blue">Reservada</span>. El stock queda comprometido pero no descontado.</div></li>
+      <li><div class="text">Cuando el cliente retira: desde Historial → abrí la venta → <strong>"Cobrar saldo y finalizar"</strong>. Si hay saldo pendiente, el sistema pide cobrar el resto antes de despachar.</div></li>
+    </ol>
+
+    <h3 style="margin-top:20px">Presupuesto (sin cobro)</h3>
+    <ol class="steps">
+      <li><div class="text">Seleccioná el modo <strong>"Presupuesto"</strong>. No requiere medio de pago.</div></li>
+      <li><div class="text">La venta queda <span class="badge badge-gray">Pendiente</span> sin stock reservado. No genera ticket.</div></li>
+      <li><div class="text">Desde el historial podés convertirla a Reservada o Finalizada cuando el cliente confirme.</div></li>
+    </ol>
+  </div>
+
+  <!-- CAJA -->
+  <div class="section">
+    <h2>Gestión de Caja</h2>
+
+    <div class="warning-box"><strong>Regla fundamental:</strong> Sin caja abierta no se puede finalizar ni reservar una venta en efectivo, ni registrar gastos en efectivo.</div>
+
+    <h3>Abrir caja</h3>
+    <ol class="steps">
+      <li><div class="text">Andá a <strong>Caja</strong> en el sidebar.</div></li>
+      <li><div class="text">Seleccioná la caja que vas a operar (si hay más de una).</div></li>
+      <li><div class="text">Hacé click en <strong>"Abrir caja"</strong> e ingresá el monto inicial en efectivo.</div></li>
+      <li><div class="text">El sistema registra la apertura con fecha, hora y usuario.</div></li>
+    </ol>
+
+    <h3>Cerrar caja</h3>
+    <ol class="steps">
+      <li><div class="text">Hacé click en <strong>"Cerrar caja"</strong>.</div></li>
+      <li><div class="text">Ingresá el <strong>conteo real de efectivo</strong> (campo obligatorio — contá el dinero físico).</div></li>
+      <li><div class="text">El sistema muestra la diferencia entre lo esperado y lo contado.</div></li>
+      <li><div class="text">Confirmá el cierre.</div></li>
+    </ol>
+
+    <h3>Qué afecta el saldo de caja</h3>
+    <table>
+      <thead><tr><th>Tipo de movimiento</th><th>Afecta saldo</th><th>Cuándo ocurre</th></tr></thead>
+      <tbody>
+        <tr><td>Venta finalizada en efectivo</td><td>✅ Sí (+)</td><td>Al finalizar la venta</td></tr>
+        <tr><td>Seña en efectivo (reserva)</td><td>✅ Sí (+)</td><td>Al crear la reserva</td></tr>
+        <tr><td>Venta con tarjeta/transferencia/MP</td><td>❌ No (informativo)</td><td>Se registra pero no afecta saldo</td></tr>
+        <tr><td>Gasto en efectivo</td><td>✅ Sí (−)</td><td>Al guardar el gasto</td></tr>
+        <tr><td>Cancelación de reserva con seña</td><td>✅ Sí (−)</td><td>Al cancelar la reserva</td></tr>
+        <tr><td>Nómina pagada en efectivo</td><td>✅ Sí (−)</td><td>Al pagar el sueldo</td></tr>
+      </tbody>
+    </table>
+
+    <div class="info-box">El conteo de cierre solo incluye <strong>efectivo</strong>. Tarjeta, transferencia y MP no se cuentan en el arqueo físico de caja.</div>
+  </div>
+
+  <!-- DEVOLUCIONES -->
+  <div class="section">
+    <h2>Devoluciones</h2>
+
+    <div class="warning-box"><strong>Prerequisito:</strong> Debe estar configurada una <strong>ubicación DEV</strong> (toggle "Devolución" en Configuración → Ubicaciones) y un <strong>estado DEV</strong> (toggle en Configuración → Estados). Sin esto la devolución no se puede procesar.</div>
+
+    <ol class="steps">
+      <li><div class="text">Andá a <strong>Ventas → Historial</strong> y abrí la venta finalizada.</div></li>
+      <li><div class="text">Hacé click en <strong>"Devolver"</strong> (solo disponible en ventas Finalizadas o Facturadas).</div></li>
+      <li><div class="text">Seleccioná los productos a devolver y las cantidades (o las series específicas).</div></li>
+      <li><div class="text">Ingresá el motivo y el medio de devolución (efectivo, transferencia, etc.).</div></li>
+      <li><div class="text">Confirmá. El sistema reingressa el stock a la ubicación DEV y registra el egreso en caja si la devolución es en efectivo.</div></li>
+    </ol>
+
+    <div class="info-box">Si la devolución total supera el valor de la venta, la venta pasa automáticamente a estado <span class="badge badge-amber">Devuelta</span>.</div>
+  </div>
+
+  <!-- PROBLEMAS FRECUENTES -->
+  <div class="section">
+    <h2>Problemas frecuentes</h2>
+
+    <h3>❌ "No hay caja abierta" al intentar finalizar una venta</h3>
+    <div class="error-box">El cajero debe abrir la caja primero desde el módulo <strong>Caja</strong>. Si el negocio tiene múltiples cajas, verificar que la caja correcta esté seleccionada y abierta.</div>
+
+    <h3>❌ No aparece el botón "Finalizar" en una reserva</h3>
+    <div class="error-box">Verificar que la venta tenga: (1) cliente asignado, (2) al menos un medio de pago configurado. Si hay saldo pendiente, el sistema obliga a cobrarlo antes de despachar.</div>
+
+    <h3>❌ El stock no se descuenta al reservar</h3>
+    <div class="info-box">Comportamiento correcto. El stock físico se descuenta solo al <strong>Finalizar</strong>. Al reservar, el stock queda en <code>cantidad_reservada</code> — comprometido pero no descontado.</div>
+
+    <h3>❌ "No se puede devolver" aparece al intentar una devolución</h3>
+    <div class="error-box">Falta configurar la ubicación DEV y/o el estado DEV. Ir a <strong>Configuración → Ubicaciones</strong> → activar el toggle "Devolución" en una ubicación. Ídem en Configuración → Estados.</div>
+
+    <h3>❌ El cajero no puede cerrar la caja</h3>
+    <div class="error-box">Solo el usuario que abrió la sesión puede cerrarla si es CAJERO. OWNER y SUPERVISOR pueden cerrar cualquier sesión. Verificar qué usuario abrió la caja (visible en el header de la sesión).</div>
+
+    <h3>❌ Venta duplicada en el historial</h3>
+    <div class="error-box">Verificar si el usuario hizo doble click en el botón de confirmar. Si hay duplicado real, cancelar la venta incorrecta desde el historial (botón Cancelar en el modal de detalle).</div>
+  </div>
+
+  <!-- ROLES Y PERMISOS -->
+  <div class="section">
+    <h2>Permisos por rol</h2>
+    <table>
+      <thead><tr><th>Acción</th><th>CAJERO</th><th>SUPERVISOR</th><th>OWNER</th></tr></thead>
+      <tbody>
+        <tr><td>Crear venta</td><td>✓</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Reservar venta</td><td>✓</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Finalizar venta</td><td>✓</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Cancelar venta</td><td>✓</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Abrir caja</td><td>✓ (solo 1)</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Cerrar caja propia</td><td>✓</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Cerrar caja de otro usuario</td><td>✗</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Traspasos entre cajas</td><td>✗</td><td>✓</td><td>✓</td></tr>
+        <tr><td>Procesar devoluciones</td><td>✓</td><td>✓</td><td>✓</td></tr>
+      </tbody>
+    </table>
+    <div class="info-box">Un CAJERO puede tener <strong>una sola caja abierta</strong> a la vez. Debe cerrarla antes de abrir otra.</div>
+  </div>
+
+  <div class="footer">Genesis360 v0.90.0 · Abril 2026 · soporte@genesis360.pro</div>
+</div>
+</body>
+</html>

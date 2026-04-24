@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guía de Soporte — Usuarios y Roles · Genesis360</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; color: #1a1a2e; background: #f8f9fc; padding: 40px 24px; }
+    .page { max-width: 860px; margin: 0 auto; }
+    .header { background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%); color: white; border-radius: 12px; padding: 32px 36px; margin-bottom: 32px; }
+    .header h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+    .header p { font-size: 14px; opacity: 0.85; }
+    .header .meta { margin-top: 16px; font-size: 12px; opacity: 0.7; display: flex; gap: 24px; }
+    .section { background: white; border-radius: 10px; padding: 28px 32px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .section h2 { font-size: 17px; font-weight: 700; color: #4f46e5; border-bottom: 2px solid #ede9fe; padding-bottom: 10px; margin-bottom: 20px; }
+    .section h3 { font-size: 14px; font-weight: 700; color: #1a1a2e; margin: 20px 0 10px; }
+    .section h3:first-child { margin-top: 0; }
+    ol.steps { padding-left: 0; list-style: none; counter-reset: step; }
+    ol.steps li { counter-increment: step; display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
+    ol.steps li::before { content: counter(step); min-width: 28px; height: 28px; background: #6d28d9; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+    ol.steps li .text { padding-top: 4px; line-height: 1.6; }
+    ul.list { padding-left: 20px; }
+    ul.list li { margin-bottom: 8px; line-height: 1.6; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .badge-owner { background: #ede9fe; color: #5b21b6; }
+    .badge-super { background: #dbeafe; color: #1e40af; }
+    .badge-cajero { background: #dcfce7; color: #166534; }
+    .badge-rrhh { background: #fef3c7; color: #92400e; }
+    .badge-deposito { background: #fee2e2; color: #991b1b; }
+    .badge-contador { background: #f3f4f6; color: #374151; }
+    .info-box { border-left: 4px solid #6d28d9; background: #f5f3ff; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; line-height: 1.6; }
+    .warning-box { border-left: 4px solid #f59e0b; background: #fffbeb; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; line-height: 1.6; }
+    .error-box { border-left: 4px solid #ef4444; background: #fef2f2; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12px; }
+    th { background: #f5f3ff; color: #4f46e5; font-weight: 700; text-align: left; padding: 10px 12px; border-bottom: 2px solid #ede9fe; }
+    td { padding: 8px 12px; border-bottom: 1px solid #f1f0f5; vertical-align: middle; text-align: center; }
+    td:first-child { text-align: left; font-weight: 500; }
+    tr:last-child td { border-bottom: none; }
+    .check { color: #16a34a; font-weight: 700; }
+    .cross { color: #dc2626; }
+    .partial { color: #d97706; }
+    @media print { body { background: white; padding: 20px; } .section { box-shadow: none; border: 1px solid #e5e7eb; } .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    .footer { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>Usuarios y Roles — Guía de Soporte</h1>
+    <p>Descripción de roles, permisos, cómo invitar usuarios y resolver problemas de acceso</p>
+    <div class="meta"><span>Genesis360 v0.90.0</span><span>Abril 2026</span><span>soporte@genesis360.pro</span></div>
+  </div>
+
+  <!-- ROLES -->
+  <div class="section">
+    <h2>Descripción de roles</h2>
+
+    <table>
+      <thead><tr><th>Rol</th><th>Para quién es</th><th>Módulos disponibles</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-owner">OWNER</span></td>
+          <td>Dueño del negocio. Acceso total.</td>
+          <td>Todos los módulos + Configuración + Usuarios + Sucursales + Suscripción</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-super">SUPERVISOR</span></td>
+          <td>Encargado de turno o gerente de área.</td>
+          <td>Dashboard, Ventas, Caja, Clientes, Productos, Inventario, Alertas, Reportes, Historial, RRHH (equipo propio), Gastos, Proveedores</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-cajero">CAJERO</span></td>
+          <td>Personal de ventas y atención al cliente.</td>
+          <td>Ventas · Caja · Clientes · Mi Cuenta</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-deposito">DEPOSITO</span></td>
+          <td>Personal de almacén y recepción de mercadería.</td>
+          <td>Productos · Inventario · Alertas · Recepciones · Mi Cuenta</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-contador">CONTADOR</span></td>
+          <td>Contador externo o administrador financiero.</td>
+          <td>Dashboard · Gastos · Reportes · Historial · Métricas · Mi Cuenta</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-rrhh">RRHH</span></td>
+          <td>Responsable de recursos humanos.</td>
+          <td>Solo módulo RRHH · Mi Cuenta</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="info-box">Un usuario con rol DEPOSITO que intente acceder a Ventas o Caja será redirigido automáticamente a Inventario. El sistema aplica estas restricciones en tiempo real.</div>
+  </div>
+
+  <!-- MATRIZ DE PERMISOS -->
+  <div class="section">
+    <h2>Matriz de permisos por módulo</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="min-width:140px">Módulo</th>
+          <th>OWNER</th>
+          <th>SUPERVISOR</th>
+          <th>CAJERO</th>
+          <th>DEPOSITO</th>
+          <th>CONTADOR</th>
+          <th>RRHH</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Dashboard</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td></tr>
+        <tr><td>Ventas</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Caja</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Clientes</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Productos</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Inventario</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Alertas</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Gastos</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td></tr>
+        <tr><td>Proveedores / OC</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Reportes</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td></tr>
+        <tr><td>Historial</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td></tr>
+        <tr><td>RRHH</td><td class="check">✓</td><td class="partial">Equipo</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td></tr>
+        <tr><td>Configuración</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Usuarios</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>Sucursales</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- INVITAR USUARIOS -->
+  <div class="section">
+    <h2>Cómo invitar un usuario nuevo</h2>
+    <div class="warning-box"><strong>Requiere rol OWNER.</strong> Solo el dueño puede crear y gestionar usuarios.</div>
+
+    <ol class="steps">
+      <li><div class="text">Andá a <strong>Usuarios</strong> en el sidebar.</div></li>
+      <li><div class="text">Hacé click en <strong>"Invitar usuario"</strong>.</div></li>
+      <li><div class="text">Ingresá el <strong>email</strong> del nuevo usuario y seleccioná el <strong>rol</strong>.</div></li>
+      <li><div class="text">Hacé click en <strong>"Enviar invitación"</strong>. El sistema envía un email con el enlace de acceso.</div></li>
+      <li><div class="text">El usuario recibe el email, hace click en el enlace y configura su contraseña.</div></li>
+    </ol>
+
+    <div class="info-box">Si el usuario ya tiene una cuenta de Google, puede usar el login con Google directamente. Al primer ingreso, el sistema lo guía por el onboarding si es necesario.</div>
+  </div>
+
+  <!-- CAMBIAR ROL -->
+  <div class="section">
+    <h2>Cambiar el rol de un usuario</h2>
+    <ol class="steps">
+      <li><div class="text">Andá a <strong>Usuarios</strong> y buscá al usuario.</div></li>
+      <li><div class="text">Hacé click en el menú de opciones (tres puntos) → <strong>"Editar"</strong>.</div></li>
+      <li><div class="text">Seleccioná el nuevo rol y guardá.</div></li>
+      <li><div class="text">El cambio tiene efecto inmediato — en el próximo clic del usuario las restricciones se actualizan.</div></li>
+    </ol>
+    <div class="warning-box">Si el usuario está navegando una página que su nuevo rol no puede ver (ej: cambió de OWNER a CAJERO y estaba en Configuración), será redirigido automáticamente a la próxima vez que navegue.</div>
+  </div>
+
+  <!-- PLANES Y LÍMITES -->
+  <div class="section">
+    <h2>Planes y límites de usuarios</h2>
+    <table>
+      <thead><tr><th>Plan</th><th>Usuarios máx.</th><th>Productos máx.</th><th>Movimientos/mes</th></tr></thead>
+      <tbody>
+        <tr><td>Free</td><td>1</td><td>50</td><td>200</td></tr>
+        <tr><td>Básico</td><td>2</td><td>500</td><td>2.000</td></tr>
+        <tr><td>Pro</td><td>10</td><td>5.000</td><td>Ilimitados</td></tr>
+        <tr><td>Enterprise</td><td>Ilimitados</td><td>Ilimitados</td><td>Ilimitados</td></tr>
+      </tbody>
+    </table>
+    <div class="info-box">Si un cliente necesita más movimientos en el plan Básico, se puede agregar un add-on de +500 movimientos por $990. Contactar a soporte para activarlo.</div>
+  </div>
+
+  <!-- PROBLEMAS FRECUENTES -->
+  <div class="section">
+    <h2>Problemas frecuentes</h2>
+
+    <h3>❌ "No tengo acceso a un módulo que necesito"</h3>
+    <div class="error-box">Verificar el rol del usuario en <strong>Usuarios</strong>. Si el rol es correcto pero aún no tiene acceso, verificar si el plan limita esa función (ej: RRHH requiere plan Pro+). Consultá la tabla de permisos arriba.</div>
+
+    <h3>❌ El usuario no recibió el email de invitación</h3>
+    <div class="error-box">1. Verificar carpeta Spam/Promociones. 2. Verificar que el email ingresado sea correcto en el panel de Usuarios. 3. Si sigue sin llegar, contactar a soporte — puede ser un problema temporal del servidor de email.</div>
+
+    <h3>❌ "Límite de usuarios alcanzado" al invitar</h3>
+    <div class="error-box">El plan actual no permite más usuarios. El cliente debe actualizar su plan desde <strong>Suscripción</strong> en el sidebar. Plan Básico: máx 2 usuarios → upgradearlo a Pro para hasta 10.</div>
+
+    <h3>❌ Un usuario quiere salir del negocio (sin eliminar su cuenta)</h3>
+    <div class="info-box">El usuario puede ir a <strong>Mi Cuenta → Zona de riesgo → "Salir del negocio"</strong>. Esto elimina su vinculación con el tenant pero mantiene su cuenta de email para usar en otro negocio.</div>
+
+    <h3>❌ El SUPERVISOR no puede ver el módulo de Configuración</h3>
+    <div class="info-box">Comportamiento correcto por diseño. La Configuración (categorías, ubicaciones, estados, integraciones, etc.) es exclusiva del OWNER para evitar cambios no autorizados. Si necesita acceso, el OWNER debe gestionar los cambios directamente.</div>
+  </div>
+
+  <div class="footer">Genesis360 v0.90.0 · Abril 2026 · soporte@genesis360.pro</div>
+</div>
+</body>
+</html>

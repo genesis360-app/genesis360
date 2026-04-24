@@ -2366,6 +2366,12 @@ export default function VentasPage() {
                   <span>−${(ventaDetalle.subtotal * ventaDetalle.descuento_total / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
               )}
+              {(ventaDetalle.costo_envio_logistica ?? 0) > 0 && (
+                <div className="flex justify-between text-muted">
+                  <span>Envío</span>
+                  <span>${(ventaDetalle.costo_envio_logistica ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-primary text-base">
                 <span>Total</span>
                 <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
@@ -2859,6 +2865,12 @@ export default function VentasPage() {
                       </div>
                     )
                   })()}
+                  {(ticketVenta.costo_envio_logistica ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                      <span>Envío</span>
+                      <span>${(ticketVenta.costo_envio_logistica ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-primary text-base">
                     <span>TOTAL</span>
                     <span>${ticketVenta.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>

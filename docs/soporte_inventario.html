@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guía de Soporte — Inventario · Genesis360</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; color: #1a1a2e; background: #f8f9fc; padding: 40px 24px; }
+    .page { max-width: 860px; margin: 0 auto; }
+    .header { background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%); color: white; border-radius: 12px; padding: 32px 36px; margin-bottom: 32px; }
+    .header h1 { font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+    .header p { font-size: 14px; opacity: 0.85; }
+    .header .meta { margin-top: 16px; font-size: 12px; opacity: 0.7; display: flex; gap: 24px; }
+    .section { background: white; border-radius: 10px; padding: 28px 32px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+    .section h2 { font-size: 17px; font-weight: 700; color: #4f46e5; border-bottom: 2px solid #ede9fe; padding-bottom: 10px; margin-bottom: 20px; }
+    .section h3 { font-size: 14px; font-weight: 700; color: #1a1a2e; margin: 20px 0 10px; }
+    .section h3:first-child { margin-top: 0; }
+    ol.steps { padding-left: 0; list-style: none; counter-reset: step; }
+    ol.steps li { counter-increment: step; display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start; }
+    ol.steps li::before { content: counter(step); min-width: 28px; height: 28px; background: #6d28d9; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+    ol.steps li .text { padding-top: 4px; line-height: 1.6; }
+    ul.list { padding-left: 20px; }
+    ul.list li { margin-bottom: 8px; line-height: 1.6; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-amber { background: #fef3c7; color: #92400e; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-purple { background: #ede9fe; color: #5b21b6; }
+    .info-box { border-left: 4px solid #6d28d9; background: #f5f3ff; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; line-height: 1.6; }
+    .warning-box { border-left: 4px solid #f59e0b; background: #fffbeb; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; line-height: 1.6; }
+    .error-box { border-left: 4px solid #ef4444; background: #fef2f2; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 14px 0; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+    th { background: #f5f3ff; color: #4f46e5; font-weight: 700; text-align: left; padding: 10px 12px; border-bottom: 2px solid #ede9fe; }
+    td { padding: 9px 12px; border-bottom: 1px solid #f1f0f5; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    code { background: #f1f0f5; padding: 2px 6px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px; color: #4f46e5; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+    @media print { body { background: white; padding: 20px; } .section { box-shadow: none; border: 1px solid #e5e7eb; } .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    .footer { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>Inventario — Guía de Soporte</h1>
+    <p>LPNs, ingresos, rebajes, conteos, recepciones y órdenes de compra en Genesis360</p>
+    <div class="meta"><span>Genesis360 v0.90.0</span><span>Abril 2026</span><span>soporte@genesis360.pro</span></div>
+  </div>
+
+  <!-- CONCEPTOS CLAVE -->
+  <div class="section">
+    <h2>Conceptos clave</h2>
+    <table>
+      <thead><tr><th>Término</th><th>Qué es</th></tr></thead>
+      <tbody>
+        <tr><td><strong>LPN</strong></td><td>Número de paleta/bulto. Identifica un lote físico específico de un producto en una ubicación. Ej: <code>LPN-00042</code>.</td></tr>
+        <tr><td><strong>Línea de inventario</strong></td><td>Registro de stock: producto + ubicación + LPN + cantidad. Un producto puede tener múltiples líneas (distintos lotes o ubicaciones).</td></tr>
+        <tr><td><strong>Stock actual</strong></td><td>Suma de todas las líneas activas del producto. Lo calculan los triggers automáticamente — nunca modificar a mano.</td></tr>
+        <tr><td><strong>Cantidad reservada</strong></td><td>Stock comprometido por ventas en estado Reservada. Disponible = stock_actual − cantidad_reservada.</td></tr>
+        <tr><td><strong>FIFO / FEFO</strong></td><td>Regla de selección de stock en ventas. FIFO = primero en entrar primero en salir. FEFO = primero en vencer primero en salir.</td></tr>
+        <tr><td><strong>Serie</strong></td><td>Número de serie individual de una unidad serializada (ej: electrodomésticos con N/S).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- INGRESO DE STOCK -->
+  <div class="section">
+    <h2>Ingresos de stock</h2>
+
+    <h3>Ingreso individual</h3>
+    <ol class="steps">
+      <li><div class="text">Andá a <strong>Inventario → Agregar stock</strong>.</div></li>
+      <li><div class="text">Buscá el producto por nombre, SKU o escaneá el código de barras.</div></li>
+      <li><div class="text">Ingresá la cantidad, estado, ubicación y (opcionalmente) N° de lote, vencimiento y LPN.</div></li>
+      <li><div class="text">Para productos con series: ingresá los números de serie, uno por línea.</div></li>
+      <li><div class="text">Hacé click en <strong>"Ingresar"</strong>. El stock se actualiza automáticamente.</div></li>
+    </ol>
+
+    <h3>Ingreso masivo</h3>
+    <ol class="steps">
+      <li><div class="text">Hacé click en <strong>"Masivo"</strong> junto al botón de Ingreso.</div></li>
+      <li><div class="text">Escaneá o buscá productos uno por uno. Cada producto se agrega a la tabla.</div></li>
+      <li><div class="text">Completá cantidad y datos por fila. Enter después de cada cantidad para volver al buscador.</div></li>
+      <li><div class="text">Cuando tenés todos los productos, hacé click en <strong>"Procesar N ingresos"</strong>.</div></li>
+    </ol>
+
+    <h3>Ingreso desde Recepción de OC</h3>
+    <ol class="steps">
+      <li><div class="text">Andá a <strong>Proveedores → Órdenes de compra</strong>. Abrí la OC confirmada.</div></li>
+      <li><div class="text">Hacé click en <strong>"Recibir mercadería"</strong>. Se abre el formulario de recepción pre-poblado.</div></li>
+      <li><div class="text">Ajustá cantidades recibidas (pueden diferir de lo pedido).</div></li>
+      <li><div class="text">Confirmá la recepción. Se crean las líneas de inventario y la OC se actualiza a <span class="badge badge-green">Recibida</span> o <span class="badge badge-amber">Recibida parcial</span>.</div></li>
+    </ol>
+  </div>
+
+  <!-- CONTEO DE INVENTARIO -->
+  <div class="section">
+    <h2>Conteo de inventario</h2>
+    <p style="margin-bottom:14px;line-height:1.7">El conteo permite verificar el stock físico real contra lo que dice el sistema y aplicar ajustes automáticamente.</p>
+
+    <ol class="steps">
+      <li><div class="text">Andá a <strong>Inventario → Conteo</strong>.</div></li>
+      <li><div class="text">Elegí el tipo: <strong>Por ubicación</strong> (contás todo lo que hay en un sector) o <strong>Por producto</strong> (contás todas las líneas de un SKU).</div></li>
+      <li><div class="text">Hacé click en <strong>"Cargar stock"</strong>. El sistema muestra todos los LPNs con el stock esperado.</div></li>
+      <li><div class="text">Ingresá la cantidad contada físicamente en cada fila. Las diferencias se marcan en color: verde = coincide, ámbar = difiere, rojo = faltante.</div></li>
+      <li><div class="text"><strong>"Guardar borrador"</strong> → guarda sin afectar stock (para continuar después).</div></li>
+      <li><div class="text"><strong>"Finalizar y ajustar"</strong> → aplica los ajustes: sobrantes generan un ingreso de ajuste, faltantes generan un rebaje de ajuste.</div></li>
+    </ol>
+
+    <div class="warning-box"><strong>Importante:</strong> "Finalizar y ajustar" es irreversible. Los ajustes quedan registrados en el historial de movimientos con el motivo "Conteo".</div>
+  </div>
+
+  <!-- ACCIONES SOBRE LPN -->
+  <div class="section">
+    <h2>Acciones sobre un LPN</h2>
+    <p style="margin-bottom:14px;line-height:1.7">En <strong>Inventario → tab Inventario</strong>, cada LPN tiene un botón de engranaje (⚙) que abre el panel de acciones.</p>
+
+    <div class="two-col">
+      <div>
+        <h3>Acciones disponibles</h3>
+        <ul class="list">
+          <li><strong>Editar</strong>: cambiar cantidad, estado, ubicación, lote, vencimiento</li>
+          <li><strong>Mover</strong>: trasladar a otra ubicación (o sucursal si hay ≥2)</li>
+          <li><strong>Series</strong>: gestionar números de serie del LPN</li>
+          <li><strong>Estructura</strong>: asignar estructura WMS (dimensiones)</li>
+          <li><strong>Eliminar</strong>: dar de baja el LPN (requiere autorización si el rol es DEPOSITO)</li>
+          <li><strong>QR</strong>: generar e imprimir el QR del LPN</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Restricciones</h3>
+        <ul class="list">
+          <li>Si hay <strong>cantidad reservada > 0</strong>: solo se puede Mover. El resto de las acciones están bloqueadas hasta liberar las reservas.</li>
+          <li>Rol <strong>DEPOSITO</strong>: los cambios de cantidad y eliminaciones requieren aprobación de OWNER/SUPERVISOR (tab Autorizaciones).</li>
+          <li>Ubicación <strong>Mono-SKU</strong>: solo acepta un producto distinto. Si ya tiene stock de otro SKU, el ingreso falla.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- AUTORIZACIONES DEPOSITO -->
+  <div class="section">
+    <h2>Autorizaciones (rol DEPOSITO)</h2>
+    <p style="margin-bottom:14px;line-height:1.7">Los usuarios con rol DEPOSITO no pueden modificar cantidades ni eliminar LPNs directamente — sus acciones quedan en cola de aprobación.</p>
+
+    <h3>Flujo de autorización</h3>
+    <ol class="steps">
+      <li><div class="text">El usuario DEPOSITO realiza la acción (editar cantidad o eliminar LPN/serie). Aparece un mensaje "Solicitud enviada".</div></li>
+      <li><div class="text">OWNER o SUPERVISOR van a <strong>Inventario → tab Autorizaciones</strong>.</div></li>
+      <li><div class="text">Ven la solicitud con: tipo, producto, LPN, cambio solicitado y quién lo pidió.</div></li>
+      <li><div class="text"><strong>Aprobar</strong>: ejecuta el cambio. <strong>Rechazar</strong>: requiere ingresar motivo, que queda registrado.</div></li>
+    </ol>
+  </div>
+
+  <!-- ALERTAS DE INVENTARIO -->
+  <div class="section">
+    <h2>Alertas de inventario</h2>
+    <table>
+      <thead><tr><th>Alerta</th><th>Condición</th><th>Dónde se ve</th></tr></thead>
+      <tbody>
+        <tr><td>Stock crítico</td><td><code>stock_actual ≤ stock_mínimo</code></td><td>Módulo Alertas + Dashboard</td></tr>
+        <tr><td>LPN vencido</td><td><code>fecha_vencimiento &lt; hoy</code></td><td>Módulo Alertas (sección roja)</td></tr>
+        <tr><td>Producto sin categoría</td><td>Categoría = null</td><td>Módulo Alertas (sección naranja)</td></tr>
+        <tr><td>Reservas viejas</td><td>Estado Reservada hace más de 5 días</td><td>Módulo Alertas + email diario</td></tr>
+      </tbody>
+    </table>
+    <div class="warning-box"><strong>LPN vencido bloqueado en ventas:</strong> Los LPNs con fecha de vencimiento pasada no pueden agregarse al carrito. El vendedor verá un error descriptivo al intentar vender ese producto.</div>
+  </div>
+
+  <!-- PROBLEMAS FRECUENTES -->
+  <div class="section">
+    <h2>Problemas frecuentes</h2>
+
+    <h3>❌ El stock no se actualizó después de un ingreso</h3>
+    <div class="error-box">Los triggers recalculan <code>stock_actual</code> automáticamente. Si no cambió, verificar que el ingreso se guardó correctamente (buscar en Historial de movimientos). Si hay error, revisar si la ubicación tiene restricción Mono-SKU con otro producto.</div>
+
+    <h3>❌ "LPN ya existe" al intentar ingresar</h3>
+    <div class="error-box">El código de LPN es único por tenant. Si se intenta ingresar un LPN que ya está activo en otra línea, el sistema lo rechaza. Usar un LPN diferente o reutilizar el LPN existente desde las acciones del LPN.</div>
+
+    <h3>❌ El conteo muestra diferencias que no existen</h3>
+    <div class="info-box">Verificar si hay ventas en estado Reservada para ese producto — el stock reservado no se descuenta físicamente hasta finalizar la venta, pero sí reduce el stock disponible. El conteo muestra <code>stock_actual</code> (sin descontar reservas).</div>
+
+    <h3>❌ No aparece la tab "Autorizaciones"</h3>
+    <div class="error-box">La tab de Autorizaciones solo es visible para OWNER, SUPERVISOR y ADMIN. Los usuarios DEPOSITO solo ven su propia actividad en forma de "solicitud enviada".</div>
+
+    <h3>❌ "Ubicación Mono-SKU ya tiene otro producto"</h3>
+    <div class="error-box">La ubicación está configurada para contener un solo SKU y ya tiene stock de otro producto. Mover el stock existente a otra ubicación primero, o usar una ubicación diferente para el nuevo ingreso.</div>
+  </div>
+
+  <div class="footer">Genesis360 v0.90.0 · Abril 2026 · soporte@genesis360.pro</div>
+</div>
+</body>
+</html>

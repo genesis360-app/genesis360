@@ -435,6 +435,31 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **TiendaNube Partners**: App ID `30376`. Redirect URI PROD: `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/tn-oauth-callback`. Permisos: Edit Products + Edit Orders + View Customers.
 - **MP Developers**: Client ID `7675256842462289`. Redirect URIs DEV + PROD configuradas. Permisos: read + offline_access + write.
 
+### v0.90.0 ✅ PROD
+
+#### TiendaNube — Webhooks y Sync de Stock (migration 062)
+
+- **EF `tn-webhook`** (sin JWT): recibe `order/created` → venta `pendiente`; `order/paid` → si existe venta `pendiente` la actualiza a `reservada`, si no existe la crea directamente como `reservada`. Idempotencia por clave `{store_id}-{event}-{orderId}` en `ventas_externas_logs`. Mapeo productos por `inventario_tn_map` + fallback SKU ilike. Crea cliente si no existe.
+- **EF `tn-stock-worker`** (sin JWT): procesa jobs `sync_stock` de `integration_job_queue`. Calcula `SUM(cantidad - cantidad_reservada)` en `inventario_lineas`, hace PUT a TN API. Backoff exponencial (1/2/4/8/16 min), máx 5 reintentos. BATCH_SIZE=50. Actualiza `inventario_tn_map.ultimo_sync_at` en éxito.
+- **EF `tn-oauth-callback`** actualizada: registra automáticamente webhooks `order/created` + `order/paid` en TN al conectar. Ignora 422 (ya existe).
+- **Migration 062**: trigger `trg_tn_stock_sync` AFTER INSERT/UPDATE/DELETE en `inventario_lineas` → `fn_enqueue_tn_stock_sync()` SECURITY DEFINER → INSERT en `integration_job_queue` con NOT EXISTS dedup.
+- **GitHub Actions** `.github/workflows/tn-stock-sync.yml`: cron `*/5 * * * *` → llama `tn-stock-worker`.
+- **ConfigPage → Integraciones → Productos**: sección colapsable por sucursal con CRUD de `inventario_tn_map` (producto, TN Product ID, TN Variant ID, toggle sync_stock).
+- **VentasPage**: línea "Envío $X" en modal detalle y ticket cuando `costo_envio_logistica > 0`.
+
+#### Monitoring diario
+- **EF `monitoring-check`** deployada en PROD ✅. Secret `RESEND_API_KEY` configurado. Email diario a las 9 AM AR (Argentina) con KPIs: reservas viejas >5d, stock crítico, cajas abiertas >16h, ventas del día.
+- **GitHub Actions** `.github/workflows/monitoring-check.yml`: cron `0 12 * * *`.
+
+#### MercadoPago — IPN pagos regulares
+- **EF `mp-ipn`** (sin JWT, DEV + PROD): alternativa independiente — recibe notificación → verifica en MP API → busca venta por `external_reference` (= venta_id UUID o tracking_id) → actualiza `id_pago_externo` + `money_release_date`. Log idempotencia en `ventas_externas_logs`.
+- **EF `mp-webhook`** actualizada: enruta por `user_id` del payload. Si coincide con `mercadopago_credentials.seller_id` → pago de **venta** (usa access_token del seller, actualiza venta). Si no coincide → pago de **plataforma** (addon/suscripción, comportamiento anterior). URL configurada en MP Developers para eventos `payment` + `subscription_preapproval`.
+- **Registro URL webhook MP**: `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/mp-webhook` · Eventos: Pagos ✅ + Planes y suscripciones ✅.
+- **`external_reference` convention**: para ventas con link de pago MP → usar `venta.id` (UUID). El IPN lo matchea automáticamente.
+
+#### Documentación soporte
+- **`docs/soporte_tiendanube.html`**: guía imprimible para el equipo de soporte con flujo completo, pasos de conexión, mapeo de productos, verificación, estados, troubleshooting y FAQ.
+
 ## Backlog pendiente
 
 ### UX / Config

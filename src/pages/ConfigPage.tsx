@@ -945,6 +945,65 @@ export default function ConfigPage() {
     enabled: !!tenant && tab === 'integraciones',
   })
 
+  // ─── TN product mapping ──────────────────────────────────────────────────
+  const [tnMapExpanded, setTnMapExpanded] = useState<string | null>(null)
+  const [tnMapForm, setTnMapForm] = useState<{ productoId: string; tnProductId: string; tnVariantId: string; syncStock: boolean } | null>(null)
+
+  const { data: tnMap = [] } = useQuery({
+    queryKey: ['tn_map', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('inventario_tn_map')
+        .select('id, sucursal_id, producto_id, tn_product_id, tn_variant_id, sync_stock, ultimo_sync_at, productos(nombre, sku)')
+        .eq('tenant_id', tenant!.id)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'integraciones',
+  })
+
+  const { data: productosMap = [] } = useQuery({
+    queryKey: ['productos_for_map', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('productos')
+        .select('id, nombre, sku')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'integraciones',
+  })
+
+  const upsertTnMap = useMutation({
+    mutationFn: async ({ sucursalId }: { sucursalId: string }) => {
+      if (!tnMapForm || !tenant) return
+      const { error } = await supabase.from('inventario_tn_map').upsert({
+        tenant_id: tenant.id,
+        sucursal_id: sucursalId,
+        producto_id: tnMapForm.productoId,
+        tn_product_id: parseInt(tnMapForm.tnProductId),
+        tn_variant_id: parseInt(tnMapForm.tnVariantId),
+        sync_stock: tnMapForm.syncStock,
+      }, { onConflict: 'tenant_id,sucursal_id,producto_id' })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Mapeo guardado')
+      setTnMapForm(null)
+      qc.invalidateQueries({ queryKey: ['tn_map'] })
+    },
+    onError: () => toast.error('Error guardando mapeo'),
+  })
+
+  const deleteTnMap = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('inventario_tn_map').delete().eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Mapeo eliminado'); qc.invalidateQueries({ queryKey: ['tn_map'] }) },
+  })
+
   const desconectarTN = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('tiendanube_credentials').delete().eq('id', id).eq('tenant_id', tenant!.id)
@@ -1901,41 +1960,114 @@ export default function ConfigPage() {
                 {sucursales.filter(s => s.activo).map(suc => {
                   const cred = (tnCreds as any[]).find((c: any) => c.sucursal_id === suc.id)
                   return (
-                    <div key={suc.id} className="flex items-center gap-3 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{suc.nombre}</p>
-                        {cred && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                            {cred.store_name || `Store ID: ${cred.store_id}`}
-                            {cred.store_url && ` · ${cred.store_url}`}
-                          </p>
+                    <div key={suc.id} className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+                      {/* Fila sucursal */}
+                      <div className="flex items-center gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{suc.nombre}</p>
+                          {cred && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
+                              {cred.store_name || `Store ID: ${cred.store_id}`}
+                              {cred.store_url && ` · ${cred.store_url}`}
+                            </p>
+                          )}
+                        </div>
+                        {cred?.conectado ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setTnMapExpanded(tnMapExpanded === suc.id ? null : suc.id)}
+                              className="flex items-center gap-1 text-xs text-[#95BF47] hover:text-[#7ea83a] font-medium transition-colors">
+                              Productos {tnMapExpanded === suc.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                            </button>
+                            <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                              <CheckCircle2 size={13} /> Conectada
+                            </span>
+                            <button
+                              onClick={() => { if (confirm(`¿Desconectar TiendaNube de ${suc.nombre}?`)) desconectarTN.mutate(cred.id) }}
+                              disabled={desconectarTN.isPending}
+                              title="Desconectar"
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                              <Unplug size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          (() => {
+                            const tnUrl = getTnOAuthUrl(suc.id)
+                            return tnUrl ? (
+                              <a href={tnUrl}
+                                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#95BF47] hover:bg-[#7ea83a] text-white rounded-lg font-medium transition-colors">
+                                <Plug size={12} /> Conectar
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-400 dark:text-gray-500 italic">Falta VITE_TN_APP_ID</span>
+                            )
+                          })()
                         )}
                       </div>
-                      {cred?.conectado ? (
-                        <div className="flex items-center gap-2">
-                          <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
-                            <CheckCircle2 size={13} /> Conectada
-                          </span>
-                          <button
-                            onClick={() => { if (confirm(`¿Desconectar TiendaNube de ${suc.nombre}?`)) desconectarTN.mutate(cred.id) }}
-                            disabled={desconectarTN.isPending}
-                            title="Desconectar"
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                            <Unplug size={14} />
-                          </button>
-                        </div>
-                      ) : (
-                        (() => {
-                          const tnUrl = getTnOAuthUrl(suc.id)
-                          return tnUrl ? (
-                            <a href={tnUrl}
-                              className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#95BF47] hover:bg-[#7ea83a] text-white rounded-lg font-medium transition-colors">
-                              <Plug size={12} /> Conectar
-                            </a>
+
+                      {/* Mapeo de productos — colapsable */}
+                      {cred?.conectado && tnMapExpanded === suc.id && (
+                        <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-800/50 space-y-3">
+                          {/* Mappings existentes */}
+                          {(tnMap as any[]).filter((m: any) => m.sucursal_id === suc.id).map((m: any) => (
+                            <div key={m.id} className="flex items-center gap-2 text-xs">
+                              <div className="flex-1 min-w-0">
+                                <span className="font-medium text-gray-700 dark:text-gray-300">{m.productos?.nombre ?? m.producto_id}</span>
+                                <span className="text-gray-400 dark:text-gray-500 ml-1">({m.productos?.sku})</span>
+                                <span className="text-gray-400 dark:text-gray-500 ml-1">→ TN {m.tn_product_id}/{m.tn_variant_id}</span>
+                                {m.sync_stock && <span className="ml-1 text-green-500">● sync</span>}
+                                {m.ultimo_sync_at && <span className="text-gray-400 dark:text-gray-500 ml-1">· {new Date(m.ultimo_sync_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</span>}
+                              </div>
+                              <button onClick={() => deleteTnMap.mutate(m.id)} title="Eliminar" className="p-1 text-gray-400 hover:text-red-500 transition-colors">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          ))}
+
+                          {/* Formulario nuevo mapeo */}
+                          {tnMapForm ? (
+                            <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                              <select value={tnMapForm.productoId} onChange={e => setTnMapForm({ ...tnMapForm, productoId: e.target.value })}
+                                className="w-full text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                                <option value="">Seleccionar producto Genesis360</option>
+                                {(productosMap as any[]).map((p: any) => (
+                                  <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
+                                ))}
+                              </select>
+                              <div className="flex gap-2">
+                                <input type="number" placeholder="TN Product ID" value={tnMapForm.tnProductId}
+                                  onChange={e => setTnMapForm({ ...tnMapForm, tnProductId: e.target.value })}
+                                  className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                                  onWheel={e => e.currentTarget.blur()} />
+                                <input type="number" placeholder="TN Variant ID" value={tnMapForm.tnVariantId}
+                                  onChange={e => setTnMapForm({ ...tnMapForm, tnVariantId: e.target.value })}
+                                  className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                                  onWheel={e => e.currentTarget.blur()} />
+                              </div>
+                              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+                                <input type="checkbox" checked={tnMapForm.syncStock} onChange={e => setTnMapForm({ ...tnMapForm, syncStock: e.target.checked })} />
+                                Sincronizar stock automáticamente
+                              </label>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => upsertTnMap.mutate({ sucursalId: suc.id })}
+                                  disabled={!tnMapForm.productoId || !tnMapForm.tnProductId || !tnMapForm.tnVariantId || upsertTnMap.isPending}
+                                  className="flex-1 text-xs bg-[#95BF47] hover:bg-[#7ea83a] text-white py-1.5 rounded-lg font-medium disabled:opacity-50 transition-colors">
+                                  Guardar
+                                </button>
+                                <button onClick={() => setTnMapForm(null)} className="flex-1 text-xs border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-1.5 rounded-lg transition-colors">
+                                  Cancelar
+                                </button>
+                              </div>
+                            </div>
                           ) : (
-                            <span className="text-xs text-gray-400 dark:text-gray-500 italic">Falta VITE_TN_APP_ID</span>
-                          )
-                        })()
+                            <button
+                              onClick={() => setTnMapForm({ productoId: '', tnProductId: '', tnVariantId: '', syncStock: true })}
+                              className="flex items-center gap-1 text-xs text-[#95BF47] hover:text-[#7ea83a] font-medium transition-colors">
+                              <Plus size={12} /> Agregar mapeo de producto
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   )

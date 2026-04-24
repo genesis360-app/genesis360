@@ -1,5 +1,6 @@
 import { BRAND, APP_VERSION } from '@/config/brand'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import toast from 'react-hot-toast'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, Boxes, Bell,
@@ -78,6 +79,41 @@ export function AppLayout() {
   const { user, tenant } = useAuthStore()
   useInactivityTimeout(tenant?.session_timeout_minutes)
   const { count: alertCount } = useAlertas()
+
+  // Notificaciones globales de pagos MP recibidos
+  const seenMpLogs = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!tenant?.id) return
+    const checkMpPayments = async () => {
+      const since = new Date(Date.now() - 5 * 60 * 1000).toISOString() // últimos 5 min
+      const { data: logs } = await supabase
+        .from('ventas_externas_logs')
+        .select('id, webhook_external_id, payload, created_at')
+        .eq('tenant_id', tenant.id)
+        .eq('integracion', 'MercadoPago')
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(10)
+      for (const log of logs ?? []) {
+        if (seenMpLogs.current.has(log.id)) continue
+        seenMpLogs.current.add(log.id)
+        const p = log.payload as any
+        if (!p?.monto) continue
+        const monto = Number(p.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })
+        const fecha = new Date(log.created_at)
+        const hora = fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+        const dia = fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+        toast.success(`Pago MP confirmado — $${monto}\n${dia} · ${hora} hs`, {
+          duration: 8000,
+          icon: '💳',
+          style: { maxWidth: 320 },
+        })
+      }
+    }
+    checkMpPayments()
+    const interval = setInterval(checkMpPayments, 30_000)
+    return () => clearInterval(interval)
+  }, [tenant?.id])
   const { visto } = useWalkthrough()
   const navigate = useNavigate()
   const { pathname } = useLocation()

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -122,6 +122,7 @@ export default function VentasPage() {
   const [mpLinkModal, setMpLinkModal] = useState<{ ventaId: string; monto: number; initPoint: string; qrDataUrl: string } | null>(null)
   const [generandoMpLink, setGenerandoMpLink] = useState(false)
   const [preVentaId, setPreVentaId] = useState<string | null>(null)
+  const [mpPagoRecibido, setMpPagoRecibido] = useState(false)
 
   const generarLinkMP = async (ventaId: string, monto: number) => {
     if (!monto || monto <= 0) { toast.error('Ingresá un monto para generar el link'); return }
@@ -148,8 +149,31 @@ export default function VentasPage() {
   const generarLinkMPCheckout = async (monto: number) => {
     const id = preVentaId ?? crypto.randomUUID()
     if (!preVentaId) setPreVentaId(id)
+    setMpPagoRecibido(false)
     await generarLinkMP(id, monto)
   }
+
+  // Polling: mientras el modal QR está abierto, consulta cada 4s si llegó el pago
+  useEffect(() => {
+    if (!mpLinkModal) { setMpPagoRecibido(false); return }
+    const ventaId = mpLinkModal.ventaId
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from('ventas')
+        .select('id_pago_externo, monto_pagado, total, estado')
+        .eq('id', ventaId)
+        .maybeSingle()
+      if (data?.id_pago_externo) {
+        setMpPagoRecibido(true)
+        clearInterval(interval)
+        // Refrescar ventaDetalle si estamos en el modal de historial
+        if (ventaDetalle?.id === ventaId) {
+          setVentaDetalle((prev: any) => prev ? { ...prev, monto_pagado: data.monto_pagado } : prev)
+        }
+      }
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [mpLinkModal])
 
   // Caja abierta
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -3145,33 +3169,67 @@ export default function VentasPage() {
               <button onClick={() => setMpLinkModal(null)} className="text-gray-400 hover:text-gray-600 p-1"><X size={18} /></button>
             </div>
 
-            <div className="text-center">
-              <p className="text-2xl font-bold text-primary">
-                ${mpLinkModal.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">El cliente escaneá el QR o usá el link</p>
-            </div>
+            {mpPagoRecibido ? (
+              /* ── Pago confirmado ── */
+              <div className="space-y-3 text-center">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto">
+                  <Check size={32} className="text-green-600 dark:text-green-400" />
+                </div>
+                <p className="font-semibold text-green-700 dark:text-green-400 text-lg">¡Pago recibido!</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  ${mpLinkModal.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} confirmado por MercadoPago
+                </p>
+                {/* Si hay ventaDetalle abierto → finalizar desde el modal */}
+                {ventaDetalle?.id === mpLinkModal.ventaId ? (
+                  <button
+                    onClick={() => {
+                      setMpLinkModal(null)
+                      cambiarEstado.mutate({ ventaId: mpLinkModal.ventaId, nuevoEstado: 'despachada', saldoMediosPago: [] })
+                    }}
+                    disabled={cambiarEstado.isPending}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                    <Truck size={15} /> Finalizar venta (rebaje stock)
+                  </button>
+                ) : (
+                  <button onClick={() => setMpLinkModal(null)}
+                    className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    Cerrar
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* ── Esperando pago ── */
+              <>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-primary">
+                    ${mpLinkModal.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center justify-center gap-1.5">
+                    <span className="inline-block w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+                    Esperando pago del cliente...
+                  </p>
+                </div>
 
-            {/* QR */}
-            <div className="flex justify-center">
-              <img src={mpLinkModal.qrDataUrl} alt="QR Mercado Pago" className="rounded-xl border border-gray-100 dark:border-gray-700" width={220} height={220} />
-            </div>
+                <div className="flex justify-center">
+                  <img src={mpLinkModal.qrDataUrl} alt="QR Mercado Pago" className="rounded-xl border border-gray-100 dark:border-gray-700" width={220} height={220} />
+                </div>
 
-            {/* Acciones */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => { navigator.clipboard.writeText(mpLinkModal.initPoint); toast.success('Link copiado') }}
-                className="flex-1 flex items-center justify-center gap-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                <Copy size={14} /> Copiar link
-              </button>
-              <a href={mpLinkModal.initPoint} target="_blank" rel="noreferrer"
-                className="flex-1 flex items-center justify-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
-                <ExternalLink size={14} /> Abrir en MP
-              </a>
-            </div>
-            <p className="text-xs text-center text-gray-400 dark:text-gray-500">
-              El pago se registra automáticamente al confirmar
-            </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(mpLinkModal.initPoint); toast.success('Link copiado') }}
+                    className="flex-1 flex items-center justify-center gap-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                    <Copy size={14} /> Copiar link
+                  </button>
+                  <a href={mpLinkModal.initPoint} target="_blank" rel="noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+                    <ExternalLink size={14} /> Abrir en MP
+                  </a>
+                </div>
+                <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+                  Esta pantalla se actualiza automáticamente al recibir el pago
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

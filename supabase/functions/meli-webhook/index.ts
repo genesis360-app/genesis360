@@ -1,0 +1,189 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+
+// Webhook de MercadoLibre.
+// Recibe notificaciones de orders_v2 → crea/actualiza venta en Genesis360.
+// ML envía: { _id, resource, user_id, topic, application_id, attempts, sent, received }
+
+const MELI_API = 'https://api.mercadolibre.com'
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { status: 200 })
+
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  )
+
+  try {
+    const body  = await req.text()
+    const event = JSON.parse(body)
+    console.log('MELI webhook:', event.topic, event.resource, 'user:', event.user_id)
+
+    if (event.topic !== 'orders_v2') {
+      return new Response(JSON.stringify({ ok: true, skipped: event.topic }), { status: 200 })
+    }
+
+    const sellerId = event.user_id
+    const resource = event.resource // ej: "/orders/12345"
+
+    // Obtener credenciales del seller
+    const { data: cred } = await supabase
+      .from('meli_credentials')
+      .select('tenant_id, access_token, refresh_token, expires_at')
+      .eq('seller_id', sellerId)
+      .eq('conectado', true)
+      .maybeSingle()
+
+    if (!cred) {
+      console.warn('Sin credenciales para seller:', sellerId)
+      return new Response(JSON.stringify({ ok: true, skipped: 'no_cred' }), { status: 200 })
+    }
+
+    // Refrescar token si está por vencer (< 10 min)
+    const token = await getValidToken(supabase, cred)
+
+    // Obtener orden de ML
+    const orderRes = await fetch(`${MELI_API}${resource}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!orderRes.ok) throw new Error(`ML order fetch failed: ${orderRes.status}`)
+    const order = await orderRes.json()
+
+    const orderId    = String(order.id)
+    const logKey     = `meli-order-${orderId}`
+
+    // Idempotencia
+    const { data: existing } = await supabase
+      .from('ventas_externas_logs')
+      .select('id, payload')
+      .eq('tenant_id', cred.tenant_id)
+      .eq('integracion', 'MercadoLibre')
+      .eq('webhook_external_id', logKey)
+      .maybeSingle()
+
+    const estadoML = order.status // pending, payment_required, paid, cancelled, etc.
+    const nuevoEstado = estadoML === 'paid' ? 'reservada' : 'pendiente'
+
+    if (existing) {
+      // Ya procesado — si cambió a pagado, actualizar estado
+      const ventaId = (existing.payload as any)?.venta_id
+      if (ventaId && estadoML === 'paid') {
+        const { data: venta } = await supabase.from('ventas').select('estado').eq('id', ventaId).maybeSingle()
+        if (venta?.estado === 'pendiente') {
+          await supabase.from('ventas').update({ estado: 'reservada' }).eq('id', ventaId)
+          console.log(`Venta ${ventaId} → reservada (orden ML pagada)`)
+        }
+      }
+      return new Response(JSON.stringify({ ok: true, idempotent: true }), { status: 200 })
+    }
+
+    // Buscar o crear cliente por email del comprador
+    const buyer       = order.buyer ?? {}
+    const buyerEmail  = buyer.email ?? null
+    const buyerName   = [buyer.first_name, buyer.last_name].filter(Boolean).join(' ') || 'Comprador ML'
+    let clienteId: string | null = null
+
+    if (buyerEmail) {
+      const { data: cli } = await supabase
+        .from('clientes').select('id')
+        .eq('tenant_id', cred.tenant_id)
+        .ilike('nombre', buyerName)
+        .maybeSingle()
+
+      if (cli) {
+        clienteId = cli.id
+      } else {
+        const { data: newCli } = await supabase.from('clientes').insert({
+          tenant_id: cred.tenant_id, nombre: buyerName,
+          telefono: buyer.phone?.number ?? null,
+        }).select('id').single()
+        clienteId = newCli?.id ?? null
+      }
+    }
+
+    // Calcular total
+    const total = Number(order.total_amount ?? 0)
+
+    // Crear venta
+    const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
+      tenant_id:      cred.tenant_id,
+      cliente_id:     clienteId,
+      cliente_nombre: buyerName,
+      estado:         nuevoEstado,
+      subtotal:       total,
+      total,
+      monto_pagado:   estadoML === 'paid' ? total : 0,
+      origen:         'MELI',
+      tracking_id:    orderId,
+      medio_pago:     JSON.stringify([{ tipo: 'MercadoPago', monto: total }]),
+      notas:          `Orden ML #${orderId}`,
+      usuario_id:     null,
+    }).select('id').single()
+
+    if (ventaErr) throw ventaErr
+
+    // Insertar ítems de la orden
+    for (const item of order.order_items ?? []) {
+      const mlItemId = item.item?.id
+      const cantidad = item.quantity ?? 1
+      const precio   = item.unit_price ?? 0
+
+      // Buscar producto mapeado
+      const { data: mapped } = await supabase
+        .from('inventario_meli_map').select('producto_id')
+        .eq('tenant_id', cred.tenant_id).eq('meli_item_id', mlItemId).maybeSingle()
+
+      if (mapped) {
+        await supabase.from('venta_items').insert({
+          venta_id: venta.id, producto_id: mapped.producto_id,
+          cantidad, precio_unitario: precio,
+          subtotal: cantidad * precio,
+          alicuota_iva: 21, iva_monto: 0,
+        })
+      }
+    }
+
+    // Log idempotencia
+    await supabase.from('ventas_externas_logs').insert({
+      tenant_id:           cred.tenant_id,
+      integracion:         'MercadoLibre',
+      webhook_external_id: logKey,
+      venta_id:            venta.id,
+      payload:             { order_id: orderId, status: estadoML, venta_id: venta.id },
+    })
+
+    console.log(`Orden ML ${orderId} → venta ${venta.id} (${nuevoEstado})`)
+    return new Response(JSON.stringify({ ok: true, venta_id: venta.id }), { status: 200 })
+
+  } catch (err: any) {
+    console.error('MELI webhook error:', err.message)
+    return new Response(JSON.stringify({ error: err.message }), { status: 500 })
+  }
+})
+
+// Refresca el access_token si expira en menos de 10 minutos
+async function getValidToken(supabase: ReturnType<typeof createClient>, cred: any): Promise<string> {
+  const expiresAt = new Date(cred.expires_at).getTime()
+  if (expiresAt - Date.now() > 10 * 60 * 1000) return cred.access_token
+
+  const res = await fetch('https://api.mercadolibre.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type:    'refresh_token',
+      client_id:     Deno.env.get('MELI_CLIENT_ID') ?? '',
+      client_secret: Deno.env.get('MELI_CLIENT_SECRET') ?? '',
+      refresh_token: cred.refresh_token,
+    }),
+  })
+  if (!res.ok) return cred.access_token
+  const tokens = await res.json() as { access_token: string; refresh_token: string; expires_in: number }
+  const newExpires = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+  await supabase.from('meli_credentials').update({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_at: newExpires,
+  }).eq('seller_id', cred.seller_id ?? 0)
+  return tokens.access_token
+}

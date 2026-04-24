@@ -159,6 +159,7 @@ SemVer pre-launch: `v0.X.Y` · PATCH = bugfix · MINOR = feature · sin MAJOR ha
 | v0.87.0 ✅ | Sprint D inventario: Combinar LPNs + LPN Madre — checkboxes, barra flotante, modal Fusionar (transfiere stock) + LPN Madre (parent_lpn_id sin mover stock) · Fix users.rol CHECK (RRHH/DEPOSITO/CONTADOR) · Migrations 057+058 PROD ✅ | 2026-04 |
 | v0.88.0 ✅ | Módulo Recepciones (/recepciones): lista + form + confirmar contra OC · Botón "Recibir mercadería" en OC confirmadas · Genera inventario_lineas + movimientos_stock · Estados OC recibida_parcial/recibida · ImportarProductosPage: campo notas (col W) · ProductosPage: barcode mobile, SKU uniqueness, foto compresión, botón OC rápida · Migration 059 PROD ✅ | 2026-04 |
 | v0.89.0 ✅ | Integraciones OAuth: tab Integraciones en ConfigPage · TiendaNube OAuth (EF tn-oauth-callback, token permanente) · MercadoPago OAuth (EF mp-oauth-callback, IPN notifications) · Fase 0 schema (pgcrypto + columnas ventas/clientes + integration_job_queue + ventas_externas_logs) · Migrations 060+061 PROD ✅ · PR #65 | 2026-04 |
+| v0.90.0 ✅ | TiendaNube webhook (EF tn-webhook: order/created→pendiente / order/paid→reservada) · Sync stock TN (EF tn-stock-worker + trigger migration 062 + GitHub Actions cron 5min) · UI mapeo productos (ConfigPage→Integraciones) · MP IPN pagos regulares (EF mp-ipn + mp-webhook enrutado por seller_id) · Monitoring diario email 9AM AR (EF monitoring-check PROD + RESEND_API_KEY) · Docs soporte TiendaNube (docs/soporte_tiendanube.html) · PR #66 | 2026-04 |
 
 ---
 

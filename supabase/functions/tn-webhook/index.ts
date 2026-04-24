@@ -194,6 +194,7 @@ serve(async (req) => {
     const ivaMonto     = subtotal - subtotal / ivaFactor
 
     ventaItems.push({
+      tenant_id:              tenant_id,
       producto_id:            productoId,
       cantidad,
       precio_unitario:        precioUnitario,

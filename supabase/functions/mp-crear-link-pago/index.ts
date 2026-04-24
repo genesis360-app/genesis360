@@ -49,14 +49,9 @@ serve(async (req) => {
     .from('tenants').select('nombre').eq('id', tenantId).single()
   const nombreTenant = tenant?.nombre ?? 'Genesis360'
 
-  // Obtener número de venta para el título
+  // Obtener número de venta para el título (puede no existir aún en venta directa)
   const { data: venta } = await supabase
-    .from('ventas').select('numero').eq('id', venta_id).eq('tenant_id', tenantId).single()
-  if (!venta) {
-    return new Response(JSON.stringify({ error: 'Venta no encontrada' }), {
-      status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
+    .from('ventas').select('numero').eq('id', venta_id).eq('tenant_id', tenantId).maybeSingle()
 
   // Buscar credenciales MP del tenant (cuenta del seller conectada)
   const { data: cred } = await supabase
@@ -79,7 +74,7 @@ serve(async (req) => {
   // Crear preference en MP
   const prefBody = {
     items: [{
-      title: `Venta #${venta.numero} — ${nombreTenant}`,
+      title: venta?.numero ? `Venta #${venta.numero} — ${nombreTenant}` : `Compra en ${nombreTenant}`,
       quantity: 1,
       unit_price: Number(monto),
       currency_id: 'ARS',

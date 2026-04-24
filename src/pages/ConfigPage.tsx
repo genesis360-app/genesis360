@@ -597,6 +597,11 @@ export default function ConfigPage() {
     if (error) toast.error(error.message)
     else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
   }
+  const toggleDisponibleVenta = async (estadoId: string, value: boolean) => {
+    const { error } = await supabase.from('estados_inventario').update({ es_disponible_venta: value }).eq('id', estadoId)
+    if (error) toast.error(error.message)
+    else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
+  }
 
   // Motivos
   const { data: motivos = [], isLoading: loadingMotivos } = useQuery({
@@ -1485,51 +1490,64 @@ export default function ConfigPage() {
                 <ListaABM items={estados} loading={loadingEstados} withColor onAdd={addEstado} onUpdate={updateEstado} onDelete={deleteEstado} />
               </div>
 
-              {/* Estado para devoluciones */}
+              {/* Permisos por estado */}
               {estados.length > 0 && (
-                <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <RotateCcw size={15} className="text-orange-500" />
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Estado para ítems devueltos</p>
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5">Permisos por estado</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      <ShoppingCart size={11} className="inline mr-0.5" /> = vendible · <Store size={11} className="inline mr-0.5" /> = sincroniza a TiendaNube · <RotateCcw size={11} className="inline mr-0.5 text-orange-500" /> = destino de devoluciones
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">El stock devuelto ingresará con este estado. Solo uno puede estar activo.</p>
-                  <select
-                    value={(estados as any[]).find(e => e.es_devolucion)?.id ?? ''}
-                    onChange={e => setEstadoDevolucion(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
-                    <option value="">Sin configurar</option>
-                    {(estados as any[]).map((e: any) => (
-                      <option key={e.id} value={e.id}>{e.nombre}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
 
-              {/* Disponible para TiendaNube */}
-              {estados.length > 0 && (
-                <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Store size={15} className="text-blue-500" />
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Disponible para TiendaNube</p>
-                  </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
-                    Solo los estados activados cuentan como stock disponible al sincronizar con TiendaNube.
-                    Desactivá estados como "Bloqueado" o "En análisis" para que no inflen el stock publicado.
-                  </p>
-                  <div className="space-y-1">
-                    {(estados as any[]).map((e: any) => (
-                      <label key={e.id} className="flex items-center gap-3 cursor-pointer px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={e.es_disponible_tn !== false}
-                          onChange={() => toggleDisponibleTN(e.id, !(e.es_disponible_tn !== false))}
-                          className="w-4 h-4 rounded text-accent accent-accent focus:ring-accent" />
-                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
-                        <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">{e.nombre}</span>
-                        {e.es_disponible_tn === false && (
-                          <span className="text-xs text-gray-400 dark:text-gray-500 italic">excluido</span>
-                        )}
-                      </label>
+                  <div className="rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                    {/* Header */}
+                    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400">
+                      <span>Estado</span>
+                      <span className="w-8 text-center" title="Disponible para venta"><ShoppingCart size={13} /></span>
+                      <span className="w-8 text-center" title="Sincroniza a TiendaNube"><Store size={13} /></span>
+                      <span className="w-8 text-center" title="Estado para devoluciones"><RotateCcw size={13} className="text-orange-500" /></span>
+                    </div>
+
+                    {(estados as any[]).map((e: any, i: number) => (
+                      <div key={e.id}
+                        className={`grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-2.5 items-center ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-gray-700/30'}`}>
+                        {/* Nombre con color */}
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
+                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{e.nombre}</span>
+                        </div>
+
+                        {/* Toggle venta */}
+                        <button
+                          onClick={() => toggleDisponibleVenta(e.id, !e.es_disponible_venta)}
+                          title={e.es_disponible_venta !== false ? 'Habilitado para venta — click para bloquear' : 'Bloqueado para venta — click para habilitar'}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${e.es_disponible_venta !== false
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-200'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
+                          <ShoppingCart size={14} />
+                        </button>
+
+                        {/* Toggle TN */}
+                        <button
+                          onClick={() => toggleDisponibleTN(e.id, !e.es_disponible_tn)}
+                          title={e.es_disponible_tn !== false ? 'Sincroniza a TN — click para excluir' : 'Excluido de TN — click para incluir'}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${e.es_disponible_tn !== false
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
+                          <Store size={14} />
+                        </button>
+
+                        {/* Toggle devolución */}
+                        <button
+                          onClick={() => setEstadoDevolucion(e.es_devolucion ? '' : e.id)}
+                          title={e.es_devolucion ? 'Estado de devolución activo — click para quitar' : 'Marcar como estado de devoluciones'}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${e.es_devolucion
+                            ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 hover:bg-orange-200'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
+                          <RotateCcw size={14} />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>

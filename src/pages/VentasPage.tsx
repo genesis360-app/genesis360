@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check } from 'lucide-react'
+import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -116,6 +117,63 @@ export default function VentasPage() {
   const [devSaving, setDevSaving] = useState(false)
   const [devComprobante, setDevComprobante] = useState<any | null>(null)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
+
+  // MP link de pago
+  const [mpLinkModal, setMpLinkModal] = useState<{ ventaId: string; monto: number; initPoint: string; qrDataUrl: string } | null>(null)
+  const [generandoMpLink, setGenerandoMpLink] = useState(false)
+  const [preVentaId, setPreVentaId] = useState<string | null>(null)
+  const [mpPagoRecibido, setMpPagoRecibido] = useState(false)
+
+  const generarLinkMP = async (ventaId: string, monto: number) => {
+    if (!monto || monto <= 0) { toast.error('Ingresá un monto para generar el link'); return }
+    setGenerandoMpLink(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mp-crear-link-pago`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ venta_id: ventaId, monto }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al generar link')
+      const qrDataUrl = await QRCode.toDataURL(json.init_point, { width: 220, margin: 2 })
+      setMpLinkModal({ ventaId, monto, initPoint: json.init_point, qrDataUrl })
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setGenerandoMpLink(false)
+    }
+  }
+
+  // Para venta nueva: genera UUID pre-venta y crea la preference antes de guardar
+  const generarLinkMPCheckout = async (monto: number) => {
+    const id = preVentaId ?? crypto.randomUUID()
+    if (!preVentaId) setPreVentaId(id)
+    setMpPagoRecibido(false)
+    await generarLinkMP(id, monto)
+  }
+
+  // Polling: mientras el modal QR está abierto, consulta cada 4s si llegó el pago
+  useEffect(() => {
+    if (!mpLinkModal) { setMpPagoRecibido(false); return }
+    const ventaId = mpLinkModal.ventaId
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from('ventas')
+        .select('id_pago_externo, monto_pagado, total, estado')
+        .eq('id', ventaId)
+        .maybeSingle()
+      if (data?.id_pago_externo) {
+        setMpPagoRecibido(true)
+        clearInterval(interval)
+        // Refrescar ventaDetalle si estamos en el modal de historial
+        if (ventaDetalle?.id === ventaId) {
+          setVentaDetalle((prev: any) => prev ? { ...prev, monto_pagado: data.monto_pagado } : prev)
+        }
+      }
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [mpLinkModal])
 
   // Caja abierta
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -260,6 +318,19 @@ export default function VentasPage() {
       // Calcular stock disponible por producto según el grupo activo
       const productoIds = prods.map((p: any) => p.id)
 
+      // Estados habilitados para venta (es_disponible_venta = true)
+      const { data: estadosVentaData } = await supabase
+        .from('estados_inventario')
+        .select('id')
+        .eq('tenant_id', tenant!.id)
+        .eq('es_disponible_venta', true)
+      const estadosVentaIds = (estadosVentaData ?? []).map((e: any) => e.id)
+
+      // Intersección: grupo activo ∩ estados habilitados para venta
+      const estadosFinal = estadosFiltro.length > 0
+        ? estadosFiltro.filter(id => estadosVentaIds.includes(id))
+        : estadosVentaIds
+
       // Traer líneas activas de estos productos con ubicación disponible para surtido
       let lineasQuery = supabase.from('inventario_lineas')
         .select('producto_id, cantidad, cantidad_reservada, estado_id, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
@@ -268,9 +339,9 @@ export default function VentasPage() {
         .in('producto_id', productoIds)
         .not('ubicacion_id', 'is', null)
 
-      // Si hay filtro de grupo, filtrar por estado
-      if (estadosFiltro.length > 0) {
-        lineasQuery = lineasQuery.in('estado_id', estadosFiltro)
+      // Filtrar por estados válidos (grupo ∩ disponible_venta, o solo disponible_venta si sin grupo)
+      if (estadosFinal.length > 0) {
+        lineasQuery = lineasQuery.in('estado_id', estadosFinal)
       }
 
       const { data: lineas } = await lineasQuery
@@ -400,13 +471,18 @@ export default function VentasPage() {
         : ventaGrupoId ? grupos.find(g => g.id === ventaGrupoId) : grupoDefault
       const estadosFiltro = grupoActivo?.estado_ids ?? []
 
+      // Estados habilitados para venta
+      const { data: evData } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
+      const evIds = (evData ?? []).map((e: any) => e.id)
+      const estadosFinal = estadosFiltro.length > 0 ? estadosFiltro.filter(id => evIds.includes(id)) : evIds
+
       let lineasQuery = supabase.from('inventario_lineas')
         .select('id, lpn, estado_id, ubicaciones(disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
         .eq('producto_id', p.id).eq('activo', true)
         .not('ubicacion_id', 'is', null)
 
-      if (estadosFiltro.length > 0) {
-        lineasQuery = lineasQuery.in('estado_id', estadosFiltro)
+      if (estadosFinal.length > 0) {
+        lineasQuery = lineasQuery.in('estado_id', estadosFinal)
       }
 
       const { data: lineas } = await lineasQuery
@@ -428,10 +504,14 @@ export default function VentasPage() {
       const sortLineas = getRebajeSort(p.regla_inventario, tenant!.regla_inventario, p.tiene_vencimiento ?? false)
       const grupoActivo2 = ventaGrupoId === 'todos' ? null : ventaGrupoId ? grupos.find(g => g.id === ventaGrupoId) : grupoDefault
       const estadosFiltro2 = grupoActivo2?.estado_ids ?? []
+      // Estados habilitados para venta (reutiliza evIds del bloque anterior si ya fue calculado, o re-query)
+      const { data: evData2 } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
+      const evIds2 = (evData2 ?? []).map((e: any) => e.id)
+      const estadosFinal2 = estadosFiltro2.length > 0 ? estadosFiltro2.filter(id => evIds2.includes(id)) : evIds2
       let lq = supabase.from('inventario_lineas')
         .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
-      if (estadosFiltro2.length > 0) lq = lq.in('estado_id', estadosFiltro2)
+      if (estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
       const { data: lineasRaw2 } = await lq
       const hoyStr = new Date().toISOString().split('T')[0]
       const sortedLineas = (lineasRaw2 ?? [])
@@ -769,8 +849,9 @@ export default function VentasPage() {
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     try {
-      // Crear venta
+      // Crear venta — si hay preVentaId (QR MP ya generado) se usa ese UUID
       const { data: venta, error: ventaError } = await supabase.from('ventas').insert({
+        ...(preVentaId ? { id: preVentaId } : {}),
         tenant_id: tenant!.id,
         cliente_id: clienteId || null,
         cliente_nombre: clienteNombre || null,
@@ -984,6 +1065,7 @@ export default function VentasPage() {
       }
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
+      setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
       qc.invalidateQueries({ queryKey: ['ventas'] })
@@ -2134,6 +2216,13 @@ export default function VentasPage() {
                       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                       placeholder="Monto"
                       className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    {mp.tipo === 'Mercado Pago' && parseFloat(mp.monto) > 0 && (
+                      <button onClick={() => generarLinkMPCheckout(parseFloat(mp.monto))} disabled={generandoMpLink}
+                        title="Generar QR / link de pago MP"
+                        className="p-1.5 text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg flex-shrink-0 disabled:opacity-50 transition-colors">
+                        <QrCode size={16} />
+                      </button>
+                    )}
                     {mediosPago.length > 1 && (
                       <button onClick={() => removeMedioPago(idx)} title="Quitar medio de pago" className="text-gray-400 dark:text-gray-500 hover:text-red-500 flex-shrink-0">
                         <X size={16} />
@@ -2397,6 +2486,12 @@ export default function VentasPage() {
                         <span className="text-orange-600 dark:text-orange-400 font-semibold">Saldo pendiente</span>
                         <span className="font-bold text-orange-600 dark:text-orange-400">${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
+                    )}
+                    {saldo > 0.5 && (
+                      <button onClick={() => generarLinkMP(ventaDetalle.id, saldo)} disabled={generandoMpLink}
+                        className="flex items-center gap-1.5 text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium disabled:opacity-50 transition-colors">
+                        <QrCode size={12} /> {generandoMpLink ? 'Generando...' : `Cobrar $${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })} con MP`}
+                      </button>
                     )}
                     {editandoPago ? (
                       <div className="flex gap-2 items-center pt-1">
@@ -3022,6 +3117,13 @@ export default function VentasPage() {
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
                       onChange={e => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m) } : s)}
                       className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    {mp.tipo === 'Mercado Pago' && parseFloat(mp.monto) > 0 && (
+                      <button onClick={() => generarLinkMP(saldoModal.ventaId, parseFloat(mp.monto))} disabled={generandoMpLink}
+                        title="Generar QR / link MP"
+                        className="p-1.5 text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg flex-shrink-0 disabled:opacity-50 transition-colors">
+                        <QrCode size={16} />
+                      </button>
+                    )}
                     {saldoModal.mediosPago.length > 1 && (
                       <button onClick={() => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.filter((_, i) => i !== idx) } : s)}
                         className="text-gray-400 hover:text-red-500"><X size={16} /></button>
@@ -3056,6 +3158,81 @@ export default function VentasPage() {
           </div>
         )
       })()}
+      {/* Modal QR / link MP */}
+      {mpLinkModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-primary text-base flex items-center gap-2">
+                <QrCode size={16} className="text-blue-500" /> Cobrar con Mercado Pago
+              </h3>
+              <button onClick={() => setMpLinkModal(null)} className="text-gray-400 hover:text-gray-600 p-1"><X size={18} /></button>
+            </div>
+
+            {mpPagoRecibido ? (
+              /* ── Pago confirmado ── */
+              <div className="space-y-3 text-center">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto">
+                  <Check size={32} className="text-green-600 dark:text-green-400" />
+                </div>
+                <p className="font-semibold text-green-700 dark:text-green-400 text-lg">¡Pago recibido!</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  ${mpLinkModal.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} confirmado por MercadoPago
+                </p>
+                {/* Si hay ventaDetalle abierto → finalizar desde el modal */}
+                {ventaDetalle?.id === mpLinkModal.ventaId ? (
+                  <button
+                    onClick={() => {
+                      setMpLinkModal(null)
+                      cambiarEstado.mutate({ ventaId: mpLinkModal.ventaId, nuevoEstado: 'despachada', saldoMediosPago: [] })
+                    }}
+                    disabled={cambiarEstado.isPending}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                    <Truck size={15} /> Finalizar venta (rebaje stock)
+                  </button>
+                ) : (
+                  <button onClick={() => setMpLinkModal(null)}
+                    className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    Cerrar
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* ── Esperando pago ── */
+              <>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-primary">
+                    ${mpLinkModal.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center justify-center gap-1.5">
+                    <span className="inline-block w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+                    Esperando pago del cliente...
+                  </p>
+                </div>
+
+                <div className="flex justify-center">
+                  <img src={mpLinkModal.qrDataUrl} alt="QR Mercado Pago" className="rounded-xl border border-gray-100 dark:border-gray-700" width={220} height={220} />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(mpLinkModal.initPoint); toast.success('Link copiado') }}
+                    className="flex-1 flex items-center justify-center gap-1.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                    <Copy size={14} /> Copiar link
+                  </button>
+                  <a href={mpLinkModal.initPoint} target="_blank" rel="noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-blue-500 hover:bg-blue-600 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+                    <ExternalLink size={14} /> Abrir en MP
+                  </a>
+                </div>
+                <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+                  Esta pantalla se actualiza automáticamente al recibir el pago
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

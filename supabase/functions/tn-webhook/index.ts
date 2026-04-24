@@ -195,12 +195,12 @@ serve(async (req) => {
 
     ventaItems.push({
       producto_id:            productoId,
-      nombre_producto:        item.name ?? producto?.nombre ?? 'Producto',
       cantidad,
       precio_unitario:        precioUnitario,
       precio_costo_historico: producto?.precio_costo ?? 0,
       alicuota_iva:           alicuotaIva,
       iva_monto:              parseFloat(ivaMonto.toFixed(2)),
+      subtotal:               parseFloat((precioUnitario * cantidad).toFixed(2)),
     })
 
     // Job de rebaje de stock (solo para pedidos que se van a reservar)

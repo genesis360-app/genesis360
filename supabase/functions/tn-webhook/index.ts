@@ -4,19 +4,14 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 // Secrets requeridos: ninguno propio (usa service role de Supabase)
 // Env vars auto-inyectadas: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
 //
-// Eventos procesados:
-//   order/paid     → crea venta con estado 'reservada' (pagada, pendiente despacho)
-//   order/created  → crea venta con estado 'pendiente' si aún no está pagada
+// Ciclo de vida de un pedido TN:
+//   order/created (sin pago) → crea venta 'pendiente'
+//   order/paid               → si ya existe venta para ese pedido → UPDATE a 'reservada'
+//                              si no existe → crea venta 'reservada' directamente
 //
-// Flujo:
-//   1. Verificar que store_id existe en tiendanube_credentials (conectado=true)
-//   2. Idempotencia: ignorar si ya procesamos este webhook_external_id
-//   3. Fetch del pedido completo via TN API
-//   4. Encontrar o crear cliente
-//   5. Mapear productos via inventario_tn_map o fallback por SKU
-//   6. Insertar venta + venta_items
-//   7. Log de idempotencia en ventas_externas_logs
-//   8. Encolar job de rebaje de stock en integration_job_queue
+// Idempotencia: clave por evento (order/created y order/paid son eventos distintos).
+// El duplicate check es por clave exacta. Si order/paid llega después de
+// order/created, no es duplicado — es una transición de estado.
 
 const TN_API_BASE = 'https://api.tiendanube.com/v1'
 const TN_USER_AGENT = 'Genesis360 (gaston.otranto@gmail.com)'
@@ -68,9 +63,9 @@ serve(async (req) => {
 
   const { tenant_id, sucursal_id, access_token } = cred
 
-  // 2. Idempotencia
+  // 2. Idempotencia — clave por evento (order/created y order/paid son distintos)
   const webhookKey = `${store_id}-${event}-${orderId}`
-  const { data: existing } = await supabase
+  const { data: existingLog } = await supabase
     .from('ventas_externas_logs')
     .select('id')
     .eq('tenant_id', tenant_id)
@@ -78,7 +73,7 @@ serve(async (req) => {
     .eq('webhook_external_id', webhookKey)
     .maybeSingle()
 
-  if (existing) {
+  if (existingLog) {
     console.log('Duplicate webhook ignored:', webhookKey)
     return new Response(JSON.stringify({ ok: true, duplicate: true }), {
       status: 200,
@@ -102,7 +97,38 @@ serve(async (req) => {
 
   const order = await orderRes.json()
 
-  // Determinar estado de la venta
+  // Buscar si ya existe una venta para este pedido TN (creada por order/created previo)
+  const trackingId = String(order.number)
+  const { data: ventaExistente } = await supabase
+    .from('ventas')
+    .select('id, estado')
+    .eq('tenant_id', tenant_id)
+    .eq('origen', 'TiendaNube')
+    .eq('tracking_id', trackingId)
+    .maybeSingle()
+
+  // Si es order/paid y ya existe la venta pendiente → solo actualizar estado
+  if (event === 'order/paid' && ventaExistente) {
+    if (ventaExistente.estado === 'pendiente') {
+      const total = parseFloat(order.total ?? '0')
+      await supabase.from('ventas').update({
+        estado: 'reservada',
+        monto_pagado: total,
+        medio_pago: JSON.stringify([{ tipo: 'TiendaNube', monto: total }]),
+      }).eq('id', ventaExistente.id)
+      console.log(`Venta ${ventaExistente.id} actualizada pendiente → reservada (pedido TN #${order.number})`)
+    }
+    // Registrar log de idempotencia y terminar
+    await supabase.from('ventas_externas_logs').insert({
+      tenant_id, integracion: 'TiendaNube', webhook_external_id: webhookKey,
+      venta_id: ventaExistente.id, payload_raw: order,
+    })
+    return new Response(JSON.stringify({ ok: true, updated: ventaExistente.id }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Determinar estado para venta nueva
   const isPaid = order.payment_status === 'paid' || event === 'order/paid'
   const estadoVenta: string = isPaid ? 'reservada' : 'pendiente'
 

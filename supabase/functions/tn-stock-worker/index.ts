@@ -60,10 +60,10 @@ serve(async (_req) => {
     }
 
     try {
-      // Calcular stock disponible actual (suma todas las lineas activas del producto)
+      // Calcular stock disponible: solo líneas cuyo estado tenga es_disponible_tn = true
       const { data: lineas } = await supabase
         .from('inventario_lineas')
-        .select('cantidad, cantidad_reservada')
+        .select('cantidad, cantidad_reservada, estados_inventario!estado_id(es_disponible_tn)')
         .eq('tenant_id', job.tenant_id)
         .eq('producto_id', producto_id)
         .eq('activo', true)
@@ -71,10 +71,12 @@ serve(async (_req) => {
       const stockDisponible = Math.max(
         0,
         Math.floor(
-          (lineas ?? []).reduce(
-            (acc, l) => acc + (Number(l.cantidad) - Number(l.cantidad_reservada ?? 0)),
-            0,
-          ),
+          (lineas ?? []).reduce((acc, l: any) => {
+            // Si el estado tiene es_disponible_tn = false, no cuenta
+            const disponible = l.estados_inventario?.es_disponible_tn
+            if (disponible === false) return acc
+            return acc + (Number(l.cantidad) - Number(l.cantidad_reservada ?? 0))
+          }, 0),
         ),
       )
 

@@ -121,6 +121,7 @@ export default function VentasPage() {
   // MP link de pago
   const [mpLinkModal, setMpLinkModal] = useState<{ ventaId: string; monto: number; initPoint: string; qrDataUrl: string } | null>(null)
   const [generandoMpLink, setGenerandoMpLink] = useState(false)
+  const [preVentaId, setPreVentaId] = useState<string | null>(null)
 
   const generarLinkMP = async (ventaId: string, monto: number) => {
     if (!monto || monto <= 0) { toast.error('Ingresá un monto para generar el link'); return }
@@ -141,6 +142,13 @@ export default function VentasPage() {
     } finally {
       setGenerandoMpLink(false)
     }
+  }
+
+  // Para venta nueva: genera UUID pre-venta y crea la preference antes de guardar
+  const generarLinkMPCheckout = async (monto: number) => {
+    const id = preVentaId ?? crypto.randomUUID()
+    if (!preVentaId) setPreVentaId(id)
+    await generarLinkMP(id, monto)
   }
 
   // Caja abierta
@@ -795,8 +803,9 @@ export default function VentasPage() {
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     try {
-      // Crear venta
+      // Crear venta — si hay preVentaId (QR MP ya generado) se usa ese UUID
       const { data: venta, error: ventaError } = await supabase.from('ventas').insert({
+        ...(preVentaId ? { id: preVentaId } : {}),
         tenant_id: tenant!.id,
         cliente_id: clienteId || null,
         cliente_nombre: clienteNombre || null,
@@ -1010,6 +1019,7 @@ export default function VentasPage() {
       }
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
+      setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
       qc.invalidateQueries({ queryKey: ['ventas'] })
@@ -2160,6 +2170,13 @@ export default function VentasPage() {
                       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                       placeholder="Monto"
                       className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    {mp.tipo === 'Mercado Pago' && parseFloat(mp.monto) > 0 && (
+                      <button onClick={() => generarLinkMPCheckout(parseFloat(mp.monto))} disabled={generandoMpLink}
+                        title="Generar QR / link de pago MP"
+                        className="p-1.5 text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg flex-shrink-0 disabled:opacity-50 transition-colors">
+                        <QrCode size={16} />
+                      </button>
+                    )}
                     {mediosPago.length > 1 && (
                       <button onClick={() => removeMedioPago(idx)} title="Quitar medio de pago" className="text-gray-400 dark:text-gray-500 hover:text-red-500 flex-shrink-0">
                         <X size={16} />

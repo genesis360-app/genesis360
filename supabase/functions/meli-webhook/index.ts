@@ -26,18 +26,20 @@ serve(async (req) => {
     const sellerId = event.user_id
     const resource = event.resource
 
-    const { data: cred } = await supabase
+    // Puede haber múltiples tenants con el mismo seller en testing — procesar todos
+    const { data: creds } = await supabase
       .from('meli_credentials')
       .select('tenant_id, access_token, refresh_token, expires_at, seller_id')
       .eq('seller_id', sellerId)
       .eq('conectado', true)
-      .maybeSingle()
 
-    if (!cred) {
+    if (!creds || creds.length === 0) {
       console.warn('Sin credenciales para seller:', sellerId)
       return new Response(JSON.stringify({ ok: true, skipped: 'no_cred' }), { status: 200 })
     }
 
+    // Procesar para cada tenant conectado con este seller
+    for (const cred of creds) {
     const token = await getValidToken(supabase, cred)
 
     const orderRes = await fetch(`${MELI_API}${resource}`, {
@@ -148,8 +150,10 @@ serve(async (req) => {
       .update({ venta_id: venta.id, payload_raw: { order_id: orderId, status: estadoML, venta_id: venta.id } })
       .eq('tenant_id', cred.tenant_id).eq('webhook_external_id', logKey)
 
-    console.log(`Orden ML ${orderId} → venta ${venta.id} (${nuevoEstado})`)
-    return new Response(JSON.stringify({ ok: true, venta_id: venta.id }), { status: 200 })
+    console.log(`Orden ML ${orderId} → venta ${venta.id} (${nuevoEstado}) tenant:${cred.tenant_id}`)
+    } // end for cred
+
+    return new Response(JSON.stringify({ ok: true }), { status: 200 })
 
   } catch (err: any) {
     console.error('MELI webhook error:', err.message)

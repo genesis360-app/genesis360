@@ -560,6 +560,18 @@ export default function ConfigPage() {
     toast.success(nuevo ? 'Marcada como ubicación de devolución' : 'Desmarcada como devolución')
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
   }
+  const toggleUbicTN = async (u: any) => {
+    const nuevo = !u.disponible_tn
+    const { error } = await supabase.from('ubicaciones').update({ disponible_tn: nuevo }).eq('id', u.id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+  }
+  const toggleUbicMELI = async (u: any) => {
+    const nuevo = !u.disponible_meli
+    const { error } = await supabase.from('ubicaciones').update({ disponible_meli: nuevo }).eq('id', u.id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+  }
 
   // Estados de inventario
   const { data: estados = [], isLoading: loadingEstados } = useQuery({
@@ -600,6 +612,11 @@ export default function ConfigPage() {
   }
   const toggleDisponibleVenta = async (estadoId: string, value: boolean) => {
     const { error } = await supabase.from('estados_inventario').update({ es_disponible_venta: value }).eq('id', estadoId)
+    if (error) toast.error(error.message)
+    else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
+  }
+  const toggleDisponibleMELI = async (estadoId: string, value: boolean) => {
+    const { error } = await supabase.from('estados_inventario').update({ es_disponible_meli: value }).eq('id', estadoId)
     if (error) toast.error(error.message)
     else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
   }
@@ -1389,7 +1406,7 @@ export default function ConfigPage() {
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Ubicaciones</h2>
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{ubicaciones.length} cargadas</span>
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero. <ShoppingCart size={11} className="inline" /> = elegible para surtir ventas. <RotateCcw size={11} className="inline text-orange-500" /> = destino de stock devuelto (solo una). Cada ubicación puede tener dimensiones y tipo WMS opcionales (editando con <Pencil size={11} className="inline" />).</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero. <ShoppingCart size={11} className="inline" /> = surtido POS · <span className="text-xs font-bold text-green-600">TN</span> = TiendaNube · <span className="text-xs font-bold text-yellow-500">ML</span> = MercadoLibre · <RotateCcw size={11} className="inline text-orange-500" /> = devoluciones. Cada ubicación puede tener dimensiones y tipo WMS opcionales (editando con <Pencil size={11} className="inline" />).</p>
 
           {/* Agregar nueva */}
           <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
@@ -1509,6 +1526,18 @@ export default function ConfigPage() {
                           <ShoppingCart size={14} />
                         </button>
                         <button
+                          onClick={() => toggleUbicTN(u)}
+                          title={u.disponible_tn !== false ? 'Stock sincroniza a TiendaNube — click para excluir' : 'Excluida de TiendaNube — click para incluir'}
+                          className={`p-1 transition-colors text-xs font-bold rounded ${u.disponible_tn !== false ? 'text-green-600 hover:text-gray-400' : 'text-gray-300 hover:text-green-600'}`}>
+                          TN
+                        </button>
+                        <button
+                          onClick={() => toggleUbicMELI(u)}
+                          title={u.disponible_meli !== false ? 'Stock sincroniza a MercadoLibre — click para excluir' : 'Excluida de MercadoLibre — click para incluir'}
+                          className={`p-1 transition-colors text-xs font-bold rounded ${u.disponible_meli !== false ? 'text-yellow-500 hover:text-gray-400' : 'text-gray-300 hover:text-yellow-500'}`}>
+                          ML
+                        </button>
+                        <button
                           onClick={() => toggleUbicDevolucion(u)}
                           title={u.es_devolucion ? 'Ubicación de devolución activa — click para desmarcar' : 'Marcar como ubicación para devoluciones'}
                           className={`p-1 transition-colors ${u.es_devolucion ? 'text-orange-500 hover:text-gray-400' : 'text-gray-300 hover:text-orange-500'}`}>
@@ -1564,22 +1593,23 @@ export default function ConfigPage() {
                   <div>
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5">Permisos por estado</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      <ShoppingCart size={11} className="inline mr-0.5" /> = vendible · <Store size={11} className="inline mr-0.5" /> = sincroniza a TiendaNube · <RotateCcw size={11} className="inline mr-0.5 text-orange-500" /> = destino de devoluciones
+                      <ShoppingCart size={11} className="inline mr-0.5" /> = vendible · <Store size={11} className="inline mr-0.5" /> = TiendaNube · <span className="text-xs font-bold text-yellow-500">ML</span> = MercadoLibre · <RotateCcw size={11} className="inline mr-0.5 text-orange-500" /> = devoluciones
                     </p>
                   </div>
 
                   <div className="rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
                     {/* Header */}
-                    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400">
+                    <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400">
                       <span>Estado</span>
                       <span className="w-8 text-center" title="Disponible para venta"><ShoppingCart size={13} /></span>
                       <span className="w-8 text-center" title="Sincroniza a TiendaNube"><Store size={13} /></span>
+                      <span className="w-8 text-center text-yellow-500 font-bold" title="Sincroniza a MercadoLibre">ML</span>
                       <span className="w-8 text-center" title="Estado para devoluciones"><RotateCcw size={13} className="text-orange-500" /></span>
                     </div>
 
                     {(estados as any[]).map((e: any, i: number) => (
                       <div key={e.id}
-                        className={`grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-2.5 items-center ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-gray-700/30'}`}>
+                        className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-2.5 items-center ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-gray-700/30'}`}>
                         {/* Nombre con color */}
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
@@ -1604,6 +1634,16 @@ export default function ConfigPage() {
                             ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
                           <Store size={14} />
+                        </button>
+
+                        {/* Toggle MELI */}
+                        <button
+                          onClick={() => toggleDisponibleMELI(e.id, !e.es_disponible_meli)}
+                          title={e.es_disponible_meli !== false ? 'Sincroniza a ML — click para excluir' : 'Excluido de ML — click para incluir'}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-colors ${e.es_disponible_meli !== false
+                            ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-200'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
+                          ML
                         </button>
 
                         {/* Toggle devolución */}

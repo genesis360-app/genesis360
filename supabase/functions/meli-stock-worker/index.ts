@@ -51,17 +51,23 @@ serve(async (_req) => {
       const token = await getValidToken(supabase, cred)
 
       if (job.tipo === 'sync_stock') {
-        // Calcular stock disponible (solo estados es_disponible_venta = true)
-        const { data: estadosVenta } = await supabase
+        // Calcular stock disponible para MELI:
+        // - estados con es_disponible_meli = true
+        // - ubicaciones con disponible_meli = true (o sin ubicación)
+        const { data: estadosMeli } = await supabase
           .from('estados_inventario').select('id')
-          .eq('tenant_id', job.tenant_id).eq('es_disponible_venta', true)
-        const evIds = (estadosVenta ?? []).map((e: any) => e.id)
+          .eq('tenant_id', job.tenant_id).eq('es_disponible_meli', true)
+        const emIds = (estadosMeli ?? []).map((e: any) => e.id)
 
         let lq = supabase.from('inventario_lineas')
-          .select('cantidad, cantidad_reservada')
+          .select('cantidad, cantidad_reservada, ubicaciones(disponible_meli)')
           .eq('tenant_id', job.tenant_id).eq('producto_id', producto_id).eq('activo', true)
-        if (evIds.length > 0) lq = lq.in('estado_id', evIds)
-        const { data: lineas } = await lq
+        if (emIds.length > 0) lq = lq.in('estado_id', emIds)
+        const { data: lineasRaw } = await lq
+        // Excluir líneas cuya ubicación tenga disponible_meli = false
+        const lineas = (lineasRaw ?? []).filter(
+          (l: any) => !l.ubicaciones || l.ubicaciones.disponible_meli !== false
+        )
 
         const stock = Math.max(0, Math.floor(
           (lineas ?? []).reduce((acc: number, l: any) =>

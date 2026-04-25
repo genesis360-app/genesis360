@@ -56,7 +56,7 @@ serve(async (req) => {
       tenant_id:           cred.tenant_id,
       integracion:         'MercadoLibre',
       webhook_external_id: logKey,
-      payload:             { order_id: orderId, status: estadoML },
+      payload_raw:         { order_id: orderId, status: estadoML },
     })
 
     if (logInsertErr) {
@@ -144,7 +144,7 @@ serve(async (req) => {
 
     // Actualizar log con venta_id
     await supabase.from('ventas_externas_logs')
-      .update({ venta_id: venta.id, payload: { order_id: orderId, status: estadoML, venta_id: venta.id } })
+      .update({ venta_id: venta.id, payload_raw: { order_id: orderId, status: estadoML, venta_id: venta.id } })
       .eq('tenant_id', cred.tenant_id).eq('webhook_external_id', logKey)
 
     console.log(`Orden ML ${orderId} → venta ${venta.id} (${nuevoEstado})`)

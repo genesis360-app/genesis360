@@ -4,14 +4,17 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 // OAuth callback de MercadoLibre.
 // state = btoa(tenantId:sucursalId)
 
-const MELI_API    = 'https://api.mercadolibre.com'
-const REDIRECT_URI = 'https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/meli-oauth-callback'
+const MELI_API = 'https://api.mercadolibre.com'
 
 serve(async (req) => {
-  const url    = new URL(req.url)
-  const code   = url.searchParams.get('code')
-  const state  = url.searchParams.get('state')
-  const appUrl = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'
+  const url        = new URL(req.url)
+  const code       = url.searchParams.get('code')
+  const state      = url.searchParams.get('state')
+  const appUrl     = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'
+  // Construir redirect URI desde SUPABASE_URL (más confiable que req.url detrás de proxy)
+  const supabaseUrl  = Deno.env.get('SUPABASE_URL') ?? ''
+  const REDIRECT_URI = `${supabaseUrl}/functions/v1/meli-oauth-callback`
+  console.log('REDIRECT_URI usado:', REDIRECT_URI)
 
   if (!code || !state) {
     return Response.redirect(`${appUrl}/configuracion?tab=integraciones&error=meli_missing_params`)
@@ -47,7 +50,7 @@ serve(async (req) => {
 
   if (!tokenRes.ok) {
     const err = await tokenRes.text()
-    console.error('MELI token error:', err)
+    console.error('MELI token error:', tokenRes.status, err, '| redirect_uri usado:', REDIRECT_URI)
     return Response.redirect(`${appUrl}/configuracion?tab=integraciones&error=meli_token_failed`)
   }
 
@@ -80,6 +83,37 @@ serve(async (req) => {
   if (upsertErr) {
     console.error('Upsert error:', upsertErr.message)
     return Response.redirect(`${appUrl}/configuracion?tab=integraciones&error=meli_db_error`)
+  }
+
+  // Registrar webhook de órdenes para este seller
+  const webhookUrl = 'https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/meli-webhook'
+  const clientId   = Deno.env.get('MELI_CLIENT_ID') ?? ''
+
+  // Intento 1: suscripción via aplicación del seller
+  const subRes = await fetch(`${MELI_API}/applications/${clientId}/subscriptions`, {
+    method: 'POST',
+    headers: {
+      Authorization:  `Bearer ${tokens.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ topic: 'orders_v2', callback_url: webhookUrl }),
+  })
+  if (subRes.ok) {
+    console.log('Webhook orders_v2 registrado OK')
+  } else {
+    // Intento 2: PUT en el recurso del usuario/aplicación (API alternativa)
+    const sub2Res = await fetch(
+      `${MELI_API}/users/${tokens.user_id}/applications/${clientId}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization:  `Bearer ${tokens.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ callback_url: webhookUrl, topics: ['orders_v2'] }),
+      },
+    )
+    console.log('Webhook fallback status:', sub2Res.status)
   }
 
   console.log(`MELI conectado: tenant ${tenantId}, seller ${tokens.user_id} (${me.nickname})`)

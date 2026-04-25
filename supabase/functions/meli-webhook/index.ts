@@ -105,6 +105,26 @@ serve(async (req) => {
 
     const total = Number(order.total_amount ?? 0)
 
+    // Dedup ventas MELI: si ya existe una venta del mismo comprador+monto en los últimos 60s
+    // (puede pasar con publicaciones sincronizadas que generan dos órdenes ML distintas)
+    const { data: ventaReciente } = await supabase
+      .from('ventas')
+      .select('id, numero')
+      .eq('tenant_id', cred.tenant_id)
+      .eq('origen', 'MELI')
+      .eq('cliente_nombre', buyerNick ?? buyerName)
+      .eq('total', total)
+      .gte('created_at', new Date(Date.now() - 60_000).toISOString())
+      .maybeSingle()
+
+    if (ventaReciente) {
+      console.log(`Dedup: venta #${ventaReciente.numero} ya existe para esta compra (60s window)`)
+      await supabase.from('ventas_externas_logs')
+        .update({ venta_id: ventaReciente.id, payload_raw: { order_id: orderId, status: estadoML, venta_id: ventaReciente.id, dedup: true } })
+        .eq('tenant_id', cred.tenant_id).eq('webhook_external_id', logKey)
+      return new Response(JSON.stringify({ ok: true, dedup: true, venta_id: ventaReciente.id }), { status: 200 })
+    }
+
     const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
       tenant_id:      cred.tenant_id,
       cliente_id:     clienteId,

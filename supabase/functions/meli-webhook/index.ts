@@ -3,7 +3,6 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 // Webhook de MercadoLibre.
 // Recibe notificaciones de orders_v2 → crea/actualiza venta en Genesis360.
-// ML envía: { _id, resource, user_id, topic, application_id, attempts, sent, received }
 
 const MELI_API = 'https://api.mercadolibre.com'
 
@@ -25,12 +24,11 @@ serve(async (req) => {
     }
 
     const sellerId = event.user_id
-    const resource = event.resource // ej: "/orders/12345"
+    const resource = event.resource
 
-    // Obtener credenciales del seller
     const { data: cred } = await supabase
       .from('meli_credentials')
-      .select('tenant_id, access_token, refresh_token, expires_at')
+      .select('tenant_id, access_token, refresh_token, expires_at, seller_id')
       .eq('seller_id', sellerId)
       .eq('conectado', true)
       .maybeSingle()
@@ -40,76 +38,77 @@ serve(async (req) => {
       return new Response(JSON.stringify({ ok: true, skipped: 'no_cred' }), { status: 200 })
     }
 
-    // Refrescar token si está por vencer (< 10 min)
     const token = await getValidToken(supabase, cred)
 
-    // Obtener orden de ML
     const orderRes = await fetch(`${MELI_API}${resource}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!orderRes.ok) throw new Error(`ML order fetch failed: ${orderRes.status}`)
     const order = await orderRes.json()
 
-    const orderId    = String(order.id)
-    const logKey     = `meli-order-${orderId}`
-
-    // Idempotencia
-    const { data: existing } = await supabase
-      .from('ventas_externas_logs')
-      .select('id, payload')
-      .eq('tenant_id', cred.tenant_id)
-      .eq('integracion', 'MercadoLibre')
-      .eq('webhook_external_id', logKey)
-      .maybeSingle()
-
-    const estadoML = order.status // pending, payment_required, paid, cancelled, etc.
+    const orderId     = String(order.id)
+    const logKey      = `meli-order-${orderId}`
+    const estadoML    = order.status
     const nuevoEstado = estadoML === 'paid' ? 'reservada' : 'pendiente'
 
-    if (existing) {
-      // Ya procesado — si cambió a pagado, actualizar estado
-      const ventaId = (existing.payload as any)?.venta_id
+    // Insertar log PRIMERO — si ya existe (race condition) el UNIQUE constraint lo rechaza
+    const { error: logInsertErr } = await supabase.from('ventas_externas_logs').insert({
+      tenant_id:           cred.tenant_id,
+      integracion:         'MercadoLibre',
+      webhook_external_id: logKey,
+      payload:             { order_id: orderId, status: estadoML },
+    })
+
+    if (logInsertErr) {
+      // Otra notificación concurrente ya lo procesó — solo actualizar estado si ahora está pagado
+      const { data: existing } = await supabase
+        .from('ventas_externas_logs').select('payload')
+        .eq('tenant_id', cred.tenant_id).eq('integracion', 'MercadoLibre')
+        .eq('webhook_external_id', logKey).maybeSingle()
+      const ventaId = (existing?.payload as any)?.venta_id
       if (ventaId && estadoML === 'paid') {
-        const { data: venta } = await supabase.from('ventas').select('estado').eq('id', ventaId).maybeSingle()
-        if (venta?.estado === 'pendiente') {
-          await supabase.from('ventas').update({ estado: 'reservada' }).eq('id', ventaId)
-          console.log(`Venta ${ventaId} → reservada (orden ML pagada)`)
+        const { data: v } = await supabase.from('ventas').select('estado').eq('id', ventaId).maybeSingle()
+        if (v?.estado === 'pendiente') {
+          await supabase.from('ventas').update({
+            estado: 'reservada',
+            monto_pagado: Number(order.total_amount ?? 0),
+          }).eq('id', ventaId)
+          console.log(`Venta ${ventaId} → reservada (pago tardío)`)
         }
       }
       return new Response(JSON.stringify({ ok: true, idempotent: true }), { status: 200 })
     }
 
-    // Buscar o crear cliente por email del comprador
-    const buyer       = order.buyer ?? {}
-    const buyerEmail  = buyer.email ?? null
-    const buyerName   = [buyer.first_name, buyer.last_name].filter(Boolean).join(' ') || 'Comprador ML'
+    // Dedup cliente: buscar por nickname de ML (más estable que nombre)
+    const buyer     = order.buyer ?? {}
+    const buyerName = [buyer.first_name, buyer.last_name].filter(Boolean).join(' ') || 'Comprador ML'
+    const buyerNick = buyer.nickname ?? null
+    const searchKey = buyerNick ?? buyerName
     let clienteId: string | null = null
 
-    if (buyerEmail) {
-      const { data: cli } = await supabase
-        .from('clientes').select('id')
-        .eq('tenant_id', cred.tenant_id)
-        .ilike('nombre', buyerName)
-        .maybeSingle()
+    const { data: cliExist } = await supabase
+      .from('clientes').select('id')
+      .eq('tenant_id', cred.tenant_id)
+      .ilike('nombre', searchKey)
+      .maybeSingle()
 
-      if (cli) {
-        clienteId = cli.id
-      } else {
-        const { data: newCli } = await supabase.from('clientes').insert({
-          tenant_id: cred.tenant_id, nombre: buyerName,
-          telefono: buyer.phone?.number ?? null,
-        }).select('id').single()
-        clienteId = newCli?.id ?? null
-      }
+    if (cliExist) {
+      clienteId = cliExist.id
+    } else {
+      const { data: newCli } = await supabase.from('clientes').insert({
+        tenant_id: cred.tenant_id,
+        nombre:    buyerNick ?? buyerName,
+        telefono:  buyer.phone?.number ?? null,
+      }).select('id').maybeSingle()
+      clienteId = newCli?.id ?? null
     }
 
-    // Calcular total
     const total = Number(order.total_amount ?? 0)
 
-    // Crear venta
     const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
       tenant_id:      cred.tenant_id,
       cliente_id:     clienteId,
-      cliente_nombre: buyerName,
+      cliente_nombre: buyerNick ?? buyerName,
       estado:         nuevoEstado,
       subtotal:       total,
       total,
@@ -123,35 +122,30 @@ serve(async (req) => {
 
     if (ventaErr) throw ventaErr
 
-    // Insertar ítems de la orden
     for (const item of order.order_items ?? []) {
       const mlItemId = item.item?.id
       const cantidad = item.quantity ?? 1
       const precio   = item.unit_price ?? 0
-
-      // Buscar producto mapeado
       const { data: mapped } = await supabase
         .from('inventario_meli_map').select('producto_id')
         .eq('tenant_id', cred.tenant_id).eq('meli_item_id', mlItemId).maybeSingle()
-
       if (mapped) {
         await supabase.from('venta_items').insert({
-          venta_id: venta.id, producto_id: mapped.producto_id,
-          cantidad, precio_unitario: precio,
-          subtotal: cantidad * precio,
-          alicuota_iva: 21, iva_monto: 0,
+          venta_id:        venta.id,
+          producto_id:     mapped.producto_id,
+          cantidad,
+          precio_unitario: precio,
+          subtotal:        cantidad * precio,
+          alicuota_iva:    21,
+          iva_monto:       0,
         })
       }
     }
 
-    // Log idempotencia
-    await supabase.from('ventas_externas_logs').insert({
-      tenant_id:           cred.tenant_id,
-      integracion:         'MercadoLibre',
-      webhook_external_id: logKey,
-      venta_id:            venta.id,
-      payload:             { order_id: orderId, status: estadoML, venta_id: venta.id },
-    })
+    // Actualizar log con venta_id
+    await supabase.from('ventas_externas_logs')
+      .update({ venta_id: venta.id, payload: { order_id: orderId, status: estadoML, venta_id: venta.id } })
+      .eq('tenant_id', cred.tenant_id).eq('webhook_external_id', logKey)
 
     console.log(`Orden ML ${orderId} → venta ${venta.id} (${nuevoEstado})`)
     return new Response(JSON.stringify({ ok: true, venta_id: venta.id }), { status: 200 })
@@ -162,11 +156,8 @@ serve(async (req) => {
   }
 })
 
-// Refresca el access_token si expira en menos de 10 minutos
 async function getValidToken(supabase: ReturnType<typeof createClient>, cred: any): Promise<string> {
-  const expiresAt = new Date(cred.expires_at).getTime()
-  if (expiresAt - Date.now() > 10 * 60 * 1000) return cred.access_token
-
+  if (new Date(cred.expires_at).getTime() - Date.now() > 10 * 60 * 1000) return cred.access_token
   const res = await fetch('https://api.mercadolibre.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -179,11 +170,10 @@ async function getValidToken(supabase: ReturnType<typeof createClient>, cred: an
   })
   if (!res.ok) return cred.access_token
   const tokens = await res.json() as { access_token: string; refresh_token: string; expires_in: number }
-  const newExpires = new Date(Date.now() + tokens.expires_in * 1000).toISOString()
   await supabase.from('meli_credentials').update({
-    access_token: tokens.access_token,
+    access_token:  tokens.access_token,
     refresh_token: tokens.refresh_token,
-    expires_at: newExpires,
-  }).eq('seller_id', cred.seller_id ?? 0)
+    expires_at:    new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+  }).eq('seller_id', cred.seller_id)
   return tokens.access_token
 }

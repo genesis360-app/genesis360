@@ -382,10 +382,11 @@ export default function ConfigPage() {
   useState(() => {
     if (searchParams.get('tn') === 'ok') toast.success('TiendaNube conectada correctamente')
     if (searchParams.get('mp') === 'ok') toast.success('MercadoPago conectado correctamente')
+    if (searchParams.get('meli') === 'ok') toast.success('MercadoLibre conectado correctamente')
     const err = searchParams.get('error')
     if (err) toast.error(decodeURIComponent(err))
     // Limpiar params de la URL sin recargar
-    if (searchParams.has('tn') || searchParams.has('mp') || searchParams.has('error')) {
+    if (searchParams.has('tn') || searchParams.has('mp') || searchParams.has('meli') || searchParams.has('error')) {
       window.history.replaceState({}, '', window.location.pathname)
     }
   })
@@ -1047,6 +1048,73 @@ export default function ConfigPage() {
     const redirectUri = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mp-oauth-callback`
     const state = btoa(`${tenant.id}:${sucursalId}`)
     return `https://auth.mercadopago.com.ar/authorization?client_id=${clientId}&response_type=code&platform_id=mp&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
+  }
+
+  // ─── MELI ────────────────────────────────────────────────────────────────────
+  const { data: meliCredentials = [] } = useQuery({
+    queryKey: ['meli_credentials', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('meli_credentials')
+        .select('id, sucursal_id, seller_id, seller_nickname, seller_email, expires_at, conectado')
+        .eq('tenant_id', tenant!.id)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'integraciones',
+  })
+
+  const { data: meliMap = [] } = useQuery({
+    queryKey: ['meli_map', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('inventario_meli_map')
+        .select('id, producto_id, meli_item_id, meli_variation_id, sync_stock, sync_precio, ultimo_sync_at, productos(nombre, sku)')
+        .eq('tenant_id', tenant!.id)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'integraciones',
+  })
+
+  const [meliMapExpanded, setMeliMapExpanded] = useState(false)
+  const [meliMapForm, setMeliMapForm] = useState<{ productoId: string; meliItemId: string; meliVariationId: string; syncStock: boolean; syncPrecio: boolean } | null>(null)
+
+  const upsertMeliMap = useMutation({
+    mutationFn: async () => {
+      if (!meliMapForm || !tenant) return
+      const { error } = await supabase.from('inventario_meli_map').upsert({
+        tenant_id: tenant.id,
+        producto_id: meliMapForm.productoId,
+        meli_item_id: meliMapForm.meliItemId.trim().toUpperCase(),
+        meli_variation_id: meliMapForm.meliVariationId ? parseInt(meliMapForm.meliVariationId) : null,
+        sync_stock: meliMapForm.syncStock,
+        sync_precio: meliMapForm.syncPrecio,
+      }, { onConflict: 'tenant_id,producto_id,meli_item_id' })
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Mapeo guardado'); qc.invalidateQueries({ queryKey: ['meli_map'] }); setMeliMapForm(null) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const deleteMeliMap = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('inventario_meli_map').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Mapeo eliminado'); qc.invalidateQueries({ queryKey: ['meli_map'] }) },
+  })
+
+  const desconectarMELI = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('meli_credentials').update({ conectado: false }).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('MercadoLibre desconectado'); qc.invalidateQueries({ queryKey: ['meli_credentials'] }) },
+  })
+
+  const getMeliOAuthUrl = (sucursalId: string) => {
+    const clientId = import.meta.env.VITE_MELI_CLIENT_ID
+    if (!clientId || !tenant) return null
+    const redirectUri = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meli-oauth-callback`
+    const state = btoa(`${tenant.id}:${sucursalId}`)
+    return `https://auth.mercadolibre.com.ar/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
   }
 
   const tabs = [
@@ -2238,6 +2306,146 @@ export default function ConfigPage() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </div>
+          {/* ── MercadoLibre ── */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FFE600' }}>
+                <span className="text-lg font-black" style={{ color: '#333' }}>ML</span>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">MercadoLibre</h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Órdenes → ventas · Sync stock y precio</p>
+              </div>
+              {!import.meta.env.VITE_MELI_CLIENT_ID && (
+                <div className="ml-auto flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 px-2 py-1 rounded-lg">
+                  <AlertCircle size={12} /> Falta VITE_MELI_CLIENT_ID
+                </div>
+              )}
+            </div>
+
+            {(sucursales.length === 0 ? [{ id: 'default', nombre: 'Principal' }] : sucursales).map((suc: any) => {
+              const cred = (meliCredentials as any[]).find(c => (c.sucursal_id ?? 'default') === suc.id)
+              const oauthUrl = getMeliOAuthUrl(suc.id)
+              const vencido = cred && new Date(cred.expires_at) < new Date()
+              return (
+                <div key={suc.id} className="flex items-center justify-between gap-3 py-2 border-b border-gray-50 dark:border-gray-700 last:border-0">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{suc.nombre}</p>
+                    {cred?.conectado && !vencido ? (
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {cred.seller_nickname ?? `Seller ${cred.seller_id}`}
+                        {cred.seller_email && ` · ${cred.seller_email}`}
+                      </p>
+                    ) : cred && vencido ? (
+                      <p className="text-xs text-red-500">Token vencido — reconectá</p>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {cred?.conectado && !vencido ? (
+                      <>
+                        <span className="flex items-center gap-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">
+                          <CheckCircle2 size={11} /> Conectada
+                        </span>
+                        <button onClick={() => { if (confirm(`¿Desconectar MercadoLibre de ${suc.nombre}?`)) desconectarMELI.mutate(cred.id) }}
+                          title="Desconectar"
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                          <Unplug size={14} />
+                        </button>
+                      </>
+                    ) : oauthUrl ? (
+                      <a href={oauthUrl}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium text-white transition-colors"
+                        style={{ backgroundColor: '#FFE600', color: '#333' }}>
+                        <Plug size={12} /> Conectar
+                      </a>
+                    ) : (
+                      <span className="text-xs text-gray-400 dark:text-gray-500 italic">Falta VITE_MELI_CLIENT_ID</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Mapeo de productos */}
+            {(meliCredentials as any[]).some(c => c.conectado) && (
+              <div className="mt-4 border-t border-gray-100 dark:border-gray-700 pt-4">
+                <button onClick={() => setMeliMapExpanded(v => !v)}
+                  className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 w-full">
+                  <Layers size={14} className="text-accent" />
+                  Productos mapeados ({(meliMap as any[]).length})
+                  {meliMapExpanded ? <ChevronUp size={14} className="ml-auto" /> : <ChevronDown size={14} className="ml-auto" />}
+                </button>
+                {meliMapExpanded && (
+                  <div className="mt-3 space-y-2">
+                    {/* Formulario nuevo mapeo */}
+                    {meliMapForm ? (
+                      <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-2">
+                        <select value={meliMapForm.productoId}
+                          onChange={e => setMeliMapForm(p => p ? { ...p, productoId: e.target.value } : p)}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent">
+                          <option value="">— Producto G360 —</option>
+                          {(productosMap as any[]).map((p: any) => (
+                            <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
+                          ))}
+                        </select>
+                        <input type="text" value={meliMapForm.meliItemId}
+                          onChange={e => setMeliMapForm(p => p ? { ...p, meliItemId: e.target.value } : p)}
+                          placeholder="ML Item ID (ej: MLA1234567890)"
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                        <input type="text" value={meliMapForm.meliVariationId}
+                          onChange={e => setMeliMapForm(p => p ? { ...p, meliVariationId: e.target.value } : p)}
+                          placeholder="Variation ID (opcional)"
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+                            <input type="checkbox" checked={meliMapForm.syncStock}
+                              onChange={e => setMeliMapForm(p => p ? { ...p, syncStock: e.target.checked } : p)} />
+                            Sync stock
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+                            <input type="checkbox" checked={meliMapForm.syncPrecio}
+                              onChange={e => setMeliMapForm(p => p ? { ...p, syncPrecio: e.target.checked } : p)} />
+                            Sync precio
+                          </label>
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <button onClick={() => setMeliMapForm(null)}
+                            className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg">Cancelar</button>
+                          <button onClick={() => upsertMeliMap.mutate()} disabled={!meliMapForm.productoId || !meliMapForm.meliItemId || upsertMeliMap.isPending}
+                            className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg disabled:opacity-50">Guardar</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => setMeliMapForm({ productoId: '', meliItemId: '', meliVariationId: '', syncStock: true, syncPrecio: true })}
+                        className="flex items-center gap-1.5 text-xs text-accent hover:underline">
+                        <Plus size={12} /> Agregar mapeo
+                      </button>
+                    )}
+
+                    {(meliMap as any[]).map((m: any) => (
+                      <div key={m.id} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg text-xs">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-700 dark:text-gray-300 truncate">{m.productos?.nombre ?? '—'} <span className="text-gray-400">({m.productos?.sku})</span></p>
+                          <p className="text-gray-400 dark:text-gray-500">{m.meli_item_id}{m.meli_variation_id ? ` · var ${m.meli_variation_id}` : ''}</p>
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          {m.sync_stock && <span className="text-green-600 dark:text-green-400" title="Sync stock">📦</span>}
+                          {m.sync_precio && <span className="text-blue-500" title="Sync precio">💲</span>}
+                        </div>
+                        <button onClick={() => { if (confirm('¿Eliminar mapeo?')) deleteMeliMap.mutate(m.id) }}
+                          className="p-1 text-gray-400 hover:text-red-500 rounded">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                    {(meliMap as any[]).length === 0 && !meliMapForm && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">Sin productos mapeados</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -67,7 +67,13 @@ serve(async (req) => {
 
   const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000)).toISOString()
 
-  // Upsert credenciales
+  // Eliminar registros anteriores del mismo seller para evitar duplicados
+  await supabase.from('meli_credentials')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('seller_id', tokens.user_id)
+
+  // Insertar credenciales limpias
   const { error: upsertErr } = await supabase.from('meli_credentials').upsert({
     tenant_id:       tenantId,
     sucursal_id:     sucursalId,

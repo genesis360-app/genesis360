@@ -468,6 +468,36 @@ export default function ProductosPage() {
     enabled: !!tenant,
   })
 
+  // Stock disponible para venta (solo líneas en estados con es_disponible_venta = true)
+  const { data: stockDisponibleMap = {} } = useQuery({
+    queryKey: ['stock-disponible-map', tenant?.id],
+    queryFn: async () => {
+      const { data: evData } = await supabase
+        .from('estados_inventario').select('id')
+        .eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
+      const evIds = (evData ?? []).map((e: any) => e.id)
+      if (evIds.length === 0) return {}
+      const { data: lineas } = await supabase
+        .from('inventario_lineas')
+        .select('producto_id, cantidad, cantidad_reservada, inventario_series(id, activo)')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+        .in('estado_id', evIds)
+      const map: Record<string, number> = {}
+      for (const l of lineas ?? []) {
+        const pid = (l as any).producto_id
+        if (!map[pid]) map[pid] = 0
+        const tieneSeries = ((l as any).inventario_series ?? []).length > 0
+        if (tieneSeries) {
+          map[pid] += ((l as any).inventario_series ?? []).filter((s: any) => s.activo).length
+        } else {
+          map[pid] += Math.max(0, (l as any).cantidad - ((l as any).cantidad_reservada ?? 0))
+        }
+      }
+      return map
+    },
+    enabled: !!tenant,
+  })
+
   const { data: estructuraDefault } = useQuery({
     queryKey: ['estructura-default', tenant?.id, expandedId],
     queryFn: async () => {
@@ -903,19 +933,32 @@ export default function ProductosPage() {
                           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
                             ${((p as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                           </p>
-                          {cotizacion > 0 && (p as any).precio_venta > 0 && (
+                          {(p as any).precio_costo > 0 && (
                             <p className="text-xs text-gray-400 dark:text-gray-500">
-                              USD {((p as any).precio_venta / cotizacion).toFixed(2)}
+                              costo ${((p as any).precio_costo ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                             </p>
                           )}
                         </div>
 
-                        <div className="text-right flex-shrink-0">
-                          <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-lg text-xs
-                            ${critico ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
-                            {critico && <AlertTriangle size={11} />}
-                            {stock} {(p as any).unidad_medida}
-                          </span>
+                        <div className="text-right flex-shrink-0 space-y-0.5">
+                          {/* Stock disponible para venta */}
+                          {(() => {
+                            const disponible = stockDisponibleMap[p.id] ?? 0
+                            const critDisp = disponible <= (p as any).stock_minimo
+                            return (
+                              <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-lg text-xs
+                                ${critDisp ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
+                                {critDisp && <AlertTriangle size={11} />}
+                                {disponible} {(p as any).unidad_medida}
+                              </span>
+                            )
+                          })()}
+                          {/* Stock total */}
+                          {stock !== (stockDisponibleMap[p.id] ?? 0) && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-lg">
+                              {stock} total
+                            </p>
+                          )}
                         </div>
 
                         <button

@@ -15,7 +15,7 @@ import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
-type Tab = 'nueva' | 'historial'
+type Tab = 'nueva' | 'historial' | 'canales'
 type DescTipo = 'pct' | 'monto'
 
 const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }> = {
@@ -123,6 +123,7 @@ export default function VentasPage() {
   const [generandoMpLink, setGenerandoMpLink] = useState(false)
   const [preVentaId, setPreVentaId] = useState<string | null>(null)
   const [mpPagoRecibido, setMpPagoRecibido] = useState(false)
+  const [canalFiltro, setCanalFiltro] = useState<string | null>(null)
 
   const generarLinkMP = async (ventaId: string, monto: number) => {
     if (!monto || monto <= 0) { toast.error('Ingresá un monto para generar el link'); return }
@@ -1208,6 +1209,49 @@ export default function VentasPage() {
     setDevolucionVenta(venta)
   }
 
+  // ── Canales de ventas ──────────────────────────────────────────────────────
+  const { data: canalStats = [] } = useQuery({
+    queryKey: ['canal-stats', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const desde = new Date()
+      desde.setDate(desde.getDate() - 30)
+      let q = supabase.from('ventas')
+        .select('origen, total, estado')
+        .eq('tenant_id', tenant!.id)
+        .neq('estado', 'cancelada')
+        .gte('created_at', desde.toISOString())
+      q = applyFilter(q)
+      const { data } = await q
+      const map: Record<string, { count: number; total: number }> = {}
+      for (const v of data ?? []) {
+        const o = (v.origen as string) ?? 'POS'
+        if (!map[o]) map[o] = { count: 0, total: 0 }
+        map[o].count++
+        map[o].total += Number(v.total ?? 0)
+      }
+      return Object.entries(map)
+        .map(([origen, s]) => ({ origen, ...s }))
+        .sort((a, b) => b.total - a.total)
+    },
+    enabled: !!tenant && tab === 'canales',
+  })
+
+  const { data: canalVentas = [], isLoading: loadingCanal } = useQuery({
+    queryKey: ['canal-ventas', tenant?.id, sucursalId, canalFiltro],
+    queryFn: async () => {
+      let q = supabase.from('ventas')
+        .select('id, numero, estado, total, monto_pagado, origen, created_at, despachado_at, cliente_nombre, medio_pago, tracking_id, notas')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      q = applyFilter(q)
+      if (canalFiltro) q = q.eq('origen', canalFiltro)
+      const { data } = await q
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'canales',
+  })
+
   // Enter global → Venta directa (solo cuando no hay input/select/button focuseado)
   const registrarVentaRef = useRef<(estado: 'pendiente' | 'reservada' | 'despachada') => Promise<void>>()
   registrarVentaRef.current = registrarVenta
@@ -1699,7 +1743,7 @@ export default function VentasPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-700 -mb-2">
-        {[{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }].map(({ id, label, icon: Icon }) => (
+        {[{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }, { id: 'canales', label: 'Canales', icon: Layers }].map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id as Tab)}
             className={`flex items-center gap-2 py-2.5 px-4 text-sm font-medium transition-all border-b-2 -mb-px
               ${tab === id
@@ -3191,6 +3235,111 @@ export default function VentasPage() {
           </div>
         )
       })()}
+      {/* ── CANALES DE VENTAS ── */}
+      {tab === 'canales' && (
+        <div className="space-y-5">
+          {/* KPIs por canal */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {/* Card "Todos" */}
+            <button onClick={() => setCanalFiltro(null)}
+              className={`rounded-xl p-4 text-left border-2 transition-all ${canalFiltro === null ? 'border-accent bg-accent/5' : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-accent/40'}`}>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Todos los canales</p>
+              <p className="text-xl font-bold text-primary">
+                ${canalStats.reduce((a, c) => a + c.total, 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">{canalStats.reduce((a, c) => a + c.count, 0)} ventas · 30 días</p>
+            </button>
+
+            {canalStats.map(ch => {
+              const cfg: Record<string, { label: string; color: string; bg: string }> = {
+                POS:         { label: 'POS',         color: 'text-violet-700 dark:text-violet-400', bg: 'bg-violet-100 dark:bg-violet-900/30' },
+                MELI:        { label: 'MercadoLibre', color: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-100 dark:bg-yellow-900/30' },
+                TiendaNube:  { label: 'TiendaNube',  color: 'text-green-700 dark:text-green-400',   bg: 'bg-green-100 dark:bg-green-900/30'   },
+                MP:          { label: 'Mercado Pago', color: 'text-blue-700 dark:text-blue-400',    bg: 'bg-blue-100 dark:bg-blue-900/30'     },
+              }
+              const { label, color, bg } = cfg[ch.origen] ?? { label: ch.origen, color: 'text-gray-700', bg: 'bg-gray-100' }
+              const selected = canalFiltro === ch.origen
+              return (
+                <button key={ch.origen} onClick={() => setCanalFiltro(selected ? null : ch.origen)}
+                  className={`rounded-xl p-4 text-left border-2 transition-all ${selected ? 'border-accent bg-accent/5' : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-accent/40'}`}>
+                  <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full mb-2 ${color} ${bg}`}>{label}</span>
+                  <p className="text-xl font-bold text-primary">${ch.total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{ch.count} venta{ch.count !== 1 ? 's' : ''} · 30 días</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Prom. ${Math.round(ch.total / ch.count).toLocaleString('es-AR')}</p>
+                </button>
+              )
+            })}
+
+            {canalStats.length === 0 && !loadingCanal && (
+              <div className="col-span-full text-center py-6 text-gray-400 dark:text-gray-500 text-sm">
+                Sin ventas en los últimos 30 días
+              </div>
+            )}
+          </div>
+
+          {/* Listado de ventas por canal */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <p className="text-sm font-medium text-primary">
+                {canalFiltro ? `Ventas de ${canalFiltro}` : 'Todas las ventas por canal'}
+              </p>
+              {canalFiltro && (
+                <button onClick={() => setCanalFiltro(null)} className="text-xs text-accent hover:underline flex items-center gap-1">
+                  <X size={12} /> Quitar filtro
+                </button>
+              )}
+            </div>
+
+            {loadingCanal ? (
+              <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
+            ) : (canalVentas as any[]).length === 0 ? (
+              <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-10">Sin ventas para mostrar</p>
+            ) : (
+              <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                {(canalVentas as any[]).map((v: any) => {
+                  const cfg: Record<string, { label: string; color: string; bg: string }> = {
+                    POS:        { label: 'POS',         color: 'text-violet-700 dark:text-violet-400', bg: 'bg-violet-100 dark:bg-violet-900/30' },
+                    MELI:       { label: 'ML',           color: 'text-yellow-700 dark:text-yellow-400', bg: 'bg-yellow-100 dark:bg-yellow-900/30' },
+                    TiendaNube: { label: 'TN',           color: 'text-green-700 dark:text-green-400',   bg: 'bg-green-100 dark:bg-green-900/30'   },
+                    MP:         { label: 'MP',           color: 'text-blue-700 dark:text-blue-400',     bg: 'bg-blue-100 dark:bg-blue-900/30'     },
+                  }
+                  const canal = cfg[v.origen ?? 'POS'] ?? { label: v.origen ?? 'POS', color: 'text-gray-700', bg: 'bg-gray-100' }
+                  const estadoStyle = ESTADOS[v.estado as EstadoVenta] ?? ESTADOS.pendiente
+                  return (
+                    <div key={v.id}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer transition-colors"
+                      onClick={() => setVentaDetalle(v)}>
+                      {/* Canal badge */}
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${canal.color} ${canal.bg}`}>
+                        {canal.label}
+                      </span>
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-primary">#{v.numero ?? '—'}</span>
+                          {v.tracking_id && <span className="text-xs text-gray-400 dark:text-gray-500">· ref {v.tracking_id}</span>}
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                          {v.cliente_nombre ?? 'Sin cliente'} · {new Date(v.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                        </p>
+                      </div>
+                      {/* Estado */}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${estadoStyle.color} ${estadoStyle.bg}`}>
+                        {estadoStyle.label}
+                      </span>
+                      {/* Total */}
+                      <span className="text-sm font-semibold text-primary flex-shrink-0">
+                        ${Number(v.total ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Modal QR / link MP */}
       {mpLinkModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50">

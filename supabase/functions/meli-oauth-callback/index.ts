@@ -4,14 +4,17 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 // OAuth callback de MercadoLibre.
 // state = btoa(tenantId:sucursalId)
 
-const MELI_API    = 'https://api.mercadolibre.com'
-const REDIRECT_URI = 'https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/meli-oauth-callback'
+const MELI_API = 'https://api.mercadolibre.com'
 
 serve(async (req) => {
-  const url    = new URL(req.url)
-  const code   = url.searchParams.get('code')
-  const state  = url.searchParams.get('state')
-  const appUrl = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'
+  const url        = new URL(req.url)
+  const code       = url.searchParams.get('code')
+  const state      = url.searchParams.get('state')
+  const appUrl     = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'
+  // Construir redirect URI desde SUPABASE_URL (más confiable que req.url detrás de proxy)
+  const supabaseUrl  = Deno.env.get('SUPABASE_URL') ?? ''
+  const REDIRECT_URI = `${supabaseUrl}/functions/v1/meli-oauth-callback`
+  console.log('REDIRECT_URI usado:', REDIRECT_URI)
 
   if (!code || !state) {
     return Response.redirect(`${appUrl}/configuracion?tab=integraciones&error=meli_missing_params`)
@@ -47,7 +50,7 @@ serve(async (req) => {
 
   if (!tokenRes.ok) {
     const err = await tokenRes.text()
-    console.error('MELI token error:', err)
+    console.error('MELI token error:', tokenRes.status, err, '| redirect_uri usado:', REDIRECT_URI)
     return Response.redirect(`${appUrl}/configuracion?tab=integraciones&error=meli_token_failed`)
   }
 

@@ -82,6 +82,37 @@ serve(async (req) => {
     return Response.redirect(`${appUrl}/configuracion?tab=integraciones&error=meli_db_error`)
   }
 
+  // Registrar webhook de órdenes para este seller
+  const webhookUrl = 'https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/meli-webhook'
+  const clientId   = Deno.env.get('MELI_CLIENT_ID') ?? ''
+
+  // Intento 1: suscripción via aplicación del seller
+  const subRes = await fetch(`${MELI_API}/applications/${clientId}/subscriptions`, {
+    method: 'POST',
+    headers: {
+      Authorization:  `Bearer ${tokens.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ topic: 'orders_v2', callback_url: webhookUrl }),
+  })
+  if (subRes.ok) {
+    console.log('Webhook orders_v2 registrado OK')
+  } else {
+    // Intento 2: PUT en el recurso del usuario/aplicación (API alternativa)
+    const sub2Res = await fetch(
+      `${MELI_API}/users/${tokens.user_id}/applications/${clientId}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization:  `Bearer ${tokens.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ callback_url: webhookUrl, topics: ['orders_v2'] }),
+      },
+    )
+    console.log('Webhook fallback status:', sub2Res.status)
+  }
+
   console.log(`MELI conectado: tenant ${tenantId}, seller ${tokens.user_id} (${me.nickname})`)
   return Response.redirect(`${appUrl}/configuracion?tab=integraciones&meli=ok`)
 })

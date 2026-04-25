@@ -129,11 +129,14 @@ serve(async (req) => {
       const mlItemId = item.item?.id
       const cantidad = item.quantity ?? 1
       const precio   = item.unit_price ?? 0
+      console.log(`Item ML: id=${mlItemId} qty=${cantidad} precio=${precio} tenant=${cred.tenant_id}`)
       const { data: mapped } = await supabase
         .from('inventario_meli_map').select('producto_id')
         .eq('tenant_id', cred.tenant_id).eq('meli_item_id', mlItemId).maybeSingle()
+      console.log(`Mapeo: ${mapped ? 'ENCONTRADO producto_id=' + mapped.producto_id : 'NO ENCONTRADO'}`)
       if (mapped) {
-        await supabase.from('venta_items').insert({
+        const { error: viErr } = await supabase.from('venta_items').insert({
+          tenant_id:       cred.tenant_id,
           venta_id:        venta.id,
           producto_id:     mapped.producto_id,
           cantidad,
@@ -142,6 +145,10 @@ serve(async (req) => {
           alicuota_iva:    21,
           iva_monto:       0,
         })
+        if (viErr) console.error('Error insertando venta_item:', viErr.message)
+        else console.log(`venta_item creado: producto ${mapped.producto_id} x${cantidad}`)
+      } else {
+        console.log(`Sin mapeo para item ${mlItemId} en tenant ${cred.tenant_id}`)
       }
     }
 

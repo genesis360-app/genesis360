@@ -119,7 +119,7 @@ serve(async (req) => {
       origen:         'MELI',
       tracking_id:    orderId,
       medio_pago:     JSON.stringify([{ tipo: 'MercadoPago', monto: total }]),
-      notas:          `Orden ML #${orderId}`,
+      notas:          `Orden ML #${orderId} | ${(order.order_items ?? []).map((i: any) => `${i.item?.title ?? i.item?.id} x${i.quantity}`).join(', ')}`,
       usuario_id:     null,
     }).select('id').single()
 

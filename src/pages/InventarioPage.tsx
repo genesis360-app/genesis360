@@ -329,7 +329,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('inventario_lineas')
-        .select('*, estados_inventario(nombre,color), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado), productos(nombre,sku,unidad_medida)')
+        .select('*, estados_inventario(nombre,color,es_disponible_venta), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado), productos(nombre,sku,unidad_medida)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('created_at', { ascending: true })
@@ -1386,6 +1386,17 @@ export default function InventarioPage() {
         acc + (l.inventario_series ?? []).filter((s: any) => s.activo).length, 0)
     }
     return lineas.reduce((acc: number, l: any) => acc + (l.cantidad || 0), 0)
+  }
+
+  const getStockDisponible = (producto: any) => {
+    const lineas = lineasMap[producto.id] ?? []
+    const lineasDisp = lineas.filter((l: any) => l.estados_inventario?.es_disponible_venta !== false)
+    if (producto.tiene_series) {
+      return lineasDisp.reduce((acc: number, l: any) =>
+        acc + (l.inventario_series ?? []).filter((s: any) => s.activo && !s.reservado).length, 0)
+    }
+    return lineasDisp.reduce((acc: number, l: any) =>
+      acc + Math.max(0, (l.cantidad || 0) - (l.cantidad_reservada || 0)), 0)
   }
 
   const filteredInv = productos.filter(p => {
@@ -2781,7 +2792,8 @@ export default function InventarioPage() {
                 {filteredInv.map(p => {
                   const lineas = lineasMap[p.id] ?? []
                   const stockTotal = getStockTotal(p)
-                  const critico = stockTotal <= (p as any).stock_minimo
+                  const stockDisp = getStockDisponible(p)
+                  const critico = stockDisp <= (p as any).stock_minimo
                   const expanded = expandedId === p.id
                   const tieneSerieProd = (p as any).tiene_series
 
@@ -2816,8 +2828,13 @@ export default function InventarioPage() {
                           <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-lg text-xs
                             ${critico ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
                             {critico && <AlertTriangle size={11} />}
-                            {stockTotal} {(p as any).unidad_medida}
+                            {stockDisp} {(p as any).unidad_medida}
                           </span>
+                          {stockTotal !== stockDisp && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded mt-0.5">
+                              {stockTotal} total
+                            </p>
+                          )}
                           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{lineas.length} línea{lineas.length !== 1 ? 's' : ''}</p>
                         </div>
                       </div>

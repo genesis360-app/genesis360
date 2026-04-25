@@ -92,7 +92,7 @@ export default function VentasPage() {
   const [notas, setNotas] = useState('')
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
-  const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[] } | null>(null)
+  const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
   const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('despachada')
   const [editandoPago, setEditandoPago] = useState(false)
   const [editMontoPagado, setEditMontoPagado] = useState('')
@@ -124,6 +124,10 @@ export default function VentasPage() {
   const [preVentaId, setPreVentaId] = useState<string | null>(null)
   const [mpPagoRecibido, setMpPagoRecibido] = useState(false)
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null)
+  const [canalEstado, setCanalEstado] = useState<string>('')
+  const [canalSearch, setCanalSearch] = useState<string>('')
+  const [canalDesde, setCanalDesde] = useState<string>('')
+  const [canalHasta, setCanalHasta] = useState<string>('')
 
   const generarLinkMP = async (ventaId: string, monto: number) => {
     if (!monto || monto <= 0) { toast.error('Ingresá un monto para generar el link'); return }
@@ -1236,21 +1240,39 @@ export default function VentasPage() {
     enabled: !!tenant && tab === 'canales',
   })
 
-  const { data: canalVentas = [], isLoading: loadingCanal } = useQuery({
-    queryKey: ['canal-ventas', tenant?.id, sucursalId, canalFiltro],
+  const { data: canalVentasRaw = [], isLoading: loadingCanal } = useQuery({
+    queryKey: ['canal-ventas', tenant?.id, sucursalId, canalFiltro, canalEstado, canalDesde, canalHasta],
     queryFn: async () => {
       let q = supabase.from('ventas')
-        .select('id, numero, estado, total, monto_pagado, origen, created_at, despachado_at, cliente_nombre, medio_pago, tracking_id, notas')
+        .select('id, numero, estado, total, monto_pagado, origen, created_at, despachado_at, cliente_nombre, medio_pago, tracking_id, notas, venta_items(cantidad, precio_unitario, productos(nombre, sku))')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
-        .limit(100)
+        .limit(200)
       q = applyFilter(q)
       if (canalFiltro) q = q.eq('origen', canalFiltro)
+      if (canalEstado) q = q.eq('estado', canalEstado)
+      if (canalDesde) q = q.gte('created_at', canalDesde)
+      if (canalHasta) q = q.lte('created_at', canalHasta + 'T23:59:59')
       const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'canales',
   })
+
+  // Filtro client-side para búsqueda por texto
+  const canalVentas = canalSearch.trim()
+    ? (canalVentasRaw as any[]).filter((v: any) => {
+        const s = canalSearch.toLowerCase()
+        const matchVenta = String(v.numero).includes(s)
+        const matchCliente = (v.cliente_nombre ?? '').toLowerCase().includes(s)
+        const matchTracking = (v.tracking_id ?? '').toLowerCase().includes(s)
+        const matchItem = (v.venta_items ?? []).some((i: any) =>
+          (i.productos?.nombre ?? '').toLowerCase().includes(s) ||
+          (i.productos?.sku ?? '').toLowerCase().includes(s)
+        )
+        return matchVenta || matchCliente || matchTracking || matchItem
+      })
+    : canalVentasRaw
 
   // Enter global → Venta directa (solo cuando no hay input/select/button focuseado)
   const registrarVentaRef = useRef<(estado: 'pendiente' | 'reservada' | 'despachada') => Promise<void>>()
@@ -2665,7 +2687,14 @@ export default function VentasPage() {
               {ventaDetalle.estado === 'pendiente' && (
                 <button onClick={() => {
                   if (!(ventaDetalle.monto_pagado > 0)) {
-                    toast.error('Para reservar stock debés registrar un pago. Editá el monto cobrado primero.')
+                    // Sin seña previa → abrir modal para registrar un pago parcial
+                    setSaldoModal({
+                      ventaId: ventaDetalle.id,
+                      total: ventaDetalle.total,
+                      montoPagado: 0,
+                      mediosPago: [{ tipo: '', monto: '' }],
+                      targetEstado: 'reservada',
+                    })
                     return
                   }
                   cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })
@@ -3154,17 +3183,23 @@ export default function VentasPage() {
         />
       )}
 
-      {/* Modal saldo restante al despachar reserva */}
+      {/* Modal saldo restante al despachar reserva / registrar seña para reservar */}
       {saldoModal && (() => {
+        const esReservar = saldoModal.targetEstado === 'reservada'
         const saldo = calcularSaldoPendiente(saldoModal.total, saldoModal.montoPagado)
-        const errorSaldo = validarSaldoMediosPago(saldoModal.mediosPago, saldo)
+        // Para reservar: solo exige monto > 0, no cubrir el total
         const asignado = saldoModal.mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+        const errorSaldo = esReservar
+          ? (asignado <= 0 ? 'Ingresá al menos un monto para la seña' : null)
+          : validarSaldoMediosPago(saldoModal.mediosPago, saldo)
         const faltante = saldo - asignado
         return (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-sm">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                <h2 className="font-semibold text-primary flex items-center gap-2"><Truck size={16} /> Cobrar saldo y finalizar</h2>
+                <h2 className="font-semibold text-primary flex items-center gap-2">
+                  <Truck size={16} /> {esReservar ? 'Registrar seña y reservar' : 'Cobrar saldo y finalizar'}
+                </h2>
                 <button onClick={() => setSaldoModal(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
               </div>
               <div className="px-5 py-4 space-y-3">
@@ -3173,16 +3208,20 @@ export default function VentasPage() {
                     <span>Total venta</span>
                     <span>${saldoModal.total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
-                  <div className="flex justify-between text-green-600 dark:text-green-400">
-                    <span>Ya cobrado</span>
-                    <span>−${saldoModal.montoPagado.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                  </div>
+                  {!esReservar && saldoModal.montoPagado > 0 && (
+                    <div className="flex justify-between text-green-600 dark:text-green-400">
+                      <span>Ya cobrado</span>
+                      <span>−${saldoModal.montoPagado.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-primary border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
-                    <span>Saldo a cobrar</span>
+                    <span>{esReservar ? 'Seña a cobrar (parcial ok)' : 'Saldo a cobrar'}</span>
                     <span>${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Medio de pago para el saldo:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {esReservar ? 'Medio de pago para la seña:' : 'Medio de pago para el saldo:'}
+                </p>
                 {saldoModal.mediosPago.map((mp, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
                     <select value={mp.tipo}
@@ -3224,11 +3263,12 @@ export default function VentasPage() {
                 <button
                   disabled={cambiarEstado.isPending || !!errorSaldo}
                   onClick={() => {
-                    cambiarEstado.mutate({ ventaId: saldoModal.ventaId, nuevoEstado: 'despachada', saldoMediosPago: saldoModal.mediosPago })
+                    const target = saldoModal.targetEstado ?? 'despachada'
+                    cambiarEstado.mutate({ ventaId: saldoModal.ventaId, nuevoEstado: target, saldoMediosPago: saldoModal.mediosPago })
                     setSaldoModal(null)
                   }}
                   className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl disabled:opacity-50 text-sm flex items-center justify-center gap-2">
-                  <Truck size={15} /> Finalizar venta
+                  <Truck size={15} /> {esReservar ? 'Reservar stock' : 'Finalizar venta'}
                 </button>
               </div>
             </div>
@@ -3277,15 +3317,51 @@ export default function VentasPage() {
             )}
           </div>
 
+          {/* Filtros */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 p-3 space-y-2">
+            <div className="flex gap-2 flex-wrap">
+              {/* Búsqueda */}
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input type="text" value={canalSearch} onChange={e => setCanalSearch(e.target.value)}
+                  placeholder="Venta #, cliente, SKU, producto..."
+                  className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              </div>
+              {/* Estado */}
+              <select value={canalEstado} onChange={e => setCanalEstado(e.target.value)}
+                className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                <option value="">Todos los estados</option>
+                {Object.entries(ESTADOS).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2 flex-wrap items-center">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Fecha:</span>
+              <input type="date" value={canalDesde} onChange={e => setCanalDesde(e.target.value)}
+                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              <span className="text-xs text-gray-400">→</span>
+              <input type="date" value={canalHasta} onChange={e => setCanalHasta(e.target.value)}
+                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              {(canalSearch || canalEstado || canalDesde || canalHasta || canalFiltro) && (
+                <button onClick={() => { setCanalSearch(''); setCanalEstado(''); setCanalDesde(''); setCanalHasta(''); setCanalFiltro(null) }}
+                  className="text-xs text-red-500 hover:underline flex items-center gap-1">
+                  <X size={11} /> Limpiar
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Listado de ventas por canal */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <p className="text-sm font-medium text-primary">
                 {canalFiltro ? `Ventas de ${canalFiltro}` : 'Todas las ventas por canal'}
+                <span className="ml-2 text-xs text-gray-400 font-normal">({(canalVentas as any[]).length})</span>
               </p>
               {canalFiltro && (
                 <button onClick={() => setCanalFiltro(null)} className="text-xs text-accent hover:underline flex items-center gap-1">
-                  <X size={12} /> Quitar filtro
+                  <X size={12} /> Quitar filtro canal
                 </button>
               )}
             </div>

@@ -78,6 +78,18 @@ export function calcularEfectivoCaja(mediosPago: MedioPagoItem[], total: number)
 
 export interface ComboRow { cantidad: number; descuento: number; descuento_tipo: 'pct' | 'monto' }
 
+/** Calcula el monto de descuento de un combo multi-SKU sobre el subtotal de sus productos */
+export function calcularDescuentoComboMulti(
+  combo: { descuento_tipo?: string; descuento_pct?: number; descuento_monto?: number },
+  subtotalCombo: number,
+  cotizacionUSD = 1
+): number {
+  const tipo = combo.descuento_tipo ?? 'pct'
+  if (tipo === 'pct') return subtotalCombo * (combo.descuento_pct ?? 0) / 100
+  if (tipo === 'monto_usd') return (combo.descuento_monto ?? 0) * cotizacionUSD
+  return combo.descuento_monto ?? 0
+}
+
 /** Dada la cantidad total de un producto y un combo, retorna las filas que deben aparecer en el carrito.
  *  Ej: 5 unidades con combo de 3×10%off → [{ cantidad:3, descuento:10, tipo:'pct' }, { cantidad:2, descuento:0, tipo:'pct' }] */
 export function calcularComboRows(

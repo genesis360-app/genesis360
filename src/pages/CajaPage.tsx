@@ -61,6 +61,11 @@ export default function CajaPage() {
   const [traspasoDestinoSesionId, setTraspasoDestinoSesionId] = useState<string>('')
   const [traspasoMonto, setTraspasoMonto] = useState('')
   const [traspasoConcepto, setTraspasoConcepto] = useState('')
+  // Caja fuerte
+  const [showDepositoFuerte, setShowDepositoFuerte] = useState(false)
+  const [showRetiroFuerte, setShowRetiroFuerte] = useState(false)
+  const [fuerteMonto, setFuerteMonto] = useState('')
+  const [fuerteConcepto, setFuerteConcepto] = useState('')
   const [sesionExpandida, setSesionExpandida] = useState<string | null>(null)
   const [showArqueo, setShowArqueo] = useState(false)
   const [arqueoConteo, setArqueoConteo] = useState('')
@@ -86,6 +91,38 @@ export default function CajaPage() {
     },
     enabled: !!tenant,
   })
+
+  const cajasOperativas = (cajas as any[]).filter(c => !c.es_caja_fuerte)
+  const cajaFuerte = (cajas as any[]).find(c => c.es_caja_fuerte) ?? null
+
+  const { data: fuerteSesion = null } = useQuery({
+    queryKey: ['caja-fuerte-sesion', cajaFuerte?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, caja_id').eq('caja_id', cajaFuerte!.id).eq('es_permanente', true)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      return data
+    },
+    enabled: !!cajaFuerte,
+  })
+
+  const { data: fuerteMovimientos = [] } = useQuery({
+    queryKey: ['caja-fuerte-movimientos', fuerteSesion?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_movimientos')
+        .select('*, users(nombre_display)').eq('sesion_id', (fuerteSesion as any)!.id)
+        .order('created_at', { ascending: false }).limit(20)
+      return data ?? []
+    },
+    enabled: !!(fuerteSesion as any)?.id,
+    refetchInterval: 15_000,
+  })
+
+  const fuerteSaldo = (fuerteMovimientos as any[]).reduce((acc: number, m: any) => {
+    if (m.tipo === 'ingreso_traspaso') return acc + m.monto
+    if (m.tipo === 'egreso_traspaso') return acc - m.monto
+    return acc
+  }, 0)
 
   // Sesiones abiertas en TODAS las cajas (para mostrar indicador en selector)
   const { data: cajasAbiertas = [] } = useQuery({
@@ -125,17 +162,17 @@ export default function CajaPage() {
     enabled: !!tenant && showTraspaso,
   })
 
-  // Auto-seleccionar caja: primero preferida del usuario, luego primera abierta
+  // Auto-seleccionar caja (solo operativas, nunca caja fuerte)
   const prefKey = tenant?.id && user?.id ? `caja_preferida_${tenant.id}_${user.id}` : null
   useEffect(() => {
-    if (cajaSeleccionada !== null || cajas.length === 0) return
+    if (cajaSeleccionada !== null || cajasOperativas.length === 0) return
     const preferida = prefKey ? localStorage.getItem(prefKey) : null
-    if (preferida && cajas.find((c: any) => c.id === preferida)) {
+    if (preferida && cajasOperativas.find((c: any) => c.id === preferida)) {
       setCajaSeleccionada(preferida)
     } else if (cajasAbiertas.length > 0) {
       setCajaSeleccionada(cajasAbiertas[0])
     }
-  }, [cajas, cajasAbiertas, cajaSeleccionada, prefKey])
+  }, [cajasOperativas, cajasAbiertas, cajaSeleccionada, prefKey])
 
   function guardarCajaDefault(id: string) {
     if (prefKey) {
@@ -144,7 +181,7 @@ export default function CajaPage() {
     }
   }
 
-  const cajaActual = cajas.find((c: any) => c.id === cajaSeleccionada) ?? cajas[0] ?? null
+  const cajaActual = cajasOperativas.find((c: any) => c.id === cajaSeleccionada) ?? cajasOperativas[0] ?? null
   const cajaId = cajaActual?.id ?? null
 
   const { data: sesionActiva } = useQuery({
@@ -426,6 +463,67 @@ export default function CajaPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Caja fuerte mutations ──────────────────────────────────────────────────
+  const operarCajaFuerte = useMutation({
+    mutationFn: async ({ tipo, monto, concepto }: { tipo: 'deposito' | 'retiro'; monto: number; concepto: string }) => {
+      if (!cajaFuerte) throw new Error('No hay caja fuerte configurada')
+      if (monto <= 0) throw new Error('Ingresá un monto válido')
+      if (tipo === 'deposito' && !sesionActiva) throw new Error('No hay sesión de caja activa')
+      if (tipo === 'deposito' && monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMoneda(saldoActual)}`)
+      if (tipo === 'retiro' && monto > fuerteSaldo) throw new Error(`Saldo insuficiente en caja fuerte. Disponible: ${formatMoneda(fuerteSaldo)}`)
+
+      // Obtener o crear sesión permanente de la fuerte
+      let fuerteSessionId = (fuerteSesion as any)?.id
+      if (!fuerteSessionId) {
+        const { data: ns, error: eS } = await supabase.from('caja_sesiones').insert({
+          tenant_id: tenant!.id, caja_id: cajaFuerte.id,
+          estado: 'abierta', es_permanente: true,
+          usuario_id: user!.id, monto_apertura: 0,
+        }).select('id').single()
+        if (eS) throw eS
+        fuerteSessionId = ns.id
+      }
+
+      if (tipo === 'deposito') {
+        const { error: e1 } = await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id, sesion_id: sesionActiva!.id,
+          tipo: 'egreso_traspaso', monto,
+          concepto: concepto || 'Depósito en caja fuerte', usuario_id: user!.id,
+        })
+        if (e1) throw e1
+        const { error: e2 } = await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id, sesion_id: fuerteSessionId,
+          tipo: 'ingreso_traspaso', monto,
+          concepto: concepto || `Depósito desde ${cajaActual?.nombre ?? 'caja'}`, usuario_id: user!.id,
+        })
+        if (e2) throw e2
+      } else {
+        if (!sesionActiva) throw new Error('Seleccioná una caja de destino (debe estar abierta)')
+        const { error: e1 } = await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id, sesion_id: fuerteSessionId,
+          tipo: 'egreso_traspaso', monto,
+          concepto: concepto || `Retiro a ${cajaActual?.nombre ?? 'caja'}`, usuario_id: user!.id,
+        })
+        if (e1) throw e1
+        const { error: e2 } = await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id, sesion_id: sesionActiva!.id,
+          tipo: 'ingreso_traspaso', monto,
+          concepto: concepto || 'Retiro de caja fuerte', usuario_id: user!.id,
+        })
+        if (e2) throw e2
+      }
+    },
+    onSuccess: (_data, vars) => {
+      toast.success(vars.tipo === 'deposito' ? 'Depositado en caja fuerte' : 'Retirado de caja fuerte')
+      qc.invalidateQueries({ queryKey: ['caja-fuerte-sesion'] })
+      qc.invalidateQueries({ queryKey: ['caja-fuerte-movimientos'] })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      setShowDepositoFuerte(false); setShowRetiroFuerte(false)
+      setFuerteMonto(''); setFuerteConcepto('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   const realizarArqueo = useMutation({
     mutationFn: async () => {
       if (!sesionActiva) throw new Error('No hay sesión activa')
@@ -560,14 +658,14 @@ export default function CajaPage() {
       {/* ── CAJA ACTUAL ── */}
       {tab === 'caja' && (
         <div className="space-y-4">
-          {/* Selector de caja + badges cajitas */}
-          {cajas.length > 1 && (
+          {/* Selector de caja + badges cajitas (solo cajas operativas) */}
+          {cajasOperativas.length > 1 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-gray-500 dark:text-gray-400">Caja:</span>
                 <select value={cajaId ?? ''} onChange={e => setCajaSeleccionada(e.target.value)}
                   className="border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                  {cajas.map((c: any) => {
+                  {cajasOperativas.map((c: any) => {
                     const abierta = cajasAbiertas.includes(c.id)
                     return <option key={c.id} value={c.id}>{c.nombre}{abierta ? ' ✓ Abierta' : ''}</option>
                   })}
@@ -578,9 +676,8 @@ export default function CajaPage() {
                   ★ Predeterminar
                 </button>
               </div>
-              {/* Badges visuales por caja */}
               <div className="flex gap-2 flex-wrap">
-                {cajas.map((c: any) => {
+                {cajasOperativas.map((c: any) => {
                   const abierta = cajasAbiertas.includes(c.id)
                   const activa = c.id === cajaId
                   return (
@@ -602,10 +699,10 @@ export default function CajaPage() {
             </div>
           )}
 
-          {cajas.length === 0 ? (
+          {cajasOperativas.length === 0 ? (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-10 text-center shadow-sm border border-gray-100">
               <DollarSign size={36} className="text-gray-300 mx-auto mb-3" />
-              <p className="font-medium text-gray-600 dark:text-gray-400">No hay cajas configuradas</p>
+              <p className="font-medium text-gray-600 dark:text-gray-400">No hay cajas operativas configuradas</p>
               <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Creá una caja en la pestaña Configuración</p>
               <button onClick={() => setTab('configuracion')}
                 className="mt-4 text-sm text-accent hover:underline">
@@ -893,6 +990,116 @@ export default function CajaPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── CAJA FUERTE ── */}
+      {tab === 'caja' && cajaFuerte && puedeAdministrarCaja && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center">
+                <Lock size={15} className="text-yellow-600 dark:text-yellow-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Caja Fuerte</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Fondos retirados del negocio</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-lg font-bold text-gray-900 dark:text-white">{formatMoneda(fuerteSaldo)}</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Saldo acumulado</p>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={() => setShowDepositoFuerte(true)} disabled={!sesionActiva}
+              title={!sesionActiva ? 'Abrí una caja primero' : ''}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm font-medium rounded-xl hover:bg-yellow-100 dark:hover:bg-yellow-900/40 disabled:opacity-50 transition-colors">
+              <Plus size={14} /> Depositar
+            </button>
+            <button onClick={() => setShowRetiroFuerte(true)} disabled={fuerteSaldo <= 0 || !sesionActiva}
+              title={!sesionActiva ? 'Abrí una caja primero' : fuerteSaldo <= 0 ? 'Sin saldo en caja fuerte' : ''}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors">
+              <Minus size={14} /> Retirar
+            </button>
+          </div>
+
+          {(fuerteMovimientos as any[]).length > 0 && (
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {(fuerteMovimientos as any[]).slice(0, 8).map((m: any) => (
+                <div key={m.id} className="flex items-center justify-between text-xs px-2 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <span className="text-gray-600 dark:text-gray-300 truncate">{m.concepto}</span>
+                  <span className={m.tipo === 'ingreso_traspaso' ? 'text-green-600 dark:text-green-400 font-medium ml-2 flex-shrink-0' : 'text-red-500 dark:text-red-400 font-medium ml-2 flex-shrink-0'}>
+                    {m.tipo === 'ingreso_traspaso' ? '+' : '−'}{formatMoneda(m.monto)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal depositar en caja fuerte */}
+      {showDepositoFuerte && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Depositar en Caja Fuerte</h3>
+              <button onClick={() => { setShowDepositoFuerte(false); setFuerteMonto(''); setFuerteConcepto('') }}
+                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
+              <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
+                value={fuerteMonto} onChange={e => setFuerteMonto(e.target.value)} placeholder="0"
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible en caja: {formatMoneda(saldoActual)}</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
+              <input type="text" value={fuerteConcepto} onChange={e => setFuerteConcepto(e.target.value)}
+                placeholder="Depósito en caja fuerte"
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+            </div>
+            <button onClick={() => operarCajaFuerte.mutate({ tipo: 'deposito', monto: parseFloat(fuerteMonto) || 0, concepto: fuerteConcepto })}
+              disabled={operarCajaFuerte.isPending || !fuerteMonto}
+              className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50">
+              {operarCajaFuerte.isPending ? 'Procesando...' : 'Confirmar depósito'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal retirar de caja fuerte */}
+      {showRetiroFuerte && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Retirar de Caja Fuerte</h3>
+              <button onClick={() => { setShowRetiroFuerte(false); setFuerteMonto(''); setFuerteConcepto('') }}
+                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
+              <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
+                value={fuerteMonto} onChange={e => setFuerteMonto(e.target.value)} placeholder="0"
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Saldo en caja fuerte: {formatMoneda(fuerteSaldo)}</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
+              <input type="text" value={fuerteConcepto} onChange={e => setFuerteConcepto(e.target.value)}
+                placeholder="Retiro de caja fuerte"
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">El monto se acreditará en la caja actualmente seleccionada: <strong>{cajaActual?.nombre}</strong></p>
+            <button onClick={() => operarCajaFuerte.mutate({ tipo: 'retiro', monto: parseFloat(fuerteMonto) || 0, concepto: fuerteConcepto })}
+              disabled={operarCajaFuerte.isPending || !fuerteMonto}
+              className="w-full bg-gray-700 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50">
+              {operarCajaFuerte.isPending ? 'Procesando...' : 'Confirmar retiro'}
+            </button>
+          </div>
         </div>
       )}
 

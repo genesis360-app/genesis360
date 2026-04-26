@@ -435,6 +435,53 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **TiendaNube Partners**: App ID `30376`. Redirect URI PROD: `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/tn-oauth-callback`. Permisos: Edit Products + Edit Orders + View Customers.
 - **MP Developers**: Client ID `7675256842462289`. Redirect URIs DEV + PROD configuradas. Permisos: read + offline_access + write.
 
+### v1.0.0–v1.1.0 ✅ PROD
+
+#### Stock reservation TN/ML al recibir orden (v1.0.0)
+- Al crear venta "Reservada" desde TN/ML webhook → incrementa `cantidad_reservada` en `inventario_lineas` (FIFO)
+- Sync worker usa `cantidad - cantidad_reservada` → stock correcto en marketplaces sin oversell
+- TN: maneja `order/cancelled` → libera `cantidad_reservada` y cancela venta en G360
+- Duplicados TN (race condition `order/paid` + `order/created` simultáneos) → fix: si `order/created` llega después y ya existe venta, la saltea
+
+#### pg_cron para sync exacto cada 5 min (v1.0.0)
+- `pg_cron` + `pg_net` instalados en DEV + PROD
+- Jobs: `meli-stock-sync` + `tn-stock-sync` corriendo cada 5 min desde la DB
+- GitHub Actions sigue activo como backup pero no es el mecanismo principal
+
+#### Importar maestros extendido (v1.1.0)
+- ImportarMasterPage: 8 tipos — categorias, proveedores, ubicaciones, estados, motivos, combos, aging (progresión de estado), **grupos de estados**
+- Importar productos: validación categoria/proveedor debe existir (no auto-crea). Columnas estructura completas (estr_nombre + dimensiones alto/ancho/largo por nivel)
+
+#### Configuración y UX (v1.1.0)
+- Migration 067: `tenants.presupuesto_validez_dias INT DEFAULT 30`
+- ConfigPage → Negocio: campo días de validez de presupuesto
+- Ticket diferencia presupuesto vs venta (badge "PRESUPUESTO", días de validez)
+- Historial detalle de venta: desglose IVA por tasa real (no hardcodeado 21%)
+- Historial paginación: selector 20/50/75/100, doble click custom, primera/última, total registros
+- Autorizaciones DEPOSITO aprobadas → aparecen en /historial via logActividad
+- Caja apertura: sugiere monto del cierre anterior de esa caja
+- Onboarding: nuevos negocios con regla=Manual y timeout=Nunca por default
+- Logo sidebar → abre `www.genesis360.pro` en nueva pestaña
+- Regla Manual usa FIFO como desempate cuando prioridades son iguales
+
+#### VentasPage mejoras (v1.1.0)
+- Scanner: mismo producto sin series → suma cantidad en lugar de nueva línea
+- Combo: quita descuento al bajar cantidad del umbral + sugerencia cuando falta 1
+- VentasPage: `refetchOnMount` en sesiones de caja para detectar caja abierta al navegar
+- Notificaciones MP: fix columna `payload_raw` + reset `seenMpLogs` al cambiar de tenant
+
+#### Canales TN+ML en ubicaciones y estados (migration 066, v0.98.0)
+- `ubicaciones.disponible_tn/disponible_meli BOOLEAN DEFAULT TRUE`
+- `estados_inventario.es_disponible_meli BOOLEAN DEFAULT TRUE`
+- ConfigPage → Ubicaciones: botones TN (verde) y ML (amarillo) por ubicación
+- ConfigPage → Estados: columna ML en tabla de permisos
+- meli-stock-worker filtra por ambos flags
+
+#### Sync manual + auto-complete mapeo TN/ML (v0.99.0)
+- Botón "↑ Sync stock" en sección TN y ML → encola jobs + llama worker inmediatamente
+- EF `tn-search-products`: busca en TN API por SKU para auto-complete del mapeo
+- EF `meli-search-items`: busca en ML API por SKU para auto-complete del mapeo
+
 ### v0.91.0–v0.99.0 ✅ PROD
 
 #### Estados de inventario — permisos por canal (migrations 063, 064, 066)

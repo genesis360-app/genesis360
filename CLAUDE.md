@@ -435,6 +435,46 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 - **TiendaNube Partners**: App ID `30376`. Redirect URI PROD: `https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/tn-oauth-callback`. Permisos: Edit Products + Edit Orders + View Customers.
 - **MP Developers**: Client ID `7675256842462289`. Redirect URIs DEV + PROD configuradas. Permisos: read + offline_access + write.
 
+### v0.91.0–v0.99.0 ✅ PROD
+
+#### Estados de inventario — permisos por canal (migrations 063, 064, 066)
+- **Migration 063**: `estados_inventario.es_disponible_tn BOOLEAN DEFAULT TRUE` — excluye estados del sync con TiendaNube.
+- **Migration 064**: `estados_inventario.es_disponible_venta BOOLEAN DEFAULT TRUE` — bloquea estados para ventas POS.
+- **Migration 066**: `estados_inventario.es_disponible_meli BOOLEAN DEFAULT TRUE` + `ubicaciones.disponible_tn/disponible_meli BOOLEAN DEFAULT TRUE`.
+- **ConfigPage → Estados**: sub-tabs (Estados / Grupos de estados / Progresión de estado). Tabla "Permisos por estado": 4 columnas: 🛒 vendible · TN · ML · ↺ devoluciones.
+- **ConfigPage → Ubicaciones**: botones TN (verde) y ML (amarillo) por ubicación.
+- **VentasPage**: filtra líneas por `es_disponible_venta` al calcular stock vendible y al agregar al carrito.
+- **tn-stock-worker**: filtra por `es_disponible_tn` en estados.
+- **meli-stock-worker**: filtra por `es_disponible_meli` en estados y `disponible_meli` en ubicaciones.
+
+#### MercadoLibre — integración completa (migration 065)
+- **Migration 065**: `meli_credentials` + `inventario_meli_map` + trigger `trg_meli_stock_sync`.
+- **EF `meli-oauth-callback`**: OAuth, upsert credenciales, registro webhook automático. Usa `SUPABASE_URL` env para redirect URI (no `req.url`).
+- **EF `meli-webhook`**: `orders_v2` → venta `reservada/pendiente`. Idempotencia por `meli-order-{id}`. `tenant_id` en `venta_items`. Crea cliente por nickname. Título ML en notas cuando no hay mapeo.
+- **EF `meli-stock-worker`**: jobs `sync_stock` y `sync_precio`. Filtra por `es_disponible_meli`. Refresh token automático.
+- **EF `meli-search-items`**: busca items en ML por SKU/nombre para auto-complete del mapeo.
+- **GitHub Actions** `.github/workflows/meli-stock-sync.yml`: cron `*/5 * * * *`.
+- **ConfigPage → Integraciones → ML**: botones "↑ Sync stock" y "📦 Sync productos (prox)". CRUD mapeo con auto-complete por SKU.
+- **App ML**: Client ID `2358829201151305`. MELI_CLIENT_ID + MELI_CLIENT_SECRET en Supabase secrets.
+- **Items OMNI**: usar endpoint `PUT /items/{id}/variations/{var_id}` — `available_quantity` a nivel item no es modificable en publicaciones sincronizadas.
+
+#### MercadoPago — QR y pagos (v0.92.x)
+- **EF `mp-crear-link-pago`**: crea preference con `external_reference = venta.id`. Venta opcional (pre-venta UUID para ventas directas).
+- **VentasPage**: botón QR en checkout + reservas. `preVentaId` UUID pregenerado. Polling 4s → pantalla "¡Pago recibido!" → botón Finalizar.
+- **AppLayout**: toast global cada 30s cuando llega pago MP (💳 monto · fecha · hora).
+- **mp-webhook**: routing por `seller_id` → actualiza `monto_pagado`. Guarda pago en `ventas_externas_logs` con `mp-preventa-{id}` si venta no existe aún.
+- **Presupuesto → Reserva**: abre modal de seña parcial en lugar de error cuando no hay pago previo.
+
+#### TiendaNube — mejoras (v0.91+)
+- **tn-search-products EF**: busca productos en TN por SKU/nombre para auto-complete del mapeo.
+- **ConfigPage → Integraciones → TN**: botón "↑ Sync stock" manual.
+- **tn-stock-worker**: filtra por `es_disponible_tn` en estados + `disponible_tn` en ubicaciones.
+
+#### VentasPage — mejoras (v0.94–v0.97)
+- **Tab Canales**: KPIs por canal (POS/MELI/TN/MP) + listado filtrable. Filtros: búsqueda libre, estado, rango de fechas.
+- **Stock disponible vs total**: ProductosPage muestra badge verde (disponible) + badge gris (total). Precio costo en lugar de USD.
+- **InventarioPage**: unidades solo en estados con `es_disponible_venta = true`.
+
 ### v0.90.0 ✅ PROD
 
 #### TiendaNube — Webhooks y Sync de Stock (migration 062)

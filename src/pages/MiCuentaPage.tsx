@@ -79,7 +79,7 @@ export default function MiCuentaPage() {
       const { data: urlData } = supabase.storage.from('avatares').getPublicUrl(path)
       const publicUrl = urlData.publicUrl + `?t=${Date.now()}` // cache-bust
 
-      const { error: dbErr } = await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user.id)
+      const { error: dbErr } = await supabase.rpc('update_user_avatar', { p_avatar_url: publicUrl })
       if (dbErr) throw dbErr
 
       setAvatarPreview(publicUrl)

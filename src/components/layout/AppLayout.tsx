@@ -318,13 +318,6 @@ export function AppLayout() {
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
 
-        {/* Banner DEV */}
-        {!['app.genesis360.pro', 'genesis360.pro', 'www.genesis360.pro'].includes(window.location.hostname) && (
-          <div className="bg-amber-400 text-amber-900 text-xs font-semibold text-center py-0.5 flex-shrink-0">
-            ⚠ Ambiente DEV — {window.location.hostname}
-          </div>
-        )}
-
         {/* Header universal */}
         <header className="flex items-center gap-2 px-4 py-2.5 bg-surface border-b border-border-ds flex-shrink-0">
 

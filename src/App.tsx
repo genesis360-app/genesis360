@@ -45,6 +45,9 @@ const RecepcionesPage     = lazy(() => import('@/pages/RecepcionesPage'))
 // www.genesis360.pro  → muestra la landing
 const isAppDomain = window.location.hostname === 'app.genesis360.pro'
 
+const PROD_HOSTNAMES = ['app.genesis360.pro', 'genesis360.pro', 'www.genesis360.pro']
+const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 1000 * 60 * 5, retry: 1 },
@@ -86,6 +89,11 @@ function App() {
   return (
     <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
+      {isDevEnv && (
+        <div className="fixed top-0 inset-x-0 z-[9999] bg-amber-400 text-amber-900 text-xs font-semibold text-center py-0.5 pointer-events-none select-none">
+          ⚠ Ambiente DEV — {window.location.hostname}
+        </div>
+      )}
       <BrowserRouter>
         <Suspense fallback={
           <div className="min-h-screen bg-brand-bg flex items-center justify-center">

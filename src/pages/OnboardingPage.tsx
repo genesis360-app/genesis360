@@ -116,14 +116,9 @@ export default function OnboardingPage() {
         body: { type: 'welcome', to: emailTo, data: { nombre: emailNombre, negocio: bizData.nombre } },
       }).catch(() => {/* silencioso — el email no es bloqueante */})
 
-      if (existingAuthUser) {
-        toast.success('¡Negocio creado! Bienvenido.')
-        await loadUserData(existingAuthUser.id)
-        navigate('/dashboard')
-      } else {
-        toast.success('¡Negocio registrado! Revisá tu email para confirmar tu cuenta.')
-        navigate('/login')
-      }
+      toast.success('¡Negocio creado! Bienvenido.')
+      await loadUserData(userId)
+      navigate('/dashboard')
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al registrar')
     } finally {

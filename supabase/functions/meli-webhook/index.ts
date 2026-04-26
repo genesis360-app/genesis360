@@ -152,6 +152,48 @@ serve(async (req) => {
       }
     }
 
+    // Reservar stock en inventario_lineas para ventas reservadas (FIFO)
+    // Permite que el sync worker envíe stock correcto (cantidad - cantidad_reservada)
+    if (nuevoEstado === 'reservada' || nuevoEstado === 'pendiente') {
+      for (const item of order.order_items ?? []) {
+        const mlItemId = item.item?.id
+        const cantidad = item.quantity ?? 1
+        const { data: mapped } = await supabase
+          .from('inventario_meli_map').select('producto_id')
+          .eq('tenant_id', cred.tenant_id).eq('meli_item_id', mlItemId).maybeSingle()
+        if (!mapped) continue
+
+        const { data: lineas } = await supabase
+          .from('inventario_lineas')
+          .select('id, cantidad, cantidad_reservada')
+          .eq('tenant_id', cred.tenant_id).eq('producto_id', mapped.producto_id).eq('activo', true)
+          .gt('cantidad', 0)
+          .order('created_at', { ascending: true })
+          .limit(5)
+
+        let remaining = cantidad
+        let primaryLineaId: string | null = null
+
+        for (const linea of lineas ?? []) {
+          const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
+          if (disponible <= 0) continue
+          const toReserve = Math.min(disponible, remaining)
+          await supabase.from('inventario_lineas')
+            .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + toReserve })
+            .eq('id', linea.id)
+          if (!primaryLineaId) primaryLineaId = linea.id
+          remaining -= toReserve
+          if (remaining <= 0) break
+        }
+
+        if (primaryLineaId) {
+          await supabase.from('venta_items')
+            .update({ linea_id: primaryLineaId })
+            .eq('venta_id', venta.id).eq('producto_id', mapped.producto_id)
+        }
+      }
+    }
+
     // Actualizar log con venta_id
     await supabase.from('ventas_externas_logs')
       .update({ venta_id: venta.id, payload_raw: { order_id: orderId, status: estadoML, venta_id: venta.id } })

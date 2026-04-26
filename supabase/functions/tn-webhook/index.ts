@@ -35,11 +35,45 @@ serve(async (req) => {
     return new Response('Missing fields', { status: 400 })
   }
 
-  // Solo procesamos pedidos pagados o creados
-  if (!['order/paid', 'order/created'].includes(event)) {
+  // Solo procesamos pedidos pagados, creados o cancelados
+  if (!['order/paid', 'order/created', 'order/cancelled'].includes(event)) {
     return new Response(JSON.stringify({ ok: true, skipped: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // ── Cancelación: liberar cantidad_reservada ───────────────────────────────
+  if (event === 'order/cancelled') {
+    const supabaseCxl = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    )
+    const trackingId = String(orderId)
+    const { data: cred } = await supabaseCxl.from('tiendanube_credentials')
+      .select('tenant_id').eq('store_id', store_id).maybeSingle()
+    if (cred) {
+      const { data: ventaCxl } = await supabaseCxl.from('ventas')
+        .select('id, venta_items(producto_id, cantidad, linea_id)')
+        .eq('tenant_id', cred.tenant_id).eq('tracking_id', trackingId).eq('origen', 'TiendaNube')
+        .in('estado', ['pendiente', 'reservada']).maybeSingle()
+      if (ventaCxl) {
+        await supabaseCxl.from('ventas').update({ estado: 'cancelada' }).eq('id', ventaCxl.id)
+        for (const item of (ventaCxl as any).venta_items ?? []) {
+          if (item.linea_id) {
+            const { data: linea } = await supabaseCxl.from('inventario_lineas')
+              .select('cantidad_reservada').eq('id', item.linea_id).maybeSingle()
+            if (linea) {
+              const nueva = Math.max(0, (linea.cantidad_reservada ?? 0) - item.cantidad)
+              await supabaseCxl.from('inventario_lineas').update({ cantidad_reservada: nueva }).eq('id', item.linea_id)
+            }
+          }
+        }
+        console.log(`Venta ${ventaCxl.id} cancelada, reservas liberadas`)
+      }
+    }
+    return new Response(JSON.stringify({ ok: true, cancelled: true }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
     })
   }
 
@@ -302,7 +336,48 @@ serve(async (req) => {
     }
   }
 
-  // 7. Log de idempotencia
+  // 7. Si la venta es reservada → reservar stock en inventario_lineas (FIFO)
+  //    Esto permite que el sync worker envíe stock correcto (cantidad - cantidad_reservada)
+  if (estadoFinal === 'reservada') {
+    for (const item of ventaItems) {
+      const productoId = (item as any).producto_id
+      const cantidad = Number((item as any).cantidad ?? 1)
+      if (!productoId || cantidad <= 0) continue
+
+      // Buscar líneas disponibles FIFO
+      const { data: lineas } = await supabase
+        .from('inventario_lineas')
+        .select('id, cantidad, cantidad_reservada')
+        .eq('tenant_id', tenant_id).eq('producto_id', productoId).eq('activo', true)
+        .gt('cantidad', 0)
+        .order('created_at', { ascending: true })
+        .limit(5)
+
+      let remaining = cantidad
+      let primaryLineaId: string | null = null
+
+      for (const linea of lineas ?? []) {
+        const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
+        if (disponible <= 0) continue
+        const toReserve = Math.min(disponible, remaining)
+        await supabase.from('inventario_lineas')
+          .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + toReserve })
+          .eq('id', linea.id)
+        if (!primaryLineaId) primaryLineaId = linea.id
+        remaining -= toReserve
+        if (remaining <= 0) break
+      }
+
+      // Guardar linea_id en el venta_item para trazabilidad al despachar
+      if (primaryLineaId) {
+        await supabase.from('venta_items')
+          .update({ linea_id: primaryLineaId })
+          .eq('venta_id', venta.id).eq('producto_id', productoId)
+      }
+    }
+  }
+
+  // 8. Log de idempotencia
   await supabase.from('ventas_externas_logs').insert({
     tenant_id,
     integracion:          'TiendaNube',

@@ -82,7 +82,7 @@ function describir(log: any): string {
 }
 
 const FILTROS_VACIOS: Filtros = { entidad: '', accion: '', usuario_id: '', desde: '', hasta: '', buscar: '' }
-const PAGE_SIZE = 50
+const PAGE_SIZES = [20, 50, 75, 100]
 
 export default function HistorialPage() {
   const { limits } = usePlanLimits()
@@ -90,6 +90,10 @@ export default function HistorialPage() {
 
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VACIOS)
   const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(50)
+  const [totalCount, setTotalCount] = useState(0)
+  const [editandoCantidad, setEditandoCantidad] = useState(false)
+  const [cantidadInput, setCantidadInput] = useState('')
   const [showFiltros, setShowFiltros] = useState(false)
   const [selectedLog, setSelectedLog] = useState<any>(null)
 
@@ -97,13 +101,13 @@ export default function HistorialPage() {
   const puedeVer = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
 
   const { data: logs = [], isLoading } = useQuery({
-    queryKey: ['actividad_log', tenant?.id, filtros, page],
+    queryKey: ['actividad_log', tenant?.id, filtros, page, pageSize],
     queryFn: async () => {
       let q = supabase.from('actividad_log')
         .select('*', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+        .range(page * pageSize, (page + 1) * pageSize - 1)
 
       if (filtros.entidad)    q = q.eq('entidad', filtros.entidad)
       if (filtros.accion)     q = q.eq('accion', filtros.accion)
@@ -112,11 +116,13 @@ export default function HistorialPage() {
       if (filtros.hasta)      q = q.lte('created_at', endOfDay(parseISO(filtros.hasta)).toISOString())
       if (filtros.buscar)     q = q.ilike('entidad_nombre', `%${filtros.buscar}%`)
 
-      const { data } = await q
+      const { data, count } = await q
+      setTotalCount(count ?? 0)
       return data ?? []
     },
     enabled: !!tenant && puedeVer,
   })
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
   const { data: usuarios = [] } = useQuery({
     queryKey: ['actividad_log_usuarios', tenant?.id],
@@ -313,18 +319,63 @@ export default function HistorialPage() {
         </div>
       )}
 
-      {/* Paginación */}
+      {/* Paginación mejorada */}
       {(logs as any[]).length > 0 && (
-        <div className="flex items-center justify-between pt-2">
-          <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-            className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40 transition-all">
-            ← Anterior
-          </button>
-          <span className="text-sm text-gray-500 dark:text-gray-400">Página {page + 1}</span>
-          <button onClick={() => setPage(p => p + 1)} disabled={(logs as any[]).length < PAGE_SIZE}
-            className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40 transition-all">
-            Siguiente →
-          </button>
+        <div className="flex items-center justify-between pt-2 gap-2 flex-wrap">
+          {/* Selector cantidad */}
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <span>Mostrar</span>
+            {editandoCantidad ? (
+              <input autoFocus type="number" min="1" max="500" value={cantidadInput}
+                onChange={e => setCantidadInput(e.target.value)}
+                onBlur={() => {
+                  const n = parseInt(cantidadInput)
+                  if (n > 0 && n <= 500) { setPageSize(n); setPage(0) }
+                  setEditandoCantidad(false)
+                }}
+                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                className="w-16 px-2 py-1 border border-accent rounded-lg text-center focus:outline-none" />
+            ) : (
+              <span
+                onDoubleClick={() => { setEditandoCantidad(true); setCantidadInput(String(pageSize)) }}
+                className="font-semibold text-gray-700 dark:text-gray-300 cursor-pointer hover:text-accent"
+                title="Doble click para ingresar número custom">
+                {pageSize}
+              </span>
+            )}
+            <div className="flex gap-0.5">
+              {PAGE_SIZES.map(s => (
+                <button key={s} onClick={() => { setPageSize(s); setPage(0) }}
+                  className={`px-2 py-0.5 rounded text-xs transition-colors ${pageSize === s ? 'bg-accent text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Navegación */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPage(0)} disabled={page === 0}
+              className="px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40">
+              «
+            </button>
+            <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+              className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40">
+              ←
+            </button>
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              {page + 1} / {totalPages}
+              {totalCount > 0 && <span className="text-xs ml-1">({totalCount} registros)</span>}
+            </span>
+            <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+              className="px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40">
+              →
+            </button>
+            <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}
+              className="px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 disabled:opacity-40">
+              »
+            </button>
+          </div>
         </div>
       )}
 

@@ -206,6 +206,7 @@ export default function VentasPage() {
     },
     enabled: !!tenant,
     refetchInterval: 15_000,
+    refetchOnMount: true,      // Refresca al entrar a la página (ej: después de abrir caja en otra tab)
     refetchOnWindowFocus: true,
   })
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
@@ -433,7 +434,7 @@ export default function VentasPage() {
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit],
     queryFn: async () => {
-      let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
+      let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, alicuota_iva, iva_monto, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(ventasLimit)
       if (filterEstado) q = q.eq('estado', filterEstado)
       q = applyFilter(q)
@@ -607,6 +608,22 @@ export default function VentasPage() {
         stockDisponibleScan += Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0))
       }
     }
+    // Si el producto ya está en el carrito y NO es serializado → sumar cantidad
+    if (!prod.tiene_series) {
+      const idx = cart.findIndex(c => c.producto_id === prod.id)
+      if (idx >= 0) {
+        const item = cart[idx]
+        const maxDisp = item.lineas_disponibles?.reduce((s, l) => s + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0) ?? stockDisponibleScan
+        const nuevaCant = item.cantidad + 1
+        if (nuevaCant <= maxDisp) {
+          updateItem(idx, 'cantidad', nuevaCant)
+          return
+        } else {
+          toast.error(`Stock máximo disponible: ${maxDisp}`)
+          return
+        }
+      }
+    }
     await agregarProducto({ ...prod, stock_disponible: stockDisponibleScan })
   }
 
@@ -751,7 +768,22 @@ export default function VentasPage() {
       const combo = (combosDisp as any[])
         .filter(c => c.producto_id === item.producto_id && totalQty >= c.cantidad)
         .sort((a: any, b: any) => b.cantidad - a.cantidad)[0]
-      if (!combo) continue
+
+      // Sin combo activo: quitar descuento si lo tenía + sugerir si falta 1
+      if (!combo) {
+        const tieneDescCombo = productRows.some(r => r.descuento > 0)
+        if (tieneDescCombo) {
+          changes.set(item.producto_id, productRows.map(r => ({ ...r, descuento: 0, descuento_tipo: 'pct' as DescTipo })))
+          toast('Descuento de combo removido', { icon: 'ℹ️' })
+        }
+        const comboMasCercano = (combosDisp as any[])
+          .filter(c => c.producto_id === item.producto_id && c.cantidad > totalQty)
+          .sort((a: any, b: any) => a.cantidad - b.cantidad)[0]
+        if (comboMasCercano && comboMasCercano.cantidad - totalQty === 1) {
+          toast(`💡 Agregá 1 más: combo ${comboMasCercano.cantidad}× con ${comboDescLabel(comboMasCercano)}`, { duration: 4000 })
+        }
+        continue
+      }
 
       const rows = calcularComboRows(totalQty, combo, cotizacionUSD || 1)
       const target: CartItem[] = rows.map(r => ({ ...item, cantidad: r.cantidad, descuento: r.descuento, descuento_tipo: r.descuento_tipo as DescTipo }))
@@ -2564,12 +2596,30 @@ export default function VentasPage() {
                 <span>Total</span>
                 <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
-              {(ventaDetalle.total ?? 0) > 0 && (
-                <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
-                  <span>IVA incluido (21%)</span>
-                  <span>${((ventaDetalle.total ?? 0) - (ventaDetalle.total ?? 0) / 1.21).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                </div>
-              )}
+              {(() => {
+                // Desglose IVA por tasa desde los items reales
+                const ivaMap: Record<number, number> = {}
+                for (const item of ventaDetalle.venta_items ?? []) {
+                  const tasa = item.alicuota_iva ?? 21
+                  const monto = Number(item.iva_monto ?? 0)
+                  if (tasa > 0 && monto > 0) ivaMap[tasa] = (ivaMap[tasa] ?? 0) + monto
+                }
+                const tasas = Object.entries(ivaMap).sort(([a], [b]) => Number(b) - Number(a))
+                if (tasas.length === 0 && (ventaDetalle.total ?? 0) > 0) {
+                  return (
+                    <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
+                      <span>IVA incluido (21%)</span>
+                      <span>${((ventaDetalle.total ?? 0) - (ventaDetalle.total ?? 0) / 1.21).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  )
+                }
+                return tasas.map(([tasa, monto]) => (
+                  <div key={tasa} className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
+                    <span>IVA incluido ({tasa}%)</span>
+                    <span>${monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                ))
+              })()}
               {ventaDetalle.medio_pago && <p className="text-gray-500 dark:text-gray-400">Medio de pago: {formatMedioPago(ventaDetalle.medio_pago)}</p>}
               {/* Pago parcial en reserva */}
               {ventaDetalle.estado === 'reservada' && (() => {
@@ -2962,13 +3012,25 @@ export default function VentasPage() {
           <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm flex flex-col max-h-[90vh]" id="ticket-print">
             <div className="overflow-y-auto flex-1 p-6 pb-2">
             <div className="text-center mb-4 border-b border-dashed border-gray-300 dark:border-gray-600 pb-4">
+              {ticketVenta.estado === 'pendiente' && (
+                <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-300 rounded-lg px-3 py-1.5 mb-3 inline-block">
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-400 tracking-wider">★ PRESUPUESTO ★</p>
+                </div>
+              )}
               <p className="text-lg font-bold text-primary">{tenant?.nombre ?? 'Genesis360'}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                 {new Date(ticketVenta.created_at ?? Date.now()).toLocaleString('es-AR', {
                   dateStyle: 'full', timeStyle: 'short'
                 })}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Venta #{ticketVenta.numero ?? '—'}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                {ticketVenta.estado === 'pendiente' ? `Presupuesto #${ticketVenta.numero ?? '—'}` : `Venta #${ticketVenta.numero ?? '—'}`}
+              </p>
+              {ticketVenta.estado === 'pendiente' && (tenant as any)?.presupuesto_validez_dias && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                  Válido por {(tenant as any).presupuesto_validez_dias} días
+                </p>
+              )}
             </div>
 
             {ticketVenta.cliente_nombre && (

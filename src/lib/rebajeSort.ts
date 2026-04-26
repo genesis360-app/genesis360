@@ -56,7 +56,12 @@ export function getRebajeSort(
     (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999)
 
   if (regla === 'Manual') {
-    return porPrioridad
+    // Si prioridades iguales → FIFO como desempate
+    return (a, b) => {
+      const p = porPrioridad(a, b)
+      if (p !== 0) return p
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    }
   }
 
   if (regla === 'LIFO') {

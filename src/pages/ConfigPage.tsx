@@ -404,6 +404,9 @@ export default function ConfigPage() {
   const [bizTimeout, setBizTimeout] = useState<string>(
     tenant?.session_timeout_minutes != null ? String(tenant.session_timeout_minutes) : 'nunca'
   )
+  const [bizPresupuestoValidez, setBizPresupuestoValidez] = useState<string>(
+    String((tenant as any)?.presupuesto_validez_dias ?? 30)
+  )
 
   const handleSaveBiz = async () => {
     setSavingBiz(true)
@@ -412,7 +415,7 @@ export default function ConfigPage() {
       : bizTipoSelect
     const sessionTimeoutMinutes = bizTimeout === 'nunca' ? null : parseInt(bizTimeout)
     const { data, error } = await supabase.from('tenants')
-      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla, session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt })
+      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla, session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt, presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30 })
       .eq('id', tenant!.id).select().single()
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Datos actualizados') }
@@ -1339,6 +1342,13 @@ export default function ConfigPage() {
               <option value="60">1 hora</option>
             </select>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si el usuario no tiene actividad por este tiempo, la sesión se cierra automáticamente.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Validez de presupuesto (días)</label>
+            <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365" value={bizPresupuestoValidez} disabled={!canEdit}
+              onChange={e => setBizPresupuestoValidez(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Un presupuesto creado hoy expirará en esta cantidad de días. Se muestra en el ticket de presupuesto.</p>
           </div>
           <div className="flex items-center justify-between py-1">
             <div>

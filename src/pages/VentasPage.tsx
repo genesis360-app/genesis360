@@ -433,7 +433,7 @@ export default function VentasPage() {
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit],
     queryFn: async () => {
-      let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
+      let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, alicuota_iva, iva_monto, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(ventasLimit)
       if (filterEstado) q = q.eq('estado', filterEstado)
       q = applyFilter(q)
@@ -2564,12 +2564,30 @@ export default function VentasPage() {
                 <span>Total</span>
                 <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
-              {(ventaDetalle.total ?? 0) > 0 && (
-                <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
-                  <span>IVA incluido (21%)</span>
-                  <span>${((ventaDetalle.total ?? 0) - (ventaDetalle.total ?? 0) / 1.21).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                </div>
-              )}
+              {(() => {
+                // Desglose IVA por tasa desde los items reales
+                const ivaMap: Record<number, number> = {}
+                for (const item of ventaDetalle.venta_items ?? []) {
+                  const tasa = item.alicuota_iva ?? 21
+                  const monto = Number(item.iva_monto ?? 0)
+                  if (tasa > 0 && monto > 0) ivaMap[tasa] = (ivaMap[tasa] ?? 0) + monto
+                }
+                const tasas = Object.entries(ivaMap).sort(([a], [b]) => Number(b) - Number(a))
+                if (tasas.length === 0 && (ventaDetalle.total ?? 0) > 0) {
+                  return (
+                    <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
+                      <span>IVA incluido (21%)</span>
+                      <span>${((ventaDetalle.total ?? 0) - (ventaDetalle.total ?? 0) / 1.21).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  )
+                }
+                return tasas.map(([tasa, monto]) => (
+                  <div key={tasa} className="flex justify-between text-xs text-gray-400 dark:text-gray-500">
+                    <span>IVA incluido ({tasa}%)</span>
+                    <span>${monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                ))
+              })()}
               {ventaDetalle.medio_pago && <p className="text-gray-500 dark:text-gray-400">Medio de pago: {formatMedioPago(ventaDetalle.medio_pago)}</p>}
               {/* Pago parcial en reserva */}
               {ventaDetalle.estado === 'reservada' && (() => {
@@ -2962,13 +2980,25 @@ export default function VentasPage() {
           <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm flex flex-col max-h-[90vh]" id="ticket-print">
             <div className="overflow-y-auto flex-1 p-6 pb-2">
             <div className="text-center mb-4 border-b border-dashed border-gray-300 dark:border-gray-600 pb-4">
+              {ticketVenta.estado === 'pendiente' && (
+                <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-300 rounded-lg px-3 py-1.5 mb-3 inline-block">
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-400 tracking-wider">★ PRESUPUESTO ★</p>
+                </div>
+              )}
               <p className="text-lg font-bold text-primary">{tenant?.nombre ?? 'Genesis360'}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                 {new Date(ticketVenta.created_at ?? Date.now()).toLocaleString('es-AR', {
                   dateStyle: 'full', timeStyle: 'short'
                 })}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Venta #{ticketVenta.numero ?? '—'}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                {ticketVenta.estado === 'pendiente' ? `Presupuesto #${ticketVenta.numero ?? '—'}` : `Venta #${ticketVenta.numero ?? '—'}`}
+              </p>
+              {ticketVenta.estado === 'pendiente' && (tenant as any)?.presupuesto_validez_dias && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                  Válido por {(tenant as any).presupuesto_validez_dias} días
+                </p>
+              )}
             </div>
 
             {ticketVenta.cliente_nombre && (

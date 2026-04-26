@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, Fragment } from 'react'
+import { logActividad } from '@/lib/actividadLog'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowDown, ArrowUp, Search, Plus, Minus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
@@ -514,6 +515,18 @@ export default function InventarioPage() {
         }
       }
       await supabase.from('autorizaciones_inventario').update({ estado: 'aprobada', aprobado_por: user?.id }).eq('id', aut.id)
+      // Registrar en historial de actividad para que aparezca en /historial
+      const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad' : aut.tipo === 'eliminar_serie' ? 'Eliminación de serie' : 'Eliminación de LPN'
+      logActividad({
+        entidad: 'inventario_linea',
+        entidad_id: aut.linea_id,
+        entidad_nombre: linea?.productos?.nombre ?? linea?.lpn ?? aut.linea_id,
+        accion: 'editar',
+        campo: aut.tipo,
+        valor_anterior: String(aut.datos_cambio?.cantidad_anterior ?? ''),
+        valor_nuevo: String(aut.datos_cambio?.cantidad_nueva ?? aut.datos_cambio?.cantidad ?? ''),
+        pagina: '/inventario',
+      })
     },
     onSuccess: () => {
       toast.success('Autorización aprobada y ejecutada')

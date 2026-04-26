@@ -1,13 +1,13 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, Download, CheckCircle, XCircle, FileSpreadsheet, RefreshCw, Tag, Truck, MapPin, CircleDot, MessageSquare, Gift, Timer } from 'lucide-react'
+import { ArrowLeft, Upload, Download, CheckCircle, XCircle, FileSpreadsheet, RefreshCw, Tag, Truck, MapPin, CircleDot, MessageSquare, Gift, Timer, Layers } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 
-type TipoMaster = 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'aging'
+type TipoMaster = 'categorias' | 'proveedores' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'aging' | 'grupos'
 
 interface FilaMaster {
   idx: number
@@ -27,6 +27,7 @@ const MASTER_CONFIG: Record<TipoMaster, { label: string; icon: any; cols: string
   motivos:     { label: 'Motivos',               icon: MessageSquare, cols: ['nombre', 'tipo'],                            extraCols: ['tipo'],                            tabla: 'motivos_movimiento',  hint: 'tipo: ambos | ingreso | egreso | caja. Opcional (default: ambos).' },
   combos:      { label: 'Combos',                icon: Gift,       cols: ['nombre', 'sku_producto', 'cantidad', 'descuento_tipo', 'descuento_valor'], extraCols: ['sku_producto', 'cantidad', 'descuento_tipo', 'descuento_valor'], hint: 'descuento_tipo: pct | monto_ars | monto_usd' },
   aging:       { label: 'Progresión de estado',  icon: Timer,      cols: ['nombre_perfil', 'estado', 'dias'],              extraCols: ['estado', 'dias'],                  hint: 'Agrupa reglas por nombre_perfil. estado = nombre del estado de inventario. dias = días hasta vencimiento ≤' },
+  grupos:      { label: 'Grupos de estados',      icon: Layers,     cols: ['nombre', 'descripcion', 'estados', 'es_default'], extraCols: ['descripcion', 'estados', 'es_default'], hint: 'estados: nombres separados por | (ej: Disponible|Próx a Vencer). es_default: SI o NO.' },
 }
 
 const PLANTILLA_EJEMPLOS: Record<TipoMaster, any[][]> = {
@@ -37,6 +38,7 @@ const PLANTILLA_EJEMPLOS: Record<TipoMaster, any[][]> = {
   motivos:     [['Venta mayorista', 'egreso'], ['Ingreso proveedor', 'ingreso'], ['Ajuste caja', 'caja']],
   combos:      [['3x Shampoo 10%', 'SKU-001', '3', 'pct', '10'], ['Pack ahorro $500', 'SKU-002', '2', 'monto_ars', '500']],
   aging:       [['PERECEDERO', 'Próx a Vencer', '30'], ['PERECEDERO', 'Vencido', '0'], ['ESTANDAR', 'Vencido', '0']],
+  grupos:      [['Disponible para venta', 'Estados vendibles', 'Disponible|Próx a Vencer', 'SI'], ['Stock total', '', 'Disponible|Bloqueado|En análisis', 'NO']],
 }
 
 export default function ImportarMasterPage() {
@@ -58,13 +60,15 @@ export default function ImportarMasterPage() {
   const { data: motivos = [] }     = useQuery({ queryKey: ['motivos', tenant?.id],     queryFn: async () => { const { data } = await supabase.from('motivos_movimiento').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
   const { data: combos = [] }      = useQuery({ queryKey: ['combos', tenant?.id],      queryFn: async () => { const { data } = await supabase.from('combos').select('id,nombre').eq('tenant_id', tenant!.id).eq('activo', true); return data ?? [] }, enabled: !!tenant })
   const { data: agingProfiles = [] }= useQuery({ queryKey: ['aging_profiles', tenant?.id], queryFn: async () => { const { data } = await supabase.from('aging_profiles').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
+  const { data: gruposEstados = [] } = useQuery({ queryKey: ['grupos_estados', tenant?.id], queryFn: async () => { const { data } = await supabase.from('grupos_estados').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
   const { data: productos = [] }   = useQuery({ queryKey: ['productos-sku', tenant?.id], queryFn: async () => { const { data } = await supabase.from('productos').select('id,nombre,sku').eq('tenant_id', tenant!.id).eq('activo', true); return data ?? [] }, enabled: !!tenant && tipoMaster === 'combos' })
 
   const getExistentesMap = (tipo: TipoMaster): Record<string, boolean> => {
     const map: Record<string, boolean> = {}
     const lista: any[] = tipo === 'categorias' ? categorias : tipo === 'proveedores' ? proveedores :
       tipo === 'ubicaciones' ? ubicaciones : tipo === 'estados' ? estados :
-      tipo === 'motivos' ? motivos : tipo === 'combos' ? combos : agingProfiles
+      tipo === 'motivos' ? motivos : tipo === 'combos' ? combos :
+      tipo === 'aging' ? agingProfiles : gruposEstados
     lista.forEach((i: any) => { map[i.nombre.toLowerCase()] = true })
     return map
   }
@@ -217,6 +221,36 @@ export default function ImportarMasterPage() {
         } catch { errores++ }
       }
       qc.invalidateQueries({ queryKey: ['aging_profiles'] })
+
+    } else if (tipoMaster === 'grupos') {
+      // Grupos de estados: crear grupo + asignar estados por nombre
+      const estadosMap: Record<string, string> = {}
+      ;(estados as any[]).forEach((e: any) => { estadosMap[e.nombre.toLowerCase()] = e.id })
+
+      for (const fila of nuevas) {
+        try {
+          const esDefault = fila.extra.es_default?.toLowerCase() === 'si'
+          if (esDefault) await supabase.from('grupos_estados').update({ es_default: false }).eq('tenant_id', tenant!.id)
+
+          const { data: grupo, error: gErr } = await supabase.from('grupos_estados').insert({
+            tenant_id: tenant!.id,
+            nombre: fila.nombre,
+            descripcion: fila.extra.descripcion || null,
+            es_default: esDefault,
+          }).select('id').single()
+          if (gErr || !grupo) { errores++; continue }
+
+          const nombresEstados = (fila.extra.estados || '').split('|').map((s: string) => s.trim()).filter(Boolean)
+          for (const nomEst of nombresEstados) {
+            const estadoId = estadosMap[nomEst.toLowerCase()]
+            if (estadoId) {
+              await supabase.from('grupo_estado_items').insert({ grupo_id: grupo.id, estado_id: estadoId })
+            }
+          }
+          creados++
+        } catch { errores++ }
+      }
+      qc.invalidateQueries({ queryKey: ['grupos_estados'] })
 
     } else {
       // Tipos simples: categorias, proveedores, ubicaciones, estados, motivos

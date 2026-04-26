@@ -92,6 +92,8 @@ export default function OnboardingPage() {
           pais: bizData.pais,
           subscription_status: 'trial',
           max_users: 2,
+          regla_inventario: 'Manual',       // Default: Manual según prioridad de ubicaciones
+          session_timeout_minutes: null,     // Default: Nunca cerrar sesión por inactividad
         })
       if (tenantError) throw tenantError
 

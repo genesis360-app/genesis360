@@ -68,6 +68,7 @@ export default function CajaPage() {
 
   // Forms
   const [montoApertura, setMontoApertura] = useState('')
+  const [montoSugerido, setMontoSugerido] = useState<number | null>(null)
   const [notasCierre, setNotasCierre] = useState('')
   const [montoRealCierre, setMontoRealCierre] = useState('')
   const [movTipo, setMovTipo] = useState<'ingreso' | 'egreso'>('ingreso')
@@ -625,6 +626,11 @@ export default function CajaPage() {
                 <div className="max-w-xs mx-auto space-y-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-left">Monto inicial en caja</label>
+                    {montoSugerido !== null && (
+                      <p className="text-xs text-blue-600 dark:text-blue-400 mb-1">
+                        💡 Sugerido: ${montoSugerido.toLocaleString('es-AR')} (cierre anterior)
+                      </p>
+                    )}
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
                       <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={montoApertura} onChange={e => setMontoApertura(e.target.value)}
@@ -645,7 +651,24 @@ export default function CajaPage() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
-                  <button onClick={() => setShowApertura(true)}
+                  <button onClick={async () => {
+                    // Sugerir monto = monto_real_cierre de la última sesión de esta caja
+                    if (cajaSeleccionada) {
+                      const { data: ultima } = await supabase.from('caja_sesiones')
+                        .select('monto_real_cierre')
+                        .eq('tenant_id', tenant!.id).eq('caja_id', cajaSeleccionada)
+                        .eq('estado', 'cerrada').not('monto_real_cierre', 'is', null)
+                        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+                      if (ultima?.monto_real_cierre != null) {
+                        setMontoSugerido(ultima.monto_real_cierre)
+                        setMontoApertura(String(ultima.monto_real_cierre))
+                      } else {
+                        setMontoSugerido(null)
+                        setMontoApertura('')
+                      }
+                    }
+                    setShowApertura(true)
+                  }}
                     disabled={!puedeAbrirCaja}
                     title={!puedeAbrirCaja ? 'Ya tenés una caja abierta. Cerrala antes de abrir otra.' : undefined}
                     className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-6 py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">

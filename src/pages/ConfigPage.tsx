@@ -647,8 +647,25 @@ export default function ConfigPage() {
   }
 
   // Combos
-  const [comboForm, setComboForm] = useState({ nombre: '', producto_id: '', cantidad: '2', descuento_tipo: 'pct', descuento_valor: '0' })
+  const [comboForm, setComboForm] = useState({ nombre: '', descuento_tipo: 'pct', descuento_valor: '0' })
+  const [comboItems, setComboItems] = useState<{ producto_id: string; cantidad: string }[]>([{ producto_id: '', cantidad: '1' }])
   const [savingCombo, setSavingCombo] = useState(false)
+
+  const applyComboPreset = (preset: '3x2' | '2x1' | '2da') => {
+    if (preset === '3x2') {
+      setComboForm(p => ({ ...p, nombre: p.nombre || '3x2', descuento_tipo: 'pct', descuento_valor: '33' }))
+      setComboItems(prev => [{ ...prev[0], cantidad: '3' }, ...prev.slice(1)])
+    } else if (preset === '2x1') {
+      setComboForm(p => ({ ...p, nombre: p.nombre || '2x1', descuento_tipo: 'pct', descuento_valor: '50' }))
+      setComboItems(prev => [{ ...prev[0], cantidad: '2' }, ...prev.slice(1)])
+    } else {
+      const pct = prompt('% de descuento en la 2da unidad (ej: 30):')
+      if (!pct || isNaN(parseInt(pct))) return
+      const efectivo = Math.round(parseInt(pct) / 2)
+      setComboForm(p => ({ ...p, nombre: p.nombre || `2da unidad ${pct}%`, descuento_tipo: 'pct', descuento_valor: String(efectivo) }))
+      setComboItems(prev => [{ ...prev[0], cantidad: '2' }, ...prev.slice(1)])
+    }
+  }
 
   const { data: productosAll = [] } = useQuery({
     queryKey: ['productos-all', tenant?.id],
@@ -664,7 +681,7 @@ export default function ConfigPage() {
     queryKey: ['combos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('combos')
-        .select('*, productos(nombre, sku)')
+        .select('*, combo_items(producto_id, cantidad, productos(nombre, sku))')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('created_at', { ascending: false })
       return data ?? []
@@ -674,31 +691,33 @@ export default function ConfigPage() {
 
   const addCombo = async () => {
     if (!comboForm.nombre.trim()) { toast.error('Ingresá un nombre'); return }
-    if (!comboForm.producto_id) { toast.error('Seleccioná un producto'); return }
-    const cantidad = parseInt(comboForm.cantidad)
-    if (!cantidad || cantidad < 2) { toast.error('La cantidad mínima es 2'); return }
+    if (comboItems.some(i => !i.producto_id)) { toast.error('Seleccioná un producto para cada ítem'); return }
+    if (comboItems.some(i => parseInt(i.cantidad) < 1)) { toast.error('La cantidad mínima es 1'); return }
     const valor = parseFloat(comboForm.descuento_valor)
     if (isNaN(valor) || valor < 0) { toast.error('Valor de descuento inválido'); return }
     if (comboForm.descuento_tipo === 'pct' && valor > 100) { toast.error('El porcentaje no puede superar 100'); return }
     const descuento_pct = comboForm.descuento_tipo === 'pct' ? valor : 0
     const descuento_monto = comboForm.descuento_tipo !== 'pct' ? valor : 0
     setSavingCombo(true)
-    const { error } = await supabase.from('combos').insert({
-      tenant_id: tenant!.id,
-      nombre: comboForm.nombre.trim(),
-      producto_id: comboForm.producto_id,
-      cantidad,
-      descuento_pct,
-      descuento_tipo: comboForm.descuento_tipo,
-      descuento_monto,
-    })
-    if (error) toast.error(error.message)
-    else {
+    try {
+      const { data: combo, error: eC } = await supabase.from('combos').insert({
+        tenant_id: tenant!.id,
+        nombre: comboForm.nombre.trim(),
+        descuento_pct,
+        descuento_tipo: comboForm.descuento_tipo,
+        descuento_monto,
+      }).select('id').single()
+      if (eC) throw eC
+      const { error: eI } = await supabase.from('combo_items').insert(
+        comboItems.map(i => ({ tenant_id: tenant!.id, combo_id: combo.id, producto_id: i.producto_id, cantidad: parseInt(i.cantidad) || 1 }))
+      )
+      if (eI) throw eI
       toast.success('Combo creado')
       logActividad({ entidad: 'combo', entidad_nombre: comboForm.nombre.trim(), accion: 'crear', pagina: '/configuracion' })
-      setComboForm({ nombre: '', producto_id: '', cantidad: '2', descuento_tipo: 'pct', descuento_valor: '0' })
+      setComboForm({ nombre: '', descuento_tipo: 'pct', descuento_valor: '0' })
+      setComboItems([{ producto_id: '', cantidad: '1' }])
       qc.invalidateQueries({ queryKey: ['combos'] })
-    }
+    } catch (err: any) { toast.error(err.message ?? 'Error al crear combo') }
     setSavingCombo(false)
   }
 
@@ -2058,28 +2077,53 @@ export default function ConfigPage() {
 
           {/* Formulario nuevo combo */}
           <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-3">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Nuevo combo</p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Nuevo combo</p>
+              <div className="flex gap-1">
+                {(['3x2','2x1','2da'] as const).map(p => (
+                  <button key={p} onClick={() => applyComboPreset(p)} title={p === '2da' ? '2da unidad X% off' : p}
+                    className="px-2 py-0.5 text-xs rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50">
+                    {p === '2da' ? '2da ud.' : p}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="col-span-2">
                 <input type="text" value={comboForm.nombre} onChange={e => setComboForm(p => ({ ...p, nombre: e.target.value }))}
                   placeholder="Nombre del combo (ej: 3x Coca-Cola 10% off)"
                   className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
               </div>
-              <div className="col-span-2">
-                <select value={comboForm.producto_id} onChange={e => setComboForm(p => ({ ...p, producto_id: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
-                  <option value="">Seleccionar producto...</option>
+
+              {/* Productos del combo */}
+              <div className="col-span-2 space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Productos del combo</p>
+                {comboItems.map((ci, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <select value={ci.producto_id} onChange={e => setComboItems(prev => prev.map((x,i) => i===idx ? {...x, producto_id: e.target.value} : x))}
+                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                      <option value="">Seleccionar producto...</option>
                   {(productosAll as any[]).map((p: any) => (
                     <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
                   ))}
                 </select>
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="1" value={ci.cantidad}
+                  onChange={e => setComboItems(prev => prev.map((x,i) => i===idx ? {...x, cantidad: e.target.value} : x))}
+                  placeholder="Cant." className="w-16 px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent text-center" />
+                {comboItems.length > 1 && (
+                  <button onClick={() => setComboItems(prev => prev.filter((_,i) => i!==idx))}
+                    className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg" title="Quitar">
+                    <X size={13} />
+                  </button>
+                )}
               </div>
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cantidad mínima</label>
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="2" value={comboForm.cantidad}
-                  onChange={e => setComboForm(p => ({ ...p, cantidad: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
-              </div>
+              ))}
+              <button onClick={() => setComboItems(prev => [...prev, { producto_id: '', cantidad: '1' }])}
+                className="text-xs text-accent hover:underline flex items-center gap-1">
+                <Plus size={12} /> Agregar producto al combo
+              </button>
+            </div>
+
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo de descuento</label>
                 <select value={comboForm.descuento_tipo} onChange={e => setComboForm(p => ({ ...p, descuento_tipo: e.target.value, descuento_valor: '0' }))}
@@ -2120,12 +2164,12 @@ export default function ConfigPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{c.nombre}</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                      {c.productos?.nombre} · {c.cantidad} uds ·{' '}
+                      {(c.combo_items ?? []).map((ci: any, i: number) => (
+                        <span key={i}>{i > 0 ? ' + ' : ''}{ci.productos?.nombre ?? '?'} ×{ci.cantidad}</span>
+                      ))} ·{' '}
                       {(c.descuento_tipo ?? 'pct') === 'pct'
                         ? `${c.descuento_pct}% off`
-                        : (c.descuento_tipo === 'monto_usd'
-                          ? `USD ${c.descuento_monto} off`
-                          : `$${c.descuento_monto} off`)}
+                        : (c.descuento_tipo === 'monto_usd' ? `USD ${c.descuento_monto} off` : `$${c.descuento_monto} off`)}
                     </p>
                   </div>
                   <button onClick={() => deleteCombo(c.id)}

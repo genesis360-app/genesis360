@@ -12,7 +12,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial' | 'canales'
@@ -705,11 +705,14 @@ export default function VentasPage() {
 
   const removeItem = (idx: number) => setCart(prev => prev.filter((_, i) => i !== idx))
 
+  const [combosActivosMulti, setCombosActivosMulti] = useState<{id: string; nombre: string; monto: number}[]>([])
+  const autoMultiSig = useRef('')
+
   const { data: combosDisp = [] } = useQuery({
     queryKey: ['combos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('combos')
-        .select('id, nombre, producto_id, cantidad, descuento_pct, descuento_tipo, descuento_monto')
+        .select('id, nombre, descuento_pct, descuento_tipo, descuento_monto, combo_items(producto_id, cantidad)')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       return data ?? []
     },
@@ -719,15 +722,17 @@ export default function VentasPage() {
   const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
       .filter(c => {
-        if (c.producto_id !== productoId || cantidad < c.cantidad) return false
+        const items: {producto_id: string; cantidad: number}[] = c.combo_items ?? []
+        if (items.length !== 1) return false
+        const ci = items[0]
+        if (ci.producto_id !== productoId || cantidad < ci.cantidad) return false
         const tipo = c.descuento_tipo ?? 'pct'
-        // No re-sugerir si ya está aplicado
         if (tipo === 'pct' && item.descuento_tipo === 'pct' && item.descuento === c.descuento_pct) return false
         if (tipo === 'monto_ars' && item.descuento_tipo === 'monto' && item.descuento === c.descuento_monto) return false
         if (tipo === 'monto_usd' && item.descuento_tipo === 'monto' && item.descuento === Math.round(c.descuento_monto * (cotizacionUSD || 1))) return false
         return true
       })
-      .sort((a, b) => b.cantidad - a.cantidad)[0] ?? null
+      .sort((a: any, b: any) => (b.combo_items?.[0]?.cantidad ?? 0) - (a.combo_items?.[0]?.cantidad ?? 0))[0] ?? null
   }
 
   const comboDescLabel = (combo: any) => {
@@ -755,6 +760,7 @@ export default function VentasPage() {
     if (sig === autoComboSig.current) return
     autoComboSig.current = sig
 
+    // ── Single-SKU combos (combo_items.length === 1) ───────────────────────────
     const changes = new Map<string, CartItem[]>()
     const processed = new Set<string>()
 
@@ -765,53 +771,84 @@ export default function VentasPage() {
       const productRows = cart.filter(r => r.producto_id === item.producto_id)
       const totalQty = productRows.reduce((s, r) => s + r.cantidad, 0)
 
-      const combo = (combosDisp as any[])
-        .filter(c => c.producto_id === item.producto_id && totalQty >= c.cantidad)
-        .sort((a: any, b: any) => b.cantidad - a.cantidad)[0]
+      const singleCombos = (combosDisp as any[]).filter(c => (c.combo_items?.length ?? 0) === 1)
+      const combo = singleCombos
+        .filter(c => c.combo_items[0].producto_id === item.producto_id && totalQty >= c.combo_items[0].cantidad)
+        .sort((a: any, b: any) => b.combo_items[0].cantidad - a.combo_items[0].cantidad)[0]
 
-      // Sin combo activo: quitar descuento si lo tenía + sugerir si falta 1
       if (!combo) {
         const tieneDescCombo = productRows.some(r => r.descuento > 0)
         if (tieneDescCombo) {
           changes.set(item.producto_id, productRows.map(r => ({ ...r, descuento: 0, descuento_tipo: 'pct' as DescTipo })))
           toast('Descuento de combo removido', { icon: 'ℹ️' })
         }
-        const comboMasCercano = (combosDisp as any[])
-          .filter(c => c.producto_id === item.producto_id && c.cantidad > totalQty)
-          .sort((a: any, b: any) => a.cantidad - b.cantidad)[0]
-        if (comboMasCercano && comboMasCercano.cantidad - totalQty === 1) {
-          toast(`💡 Agregá 1 más: combo ${comboMasCercano.cantidad}× con ${comboDescLabel(comboMasCercano)}`, { duration: 4000 })
+        const comboMasCercano = singleCombos
+          .filter(c => c.combo_items[0].producto_id === item.producto_id && c.combo_items[0].cantidad > totalQty)
+          .sort((a: any, b: any) => a.combo_items[0].cantidad - b.combo_items[0].cantidad)[0]
+        if (comboMasCercano && comboMasCercano.combo_items[0].cantidad - totalQty === 1) {
+          toast(`💡 Agregá 1 más: combo ${comboMasCercano.combo_items[0].cantidad}× con ${comboDescLabel(comboMasCercano)}`, { duration: 4000 })
         }
         continue
       }
 
-      const rows = calcularComboRows(totalQty, combo, cotizacionUSD || 1)
+      const comboData = { ...combo, cantidad: combo.combo_items[0].cantidad }
+      const rows = calcularComboRows(totalQty, comboData, cotizacionUSD || 1)
       const target: CartItem[] = rows.map(r => ({ ...item, cantidad: r.cantidad, descuento: r.descuento, descuento_tipo: r.descuento_tipo as DescTipo }))
 
       const curSig = productRows.map(r => `${r.cantidad}:${r.descuento}:${r.descuento_tipo}`).sort().join(',')
       const tgtSig = target.map(r => `${r.cantidad}:${r.descuento}:${r.descuento_tipo}`).sort().join(',')
       if (curSig !== tgtSig) {
         changes.set(item.producto_id, target)
-        toast.success(`Combo aplicado: ${combo.cantidad}× con ${comboDescLabel(combo)}`)
+        toast.success(`Combo aplicado: ${combo.combo_items[0].cantidad}× con ${comboDescLabel(combo)}`)
       }
     }
 
-    if (!changes.size) return
-
-    const done = new Set<string>()
-    const newCart: CartItem[] = []
-    for (const item of cart) {
-      if (changes.has(item.producto_id) && !done.has(item.producto_id)) {
-        done.add(item.producto_id)
-        newCart.push(...changes.get(item.producto_id)!)
-      } else if (!changes.has(item.producto_id)) {
-        newCart.push(item)
+    if (changes.size) {
+      const done = new Set<string>()
+      const newCart: CartItem[] = []
+      for (const item of cart) {
+        if (changes.has(item.producto_id) && !done.has(item.producto_id)) {
+          done.add(item.producto_id)
+          newCart.push(...changes.get(item.producto_id)!)
+        } else if (!changes.has(item.producto_id)) {
+          newCart.push(item)
+        }
       }
+      const newSig = newCart.map(i => `${i.producto_id}:${i.cantidad}:${i.descuento}:${i.descuento_tipo}`).join('|')
+      autoComboSig.current = newSig
+      setCart(newCart)
     }
 
-    const newSig = newCart.map(i => `${i.producto_id}:${i.cantidad}:${i.descuento}:${i.descuento_tipo}`).join('|')
-    autoComboSig.current = newSig
-    setCart(newCart)
+    // ── Multi-SKU combos (combo_items.length > 1) ──────────────────────────────
+    const multiCombos = (combosDisp as any[]).filter(c => (c.combo_items?.length ?? 0) > 1)
+    const newMulti: {id: string; nombre: string; monto: number}[] = []
+    for (const combo of multiCombos) {
+      const allPresent = (combo.combo_items ?? []).every((ci: any) => {
+        const qty = cart.filter(i => i.producto_id === ci.producto_id).reduce((s, i) => s + i.cantidad, 0)
+        return qty >= ci.cantidad
+      })
+      if (allPresent) {
+        const subtotalCombo = (combo.combo_items ?? []).reduce((s: number, ci: any) => {
+          const cartItem = cart.find(i => i.producto_id === ci.producto_id)
+          return s + (cartItem?.precio_unitario ?? 0) * ci.cantidad
+        }, 0)
+        const monto = calcularDescuentoComboMulti(combo, subtotalCombo, cotizacionUSD || 1)
+        newMulti.push({ id: combo.id, nombre: combo.nombre, monto })
+      } else {
+        const totalFaltantes = (combo.combo_items ?? []).reduce((s: number, ci: any) => {
+          const qty = cart.filter(i => i.producto_id === ci.producto_id).reduce((s2, i) => s2 + i.cantidad, 0)
+          return s + Math.max(0, ci.cantidad - qty)
+        }, 0)
+        if (totalFaltantes === 1) {
+          toast(`💡 Falta 1 producto para el combo "${combo.nombre}"`, { duration: 4000 })
+        }
+      }
+    }
+    const multiSig = newMulti.map(c => `${c.id}:${c.monto.toFixed(2)}`).join('|')
+    if (multiSig !== autoMultiSig.current) {
+      autoMultiSig.current = multiSig
+      setCombosActivosMulti(newMulti)
+    }
   }, [cart, combosDisp, cotizacionUSD])
 
   const splitItem = (idx: number) => {
@@ -834,7 +871,8 @@ export default function VentasPage() {
   const subtotal = cart.reduce((acc, item) => acc + getItemSubtotal(item), 0)
   const descTotalVal = parseFloat(descuentoTotal) || 0
   const descTotalMonto = descuentoTotalTipo === 'pct' ? subtotal * descTotalVal / 100 : descTotalVal
-  const total = Math.max(0, subtotal - descTotalMonto)
+  const descCombosMulti = combosActivosMulti.reduce((s, c) => s + c.monto, 0)
+  const total = Math.max(0, subtotal - descTotalMonto - descCombosMulti)
 
   // Medios de pago helpers
   const updateMedioPago = (idx: number, field: keyof MedioPagoItem, value: string) =>
@@ -2299,6 +2337,12 @@ export default function VentasPage() {
                     <span>−${descTotalMonto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 )}
+                {combosActivosMulti.map(c => (
+                  <div key={c.id} className="flex justify-between text-sm text-success">
+                    <span>🎁 {c.nombre}</span>
+                    <span>−${c.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                ))}
                 <div className="flex justify-between font-bold text-primary text-lg border-t border-border-ds pt-2">
                   <span>Total</span>
                   <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>

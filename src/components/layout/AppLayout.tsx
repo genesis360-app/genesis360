@@ -183,8 +183,10 @@ export function AppLayout() {
         {/* Logo + versión + toggle colapsar */}
         <div className={`flex items-center border-b border-border-ds flex-shrink-0 ${collapsed ? 'justify-center px-2 py-4' : 'gap-3 px-4 py-4'}`}>
           <a
-            href={window.location.hostname === 'app.genesis360.pro' ? 'https://www.genesis360.pro' : '/'}
-            title="Ir al inicio"
+            href="https://www.genesis360.pro"
+            target="_blank"
+            rel="noreferrer"
+            title="Ir al sitio de Genesis360"
             className="flex items-center gap-3 flex-1 min-w-0 group"
           >
             <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-accent/80 transition-colors">

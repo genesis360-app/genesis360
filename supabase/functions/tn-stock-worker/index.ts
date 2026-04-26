@@ -41,7 +41,7 @@ serve(async (req) => {
 
   if (jobsErr) {
     console.error('Error leyendo jobs:', jobsErr.message)
-    return new Response('Error reading queue', { status: 500 })
+    return new Response('Error reading queue', { status: 500, headers: corsHeaders })
   }
 
   if (!jobs || jobs.length === 0) {

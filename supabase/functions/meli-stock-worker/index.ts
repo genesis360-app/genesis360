@@ -29,9 +29,9 @@ serve(async (req) => {
     .order('next_attempt_at', { ascending: true })
     .limit(BATCH_SIZE)
 
-  if (jobsErr) return new Response('Error reading queue', { status: 500 })
+  if (jobsErr) return new Response('Error reading queue', { status: 500, headers: corsHeaders })
   if (!jobs || jobs.length === 0) {
-    return new Response(JSON.stringify({ ok: true, processed: 0 }), { status: 200 })
+    return new Response(JSON.stringify({ ok: true, processed: 0 }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 
   let done = 0, failed = 0, retrying = 0

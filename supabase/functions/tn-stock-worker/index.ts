@@ -67,25 +67,29 @@ serve(async (req) => {
     }
 
     try {
-      // Calcular stock disponible: solo líneas cuyo estado tenga es_disponible_tn = true
-      const { data: lineas } = await supabase
-        .from('inventario_lineas')
-        .select('cantidad, cantidad_reservada, estados_inventario!estado_id(es_disponible_tn)')
-        .eq('tenant_id', job.tenant_id)
-        .eq('producto_id', producto_id)
-        .eq('activo', true)
+      // Calcular stock disponible para TN:
+      // - estados con es_disponible_tn = true
+      // - ubicaciones con disponible_tn = true (o sin ubicación)
+      const { data: estadosTn } = await supabase
+        .from('estados_inventario').select('id')
+        .eq('tenant_id', job.tenant_id).eq('es_disponible_tn', true)
+      const etIds = (estadosTn ?? []).map((e: any) => e.id)
 
-      const stockDisponible = Math.max(
-        0,
-        Math.floor(
-          (lineas ?? []).reduce((acc, l: any) => {
-            // Si el estado tiene es_disponible_tn = false, no cuenta
-            const disponible = l.estados_inventario?.es_disponible_tn
-            if (disponible === false) return acc
-            return acc + (Number(l.cantidad) - Number(l.cantidad_reservada ?? 0))
-          }, 0),
-        ),
+      let lq = supabase.from('inventario_lineas')
+        .select('cantidad, cantidad_reservada, ubicaciones(disponible_tn)')
+        .eq('tenant_id', job.tenant_id).eq('producto_id', producto_id).eq('activo', true)
+      if (etIds.length > 0) lq = lq.in('estado_id', etIds)
+      const { data: lineasRaw } = await lq
+
+      // Excluir líneas cuya ubicación tenga disponible_tn = false
+      const lineas = (lineasRaw ?? []).filter(
+        (l: any) => !l.ubicaciones || l.ubicaciones.disponible_tn !== false
       )
+
+      const stockDisponible = Math.max(0, Math.floor(
+        (lineas ?? []).reduce((acc: number, l: any) =>
+          acc + (Number(l.cantidad) - Number(l.cantidad_reservada ?? 0)), 0)
+      ))
 
       // Obtener credencial TN del tenant
       const { data: cred } = await supabase

@@ -198,8 +198,8 @@ serve(async (req) => {
     if (existingCliente) {
       clienteId = existingCliente.id
     } else {
-      // Crear cliente con la info disponible del pedido TN
-      const { data: newCliente } = await supabase
+      // INSERT — si hay race condition y ya fue creado, el error 23505 lo capturamos
+      const { data: newCliente, error: insertErr } = await supabase
         .from('clientes')
         .insert({
           tenant_id,
@@ -209,8 +209,17 @@ serve(async (req) => {
           telefono: customer.phone ?? null,
         })
         .select('id')
-        .single()
-      clienteId = newCliente?.id ?? null
+        .maybeSingle()
+      if (newCliente?.id) {
+        clienteId = newCliente.id
+      } else if (insertErr?.code === '23505' && customer.email) {
+        // Duplicado por race condition — buscar el existente
+        const { data: fallback } = await supabase.from('clientes')
+          .select('id').eq('tenant_id', tenant_id).eq('email', customer.email).maybeSingle()
+        clienteId = fallback?.id ?? null
+      } else {
+        clienteId = null
+      }
     }
   }
 

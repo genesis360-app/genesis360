@@ -198,19 +198,26 @@ serve(async (req) => {
     if (existingCliente) {
       clienteId = existingCliente.id
     } else {
-      // Crear cliente con la info disponible del pedido TN
+      // Upsert: si ya existe por email (race condition), devuelve el existente
       const { data: newCliente } = await supabase
         .from('clientes')
-        .insert({
+        .upsert({
           tenant_id,
           sucursal_id,
           nombre:   customer.name ?? 'Cliente TiendaNube',
           email:    customer.email ?? null,
           telefono: customer.phone ?? null,
-        })
+        }, { onConflict: 'tenant_id,email', ignoreDuplicates: false })
         .select('id')
-        .single()
-      clienteId = newCliente?.id ?? null
+        .maybeSingle()
+      // Si upsert falló (email null no tiene constraint), buscar de nuevo
+      if (!newCliente?.id && customer.email) {
+        const { data: fallback } = await supabase.from('clientes')
+          .select('id').eq('tenant_id', tenant_id).eq('email', customer.email).maybeSingle()
+        clienteId = fallback?.id ?? null
+      } else {
+        clienteId = newCliente?.id ?? null
+      }
     }
   }
 

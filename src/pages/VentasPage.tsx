@@ -1607,7 +1607,48 @@ export default function VentasPage() {
             }
           }
         }
-        await supabase.from('ventas').update({ estado: 'reservada' }).eq('id', ventaId)
+        // Guardar seña si se cobró al reservar
+        let montoPagadoReserva = venta.monto_pagado ?? 0
+        let mediosPagoReserva = venta.medio_pago ?? null
+        if (saldoMediosPago && saldoMediosPago.some(m => parseFloat(m.monto) > 0)) {
+          const prevArr: { tipo: string; monto: number }[] = venta.medio_pago ? JSON.parse(venta.medio_pago) : []
+          const acumulado = acumularMediosPago(prevArr, saldoMediosPago)
+          mediosPagoReserva = JSON.stringify(acumulado)
+          montoPagadoReserva = Math.min(
+            venta.total ?? 0,
+            montoPagadoReserva + saldoMediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+          )
+        }
+        await supabase.from('ventas').update({
+          estado: 'reservada',
+          monto_pagado: montoPagadoReserva,
+          medio_pago: mediosPagoReserva,
+        }).eq('id', ventaId)
+
+        // Registrar seña en caja
+        if (saldoMediosPago && saldoMediosPago.some(m => parseFloat(m.monto) > 0)) {
+          const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
+          if (_sesionId) {
+            const efectivoSena = calcularEfectivoCaja(saldoMediosPago, montoPagadoReserva)
+            if (efectivoSena > 0) {
+              supabase.from('caja_movimientos').insert({
+                tenant_id: tenant!.id, sesion_id: _sesionId,
+                tipo: 'ingreso_reserva', monto: efectivoSena,
+                concepto: `Seña Venta #${venta.numero}`, usuario_id: user?.id,
+              }).then(() => null)
+            }
+            for (const mp of saldoMediosPago) {
+              const monto = parseFloat(mp.monto) || 0
+              if (monto > 0 && mp.tipo && mp.tipo !== 'Efectivo') {
+                supabase.from('caja_movimientos').insert({
+                  tenant_id: tenant!.id, sesion_id: _sesionId,
+                  tipo: 'ingreso_informativo', monto,
+                  concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`, usuario_id: user?.id,
+                }).then(() => null)
+              }
+            }
+          }
+        }
 
       } else if (nuevoEstado === 'despachada') {
         for (const item of items ?? []) {

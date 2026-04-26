@@ -128,6 +128,18 @@ serve(async (req) => {
     })
   }
 
+  // Si order/created llega después de order/paid (race condition) → ya existe la venta → no crear duplicado
+  if (event === 'order/created' && ventaExistente) {
+    console.log(`order/created llegó después de order/paid para pedido TN #${order.number} — venta ${ventaExistente.id} ya existe`)
+    await supabase.from('ventas_externas_logs').insert({
+      tenant_id, integracion: 'TiendaNube', webhook_external_id: webhookKey,
+      venta_id: ventaExistente.id, payload_raw: order,
+    })
+    return new Response(JSON.stringify({ ok: true, skipped: 'already_exists', venta_id: ventaExistente.id }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   // Determinar estado para venta nueva
   const isPaid = order.payment_status === 'paid' || event === 'order/paid'
   const estadoVenta: string = isPaid ? 'reservada' : 'pendiente'

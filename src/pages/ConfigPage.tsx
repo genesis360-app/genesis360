@@ -988,60 +988,68 @@ export default function ConfigPage() {
   const forceSyncTN = async () => {
     setTnSyncing(true)
     try {
-      // Encolar jobs para todos los productos mapeados del tenant
-      const { data: maps } = await supabase.from('inventario_tn_map')
+      const { data: maps, error: mapsErr } = await supabase.from('inventario_tn_map')
         .select('producto_id, tn_product_id, tn_variant_id, sucursal_id')
         .eq('tenant_id', tenant!.id).eq('sync_stock', true)
-      if (maps && maps.length > 0) {
-        await supabase.from('integration_job_queue').insert(
-          maps.map(m => ({
-            tenant_id: tenant!.id,
-            integracion: 'TiendaNube',
-            tipo: 'sync_stock',
-            payload: { producto_id: m.producto_id, tn_product_id: m.tn_product_id, tn_variant_id: m.tn_variant_id },
-            status: 'pending',
-            next_attempt_at: new Date().toISOString(),
-          }))
-        )
-      }
-      // Llamar al worker
+      if (mapsErr) throw new Error(`Maps: ${mapsErr.message}`)
+      if (!maps || maps.length === 0) { toast.error('No hay productos mapeados con sync_stock activo'); setTnSyncing(false); return }
+
+      const { error: insertErr } = await supabase.from('integration_job_queue').insert(
+        maps.map(m => ({
+          tenant_id: tenant!.id,
+          integracion: 'TiendaNube',
+          tipo: 'sync_stock',
+          payload: { producto_id: m.producto_id, tn_product_id: m.tn_product_id, tn_variant_id: m.tn_variant_id },
+          status: 'pending',
+          next_attempt_at: new Date().toISOString(),
+        }))
+      )
+      if (insertErr) throw new Error(`Queue: ${insertErr.message}`)
+
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tn-stock-worker`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}` },
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
       })
-      const json = await res.json()
-      toast.success(`Sync TN: ${json.done ?? 0} productos actualizados`)
-    } catch { toast.error('Error al sincronizar') }
+      const text = await res.text()
+      if (!res.ok) throw new Error(`Worker ${res.status}: ${text.substring(0, 200)}`)
+      const json = JSON.parse(text)
+      toast.success(`Sync TN: ${json.done ?? 0} productos actualizados (${json.processed ?? 0} procesados)`)
+    } catch (e: any) { toast.error(`Error: ${e.message}`) }
     setTnSyncing(false)
   }
 
   const forceSyncMELI = async () => {
     setMeliSyncing(true)
     try {
-      const { data: maps } = await supabase.from('inventario_meli_map')
+      const { data: maps, error: mapsErr } = await supabase.from('inventario_meli_map')
         .select('producto_id, meli_item_id, meli_variation_id')
         .eq('tenant_id', tenant!.id).eq('sync_stock', true)
-      if (maps && maps.length > 0) {
-        await supabase.from('integration_job_queue').insert(
-          maps.map(m => ({
-            tenant_id: tenant!.id,
-            integracion: 'MercadoLibre',
-            tipo: 'sync_stock',
-            payload: { producto_id: m.producto_id, meli_item_id: m.meli_item_id, meli_variation_id: m.meli_variation_id },
-            status: 'pending',
-            next_attempt_at: new Date().toISOString(),
-          }))
-        )
-      }
+      if (mapsErr) throw new Error(`Maps: ${mapsErr.message}`)
+      if (!maps || maps.length === 0) { toast.error('No hay productos mapeados con sync_stock activo'); setMeliSyncing(false); return }
+
+      const { error: insertErr } = await supabase.from('integration_job_queue').insert(
+        maps.map(m => ({
+          tenant_id: tenant!.id,
+          integracion: 'MercadoLibre',
+          tipo: 'sync_stock',
+          payload: { producto_id: m.producto_id, meli_item_id: m.meli_item_id, meli_variation_id: m.meli_variation_id },
+          status: 'pending',
+          next_attempt_at: new Date().toISOString(),
+        }))
+      )
+      if (insertErr) throw new Error(`Queue: ${insertErr.message}`)
+
       const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meli-stock-worker`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}` },
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
       })
-      const json = await res.json()
-      toast.success(`Sync ML: ${json.done ?? 0} productos actualizados`)
-    } catch { toast.error('Error al sincronizar') }
+      const text = await res.text()
+      if (!res.ok) throw new Error(`Worker ${res.status}: ${text.substring(0, 200)}`)
+      const json = JSON.parse(text)
+      toast.success(`Sync ML: ${json.done ?? 0} productos actualizados (${json.processed ?? 0} procesados)`)
+    } catch (e: any) { toast.error(`Error al sincronizar: ${e.message}`) }
     setMeliSyncing(false)
   }
 

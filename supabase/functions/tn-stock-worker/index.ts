@@ -15,7 +15,14 @@ const TN_API_BASE   = 'https://api.tiendanube.com/v1'
 const TN_USER_AGENT = 'Genesis360 (gaston.otranto@gmail.com)'
 const BATCH_SIZE    = 50
 
-serve(async (_req) => {
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -40,7 +47,7 @@ serve(async (_req) => {
   if (!jobs || jobs.length === 0) {
     return new Response(JSON.stringify({ ok: true, processed: 0 }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 

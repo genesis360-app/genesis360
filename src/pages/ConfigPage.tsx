@@ -978,6 +978,104 @@ export default function ConfigPage() {
   // ─── TN product mapping ──────────────────────────────────────────────────
   const [tnMapExpanded, setTnMapExpanded] = useState<string | null>(null)
   const [tnMapForm, setTnMapForm] = useState<{ productoId: string; tnProductId: string; tnVariantId: string; syncStock: boolean } | null>(null)
+  const [tnSyncing, setTnSyncing] = useState(false)
+  const [tnSearchResults, setTnSearchResults] = useState<any[]>([])
+  const [tnSearching, setTnSearching] = useState(false)
+  const [meliSyncing, setMeliSyncing] = useState(false)
+  const [meliSearchResults, setMeliSearchResults] = useState<any[]>([])
+  const [meliSearching, setMeliSearching] = useState(false)
+
+  const forceSyncTN = async () => {
+    setTnSyncing(true)
+    try {
+      // Encolar jobs para todos los productos mapeados del tenant
+      const { data: maps } = await supabase.from('inventario_tn_map')
+        .select('producto_id, tn_product_id, tn_variant_id, sucursal_id')
+        .eq('tenant_id', tenant!.id).eq('sync_stock', true)
+      if (maps && maps.length > 0) {
+        await supabase.from('integration_job_queue').insert(
+          maps.map(m => ({
+            tenant_id: tenant!.id,
+            integracion: 'TiendaNube',
+            tipo: 'sync_stock',
+            payload: { producto_id: m.producto_id, tn_product_id: m.tn_product_id, tn_variant_id: m.tn_variant_id },
+            status: 'pending',
+            next_attempt_at: new Date().toISOString(),
+          }))
+        )
+      }
+      // Llamar al worker
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tn-stock-worker`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      const json = await res.json()
+      toast.success(`Sync TN: ${json.done ?? 0} productos actualizados`)
+    } catch { toast.error('Error al sincronizar') }
+    setTnSyncing(false)
+  }
+
+  const forceSyncMELI = async () => {
+    setMeliSyncing(true)
+    try {
+      const { data: maps } = await supabase.from('inventario_meli_map')
+        .select('producto_id, meli_item_id, meli_variation_id')
+        .eq('tenant_id', tenant!.id).eq('sync_stock', true)
+      if (maps && maps.length > 0) {
+        await supabase.from('integration_job_queue').insert(
+          maps.map(m => ({
+            tenant_id: tenant!.id,
+            integracion: 'MercadoLibre',
+            tipo: 'sync_stock',
+            payload: { producto_id: m.producto_id, meli_item_id: m.meli_item_id, meli_variation_id: m.meli_variation_id },
+            status: 'pending',
+            next_attempt_at: new Date().toISOString(),
+          }))
+        )
+      }
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meli-stock-worker`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      })
+      const json = await res.json()
+      toast.success(`Sync ML: ${json.done ?? 0} productos actualizados`)
+    } catch { toast.error('Error al sincronizar') }
+    setMeliSyncing(false)
+  }
+
+  const searchTNProducts = async (sku: string, sucursalId: string) => {
+    if (!sku.trim()) return
+    setTnSearching(true)
+    setTnSearchResults([])
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tn-search-products?q=${encodeURIComponent(sku)}&sucursal_id=${sucursalId}`,
+        { headers: { Authorization: `Bearer ${session?.access_token}` } }
+      )
+      const json = await res.json()
+      setTnSearchResults(Array.isArray(json) ? json : [])
+    } catch { toast.error('Error al buscar en TN') }
+    setTnSearching(false)
+  }
+
+  const searchMELIItems = async (sku: string) => {
+    if (!sku.trim()) return
+    setMeliSearching(true)
+    setMeliSearchResults([])
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meli-search-items?q=${encodeURIComponent(sku)}`,
+        { headers: { Authorization: `Bearer ${session?.access_token}` } }
+      )
+      const json = await res.json()
+      setMeliSearchResults(Array.isArray(json) ? json : [])
+    } catch { toast.error('Error al buscar en ML') }
+    setMeliSearching(false)
+  }
 
   const { data: tnMap = [] } = useQuery({
     queryKey: ['tn_map', tenant?.id],
@@ -2121,9 +2219,20 @@ export default function ConfigPage() {
               <div className="w-8 h-8 rounded-lg bg-[#95BF47]/10 flex items-center justify-center flex-shrink-0">
                 <Store size={16} className="text-[#95BF47]" />
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">TiendaNube</h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Sincronización de stock y recepción de órdenes</p>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <button onClick={forceSyncTN} disabled={tnSyncing}
+                  title="Forzar sync de stock ahora"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#95BF47]/10 hover:bg-[#95BF47]/20 text-[#5a8a1a] dark:text-[#95BF47] rounded-lg font-medium disabled:opacity-50 transition-colors">
+                  {tnSyncing ? '...' : '↑ Sync stock'}
+                </button>
+                <button disabled title="Próximamente: sincronizar catálogo completo a TiendaNube"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-400 rounded-lg font-medium cursor-not-allowed">
+                  📦 Sync productos
+                </button>
               </div>
             </div>
 
@@ -2212,19 +2321,45 @@ export default function ConfigPage() {
                           {/* Formulario nuevo mapeo */}
                           {tnMapForm ? (
                             <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-600">
-                              <select value={tnMapForm.productoId} onChange={e => setTnMapForm({ ...tnMapForm, productoId: e.target.value })}
+                              <select value={tnMapForm.productoId}
+                                onChange={e => {
+                                  const prod = (productosMap as any[]).find(p => p.id === e.target.value)
+                                  setTnMapForm({ ...tnMapForm, productoId: e.target.value, tnProductId: '', tnVariantId: '' })
+                                  setTnSearchResults([])
+                                  if (prod?.sku) searchTNProducts(prod.sku, suc.id)
+                                }}
                                 className="w-full text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                                 <option value="">Seleccionar producto Genesis360</option>
                                 {(productosMap as any[]).map((p: any) => (
                                   <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
                                 ))}
                               </select>
+
+                              {/* Auto-complete resultados TN */}
+                              {tnSearching && <p className="text-xs text-gray-400 dark:text-gray-500 animate-pulse">Buscando en TiendaNube...</p>}
+                              {tnSearchResults.length > 0 && (
+                                <div className="border border-[#95BF47]/40 rounded-lg overflow-hidden">
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 px-2 py-1 bg-[#95BF47]/10">Seleccioná el producto en TN:</p>
+                                  {tnSearchResults.map((r, i) => (
+                                    <button key={i} type="button"
+                                      onClick={() => {
+                                        setTnMapForm({ ...tnMapForm, tnProductId: String(r.product_id), tnVariantId: r.variant_id ? String(r.variant_id) : '' })
+                                        setTnSearchResults([])
+                                      }}
+                                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-[#95BF47]/10 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                                      <span className="font-medium text-gray-700 dark:text-gray-300">{r.title}</span>
+                                      <span className="ml-2 text-gray-400 dark:text-gray-500">ID:{r.product_id}{r.variant_id ? `/var:${r.variant_id}` : ''} {r.sku ? `· SKU:${r.sku}` : ''}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
                               <div className="flex gap-2">
                                 <input type="number" placeholder="TN Product ID" value={tnMapForm.tnProductId}
                                   onChange={e => setTnMapForm({ ...tnMapForm, tnProductId: e.target.value })}
                                   className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
                                   onWheel={e => e.currentTarget.blur()} />
-                                <input type="number" placeholder="TN Variant ID" value={tnMapForm.tnVariantId}
+                                <input type="number" placeholder="TN Variant ID (opcional)" value={tnMapForm.tnVariantId}
                                   onChange={e => setTnMapForm({ ...tnMapForm, tnVariantId: e.target.value })}
                                   className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
                                   onWheel={e => e.currentTarget.blur()} />
@@ -2355,9 +2490,21 @@ export default function ConfigPage() {
               <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#FFE600' }}>
                 <span className="text-lg font-black" style={{ color: '#333' }}>ML</span>
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">MercadoLibre</h3>
                 <p className="text-xs text-gray-400 dark:text-gray-500">Órdenes → ventas · Sync stock y precio</p>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <button onClick={forceSyncMELI} disabled={meliSyncing}
+                  title="Forzar sync de stock ahora"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium disabled:opacity-50 transition-colors"
+                  style={{ backgroundColor: '#FFF8CC', color: '#856404' }}>
+                  {meliSyncing ? '...' : '↑ Sync stock'}
+                </button>
+                <button disabled title="Próximamente: sincronizar catálogo completo a MercadoLibre"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-400 rounded-lg font-medium cursor-not-allowed">
+                  📦 Sync productos
+                </button>
               </div>
               {!import.meta.env.VITE_MELI_CLIENT_ID && (
                 <div className="ml-auto flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 px-2 py-1 rounded-lg">
@@ -2424,13 +2571,38 @@ export default function ConfigPage() {
                     {meliMapForm ? (
                       <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-2">
                         <select value={meliMapForm.productoId}
-                          onChange={e => setMeliMapForm(p => p ? { ...p, productoId: e.target.value } : p)}
+                          onChange={e => {
+                            const prod = (productosMap as any[]).find(p => p.id === e.target.value)
+                            setMeliMapForm(p => p ? { ...p, productoId: e.target.value, meliItemId: '', meliVariationId: '' } : p)
+                            setMeliSearchResults([])
+                            if (prod?.sku) searchMELIItems(prod.sku)
+                          }}
                           className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent">
                           <option value="">— Producto G360 —</option>
                           {(productosMap as any[]).map((p: any) => (
                             <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
                           ))}
                         </select>
+
+                        {/* Auto-complete resultados ML */}
+                        {meliSearching && <p className="text-xs text-yellow-600 dark:text-yellow-400 animate-pulse">Buscando en MercadoLibre...</p>}
+                        {meliSearchResults.length > 0 && (
+                          <div className="border border-yellow-300/50 rounded-lg overflow-hidden">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 px-2 py-1 bg-yellow-50 dark:bg-yellow-900/20">Seleccioná el item en ML:</p>
+                            {meliSearchResults.map((r, i) => (
+                              <button key={i} type="button"
+                                onClick={() => {
+                                  setMeliMapForm(p => p ? { ...p, meliItemId: r.item_id, meliVariationId: r.variation_id ? String(r.variation_id) : '' } : p)
+                                  setMeliSearchResults([])
+                                }}
+                                className="w-full text-left px-2 py-1.5 text-xs hover:bg-yellow-50 dark:hover:bg-yellow-900/20 border-b border-gray-100 dark:border-gray-600 last:border-0">
+                                <span className="font-medium text-gray-700 dark:text-gray-300">{r.title}</span>
+                                <span className="ml-2 text-gray-400 dark:text-gray-500">{r.item_id}{r.variation_id ? `/var:${r.variation_id}` : ''}{r.sku ? ` · SKU:${r.sku}` : ''}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
                         <input type="text" value={meliMapForm.meliItemId}
                           onChange={e => setMeliMapForm(p => p ? { ...p, meliItemId: e.target.value } : p)}
                           placeholder="ML Item ID (ej: MLA1234567890)"

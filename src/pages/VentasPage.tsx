@@ -3337,7 +3337,9 @@ export default function VentasPage() {
         // Para reservar: solo exige monto > 0, no cubrir el total
         const asignado = saldoModal.mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
         const errorSaldo = esReservar
-          ? (asignado <= 0 ? 'Ingresá al menos un monto para la seña' : null)
+          ? (asignado <= 0 ? 'Ingresá al menos un monto para la seña'
+            : asignado > saldoModal.total ? 'La seña no puede superar el total de la venta'
+            : null)
           : validarSaldoMediosPago(saldoModal.mediosPago, saldo)
         const faltante = saldo - asignado
         return (

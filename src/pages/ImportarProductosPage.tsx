@@ -45,9 +45,21 @@ interface FilaProducto {
   tiene_vencimiento: boolean
   regla_inventario?: string
   es_kit: boolean
+  estr_nombre?: string
   estr_unidades_por_caja?: number
   estr_cajas_por_pallet?: number
   estr_peso_unidad?: number
+  estr_alto_unidad?: number
+  estr_ancho_unidad?: number
+  estr_largo_unidad?: number
+  estr_peso_caja?: number
+  estr_alto_caja?: number
+  estr_ancho_caja?: number
+  estr_largo_caja?: number
+  estr_peso_pallet?: number
+  estr_alto_pallet?: number
+  estr_ancho_pallet?: number
+  estr_largo_pallet?: number
   estado: 'nuevo' | 'existente' | 'error'
   errores: string[]
 }
@@ -87,7 +99,11 @@ export default function ImportarProductosPage() {
       'alicuota_iva','margen_objetivo',
       'tiene_series','tiene_lote','tiene_vencimiento',
       'regla_inventario','es_kit',
-      'estr_unidades_por_caja','estr_cajas_por_pallet','estr_peso_unidad',
+      'estr_nombre',
+      'estr_unidades_por_caja','estr_cajas_por_pallet',
+      'estr_peso_unidad','estr_alto_unidad','estr_ancho_unidad','estr_largo_unidad',
+      'estr_peso_caja','estr_alto_caja','estr_ancho_caja','estr_largo_caja',
+      'estr_peso_pallet','estr_alto_pallet','estr_ancho_pallet','estr_largo_pallet',
     ]
     const ws = XLSX.utils.aoa_to_sheet([
       headers,
@@ -131,8 +147,8 @@ export default function ImportarProductosPage() {
       ['nombre','SÍ','Nombre del producto'],
       ['sku','no','Identificador único (se autogenera si vacío)'],
       ['codigo_barras','no','Código EAN/UPC'],
-      ['categoria','no','Categoría existente o se crea nueva'],
-      ['proveedor','no','Proveedor existente o se crea nuevo'],
+      ['categoria','no','Debe existir en Configuración → Categorías (error si no existe)'],
+      ['proveedor','no','Debe existir en Configuración → Proveedores (error si no existe)'],
       ['precio_costo','no','Número. Ej: 1500 o 4.5 (si USD)'],
       ['precio_costo_moneda','no','ARS (default) o USD'],
       ['precio_venta','no','Número. Ej: 2500'],
@@ -152,9 +168,24 @@ export default function ImportarProductosPage() {
       ['es_kit','no','SI o NO (default NO). Marca el producto como KIT de kitting'],
       ['','',''],
       ['── Estructura (opcional) ──','','Solo completa si necesitás datos de embalaje/logística'],
+      ['estr_nombre','no','Nombre de la estructura. Ej: Embalaje estándar (default: "Default")'],
       ['estr_unidades_por_caja','no','Cuántas unidades entran en una caja. Ej: 50'],
       ['estr_cajas_por_pallet','no','Cuántas cajas entran en un pallet. Ej: 4'],
-      ['estr_peso_unidad','no','Peso de la unidad en kg. Ej: 0.5'],
+      ['── Nivel Unidad ──','',''],
+      ['estr_peso_unidad','no','Peso de 1 unidad en kg. Ej: 0.5'],
+      ['estr_alto_unidad','no','Alto de 1 unidad en cm. Ej: 10'],
+      ['estr_ancho_unidad','no','Ancho de 1 unidad en cm. Ej: 5'],
+      ['estr_largo_unidad','no','Largo de 1 unidad en cm. Ej: 8'],
+      ['── Nivel Caja ──','',''],
+      ['estr_peso_caja','no','Peso de 1 caja llena en kg. Ej: 26'],
+      ['estr_alto_caja','no','Alto de 1 caja en cm. Ej: 40'],
+      ['estr_ancho_caja','no','Ancho de 1 caja en cm. Ej: 30'],
+      ['estr_largo_caja','no','Largo de 1 caja en cm. Ej: 50'],
+      ['── Nivel Pallet ──','',''],
+      ['estr_peso_pallet','no','Peso de 1 pallet lleno en kg. Ej: 120'],
+      ['estr_alto_pallet','no','Alto de 1 pallet en cm. Ej: 120'],
+      ['estr_ancho_pallet','no','Ancho de 1 pallet en cm. Ej: 80'],
+      ['estr_largo_pallet','no','Largo de 1 pallet en cm. Ej: 120'],
     ])
     wsRef['!cols'] = [{ wch:26 },{ wch:12 },{ wch:60 }]
     XLSX.utils.book_append_sheet(wb, wsRef, 'Referencia')
@@ -208,9 +239,32 @@ export default function ImportarProductosPage() {
           }
 
           // estructura
-          const estr_unidades_por_caja = parseFloat(String(row.estr_unidades_por_caja || '').replace(',', '.')) || undefined
-          const estr_cajas_por_pallet  = parseFloat(String(row.estr_cajas_por_pallet  || '').replace(',', '.')) || undefined
-          const estr_peso_unidad       = parseFloat(String(row.estr_peso_unidad        || '').replace(',', '.')) || undefined
+          const parseNum = (v: any) => parseFloat(String(v || '').replace(',', '.')) || undefined
+          const estr_nombre            = String(row.estr_nombre || '').trim() || undefined
+          const estr_unidades_por_caja = parseNum(row.estr_unidades_por_caja)
+          const estr_cajas_por_pallet  = parseNum(row.estr_cajas_por_pallet)
+          const estr_peso_unidad       = parseNum(row.estr_peso_unidad)
+          const estr_alto_unidad       = parseNum(row.estr_alto_unidad)
+          const estr_ancho_unidad      = parseNum(row.estr_ancho_unidad)
+          const estr_largo_unidad      = parseNum(row.estr_largo_unidad)
+          const estr_peso_caja         = parseNum(row.estr_peso_caja)
+          const estr_alto_caja         = parseNum(row.estr_alto_caja)
+          const estr_ancho_caja        = parseNum(row.estr_ancho_caja)
+          const estr_largo_caja        = parseNum(row.estr_largo_caja)
+          const estr_peso_pallet       = parseNum(row.estr_peso_pallet)
+          const estr_alto_pallet       = parseNum(row.estr_alto_pallet)
+          const estr_ancho_pallet      = parseNum(row.estr_ancho_pallet)
+          const estr_largo_pallet      = parseNum(row.estr_largo_pallet)
+
+          // Validar categoria y proveedor — deben existir, no se crean automáticamente
+          const catNombre = String(row.categoria || '').trim()
+          const provNombre = String(row.proveedor || '').trim()
+          if (catNombre && !(categorias as any[]).find(c => c.nombre.toLowerCase() === catNombre.toLowerCase())) {
+            errores.push(`Categoría "${catNombre}" no existe — creala primero en Configuración`)
+          }
+          if (provNombre && !(proveedores as any[]).find(p => p.nombre.toLowerCase() === provNombre.toLowerCase())) {
+            errores.push(`Proveedor "${provNombre}" no existe — crealo primero en Configuración`)
+          }
 
           if (!nombre) errores.push('Nombre requerido')
           if (precio_costo < 0) errores.push('Precio costo inválido')
@@ -240,7 +294,11 @@ export default function ImportarProductosPage() {
             tiene_vencimiento: parseBool(row.tiene_vencimiento),
             regla_inventario,
             es_kit: parseBool(row.es_kit),
+            estr_nombre,
             estr_unidades_por_caja,
+            estr_alto_unidad, estr_ancho_unidad, estr_largo_unidad,
+            estr_peso_caja, estr_alto_caja, estr_ancho_caja, estr_largo_caja,
+            estr_peso_pallet, estr_alto_pallet, estr_ancho_pallet, estr_largo_pallet,
             estr_cajas_por_pallet,
             estr_peso_unidad,
             estado: errores.length > 0 ? 'error' : skusExistentes.has(sku) ? 'existente' : 'nuevo',
@@ -263,18 +321,13 @@ export default function ImportarProductosPage() {
       return true
     })) {
       try {
-        let categoria_id: string | null = null
-        if (fila.categoria) {
-          const existing = (categorias as any[]).find(c => c.nombre.toLowerCase() === fila.categoria!.toLowerCase())
-          if (existing) { categoria_id = existing.id }
-          else { const { data } = await supabase.from('categorias').insert({ tenant_id: tenant!.id, nombre: fila.categoria }).select('id').single(); categoria_id = data?.id ?? null; qc.invalidateQueries({ queryKey: ['categorias'] }) }
-        }
-        let proveedor_id: string | null = null
-        if (fila.proveedor) {
-          const existing = (proveedores as any[]).find(p => p.nombre.toLowerCase() === fila.proveedor!.toLowerCase())
-          if (existing) { proveedor_id = existing.id }
-          else { const { data } = await supabase.from('proveedores').insert({ tenant_id: tenant!.id, nombre: fila.proveedor }).select('id').single(); proveedor_id = data?.id ?? null; qc.invalidateQueries({ queryKey: ['proveedores'] }) }
-        }
+        // Categoria y proveedor SOLO se buscan — no se crean automáticamente
+        const categoria_id = fila.categoria
+          ? ((categorias as any[]).find(c => c.nombre.toLowerCase() === fila.categoria!.toLowerCase())?.id ?? null)
+          : null
+        const proveedor_id = fila.proveedor
+          ? ((proveedores as any[]).find(p => p.nombre.toLowerCase() === fila.proveedor!.toLowerCase())?.id ?? null)
+          : null
 
         const payload = {
           tenant_id: tenant!.id,
@@ -301,7 +354,8 @@ export default function ImportarProductosPage() {
           es_kit: fila.es_kit,
         }
 
-        const hasEstr = !!(fila.estr_unidades_por_caja || fila.estr_cajas_por_pallet || fila.estr_peso_unidad)
+        const hasEstr = !!(fila.estr_nombre || fila.estr_unidades_por_caja || fila.estr_cajas_por_pallet ||
+          fila.estr_peso_unidad || fila.estr_alto_unidad || fila.estr_peso_caja || fila.estr_peso_pallet)
         let productoId: string | null = null
 
         if (fila.estado === 'nuevo') {
@@ -321,11 +375,22 @@ export default function ImportarProductosPage() {
           const estrPayload = {
             tenant_id: tenant!.id,
             producto_id: productoId,
-            nombre: 'Default',
+            nombre: fila.estr_nombre ?? 'Default',
             is_default: true,
             unidades_por_caja: fila.estr_unidades_por_caja ?? null,
-            cajas_por_pallet: fila.estr_cajas_por_pallet ?? null,
-            peso_unidad: fila.estr_peso_unidad ?? null,
+            cajas_por_pallet:  fila.estr_cajas_por_pallet ?? null,
+            peso_unidad:  fila.estr_peso_unidad  ?? null,
+            alto_unidad:  fila.estr_alto_unidad  ?? null,
+            ancho_unidad: fila.estr_ancho_unidad ?? null,
+            largo_unidad: fila.estr_largo_unidad ?? null,
+            peso_caja:    fila.estr_peso_caja    ?? null,
+            alto_caja:    fila.estr_alto_caja    ?? null,
+            ancho_caja:   fila.estr_ancho_caja   ?? null,
+            largo_caja:   fila.estr_largo_caja   ?? null,
+            peso_pallet:  fila.estr_peso_pallet  ?? null,
+            alto_pallet:  fila.estr_alto_pallet  ?? null,
+            ancho_pallet: fila.estr_ancho_pallet ?? null,
+            largo_pallet: fila.estr_largo_pallet ?? null,
           }
           const { data: estrExisting } = await supabase.from('producto_estructuras').select('id').eq('producto_id', productoId).eq('is_default', true).maybeSingle()
           if (estrExisting) {

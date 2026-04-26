@@ -206,6 +206,7 @@ export default function VentasPage() {
     },
     enabled: !!tenant,
     refetchInterval: 15_000,
+    refetchOnMount: true,      // Refresca al entrar a la página (ej: después de abrir caja en otra tab)
     refetchOnWindowFocus: true,
   })
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
@@ -607,6 +608,22 @@ export default function VentasPage() {
         stockDisponibleScan += Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0))
       }
     }
+    // Si el producto ya está en el carrito y NO es serializado → sumar cantidad
+    if (!prod.tiene_series) {
+      const idx = cart.findIndex(c => c.producto_id === prod.id)
+      if (idx >= 0) {
+        const item = cart[idx]
+        const maxDisp = item.lineas_disponibles?.reduce((s, l) => s + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0) ?? stockDisponibleScan
+        const nuevaCant = item.cantidad + 1
+        if (nuevaCant <= maxDisp) {
+          updateItem(idx, 'cantidad', nuevaCant)
+          return
+        } else {
+          toast.error(`Stock máximo disponible: ${maxDisp}`)
+          return
+        }
+      }
+    }
     await agregarProducto({ ...prod, stock_disponible: stockDisponibleScan })
   }
 
@@ -751,7 +768,22 @@ export default function VentasPage() {
       const combo = (combosDisp as any[])
         .filter(c => c.producto_id === item.producto_id && totalQty >= c.cantidad)
         .sort((a: any, b: any) => b.cantidad - a.cantidad)[0]
-      if (!combo) continue
+
+      // Sin combo activo: quitar descuento si lo tenía + sugerir si falta 1
+      if (!combo) {
+        const tieneDescCombo = productRows.some(r => r.descuento > 0)
+        if (tieneDescCombo) {
+          changes.set(item.producto_id, productRows.map(r => ({ ...r, descuento: 0, descuento_tipo: 'pct' as DescTipo })))
+          toast('Descuento de combo removido', { icon: 'ℹ️' })
+        }
+        const comboMasCercano = (combosDisp as any[])
+          .filter(c => c.producto_id === item.producto_id && c.cantidad > totalQty)
+          .sort((a: any, b: any) => a.cantidad - b.cantidad)[0]
+        if (comboMasCercano && comboMasCercano.cantidad - totalQty === 1) {
+          toast(`💡 Agregá 1 más: combo ${comboMasCercano.cantidad}× con ${comboDescLabel(comboMasCercano)}`, { duration: 4000 })
+        }
+        continue
+      }
 
       const rows = calcularComboRows(totalQty, combo, cotizacionUSD || 1)
       const target: CartItem[] = rows.map(r => ({ ...item, cantidad: r.cantidad, descuento: r.descuento, descuento_tipo: r.descuento_tipo as DescTipo }))

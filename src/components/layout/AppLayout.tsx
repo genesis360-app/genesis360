@@ -82,13 +82,16 @@ export function AppLayout() {
 
   // Notificaciones globales de pagos MP recibidos
   const seenMpLogs = useRef<Set<string>>(new Set())
+  // Reset seen logs al cambiar de tenant para evitar contaminación entre cuentas
+  useEffect(() => { seenMpLogs.current = new Set() }, [tenant?.id])
+
   useEffect(() => {
     if (!tenant?.id) return
     const checkMpPayments = async () => {
-      const since = new Date(Date.now() - 5 * 60 * 1000).toISOString() // últimos 5 min
+      const since = new Date(Date.now() - 5 * 60 * 1000).toISOString()
       const { data: logs } = await supabase
         .from('ventas_externas_logs')
-        .select('id, webhook_external_id, payload, created_at')
+        .select('id, webhook_external_id, payload_raw, procesado_at')
         .eq('tenant_id', tenant.id)
         .eq('integracion', 'MercadoPago')
         .gte('created_at', since)
@@ -97,10 +100,10 @@ export function AppLayout() {
       for (const log of logs ?? []) {
         if (seenMpLogs.current.has(log.id)) continue
         seenMpLogs.current.add(log.id)
-        const p = log.payload as any
+        const p = (log as any).payload_raw as any
         if (!p?.monto) continue
         const monto = Number(p.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })
-        const fecha = new Date(log.created_at)
+        const fecha = new Date((log as any).procesado_at ?? Date.now())
         const hora = fecha.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
         const dia = fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
         toast.success(`Pago MP confirmado — $${monto}\n${dia} · ${hora} hs`, {

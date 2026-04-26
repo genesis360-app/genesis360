@@ -198,25 +198,27 @@ serve(async (req) => {
     if (existingCliente) {
       clienteId = existingCliente.id
     } else {
-      // Upsert: si ya existe por email (race condition), devuelve el existente
-      const { data: newCliente } = await supabase
+      // INSERT — si hay race condition y ya fue creado, el error 23505 lo capturamos
+      const { data: newCliente, error: insertErr } = await supabase
         .from('clientes')
-        .upsert({
+        .insert({
           tenant_id,
           sucursal_id,
           nombre:   customer.name ?? 'Cliente TiendaNube',
           email:    customer.email ?? null,
           telefono: customer.phone ?? null,
-        }, { onConflict: 'tenant_id,email', ignoreDuplicates: false })
+        })
         .select('id')
         .maybeSingle()
-      // Si upsert falló (email null no tiene constraint), buscar de nuevo
-      if (!newCliente?.id && customer.email) {
+      if (newCliente?.id) {
+        clienteId = newCliente.id
+      } else if (insertErr?.code === '23505' && customer.email) {
+        // Duplicado por race condition — buscar el existente
         const { data: fallback } = await supabase.from('clientes')
           .select('id').eq('tenant_id', tenant_id).eq('email', customer.email).maybeSingle()
         clienteId = fallback?.id ?? null
       } else {
-        clienteId = newCliente?.id ?? null
+        clienteId = null
       }
     }
   }

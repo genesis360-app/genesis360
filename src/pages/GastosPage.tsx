@@ -34,6 +34,18 @@ const TASAS_IVA = [
 ]
 
 const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
+
+interface MedioPagoItem { tipo: string; monto: string }
+
+function formatMediosPago(raw: string | null | undefined): string {
+  if (!raw) return '—'
+  try {
+    const arr = JSON.parse(raw) as { tipo: string; monto: number }[]
+    if (Array.isArray(arr) && arr.length > 0)
+      return arr.map(m => `${m.tipo} $${Number(m.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`).join(' + ')
+  } catch {}
+  return raw
+}
 const FRECUENCIAS = [
   { value: 'mensual',   label: 'Mensual' },
   { value: 'quincenal', label: 'Quincenal' },
@@ -50,7 +62,7 @@ interface FormGasto {
   descripcion: string; monto: string
   tipo_iva: string; iva_deducible: boolean
   deduce_ganancias: boolean; gasto_negocio: string
-  categoria: string; medio_pago: string; fecha: string; notas: string
+  categoria: string; fecha: string; notas: string
 }
 interface FormFijo {
   descripcion: string; monto: string
@@ -64,7 +76,7 @@ interface FormFijo {
 const FORM_VACIO: FormGasto = {
   descripcion: '', monto: '', tipo_iva: '', iva_deducible: false,
   deduce_ganancias: false, gasto_negocio: '',
-  categoria: '', medio_pago: '', fecha: new Date().toISOString().split('T')[0], notas: '',
+  categoria: '', fecha: new Date().toISOString().split('T')[0], notas: '',
 }
 const FORM_FIJO_VACIO: FormFijo = {
   descripcion: '', monto: '', tipo_iva: '', iva_deducible: false,
@@ -121,10 +133,14 @@ export default function GastosPage() {
   const [formFijo, setFormFijo] = useState<FormFijo>(FORM_FIJO_VACIO)
   const [guardandoFijo, setGuardandoFijo] = useState(false)
   const [modalGenerarFijo, setModalGenerarFijo] = useState<any | null>(null)
-  const [formGenerar, setFormGenerar] = useState<{ medio_pago: string; fecha: string; notas: string }>({
-    medio_pago: '', fecha: new Date().toISOString().split('T')[0], notas: '',
+  const [formGenerar, setFormGenerar] = useState<{ fecha: string; notas: string }>({
+    fecha: new Date().toISOString().split('T')[0], notas: '',
   })
+  const [mediosPagoGenerar, setMediosPagoGenerar] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   const [generandoFijo, setGenerandoFijo] = useState(false)
+
+  // Múltiples medios de pago para gastos variables
+  const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -219,8 +235,20 @@ export default function GastosPage() {
   const histCategoriasUnicas = [...new Set(historialGastos.map((g: any) => g.categoria).filter(Boolean))] as string[]
 
   // ── Modal helpers ─────────────────────────────────────────────────────────
+  const parseMediosPago = (raw: string | null | undefined): MedioPagoItem[] => {
+    if (!raw) return [{ tipo: '', monto: '' }]
+    try {
+      const arr = JSON.parse(raw) as { tipo: string; monto: number }[]
+      if (Array.isArray(arr) && arr.length > 0)
+        return arr.map(m => ({ tipo: m.tipo, monto: String(m.monto) }))
+    } catch {}
+    // backward compat: old single string value
+    return [{ tipo: raw, monto: '' }]
+  }
+
   const abrirNuevo = () => {
     setEditandoId(null); setForm(FORM_VACIO)
+    setMediosPago([{ tipo: '', monto: '' }])
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
     setModalAbierto(true)
@@ -232,9 +260,9 @@ export default function GastosPage() {
       tipo_iva: g.tipo_iva ?? '', iva_deducible: g.iva_deducible ?? false,
       deduce_ganancias: g.deduce_ganancias ?? false,
       gasto_negocio: g.gasto_negocio === true ? 'negocio' : g.gasto_negocio === false ? 'personal' : '',
-      categoria: g.categoria ?? '', medio_pago: g.medio_pago ?? '',
-      fecha: g.fecha, notas: g.notas ?? '',
+      categoria: g.categoria ?? '', fecha: g.fecha, notas: g.notas ?? '',
     })
+    setMediosPago(parseMediosPago(g.medio_pago))
     setComprobanteFile(null); setComprobanteExistente(g.comprobante_url ?? null)
     setComprobanteNombre(g.comprobante_titulo ?? '')
     setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
@@ -242,6 +270,7 @@ export default function GastosPage() {
   }
   const cerrarModal = () => {
     setModalAbierto(false); setEditandoId(null); setForm(FORM_VACIO)
+    setMediosPago([{ tipo: '', monto: '' }])
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
     setCajaSeleccionadaId(null)
@@ -312,6 +341,11 @@ export default function GastosPage() {
     try {
       const ivaMonto = form.tipo_iva && form.iva_deducible ? calcularIVA(monto, form.tipo_iva) : null
 
+      const mediosValidos = mediosPago.filter(m => m.tipo && parseFloat(m.monto) > 0)
+      const mediosPagoJson = mediosValidos.length > 0
+        ? JSON.stringify(mediosValidos.map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto) })))
+        : null
+
       const payload: any = {
         tenant_id: tenant!.id,
         descripcion: form.descripcion.trim(), monto,
@@ -322,7 +356,8 @@ export default function GastosPage() {
         gasto_negocio: form.deduce_ganancias
           ? (form.gasto_negocio === 'negocio' ? true : form.gasto_negocio === 'personal' ? false : null)
           : null,
-        categoria: form.categoria || null, medio_pago: form.medio_pago || null,
+        categoria: form.categoria || null,
+        medio_pago: mediosPagoJson,
         fecha: form.fecha, notas: form.notas.trim() || null,
         sucursal_id: sucursalId || null,
         usuario_id: user?.id ?? null,
@@ -345,20 +380,20 @@ export default function GastosPage() {
         toast.success('Gasto registrado')
         logActividad({ entidad: 'gasto', entidad_nombre: form.descripcion.trim(), accion: 'crear', valor_nuevo: `$${monto}`, pagina: '/gastos' })
 
-        // Registrar en caja
+        // Registrar en caja — un movimiento por cada medio de pago
         const sesionUsar = sesionCajaId ?? (sesionesAbiertas as any[])[0]?.id
-        if (sesionUsar) {
-          if (form.medio_pago === 'Efectivo') {
+        if (sesionUsar && mediosValidos.length > 0) {
+          const concepto = `Gasto: ${form.descripcion.trim()}`
+          for (const mp of mediosValidos) {
+            const montoMp = parseFloat(mp.monto)
             void supabase.from('caja_movimientos').insert({
-              tenant_id: tenant!.id, sesion_id: sesionUsar, tipo: 'egreso',
-              concepto: `Gasto: ${form.descripcion.trim()}`, monto, usuario_id: user?.id,
-            }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
-          } else if (form.medio_pago) {
-            void supabase.from('caja_movimientos').insert({
-              tenant_id: tenant!.id, sesion_id: sesionUsar, tipo: 'egreso_informativo',
-              concepto: `[${form.medio_pago}] Gasto: ${form.descripcion.trim()}`, monto, usuario_id: user?.id,
+              tenant_id: tenant!.id, sesion_id: sesionUsar,
+              tipo: mp.tipo === 'Efectivo' ? 'egreso' : 'egreso_informativo',
+              concepto: mp.tipo === 'Efectivo' ? concepto : `[${mp.tipo}] ${concepto}`,
+              monto: montoMp, usuario_id: user?.id,
             })
           }
+          qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
         }
       }
 
@@ -448,27 +483,42 @@ export default function GastosPage() {
   // ── Generar gasto desde fijo ──────────────────────────────────────────────
   const abrirGenerarFijo = (f: any) => {
     setModalGenerarFijo(f)
-    setFormGenerar({ medio_pago: f.medio_pago ?? '', fecha: new Date().toISOString().split('T')[0], notas: '' })
+    setFormGenerar({ fecha: new Date().toISOString().split('T')[0], notas: '' })
+    setMediosPagoGenerar(f.medio_pago ? [{ tipo: f.medio_pago, monto: String(f.monto) }] : [{ tipo: '', monto: String(f.monto) }])
   }
   const confirmarGenerarFijo = async () => {
     if (!modalGenerarFijo) return
     setGenerandoFijo(true)
     try {
       const f = modalGenerarFijo
-      const { error } = await supabase.from('gastos').insert({
+      const mediosValGen = mediosPagoGenerar.filter(m => m.tipo && parseFloat(m.monto) > 0)
+      const medioJson = mediosValGen.length > 0
+        ? JSON.stringify(mediosValGen.map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto) })))
+        : null
+      const { data: inserted, error } = await supabase.from('gastos').insert({
         tenant_id: tenant!.id,
         descripcion: f.descripcion, monto: f.monto,
         tipo_iva: f.tipo_iva ?? null,
         iva_monto: f.iva_monto ?? null, iva_deducible: f.iva_deducible ?? false,
         deduce_ganancias: f.deduce_ganancias ?? false, gasto_negocio: f.gasto_negocio ?? null,
-        categoria: f.categoria ?? null,
-        medio_pago: formGenerar.medio_pago || null,
+        categoria: f.categoria ?? null, medio_pago: medioJson,
         fecha: formGenerar.fecha,
         notas: formGenerar.notas.trim() || `Generado desde gasto fijo — ${f.frecuencia}`,
-        sucursal_id: f.sucursal_id ?? null,
-        usuario_id: user?.id ?? null,
-      })
+        sucursal_id: f.sucursal_id ?? null, usuario_id: user?.id ?? null,
+      }).select('id').single()
       if (error) throw error
+      // Registrar en caja
+      const sesionUsar = sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null
+      if (sesionUsar && mediosValGen.length > 0) {
+        for (const mp of mediosValGen) {
+          void supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id, sesion_id: sesionUsar,
+            tipo: mp.tipo === 'Efectivo' ? 'egreso' : 'egreso_informativo',
+            concepto: mp.tipo === 'Efectivo' ? `Gasto: ${f.descripcion}` : `[${mp.tipo}] Gasto: ${f.descripcion}`,
+            monto: parseFloat(mp.monto), usuario_id: user?.id,
+          })
+        }
+      }
       qc.invalidateQueries({ queryKey: ['gastos'] })
       qc.invalidateQueries({ queryKey: ['gastos-historial'] })
       toast.success(`Gasto "${f.descripcion}" registrado`)
@@ -750,7 +800,7 @@ export default function GastosPage() {
                             <span className="inline-block px-2 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded-lg font-medium">{g.categoria}</span>
                           ) : <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-sm hidden md:table-cell">{g.medio_pago ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-sm hidden md:table-cell">{formatMediosPago(g.medio_pago)}</td>
                         <td className="px-4 py-3 text-right font-semibold text-red-600 dark:text-red-400">{formatMoneda(Number(g.monto))}</td>
                         <td className="px-4 py-3 text-right text-xs hidden md:table-cell">
                           {g.iva_deducible && g.iva_monto > 0
@@ -1086,16 +1136,59 @@ export default function GastosPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medio de pago</label>
-                <div className="relative">
-                  <select value={form.medio_pago} onChange={e => setForm(f => ({ ...f, medio_pago: e.target.value }))}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-                    <option value="">Elegir método…</option>
-                    {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              {/* Medios de pago múltiples */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Medios de pago</label>
+                  {mediosPago.length < MEDIOS_PAGO.length && (
+                    <button type="button" onClick={() => setMediosPago(p => [...p, { tipo: '', monto: '' }])}
+                      className="text-xs text-accent hover:underline flex items-center gap-1">
+                      <Plus size={12} /> Agregar método
+                    </button>
+                  )}
                 </div>
+                {mediosPago.map((mp, idx) => {
+                  const montoTotal = parseFloat(form.monto.replace(',', '.')) || 0
+                  const asignado = mediosPago.reduce((s, m, i) => i !== idx ? s + (parseFloat(m.monto) || 0) : s, 0)
+                  const restante = Math.max(0, montoTotal - asignado)
+                  return (
+                    <div key={idx} className="flex gap-2 items-center">
+                      <div className="relative flex-1">
+                        <select value={mp.tipo}
+                          onChange={e => setMediosPago(p => p.map((m, i) => i === idx ? { ...m, tipo: e.target.value } : m))}
+                          className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                          <option value="">Elegir…</option>
+                          {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                        <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </div>
+                      <div className="relative w-28">
+                        <input type="number" onWheel={e => e.currentTarget.blur()}
+                          value={mp.monto}
+                          onChange={e => setMediosPago(p => p.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m))}
+                          placeholder={restante > 0 ? String(restante.toFixed(0)) : '0'}
+                          min="0" step="0.01"
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      </div>
+                      {mediosPago.length > 1 && (
+                        <button type="button" onClick={() => setMediosPago(p => p.filter((_, i) => i !== idx))}
+                          className="text-gray-400 hover:text-red-500 flex-shrink-0"><X size={14} /></button>
+                      )}
+                    </div>
+                  )
+                })}
+                {/* Indicador de diferencia */}
+                {(() => {
+                  const total = parseFloat(form.monto.replace(',', '.')) || 0
+                  const asignado = mediosPago.reduce((s, m) => s + (parseFloat(m.monto) || 0), 0)
+                  const diff = total - asignado
+                  if (Math.abs(diff) < 0.01 || total === 0) return null
+                  return (
+                    <p className={`text-xs ${diff > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-red-500'}`}>
+                      {diff > 0 ? `Falta asignar $${diff.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : `Excede por $${Math.abs(diff).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                    </p>
+                  )
+                })()}
               </div>
 
               {/* Comprobante */}
@@ -1330,16 +1423,34 @@ export default function GastosPage() {
                 <input type="date" value={formGenerar.fecha} onChange={e => setFormGenerar(f => ({ ...f, fecha: e.target.value }))}
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medio de pago</label>
-                <div className="relative">
-                  <select value={formGenerar.medio_pago} onChange={e => setFormGenerar(f => ({ ...f, medio_pago: e.target.value }))}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-                    <option value="">Elegir método…</option>
-                    {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Medios de pago</label>
+                  <button type="button" onClick={() => setMediosPagoGenerar(p => [...p, { tipo: '', monto: '' }])}
+                    className="text-xs text-accent hover:underline flex items-center gap-1">
+                    <Plus size={12} /> Agregar
+                  </button>
                 </div>
+                {mediosPagoGenerar.map((mp, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <select value={mp.tipo}
+                        onChange={e => setMediosPagoGenerar(p => p.map((m, i) => i === idx ? { ...m, tipo: e.target.value } : m))}
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        <option value="">Elegir…</option>
+                        {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={mp.monto}
+                      onChange={e => setMediosPagoGenerar(p => p.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m))}
+                      placeholder="0" min="0" step="0.01" className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    {mediosPagoGenerar.length > 1 && (
+                      <button type="button" onClick={() => setMediosPagoGenerar(p => p.filter((_, i) => i !== idx))}
+                        className="text-gray-400 hover:text-red-500"><X size={14} /></button>
+                    )}
+                  </div>
+                ))}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>

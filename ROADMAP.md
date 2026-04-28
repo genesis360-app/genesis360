@@ -1,8 +1,69 @@
 # Genesis360 — Roadmap
 
-**Última actualización:** 23 de Abril, 2026 · **v0.89.0 en PROD**
+**Última actualización:** 27 de Abril, 2026 · **v1.2.1 en PROD**
 
 > Stack, arquitectura y convenciones → [CLAUDE.md](CLAUDE.md) · Workflow de deploy → [WORKFLOW.md](WORKFLOW.md)
+
+---
+
+## 🔜 Módulo Facturación Electrónica AFIP (pendiente — sin migration aún)
+
+### Decisión estratégica
+**Integración propia con AFIP WSFE** (sin intermediario). Break-even vs. servicio tercero (~$300 USD/mes a 20 tenants) en 6-8 meses. Las "grandes ligas" ARG (TiendaNube, ML) todas tienen integración propia. Librería `afip.js` (Node/Deno) wrappea el WSFE SOAP.
+
+### Infraestructura ya implementada
+- `tenant_certificates` + bucket `certificados-afip` + sección ConfigPage ✅ (migration 043)
+- Columnas `cae`, `vencimiento_cae`, `tipo_comprobante`, `numero_comprobante`, `link_factura_pdf` en `ventas` ✅ (migration 060)
+- `alicuota_iva` en productos + `iva_monto` en venta_items ✅
+
+### Tipos de comprobante (validado por contador)
+| Emisor | Receptor | Comprobante |
+|---|---|---|
+| Responsable Inscripto (RI) | Responsable Inscripto | Factura A — discrimina IVA |
+| Responsable Inscripto (RI) | Consumidor Final / Monotributista | Factura B — IVA incluido |
+| Monotributista | Cualquier | Factura C — sin IVA |
+
+Tridente A/B/C cubre el 99% de los comercios de G360. NC-A/B/C para devoluciones.
+
+### Umbral Factura B
+- Venta < umbral AFIP (configurable en DB, se actualiza por inflación) → "Consumidor Final", sin datos
+- Venta ≥ umbral → DNI/CUIT + nombre obligatorio. Auto-validación en checkout.
+
+### Devoluciones con factura emitida
+- **Nota de Crédito electrónica obligatoria** (no alcanza el flujo interno de stock)
+- NC vinculada a factura original: `devoluciones` necesita `factura_vinculada_id FK ventas.id` + `nc_cae` + `nc_numero_comprobante`
+
+### Descripción del ítem
+`{nombre_producto} - {sku} - {unidad_medida}` · Ej: "Zapatilla Urbana X - SKU-00045 - Par"
+
+### Schema nuevo necesario
+```
+tenants:      condicion_iva, razon_social, domicilio_fiscal,
+              punto_venta_afip INT, facturacion_habilitada BOOL,
+              umbral_factura_b DECIMAL
+clientes:     cuit TEXT, condicion_iva TEXT
+devoluciones: nc_cae, nc_vencimiento_cae, nc_numero_comprobante,
+              factura_vinculada_id FK ventas(id)
+```
+
+### Plan de fases
+- **Paso 0** — Homologación AFIP (proceso manual 1-2 semanas, iniciar ANTES del código)
+- **Fase 1** — Config y datos maestros: toggle `facturacion_habilitada`, campos tenant, CUIT+condición IVA en clientes, umbral configurable
+- **Fase 2** — Emisión: Edge Function `emitir-factura` → WSFE → CAE → PDF → QR AFIP (obligatorio desde 2021)
+- **Fase 3** — Notas de Crédito: extensión módulo devoluciones con NC electrónica vinculada
+- **Fase 4** — Reportes: libro IVA ventas, resumen comprobantes, exportar Excel para contador
+
+### Riesgos principales
+1. Numeración correlativa AFIP — bugs de duplicados/saltos son graves
+2. Multi-tenant certificates — cada tenant tiene su .crt y .key
+3. AFIP WSFE tiene downtime — retry robusto necesario
+4. Clientes sin CUIT/condición IVA — flujo de completar datos requerido antes de emitir
+5. Homologación burocrática — iniciar temprano
+
+### Pendiente antes de arrancar código
+- [ ] Iniciar proceso de homologación en AFIP
+- [ ] Validar comprobantes generados con contacto contable antes de launch
+- [ ] Confirmar precio del add-on vs. costo operativo (certificados, soporte)
 
 ---
 

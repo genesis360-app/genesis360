@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
-  ChevronDown, Paperclip, ExternalLink, Repeat, Play, ToggleLeft, ToggleRight,
+  ChevronDown, Paperclip, ExternalLink, Repeat, ToggleLeft, ToggleRight,
+  Info, ChevronRight, User, Bell, History,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -17,30 +18,59 @@ const CATEGORIAS_GASTO = [
   'Marketing y publicidad', 'Impuestos y tasas', 'Seguros', 'Insumos y descartables',
   'Honorarios profesionales', 'Otro',
 ]
-const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
-const FRECUENCIAS = [
-  { value: 'mensual', label: 'Mensual' },
-  { value: 'quincenal', label: 'Quincenal' },
-  { value: 'semanal', label: 'Semanal' },
+
+const TIPOS_COMPROBANTE = [
+  'Factura A', 'Nota de Crédito A', 'Nota de Débito A',
+  'Factura B', 'Factura C', 'Factura de Importación',
+  'Ticket / Factura de Servicios', 'Ticket', 'Factura',
+  'Recibo Profesional (Recibo C)', 'Comprobante de bienes usados',
 ]
 
+const TASAS_IVA = [
+  { value: '21',    label: '21%' },
+  { value: '10.5',  label: '10,5%' },
+  { value: 'exento',label: 'Exento' },
+  { value: 'sin_iva',label: 'Sin IVA' },
+]
+
+const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
+const FRECUENCIAS = [
+  { value: 'mensual',   label: 'Mensual' },
+  { value: 'quincenal', label: 'Quincenal' },
+  { value: 'semanal',   label: 'Semanal' },
+]
+
+function calcularIVA(monto: number, tipoIva: string): number {
+  if (tipoIva === '21')   return monto - monto / 1.21
+  if (tipoIva === '10.5') return monto - monto / 1.105
+  return 0
+}
+
 interface FormGasto {
-  descripcion: string; monto: string; iva_monto: string
+  descripcion: string; monto: string
+  tipo_iva: string; iva_deducible: boolean
+  deduce_ganancias: boolean; gasto_negocio: string
   categoria: string; medio_pago: string; fecha: string; notas: string
 }
 interface FormFijo {
-  descripcion: string; monto: string; iva_monto: string
-  categoria: string; medio_pago: string; frecuencia: string
-  dia_vencimiento: string; notas: string; activo: boolean
+  descripcion: string; monto: string
+  tipo_iva: string; iva_deducible: boolean
+  deduce_ganancias: boolean; gasto_negocio: string
+  categoria: string; medio_pago: string
+  frecuencia: string; dia_vencimiento: string; alerta_dias_antes: string
+  notas: string; activo: boolean
 }
 
 const FORM_VACIO: FormGasto = {
-  descripcion: '', monto: '', iva_monto: '', categoria: '', medio_pago: '',
-  fecha: new Date().toISOString().split('T')[0], notas: '',
+  descripcion: '', monto: '', tipo_iva: '', iva_deducible: false,
+  deduce_ganancias: false, gasto_negocio: '',
+  categoria: '', medio_pago: '', fecha: new Date().toISOString().split('T')[0], notas: '',
 }
 const FORM_FIJO_VACIO: FormFijo = {
-  descripcion: '', monto: '', iva_monto: '', categoria: '', medio_pago: '',
-  frecuencia: 'mensual', dia_vencimiento: '', notas: '', activo: true,
+  descripcion: '', monto: '', tipo_iva: '', iva_deducible: false,
+  deduce_ganancias: false, gasto_negocio: '',
+  categoria: '', medio_pago: '', frecuencia: 'mensual',
+  dia_vencimiento: '', alerta_dias_antes: '3', notas: '', activo: true,
 }
 
 function formatMoneda(v: number) {
@@ -55,9 +85,12 @@ export default function GastosPage() {
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const puedeAdministrarCaja = ['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
+  const esCajero = user?.rol === 'CAJERO'
+  const esSoloFijos = !['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<'gastos' | 'fijos'>('gastos')
+  const [tab, setTab] = useState<'gastos' | 'historial' | 'fijos'>('gastos')
 
   // ── Gastos variables — state ─────────────────────────────────────────────
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -65,44 +98,79 @@ export default function GastosPage() {
   const [form, setForm] = useState<FormGasto>(FORM_VACIO)
   const [comprobanteFile, setComprobanteFile] = useState<File | null>(null)
   const [comprobanteExistente, setComprobanteExistente] = useState<string | null>(null)
+  const [comprobanteNombre, setComprobanteNombre] = useState('')
+  const [tipoComprobanteSelect, setTipoComprobanteSelect] = useState('')
+  const [usarPrefixCategoria, setUsarPrefixCategoria] = useState(false)
   const [guardando, setGuardando] = useState(false)
-  const [filtroCategoria, setFiltroCategoria] = useState('')
-  const [fechaDesde, setFechaDesde] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]
-  })
-  const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0])
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
+  const [filtroCategoria, setFiltroCategoria] = useState('')
+
+  // ── Historial — state ────────────────────────────────────────────────────
+  const [histFechaDesde, setHistFechaDesde] = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 3); return d.toISOString().split('T')[0]
+  })
+  const [histFechaHasta, setHistFechaHasta] = useState(() => new Date().toISOString().split('T')[0])
+  const [histCategoria, setHistCategoria] = useState('')
+  const [histMontoOp, setHistMontoOp] = useState('')
+  const [histMontoVal, setHistMontoVal] = useState('')
+  const [gastoExpandidoId, setGastoExpandidoId] = useState<string | null>(null)
 
   // ── Gastos fijos — state ─────────────────────────────────────────────────
   const [modalFijoAbierto, setModalFijoAbierto] = useState(false)
   const [editandoFijoId, setEditandoFijoId] = useState<string | null>(null)
   const [formFijo, setFormFijo] = useState<FormFijo>(FORM_FIJO_VACIO)
   const [guardandoFijo, setGuardandoFijo] = useState(false)
-  const [generandoMes, setGenerandoMes] = useState(false)
+  const [modalGenerarFijo, setModalGenerarFijo] = useState<any | null>(null)
+  const [formGenerar, setFormGenerar] = useState<{ medio_pago: string; fecha: string; notas: string }>({
+    medio_pago: '', fecha: new Date().toISOString().split('T')[0], notas: '',
+  })
+  const [generandoFijo, setGenerandoFijo] = useState(false)
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: sesionesAbiertas = [] } = useQuery({
     queryKey: ['caja-sesiones-abiertas', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, caja_id, cajas(nombre)').eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+        .select('id, caja_id, usuario_id, cajas(nombre), abrio:usuario_id(nombre_display)')
+        .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
       return data ?? []
     },
     enabled: !!tenant, refetchInterval: 60_000,
   })
+
   const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
 
+  // Gastos últimos 30 días (tab gastos)
+  const fechaDesde30 = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0]
+  }, [])
+  const fechaHasta30 = useMemo(() => new Date().toISOString().split('T')[0], [])
+
   const { data: gastos = [], isLoading } = useQuery({
-    queryKey: ['gastos', tenant?.id, fechaDesde, fechaHasta, sucursalId],
+    queryKey: ['gastos', tenant?.id, fechaDesde30, fechaHasta30, sucursalId],
     queryFn: async () => {
       let q = supabase.from('gastos').select('*').eq('tenant_id', tenant!.id)
-        .gte('fecha', fechaDesde).lte('fecha', fechaHasta)
+        .gte('fecha', fechaDesde30).lte('fecha', fechaHasta30)
         .order('fecha', { ascending: false }).order('created_at', { ascending: false })
       q = applyFilter(q)
       const { data } = await q
       return data ?? []
     },
-    enabled: !!tenant,
+    enabled: !!tenant && tab === 'gastos',
+  })
+
+  // Historial (tab historial — rango libre)
+  const { data: historialGastos = [], isLoading: loadingHistorial } = useQuery({
+    queryKey: ['gastos-historial', tenant?.id, histFechaDesde, histFechaHasta, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('gastos').select('*').eq('tenant_id', tenant!.id)
+        .gte('fecha', histFechaDesde).lte('fecha', histFechaHasta)
+        .order('fecha', { ascending: false }).order('created_at', { ascending: false })
+      q = applyFilter(q)
+      const { data } = await q
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'historial',
   })
 
   const { data: gastosFijos = [], isLoading: loadingFijos } = useQuery({
@@ -115,14 +183,14 @@ export default function GastosPage() {
     enabled: !!tenant && tab === 'fijos',
   })
 
-  // ── Stats ────────────────────────────────────────────────────────────────
+  // ── Stats (tab gastos) ────────────────────────────────────────────────────
   const gastosFiltrados = filtroCategoria
     ? gastos.filter((g: any) => g.categoria === filtroCategoria)
     : gastos
-  const totalPeriodo = gastosFiltrados.reduce((a: number, g: any) => a + Number(g.monto), 0)
-  const totalIVA = gastosFiltrados.reduce((a: number, g: any) => a + Number(g.iva_monto ?? 0), 0)
-  const cantPeriodo = gastosFiltrados.length
-  const mayorGasto = gastosFiltrados.reduce((max: any, g: any) =>
+  const totalPeriodo  = gastosFiltrados.reduce((a: number, g: any) => a + Number(g.monto), 0)
+  const totalIVA      = gastosFiltrados.filter((g: any) => g.iva_deducible).reduce((a: number, g: any) => a + Number(g.iva_monto ?? 0), 0)
+  const cantPeriodo   = gastosFiltrados.length
+  const mayorGasto    = gastosFiltrados.reduce((max: any, g: any) =>
     (!max || Number(g.monto) > Number(max.monto)) ? g : max, null)
   const categoriasTotales: Record<string, number> = {}
   gastosFiltrados.forEach((g: any) => {
@@ -132,39 +200,65 @@ export default function GastosPage() {
   const categoriasOrdenadas = Object.entries(categoriasTotales).sort((a, b) => b[1] - a[1])
   const categoriasUnicas = [...new Set(gastos.map((g: any) => g.categoria).filter(Boolean))] as string[]
 
-  // ── Modales helpers ──────────────────────────────────────────────────────
+  // ── Historial filtros ─────────────────────────────────────────────────────
+  const histFiltrados = useMemo(() => {
+    return (historialGastos as any[]).filter((g: any) => {
+      if (histCategoria && g.categoria !== histCategoria) return false
+      if (histMontoOp && histMontoVal) {
+        const val = parseFloat(histMontoVal)
+        if (!isNaN(val)) {
+          if (histMontoOp === 'mayor' && Number(g.monto) <= val) return false
+          if (histMontoOp === 'menor' && Number(g.monto) >= val) return false
+          if (histMontoOp === 'igual' && Math.abs(Number(g.monto) - val) > 0.01) return false
+        }
+      }
+      return true
+    })
+  }, [historialGastos, histCategoria, histMontoOp, histMontoVal])
+
+  const histCategoriasUnicas = [...new Set(historialGastos.map((g: any) => g.categoria).filter(Boolean))] as string[]
+
+  // ── Modal helpers ─────────────────────────────────────────────────────────
   const abrirNuevo = () => {
     setEditandoId(null); setForm(FORM_VACIO)
     setComprobanteFile(null); setComprobanteExistente(null)
+    setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
     setModalAbierto(true)
   }
   const abrirEdicion = (g: any) => {
     setEditandoId(g.id)
     setForm({
       descripcion: g.descripcion, monto: String(g.monto),
-      iva_monto: g.iva_monto ? String(g.iva_monto) : '',
+      tipo_iva: g.tipo_iva ?? '', iva_deducible: g.iva_deducible ?? false,
+      deduce_ganancias: g.deduce_ganancias ?? false,
+      gasto_negocio: g.gasto_negocio === true ? 'negocio' : g.gasto_negocio === false ? 'personal' : '',
       categoria: g.categoria ?? '', medio_pago: g.medio_pago ?? '',
       fecha: g.fecha, notas: g.notas ?? '',
     })
     setComprobanteFile(null); setComprobanteExistente(g.comprobante_url ?? null)
+    setComprobanteNombre(g.comprobante_titulo ?? '')
+    setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
     setModalAbierto(true)
   }
   const cerrarModal = () => {
     setModalAbierto(false); setEditandoId(null); setForm(FORM_VACIO)
-    setComprobanteFile(null); setComprobanteExistente(null); setCajaSeleccionadaId(null)
+    setComprobanteFile(null); setComprobanteExistente(null)
+    setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
+    setCajaSeleccionadaId(null)
   }
   useModalKeyboard({ isOpen: modalAbierto, onClose: cerrarModal, onConfirm: () => { if (!guardando) guardar() } })
 
-  const abrirNuevoFijo = () => {
-    setEditandoFijoId(null); setFormFijo(FORM_FIJO_VACIO); setModalFijoAbierto(true)
-  }
+  const abrirNuevoFijo = () => { setEditandoFijoId(null); setFormFijo(FORM_FIJO_VACIO); setModalFijoAbierto(true) }
   const abrirEdicionFijo = (f: any) => {
     setEditandoFijoId(f.id)
     setFormFijo({
       descripcion: f.descripcion, monto: String(f.monto),
-      iva_monto: f.iva_monto ? String(f.iva_monto) : '',
+      tipo_iva: f.tipo_iva ?? '', iva_deducible: f.iva_deducible ?? false,
+      deduce_ganancias: f.deduce_ganancias ?? false,
+      gasto_negocio: f.gasto_negocio === true ? 'negocio' : f.gasto_negocio === false ? 'personal' : '',
       categoria: f.categoria ?? '', medio_pago: f.medio_pago ?? '',
       frecuencia: f.frecuencia, dia_vencimiento: f.dia_vencimiento ? String(f.dia_vencimiento) : '',
+      alerta_dias_antes: f.alerta_dias_antes ? String(f.alerta_dias_antes) : '3',
       notas: f.notas ?? '', activo: f.activo,
     })
     setModalFijoAbierto(true)
@@ -172,38 +266,74 @@ export default function GastosPage() {
   const cerrarModalFijo = () => { setModalFijoAbierto(false); setEditandoFijoId(null); setFormFijo(FORM_FIJO_VACIO) }
   useModalKeyboard({ isOpen: modalFijoAbierto, onClose: cerrarModalFijo, onConfirm: () => { if (!guardandoFijo) guardarFijo() } })
 
-  // ── Ver comprobante ──────────────────────────────────────────────────────
+  // ── Ver comprobante ───────────────────────────────────────────────────────
   const verComprobante = async (path: string) => {
     const { data } = await supabase.storage.from('comprobantes-gastos').createSignedUrl(path, 300)
     if (data?.signedUrl) window.open(data.signedUrl, '_blank')
     else toast.error('No se pudo abrir el comprobante')
   }
 
-  // ── Guardar gasto ────────────────────────────────────────────────────────
+  // ── Título del comprobante ─────────────────────────────────────────────────
+  const getTituloFinal = () => {
+    const base = tipoComprobanteSelect || comprobanteNombre.trim()
+    if (!base) return ''
+    if (usarPrefixCategoria && form.categoria) return `${form.categoria}_${base}`
+    return base
+  }
+
+  // ── Guardar gasto ─────────────────────────────────────────────────────────
   const guardar = async () => {
     if (!form.descripcion.trim()) { toast.error('La descripción es requerida'); return }
     const monto = parseFloat(form.monto.replace(',', '.'))
     if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
-    if (!editandoId && form.medio_pago === 'Efectivo' && !sesionCajaId) {
-      toast.error('No hay caja abierta. Abrí una caja antes de registrar gastos en efectivo.'); return
+
+    // Validación de caja (solo en creación nueva)
+    if (!editandoId) {
+      if (sesionesAbiertas.length === 0) {
+        toast.error('No hay ninguna caja abierta. Abrí una caja antes de registrar gastos.')
+        return
+      }
+      if (esCajero) {
+        const misSesiones = (sesionesAbiertas as any[]).filter(s => s.usuario_id === user?.id)
+        if (misSesiones.length === 0) {
+          toast.error('No tenés caja abierta. Pedile a tu supervisor que abra una para vos.')
+          return
+        }
+      }
+      // Aviso si Owner/Supervisor usa la caja de otro usuario
+      const sesionAUsar = (sesionesAbiertas as any[]).find(s => s.id === sesionCajaId) ?? (sesionesAbiertas as any[])[0]
+      if (sesionAUsar && puedeAdministrarCaja && sesionAUsar.usuario_id !== user?.id) {
+        const nombreAbridor = (sesionAUsar as any).abrio?.nombre_display ?? 'otro usuario'
+        toast(`⚠️ Gasto en caja de ${nombreAbridor}. Quedarás registrado como quien lo agregó.`, { duration: 6000, icon: '⚠️' })
+      }
     }
+
     setGuardando(true)
     try {
-      const ivaMonto = form.iva_monto ? parseFloat(form.iva_monto.replace(',', '.')) : null
-      let comprobanteUrl = comprobanteExistente ?? null
+      const ivaMonto = form.tipo_iva && form.iva_deducible ? calcularIVA(monto, form.tipo_iva) : null
 
       const payload: any = {
         tenant_id: tenant!.id,
         descripcion: form.descripcion.trim(), monto,
-        iva_monto: ivaMonto && ivaMonto > 0 ? ivaMonto : null,
+        tipo_iva: form.tipo_iva || null,
+        iva_monto: ivaMonto && ivaMonto > 0 ? parseFloat(ivaMonto.toFixed(2)) : null,
+        iva_deducible: form.iva_deducible,
+        deduce_ganancias: form.deduce_ganancias,
+        gasto_negocio: form.deduce_ganancias
+          ? (form.gasto_negocio === 'negocio' ? true : form.gasto_negocio === 'personal' ? false : null)
+          : null,
         categoria: form.categoria || null, medio_pago: form.medio_pago || null,
         fecha: form.fecha, notas: form.notas.trim() || null,
         sucursal_id: sucursalId || null,
+        usuario_id: user?.id ?? null,
       }
+
+      const titulo = getTituloFinal()
+      if (titulo) payload.comprobante_titulo = titulo
 
       let gastoId = editandoId
       if (editandoId) {
-        payload.comprobante_url = comprobanteUrl
+        payload.comprobante_url = comprobanteExistente ?? null
         const { error } = await supabase.from('gastos').update(payload).eq('id', editandoId)
         if (error) throw error
         toast.success('Gasto actualizado')
@@ -214,32 +344,34 @@ export default function GastosPage() {
         gastoId = inserted.id
         toast.success('Gasto registrado')
         logActividad({ entidad: 'gasto', entidad_nombre: form.descripcion.trim(), accion: 'crear', valor_nuevo: `$${monto}`, pagina: '/gastos' })
-        if (sesionCajaId) {
+
+        // Registrar en caja
+        const sesionUsar = sesionCajaId ?? (sesionesAbiertas as any[])[0]?.id
+        if (sesionUsar) {
           if (form.medio_pago === 'Efectivo') {
             void supabase.from('caja_movimientos').insert({
-              tenant_id: tenant!.id, sesion_id: sesionCajaId, tipo: 'egreso',
+              tenant_id: tenant!.id, sesion_id: sesionUsar, tipo: 'egreso',
               concepto: `Gasto: ${form.descripcion.trim()}`, monto, usuario_id: user?.id,
             }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
           } else if (form.medio_pago) {
             void supabase.from('caja_movimientos').insert({
-              tenant_id: tenant!.id, sesion_id: sesionCajaId, tipo: 'egreso_informativo',
+              tenant_id: tenant!.id, sesion_id: sesionUsar, tipo: 'egreso_informativo',
               concepto: `[${form.medio_pago}] Gasto: ${form.descripcion.trim()}`, monto, usuario_id: user?.id,
             })
           }
         }
       }
 
-      // Subir comprobante si hay archivo nuevo
+      // Subir comprobante
       if (comprobanteFile && gastoId) {
         const ext = comprobanteFile.name.split('.').pop()?.toLowerCase() ?? 'jpg'
         const path = `${tenant!.id}/${gastoId}.${ext}`
         const { error: upErr } = await supabase.storage.from('comprobantes-gastos').upload(path, comprobanteFile, { upsert: true })
-        if (!upErr) {
-          await supabase.from('gastos').update({ comprobante_url: path }).eq('id', gastoId)
-        }
+        if (!upErr) await supabase.from('gastos').update({ comprobante_url: path }).eq('id', gastoId)
       }
 
       qc.invalidateQueries({ queryKey: ['gastos'] })
+      qc.invalidateQueries({ queryKey: ['gastos-historial'] })
       cerrarModal()
     } catch (e: any) {
       toast.error(e.message ?? 'Error al guardar')
@@ -248,34 +380,41 @@ export default function GastosPage() {
     }
   }
 
-  // ── Eliminar gasto ───────────────────────────────────────────────────────
+  // ── Eliminar gasto ────────────────────────────────────────────────────────
   const eliminar = async (id: string) => {
     if (!confirm('¿Eliminar este gasto?')) return
-    const g = (gastos as any[]).find(x => x.id === id)
-    if (g?.comprobante_url) {
-      void supabase.storage.from('comprobantes-gastos').remove([g.comprobante_url])
-    }
+    const g = ([...gastos, ...historialGastos] as any[]).find(x => x.id === id)
+    if (g?.comprobante_url) void supabase.storage.from('comprobantes-gastos').remove([g.comprobante_url])
     const { error } = await supabase.from('gastos').delete().eq('id', id)
     if (error) { toast.error('Error al eliminar'); return }
     qc.invalidateQueries({ queryKey: ['gastos'] })
+    qc.invalidateQueries({ queryKey: ['gastos-historial'] })
     toast.success('Gasto eliminado')
     logActividad({ entidad: 'gasto', entidad_id: id, entidad_nombre: g?.descripcion, accion: 'eliminar', pagina: '/gastos' })
   }
 
-  // ── Guardar gasto fijo ───────────────────────────────────────────────────
+  // ── Guardar gasto fijo ────────────────────────────────────────────────────
   const guardarFijo = async () => {
     if (!formFijo.descripcion.trim()) { toast.error('La descripción es requerida'); return }
     const monto = parseFloat(formFijo.monto.replace(',', '.'))
     if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
     setGuardandoFijo(true)
     try {
+      const ivaMonto = formFijo.tipo_iva && formFijo.iva_deducible ? calcularIVA(monto, formFijo.tipo_iva) : null
       const payload: any = {
         tenant_id: tenant!.id,
         descripcion: formFijo.descripcion.trim(), monto,
-        iva_monto: formFijo.iva_monto ? parseFloat(formFijo.iva_monto) || null : null,
+        tipo_iva: formFijo.tipo_iva || null,
+        iva_monto: ivaMonto && ivaMonto > 0 ? parseFloat(ivaMonto.toFixed(2)) : null,
+        iva_deducible: formFijo.iva_deducible,
+        deduce_ganancias: formFijo.deduce_ganancias,
+        gasto_negocio: formFijo.deduce_ganancias
+          ? (formFijo.gasto_negocio === 'negocio' ? true : formFijo.gasto_negocio === 'personal' ? false : null)
+          : null,
         categoria: formFijo.categoria || null, medio_pago: formFijo.medio_pago || null,
         frecuencia: formFijo.frecuencia,
         dia_vencimiento: formFijo.dia_vencimiento ? parseInt(formFijo.dia_vencimiento) : null,
+        alerta_dias_antes: formFijo.alerta_dias_antes ? parseInt(formFijo.alerta_dias_antes) : 3,
         notas: formFijo.notas.trim() || null, activo: formFijo.activo,
         sucursal_id: sucursalId || null,
       }
@@ -290,11 +429,8 @@ export default function GastosPage() {
       }
       qc.invalidateQueries({ queryKey: ['gastos-fijos'] })
       cerrarModalFijo()
-    } catch (e: any) {
-      toast.error(e.message ?? 'Error al guardar')
-    } finally {
-      setGuardandoFijo(false)
-    }
+    } catch (e: any) { toast.error(e.message ?? 'Error al guardar') }
+    finally { setGuardandoFijo(false) }
   }
 
   const eliminarFijo = async (id: string) => {
@@ -304,37 +440,132 @@ export default function GastosPage() {
     qc.invalidateQueries({ queryKey: ['gastos-fijos'] })
     toast.success('Gasto fijo eliminado')
   }
-
   const toggleActivoFijo = async (id: string, activo: boolean) => {
     await supabase.from('gastos_fijos').update({ activo: !activo }).eq('id', id)
     qc.invalidateQueries({ queryKey: ['gastos-fijos'] })
   }
 
-  // ── Generar gastos del mes desde fijos ──────────────────────────────────
-  const generarMes = async () => {
-    const activos = (gastosFijos as any[]).filter(f => f.activo)
-    if (activos.length === 0) { toast.error('No hay gastos fijos activos'); return }
-    setGenerandoMes(true)
+  // ── Generar gasto desde fijo ──────────────────────────────────────────────
+  const abrirGenerarFijo = (f: any) => {
+    setModalGenerarFijo(f)
+    setFormGenerar({ medio_pago: f.medio_pago ?? '', fecha: new Date().toISOString().split('T')[0], notas: '' })
+  }
+  const confirmarGenerarFijo = async () => {
+    if (!modalGenerarFijo) return
+    setGenerandoFijo(true)
     try {
-      const hoy = new Date()
-      const fecha = hoy.toISOString().split('T')[0]
-      const inserts = activos.map((f: any) => ({
-        tenant_id: tenant!.id, descripcion: f.descripcion, monto: f.monto,
-        iva_monto: f.iva_monto ?? null, categoria: f.categoria ?? null,
-        medio_pago: f.medio_pago ?? null, fecha,
-        notas: `Generado desde gasto fijo — ${f.frecuencia}`,
+      const f = modalGenerarFijo
+      const { error } = await supabase.from('gastos').insert({
+        tenant_id: tenant!.id,
+        descripcion: f.descripcion, monto: f.monto,
+        tipo_iva: f.tipo_iva ?? null,
+        iva_monto: f.iva_monto ?? null, iva_deducible: f.iva_deducible ?? false,
+        deduce_ganancias: f.deduce_ganancias ?? false, gasto_negocio: f.gasto_negocio ?? null,
+        categoria: f.categoria ?? null,
+        medio_pago: formGenerar.medio_pago || null,
+        fecha: formGenerar.fecha,
+        notas: formGenerar.notas.trim() || `Generado desde gasto fijo — ${f.frecuencia}`,
         sucursal_id: f.sucursal_id ?? null,
-      }))
-      const { error } = await supabase.from('gastos').insert(inserts)
+        usuario_id: user?.id ?? null,
+      })
       if (error) throw error
       qc.invalidateQueries({ queryKey: ['gastos'] })
-      toast.success(`${activos.length} gasto${activos.length !== 1 ? 's' : ''} generado${activos.length !== 1 ? 's' : ''} para hoy`)
-    } catch (e: any) {
-      toast.error(e.message ?? 'Error al generar')
-    } finally {
-      setGenerandoMes(false)
-    }
+      qc.invalidateQueries({ queryKey: ['gastos-historial'] })
+      toast.success(`Gasto "${f.descripcion}" registrado`)
+      setModalGenerarFijo(null)
+    } catch (e: any) { toast.error(e.message ?? 'Error al generar') }
+    finally { setGenerandoFijo(false) }
   }
+
+  // ── IVA preview ───────────────────────────────────────────────────────────
+  const montoNum = parseFloat(form.monto.replace(',', '.')) || 0
+  const ivaPreview = montoNum > 0 && form.tipo_iva && form.iva_deducible ? calcularIVA(montoNum, form.tipo_iva) : 0
+  const netoPreview = montoNum - ivaPreview
+
+  const montoFijoNum = parseFloat(formFijo.monto.replace(',', '.')) || 0
+  const ivaFijoPreview = montoFijoNum > 0 && formFijo.tipo_iva && formFijo.iva_deducible ? calcularIVA(montoFijoNum, formFijo.tipo_iva) : 0
+
+  // ── Sección IVA + Ganancias (reutilizable en ambos modales) ───────────────
+  const renderFiscal = (
+    vals: { tipo_iva: string; iva_deducible: boolean; deduce_ganancias: boolean; gasto_negocio: string; monto: string },
+    setVals: (u: any) => void,
+    ivaCalc: number, netoCalc: number
+  ) => (
+    <div className="space-y-3 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 bg-blue-50/50 dark:bg-blue-900/10">
+      <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Información fiscal</p>
+
+      {/* IVA */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tasa de IVA</label>
+        <div className="flex gap-2 items-center">
+          <div className="relative flex-1">
+            <select value={vals.tipo_iva} onChange={e => setVals((f: any) => ({ ...f, tipo_iva: e.target.value }))}
+              className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+              <option value="">Sin IVA / No aplica</option>
+              {TASAS_IVA.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+          {vals.tipo_iva && vals.tipo_iva !== 'exento' && vals.tipo_iva !== 'sin_iva' && (
+            <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap cursor-pointer">
+              <input type="checkbox" checked={vals.iva_deducible}
+                onChange={e => setVals((f: any) => ({ ...f, iva_deducible: e.target.checked }))}
+                className="accent-accent" />
+              ¿Es deducible?
+            </label>
+          )}
+        </div>
+        {vals.tipo_iva && vals.iva_deducible && ivaCalc > 0 && (
+          <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-center">
+              <p className="text-gray-500 dark:text-gray-400">Neto</p>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{formatMoneda(netoCalc)}</p>
+            </div>
+            <div className="bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-center">
+              <p className="text-blue-500">IVA a favor</p>
+              <p className="font-semibold text-blue-600 dark:text-blue-400">{formatMoneda(ivaCalc)}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Ganancias */}
+      <div>
+        <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
+          <input type="checkbox" checked={vals.deduce_ganancias}
+            onChange={e => setVals((f: any) => ({ ...f, deduce_ganancias: e.target.checked, gasto_negocio: '' }))}
+            className="accent-accent" />
+          Deducir de Impuesto a las Ganancias
+        </label>
+        {vals.deduce_ganancias && (
+          <div className="mt-2 space-y-2">
+            <label className="flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
+              border-green-200 dark:border-green-800 bg-white dark:bg-gray-700 hover:bg-green-50 dark:hover:bg-green-900/20">
+              <input type="radio" name={`gasto_negocio_${editandoId ?? 'nuevo'}`}
+                checked={vals.gasto_negocio === 'negocio'}
+                onChange={() => setVals((f: any) => ({ ...f, gasto_negocio: 'negocio' }))}
+                className="accent-green-500 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Gasto pertenece al negocio</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Si el gasto pertenece al negocio y tenés la factura correspondiente, podría deducirse de Ganancias.</p>
+              </div>
+            </label>
+            <label className="flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
+              border-orange-200 dark:border-orange-800 bg-white dark:bg-gray-700 hover:bg-orange-50 dark:hover:bg-orange-900/20">
+              <input type="radio" name={`gasto_negocio_${editandoId ?? 'nuevo'}`}
+                checked={vals.gasto_negocio === 'personal'}
+                onChange={() => setVals((f: any) => ({ ...f, gasto_negocio: 'personal' }))}
+                className="accent-orange-500 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Gasto no pertenece al negocio</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Si el gasto no pertenece al negocio, no podría deducirse de Ganancias.</p>
+              </div>
+            </label>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -344,33 +575,29 @@ export default function GastosPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary">Gastos</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
-            {tab === 'gastos' ? 'Registrá los egresos de tu negocio' : 'Gastos recurrentes automáticos'}
+            {tab === 'gastos' ? 'Últimos 30 días' : tab === 'historial' ? 'Historial completo con filtros' : 'Gastos estimados recurrentes'}
           </p>
         </div>
-        {tab === 'gastos' ? (
+        {tab === 'gastos' && (
           <button onClick={abrirNuevo}
             className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
             <Plus size={18} /> Nuevo gasto
           </button>
-        ) : (
-          <div className="flex gap-2">
-            <button onClick={generarMes} disabled={generandoMes}
-              className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50">
-              <Play size={15} /> {generandoMes ? 'Generando...' : 'Generar hoy'}
-            </button>
-            <button onClick={abrirNuevoFijo}
-              className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
-              <Plus size={18} /> Nuevo fijo
-            </button>
-          </div>
+        )}
+        {tab === 'fijos' && (puedeAdministrarCaja || !esSoloFijos) && (
+          <button onClick={abrirNuevoFijo}
+            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
+            <Plus size={18} /> Nuevo gasto fijo
+          </button>
         )}
       </div>
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
         {[
-          { id: 'gastos' as const, label: 'Gastos variables', icon: <Receipt size={14} /> },
-          { id: 'fijos' as const, label: 'Gastos fijos', icon: <Repeat size={14} /> },
+          { id: 'gastos'   as const, label: 'Gastos variables', icon: <Receipt size={14} /> },
+          { id: 'historial'as const, label: 'Historial',        icon: <History size={14} /> },
+          { id: 'fijos'    as const, label: 'Gastos fijos',     icon: <Repeat size={14} /> },
         ].map(({ id, label, icon }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
@@ -380,19 +607,11 @@ export default function GastosPage() {
         ))}
       </div>
 
-      {/* ══════════════════════════ TAB: GASTOS VARIABLES ══════════════════ */}
+      {/* ══ TAB: GASTOS VARIABLES (últimos 30 días) ══ */}
       {tab === 'gastos' && (
         <>
-          {/* Filtros */}
+          {/* Filtro categoría */}
           <div className="flex flex-wrap gap-3 items-center">
-            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm">
-              <Calendar size={15} className="text-gray-400" />
-              <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
-                className="outline-none text-gray-700 dark:text-gray-300 bg-transparent" />
-              <span className="text-gray-400">→</span>
-              <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
-                className="outline-none text-gray-700 dark:text-gray-300 bg-transparent" />
-            </div>
             {categoriasUnicas.length > 0 && (
               <div className="relative">
                 <select value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)}
@@ -405,7 +624,7 @@ export default function GastosPage() {
             )}
             {filtroCategoria && (
               <button onClick={() => setFiltroCategoria('')}
-                className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 <X size={14} /> Limpiar
               </button>
             )}
@@ -418,27 +637,23 @@ export default function GastosPage() {
                 <div className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center">
                   <TrendingDown size={18} className="text-red-500" />
                 </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total período</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Total 30 días</p>
               </div>
               <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(totalPeriodo)}</p>
               <p className="text-xs text-gray-400 mt-1">{cantPeriodo} gasto{cantPeriodo !== 1 ? 's' : ''}</p>
             </div>
-
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center">
                   <Receipt size={18} className="text-blue-500" />
                 </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">IVA deducible</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">IVA a favor</p>
               </div>
               <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">
                 {totalIVA > 0 ? formatMoneda(totalIVA) : <span className="text-gray-300 dark:text-gray-600">—</span>}
               </p>
-              {totalIVA > 0 && totalPeriodo > 0 && (
-                <p className="text-xs text-gray-400 mt-1">{((totalIVA / totalPeriodo) * 100).toFixed(1)}% del total</p>
-              )}
+              {totalIVA > 0 && <p className="text-xs text-gray-400 mt-1">Solo gastos deducibles</p>}
             </div>
-
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-9 h-9 rounded-xl bg-orange-50 dark:bg-amber-900/20 flex items-center justify-center">
@@ -447,15 +662,10 @@ export default function GastosPage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">Mayor gasto</p>
               </div>
               {mayorGasto ? (
-                <>
-                  <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(Number(mayorGasto.monto))}</p>
-                  <p className="text-xs text-gray-400 mt-1 truncate">{mayorGasto.descripcion}</p>
-                </>
-              ) : (
-                <p className="text-2xl font-bold text-gray-300 dark:text-gray-600">—</p>
-              )}
+                <><p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(Number(mayorGasto.monto))}</p>
+                <p className="text-xs text-gray-400 mt-1 truncate">{mayorGasto.descripcion}</p></>
+              ) : <p className="text-2xl font-bold text-gray-300 dark:text-gray-600">—</p>}
             </div>
-
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
@@ -464,13 +674,9 @@ export default function GastosPage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">Mayor categoría</p>
               </div>
               {categoriasOrdenadas.length > 0 ? (
-                <>
-                  <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(categoriasOrdenadas[0][1])}</p>
-                  <p className="text-xs text-gray-400 mt-1 truncate">{categoriasOrdenadas[0][0]}</p>
-                </>
-              ) : (
-                <p className="text-2xl font-bold text-gray-300 dark:text-gray-600">—</p>
-              )}
+                <><p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{formatMoneda(categoriasOrdenadas[0][1])}</p>
+                <p className="text-xs text-gray-400 mt-1 truncate">{categoriasOrdenadas[0][0]}</p></>
+              ) : <p className="text-2xl font-bold text-gray-300 dark:text-gray-600">—</p>}
             </div>
           </div>
 
@@ -506,10 +712,8 @@ export default function GastosPage() {
             ) : gastosFiltrados.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <Receipt size={36} className="mb-3 opacity-30" />
-                <p className="font-medium text-sm">No hay gastos en este período</p>
-                <button onClick={abrirNuevo} className="mt-3 text-accent text-sm font-medium hover:underline">
-                  Registrar el primero
-                </button>
+                <p className="font-medium text-sm">No hay gastos en los últimos 30 días</p>
+                <button onClick={abrirNuevo} className="mt-3 text-accent text-sm font-medium hover:underline">Registrar el primero</button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -519,7 +723,7 @@ export default function GastosPage() {
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Fecha</th>
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Descripción</th>
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Categoría</th>
-                      <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Medio</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 hidden md:table-cell">Medio</th>
                       <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Monto</th>
                       <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 hidden md:table-cell">IVA</th>
                       <th className="px-4 py-3" />
@@ -533,36 +737,30 @@ export default function GastosPage() {
                           <div className="flex items-center gap-1.5">
                             <p className="font-medium text-gray-800 dark:text-gray-100">{g.descripcion}</p>
                             {g.comprobante_url && (
-                              <button onClick={() => verComprobante(g.comprobante_url)}
-                                title="Ver comprobante" className="text-blue-400 hover:text-blue-600 transition-colors">
+                              <button onClick={() => verComprobante(g.comprobante_url)} title={g.comprobante_titulo ?? 'Ver comprobante'} className="text-blue-400 hover:text-blue-600">
                                 <Paperclip size={13} />
                               </button>
                             )}
+                            {g.deduce_ganancias && <span className="text-xs text-green-600 dark:text-green-400" title="Deduce Ganancias">G</span>}
                           </div>
                           {g.notas && <p className="text-xs text-gray-400 mt-0.5">{g.notas}</p>}
                         </td>
                         <td className="px-4 py-3">
                           {g.categoria ? (
-                            <span className="inline-block px-2 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded-lg font-medium">
-                              {g.categoria}
-                            </span>
+                            <span className="inline-block px-2 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded-lg font-medium">{g.categoria}</span>
                           ) : <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-sm">{g.medio_pago ?? '—'}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-sm hidden md:table-cell">{g.medio_pago ?? '—'}</td>
                         <td className="px-4 py-3 text-right font-semibold text-red-600 dark:text-red-400">{formatMoneda(Number(g.monto))}</td>
-                        <td className="px-4 py-3 text-right text-xs text-blue-500 dark:text-blue-400 hidden md:table-cell">
-                          {g.iva_monto > 0 ? formatMoneda(Number(g.iva_monto)) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                        <td className="px-4 py-3 text-right text-xs hidden md:table-cell">
+                          {g.iva_deducible && g.iva_monto > 0
+                            ? <span className="text-blue-500 dark:text-blue-400">{formatMoneda(Number(g.iva_monto))}</span>
+                            : <span className="text-gray-300 dark:text-gray-600">—</span>}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
-                            <button onClick={() => abrirEdicion(g)}
-                              className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                              <Pencil size={14} />
-                            </button>
-                            <button onClick={() => eliminar(g.id)}
-                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                              <Trash2 size={14} />
-                            </button>
+                            <button onClick={() => abrirEdicion(g)} className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><Pencil size={14} /></button>
+                            <button onClick={() => eliminar(g.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={14} /></button>
                           </div>
                         </td>
                       </tr>
@@ -572,9 +770,7 @@ export default function GastosPage() {
                     <tr>
                       <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">Total</td>
                       <td className="px-4 py-3 text-right font-bold text-red-600 dark:text-red-400">{formatMoneda(totalPeriodo)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-blue-500 dark:text-blue-400 hidden md:table-cell">
-                        {totalIVA > 0 ? formatMoneda(totalIVA) : '—'}
-                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-blue-500 dark:text-blue-400 hidden md:table-cell">{totalIVA > 0 ? formatMoneda(totalIVA) : '—'}</td>
                       <td />
                     </tr>
                   </tfoot>
@@ -585,96 +781,272 @@ export default function GastosPage() {
         </>
       )}
 
-      {/* ══════════════════════════ TAB: GASTOS FIJOS ══════════════════════ */}
-      {tab === 'fijos' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-          {loadingFijos ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
+      {/* ══ TAB: HISTORIAL ══ */}
+      {tab === 'historial' && (
+        <div className="space-y-4">
+          {/* Filtros historial */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <div className="flex flex-wrap gap-3 items-end">
+              {/* Rango de fechas */}
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</p>
+                <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm">
+                  <Calendar size={13} className="text-gray-400" />
+                  <input type="date" value={histFechaDesde} onChange={e => setHistFechaDesde(e.target.value)}
+                    className="outline-none text-gray-700 dark:text-gray-300 bg-transparent" />
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</p>
+                <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm">
+                  <Calendar size={13} className="text-gray-400" />
+                  <input type="date" value={histFechaHasta} onChange={e => setHistFechaHasta(e.target.value)}
+                    className="outline-none text-gray-700 dark:text-gray-300 bg-transparent" />
+                </div>
+              </div>
+              {/* Categoría */}
+              {histCategoriasUnicas.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</p>
+                  <div className="relative">
+                    <select value={histCategoria} onChange={e => setHistCategoria(e.target.value)}
+                      className="appearance-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent">
+                      <option value="">Todas</option>
+                      {histCategoriasUnicas.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+              )}
+              {/* Filtro monto */}
+              <div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Monto</p>
+                <div className="flex gap-1">
+                  <div className="relative">
+                    <select value={histMontoOp} onChange={e => setHistMontoOp(e.target.value)}
+                      className="appearance-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent">
+                      <option value="">—</option>
+                      <option value="mayor">Mayor a</option>
+                      <option value="menor">Menor a</option>
+                      <option value="igual">Igual a</option>
+                    </select>
+                    <ChevronDown size={12} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+                  {histMontoOp && (
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={histMontoVal}
+                      onChange={e => setHistMontoVal(e.target.value)} placeholder="$0"
+                      className="w-24 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent" />
+                  )}
+                </div>
+              </div>
+              {/* Limpiar */}
+              {(histCategoria || histMontoOp) && (
+                <button onClick={() => { setHistCategoria(''); setHistMontoOp(''); setHistMontoVal('') }}
+                  className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-4">
+                  <X size={14} /> Limpiar filtros
+                </button>
+              )}
             </div>
-          ) : (gastosFijos as any[]).length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 text-gray-400">
-              <Repeat size={36} className="mb-3 opacity-30" />
-              <p className="font-medium text-sm">No hay gastos fijos configurados</p>
-              <button onClick={abrirNuevoFijo} className="mt-3 text-accent text-sm font-medium hover:underline">
-                Crear el primero
-              </button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-100 dark:border-gray-600">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Descripción</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 hidden sm:table-cell">Categoría</th>
-                    <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Frecuencia</th>
-                    <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Monto</th>
-                    <th className="text-center px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Activo</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {(gastosFijos as any[]).map((f: any) => (
-                    <tr key={f.id} className={`border-b border-gray-50 dark:border-gray-700 transition-colors ${f.activo ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'opacity-50'}`}>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-gray-800 dark:text-gray-100">{f.descripcion}</p>
-                        {f.dia_vencimiento && <p className="text-xs text-gray-400">Día {f.dia_vencimiento} de cada mes</p>}
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        {f.categoria ? (
-                          <span className="inline-block px-2 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded-lg font-medium">{f.categoria}</span>
-                        ) : <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300 capitalize">{f.frecuencia}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-red-600 dark:text-red-400">{formatMoneda(Number(f.monto))}</td>
-                      <td className="px-4 py-3 text-center">
-                        <button onClick={() => toggleActivoFijo(f.id, f.activo)} title={f.activo ? 'Desactivar' : 'Activar'}>
-                          {f.activo
-                            ? <ToggleRight size={22} className="text-green-500" />
-                            : <ToggleLeft size={22} className="text-gray-400" />}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 justify-end">
-                          <button onClick={() => abrirEdicionFijo(f)}
-                            className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                            <Pencil size={14} />
-                          </button>
-                          <button onClick={() => eliminarFijo(f.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                            <Trash2 size={14} />
-                          </button>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {histFiltrados.length} resultado{histFiltrados.length !== 1 ? 's' : ''} · Total {formatMoneda(histFiltrados.reduce((a: number, g: any) => a + Number(g.monto), 0))}
+            </p>
+          </div>
+
+          {/* Lista historial */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+            {loadingHistorial ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
+              </div>
+            ) : histFiltrados.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 text-gray-400">
+                <History size={36} className="mb-3 opacity-30" />
+                <p className="font-medium text-sm">Sin gastos en el período seleccionado</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                {histFiltrados.map((g: any) => (
+                  <div key={g.id}>
+                    <button onClick={() => setGastoExpandidoId(gastoExpandidoId === g.id ? null : g.id)}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-800 dark:text-gray-100 text-sm truncate">{g.descripcion}</p>
+                          {g.categoria && (
+                            <span className="inline-block px-1.5 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded font-medium flex-shrink-0">{g.categoria}</span>
+                          )}
+                          {g.comprobante_url && <Paperclip size={12} className="text-blue-400 flex-shrink-0" />}
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
-                  <tr>
-                    <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">
-                      Total mensual estimado
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-red-600 dark:text-red-400">
-                      {formatMoneda((gastosFijos as any[]).filter(f => f.activo && f.frecuencia === 'mensual').reduce((a: number, f: any) => a + Number(f.monto), 0))}
-                    </td>
-                    <td colSpan={2} />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-xs text-gray-400">{formatFecha(g.fecha)}</span>
+                          {g.medio_pago && <span className="text-xs text-gray-400">{g.medio_pago}</span>}
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-semibold text-red-600 dark:text-red-400 text-sm">{formatMoneda(Number(g.monto))}</p>
+                        {g.iva_deducible && g.iva_monto > 0 && (
+                          <p className="text-xs text-blue-500 dark:text-blue-400">IVA {formatMoneda(Number(g.iva_monto))}</p>
+                        )}
+                      </div>
+                      <ChevronRight size={14} className={`text-gray-400 transition-transform flex-shrink-0 ${gastoExpandidoId === g.id ? 'rotate-90' : ''}`} />
+                    </button>
+
+                    {/* Detalle expandido */}
+                    {gastoExpandidoId === g.id && (
+                      <div className="px-4 pb-4 bg-gray-50 dark:bg-gray-700/30 space-y-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                          {g.tipo_iva && (
+                            <div><p className="text-xs text-gray-400 dark:text-gray-500">IVA</p><p className="font-medium text-gray-700 dark:text-gray-300">{TASAS_IVA.find(t => t.value === g.tipo_iva)?.label ?? g.tipo_iva}</p></div>
+                          )}
+                          {g.iva_deducible && g.iva_monto > 0 && (
+                            <div><p className="text-xs text-gray-400 dark:text-gray-500">IVA a favor</p><p className="font-medium text-blue-600 dark:text-blue-400">{formatMoneda(Number(g.iva_monto))}</p></div>
+                          )}
+                          {g.iva_deducible && g.iva_monto > 0 && (
+                            <div><p className="text-xs text-gray-400 dark:text-gray-500">Neto</p><p className="font-medium text-gray-700 dark:text-gray-300">{formatMoneda(Number(g.monto) - Number(g.iva_monto))}</p></div>
+                          )}
+                          {g.deduce_ganancias !== null && g.deduce_ganancias !== undefined && (
+                            <div><p className="text-xs text-gray-400 dark:text-gray-500">Ganancias</p>
+                              <p className="font-medium text-gray-700 dark:text-gray-300">
+                                {g.deduce_ganancias ? `Sí${g.gasto_negocio === true ? ' — del negocio' : g.gasto_negocio === false ? ' — personal' : ''}` : 'No'}
+                              </p>
+                            </div>
+                          )}
+                          {g.notas && (
+                            <div className="col-span-2 sm:col-span-3"><p className="text-xs text-gray-400 dark:text-gray-500">Notas</p><p className="text-gray-700 dark:text-gray-300">{g.notas}</p></div>
+                          )}
+                        </div>
+
+                        {g.comprobante_url && (
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => verComprobante(g.comprobante_url)}
+                              className="flex items-center gap-1.5 text-xs text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 bg-blue-50 dark:bg-blue-900/20 px-3 py-1.5 rounded-lg transition-colors">
+                              <ExternalLink size={12} /> {g.comprobante_titulo ?? 'Ver comprobante'}
+                            </button>
+                            <Paperclip size={12} className="text-gray-400" />
+                            {g.comprobante_titulo && <span className="text-xs text-gray-400">{g.comprobante_titulo}</span>}
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <button onClick={() => abrirEdicion(g)} className="flex items-center gap-1 text-xs text-accent hover:underline"><Pencil size={12} /> Editar</button>
+                          <span className="text-gray-200 dark:text-gray-700">|</span>
+                          <button onClick={() => eliminar(g.id)} className="flex items-center gap-1 text-xs text-red-500 hover:underline"><Trash2 size={12} /> Eliminar</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ══════════════════ MODAL: NUEVO / EDITAR GASTO ════════════════════ */}
+      {/* ══ TAB: GASTOS FIJOS ══ */}
+      {tab === 'fijos' && (
+        <div className="space-y-4">
+          {/* Aviso estimación */}
+          <div className="flex items-start gap-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+            <Info size={15} className="flex-shrink-0 mt-0.5" />
+            <p><strong>Estos gastos son solo estimaciones.</strong> No se registran automáticamente ni aparecen en el historial. Sirven para anticipar el gasto mensual esperado y calcular el punto de equilibrio del negocio. Para registrar el gasto, usá el botón <strong>Generar</strong> en cada fila.</p>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+            {loadingFijos ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
+              </div>
+            ) : (gastosFijos as any[]).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 text-gray-400">
+                <Repeat size={36} className="mb-3 opacity-30" />
+                <p className="font-medium text-sm">No hay gastos fijos configurados</p>
+                <button onClick={abrirNuevoFijo} className="mt-3 text-accent text-sm font-medium hover:underline">Crear el primero</button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-100 dark:border-gray-600">
+                    <tr>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Descripción</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 hidden sm:table-cell">Categoría</th>
+                      <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Frecuencia</th>
+                      <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Monto est.</th>
+                      <th className="text-center px-4 py-3 font-semibold text-gray-600 dark:text-gray-300">Activo</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(gastosFijos as any[]).map((f: any) => {
+                      // Calcular si está próximo (por vencimiento y alerta_dias_antes)
+                      const hoy = new Date()
+                      const diaHoy = hoy.getDate()
+                      const diasAlerta = f.alerta_dias_antes ?? 3
+                      const estaProximo = f.dia_vencimiento && f.activo &&
+                        Math.abs(f.dia_vencimiento - diaHoy) <= diasAlerta
+                      return (
+                        <tr key={f.id} className={`border-b border-gray-50 dark:border-gray-700 transition-colors ${f.activo ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'opacity-50'}`}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-medium text-gray-800 dark:text-gray-100">{f.descripcion}</p>
+                              {estaProximo && (
+                                <span title={`Vence en los próximos ${diasAlerta} días`}>
+                                  <Bell size={13} className="text-amber-500" />
+                                </span>
+                              )}
+                            </div>
+                            {f.dia_vencimiento && <p className="text-xs text-gray-400">Día {f.dia_vencimiento} · alerta {diasAlerta}d antes</p>}
+                          </td>
+                          <td className="px-4 py-3 hidden sm:table-cell">
+                            {f.categoria ? (
+                              <span className="inline-block px-2 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded-lg font-medium">{f.categoria}</span>
+                            ) : <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300 capitalize">{f.frecuencia}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-gray-700 dark:text-gray-300">{formatMoneda(Number(f.monto))}</td>
+                          <td className="px-4 py-3 text-center">
+                            <button onClick={() => toggleActivoFijo(f.id, f.activo)} title={f.activo ? 'Desactivar' : 'Activar'}>
+                              {f.activo ? <ToggleRight size={22} className="text-green-500" /> : <ToggleLeft size={22} className="text-gray-400" />}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1 justify-end">
+                              {f.activo && (
+                                <button onClick={() => abrirGenerarFijo(f)} title="Registrar este gasto"
+                                  className="flex items-center gap-1 px-2 py-1 text-xs text-accent border border-accent/30 hover:bg-accent/10 rounded-lg transition-colors">
+                                  Generar
+                                </button>
+                              )}
+                              <button onClick={() => abrirEdicionFijo(f)} className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Pencil size={14} /></button>
+                              <button onClick={() => eliminarFijo(f.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 size={14} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot className="bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
+                    <tr>
+                      <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-gray-600 dark:text-gray-300">Total mensual estimado (activos)</td>
+                      <td className="px-4 py-3 text-right font-bold text-gray-700 dark:text-gray-300">
+                        {formatMoneda((gastosFijos as any[]).filter(f => f.activo && f.frecuencia === 'mensual').reduce((a: number, f: any) => a + Number(f.monto), 0))}
+                      </td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: NUEVO / EDITAR GASTO ══ */}
       {modalAbierto && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
               <h2 className="font-semibold text-gray-800 dark:text-gray-100">{editandoId ? 'Editar gasto' : 'Nuevo gasto'}</h2>
-              <button onClick={cerrarModal} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400">
-                <X size={18} />
-              </button>
+              <button onClick={cerrarModal} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
             </div>
 
             <div className="p-5 space-y-4 overflow-y-auto">
@@ -685,22 +1057,16 @@ export default function GastosPage() {
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto ($) *</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} value={form.monto}
-                    onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
-                    placeholder="0" min="0" step="0.01"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IVA deducible ($)</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} value={form.iva_monto}
-                    onChange={e => setForm(f => ({ ...f, iva_monto: e.target.value }))}
-                    placeholder="0" min="0" step="0.01"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto total ($) *</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={form.monto}
+                  onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
+                  placeholder="0" min="0" step="0.01"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
+
+              {/* Información fiscal */}
+              {renderFiscal(form, setForm, ivaPreview, netoPreview)}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>
@@ -733,8 +1099,8 @@ export default function GastosPage() {
               </div>
 
               {/* Comprobante */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Comprobante (foto / PDF)</label>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Comprobante (foto / PDF)</label>
                 <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
                   className="hidden" onChange={e => setComprobanteFile(e.target.files?.[0] ?? null)} />
                 <div className="flex items-center gap-2">
@@ -745,17 +1111,43 @@ export default function GastosPage() {
                   </button>
                   {comprobanteExistente && !comprobanteFile && (
                     <button type="button" onClick={() => verComprobante(comprobanteExistente)}
-                      className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 transition-colors">
+                      className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700">
                       <ExternalLink size={12} /> Ver actual
                     </button>
                   )}
                   {(comprobanteFile || comprobanteExistente) && (
                     <button type="button" onClick={() => { setComprobanteFile(null); setComprobanteExistente(null) }}
-                      className="text-gray-400 hover:text-red-500 transition-colors">
-                      <X size={14} />
-                    </button>
+                      className="text-gray-400 hover:text-red-500"><X size={14} /></button>
                   )}
                 </div>
+
+                {/* Título del comprobante */}
+                {(comprobanteFile || comprobanteExistente) && (
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <select value={tipoComprobanteSelect}
+                        onChange={e => { setTipoComprobanteSelect(e.target.value); if (e.target.value) setComprobanteNombre('') }}
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        <option value="">Seleccionar tipo de comprobante…</option>
+                        {TIPOS_COMPROBANTE.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                    {!tipoComprobanteSelect && (
+                      <input type="text" value={comprobanteNombre} onChange={e => setComprobanteNombre(e.target.value)}
+                        placeholder="O escribí un título personalizado (opcional)"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    )}
+                    <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+                      <input type="checkbox" checked={usarPrefixCategoria}
+                        onChange={e => setUsarPrefixCategoria(e.target.checked)} className="accent-accent" />
+                      Agregar categoría como prefijo
+                      {usarPrefixCategoria && form.categoria && (
+                        <span className="text-accent font-medium">{form.categoria}_{tipoComprobanteSelect || comprobanteNombre || '…'}</span>
+                      )}
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -766,26 +1158,38 @@ export default function GastosPage() {
               </div>
             </div>
 
-            {!editandoId && form.medio_pago === 'Efectivo' && (
+            {/* Selector de caja */}
+            {!editandoId && (
               <div className="px-5 pb-3">
                 {sesionesAbiertas.length === 0 ? (
-                  <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2.5">
-                    <span>⚠️</span><span>Sin caja abierta — el egreso no se registrará en caja</span>
+                  <div className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2.5">
+                    <span>⚠️</span><span>No hay caja abierta. Debés abrir una caja antes de registrar gastos.</span>
                   </div>
                 ) : sesionesAbiertas.length > 1 ? (
                   <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar egreso en caja:</label>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar en caja:</label>
                     <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
-                      className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700">
+                      className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                       <option value="">— Seleccioná una caja —</option>
-                      {(sesionesAbiertas as any[]).map(s => (
-                        <option key={s.id} value={s.id}>{(s as any).cajas?.nombre ?? 'Caja'}</option>
-                      ))}
+                      {(sesionesAbiertas as any[]).map(s => {
+                        const esPropia = s.usuario_id === user?.id
+                        return (
+                          <option key={s.id} value={s.id}>
+                            {(s as any).cajas?.nombre ?? 'Caja'}{esPropia ? ' (mía)' : ` — de ${(s as any).abrio?.nombre_display ?? 'otro usuario'}`}
+                          </option>
+                        )
+                      })}
                     </select>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-3 py-2.5">
-                    <span>✓</span><span>Egreso en efectivo → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja'}</span>
+                    <span>✓</span>
+                    <span>
+                      {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja'}
+                      {(sesionesAbiertas[0] as any).usuario_id !== user?.id && (
+                        <span className="text-amber-600 dark:text-amber-400"> · Caja de {(sesionesAbiertas[0] as any).abrio?.nombre_display ?? 'otro usuario'}</span>
+                      )}
+                    </span>
                   </div>
                 )}
               </div>
@@ -796,7 +1200,7 @@ export default function GastosPage() {
                 className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
                 Cancelar
               </button>
-              <button onClick={guardar} disabled={guardando}
+              <button onClick={guardar} disabled={guardando || (!editandoId && sesionesAbiertas.length === 0)}
                 className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
                 {guardando ? 'Guardando...' : editandoId ? 'Guardar cambios' : 'Registrar gasto'}
               </button>
@@ -805,15 +1209,13 @@ export default function GastosPage() {
         </div>
       )}
 
-      {/* ══════════════════ MODAL: NUEVO / EDITAR GASTO FIJO ═══════════════ */}
+      {/* ══ MODAL: NUEVO / EDITAR GASTO FIJO ══ */}
       {modalFijoAbierto && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
               <h2 className="font-semibold text-gray-800 dark:text-gray-100">{editandoFijoId ? 'Editar gasto fijo' : 'Nuevo gasto fijo'}</h2>
-              <button onClick={cerrarModalFijo} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400">
-                <X size={18} />
-              </button>
+              <button onClick={cerrarModalFijo} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
             </div>
 
             <div className="p-5 space-y-4 overflow-y-auto">
@@ -824,22 +1226,16 @@ export default function GastosPage() {
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto ($) *</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} value={formFijo.monto}
-                    onChange={e => setFormFijo(f => ({ ...f, monto: e.target.value }))}
-                    placeholder="0" min="0" step="0.01"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">IVA deducible ($)</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} value={formFijo.iva_monto}
-                    onChange={e => setFormFijo(f => ({ ...f, iva_monto: e.target.value }))}
-                    placeholder="0" min="0" step="0.01"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto estimado ($) *</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={formFijo.monto}
+                  onChange={e => setFormFijo(f => ({ ...f, monto: e.target.value }))}
+                  placeholder="0" min="0" step="0.01"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
+
+              {/* Información fiscal */}
+              {renderFiscal(formFijo, setFormFijo, ivaFijoPreview, montoFijoNum - ivaFijoPreview)}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -849,17 +1245,26 @@ export default function GastosPage() {
                       className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                       {FRECUENCIAS.map(fr => <option key={fr.value} value={fr.value}>{fr.label}</option>)}
                     </select>
-                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Día del mes</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} value={formFijo.dia_vencimiento}
-                    onChange={e => setFormFijo(f => ({ ...f, dia_vencimiento: e.target.value }))}
-                    placeholder="Ej: 10" min="1" max="31"
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="31" value={formFijo.dia_vencimiento}
+                    onChange={e => setFormFijo(f => ({ ...f, dia_vencimiento: e.target.value }))} placeholder="Ej: 10"
                     className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
               </div>
+
+              {formFijo.dia_vencimiento && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alertar X días antes</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="30" value={formFijo.alerta_dias_antes}
+                    onChange={e => setFormFijo(f => ({ ...f, alerta_dias_antes: e.target.value }))} placeholder="3"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  <p className="text-xs text-gray-400 mt-1">Aparecerá un ícono 🔔 en la lista cuando falten {formFijo.alerta_dias_antes || 3} días o menos</p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
@@ -869,19 +1274,19 @@ export default function GastosPage() {
                     <option value="">Sin categoría</option>
                     {CATEGORIAS_GASTO.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medio de pago</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medio de pago habitual</label>
                 <div className="relative">
                   <select value={formFijo.medio_pago} onChange={e => setFormFijo(f => ({ ...f, medio_pago: e.target.value }))}
                     className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                     <option value="">Elegir método…</option>
                     {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
               </div>
 
@@ -890,16 +1295,6 @@ export default function GastosPage() {
                 <textarea value={formFijo.notas} onChange={e => setFormFijo(f => ({ ...f, notas: e.target.value }))}
                   placeholder="Detalles adicionales..." rows={2}
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-              </div>
-
-              <div className="flex items-center gap-3">
-                <button type="button" onClick={() => setFormFijo(f => ({ ...f, activo: !f.activo }))}
-                  className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                  {formFijo.activo
-                    ? <ToggleRight size={22} className="text-green-500" />
-                    : <ToggleLeft size={22} className="text-gray-400" />}
-                  {formFijo.activo ? 'Activo' : 'Inactivo'}
-                </button>
               </div>
             </div>
 
@@ -911,6 +1306,57 @@ export default function GastosPage() {
               <button onClick={guardarFijo} disabled={guardandoFijo}
                 className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
                 {guardandoFijo ? 'Guardando...' : editandoFijoId ? 'Guardar cambios' : 'Crear gasto fijo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: GENERAR DESDE FIJO ══ */}
+      {modalGenerarFijo && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div>
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100">Registrar gasto</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{modalGenerarFijo.descripcion} — {formatMoneda(Number(modalGenerarFijo.monto))}</p>
+              </div>
+              <button onClick={() => setModalGenerarFijo(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>
+                <input type="date" value={formGenerar.fecha} onChange={e => setFormGenerar(f => ({ ...f, fecha: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medio de pago</label>
+                <div className="relative">
+                  <select value={formGenerar.medio_pago} onChange={e => setFormGenerar(f => ({ ...f, medio_pago: e.target.value }))}
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    <option value="">Elegir método…</option>
+                    {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
+                <input type="text" value={formGenerar.notas} onChange={e => setFormGenerar(f => ({ ...f, notas: e.target.value }))}
+                  placeholder="Ej: Factura N° 0001-00001234"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+            </div>
+
+            <div className="px-5 pb-5 flex gap-3">
+              <button onClick={() => setModalGenerarFijo(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
+                Cancelar
+              </button>
+              <button onClick={confirmarGenerarFijo} disabled={generandoFijo}
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
+                {generandoFijo ? 'Registrando...' : 'Registrar gasto'}
               </button>
             </div>
           </div>

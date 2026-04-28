@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
   ChevronRight, ChevronLeft, ShoppingCart, DollarSign, TrendingDown,
-  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send,
+  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -34,6 +34,7 @@ const navItems = [
   { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos',   depositoVisible: true },
   { to: '/clientes',      icon: Users,           label: 'Clientes',       modulo: 'clientes',      cajeroVisible: true },
   { to: '/envios',        icon: Send,            label: 'Envíos',         modulo: 'envios',        cajeroVisible: true },
+  { to: '/facturacion',   icon: Receipt,         label: 'Facturación',    modulo: 'facturacion',   ownerOnly: true },
   { to: '/proveedores',   icon: Truck,           label: 'Prov./Servicios', modulo: 'proveedores',  ownerOnly: true },
   { to: '/recepciones',   icon: Warehouse,       label: 'Recepciones',    modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true },
   { to: '/biblioteca',    icon: FolderOpen,      label: 'Biblioteca',     modulo: 'biblioteca',    ownerOnly: true },

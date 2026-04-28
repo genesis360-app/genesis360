@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
   ChevronRight, ChevronLeft, ShoppingCart, DollarSign, TrendingDown,
-  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse,
+  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -33,6 +33,7 @@ const navItems = [
   { to: '/productos',     icon: Package,         label: 'Productos',      modulo: 'inventario',    depositoVisible: true },
   { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos',   depositoVisible: true },
   { to: '/clientes',      icon: Users,           label: 'Clientes',       modulo: 'clientes',      cajeroVisible: true },
+  { to: '/envios',        icon: Send,            label: 'Envíos',         modulo: 'envios',        cajeroVisible: true },
   { to: '/proveedores',   icon: Truck,           label: 'Prov./Servicios', modulo: 'proveedores',  ownerOnly: true },
   { to: '/recepciones',   icon: Warehouse,       label: 'Recepciones',    modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true },
   { to: '/biblioteca',    icon: FolderOpen,      label: 'Biblioteca',     modulo: 'biblioteca',    ownerOnly: true },
@@ -45,7 +46,7 @@ const navItems = [
   { to: '/configuracion', icon: Settings,        label: 'Configuración',  modulo: 'configuracion', ownerOnly: true },
 ]
 
-const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/mi-cuenta']
+const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
 const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion']
 const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones']

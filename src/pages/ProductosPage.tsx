@@ -849,11 +849,20 @@ export default function ProductosPage() {
         <>
           {/* Barra de uso del plan */}
           {limits && (
-            <PlanProgressBar
-              actual={limits.productos_actuales}
-              max={limits.max_productos}
-              label="productos"
-            />
+            limits.max_productos === -1 ? (
+              <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 border border-border-ds bg-surface text-sm">
+                <span className="text-muted font-medium">
+                  {limits.productos_actuales.toLocaleString()} producto{limits.productos_actuales !== 1 ? 's' : ''}
+                </span>
+                <span className="text-xs text-green-600 dark:text-green-400">· Sin límite en tu plan</span>
+              </div>
+            ) : (
+              <PlanProgressBar
+                actual={limits.productos_actuales}
+                max={limits.max_productos}
+                label="productos"
+              />
+            )
           )}
 
           {stockCritico > 0 && (

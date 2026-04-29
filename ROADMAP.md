@@ -1,12 +1,69 @@
 # Genesis360 — Roadmap
 
-**Última actualización:** 27 de Abril, 2026 · **v1.2.1 en PROD**
+**Última actualización:** 28 de Abril, 2026 · **v1.2.1 en PROD · v1.3.0 en DEV (pendiente merge)**
 
 > Stack, arquitectura y convenciones → [CLAUDE.md](CLAUDE.md) · Workflow de deploy → [WORKFLOW.md](WORKFLOW.md)
 
 ---
 
-## 🔜 Módulo Facturación Electrónica AFIP (pendiente — sin migration aún)
+## ✅ Módulo Facturación Electrónica AFIP (v1.3.0 DEV — migrations 076-077)
+
+### Estado: DEV ✅ · PROD pendiente deploy
+
+**SDK**: `@afipsdk/afip.js` vía `npm:` en Deno (no certificados propios por ahora)
+**Acceso**: AfipSDK cloud service + access_token por tenant
+**Testing homologación**: CAE 86170057489609 emitido exitosamente (Factura B)
+
+### Edge Function `emitir-factura`
+- Calcula neto/IVA por alícuota desde `venta_items`
+- Determina DocTipo automático (CF/DNI/CUIT) + umbral RG 5616
+- `CondicionIVAReceptorId` (RG 5616) mapeado desde `clientes.condicion_iva_receptor`
+- Guarda CAE/vencimiento/numero en `ventas`
+
+### FacturacionPage — 4 tabs
+- **Panel de Control**: KPIs IVA Débito/Crédito/Posición + datos fiscales + disclaimer
+- **Facturación**: borradores (ventas sin CAE) + historial + modal emitir A/B/C
+- **Libros IVA**: Ventas (débito) y Compras (crédito) con filtros alícuota, exportar Excel, conciliación
+- **Liquidación**: historial 12 meses, retenciones sufridas, disclaimer legal
+
+### Config → Negocio (nuevos campos)
+- Toggle `facturacion_habilitada`
+- CUIT, condición IVA emisor, razón social fiscal, domicilio fiscal
+- Umbral Factura B (configurable, RG 5616)
+- Token AfipSDK (oculto, guardado en tenants)
+- Puntos de venta AFIP: CRUD colapsable
+
+### Clientes (nuevos campos)
+- `cuit_receptor` + `condicion_iva_receptor` (CF/RI/Mono/Exento)
+- Visible en card expandido, usado en emisión automática
+
+### Schema (migrations 076-077)
+```
+tenants: facturacion_habilitada, cuit, condicion_iva_emisor, razon_social_fiscal,
+         domicilio_fiscal, umbral_factura_b, afipsdk_token
+clientes: cuit_receptor, condicion_iva_receptor
+puntos_venta_afip: id, tenant_id, sucursal_id, numero, nombre, activo
+retenciones_sufridas: id, tenant_id, tipo, agente, monto, fecha, periodo
+gastos: conciliado_iva BOOLEAN
+```
+
+### Tipos de comprobante (RG 5616)
+| Emisor | Receptor | Tipo | CbteTipo | CondicionIVAReceptorId |
+|---|---|---|---|---|
+| RI | RI | Factura A | 1 | 1 |
+| RI | CF/Mono | Factura B | 6 | 5/4 |
+| Mono | Cualquiera | Factura C | 11 | según |
+| Cualquiera | — | NC-A/B/C | 3/8/13 | — |
+
+### Pendiente Fase 2
+- Integración VentasPage: prompt "¿Facturar ahora?" al despachar
+- PDF factura con QR AFIP (obligatorio desde 2021)
+- Envío automático por email al cliente
+- Notas de Crédito en módulo devoluciones
+
+---
+
+## ✅ Módulo Envíos (v1.3.0 DEV — migration 075)
 
 ### Decisión estratégica
 **Integración propia con AFIP WSFE** (sin intermediario). Break-even vs. servicio tercero (~$300 USD/mes a 20 tenants) en 6-8 meses. Las "grandes ligas" ARG (TiendaNube, ML) todas tienen integración propia. Librería `afip.js` (Node/Deno) wrappea el WSFE SOAP.
@@ -53,17 +110,48 @@ devoluciones: nc_cae, nc_vencimiento_cae, nc_numero_comprobante,
 - **Fase 3** — Notas de Crédito: extensión módulo devoluciones con NC electrónica vinculada
 - **Fase 4** — Reportes: libro IVA ventas, resumen comprobantes, exportar Excel para contador
 
-### Riesgos principales
+### Riesgos facturación
 1. Numeración correlativa AFIP — bugs de duplicados/saltos son graves
-2. Multi-tenant certificates — cada tenant tiene su .crt y .key
-3. AFIP WSFE tiene downtime — retry robusto necesario
-4. Clientes sin CUIT/condición IVA — flujo de completar datos requerido antes de emitir
-5. Homologación burocrática — iniciar temprano
+2. AFIP WSFE tiene downtime — retry robusto necesario
+3. Clientes sin CUIT/condición IVA — flujo de completar datos requerido
+4. CUIT inactivo del dueño → usar CUIT de empresa cuando se constituya
 
-### Pendiente antes de arrancar código
-- [ ] Iniciar proceso de homologación en AFIP
-- [ ] Validar comprobantes generados con contacto contable antes de launch
-- [ ] Confirmar precio del add-on vs. costo operativo (certificados, soporte)
+### Pendiente facturación
+- [ ] Testear flujo completo en DEV con token AfipSDK
+- [ ] Integrar VentasPage: prompt "¿Facturar ahora?" al despachar
+- [ ] PDF factura con QR AFIP (obligatorio desde 2021)
+- [ ] Envío automático por email al cliente
+- [ ] Notas de Crédito en módulo devoluciones
+
+---
+
+## ✅ Módulo Envíos (v1.3.0 DEV — migration 075)
+
+**EnviosPage** (`/envios`) — OWNER/SUPERVISOR/CAJERO.
+
+### Funcionalidades
+- Lista con filtros: estado/courier/canal/fechas/búsqueda
+- Fila expandible: destinatario completo, courier+tracking, productos
+- Avanzar estado (pendiente→despachado→en_camino→entregado), cancelar
+- Generar remito PDF (jsPDF), ver tracking externo, ver venta asociada
+- Modal nuevo/editar: vincular venta, elegir domicilio del cliente, courier/tracking/dimensiones
+- Tab Cotizador: shell para rate shopping (activo cuando haya contratos con couriers)
+
+### Prerequisito implementado
+- `cliente_domicilios` (migration 074): cada cliente puede tener múltiples domicilios de entrega con alias, referencias para courier, domicilio principal marcado con ⭐
+
+### Schema (migration 075)
+```
+envios: id, tenant_id, venta_id, numero AUTO, courier, servicio, tracking_number,
+        estado CHECK(pendiente|despachado|en_camino|entregado|devolucion|cancelado),
+        canal, destino_id FK cliente_domicilios, peso_kg, dimensiones,
+        costo_cotizado, fecha_entrega_acordada, etiqueta_url, created_by
+bucket: etiquetas-envios (privado, 5MB)
+```
+
+### Fase 2 pendiente (cuando haya contratos couriers)
+- EF `courier-rates`: consulta APIs OCA/CorreoAR/Andreani/DHL en paralelo → tabla comparativa
+- Label printing: etiqueta base64 del courier → bucket → impresión
 
 ---
 

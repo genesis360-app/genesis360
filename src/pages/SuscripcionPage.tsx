@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import {
   Package, Check, X, CheckCircle, XCircle, Clock,
-  ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle,
+  ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -322,6 +322,25 @@ export default function SuscripcionPage() {
           <span className="flex items-center gap-2"><RefreshCw size={16} /> Cancelá cuando quieras</span>
           <span className="flex items-center gap-2"><Check size={16} /> Sin costos ocultos</span>
         </div>
+
+        {/* Escape hatch — usuario autenticado sin suscripción activa */}
+        {user && (
+          <div className="mt-8 text-center">
+            <p className="text-blue-300 text-sm mb-2">
+              Sesión activa como <strong>{user.nombre_display ?? user.rol}</strong>
+            </p>
+            <button
+              onClick={async () => {
+                const { signOut } = useAuthStore.getState()
+                await signOut()
+                navigate('/login')
+              }}
+              className="inline-flex items-center gap-2 text-blue-300 hover:text-white text-sm underline underline-offset-4 transition-colors"
+            >
+              <LogOut size={14} /> Cerrar sesión
+            </button>
+          </div>
+        )}
 
       </div>
     </div>

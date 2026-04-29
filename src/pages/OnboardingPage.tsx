@@ -2,7 +2,7 @@ import { BRAND } from '@/config/brand'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Package, Building2, Globe, Phone, Mail, Lock } from 'lucide-react'
+import { Package, Building2, Globe, Phone, Mail, Lock, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
@@ -281,6 +281,24 @@ export default function OnboardingPage() {
             ¿Ya tenés cuenta?{' '}
             <Link to="/login" className="text-accent font-medium hover:underline">Iniciá sesión</Link>
           </p>
+
+          {/* Escape: si hay sesión activa pero quedó atrapado en onboarding */}
+          {existingAuthUser && (
+            <div className="mt-3 text-center">
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">
+                Sesión activa: {existingAuthUser.email}
+              </p>
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut()
+                  window.location.href = '/login'
+                }}
+                className="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors underline underline-offset-2"
+              >
+                <LogOut size={12} /> Cerrar sesión y volver al login
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

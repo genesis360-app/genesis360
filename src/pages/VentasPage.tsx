@@ -93,6 +93,10 @@ export default function VentasPage() {
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
+  const [facturaModal, setFacturaModal] = useState<{ ventaId: string; ventaNumero: number; ventaTotal: number } | null>(null)
+  const [facturaTipo, setFacturaTipo] = useState<'A' | 'B' | 'C'>('B')
+  const [facturaPV, setFacturaPV]     = useState<number>(1)
+  const [emitiendoFactura, setEmitiendoFactura] = useState(false)
   const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('despachada')
   const [editandoPago, setEditandoPago] = useState(false)
   const [editMontoPagado, setEditMontoPagado] = useState('')
@@ -705,8 +709,54 @@ export default function VentasPage() {
 
   const removeItem = (idx: number) => setCart(prev => prev.filter((_, i) => i !== idx))
 
+  // ── Facturación ───────────────────────────────────────────────────────────
+  const factHabilitada = !!(tenant as any)?.facturacion_habilitada && !!(tenant as any)?.cuit
+
+  const detectarTipoComp = (clienteCondIva?: string): 'A' | 'B' | 'C' => {
+    if ((tenant as any)?.condicion_iva_emisor === 'Monotributista') return 'C'
+    if (clienteCondIva === 'RI') return 'A'
+    return 'B'
+  }
+
+  const triggerFacturaModal = (ventaId: string, ventaNumero: number, ventaTotal: number, clienteCondIva?: string) => {
+    const tipo = detectarTipoComp(clienteCondIva)
+    const pvDefault = (puntosVentaAfip as any[])[0]?.numero ?? 1
+    setFacturaTipo(tipo)
+    setFacturaPV(pvDefault)
+    setFacturaModal({ ventaId, ventaNumero, ventaTotal })
+  }
+
+  const emitirFactura = async () => {
+    if (!facturaModal) return
+    setEmitiendoFactura(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('emitir-factura', {
+        body: { venta_id: facturaModal.ventaId, tenant_id: tenant!.id, tipo_comprobante: facturaTipo, punto_venta: facturaPV },
+      })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      toast.success(`✅ Factura ${facturaTipo} emitida — CAE: ${data.cae}`, { duration: 8000 })
+      setFacturaModal(null)
+    } catch (e: any) {
+      toast.error('Error al emitir: ' + (e.message ?? 'intente nuevamente'))
+    } finally {
+      setEmitiendoFactura(false)
+    }
+  }
+
   const [combosActivosMulti, setCombosActivosMulti] = useState<{id: string; nombre: string; monto: number}[]>([])
   const autoMultiSig = useRef('')
+
+  // Puntos de venta AFIP — carga lazy cuando se abre el modal de facturación
+  const { data: puntosVentaAfip = [] } = useQuery({
+    queryKey: ['puntos-venta-afip', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('puntos_venta_afip')
+        .select('id, numero, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('numero')
+      return data ?? []
+    },
+    enabled: !!tenant && !!facturaModal,
+  })
 
   const { data: combosDisp = [] } = useQuery({
     queryKey: ['combos', tenant?.id],
@@ -1170,6 +1220,10 @@ export default function VentasPage() {
       toast.success(msg)
       if (estado !== 'pendiente') {
         setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
+      }
+      // Prompt facturación si la venta fue despachada y está habilitada
+      if (estado === 'despachada' && factHabilitada) {
+        triggerFacturaModal(venta.id, venta.numero ?? 0, Number(venta.total ?? 0))
       }
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
@@ -1839,7 +1893,7 @@ export default function VentasPage() {
       }
       logActividad({ entidad: 'venta', entidad_id: ventaId, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'cambio_estado', valor_anterior: venta.estado, valor_nuevo: nuevoEstado, pagina: '/ventas' })
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success('Estado actualizado')
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -1849,6 +1903,11 @@ export default function VentasPage() {
       qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
       qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
       setVentaDetalle(null)
+      // Prompt facturación si se despachó desde historial
+      if (variables.nuevoEstado === 'despachada' && factHabilitada) {
+        const v = (ventas as any[]).find(v => v.id === variables.ventaId)
+        if (v) triggerFacturaModal(v.id, v.numero ?? 0, Number(v.total ?? 0))
+      }
     },
     onError: (e: any) => toast.error(e.message),
   })
@@ -3648,6 +3707,77 @@ export default function VentasPage() {
           </div>
         </div>
       )}
+
+      {/* ── MODAL: ¿FACTURAR AHORA? ── */}
+    {facturaModal && (
+      <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🧾</span>
+              <h2 className="font-semibold text-gray-800 dark:text-gray-100">¿Emitir comprobante?</h2>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Venta #{facturaModal.ventaNumero} · ${facturaModal.ventaTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+            </p>
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* Tipo de comprobante */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de comprobante</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['A','B','C'] as const).map(t => (
+                  <button key={t} onClick={() => setFacturaTipo(t)}
+                    className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-all
+                      ${facturaTipo === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent/40'}`}>
+                    Factura {t}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+                {facturaTipo === 'A' && 'Para clientes Responsables Inscriptos — discrimina IVA'}
+                {facturaTipo === 'B' && 'Para Consumidores Finales / Monotributistas'}
+                {facturaTipo === 'C' && 'Para emisores Monotributistas — sin IVA'}
+              </p>
+            </div>
+
+            {/* Punto de venta */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Punto de venta</label>
+              {(puntosVentaAfip as any[]).length > 0 ? (
+                <div className="relative">
+                  <select value={facturaPV} onChange={e => setFacturaPV(parseInt(e.target.value))}
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    {(puntosVentaAfip as any[]).map((pv: any) => (
+                      <option key={pv.id} value={pv.numero}>
+                        {String(pv.numero).padStart(4,'0')}{pv.nombre ? ` — ${pv.nombre}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <input type="number" value={facturaPV} onChange={e => setFacturaPV(parseInt(e.target.value))} min="1"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              )}
+            </div>
+          </div>
+
+          <div className="px-5 pb-5 flex gap-2">
+            <button onClick={() => setFacturaModal(null)}
+              className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
+              Saltar
+            </button>
+            <button onClick={emitirFactura} disabled={emitiendoFactura}
+              className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
+              {emitiendoFactura
+                ? <><span className="animate-spin">⟳</span> Emitiendo…</>
+                : <>🧾 Emitir Factura {facturaTipo}</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   )
 }

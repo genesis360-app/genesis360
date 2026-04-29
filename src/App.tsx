@@ -52,7 +52,10 @@ const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 1000 * 60 * 5, retry: 1 },
+    // staleTime: 0 → siempre refetch en background al montar un componente.
+    // El usuario ve datos cacheados inmediatamente (sin spinner) y se actualizan
+    // silenciosamente. Patrón stale-while-revalidate: rápido + siempre fresco.
+    queries: { staleTime: 0, retry: 1, refetchOnWindowFocus: true },
   },
 })
 

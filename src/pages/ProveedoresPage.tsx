@@ -900,9 +900,15 @@ export default function ProveedoresPage() {
                               <input type="number" onWheel={e => e.currentTarget.blur()} value={servItemForm.costo}
                                 onChange={e => setServItemForm(f => ({ ...f, costo: e.target.value }))} placeholder="Costo ($)"
                                 className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
-                              <input type="text" value={servItemForm.forma_pago}
-                                onChange={e => setServItemForm(f => ({ ...f, forma_pago: e.target.value }))} placeholder="Forma de pago"
-                                className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                              <div className="relative">
+                              <select value={servItemForm.forma_pago}
+                                onChange={e => setServItemForm(f => ({ ...f, forma_pago: e.target.value }))}
+                                className="w-full appearance-none border border-border-ds rounded-lg pl-3 pr-7 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent">
+                                <option value="">Forma de pago…</option>
+                                {['Efectivo','Transferencia','Tarjeta débito','Tarjeta crédito','Cheque','Mercado Pago','Otro'].map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                              <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                            </div>
                             </div>
                             <label className="flex items-center gap-2 text-sm text-primary cursor-pointer">
                               <input type="checkbox" checked={servItemForm.hace_factura}

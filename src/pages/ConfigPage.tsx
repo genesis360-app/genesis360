@@ -420,6 +420,8 @@ export default function ConfigPage() {
 
   // WhatsApp
   const [bizWAPlantilla, setBizWAPlantilla] = useState<string>((tenant as any)?.whatsapp_plantilla ?? '')
+  // Envíos
+  const [bizCostoKm, setBizCostoKm] = useState<string>(String((tenant as any)?.costo_envio_por_km ?? ''))
 
   // Puntos de venta AFIP
   const [pvCollapsed,   setPvCollapsed]   = useState(true)
@@ -437,6 +439,7 @@ export default function ConfigPage() {
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
       whatsapp_plantilla: bizWAPlantilla.trim() || null,
+      costo_envio_por_km: bizCostoKm ? parseFloat(bizCostoKm) : null,
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
       cuit: bizCuit.trim() || null,
@@ -1463,8 +1466,15 @@ export default function ConfigPage() {
             rows={6} placeholder={`Hola {{Nombre_Cliente}}! 🎉 Somos {{Nombre_Negocio}}.\n\nTu pedido #{{Numero_Orden}} está listo para ser enviado. 📦\n\n🚚 Courier: {{Courier}}\n📍 Tracking: {{Tracking}}\n📅 Fecha estimada: {{Fecha_Entrega}}\n\n¿Hay alguien para recibirlo? ¡Gracias!`}
             className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-y bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono" />
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Si no configurás una plantilla, se usa el texto por defecto. El número de teléfono del cliente se normaliza automáticamente al formato de Argentina (54 9 + área sin 0 + número sin 15).
+            Si no configurás una plantilla, se usa el texto por defecto. El número se normaliza automáticamente al formato de Argentina (54 9 + área sin 0 + número sin 15).
           </p>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">$ por km (envío propio)</label>
+            <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCostoKm}
+              onChange={e => setBizCostoKm(e.target.value)} placeholder="Ej: 150" min="0" step="0.01"
+              className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+            <p className="text-xs text-gray-400 dark:text-gray-500">Para calcular el costo de delivery propio en el módulo de Envíos.</p>
+          </div>
         </div>
       )}
 
@@ -1752,16 +1762,16 @@ export default function ConfigPage() {
 
           {/* Agregar nueva */}
           <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <input type="text" placeholder="Nombre de la ubicación" value={newUbicNombre}
                 onChange={e => setNewUbicNombre(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addUbicacion()}
-                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Prioridad" value={newUbicPrioridad}
                 onChange={e => setNewUbicPrioridad(e.target.value)}
-                className="w-24 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="w-24 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
               <button onClick={addUbicacion} disabled={!newUbicNombre.trim()}
-                className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
                 <Plus size={15} /> Agregar
               </button>
             </div>

@@ -21,6 +21,14 @@ type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'entregado' | 'dev
 type TabEnvio = 'envios' | 'cotizador'
 
 const COURIERS = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 'Otro']
+
+const SERVICIOS_POR_COURIER: Record<string, string[]> = {
+  'OCA':              ['Estándar', 'Urgente', 'OCA al Centro', 'Plus', 'Internacional'],
+  'Correo Argentino': ['Encomienda Clásica', 'Encomienda Plus', 'Small Pack', 'Express'],
+  'Andreani':         ['Estándar', 'Urgente', 'Expreso'],
+  'DHL Express':      ['Express Worldwide', 'Economy Select', 'Express Easy'],
+  'Otro':             ['Estándar', 'Urgente', 'Personalizado'],
+}
 const CANALES  = ['POS', 'MELI', 'TiendaNube', 'MP']
 
 const ESTADO_CFG: Record<EstadoEnvio, { label: string; color: string; icon: React.ReactNode }> = {
@@ -123,7 +131,7 @@ export default function EnviosPage() {
     queryKey: ['ventas-envio-search', tenant?.id, ventaSearch],
     queryFn: async () => {
       let q = supabase.from('ventas')
-        .select('id, numero, total, estado, created_at, cliente_id, clientes(nombre, id)')
+        .select('id, numero, total, estado, origen, created_at, cliente_id, clientes(nombre, id)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'reservada'])
         .order('created_at', { ascending: false })
@@ -339,6 +347,7 @@ export default function EnviosPage() {
     setVentaSeleccionada(null); setVentaSearch(''); setShowModal(true)
   }
   const abrirEdicion = (e: any) => {
+    if (e.estado === 'entregado') { toast('Este envío ya fue entregado y no puede editarse.', { icon: '🔒' }); return }
     setEditId(e.id)
     setForm({
       venta_id: e.venta_id ?? '', cliente_nombre: e.ventas?.clientes?.nombre ?? '',
@@ -363,7 +372,7 @@ export default function EnviosPage() {
     setForm(f => ({
       ...f, venta_id: v.id,
       cliente_nombre: v.clientes?.nombre ?? '',
-      canal: v.origen ?? 'POS',
+      canal: v.origen ?? 'POS',  // autocompletado desde el canal de la venta
     }))
   }
 
@@ -545,7 +554,10 @@ export default function EnviosPage() {
                                     <RefreshCw size={14} />
                                   </button>
                                 )}
-                                <button onClick={() => abrirEdicion(e)} className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                                <button onClick={() => abrirEdicion(e)}
+                                  disabled={e.estado === 'entregado'}
+                                  title={e.estado === 'entregado' ? 'Envío entregado — no editable' : 'Editar'}
+                                  className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
                                   <Pencil size={14} />
                                 </button>
                                 <button onClick={() => { if (confirm('¿Eliminar este envío?')) eliminarEnvio.mutate(e.id) }}
@@ -855,9 +867,20 @@ export default function EnviosPage() {
                 {/* Servicio */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Servicio</label>
-                  <input type="text" value={form.servicio} onChange={e => setForm(f => ({ ...f, servicio: e.target.value }))}
-                    placeholder="Ej: Estándar, Urgente"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  {form.courier && SERVICIOS_POR_COURIER[form.courier] ? (
+                    <div className="relative">
+                      <select value={form.servicio} onChange={e => setForm(f => ({ ...f, servicio: e.target.value }))}
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        <option value="">Seleccionar servicio…</option>
+                        {SERVICIOS_POR_COURIER[form.courier].map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                  ) : (
+                    <input type="text" value={form.servicio} onChange={e => setForm(f => ({ ...f, servicio: e.target.value }))}
+                      placeholder={form.courier ? 'Ej: Estándar' : 'Elegí primero el courier'}
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  )}
                 </div>
                 {/* Tracking */}
                 <div>

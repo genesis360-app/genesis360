@@ -238,9 +238,14 @@ export default function ClientesPage() {
   }
 
   const eliminar = async (id: string, nombre: string) => {
-    if (!confirm(`¿Eliminar a ${nombre}?`)) return
+    if (!confirm(`¿Eliminar a ${nombre}? Sus ventas quedarán sin cliente asignado.`)) return
+    // Desasociar ventas y envíos antes de eliminar (evita error de FK)
+    await Promise.all([
+      supabase.from('ventas').update({ cliente_id: null }).eq('cliente_id', id),
+      supabase.from('envios').update({ destino_id: null }).eq('destino_id', id),
+    ])
     const { error } = await supabase.from('clientes').delete().eq('id', id)
-    if (error) { toast.error('Error al eliminar'); return }
+    if (error) { toast.error('No se pudo eliminar: ' + error.message); return }
     toast.success('Cliente eliminado')
     qc.invalidateQueries({ queryKey: ['clientes'] })
     qc.invalidateQueries({ queryKey: ['clientes-stats'] })

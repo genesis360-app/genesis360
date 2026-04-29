@@ -5,6 +5,7 @@ import {
   Users, Plus, Search, Phone, Mail, FileText, X,
   ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
   Upload, Download, CheckCircle, XCircle, FileSpreadsheet, ExternalLink, MapPin, Star,
+  Tag, Calendar, StickyNote,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
@@ -39,8 +40,18 @@ function diasDesde(iso: string) {
   return `hace ${Math.floor(dias / 365)}a`
 }
 
-interface ClienteForm { nombre: string; dni: string; telefono: string; email: string; notas: string; cuit_receptor: string; condicion_iva_receptor: string }
-const FORM_VACIO: ClienteForm = { nombre: '', dni: '', telefono: '', email: '', notas: '', cuit_receptor: '', condicion_iva_receptor: '' }
+interface ClienteForm {
+  nombre: string; dni: string; telefono: string; email: string; notas: string
+  cuit_receptor: string; condicion_iva_receptor: string
+  fecha_nacimiento: string; etiquetas: string
+  codigo_fiscal: string; regimen_fiscal: string
+}
+const FORM_VACIO: ClienteForm = {
+  nombre: '', dni: '', telefono: '', email: '', notas: '',
+  cuit_receptor: '', condicion_iva_receptor: '',
+  fecha_nacimiento: '', etiquetas: '',
+  codigo_fiscal: '', regimen_fiscal: '',
+}
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
   pendiente:  { label: 'Pendiente',  color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' },
@@ -51,7 +62,7 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 }
 
 export default function ClientesPage() {
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -62,7 +73,10 @@ export default function ClientesPage() {
   const [form, setForm] = useState<ClienteForm>(FORM_VACIO)
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(() => searchParams.get('id'))
-  const [innerTab, setInnerTab] = useState<'historial' | 'domicilios'>('historial')
+  const [innerTab, setInnerTab] = useState<'historial' | 'domicilios' | 'notas'>('historial')
+  const [filtroEtiqueta, setFiltroEtiqueta] = useState('')
+  const [nuevaNota, setNuevaNota] = useState('')
+  const [savingNota, setSavingNota] = useState(false)
   const [showDomForm, setShowDomForm] = useState(false)
   const [editDomId, setEditDomId] = useState<string | null>(null)
   const [domForm, setDomForm] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false })
@@ -80,7 +94,7 @@ export default function ClientesPage() {
     queryKey: ['clientes', tenant?.id, search, sucursalId],
     queryFn: async () => {
       let q = supabase.from('clientes').select('*').eq('tenant_id', tenant!.id).order('nombre')
-      if (search) q = q.ilike('nombre', `%${search}%`)
+      if (search) q = q.or(`nombre.ilike.%${search}%,dni.ilike.%${search}%`)
       q = applyFilter(q)
       const { data, error } = await q
       if (error) throw error
@@ -147,6 +161,30 @@ export default function ClientesPage() {
     enabled: !!expandedId && innerTab === 'domicilios',
   })
 
+  const { data: notasCliente = [], refetch: refetchNotas } = useQuery({
+    queryKey: ['cliente-notas', expandedId],
+    queryFn: async () => {
+      const { data } = await supabase.from('cliente_notas')
+        .select('*, users(nombre_display)')
+        .eq('cliente_id', expandedId!)
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!expandedId && innerTab === 'notas',
+  })
+
+  const agregarNota = async () => {
+    if (!nuevaNota.trim() || !expandedId) return
+    setSavingNota(true)
+    const { error } = await supabase.from('cliente_notas').insert({
+      tenant_id: tenant!.id, cliente_id: expandedId,
+      texto: nuevaNota.trim(), usuario_id: user?.id,
+    })
+    if (error) { toast.error(error.message) }
+    else { setNuevaNota(''); refetchNotas(); toast.success('Nota guardada') }
+    setSavingNota(false)
+  }
+
   const saveDomicilio = async () => {
     if (!domForm.calle.trim()) { toast.error('La calle es obligatoria'); return }
     setSavingDom(true)
@@ -203,7 +241,14 @@ export default function ClientesPage() {
   const abrirModal = (cliente?: any) => {
     if (cliente) {
       setEditId(cliente.id)
-      setForm({ nombre: cliente.nombre, dni: cliente.dni ?? '', telefono: cliente.telefono ?? '', email: cliente.email ?? '', notas: cliente.notas ?? '', cuit_receptor: cliente.cuit_receptor ?? '', condicion_iva_receptor: cliente.condicion_iva_receptor ?? '' })
+      setForm({
+        nombre: cliente.nombre, dni: cliente.dni ?? '', telefono: cliente.telefono ?? '',
+        email: cliente.email ?? '', notas: cliente.notas ?? '',
+        cuit_receptor: cliente.cuit_receptor ?? '', condicion_iva_receptor: cliente.condicion_iva_receptor ?? '',
+        fecha_nacimiento: cliente.fecha_nacimiento ?? '',
+        etiquetas: Array.isArray(cliente.etiquetas) ? cliente.etiquetas.join(', ') : '',
+        codigo_fiscal: cliente.codigo_fiscal ?? '', regimen_fiscal: cliente.regimen_fiscal ?? '',
+      })
     } else {
       setEditId(null)
       setForm(FORM_VACIO)
@@ -217,7 +262,20 @@ export default function ClientesPage() {
     if (!form.telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
     setSaving(true)
     try {
-      const payload = { nombre: form.nombre.trim(), dni: form.dni.trim(), telefono: form.telefono.trim(), email: form.email || null, notas: form.notas || null, cuit_receptor: form.cuit_receptor.trim() || null, condicion_iva_receptor: form.condicion_iva_receptor || null }
+      const etiquetasArr = form.etiquetas.trim()
+        ? form.etiquetas.split(',').map(e => e.trim()).filter(Boolean)
+        : null
+      const payload = {
+        nombre: form.nombre.trim(), dni: form.dni.trim(),
+        telefono: form.telefono.trim(), email: form.email || null,
+        notas: form.notas || null,
+        cuit_receptor: form.cuit_receptor.trim() || null,
+        condicion_iva_receptor: form.condicion_iva_receptor || null,
+        fecha_nacimiento: form.fecha_nacimiento || null,
+        etiquetas: etiquetasArr,
+        codigo_fiscal: form.codigo_fiscal.trim() || null,
+        regimen_fiscal: form.regimen_fiscal.trim() || null,
+      }
       if (editId) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editId)
         if (error) throw error
@@ -386,12 +444,34 @@ export default function ClientesPage() {
         </div>
       )}
 
-      {/* Buscador */}
-      <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por nombre..."
-          className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+      {/* Buscador + filtro etiquetas */}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-48">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o DNI..."
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+        </div>
+        {/* Filtro etiquetas */}
+        {(clientes as any[]).some(c => Array.isArray(c.etiquetas) && c.etiquetas.length > 0) && (
+          <div className="relative">
+            <Tag size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <select value={filtroEtiqueta} onChange={e => setFiltroEtiqueta(e.target.value)}
+              className="pl-8 pr-8 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent appearance-none bg-white dark:bg-gray-800">
+              <option value="">Todas las etiquetas</option>
+              {[...new Set((clientes as any[]).flatMap(c => c.etiquetas ?? []))].map((et: string) => (
+                <option key={et} value={et}>{et}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+        )}
+        {filtroEtiqueta && (
+          <button onClick={() => setFiltroEtiqueta('')}
+            className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <X size={14} /> Limpiar
+          </button>
+        )}
       </div>
 
       {/* Lista */}
@@ -407,7 +487,9 @@ export default function ClientesPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {clientes.map((c: any) => {
+          {(clientes as any[]).filter(c =>
+            !filtroEtiqueta || (Array.isArray(c.etiquetas) && c.etiquetas.includes(filtroEtiqueta))
+          ).map((c: any) => {
             const stats = statsMap[c.id]
             const isExpanded = expandedId === c.id
             return (
@@ -425,6 +507,19 @@ export default function ClientesPage() {
                       {c.dni && <span className="text-xs text-gray-400 dark:text-gray-500">DNI {c.dni}</span>}
                       {c.cuit_receptor && <span className="text-xs text-gray-400 dark:text-gray-500">CUIT {c.cuit_receptor}</span>}
                       {c.condicion_iva_receptor && <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{c.condicion_iva_receptor}</span>}
+                      {c.fecha_nacimiento && (() => {
+                        const hoy = new Date()
+                        const nac = new Date(c.fecha_nacimiento + 'T12:00:00')
+                        const esCumple = nac.getDate() === hoy.getDate() && nac.getMonth() === hoy.getMonth()
+                        return <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-0.5 ${esCumple ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 font-semibold' : 'text-gray-400 dark:text-gray-500'}`}>
+                          🎂 {esCumple ? '¡Hoy!' : `${nac.getDate()}/${nac.getMonth()+1}`}
+                        </span>
+                      })()}
+                      {Array.isArray(c.etiquetas) && c.etiquetas.map((et: string) => (
+                        <span key={et} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-accent px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                          <Tag size={9} />{et}
+                        </span>
+                      ))}
                       {c.telefono && <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"><Phone size={11} /> {c.telefono}</span>}
                       {c.email && <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"><Mail size={11} /> {c.email}</span>}
                     </div>
@@ -456,12 +551,9 @@ export default function ClientesPage() {
                       {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
                     <button onClick={() => abrirModal(c)}
-                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 transition-colors">
+                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 transition-colors"
+                      title="Editar cliente">
                       <Pencil size={14} />
-                    </button>
-                    <button onClick={() => eliminar(c.id, c.nombre)}
-                      className="p-1.5 hover:bg-red-50 dark:bg-red-900/20 rounded-lg text-gray-300 hover:text-red-400 transition-colors">
-                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -474,6 +566,7 @@ export default function ClientesPage() {
                       {[
                         { id: 'historial' as const, label: 'Historial de compras', icon: <ShoppingCart size={12} /> },
                         { id: 'domicilios' as const, label: 'Domicilios',          icon: <MapPin size={12} /> },
+                        { id: 'notas'     as const, label: 'Notas',                icon: <StickyNote size={12} /> },
                       ].map(t => (
                         <button key={t.id} onClick={() => setInnerTab(t.id)}
                           className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px transition-colors
@@ -663,6 +756,42 @@ export default function ClientesPage() {
                         )}
                       </div>
                     )}
+
+                    {/* Tab: Notas */}
+                    {innerTab === 'notas' && (
+                      <div className="space-y-3">
+                        {/* Agregar nota */}
+                        <div className="flex gap-2">
+                          <textarea value={nuevaNota} onChange={e => setNuevaNota(e.target.value)}
+                            placeholder="Escribí una nota sobre este cliente..." rows={2}
+                            className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" />
+                          <button onClick={agregarNota} disabled={savingNota || !nuevaNota.trim()}
+                            className="px-3 py-2 bg-accent text-white rounded-xl text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-all self-end">
+                            {savingNota ? '…' : 'Guardar'}
+                          </button>
+                        </div>
+                        {/* Lista de notas */}
+                        {(notasCliente as any[]).length === 0 ? (
+                          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Sin notas para este cliente</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(notasCliente as any[]).map((n: any) => (
+                              <div key={n.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-600 p-3">
+                                <p className="text-sm text-gray-800 dark:text-gray-100 whitespace-pre-wrap">{n.texto}</p>
+                                <div className="flex items-center gap-2 mt-2 text-xs text-gray-400 dark:text-gray-500">
+                                  <Calendar size={10} />
+                                  <span>{new Date(n.created_at).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+                                  {n.users?.nombre_display && <>
+                                    <span>·</span>
+                                    <span>{n.users.nombre_display}</span>
+                                  </>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -708,6 +837,23 @@ export default function ClientesPage() {
                   placeholder="Opcional" type="email"
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
               </div>
+              {/* Fecha nacimiento + Etiquetas */}
+              <div>
+                <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  🎂 Fecha de nacimiento
+                </label>
+                <input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f => ({ ...f, fecha_nacimiento: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <Tag size={12} /> Etiquetas
+                </label>
+                <input type="text" value={form.etiquetas} onChange={e => setForm(f => ({ ...f, etiquetas: e.target.value }))}
+                  placeholder="mayorista, vip, zona-norte (separadas por coma)"
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              </div>
+
               {/* Facturación */}
               <div className="col-span-2 border-t border-gray-100 dark:border-gray-700 pt-3">
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Datos fiscales (para facturación)</p>
@@ -732,12 +878,24 @@ export default function ClientesPage() {
                       <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                     </div>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código fiscal</label>
+                    <input value={form.codigo_fiscal} onChange={e => setForm(f => ({ ...f, codigo_fiscal: e.target.value }))}
+                      placeholder="Opcional"
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Régimen fiscal</label>
+                    <input value={form.regimen_fiscal} onChange={e => setForm(f => ({ ...f, regimen_fiscal: e.target.value }))}
+                      placeholder="Ej: Responsable Inscripto"
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  </div>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas generales</label>
                 <textarea value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
-                  placeholder="Observaciones internas..." rows={2}
+                  placeholder="Observaciones internas (para notas con fecha usá el tab Notas en la ficha del cliente)..." rows={2}
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none" />
               </div>
             </div>

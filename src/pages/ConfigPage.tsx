@@ -418,6 +418,9 @@ export default function ConfigPage() {
   const [bizAfipToken,       setBizAfipToken]       = useState<string>((tenant as any)?.afipsdk_token ?? '')
   const [showAfipToken,      setShowAfipToken]      = useState(false)
 
+  // WhatsApp
+  const [bizWAPlantilla, setBizWAPlantilla] = useState<string>((tenant as any)?.whatsapp_plantilla ?? '')
+
   // Puntos de venta AFIP
   const [pvCollapsed,   setPvCollapsed]   = useState(true)
   const [pvForm,        setPvForm]        = useState({ numero: '', nombre: '' })
@@ -433,6 +436,7 @@ export default function ConfigPage() {
       nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla,
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
+      whatsapp_plantilla: bizWAPlantilla.trim() || null,
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
       cuit: bizCuit.trim() || null,
@@ -1442,6 +1446,26 @@ export default function ConfigPage() {
 
       {tab === 'negocio' && (
         <MarketplaceSection />
+      )}
+
+      {/* ── WhatsApp — Coordinar entregas ──────────────────────────────────── */}
+      {tab === 'negocio' && canEdit && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">💬</span>
+            <span className="font-semibold text-gray-700 dark:text-gray-300">WhatsApp — Coordinar entregas</span>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Plantilla para el botón "Coordinar por WhatsApp" en el módulo de Envíos.
+            Variables disponibles: <span className="font-mono text-accent">{'{{Nombre_Cliente}}'}</span> <span className="font-mono text-accent">{'{{Nombre_Negocio}}'}</span> <span className="font-mono text-accent">{'{{Numero_Orden}}'}</span> <span className="font-mono text-accent">{'{{Tracking}}'}</span> <span className="font-mono text-accent">{'{{Courier}}'}</span> <span className="font-mono text-accent">{'{{Fecha_Entrega}}'}</span>
+          </p>
+          <textarea value={bizWAPlantilla} onChange={e => setBizWAPlantilla(e.target.value)}
+            rows={6} placeholder={`Hola {{Nombre_Cliente}}! 🎉 Somos {{Nombre_Negocio}}.\n\nTu pedido #{{Numero_Orden}} está listo para ser enviado. 📦\n\n🚚 Courier: {{Courier}}\n📍 Tracking: {{Tracking}}\n📅 Fecha estimada: {{Fecha_Entrega}}\n\n¿Hay alguien para recibirlo? ¡Gracias!`}
+            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-y bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono" />
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Si no configurás una plantilla, se usa el texto por defecto. El número de teléfono del cliente se normaliza automáticamente al formato de Argentina (54 9 + área sin 0 + número sin 15).
+          </p>
+        </div>
       )}
 
       {/* ── Facturación Electrónica ─────────────────────────────────────────── */}

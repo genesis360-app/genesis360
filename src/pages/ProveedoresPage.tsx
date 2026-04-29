@@ -109,6 +109,7 @@ export default function ProveedoresPage() {
   const [editServItemId, setEditServItemId] = useState<string | null>(null)
   const [servItemForm, setServItemForm] = useState<FormServItem>({ nombre: '', detalle: '', costo: '', forma_pago: '', hace_factura: false, notas: '' })
   const [showPresupForm, setShowPresupForm] = useState<string | null>(null) // proveedor_id
+  const [editPresupId, setEditPresupId] = useState<string | null>(null)
   const [presupForm, setPresupForm] = useState<FormPresupuesto>({ nombre: '', fecha: new Date().toISOString().split('T')[0], monto: '', notas: '', servicio_item_id: '' })
   const [presupFile, setPresupFile] = useState<File | null>(null)
   const presupFileRef = useRef<HTMLInputElement>(null)
@@ -369,30 +370,87 @@ export default function ProveedoresPage() {
   })
 
   // ── Presupuestos mutations ─────────────────────────────────────────────────
+  const resetPresupForm = () => {
+    setShowPresupForm(null); setEditPresupId(null); setPresupFile(null)
+    setPresupForm({ nombre: '', fecha: new Date().toISOString().split('T')[0], monto: '', notas: '', servicio_item_id: '' })
+  }
+
   const savePresupuesto = useMutation({
     mutationFn: async (provId: string) => {
-      const { data: inserted, error } = await supabase.from('servicio_presupuestos').insert({
+      const payload = {
         tenant_id: tenant!.id, proveedor_id: provId,
         servicio_item_id: presupForm.servicio_item_id || null,
         nombre: presupForm.nombre.trim() || null,
         fecha: presupForm.fecha,
         monto: presupForm.monto ? parseFloat(presupForm.monto) : null,
         notas: presupForm.notas.trim() || null,
-      }).select('id').single()
-      if (error) throw error
-      if (presupFile && inserted) {
+      }
+      let presupId = editPresupId
+      if (editPresupId) {
+        const { error } = await supabase.from('servicio_presupuestos').update(payload).eq('id', editPresupId)
+        if (error) throw error
+      } else {
+        const { data: inserted, error } = await supabase.from('servicio_presupuestos').insert(payload).select('id').single()
+        if (error) throw error
+        presupId = inserted.id
+      }
+      if (presupFile && presupId) {
         const ext = presupFile.name.split('.').pop()?.toLowerCase() ?? 'pdf'
-        const path = `${tenant!.id}/${inserted.id}.${ext}`
+        const path = `${tenant!.id}/${presupId}.${ext}`
         await supabase.storage.from('presupuestos-servicios').upload(path, presupFile, { upsert: true })
-        await supabase.from('servicio_presupuestos').update({ archivo_url: path }).eq('id', inserted.id)
+        await supabase.from('servicio_presupuestos').update({ archivo_url: path }).eq('id', presupId)
       }
     },
     onSuccess: () => {
-      toast.success('Presupuesto guardado')
+      toast.success(editPresupId ? 'Presupuesto actualizado' : 'Presupuesto guardado')
       qc.invalidateQueries({ queryKey: ['servicio-presupuestos', expandedServId] })
-      setShowPresupForm(null); setPresupFile(null)
-      setPresupForm({ nombre: '', fecha: new Date().toISOString().split('T')[0], monto: '', notas: '', servicio_item_id: '' })
+      resetPresupForm()
     },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const deletePresupuesto = useMutation({
+    mutationFn: async ({ id, archivo_url }: { id: string; archivo_url?: string }) => {
+      if (archivo_url) await supabase.storage.from('presupuestos-servicios').remove([archivo_url])
+      const { error } = await supabase.from('servicio_presupuestos').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Presupuesto eliminado'); qc.invalidateQueries({ queryKey: ['servicio-presupuestos', expandedServId] }) },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const aprobarPresupuesto = useMutation({
+    mutationFn: async (ps: any) => {
+      const prov = (proveedores as any[]).find(p => p.id === expandedServId)
+      const { data: gasto, error: gErr } = await supabase.from('gastos').insert({
+        tenant_id: tenant!.id,
+        descripcion: ps.nombre ?? `Presupuesto aprobado — ${prov?.nombre ?? 'proveedor'}`,
+        monto: ps.monto ?? 0,
+        fecha: new Date().toISOString().split('T')[0],
+        categoria: 'Honorarios profesionales',
+        notas: `Presupuesto aprobado. Proveedor: ${prov?.nombre ?? ''}${ps.notas ? ` | ${ps.notas}` : ''}`,
+      }).select('id').single()
+      if (gErr) throw gErr
+      const { error: pErr } = await supabase.from('servicio_presupuestos')
+        .update({ estado: 'convertido', gasto_id: gasto.id })
+        .eq('id', ps.id)
+      if (pErr) throw pErr
+      return gasto.id
+    },
+    onSuccess: (gastoId) => {
+      toast.success('Presupuesto aprobado — gasto creado')
+      qc.invalidateQueries({ queryKey: ['servicio-presupuestos', expandedServId] })
+      qc.invalidateQueries({ queryKey: ['gastos'] })
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const rechazarPresupuesto = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('servicio_presupuestos').update({ estado: 'rechazado' }).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Presupuesto rechazado'); qc.invalidateQueries({ queryKey: ['servicio-presupuestos', expandedServId] }) },
     onError: (e: any) => toast.error(e.message),
   })
 
@@ -993,11 +1051,11 @@ export default function ProveedoresPage() {
                               </button>
                             </div>
                             <div className="flex gap-2">
-                              <button onClick={() => { setShowPresupForm(null); setPresupFile(null) }}
+                              <button onClick={resetPresupForm}
                                 className="flex-1 border border-border-ds text-muted py-1.5 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-600">Cancelar</button>
                               <button onClick={() => savePresupuesto.mutate(s.id)} disabled={savePresupuesto.isPending}
                                 className="flex-1 bg-accent text-white py-1.5 rounded-lg text-sm hover:bg-accent/90 disabled:opacity-50">
-                                {savePresupuesto.isPending ? 'Guardando…' : 'Guardar'}
+                                {savePresupuesto.isPending ? 'Guardando…' : editPresupId ? 'Actualizar' : 'Guardar'}
                               </button>
                             </div>
                           </div>
@@ -1006,25 +1064,84 @@ export default function ProveedoresPage() {
                         {(presupuestos as any[]).length === 0 ? (
                           <p className="text-xs text-muted text-center py-1">Sin presupuestos cargados</p>
                         ) : (
-                          <div className="space-y-1">
-                            {(presupuestos as any[]).map((ps: any) => (
-                              <div key={ps.id} className="flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                                <div>
-                                  <span className="text-sm font-medium text-primary">{ps.nombre ?? 'Presupuesto'}</span>
-                                  <div className="text-xs text-muted mt-0.5 flex gap-3">
-                                    <span>{ps.fecha}</span>
-                                    {ps.monto != null && <span className="text-green-600 dark:text-green-400">${Number(ps.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
-                                    {ps.servicio_items?.nombre && <span className="text-accent">{ps.servicio_items.nombre}</span>}
+                          <div className="space-y-2">
+                            {(presupuestos as any[]).map((ps: any) => {
+                              const estadoColor: Record<string, string> = {
+                                pendiente:   'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+                                aprobado:    'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+                                rechazado:   'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400',
+                                convertido:  'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+                              }
+                              const estado = ps.estado ?? 'pendiente'
+                              const puedeAccionar = estado === 'pendiente'
+                              return (
+                                <div key={ps.id} className="border border-border-ds rounded-xl p-3 bg-surface space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-sm font-medium text-primary">{ps.nombre ?? 'Presupuesto'}</span>
+                                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${estadoColor[estado] ?? estadoColor.pendiente}`}>
+                                          {estado.charAt(0).toUpperCase() + estado.slice(1)}
+                                        </span>
+                                        {ps.gasto_id && <span className="text-xs text-blue-500">→ Gasto creado</span>}
+                                      </div>
+                                      <div className="text-xs text-muted mt-0.5 flex gap-3 flex-wrap">
+                                        <span>{ps.fecha}</span>
+                                        {ps.monto != null && <span className="text-green-600 dark:text-green-400 font-medium">${Number(ps.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
+                                        {ps.servicio_items?.nombre && <span className="text-accent">{ps.servicio_items.nombre}</span>}
+                                        {ps.notas && <span className="italic">{ps.notas}</span>}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      {ps.archivo_url && (
+                                        <button onClick={() => verPresupuesto(ps.archivo_url)}
+                                          title="Ver archivo" className="p-1 text-blue-500 hover:text-blue-700">
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {puedeAccionar && (
+                                        <button onClick={() => {
+                                          setEditPresupId(ps.id)
+                                          setShowPresupForm(s.id)
+                                          setPresupForm({
+                                            nombre: ps.nombre ?? '',
+                                            fecha: ps.fecha ?? new Date().toISOString().split('T')[0],
+                                            monto: ps.monto ? String(ps.monto) : '',
+                                            notas: ps.notas ?? '',
+                                            servicio_item_id: ps.servicio_item_id ?? '',
+                                          })
+                                        }} className="p-1 text-muted hover:text-accent" title="Editar">
+                                          <Pencil className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {puedeAccionar && (
+                                        <button onClick={() => { if (confirm('¿Eliminar presupuesto?')) deletePresupuesto.mutate({ id: ps.id, archivo_url: ps.archivo_url }) }}
+                                          className="p-1 text-muted hover:text-red-500" title="Eliminar">
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
+                                  {/* Acciones de aprobación */}
+                                  {puedeAccionar && (
+                                    <div className="flex gap-2 pt-1 border-t border-border-ds">
+                                      <button
+                                        onClick={() => { if (confirm(`¿Aprobar y crear gasto de $${Number(ps.monto ?? 0).toLocaleString('es-AR')}?`)) aprobarPresupuesto.mutate(ps) }}
+                                        disabled={aprobarPresupuesto.isPending}
+                                        className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50 transition-colors">
+                                        ✓ Aprobar → Crear gasto
+                                      </button>
+                                      <button
+                                        onClick={() => { if (confirm('¿Rechazar este presupuesto?')) rechazarPresupuesto.mutate(ps.id) }}
+                                        disabled={rechazarPresupuesto.isPending}
+                                        className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs border border-red-200 dark:border-red-800 text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-colors">
+                                        ✗ Rechazar
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
-                                {ps.archivo_url && (
-                                  <button onClick={() => verPresupuesto(ps.archivo_url)}
-                                    className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700">
-                                    <ExternalLink className="w-3.5 h-3.5" /> Ver
-                                  </button>
-                                )}
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         )}
                       </div>

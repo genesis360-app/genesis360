@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -408,14 +408,42 @@ export default function ConfigPage() {
     String((tenant as any)?.presupuesto_validez_dias ?? 30)
   )
 
+  // Facturación electrónica
+  const [bizFactHabilitada,  setBizFactHabilitada]  = useState<boolean>((tenant as any)?.facturacion_habilitada ?? false)
+  const [bizCuit,            setBizCuit]            = useState<string>((tenant as any)?.cuit ?? '')
+  const [bizCondIva,         setBizCondIva]         = useState<string>((tenant as any)?.condicion_iva_emisor ?? '')
+  const [bizRazonSocial,     setBizRazonSocial]     = useState<string>((tenant as any)?.razon_social_fiscal ?? '')
+  const [bizDomicilioFiscal, setBizDomicilioFiscal] = useState<string>((tenant as any)?.domicilio_fiscal ?? '')
+  const [bizUmbralB,         setBizUmbralB]         = useState<string>(String((tenant as any)?.umbral_factura_b ?? '68305.16'))
+  const [bizAfipToken,       setBizAfipToken]       = useState<string>((tenant as any)?.afipsdk_token ?? '')
+  const [showAfipToken,      setShowAfipToken]      = useState(false)
+
+  // Puntos de venta AFIP
+  const [pvCollapsed,   setPvCollapsed]   = useState(true)
+  const [pvForm,        setPvForm]        = useState({ numero: '', nombre: '' })
+  const [savingPv,      setSavingPv]      = useState(false)
+
   const handleSaveBiz = async () => {
     setSavingBiz(true)
     const tipoFinal = bizTipoSelect === 'Otro' && bizTipoPersonalizado.trim()
       ? bizTipoPersonalizado.trim()
       : bizTipoSelect
     const sessionTimeoutMinutes = bizTimeout === 'nunca' ? null : parseInt(bizTimeout)
+    const updatePayload: any = {
+      nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla,
+      session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
+      presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
+      // Facturación
+      facturacion_habilitada: bizFactHabilitada,
+      cuit: bizCuit.trim() || null,
+      condicion_iva_emisor: bizCondIva || null,
+      razon_social_fiscal: bizRazonSocial.trim() || null,
+      domicilio_fiscal: bizDomicilioFiscal.trim() || null,
+      umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
+    }
+    if (bizAfipToken.trim()) updatePayload.afipsdk_token = bizAfipToken.trim()
     const { data, error } = await supabase.from('tenants')
-      .update({ nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla, session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt, presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30 })
+      .update(updatePayload)
       .eq('id', tenant!.id).select().single()
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Datos actualizados') }
@@ -880,6 +908,16 @@ export default function ConfigPage() {
       const { data } = await supabase.from('tenant_certificates')
         .select('*').eq('tenant_id', tenant!.id).maybeSingle()
       return data as TenantCertificate | null
+    },
+    enabled: !!tenant && tab === 'negocio',
+  })
+
+  const { data: puntosVentaAfip = [], refetch: refetchPV } = useQuery({
+    queryKey: ['puntos-venta-afip-config', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('puntos_venta_afip')
+        .select('*').eq('tenant_id', tenant!.id).order('numero')
+      return data ?? []
     },
     enabled: !!tenant && tab === 'negocio',
   })
@@ -1404,6 +1442,151 @@ export default function ConfigPage() {
 
       {tab === 'negocio' && (
         <MarketplaceSection />
+      )}
+
+      {/* ── Facturación Electrónica ─────────────────────────────────────────── */}
+      {tab === 'negocio' && canEdit && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Receipt size={18} className="text-accent" />
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Facturación Electrónica (ARCA)</span>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {bizFactHabilitada ? 'Habilitada' : 'Deshabilitada'}
+              </span>
+              <button onClick={() => setBizFactHabilitada(v => !v)}
+                className={`relative w-10 h-5 rounded-full transition-colors ${bizFactHabilitada ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${bizFactHabilitada ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+            </label>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Completá los datos fiscales del negocio para emitir comprobantes electrónicos A, B y C.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CUIT</label>
+                <input type="text" value={bizCuit} onChange={e => setBizCuit(e.target.value)}
+                  placeholder="20-12345678-9"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Condición IVA del emisor</label>
+                <div className="relative">
+                  <select value={bizCondIva} onChange={e => setBizCondIva(e.target.value)}
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    <option value="">Seleccionar…</option>
+                    <option value="RI">Responsable Inscripto (RI)</option>
+                    <option value="Monotributista">Monotributista</option>
+                    <option value="Exento">Exento</option>
+                  </select>
+                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Razón social fiscal</label>
+                <input type="text" value={bizRazonSocial} onChange={e => setBizRazonSocial(e.target.value)}
+                  placeholder="Razón social ante AFIP"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Domicilio fiscal</label>
+                <input type="text" value={bizDomicilioFiscal} onChange={e => setBizDomicilioFiscal(e.target.value)}
+                  placeholder="Calle 123, Ciudad"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Umbral Factura B ($) <span className="text-gray-400 font-normal">— RG 5616</span>
+                </label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizUmbralB} onChange={e => setBizUmbralB(e.target.value)} min="0"
+                  placeholder="68305.16"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                <p className="text-xs text-gray-400 mt-0.5">Ventas ≥ este monto requieren DNI/CUIT del cliente</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Token AfipSDK</label>
+                <div className="relative">
+                  <input type={showAfipToken ? 'text' : 'password'} value={bizAfipToken} onChange={e => setBizAfipToken(e.target.value)}
+                    placeholder="Token de afipsdk.com"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  <button type="button" onClick={() => setShowAfipToken(v => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    <Eye size={14} />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-0.5">Obtenelo en afipsdk.com. Se guarda encriptado.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Puntos de venta AFIP ─────────────────────────────────────────────── */}
+      {tab === 'negocio' && canEdit && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <button className="w-full flex items-center gap-3 px-5 py-4 text-left"
+            onClick={() => setPvCollapsed(v => !v)}>
+            <Hash size={18} className="text-accent" />
+            <span className="font-semibold text-gray-700 dark:text-gray-300 flex-1">Puntos de venta AFIP</span>
+            <span className="text-xs text-gray-400">{(puntosVentaAfip as any[]).length} configurado{(puntosVentaAfip as any[]).length !== 1 ? 's' : ''}</span>
+            {pvCollapsed ? <ChevronRight size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+          </button>
+          {!pvCollapsed && (
+            <div className="px-5 pb-5 space-y-3 border-t border-gray-100 dark:border-gray-700 pt-4">
+              <p className="text-xs text-gray-400 dark:text-gray-500">Cada punto de venta debe estar habilitado en ARCA antes de usarlo.</p>
+              {/* Lista */}
+              {(puntosVentaAfip as any[]).map((pv: any) => (
+                <div key={pv.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700 rounded-xl text-sm">
+                  <div>
+                    <span className="font-mono font-medium text-gray-800 dark:text-gray-100">{String(pv.numero).padStart(4,'0')}</span>
+                    {pv.nombre && <span className="ml-2 text-gray-500 dark:text-gray-400">{pv.nombre}</span>}
+                  </div>
+                  <button onClick={async () => {
+                    if (!confirm('¿Eliminar este punto de venta?')) return
+                    await supabase.from('puntos_venta_afip').delete().eq('id', pv.id)
+                    refetchPV()
+                  }} className="text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
+                </div>
+              ))}
+              {/* Form agregar */}
+              <div className="flex gap-2 items-end">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-0.5">Número</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} value={pvForm.numero}
+                    onChange={e => setPvForm(f => ({ ...f, numero: e.target.value }))} min="1" max="9998"
+                    placeholder="1"
+                    className="w-20 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 mb-0.5">Nombre (opcional)</label>
+                  <input type="text" value={pvForm.nombre}
+                    onChange={e => setPvForm(f => ({ ...f, nombre: e.target.value }))}
+                    placeholder="Ej: Local principal"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <button disabled={!pvForm.numero || savingPv}
+                  onClick={async () => {
+                    if (!pvForm.numero) return
+                    setSavingPv(true)
+                    const { error } = await supabase.from('puntos_venta_afip').insert({
+                      tenant_id: tenant!.id, numero: parseInt(pvForm.numero),
+                      nombre: pvForm.nombre.trim() || null,
+                    })
+                    if (error) toast.error(error.message)
+                    else { toast.success('Punto de venta agregado'); setPvForm({ numero: '', nombre: '' }); refetchPV() }
+                    setSavingPv(false)
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-accent text-white rounded-xl text-sm hover:bg-accent/90 disabled:opacity-50 transition-all">
+                  <Plus size={14} /> Agregar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {tab === 'negocio' && (

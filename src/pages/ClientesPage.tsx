@@ -39,8 +39,8 @@ function diasDesde(iso: string) {
   return `hace ${Math.floor(dias / 365)}a`
 }
 
-interface ClienteForm { nombre: string; dni: string; telefono: string; email: string; notas: string }
-const FORM_VACIO: ClienteForm = { nombre: '', dni: '', telefono: '', email: '', notas: '' }
+interface ClienteForm { nombre: string; dni: string; telefono: string; email: string; notas: string; cuit_receptor: string; condicion_iva_receptor: string }
+const FORM_VACIO: ClienteForm = { nombre: '', dni: '', telefono: '', email: '', notas: '', cuit_receptor: '', condicion_iva_receptor: '' }
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
   pendiente:  { label: 'Pendiente',  color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' },
@@ -203,7 +203,7 @@ export default function ClientesPage() {
   const abrirModal = (cliente?: any) => {
     if (cliente) {
       setEditId(cliente.id)
-      setForm({ nombre: cliente.nombre, dni: cliente.dni ?? '', telefono: cliente.telefono ?? '', email: cliente.email ?? '', notas: cliente.notas ?? '' })
+      setForm({ nombre: cliente.nombre, dni: cliente.dni ?? '', telefono: cliente.telefono ?? '', email: cliente.email ?? '', notas: cliente.notas ?? '', cuit_receptor: cliente.cuit_receptor ?? '', condicion_iva_receptor: cliente.condicion_iva_receptor ?? '' })
     } else {
       setEditId(null)
       setForm(FORM_VACIO)
@@ -217,7 +217,7 @@ export default function ClientesPage() {
     if (!form.telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
     setSaving(true)
     try {
-      const payload = { nombre: form.nombre.trim(), dni: form.dni.trim(), telefono: form.telefono.trim(), email: form.email || null, notas: form.notas || null }
+      const payload = { nombre: form.nombre.trim(), dni: form.dni.trim(), telefono: form.telefono.trim(), email: form.email || null, notas: form.notas || null, cuit_receptor: form.cuit_receptor.trim() || null, condicion_iva_receptor: form.condicion_iva_receptor || null }
       if (editId) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editId)
         if (error) throw error
@@ -418,6 +418,8 @@ export default function ClientesPage() {
                     <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{c.nombre}</p>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       {c.dni && <span className="text-xs text-gray-400 dark:text-gray-500">DNI {c.dni}</span>}
+                      {c.cuit_receptor && <span className="text-xs text-gray-400 dark:text-gray-500">CUIT {c.cuit_receptor}</span>}
+                      {c.condicion_iva_receptor && <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{c.condicion_iva_receptor}</span>}
                       {c.telefono && <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"><Phone size={11} /> {c.telefono}</span>}
                       {c.email && <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"><Mail size={11} /> {c.email}</span>}
                     </div>
@@ -700,6 +702,32 @@ export default function ClientesPage() {
                 <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   placeholder="Opcional" type="email"
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              </div>
+              {/* Facturación */}
+              <div className="col-span-2 border-t border-gray-100 dark:border-gray-700 pt-3">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Datos fiscales (para facturación)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CUIT</label>
+                    <input value={form.cuit_receptor} onChange={e => setForm(f => ({ ...f, cuit_receptor: e.target.value }))}
+                      placeholder="20-12345678-9 (para Factura A)"
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Condición IVA</label>
+                    <div className="relative">
+                      <select value={form.condicion_iva_receptor} onChange={e => setForm(f => ({ ...f, condicion_iva_receptor: e.target.value }))}
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent">
+                        <option value="">Sin especificar</option>
+                        <option value="CF">Consumidor Final</option>
+                        <option value="RI">Responsable Inscripto</option>
+                        <option value="Monotributista">Monotributista</option>
+                        <option value="Exento">Exento</option>
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas</label>

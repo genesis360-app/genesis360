@@ -403,3 +403,46 @@ Próximo RRHH: Bloque 5 — CHECK-IN/CHECK-OUT rápido (v0.76.0)
 ---
 
 > Patrones de código (tabla RRHH, queries estándar) → ver [CLAUDE.md](CLAUDE.md) § Arquitectura multi-tenant.
+
+---
+
+## ✅ WhatsApp Click-to-Chat para Envíos (v1.3.0 DEV — migration 078/079)
+
+- `src/lib/whatsapp.ts`: `normalizeWhatsApp()` (ARG: 549+área+num), `expandirPlantilla()` con vars `{{Nombre_Cliente}}` `{{Nombre_Negocio}}` `{{Numero_Orden}}` `{{Tracking}}` `{{Courier}}` `{{Fecha_Entrega}}`, `buildWhatsAppUrl()` con URL encoding
+- EnviosPage: ícono verde WA en cada fila + botón "Coordinar entrega" en detalle expandido → abre WhatsApp Web/app en nueva pestaña con mensaje pre-escrito
+- ConfigPage → Negocio: textarea plantilla personalizable + campo `$ por km` para delivery propio
+- `tenants.whatsapp_plantilla TEXT` + `tenants.costo_envio_por_km DECIMAL`
+- Limitación documentada: manual-asistido (1 clic = 1 mensaje = 1 pestaña)
+
+---
+
+## ✅ Mejoras Clientes (v1.3.0 DEV — migration 081)
+
+- `cliente_notas`: historial append-only con texto, usuario_id, created_at — sub-tab "Notas" en ficha del cliente
+- `clientes.fecha_nacimiento DATE`: badge 🎂 en card, rojo/rosa si es hoy el cumpleaños
+- `clientes.etiquetas TEXT[]`: badges violeta + dropdown filtro en listado
+- `clientes.codigo_fiscal TEXT` + `clientes.regimen_fiscal TEXT`
+- Búsqueda por DNI además de nombre (`.or('nombre.ilike.%X%,dni.ilike.%X%')`)
+- Botón ELIMINAR removido del card (función interna preservada)
+- Sub-tabs en ficha: Historial · Domicilios · Notas
+
+---
+
+## ✅ Presupuestos Servicios mejorado (v1.3.0 DEV — migration 080)
+
+- Edit/delete de presupuestos en estado `pendiente`
+- Estados: `pendiente | aprobado | rechazado | convertido` con badge colorido
+- Botón "Aprobar → Crear gasto": crea automáticamente en módulo Gastos y vincula `presupuesto.gasto_id`
+- Botón "Rechazar": marca estado rechazado, queda visible como historial
+- `servicio_presupuestos.estado TEXT` + `servicio_presupuestos.gasto_id FK gastos(id)`
+
+---
+
+## Fixes y mejoras UX (v1.3.0 DEV)
+
+- **staleTime: 0** en QueryClient global → stale-while-revalidate: datos frescos al navegar sin spinner
+- **Fix loop trial vencido**: botón "Cerrar sesión" en SuscripcionPage y OnboardingPage (cuando trial expira el usuario quedaba atrapado)
+- **Eliminar cliente con ventas**: nullea FK en ventas/envíos antes de borrar (evita error de constraint)
+- **Envíos**: bloqueo edición si estado='entregado' · servicio selectbox por courier · canal autocompletado desde venta
+- **Proveedores servicios**: forma de pago como select en servicio_items
+- **Config ubicaciones**: `flex-wrap` en fila agregar → botón siempre visible en mobile

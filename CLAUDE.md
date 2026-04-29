@@ -1268,6 +1268,71 @@ MP_ACCESS_TOKEN (solo Edge Functions)
 
 ### Ideas futuras
 Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua.
+
+### v1.3.0 DEV (pendiente PR → PROD) — migrations 072–081
+
+#### WhatsApp Click-to-Chat (migration 078/079)
+- `src/lib/whatsapp.ts`: `normalizeWhatsApp()` (54+9+área+num), `expandirPlantilla()`, `buildWhatsAppUrl()`
+- EnviosPage: botón verde WA en fila + "Coordinar entrega" en detalle expandido
+- Config → Negocio: plantilla personalizable (vars `{{Nombre_Cliente}}` etc.) + `$ por km`
+- `tenants.whatsapp_plantilla TEXT`, `tenants.costo_envio_por_km DECIMAL`
+
+#### Módulo Facturación Electrónica AFIP (migrations 076–077)
+- EF `emitir-factura`: `npm:@afipsdk/afip.js` en Deno. Calcula neto/IVA por alícuota, `CondicionIVAReceptorId` (RG 5616), guarda CAE en ventas.
+- `FacturacionPage` 4 tabs: Panel KPIs · Facturación (borradores + historial) · Libros IVA (Ventas/Compras + conciliación + exportar Excel) · Liquidación (12 meses + retenciones)
+- `tenants`: `facturacion_habilitada`, `cuit`, `condicion_iva_emisor`, `razon_social_fiscal`, `domicilio_fiscal`, `umbral_factura_b`, `afipsdk_token`
+- `puntos_venta_afip`: CRUD en Config → Negocio
+- `clientes.cuit_receptor` + `clientes.condicion_iva_receptor`
+- Homologación confirmada: CAE 86170057489609 emitido (Factura B, CUIT prueba 20409378472)
+
+#### Módulo Envíos (migration 075)
+- `EnviosPage` `/envios`: lista/filtros/detalle expandible · crear/editar · remito PDF (jsPDF)
+- Estados: pendiente→despachado→en_camino→entregado · devolucion · cancelado
+- Cotizador shell para rate shopping (activo cuando haya contratos couriers)
+- Servicio selectbox por courier (`SERVICIOS_POR_COURIER`)
+- Canal autocompletado desde `ventas.origen` al seleccionar venta
+- Bloqueo edición si estado='entregado'
+- `envios`: id, tenant_id, venta_id, numero AUTO, courier, servicio, tracking_number, estado, canal, destino_id FK `cliente_domicilios`
+
+#### Clientes mejorado (migration 081)
+- `cliente_notas`: historial append-only (texto + usuario_id + created_at) — sub-tab "Notas" en ficha
+- `clientes.fecha_nacimiento DATE`: badge 🎂 en card (rojo si es hoy)
+- `clientes.etiquetas TEXT[]`: badges violeta + filtro dropdown
+- `clientes.codigo_fiscal` + `clientes.regimen_fiscal`
+- Búsqueda por DNI además de nombre
+- Botón ELIMINAR removido del card del cliente
+
+#### Presupuestos servicios (migration 080)
+- Edit/delete de presupuestos pendientes
+- Estados: pendiente|aprobado|rechazado|convertido
+- "Aprobar → Crear gasto": crea gasto en módulo Gastos + vincula `presupuesto.gasto_id`
+- `servicio_presupuestos.estado TEXT` + `gasto_id FK gastos(id)`
+
+#### GastosPage overhaul (migration 072)
+- IVA: tasa % + checkbox deducible + auto-cálculo neto/IVA a favor
+- "Deducir Ganancias": pertenece/no al negocio con leyendas
+- Tab Historial separado (filtros fecha/categoría/monto/operador)
+- Fijos: templates puros — generar por fila con modal, alerta días antes
+- Múltiples medios de pago (mismo sistema que Ventas)
+- `gastos`: tipo_iva, iva_deducible, deduce_ganancias, gasto_negocio, comprobante_titulo, usuario_id, conciliado_iva
+
+#### Proveedores/Servicios (migration 073)
+- Tab Servicios: tipo='servicio', gestión completa
+- `proveedor_productos`: precios many-to-many (precio_compra, cantidad_minima, costos)
+- `servicio_items`: servicios que ofrece cada proveedor (forma_pago como select)
+- `servicio_presupuestos`: adjuntar PDF/imagen + estado + vínculo gasto
+- Etiquetas TEXT[] + búsqueda por etiqueta
+
+#### Domicilios clientes (migration 074)
+- `cliente_domicilios`: alias, calle, número, piso, ciudad, provincia, CP, referencias, es_principal
+- Sub-tab "Domicilios" en ficha del cliente
+- Prerequisito para módulo Envíos (selector de domicilio al crear envío)
+
+#### Fixes / UX
+- `staleTime: 0` global → refresh en background al navegar (stale-while-revalidate)
+- Loop trial vencido: botón "Cerrar sesión" en SuscripcionPage y OnboardingPage
+- Eliminar cliente con ventas: nullea FK en ventas/envíos antes de borrar
+- Config ubicaciones mobile: `flex-wrap` en fila agregar
  
  # CLAUDE.md
 

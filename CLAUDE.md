@@ -1,4 +1,4 @@
-# Genesis360 — Contexto para Claude Code
+﻿# Genesis360 — Contexto para Claude Code
 
 > Roadmap completo: [ROADMAP.md](ROADMAP.md) · Workflow de deploy: [WORKFLOW.md](WORKFLOW.md)
 
@@ -1360,6 +1360,38 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 - Eliminar cliente con ventas: nullea FK en ventas/envíos antes de borrar
 - Config ubicaciones mobile: `flex-wrap` en fila agregar
 - Envíos: bloqueo edición si entregado · servicio selectbox · canal desde venta.origen
+
+### v1.4.0 DEV — migration 083 · pendiente PR → PROD
+
+#### Cuenta Corriente (migration 083)
+- `clientes`: +`cuenta_corriente_habilitada BOOLEAN DEFAULT FALSE` + `limite_credito DECIMAL(12,2)` + `plazo_pago_dias INT DEFAULT 30`
+- `ventas`: +`es_cuenta_corriente BOOLEAN DEFAULT FALSE` + índices
+- **ClientesPage** — tab "Cuenta Corriente": KPIs, lista por cliente con deuda/fecha vencimiento/estado, botón WA pre-armado, botón "Registrar pago". Queries enabled solo cuando `pageTab === 'cc'`.
+- **VentasPage** — `modoCC` + `clienteCCEnabled` states. Botón "Despachar a cuenta corriente" visible solo si cliente tiene CC. Bypasa validación pago/caja. Inserta con `monto_pagado=0`, `es_cuenta_corriente=true`.
+- Toggle CC + límite + plazo en modal cliente. Badge verde "CC" en card.
+
+#### Presupuesto vencido
+- `isPresupuestoVencido(venta, validezDias)`: compara `updated_at ?? created_at` vs `presupuesto_validez_dias` del tenant.
+- Badge "Vencido" en historial. Banner naranja en modal. Botones "Reservar"/"Finalizar" deshabilitados.
+- Botón "Actualizar precios ahora": recalcula precios actuales de cada item, actualiza `ventas.total + updated_at`.
+
+#### Bulk actions en ProductosPage
+- Checkboxes en cada fila + header select-all + barra flotante (fixed bottom).
+- Acciones: Categoría / Regla inventario / Aging profile / Atributos (serie/lote/vencimiento) / Desactivar.
+- `aplicarBulk()`: `UPDATE productos IN (ids)`. Sin migration.
+
+#### Clientes — modal scroll fix + validación
+- Modal: `max-h-[90vh] flex flex-col` + `overflow-y-auto flex-1` → nunca se sale de pantalla.
+- `validarDNI()`: 7-8 dígitos (strip puntos/guiones). `validarTelefono()`: strip +54/0/9 → 8-11 dígitos. Error inline al blur.
+
+#### TN Stock Worker — mejora performance (deployado DEV+PROD)
+- BATCH_SIZE 50→200, CONCURRENCY=20 paralelos, pre-fetch creds+estados por tenant.
+- `fn_tn_sync_heartbeat()` actualizada: encola proactivamente todos los productos mapeados.
+- Throughput: ~2.400 jobs/minuto (~15× más rápido que antes).
+
+#### Documentación
+- `docs/arquitectura_escalabilidad.md`: análisis escalabilidad, cola jobs, workers, Sentry, cloud vs DC.
+
  
  # CLAUDE.md
 

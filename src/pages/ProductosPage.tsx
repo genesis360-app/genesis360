@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   Plus, Search, Package, AlertTriangle, Camera, ChevronDown, ChevronRight,
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
+  CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -425,6 +426,14 @@ export default function ProductosPage() {
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
 
+  // Bulk actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  type BulkAction = 'categoria' | 'regla' | 'aging' | 'atributos' | 'activar' | 'desactivar' | null
+  const [bulkModal, setBulkModal] = useState<BulkAction>(null)
+  const [bulkValue, setBulkValue] = useState('')
+  const [bulkAtributos, setBulkAtributos] = useState({ tiene_series: false, tiene_lote: false, tiene_vencimiento: false })
+  const [bulkSaving, setBulkSaving] = useState(false)
+
   // OC rápida
   const [ocModal, setOcModal] = useState<{ productoId: string; nombre: string; sku: string; proveedorId: string } | null>(null)
   const [ocProveedor, setOcProveedor] = useState('')
@@ -554,11 +563,54 @@ export default function ProductosPage() {
     enabled: !!tenant && !!ocModal,
   })
 
+  const { data: categoriasAll = [] } = useQuery({
+    queryKey: ['categorias-bulk', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categorias').select('id, nombre').eq('tenant_id', tenant!.id).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && bulkModal === 'categoria',
+  })
+
+  const { data: agingProfilesAll = [] } = useQuery({
+    queryKey: ['aging-profiles-bulk', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('aging_profiles').select('id, nombre').eq('tenant_id', tenant!.id).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && bulkModal === 'aging',
+  })
+
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const invalidar = () => {
     qc.invalidateQueries({ queryKey: ['producto-estructuras', tenant?.id, estrProductoId] })
     if (expandedId) qc.invalidateQueries({ queryKey: ['estructura-default', tenant?.id, expandedId] })
+  }
+
+  const aplicarBulk = async () => {
+    if (selectedIds.size === 0 || !bulkModal) return
+    setBulkSaving(true)
+    try {
+      const ids = Array.from(selectedIds)
+      let update: Record<string, unknown> = {}
+      if (bulkModal === 'categoria')   update = { categoria_id: bulkValue || null }
+      if (bulkModal === 'regla')       update = { regla_inventario: bulkValue || null }
+      if (bulkModal === 'aging')       update = { aging_profile_id: bulkValue || null }
+      if (bulkModal === 'atributos')   update = bulkAtributos
+      if (bulkModal === 'activar')     update = { activo: true }
+      if (bulkModal === 'desactivar')  update = { activo: false }
+      const { error } = await supabase.from('productos').update(update).in('id', ids)
+      if (error) throw error
+      toast.success(`${ids.length} producto${ids.length !== 1 ? 's' : ''} actualizado${ids.length !== 1 ? 's' : ''}`)
+      setSelectedIds(new Set())
+      setBulkModal(null)
+      qc.invalidateQueries({ queryKey: ['productos', tenant?.id] })
+    } catch (e: any) {
+      toast.error('Error: ' + (e.message ?? 'No se pudo aplicar el cambio'))
+    } finally {
+      setBulkSaving(false)
+    }
   }
 
   const agregarAOC = useMutation({
@@ -668,6 +720,26 @@ export default function ProductosPage() {
     return true
   })
   const stockCritico = productos.filter(p => (p as any).stock_actual <= (p as any).stock_minimo).length
+
+  function toggleSelect(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filtered.map(p => p.id)))
+    }
+  }
+
+  const allSelected = filtered.length > 0 && selectedIds.size === filtered.length
+  const someSelected = selectedIds.size > 0 && selectedIds.size < filtered.length
 
   function handleSaveModal(form: EstrForm) {
     if (estrModal.editando) {
@@ -903,6 +975,25 @@ export default function ProductosPage() {
               </div>
             ) : (
               <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                {/* Header select-all */}
+                <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
+                  <div className="flex items-center gap-1 flex-shrink-0 cursor-pointer" onClick={toggleSelectAll}>
+                    {allSelected
+                      ? <CheckSquare size={16} className="text-accent" />
+                      : someSelected
+                        ? <CheckSquare size={16} className="text-accent/50" />
+                        : <Square size={16} className="text-gray-400 dark:text-gray-500" />
+                    }
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {selectedIds.size > 0 ? `${selectedIds.size} seleccionado${selectedIds.size !== 1 ? 's' : ''}` : 'Seleccionar todos'}
+                  </span>
+                  {selectedIds.size > 0 && (
+                    <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 underline ml-1">
+                      Limpiar
+                    </button>
+                  )}
+                </div>
                 {filtered.map(p => {
                   const stock   = (p as any).stock_actual ?? 0
                   const critico = stock <= (p as any).stock_minimo
@@ -911,11 +1002,17 @@ export default function ProductosPage() {
                   return (
                     <div key={p.id}>
                       <div
-                        className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors ${expanded ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}
+                        className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors
+                          ${expanded ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}
+                          ${selectedIds.has(p.id) ? 'bg-accent/5 dark:bg-accent/10' : ''}`}
                         onClick={() => setExpandedId(expanded ? null : p.id)}
                       >
-                        <div className="w-5 flex-shrink-0 text-gray-400 dark:text-gray-500">
-                          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        <div className="flex items-center gap-1 flex-shrink-0"
+                          onClick={e => toggleSelect(p.id, e)}>
+                          {selectedIds.has(p.id)
+                            ? <CheckSquare size={16} className="text-accent" />
+                            : <Square size={16} className="text-gray-300 dark:text-gray-600 hover:text-gray-400 dark:hover:text-gray-500" />
+                          }
                         </div>
 
                         {(p as any).imagen_url ? (
@@ -1102,6 +1199,144 @@ export default function ProductosPage() {
             )}
           </div>
         </>
+      )}
+
+      {/* ── Barra flotante de acciones bulk ─────────────────────────────────── */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-gray-900 dark:bg-gray-800 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 flex-wrap max-w-[90vw]">
+          <span className="text-sm font-semibold shrink-0">
+            {selectedIds.size} producto{selectedIds.size !== 1 ? 's' : ''}
+          </span>
+          <div className="w-px h-5 bg-gray-600 shrink-0" />
+          <button onClick={() => { setBulkValue(''); setBulkModal('categoria') }}
+            className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            <Tag size={13} /> Categoría
+          </button>
+          <button onClick={() => { setBulkValue(''); setBulkModal('regla') }}
+            className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            <RotateCcw size={13} /> Regla inventario
+          </button>
+          <button onClick={() => { setBulkValue(''); setBulkModal('aging') }}
+            className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            <Clock size={13} /> Aging profile
+          </button>
+          <button onClick={() => { setBulkAtributos({ tiene_series: false, tiene_lote: false, tiene_vencimiento: false }); setBulkModal('atributos') }}
+            className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            <Settings2 size={13} /> Atributos
+          </button>
+          <button onClick={() => { setBulkModal('desactivar') }}
+            className="flex items-center gap-1.5 text-xs bg-red-700 hover:bg-red-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            <X size={13} /> Desactivar
+          </button>
+          <button onClick={() => setSelectedIds(new Set())}
+            title="Limpiar selección"
+            className="ml-1 text-gray-400 hover:text-white transition-colors shrink-0">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* ── Modal de acción bulk ─────────────────────────────────────────────── */}
+      {bulkModal && bulkModal !== 'activar' && bulkModal !== 'desactivar' && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 dark:text-white">
+                {bulkModal === 'categoria'  && 'Cambiar categoría'}
+                {bulkModal === 'regla'      && 'Cambiar regla de inventario'}
+                {bulkModal === 'aging'      && 'Cambiar aging profile'}
+                {bulkModal === 'atributos'  && 'Cambiar atributos de control'}
+              </h3>
+              <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={18} /></button>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Se aplicará a <strong>{selectedIds.size}</strong> producto{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''}.
+            </p>
+
+            {bulkModal === 'categoria' && (
+              <select value={bulkValue} onChange={e => setBulkValue(e.target.value)}
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+                <option value="">Sin categoría</option>
+                {(categoriasAll as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </select>
+            )}
+
+            {bulkModal === 'regla' && (
+              <select value={bulkValue} onChange={e => setBulkValue(e.target.value)}
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+                <option value="">Usar regla del negocio</option>
+                {['FIFO','FEFO','LEFO','LIFO','Manual'].map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            )}
+
+            {bulkModal === 'aging' && (
+              <select value={bulkValue} onChange={e => setBulkValue(e.target.value)}
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+                <option value="">Sin aging profile</option>
+                {(agingProfilesAll as any[]).map((a: any) => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+              </select>
+            )}
+
+            {bulkModal === 'atributos' && (
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Seleccioná los atributos que querés activar en los productos seleccionados:</p>
+                {[
+                  { key: 'tiene_series',     label: 'Control por N° de serie' },
+                  { key: 'tiene_lote',       label: 'Control por lote' },
+                  { key: 'tiene_vencimiento',label: 'Control de vencimiento' },
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-3 cursor-pointer">
+                    <div
+                      className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
+                        ${(bulkAtributos as any)[key] ? 'bg-accent border-accent' : 'border-gray-300 dark:border-gray-600'}`}
+                      onClick={() => setBulkAtributos(prev => ({ ...prev, [key]: !(prev as any)[key] }))}>
+                      {(bulkAtributos as any)[key] && <Check size={12} className="text-white" />}
+                    </div>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setBulkModal(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={aplicarBulk} disabled={bulkSaving}
+                className="flex-1 bg-accent hover:bg-accent/90 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                <Zap size={14} />
+                {bulkSaving ? 'Aplicando...' : 'Aplicar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirm desactivar */}
+      {(bulkModal === 'activar' || bulkModal === 'desactivar') && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-gray-900 dark:text-white">
+              {bulkModal === 'desactivar' ? 'Desactivar productos' : 'Activar productos'}
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              ¿{bulkModal === 'desactivar' ? 'Desactivar' : 'Activar'} <strong>{selectedIds.size}</strong> producto{selectedIds.size !== 1 ? 's' : ''}?
+              {bulkModal === 'desactivar' && ' Los productos desactivados no aparecen en ventas ni en el listado.'}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setBulkModal(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={aplicarBulk} disabled={bulkSaving}
+                className={`flex-1 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60
+                  ${bulkModal === 'desactivar' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}>
+                {bulkSaving ? 'Procesando...' : bulkModal === 'desactivar' ? 'Desactivar' : 'Activar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal de estructura */}

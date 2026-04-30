@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -28,6 +28,13 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
 }
 
 const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
+
+function isPresupuestoVencido(venta: any, validezDias: number | null | undefined): boolean {
+  if (!validezDias || venta?.estado !== 'pendiente') return false
+  const ref = new Date(venta.updated_at ?? venta.created_at)
+  const dias = (Date.now() - ref.getTime()) / (1000 * 60 * 60 * 24)
+  return dias > validezDias
+}
 
 function calcularEfectivo(mediosPago: MedioPagoItem[], total: number): number {
   const efectivos = mediosPago.filter(m => m.tipo === 'Efectivo')
@@ -101,6 +108,7 @@ export default function VentasPage() {
   const [editandoPago, setEditandoPago] = useState(false)
   const [editMontoPagado, setEditMontoPagado] = useState('')
   const [savingMontoPagado, setSavingMontoPagado] = useState(false)
+  const [actualizandoPrecios, setActualizandoPrecios] = useState(false)
 
   // Devoluciones
   interface DevItem {
@@ -1314,6 +1322,48 @@ export default function VentasPage() {
     setVentaDetalle(null)
     setTab('nueva')
     toast.success('Reserva cancelada — editá el carrito y volvé a reservar')
+  }
+
+  const actualizarPrecios = async () => {
+    if (!ventaDetalle || !tenant) return
+    setActualizandoPrecios(true)
+    try {
+      const productoIds = (ventaDetalle.venta_items ?? []).map((i: any) => i.producto_id).filter(Boolean)
+      const { data: prods } = await supabase
+        .from('productos').select('id, precio_venta, alicuota_iva').in('id', productoIds)
+      if (!prods) throw new Error('No se pudieron cargar los precios')
+      const precioMap: Record<string, { precio_venta: number; alicuota_iva: number }> = {}
+      for (const p of prods) precioMap[p.id] = { precio_venta: p.precio_venta ?? 0, alicuota_iva: p.alicuota_iva ?? 21 }
+      let nuevoTotal = 0
+      for (const item of (ventaDetalle.venta_items ?? [])) {
+        const prod = precioMap[item.producto_id]
+        if (!prod) continue
+        const nuevoPrecio = prod.precio_venta
+        const descu = item.descuento ?? 0
+        const nuevoSubtotal = nuevoPrecio * item.cantidad * (1 - descu / 100)
+        const ivaRate = prod.alicuota_iva / 100
+        const nuevoIva = nuevoSubtotal - nuevoSubtotal / (1 + ivaRate)
+        nuevoTotal += nuevoSubtotal
+        await supabase.from('venta_items').update({
+          precio_unitario: nuevoPrecio,
+          subtotal: nuevoSubtotal,
+          alicuota_iva: prod.alicuota_iva,
+          iva_monto: nuevoIva,
+        }).eq('id', item.id)
+      }
+      const { error } = await supabase.from('ventas').update({
+        total: nuevoTotal,
+        updated_at: new Date().toISOString(),
+      }).eq('id', ventaDetalle.id)
+      if (error) throw error
+      toast.success('Precios actualizados. Ya podés convertir el presupuesto.')
+      setVentaDetalle(null)
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+    } catch (e: any) {
+      toast.error('Error: ' + (e.message ?? 'No se pudieron actualizar los precios'))
+    } finally {
+      setActualizandoPrecios(false)
+    }
   }
 
   const abrirModalDevolucion = (venta: any) => {
@@ -2632,6 +2682,11 @@ export default function VentasPage() {
                               Saldo ${calcularSaldoPendiente(v.total, v.monto_pagado ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                             </span>
                           )}
+                          {isPresupuestoVencido(v, (tenant as any)?.presupuesto_validez_dias) && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                              Vencido
+                            </span>
+                          )}
                         </div>
                         <span className="font-bold text-primary">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
@@ -2850,6 +2905,23 @@ export default function VentasPage() {
             )}
 
             {/* Acciones según estado */}
+            {/* Banner presupuesto vencido */}
+            {isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias) && (
+              <div className="rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 p-3 space-y-2">
+                <p className="text-sm font-semibold text-orange-700 dark:text-orange-400 flex items-center gap-2">
+                  <AlertTriangle size={15} /> Presupuesto vencido
+                </p>
+                <p className="text-xs text-orange-600 dark:text-orange-400">
+                  Superó los {(tenant as any).presupuesto_validez_dias} días de validez. Actualizá los precios antes de convertirlo a venta.
+                </p>
+                <button onClick={actualizarPrecios} disabled={actualizandoPrecios}
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 rounded-lg transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60">
+                  <RefreshCw size={14} className={actualizandoPrecios ? 'animate-spin' : ''} />
+                  {actualizandoPrecios ? 'Actualizando...' : 'Actualizar precios ahora'}
+                </button>
+              </div>
+            )}
+
             <div className="space-y-2">
               <button
                 onClick={() => {
@@ -2878,45 +2950,52 @@ export default function VentasPage() {
                 className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
                 <Printer size={15} /> Ver / Imprimir ticket
               </button>
-              {ventaDetalle.estado === 'pendiente' && (
-                <button onClick={() => {
-                  if (!(ventaDetalle.monto_pagado > 0)) {
-                    // Sin seña previa → abrir modal para registrar un pago parcial
-                    setSaldoModal({
-                      ventaId: ventaDetalle.id,
-                      total: ventaDetalle.total,
-                      montoPagado: 0,
-                      mediosPago: [{ tipo: '', monto: '' }],
-                      targetEstado: 'reservada',
-                    })
-                    return
-                  }
-                  cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })
-                }}
-                  disabled={cambiarEstado.isPending}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
-                  Reservar stock
-                </button>
-              )}
-              {(ventaDetalle.estado === 'pendiente' || ventaDetalle.estado === 'reservada') && (
-                <button onClick={() => {
-                  const saldo = calcularSaldoPendiente(ventaDetalle.total ?? 0, ventaDetalle.monto_pagado ?? 0)
-                  if (saldo > 0.5) {
-                    setSaldoModal({
-                      ventaId: ventaDetalle.id,
-                      total: ventaDetalle.total,
-                      montoPagado: ventaDetalle.monto_pagado ?? 0,
-                      mediosPago: [{ tipo: '', monto: saldo.toFixed(2) }],
-                    })
-                  } else {
-                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'despachada' })
-                  }
-                }}
-                  disabled={cambiarEstado.isPending}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
-                  <Truck size={16} /> Finalizar (rebaja stock)
-                </button>
-              )}
+              {ventaDetalle.estado === 'pendiente' && (() => {
+                const vencido = isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias)
+                return (
+                  <button onClick={() => {
+                    if (!(ventaDetalle.monto_pagado > 0)) {
+                      setSaldoModal({
+                        ventaId: ventaDetalle.id,
+                        total: ventaDetalle.total,
+                        montoPagado: 0,
+                        mediosPago: [{ tipo: '', monto: '' }],
+                        targetEstado: 'reservada',
+                      })
+                      return
+                    }
+                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })
+                  }}
+                    disabled={cambiarEstado.isPending || vencido}
+                    title={vencido ? 'Presupuesto vencido — actualizá los precios primero' : undefined}
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-40">
+                    Reservar stock
+                  </button>
+                )
+              })()}
+              {(ventaDetalle.estado === 'pendiente' || ventaDetalle.estado === 'reservada') && (() => {
+                const vencido = ventaDetalle.estado === 'pendiente' && isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias)
+                return (
+                  <button onClick={() => {
+                    const saldo = calcularSaldoPendiente(ventaDetalle.total ?? 0, ventaDetalle.monto_pagado ?? 0)
+                    if (saldo > 0.5) {
+                      setSaldoModal({
+                        ventaId: ventaDetalle.id,
+                        total: ventaDetalle.total,
+                        montoPagado: ventaDetalle.monto_pagado ?? 0,
+                        mediosPago: [{ tipo: '', monto: saldo.toFixed(2) }],
+                      })
+                    } else {
+                      cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'despachada' })
+                    }
+                  }}
+                    disabled={cambiarEstado.isPending || vencido}
+                    title={vencido ? 'Presupuesto vencido — actualizá los precios primero' : undefined}
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40">
+                    <Truck size={16} /> Finalizar (rebaja stock)
+                  </button>
+                )
+              })()}
               {ventaDetalle.estado === 'despachada' && (
                 <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'facturada' })}
                   disabled={cambiarEstado.isPending}

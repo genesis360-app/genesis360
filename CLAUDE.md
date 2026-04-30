@@ -1338,6 +1338,22 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 - Fix: "X movimientos/productos este mes · Sin límite en tu plan" en neutral
 - 1 fila `movimientos_stock` = 1 movimiento. Masivo 10 prods = 10 movimientos.
 
+#### Fix crítico: trigger stock_actual solo disparaba en INSERT (migration 082)
+- `lineas_recalcular_stock` AFTER INSERT → no actualizaba stock al eliminar/editar LPN
+- Fix: AFTER INSERT OR UPDATE OF cantidad,activo OR DELETE
+- Impacto: stock_antes correcto en movimientos_stock; historial sin valores erróneos
+
+#### Fix: logActividad faltaba en ingresos/rebajes de InventarioPage y MasivoModal
+- Movimientos solo en movimientos_stock, no en actividad_log → invisible en HistorialPage
+
+#### Fix: rebaje masivo (MasivoModal) ignoraba FIFO/FEFO y LPNs vencidos
+- Query sin fecha_vencimiento/lpn/nro_lote; sin filtros disponible_surtido/es_disponible_venta
+- Fix: misma lógica que rebaje individual; toast muestra LPNs consumidos
+
+#### Fix: búsqueda en tabs Agregar/Quitar Stock no funcionaba
+- filteredMov tenía early return que impedía evaluar movSearch
+- Fix: `if (...) return false` en lugar de `return tipo === ...`
+
 #### Fixes / UX
 - `staleTime: 0` global → refresh en background al navegar (stale-while-revalidate)
 - Loop trial vencido: botón "Cerrar sesión" en SuscripcionPage y OnboardingPage

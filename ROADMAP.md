@@ -465,3 +465,26 @@ Próximo RRHH: Bloque 5 — CHECK-IN/CHECK-OUT rápido (v0.76.0)
 - Fix: en planes ilimitados muestra "X movimientos este mes · Sin límite en tu plan" en estilo neutro
 - Aplicado en InventarioPage (tabs Agregar/Quitar) y ProductosPage
 - **Cómo cuentan los movimientos**: 1 fila en `movimientos_stock` = 1 movimiento. Masivo de 10 productos = 10 movimientos. Free=200/mes · Básico=2.000/mes · Pro/Enterprise=ilimitado.
+
+---
+
+## ✅ Fixes críticos Inventario (2026-04-30 — migration 082)
+
+### Bug: stock_actual incorrecto tras eliminar LPN
+- Causa raíz: `lineas_recalcular_stock` solo disparaba en `AFTER INSERT`, no en UPDATE/DELETE
+- Al eliminar LPN (`UPDATE activo=false, cantidad=0`) el trigger no corría → `stock_actual` quedaba con valor viejo
+- Fix migration 082: trigger ahora dispara en `AFTER INSERT OR UPDATE OF cantidad,activo OR DELETE`
+- También corregido `series_recalcular_stock` para INSERT OR UPDATE OR DELETE
+
+### Bug: ingresos/rebajes no aparecían en HistorialPage
+- Faltaba `logActividad` en `ingresoMutation`, `rebajeMutation` (InventarioPage) y en `MasivoModal`
+- Los movimientos solo aparecían en `movimientos_stock` (InventarioPage/Historial) pero no en `actividad_log` (HistorialPage)
+
+### Bug: rebaje masivo ignoraba regla FIFO/FEFO y LPNs
+- Query del `MasivoModal` no incluía `fecha_vencimiento`, `lpn`, `nro_lote`
+- No filtraba por `disponible_surtido`, `es_disponible_venta`, ni LPNs vencidos
+- Fix: misma lógica que rebaje individual. Toast muestra qué LPN/lote se consumió.
+
+### Bug: búsqueda no funcionaba en tabs Agregar/Quitar Stock
+- `filteredMov` tenía `return tipo === 'ingreso'...` (early return) → `movSearch` nunca se evaluaba
+- Fix: cambio a `if (...) return false` para que la búsqueda aplique a todos los tabs

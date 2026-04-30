@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -86,6 +86,8 @@ export default function VentasPage() {
   const [clienteId, setClienteId] = useState<string | null>(null)
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
+  const [clienteCCEnabled, setClienteCCEnabled] = useState(false)
+  const [modoCC, setModoCC] = useState(false)
   const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
@@ -413,7 +415,7 @@ export default function VentasPage() {
   const { data: clientesBusqueda = [] } = useQuery({
     queryKey: ['clientes-search', tenant?.id, clienteSearch],
     queryFn: async () => {
-      let q = supabase.from('clientes').select('id, nombre, dni, telefono')
+      let q = supabase.from('clientes').select('id, nombre, dni, telefono, cuenta_corriente_habilitada')
         .eq('tenant_id', tenant!.id).order('nombre').limit(10)
       if (clienteSearch) q = q.or(`nombre.ilike.%${clienteSearch}%,dni.ilike.%${clienteSearch}%`)
       const { data } = await q
@@ -978,21 +980,26 @@ export default function VentasPage() {
       toast.error('Registrá o seleccioná un cliente para continuar.')
       return
     }
-    // Validar medios de pago
-    const errorPago = validarMediosPago(estado, mediosPago, total)
-    if (errorPago) { toast.error(errorPago); return }
-    const vuelto = calcularVuelto(mediosPago, total)
-    const montoEfectivoCaja = calcularEfectivoCaja(mediosPago, total)
-    if (estado === 'despachada' || estado === 'reservada') {
-      if (sesionesAbiertas.length === 0) {
-        toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
-        return
-      }
-      if (sesionesAbiertas.length > 1 && !cajaSeleccionadaId) {
-        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
-        return
+    // Cuenta corriente: requiere cliente, bypasa validación de pago y caja
+    if (modoCC) {
+      if (!clienteId) { toast.error('Seleccioná un cliente para usar cuenta corriente.'); return }
+    } else {
+      // Validar medios de pago (solo si no es CC)
+      const errorPago = validarMediosPago(estado, mediosPago, total)
+      if (errorPago) { toast.error(errorPago); return }
+      if (estado === 'despachada' || estado === 'reservada') {
+        if (sesionesAbiertas.length === 0) {
+          toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
+          return
+        }
+        if (sesionesAbiertas.length > 1 && !cajaSeleccionadaId) {
+          toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
+          return
+        }
       }
     }
+    const vuelto = modoCC ? 0 : calcularVuelto(mediosPago, total)
+    const montoEfectivoCaja = modoCC ? 0 : calcularEfectivoCaja(mediosPago, total)
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     try {
@@ -1007,8 +1014,11 @@ export default function VentasPage() {
         subtotal,
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
         total,
-        medio_pago: serializeMediosPago(mediosPago, total),
-        monto_pagado: estado === 'pendiente' ? 0 : Math.min(mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0), total),
+        medio_pago: modoCC
+          ? JSON.stringify([{ tipo: 'Cuenta Corriente', monto: total }])
+          : serializeMediosPago(mediosPago, total),
+        monto_pagado: modoCC ? 0 : (estado === 'pendiente' ? 0 : Math.min(mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0), total)),
+        es_cuenta_corriente: modoCC,
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
@@ -1234,6 +1244,7 @@ export default function VentasPage() {
         triggerFacturaModal(venta.id, venta.numero ?? 0, Number(venta.total ?? 0))
       }
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
+      setClienteCCEnabled(false); setModoCC(false)
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
       setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
@@ -2345,7 +2356,7 @@ export default function VentasPage() {
                 {clienteId ? (
                   <div className="flex items-center gap-2 px-3 py-2.5 border border-blue-300 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-sm">
                     <span className="flex-1 font-medium text-blue-800 dark:text-blue-400">{clienteNombre}</span>
-                    <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch('') }} title="Quitar cliente" className="text-blue-400 hover:text-blue-700 dark:text-blue-400"><X size={14} /></button>
+                    <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch(''); setClienteCCEnabled(false); setModoCC(false) }} title="Quitar cliente" className="text-blue-400 hover:text-blue-700 dark:text-blue-400"><X size={14} /></button>
                   </div>
                 ) : (
                   <>
@@ -2367,6 +2378,8 @@ export default function VentasPage() {
                               setClienteId(c.id)
                               setClienteNombre(c.nombre)
                               setClienteTelefono(c.telefono ?? '')
+                              setClienteCCEnabled(c.cuenta_corriente_habilitada ?? false)
+                              setModoCC(false)
                               setClienteSearch('')
                               setClienteDropOpen(false)
                             }}
@@ -2614,16 +2627,24 @@ export default function VentasPage() {
                       ['despachada', 'Venta directa', Zap],
                       ['pendiente', 'Presupuesto', FileText],
                     ] as const).map(([modo, label, Icon]) => (
-                      <button key={modo} onClick={() => setModoVenta(modo)}
-                        className={`flex-1 flex items-center justify-center gap-1 py-2 transition-colors ${modoVenta === modo ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                      <button key={modo} onClick={() => { setModoVenta(modo); setModoCC(false) }}
+                        className={`flex-1 flex items-center justify-center gap-1 py-2 transition-colors ${modoVenta === modo && !modoCC ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
                         <Icon size={11} />{label}
                       </button>
                     ))}
                   </div>
-                  <button onClick={() => registrarVenta(modoVenta)} disabled={saving}
+                  {/* Botón Cuenta Corriente — visible solo si el cliente tiene CC habilitada */}
+                  {clienteCCEnabled && clienteId && (
+                    <button onClick={() => setModoCC(v => !v)}
+                      className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl border-2 text-sm font-medium transition-colors
+                        ${modoCC ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-emerald-400 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}>
+                      <CreditCard size={14} /> {modoCC ? '✓ Cuenta corriente activa' : 'Despachar a cuenta corriente'}
+                    </button>
+                  )}
+                  <button onClick={() => registrarVenta(modoCC ? 'despachada' : modoVenta)} disabled={saving}
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                    {modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
-                    {saving ? 'Guardando...' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
+                    {modoCC ? <CreditCard size={16} /> : modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
+                    {saving ? 'Guardando...' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
                   </button>
                 </div>
               </div>

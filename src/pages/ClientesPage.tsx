@@ -4,7 +4,8 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Users, Plus, Search, Phone, Mail, FileText, X,
   ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
-  Upload, Download, CheckCircle, XCircle, FileSpreadsheet, ExternalLink,
+  Upload, Download, CheckCircle, XCircle, FileSpreadsheet, ExternalLink, MapPin, Star,
+  Tag, Calendar, StickyNote,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
@@ -39,8 +40,18 @@ function diasDesde(iso: string) {
   return `hace ${Math.floor(dias / 365)}a`
 }
 
-interface ClienteForm { nombre: string; dni: string; telefono: string; email: string; notas: string }
-const FORM_VACIO: ClienteForm = { nombre: '', dni: '', telefono: '', email: '', notas: '' }
+interface ClienteForm {
+  nombre: string; dni: string; telefono: string; email: string; notas: string
+  cuit_receptor: string; condicion_iva_receptor: string
+  fecha_nacimiento: string; etiquetas: string
+  codigo_fiscal: string; regimen_fiscal: string
+}
+const FORM_VACIO: ClienteForm = {
+  nombre: '', dni: '', telefono: '', email: '', notas: '',
+  cuit_receptor: '', condicion_iva_receptor: '',
+  fecha_nacimiento: '', etiquetas: '',
+  codigo_fiscal: '', regimen_fiscal: '',
+}
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
   pendiente:  { label: 'Pendiente',  color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' },
@@ -51,7 +62,7 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 }
 
 export default function ClientesPage() {
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -62,6 +73,14 @@ export default function ClientesPage() {
   const [form, setForm] = useState<ClienteForm>(FORM_VACIO)
   const [saving, setSaving] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(() => searchParams.get('id'))
+  const [innerTab, setInnerTab] = useState<'historial' | 'domicilios' | 'notas'>('historial')
+  const [filtroEtiqueta, setFiltroEtiqueta] = useState('')
+  const [nuevaNota, setNuevaNota] = useState('')
+  const [savingNota, setSavingNota] = useState(false)
+  const [showDomForm, setShowDomForm] = useState(false)
+  const [editDomId, setEditDomId] = useState<string | null>(null)
+  const [domForm, setDomForm] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false })
+  const [savingDom, setSavingDom] = useState(false)
 
   // Import state
   const fileRefImport = useRef<HTMLInputElement>(null)
@@ -75,7 +94,7 @@ export default function ClientesPage() {
     queryKey: ['clientes', tenant?.id, search, sucursalId],
     queryFn: async () => {
       let q = supabase.from('clientes').select('*').eq('tenant_id', tenant!.id).order('nombre')
-      if (search) q = q.ilike('nombre', `%${search}%`)
+      if (search) q = q.or(`nombre.ilike.%${search}%,dni.ilike.%${search}%`)
       q = applyFilter(q)
       const { data, error } = await q
       if (error) throw error
@@ -132,6 +151,80 @@ export default function ClientesPage() {
     enabled: !!expandedId,
   })
 
+  const { data: domicilios = [], refetch: refetchDoms } = useQuery({
+    queryKey: ['cliente-domicilios', expandedId],
+    queryFn: async () => {
+      const { data } = await supabase.from('cliente_domicilios')
+        .select('*').eq('cliente_id', expandedId!).order('es_principal', { ascending: false }).order('created_at')
+      return data ?? []
+    },
+    enabled: !!expandedId && innerTab === 'domicilios',
+  })
+
+  const { data: notasCliente = [], refetch: refetchNotas } = useQuery({
+    queryKey: ['cliente-notas', expandedId],
+    queryFn: async () => {
+      const { data } = await supabase.from('cliente_notas')
+        .select('*, users(nombre_display)')
+        .eq('cliente_id', expandedId!)
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!expandedId && innerTab === 'notas',
+  })
+
+  const agregarNota = async () => {
+    if (!nuevaNota.trim() || !expandedId) return
+    setSavingNota(true)
+    const { error } = await supabase.from('cliente_notas').insert({
+      tenant_id: tenant!.id, cliente_id: expandedId,
+      texto: nuevaNota.trim(), usuario_id: user?.id,
+    })
+    if (error) { toast.error(error.message) }
+    else { setNuevaNota(''); refetchNotas(); toast.success('Nota guardada') }
+    setSavingNota(false)
+  }
+
+  const saveDomicilio = async () => {
+    if (!domForm.calle.trim()) { toast.error('La calle es obligatoria'); return }
+    setSavingDom(true)
+    try {
+      const payload = {
+        tenant_id: tenant!.id, cliente_id: expandedId!,
+        nombre: domForm.nombre.trim() || null,
+        calle: domForm.calle.trim(),
+        numero: domForm.numero.trim() || null,
+        piso_depto: domForm.piso_depto.trim() || null,
+        ciudad: domForm.ciudad.trim() || null,
+        provincia: domForm.provincia.trim() || null,
+        codigo_postal: domForm.codigo_postal.trim() || null,
+        referencias: domForm.referencias.trim() || null,
+        es_principal: domForm.es_principal,
+      }
+      if (domForm.es_principal) {
+        await supabase.from('cliente_domicilios').update({ es_principal: false }).eq('cliente_id', expandedId!)
+      }
+      if (editDomId) {
+        const { error } = await supabase.from('cliente_domicilios').update(payload).eq('id', editDomId)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('cliente_domicilios').insert(payload)
+        if (error) throw error
+      }
+      toast.success(editDomId ? 'Domicilio actualizado' : 'Domicilio guardado')
+      refetchDoms()
+      setShowDomForm(false); setEditDomId(null)
+      setDomForm({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false })
+    } catch (e: any) { toast.error(e.message ?? 'Error al guardar') }
+    finally { setSavingDom(false) }
+  }
+
+  const deleteDomicilio = async (id: string) => {
+    if (!confirm('¿Eliminar este domicilio?')) return
+    await supabase.from('cliente_domicilios').delete().eq('id', id)
+    refetchDoms()
+  }
+
   // ── Stats globales ────────────────────────────────────────────────────────
   const totalFacturado = Object.values(statsMap).reduce((a, s) => a + s.total, 0)
   const clientesConCompras = Object.keys(statsMap).length
@@ -148,7 +241,14 @@ export default function ClientesPage() {
   const abrirModal = (cliente?: any) => {
     if (cliente) {
       setEditId(cliente.id)
-      setForm({ nombre: cliente.nombre, dni: cliente.dni ?? '', telefono: cliente.telefono ?? '', email: cliente.email ?? '', notas: cliente.notas ?? '' })
+      setForm({
+        nombre: cliente.nombre, dni: cliente.dni ?? '', telefono: cliente.telefono ?? '',
+        email: cliente.email ?? '', notas: cliente.notas ?? '',
+        cuit_receptor: cliente.cuit_receptor ?? '', condicion_iva_receptor: cliente.condicion_iva_receptor ?? '',
+        fecha_nacimiento: cliente.fecha_nacimiento ?? '',
+        etiquetas: Array.isArray(cliente.etiquetas) ? cliente.etiquetas.join(', ') : '',
+        codigo_fiscal: cliente.codigo_fiscal ?? '', regimen_fiscal: cliente.regimen_fiscal ?? '',
+      })
     } else {
       setEditId(null)
       setForm(FORM_VACIO)
@@ -162,7 +262,20 @@ export default function ClientesPage() {
     if (!form.telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
     setSaving(true)
     try {
-      const payload = { nombre: form.nombre.trim(), dni: form.dni.trim(), telefono: form.telefono.trim(), email: form.email || null, notas: form.notas || null }
+      const etiquetasArr = form.etiquetas.trim()
+        ? form.etiquetas.split(',').map(e => e.trim()).filter(Boolean)
+        : null
+      const payload = {
+        nombre: form.nombre.trim(), dni: form.dni.trim(),
+        telefono: form.telefono.trim(), email: form.email || null,
+        notas: form.notas || null,
+        cuit_receptor: form.cuit_receptor.trim() || null,
+        condicion_iva_receptor: form.condicion_iva_receptor || null,
+        fecha_nacimiento: form.fecha_nacimiento || null,
+        etiquetas: etiquetasArr,
+        codigo_fiscal: form.codigo_fiscal.trim() || null,
+        regimen_fiscal: form.regimen_fiscal.trim() || null,
+      }
       if (editId) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editId)
         if (error) throw error
@@ -183,9 +296,14 @@ export default function ClientesPage() {
   }
 
   const eliminar = async (id: string, nombre: string) => {
-    if (!confirm(`¿Eliminar a ${nombre}?`)) return
+    if (!confirm(`¿Eliminar a ${nombre}? Sus ventas quedarán sin cliente asignado.`)) return
+    // Desasociar ventas y envíos antes de eliminar (evita error de FK)
+    await Promise.all([
+      supabase.from('ventas').update({ cliente_id: null }).eq('cliente_id', id),
+      supabase.from('envios').update({ destino_id: null }).eq('destino_id', id),
+    ])
     const { error } = await supabase.from('clientes').delete().eq('id', id)
-    if (error) { toast.error('Error al eliminar'); return }
+    if (error) { toast.error('No se pudo eliminar: ' + error.message); return }
     toast.success('Cliente eliminado')
     qc.invalidateQueries({ queryKey: ['clientes'] })
     qc.invalidateQueries({ queryKey: ['clientes-stats'] })
@@ -326,12 +444,34 @@ export default function ClientesPage() {
         </div>
       )}
 
-      {/* Buscador */}
-      <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por nombre..."
-          className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+      {/* Buscador + filtro etiquetas */}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-48">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nombre o DNI..."
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+        </div>
+        {/* Filtro etiquetas */}
+        {(clientes as any[]).some(c => Array.isArray(c.etiquetas) && c.etiquetas.length > 0) && (
+          <div className="relative">
+            <Tag size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <select value={filtroEtiqueta} onChange={e => setFiltroEtiqueta(e.target.value)}
+              className="pl-8 pr-8 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent appearance-none bg-white dark:bg-gray-800">
+              <option value="">Todas las etiquetas</option>
+              {[...new Set((clientes as any[]).flatMap(c => c.etiquetas ?? []))].map((et: string) => (
+                <option key={et} value={et}>{et}</option>
+              ))}
+            </select>
+            <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+        )}
+        {filtroEtiqueta && (
+          <button onClick={() => setFiltroEtiqueta('')}
+            className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+            <X size={14} /> Limpiar
+          </button>
+        )}
       </div>
 
       {/* Lista */}
@@ -347,7 +487,9 @@ export default function ClientesPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {clientes.map((c: any) => {
+          {(clientes as any[]).filter(c =>
+            !filtroEtiqueta || (Array.isArray(c.etiquetas) && c.etiquetas.includes(filtroEtiqueta))
+          ).map((c: any) => {
             const stats = statsMap[c.id]
             const isExpanded = expandedId === c.id
             return (
@@ -363,6 +505,21 @@ export default function ClientesPage() {
                     <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{c.nombre}</p>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       {c.dni && <span className="text-xs text-gray-400 dark:text-gray-500">DNI {c.dni}</span>}
+                      {c.cuit_receptor && <span className="text-xs text-gray-400 dark:text-gray-500">CUIT {c.cuit_receptor}</span>}
+                      {c.condicion_iva_receptor && <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{c.condicion_iva_receptor}</span>}
+                      {c.fecha_nacimiento && (() => {
+                        const hoy = new Date()
+                        const nac = new Date(c.fecha_nacimiento + 'T12:00:00')
+                        const esCumple = nac.getDate() === hoy.getDate() && nac.getMonth() === hoy.getMonth()
+                        return <span className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-0.5 ${esCumple ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 font-semibold' : 'text-gray-400 dark:text-gray-500'}`}>
+                          🎂 {esCumple ? '¡Hoy!' : `${nac.getDate()}/${nac.getMonth()+1}`}
+                        </span>
+                      })()}
+                      {Array.isArray(c.etiquetas) && c.etiquetas.map((et: string) => (
+                        <span key={et} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-accent px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                          <Tag size={9} />{et}
+                        </span>
+                      ))}
                       {c.telefono && <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"><Phone size={11} /> {c.telefono}</span>}
                       {c.email && <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500"><Mail size={11} /> {c.email}</span>}
                     </div>
@@ -389,27 +546,38 @@ export default function ClientesPage() {
 
                   {/* Acciones */}
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <button onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                    <button onClick={() => { setExpandedId(isExpanded ? null : c.id); setInnerTab('historial'); setShowDomForm(false) }}
                       className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 transition-colors" title="Ver historial">
                       {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
                     <button onClick={() => abrirModal(c)}
-                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 transition-colors">
+                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 transition-colors"
+                      title="Editar cliente">
                       <Pencil size={14} />
-                    </button>
-                    <button onClick={() => eliminar(c.id, c.nombre)}
-                      className="p-1.5 hover:bg-red-50 dark:bg-red-900/20 rounded-lg text-gray-300 hover:text-red-400 transition-colors">
-                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
 
-                {/* Historial expandido */}
+                {/* Sección expandida: tabs Historial / Domicilios */}
                 {isExpanded && (
-                  <div className="border-t border-gray-100 bg-gray-50 dark:bg-gray-700 px-4 py-4">
-                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-3 flex items-center gap-1.5">
-                      <ShoppingCart size={12} /> Historial de compras
-                    </p>
+                  <div className="border-t border-gray-100 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-4 py-4">
+                    {/* Sub-tabs */}
+                    <div className="flex gap-0 border-b border-gray-200 dark:border-gray-600 mb-4 -mx-4 px-4">
+                      {[
+                        { id: 'historial' as const, label: 'Historial de compras', icon: <ShoppingCart size={12} /> },
+                        { id: 'domicilios' as const, label: 'Domicilios',          icon: <MapPin size={12} /> },
+                        { id: 'notas'     as const, label: 'Notas',                icon: <StickyNote size={12} /> },
+                      ].map(t => (
+                        <button key={t.id} onClick={() => setInnerTab(t.id)}
+                          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px transition-colors
+                            ${innerTab === t.id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                          {t.icon}{t.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Tab: Historial */}
+                    {innerTab === 'historial' && <>
                     {/* Mini stats del cliente */}
                     {stats && (
                       <div className="grid grid-cols-3 gap-3 mb-4">
@@ -435,7 +603,7 @@ export default function ClientesPage() {
                           const est = ESTADOS[v.estado] ?? { label: v.estado, color: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' }
                           const items = v.venta_items ?? []
                           return (
-                            <div key={v.id} className="bg-white dark:bg-gray-800 rounded-xl p-3 border border-gray-100">
+                            <div key={v.id} className="bg-white dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-600">
                               <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">#{v.numero ?? v.id.slice(-6)}</span>
@@ -446,9 +614,7 @@ export default function ClientesPage() {
                                     <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{formatMoneda(v.total ?? 0)}</p>
                                     <p className="text-xs text-gray-400 dark:text-gray-500">{formatFecha(v.created_at)}</p>
                                   </div>
-                                  <button
-                                    onClick={() => navigate(`/ventas?id=${v.id}`)}
-                                    title="Ver venta"
+                                  <button onClick={() => navigate(`/ventas?id=${v.id}`)} title="Ver venta"
                                     className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 hover:text-accent transition-colors">
                                     <ExternalLink size={14} />
                                   </button>
@@ -467,6 +633,163 @@ export default function ClientesPage() {
                             </div>
                           )
                         })}
+                      </div>
+                    )}
+                    </>}
+
+                    {/* Tab: Domicilios */}
+                    {innerTab === 'domicilios' && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{(domicilios as any[]).length} domicilio{(domicilios as any[]).length !== 1 ? 's' : ''} guardado{(domicilios as any[]).length !== 1 ? 's' : ''}</p>
+                          <button onClick={() => { setShowDomForm(true); setEditDomId(null); setDomForm({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false }) }}
+                            className="flex items-center gap-1 text-xs text-accent hover:underline">
+                            <Plus size={12} /> Agregar domicilio
+                          </button>
+                        </div>
+
+                        {/* Formulario nuevo / editar domicilio */}
+                        {showDomForm && (
+                          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-600 p-4 space-y-3">
+                            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editDomId ? 'Editar domicilio' : 'Nuevo domicilio'}</p>
+                            <input type="text" value={domForm.nombre} onChange={e => setDomForm(f => ({ ...f, nombre: e.target.value }))}
+                              placeholder="Nombre / alias (ej: Casa, Trabajo) — opcional"
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="col-span-2">
+                                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Calle *</label>
+                                <input type="text" value={domForm.calle} onChange={e => setDomForm(f => ({ ...f, calle: e.target.value }))}
+                                  placeholder="Av. Corrientes"
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Número</label>
+                                <input type="text" value={domForm.numero} onChange={e => setDomForm(f => ({ ...f, numero: e.target.value }))}
+                                  placeholder="1234"
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Piso / Depto</label>
+                                <input type="text" value={domForm.piso_depto} onChange={e => setDomForm(f => ({ ...f, piso_depto: e.target.value }))}
+                                  placeholder="3° B"
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Ciudad</label>
+                                <input type="text" value={domForm.ciudad} onChange={e => setDomForm(f => ({ ...f, ciudad: e.target.value }))}
+                                  placeholder="Buenos Aires"
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Provincia</label>
+                                <input type="text" value={domForm.provincia} onChange={e => setDomForm(f => ({ ...f, provincia: e.target.value }))}
+                                  placeholder="CABA"
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Código postal</label>
+                                <input type="text" value={domForm.codigo_postal} onChange={e => setDomForm(f => ({ ...f, codigo_postal: e.target.value }))}
+                                  placeholder="C1043"
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              </div>
+                            </div>
+                            <input type="text" value={domForm.referencias} onChange={e => setDomForm(f => ({ ...f, referencias: e.target.value }))}
+                              placeholder="Referencias para el courier (portón verde, timbre 4, etc.)"
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
+                              <input type="checkbox" checked={domForm.es_principal} onChange={e => setDomForm(f => ({ ...f, es_principal: e.target.checked }))} className="accent-accent" />
+                              Marcar como domicilio principal
+                            </label>
+                            <div className="flex gap-2">
+                              <button onClick={() => { setShowDomForm(false); setEditDomId(null) }}
+                                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-medium py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm">
+                                Cancelar
+                              </button>
+                              <button onClick={saveDomicilio} disabled={savingDom}
+                                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2 rounded-xl transition-all disabled:opacity-50 text-sm">
+                                {savingDom ? 'Guardando…' : 'Guardar'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Lista de domicilios */}
+                        {(domicilios as any[]).length === 0 && !showDomForm ? (
+                          <div className="text-center py-6 text-gray-400 dark:text-gray-500">
+                            <MapPin size={28} className="mx-auto mb-2 opacity-40" />
+                            <p className="text-sm">Sin domicilios guardados</p>
+                            <p className="text-xs mt-0.5">Agregá uno para usarlo en los envíos</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {(domicilios as any[]).map((d: any) => (
+                              <div key={d.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-600 p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      {d.es_principal && <Star size={12} className="text-amber-500 fill-amber-500 flex-shrink-0" />}
+                                      {d.nombre && <span className="text-xs font-semibold text-accent">{d.nombre}</span>}
+                                    </div>
+                                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                                      {d.calle}{d.numero ? ` ${d.numero}` : ''}{d.piso_depto ? `, ${d.piso_depto}` : ''}
+                                    </p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                      {[d.ciudad, d.provincia, d.codigo_postal].filter(Boolean).join(' · ')}
+                                    </p>
+                                    {d.referencias && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 italic">{d.referencias}</p>}
+                                  </div>
+                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                    <button onClick={() => {
+                                      setEditDomId(d.id); setShowDomForm(true)
+                                      setDomForm({ nombre: d.nombre ?? '', calle: d.calle, numero: d.numero ?? '', piso_depto: d.piso_depto ?? '', ciudad: d.ciudad ?? '', provincia: d.provincia ?? '', codigo_postal: d.codigo_postal ?? '', referencias: d.referencias ?? '', es_principal: d.es_principal })
+                                    }} className="p-1 text-gray-400 hover:text-accent rounded-lg transition-colors">
+                                      <Pencil size={13} />
+                                    </button>
+                                    <button onClick={() => deleteDomicilio(d.id)} className="p-1 text-gray-400 hover:text-red-500 rounded-lg transition-colors">
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tab: Notas */}
+                    {innerTab === 'notas' && (
+                      <div className="space-y-3">
+                        {/* Agregar nota */}
+                        <div className="flex gap-2">
+                          <textarea value={nuevaNota} onChange={e => setNuevaNota(e.target.value)}
+                            placeholder="Escribí una nota sobre este cliente..." rows={2}
+                            className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" />
+                          <button onClick={agregarNota} disabled={savingNota || !nuevaNota.trim()}
+                            className="px-3 py-2 bg-accent text-white rounded-xl text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-all self-end">
+                            {savingNota ? '…' : 'Guardar'}
+                          </button>
+                        </div>
+                        {/* Lista de notas */}
+                        {(notasCliente as any[]).length === 0 ? (
+                          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Sin notas para este cliente</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(notasCliente as any[]).map((n: any) => (
+                              <div key={n.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-600 p-3">
+                                <p className="text-sm text-gray-800 dark:text-gray-100 whitespace-pre-wrap">{n.texto}</p>
+                                <div className="flex items-center gap-2 mt-2 text-xs text-gray-400 dark:text-gray-500">
+                                  <Calendar size={10} />
+                                  <span>{new Date(n.created_at).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}</span>
+                                  {n.users?.nombre_display && <>
+                                    <span>·</span>
+                                    <span>{n.users.nombre_display}</span>
+                                  </>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -514,10 +837,65 @@ export default function ClientesPage() {
                   placeholder="Opcional" type="email"
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
               </div>
+              {/* Fecha nacimiento + Etiquetas */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas</label>
+                <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  🎂 Fecha de nacimiento
+                </label>
+                <input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f => ({ ...f, fecha_nacimiento: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <Tag size={12} /> Etiquetas
+                </label>
+                <input type="text" value={form.etiquetas} onChange={e => setForm(f => ({ ...f, etiquetas: e.target.value }))}
+                  placeholder="mayorista, vip, zona-norte (separadas por coma)"
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              </div>
+
+              {/* Facturación */}
+              <div className="col-span-2 border-t border-gray-100 dark:border-gray-700 pt-3">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Datos fiscales (para facturación)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CUIT</label>
+                    <input value={form.cuit_receptor} onChange={e => setForm(f => ({ ...f, cuit_receptor: e.target.value }))}
+                      placeholder="20-12345678-9 (para Factura A)"
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Condición IVA</label>
+                    <div className="relative">
+                      <select value={form.condicion_iva_receptor} onChange={e => setForm(f => ({ ...f, condicion_iva_receptor: e.target.value }))}
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent">
+                        <option value="">Sin especificar</option>
+                        <option value="CF">Consumidor Final</option>
+                        <option value="RI">Responsable Inscripto</option>
+                        <option value="Monotributista">Monotributista</option>
+                        <option value="Exento">Exento</option>
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código fiscal</label>
+                    <input value={form.codigo_fiscal} onChange={e => setForm(f => ({ ...f, codigo_fiscal: e.target.value }))}
+                      placeholder="Opcional"
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Régimen fiscal</label>
+                    <input value={form.regimen_fiscal} onChange={e => setForm(f => ({ ...f, regimen_fiscal: e.target.value }))}
+                      placeholder="Ej: Responsable Inscripto"
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas generales</label>
                 <textarea value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
-                  placeholder="Observaciones internas..." rows={2}
+                  placeholder="Observaciones internas (para notas con fecha usá el tab Notas en la ficha del cliente)..." rows={2}
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none" />
               </div>
             </div>

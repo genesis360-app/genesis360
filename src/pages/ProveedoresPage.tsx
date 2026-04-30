@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
@@ -10,16 +10,21 @@ import {
   Truck, Plus, Pencil, Trash2, Search, ChevronDown, ChevronUp,
   FileText, Send, CheckCircle, XCircle, Package, Hash, Calendar,
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
-  Warehouse,
+  Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
+  Upload, Download,
 } from 'lucide-react'
 
-type Tab = 'proveedores' | 'ordenes'
+type Tab = 'proveedores' | 'servicios' | 'ordenes'
 type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada'
 
 interface FormProv {
+  tipo: 'proveedor' | 'servicio'
   nombre: string
   razon_social: string
+  dni: string
   cuit: string
+  codigo_fiscal: string
+  regimen_fiscal: string
   contacto: string
   telefono: string
   email: string
@@ -29,12 +34,27 @@ interface FormProv {
   cbu: string
   domicilio: string
   notas: string
+  etiquetas: string  // comma-separated, stored as TEXT[]
 }
 
 const FORM_PROV_EMPTY: FormProv = {
-  nombre: '', razon_social: '', cuit: '', contacto: '', telefono: '',
+  tipo: 'proveedor', nombre: '', razon_social: '', dni: '', cuit: '',
+  codigo_fiscal: '', regimen_fiscal: '', contacto: '', telefono: '',
   email: '', condicion_iva: '', plazo_pago_dias: '', banco: '', cbu: '',
-  domicilio: '', notas: '',
+  domicilio: '', notas: '', etiquetas: '',
+}
+
+interface FormProdProv {
+  producto_id: string; precio_compra: string; cantidad_minima: string
+  costo_envio: string; costos_extra: string; notas: string
+}
+interface FormServItem {
+  nombre: string; detalle: string; costo: string
+  forma_pago: string; hace_factura: boolean; notas: string
+}
+interface FormPresupuesto {
+  nombre: string; fecha: string; monto: string; notas: string
+  servicio_item_id: string
 }
 
 interface FormOC {
@@ -81,6 +101,24 @@ export default function ProveedoresPage() {
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<FormProv>(FORM_PROV_EMPTY)
+
+  // ── Servicios state ────────────────────────────────────────────────────────
+  const [serviciosSearch, setServiciosSearch] = useState('')
+  const [expandedServId, setExpandedServId] = useState<string | null>(null)
+  const [showServItemForm, setShowServItemForm] = useState<string | null>(null) // proveedor_id
+  const [editServItemId, setEditServItemId] = useState<string | null>(null)
+  const [servItemForm, setServItemForm] = useState<FormServItem>({ nombre: '', detalle: '', costo: '', forma_pago: '', hace_factura: false, notas: '' })
+  const [showPresupForm, setShowPresupForm] = useState<string | null>(null) // proveedor_id
+  const [editPresupId, setEditPresupId] = useState<string | null>(null)
+  const [presupForm, setPresupForm] = useState<FormPresupuesto>({ nombre: '', fecha: new Date().toISOString().split('T')[0], monto: '', notas: '', servicio_item_id: '' })
+  const [presupFile, setPresupFile] = useState<File | null>(null)
+  const presupFileRef = useRef<HTMLInputElement>(null)
+
+  // ── Proveedor productos state ───────────────────────────────────────────────
+  const [expandedProvId, setExpandedProvId] = useState<string | null>(null)
+  const [showProdProvForm, setShowProdProvForm] = useState<string | null>(null) // proveedor_id
+  const [editProdProvId, setEditProdProvId] = useState<string | null>(null)
+  const [prodProvForm, setProdProvForm] = useState<FormProdProv>({ producto_id: '', precio_compra: '', cantidad_minima: '1', costo_envio: '', costos_extra: '', notas: '' })
 
   // ── OC state ───────────────────────────────────────────────────────────────
   const [ocSearch, setOcSearch] = useState('')
@@ -147,13 +185,63 @@ export default function ProveedoresPage() {
     enabled: !!showOcDetail,
   })
 
+  const { data: provProductos = [] } = useQuery({
+    queryKey: ['proveedor-productos', expandedProvId],
+    queryFn: async () => {
+      const { data } = await supabase.from('proveedor_productos')
+        .select('*, productos(id, nombre, sku, unidad_medida, precio_costo)')
+        .eq('proveedor_id', expandedProvId!)
+        .order('id')
+      return data ?? []
+    },
+    enabled: !!expandedProvId,
+  })
+
+  const { data: servicioItems = [] } = useQuery({
+    queryKey: ['servicio-items', expandedServId],
+    queryFn: async () => {
+      const { data } = await supabase.from('servicio_items')
+        .select('*').eq('proveedor_id', expandedServId!).order('nombre')
+      return data ?? []
+    },
+    enabled: !!expandedServId,
+  })
+
+  const { data: presupuestos = [] } = useQuery({
+    queryKey: ['servicio-presupuestos', expandedServId],
+    queryFn: async () => {
+      const { data } = await supabase.from('servicio_presupuestos')
+        .select('*, servicio_items(nombre)').eq('proveedor_id', expandedServId!).order('fecha', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!expandedServId,
+  })
+
+  const { data: productosAll = [] } = useQuery({
+    queryKey: ['productos-todos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos')
+        .select('id, nombre, sku, unidad_medida, precio_costo')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && (!!showProdProvForm || !!expandedProvId),
+  })
+
   // ── Proveedor mutations ────────────────────────────────────────────────────
   const saveProveedor = useMutation({
     mutationFn: async () => {
+      const etiquetasArr = form.etiquetas.trim()
+        ? form.etiquetas.split(',').map(e => e.trim()).filter(Boolean)
+        : null
       const payload = {
+        tipo: form.tipo,
         nombre: form.nombre.trim(),
         razon_social: form.razon_social.trim() || null,
+        dni: form.dni.trim() || null,
         cuit: form.cuit.trim() || null,
+        codigo_fiscal: form.codigo_fiscal.trim() || null,
+        regimen_fiscal: form.regimen_fiscal.trim() || null,
         contacto: form.contacto.trim() || null,
         telefono: form.telefono.trim() || null,
         email: form.email.trim() || null,
@@ -163,6 +251,7 @@ export default function ProveedoresPage() {
         cbu: form.cbu.trim() || null,
         domicilio: form.domicilio.trim() || null,
         notas: form.notas.trim() || null,
+        etiquetas: etiquetasArr,
       }
       if (editId) {
         const { error } = await supabase.from('proveedores').update(payload).eq('id', editId)
@@ -203,6 +292,173 @@ export default function ProveedoresPage() {
     },
     onError: () => toast.error('No se puede eliminar — tiene productos o movimientos asociados'),
   })
+
+  // ── Proveedor productos mutations ──────────────────────────────────────────
+  const saveProdProv = useMutation({
+    mutationFn: async (provId: string) => {
+      if (!prodProvForm.producto_id) throw new Error('Seleccioná un producto')
+      const payload = {
+        tenant_id: tenant!.id, proveedor_id: provId, producto_id: prodProvForm.producto_id,
+        precio_compra: prodProvForm.precio_compra ? parseFloat(prodProvForm.precio_compra) : null,
+        cantidad_minima: prodProvForm.cantidad_minima ? parseInt(prodProvForm.cantidad_minima) : 1,
+        costo_envio: prodProvForm.costo_envio ? parseFloat(prodProvForm.costo_envio) : null,
+        costos_extra: prodProvForm.costos_extra ? parseFloat(prodProvForm.costos_extra) : null,
+        notas: prodProvForm.notas.trim() || null,
+      }
+      if (editProdProvId) {
+        const { error } = await supabase.from('proveedor_productos').update(payload).eq('id', editProdProvId)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('proveedor_productos').insert(payload)
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      toast.success(editProdProvId ? 'Producto actualizado' : 'Producto vinculado')
+      qc.invalidateQueries({ queryKey: ['proveedor-productos', expandedProvId] })
+      setShowProdProvForm(null); setEditProdProvId(null)
+      setProdProvForm({ producto_id: '', precio_compra: '', cantidad_minima: '1', costo_envio: '', costos_extra: '', notas: '' })
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const deleteProdProv = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('proveedor_productos').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Producto desvinculado'); qc.invalidateQueries({ queryKey: ['proveedor-productos', expandedProvId] }) },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  // ── Servicio items mutations ────────────────────────────────────────────────
+  const saveServItem = useMutation({
+    mutationFn: async (provId: string) => {
+      if (!servItemForm.nombre.trim()) throw new Error('El nombre es requerido')
+      const payload = {
+        tenant_id: tenant!.id, proveedor_id: provId,
+        nombre: servItemForm.nombre.trim(), detalle: servItemForm.detalle.trim() || null,
+        costo: servItemForm.costo ? parseFloat(servItemForm.costo) : null,
+        forma_pago: servItemForm.forma_pago.trim() || null,
+        hace_factura: servItemForm.hace_factura,
+        notas: servItemForm.notas.trim() || null,
+      }
+      if (editServItemId) {
+        const { error } = await supabase.from('servicio_items').update(payload).eq('id', editServItemId)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('servicio_items').insert(payload)
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      toast.success(editServItemId ? 'Servicio actualizado' : 'Servicio agregado')
+      qc.invalidateQueries({ queryKey: ['servicio-items', expandedServId] })
+      setShowServItemForm(null); setEditServItemId(null)
+      setServItemForm({ nombre: '', detalle: '', costo: '', forma_pago: '', hace_factura: false, notas: '' })
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const deleteServItem = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('servicio_items').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Servicio eliminado'); qc.invalidateQueries({ queryKey: ['servicio-items', expandedServId] }) },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  // ── Presupuestos mutations ─────────────────────────────────────────────────
+  const resetPresupForm = () => {
+    setShowPresupForm(null); setEditPresupId(null); setPresupFile(null)
+    setPresupForm({ nombre: '', fecha: new Date().toISOString().split('T')[0], monto: '', notas: '', servicio_item_id: '' })
+  }
+
+  const savePresupuesto = useMutation({
+    mutationFn: async (provId: string) => {
+      const payload = {
+        tenant_id: tenant!.id, proveedor_id: provId,
+        servicio_item_id: presupForm.servicio_item_id || null,
+        nombre: presupForm.nombre.trim() || null,
+        fecha: presupForm.fecha,
+        monto: presupForm.monto ? parseFloat(presupForm.monto) : null,
+        notas: presupForm.notas.trim() || null,
+      }
+      let presupId = editPresupId
+      if (editPresupId) {
+        const { error } = await supabase.from('servicio_presupuestos').update(payload).eq('id', editPresupId)
+        if (error) throw error
+      } else {
+        const { data: inserted, error } = await supabase.from('servicio_presupuestos').insert(payload).select('id').single()
+        if (error) throw error
+        presupId = inserted.id
+      }
+      if (presupFile && presupId) {
+        const ext = presupFile.name.split('.').pop()?.toLowerCase() ?? 'pdf'
+        const path = `${tenant!.id}/${presupId}.${ext}`
+        await supabase.storage.from('presupuestos-servicios').upload(path, presupFile, { upsert: true })
+        await supabase.from('servicio_presupuestos').update({ archivo_url: path }).eq('id', presupId)
+      }
+    },
+    onSuccess: () => {
+      toast.success(editPresupId ? 'Presupuesto actualizado' : 'Presupuesto guardado')
+      qc.invalidateQueries({ queryKey: ['servicio-presupuestos', expandedServId] })
+      resetPresupForm()
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const deletePresupuesto = useMutation({
+    mutationFn: async ({ id, archivo_url }: { id: string; archivo_url?: string }) => {
+      if (archivo_url) await supabase.storage.from('presupuestos-servicios').remove([archivo_url])
+      const { error } = await supabase.from('servicio_presupuestos').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Presupuesto eliminado'); qc.invalidateQueries({ queryKey: ['servicio-presupuestos', expandedServId] }) },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const aprobarPresupuesto = useMutation({
+    mutationFn: async (ps: any) => {
+      const prov = (proveedores as any[]).find(p => p.id === expandedServId)
+      const { data: gasto, error: gErr } = await supabase.from('gastos').insert({
+        tenant_id: tenant!.id,
+        descripcion: ps.nombre ?? `Presupuesto aprobado — ${prov?.nombre ?? 'proveedor'}`,
+        monto: ps.monto ?? 0,
+        fecha: new Date().toISOString().split('T')[0],
+        categoria: 'Honorarios profesionales',
+        notas: `Presupuesto aprobado. Proveedor: ${prov?.nombre ?? ''}${ps.notas ? ` | ${ps.notas}` : ''}`,
+      }).select('id').single()
+      if (gErr) throw gErr
+      const { error: pErr } = await supabase.from('servicio_presupuestos')
+        .update({ estado: 'convertido', gasto_id: gasto.id })
+        .eq('id', ps.id)
+      if (pErr) throw pErr
+      return gasto.id
+    },
+    onSuccess: (gastoId) => {
+      toast.success('Presupuesto aprobado — gasto creado')
+      qc.invalidateQueries({ queryKey: ['servicio-presupuestos', expandedServId] })
+      qc.invalidateQueries({ queryKey: ['gastos'] })
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const rechazarPresupuesto = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('servicio_presupuestos').update({ estado: 'rechazado' }).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Presupuesto rechazado'); qc.invalidateQueries({ queryKey: ['servicio-presupuestos', expandedServId] }) },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const verPresupuesto = async (url: string) => {
+    const { data } = await supabase.storage.from('presupuestos-servicios').createSignedUrl(url, 300)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank')
+    else toast.error('No se pudo abrir el archivo')
+  }
 
   // ── OC mutations ───────────────────────────────────────────────────────────
   const saveOC = useMutation({
@@ -282,12 +538,16 @@ export default function ProveedoresPage() {
   })
 
   // ── Helpers ────────────────────────────────────────────────────────────────
-  const openEditProv = (p: Proveedor) => {
+  const openEditProv = (p: any) => {
     setEditId(p.id)
     setForm({
+      tipo: p.tipo ?? 'proveedor',
       nombre: p.nombre ?? '',
       razon_social: p.razon_social ?? '',
+      dni: p.dni ?? '',
       cuit: p.cuit ?? '',
+      codigo_fiscal: p.codigo_fiscal ?? '',
+      regimen_fiscal: p.regimen_fiscal ?? '',
       contacto: p.contacto ?? '',
       telefono: p.telefono ?? '',
       email: p.email ?? '',
@@ -297,6 +557,7 @@ export default function ProveedoresPage() {
       cbu: p.cbu ?? '',
       domicilio: p.domicilio ?? '',
       notas: p.notas ?? '',
+      etiquetas: Array.isArray(p.etiquetas) ? p.etiquetas.join(', ') : '',
     })
     setShowForm(true)
   }
@@ -352,10 +613,22 @@ export default function ProveedoresPage() {
     setOcItems(prev => prev.map(it => it._key === key ? { ...it, [field]: value } : it))
 
   // ── Filtered data ──────────────────────────────────────────────────────────
-  const filteredProv = proveedores.filter(p => {
+  const filteredProv = (proveedores as any[]).filter(p => {
+    if (p.tipo === 'servicio') return false
     if (!search) return true
     const s = search.toLowerCase()
-    return p.nombre.toLowerCase().includes(s) ||
+    return p.nombre?.toLowerCase().includes(s) ||
+      p.razon_social?.toLowerCase().includes(s) ||
+      p.cuit?.toLowerCase().includes(s) ||
+      p.dni?.toLowerCase().includes(s) ||
+      p.contacto?.toLowerCase().includes(s)
+  })
+
+  const filteredServicios = (proveedores as any[]).filter(p => {
+    if (p.tipo !== 'servicio') return false
+    if (!serviciosSearch) return true
+    const s = serviciosSearch.toLowerCase()
+    return p.nombre?.toLowerCase().includes(s) ||
       p.razon_social?.toLowerCase().includes(s) ||
       p.cuit?.toLowerCase().includes(s) ||
       p.contacto?.toLowerCase().includes(s)
@@ -375,7 +648,8 @@ export default function ProveedoresPage() {
   // ── Tabs bar ───────────────────────────────────────────────────────────────
   const tabs: { id: Tab; label: string }[] = [
     { id: 'proveedores', label: 'Proveedores' },
-    { id: 'ordenes', label: 'Órdenes de compra' },
+    { id: 'servicios',   label: 'Servicios' },
+    { id: 'ordenes',     label: 'Órdenes de compra' },
   ]
 
   return (
@@ -384,14 +658,22 @@ export default function ProveedoresPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Truck className="w-5 h-5 text-accent" />
-          <h1 className="text-xl font-bold text-primary">Proveedores</h1>
+          <h1 className="text-xl font-bold text-primary">Proveedores / Servicios</h1>
         </div>
         {tab === 'proveedores' && (
           <button
-            onClick={() => { setEditId(null); setForm(FORM_PROV_EMPTY); setShowForm(true) }}
+            onClick={() => { setEditId(null); setForm({ ...FORM_PROV_EMPTY, tipo: 'proveedor' }); setShowForm(true) }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent/90"
           >
             <Plus className="w-4 h-4" /> Nuevo proveedor
+          </button>
+        )}
+        {tab === 'servicios' && (
+          <button
+            onClick={() => { setEditId(null); setForm({ ...FORM_PROV_EMPTY, tipo: 'servicio' }); setShowForm(true) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent/90"
+          >
+            <Plus className="w-4 h-4" /> Nuevo servicio
           </button>
         )}
         {tab === 'ordenes' && (
@@ -475,31 +757,396 @@ export default function ProveedoresPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => toggleActivo.mutate({ id: p.id, activo: p.activo })}
-                        className="p-1.5 rounded text-muted hover:text-primary"
-                        title={p.activo ? 'Desactivar' : 'Activar'}
-                      >
-                        {p.activo
-                          ? <ToggleRight className="w-5 h-5 text-green-500" />
-                          : <ToggleLeft className="w-5 h-5" />}
+                      <button onClick={() => setExpandedProvId(expandedProvId === p.id ? null : p.id)}
+                        className="p-1.5 rounded text-muted hover:text-accent" title="Ver productos">
+                        <ChevronRight className={`w-4 h-4 transition-transform ${expandedProvId === p.id ? 'rotate-90' : ''}`} />
                       </button>
-                      <button
-                        onClick={() => openEditProv(p)}
+                      <button onClick={() => toggleActivo.mutate({ id: p.id, activo: p.activo })}
                         className="p-1.5 rounded text-muted hover:text-primary"
-                        title="Editar"
-                      >
+                        title={p.activo ? 'Desactivar' : 'Activar'}>
+                        {p.activo ? <ToggleRight className="w-5 h-5 text-green-500" /> : <ToggleLeft className="w-5 h-5" />}
+                      </button>
+                      <button onClick={() => openEditProv(p)} className="p-1.5 rounded text-muted hover:text-primary" title="Editar">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => { if (confirm('¿Eliminar este proveedor?')) deleteProveedor.mutate(p.id) }}
-                        className="p-1.5 rounded text-muted hover:text-red-500"
-                        title="Eliminar"
-                      >
+                      <button onClick={() => { if (confirm('¿Eliminar este proveedor?')) deleteProveedor.mutate(p.id) }}
+                        className="p-1.5 rounded text-muted hover:text-red-500" title="Eliminar">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
+
+                  {/* Etiquetas */}
+                  {Array.isArray((p as any).etiquetas) && (p as any).etiquetas.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {(p as any).etiquetas.map((et: string) => (
+                        <span key={et} className="flex items-center gap-0.5 text-xs bg-purple-50 dark:bg-purple-900/20 text-accent px-2 py-0.5 rounded-full">
+                          <Tag className="w-2.5 h-2.5" />{et}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Detalle expandible: productos */}
+                  {expandedProvId === p.id && (
+                    <div className="mt-3 border-t border-border-ds pt-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-primary flex items-center gap-1.5">
+                          <Package className="w-4 h-4 text-accent" /> Productos de este proveedor
+                        </p>
+                        <button onClick={() => { setShowProdProvForm(p.id); setEditProdProvId(null); setProdProvForm({ producto_id: '', precio_compra: '', cantidad_minima: '1', costo_envio: '', costos_extra: '', notas: '' }) }}
+                          className="flex items-center gap-1 text-xs text-accent hover:underline">
+                          <Plus className="w-3 h-3" /> Vincular producto
+                        </button>
+                      </div>
+
+                      {showProdProvForm === p.id && (
+                        <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-2">
+                          <div className="relative">
+                            <select value={prodProvForm.producto_id}
+                              onChange={e => setProdProvForm(f => ({ ...f, producto_id: e.target.value }))}
+                              className="w-full appearance-none border border-border-ds rounded-lg pl-3 pr-7 py-2 text-sm bg-surface text-primary focus:outline-none focus:border-accent">
+                              <option value="">Seleccioná un producto…</option>
+                              {(productosAll as any[]).map((pr: any) => (
+                                <option key={pr.id} value={pr.id}>{pr.nombre} ({pr.sku})</option>
+                              ))}
+                            </select>
+                            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted pointer-events-none" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { label: 'Precio compra ($)', field: 'precio_compra' as const },
+                              { label: 'Cant. mínima', field: 'cantidad_minima' as const },
+                              { label: 'Costo envío ($)', field: 'costo_envio' as const },
+                              { label: 'Costos extra ($)', field: 'costos_extra' as const },
+                            ].map(({ label, field }) => (
+                              <div key={field}>
+                                <label className="block text-xs text-muted mb-0.5">{label}</label>
+                                <input type="number" onWheel={e => e.currentTarget.blur()} value={prodProvForm[field]}
+                                  onChange={e => setProdProvForm(f => ({ ...f, [field]: e.target.value }))} min="0"
+                                  className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                              </div>
+                            ))}
+                          </div>
+                          <input type="text" value={prodProvForm.notas}
+                            onChange={e => setProdProvForm(f => ({ ...f, notas: e.target.value }))}
+                            placeholder="Notas (opcional)"
+                            className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                          <div className="flex gap-2">
+                            <button onClick={() => { setShowProdProvForm(null); setEditProdProvId(null) }}
+                              className="flex-1 border border-border-ds text-muted py-1.5 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-600">Cancelar</button>
+                            <button onClick={() => saveProdProv.mutate(p.id)} disabled={saveProdProv.isPending}
+                              className="flex-1 bg-accent text-white py-1.5 rounded-lg text-sm hover:bg-accent/90 disabled:opacity-50">
+                              {saveProdProv.isPending ? 'Guardando…' : editProdProvId ? 'Actualizar' : 'Vincular'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {(provProductos as any[]).length === 0 ? (
+                        <p className="text-xs text-muted text-center py-2">Sin productos vinculados</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {(provProductos as any[]).map((pp: any) => (
+                            <div key={pp.id} className="flex items-center justify-between text-sm p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                              <div>
+                                <span className="font-medium text-primary">{pp.productos?.nombre}</span>
+                                <span className="text-xs text-muted ml-2">{pp.productos?.sku}</span>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-muted">
+                                {pp.precio_compra != null && <span className="text-green-600 dark:text-green-400 font-medium">${Number(pp.precio_compra).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
+                                {pp.cantidad_minima > 1 && <span>Mín. {pp.cantidad_minima}</span>}
+                                <button onClick={() => { if (confirm('¿Desvincular?')) deleteProdProv.mutate(pp.id) }}
+                                  className="text-muted hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab Servicios ───────────────────────────────────────────────────── */}
+      {tab === 'servicios' && (
+        <div className="space-y-4">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+            <input className="w-full pl-9 pr-3 py-2 border border-border-ds rounded-lg bg-surface text-sm text-primary"
+              placeholder="Buscar por nombre, contacto…"
+              value={serviciosSearch} onChange={e => setServiciosSearch(e.target.value)} />
+          </div>
+
+          {loadingProv ? (
+            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" /></div>
+          ) : filteredServicios.length === 0 ? (
+            <div className="text-center py-12 text-muted">
+              <Wrench className="w-10 h-10 mx-auto mb-2 opacity-30" />
+              <p>{serviciosSearch ? 'Sin resultados' : 'No hay proveedores de servicios cargados'}</p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {filteredServicios.map((s: any) => (
+                <div key={s.id} className={`bg-surface rounded-xl shadow-sm border border-border-ds p-4 ${!s.activo ? 'opacity-60' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Wrench className="w-4 h-4 text-accent flex-shrink-0" />
+                        <span className="font-semibold text-primary">{s.nombre}</span>
+                        {s.razon_social && s.razon_social !== s.nombre && <span className="text-xs text-muted">({s.razon_social})</span>}
+                        {!s.activo && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-muted px-2 py-0.5 rounded-full">Inactivo</span>}
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+                        {s.cuit && <span className="flex items-center gap-1"><Hash className="w-3 h-3" />{s.cuit}</span>}
+                        {s.telefono && <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{s.telefono}</span>}
+                        {s.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{s.email}</span>}
+                      </div>
+                      {Array.isArray(s.etiquetas) && s.etiquetas.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {s.etiquetas.map((et: string) => (
+                            <span key={et} className="flex items-center gap-0.5 text-xs bg-purple-50 dark:bg-purple-900/20 text-accent px-2 py-0.5 rounded-full">
+                              <Tag className="w-2.5 h-2.5" />{et}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => setExpandedServId(expandedServId === s.id ? null : s.id)}
+                        className="p-1.5 rounded text-muted hover:text-accent" title="Ver detalle">
+                        <ChevronRight className={`w-4 h-4 transition-transform ${expandedServId === s.id ? 'rotate-90' : ''}`} />
+                      </button>
+                      <button onClick={() => toggleActivo.mutate({ id: s.id, activo: s.activo })}
+                        className="p-1.5 rounded text-muted hover:text-primary">
+                        {s.activo ? <ToggleRight className="w-5 h-5 text-green-500" /> : <ToggleLeft className="w-5 h-5" />}
+                      </button>
+                      <button onClick={() => openEditProv(s)} className="p-1.5 rounded text-muted hover:text-primary" title="Editar">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => { if (confirm('¿Eliminar?')) deleteProveedor.mutate(s.id) }}
+                        className="p-1.5 rounded text-muted hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+
+                  {/* Detalle expandible: servicios + presupuestos */}
+                  {expandedServId === s.id && (
+                    <div className="mt-3 border-t border-border-ds pt-3 space-y-4">
+                      {/* Servicios que ofrece */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-semibold text-primary">Servicios que ofrece</p>
+                          <button onClick={() => { setShowServItemForm(s.id); setEditServItemId(null); setServItemForm({ nombre: '', detalle: '', costo: '', forma_pago: '', hace_factura: false, notas: '' }) }}
+                            className="flex items-center gap-1 text-xs text-accent hover:underline">
+                            <Plus className="w-3 h-3" /> Agregar servicio
+                          </button>
+                        </div>
+
+                        {showServItemForm === s.id && (
+                          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-2 mb-2">
+                            <input type="text" value={servItemForm.nombre} onChange={e => setServItemForm(f => ({ ...f, nombre: e.target.value }))}
+                              placeholder="Nombre del servicio *"
+                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                            <textarea value={servItemForm.detalle} onChange={e => setServItemForm(f => ({ ...f, detalle: e.target.value }))}
+                              placeholder="Detalle del servicio" rows={2}
+                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent resize-none" />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="number" onWheel={e => e.currentTarget.blur()} value={servItemForm.costo}
+                                onChange={e => setServItemForm(f => ({ ...f, costo: e.target.value }))} placeholder="Costo ($)"
+                                className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                              <div className="relative">
+                              <select value={servItemForm.forma_pago}
+                                onChange={e => setServItemForm(f => ({ ...f, forma_pago: e.target.value }))}
+                                className="w-full appearance-none border border-border-ds rounded-lg pl-3 pr-7 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent">
+                                <option value="">Forma de pago…</option>
+                                {['Efectivo','Transferencia','Tarjeta débito','Tarjeta crédito','Cheque','Mercado Pago','Otro'].map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                              <ChevronDown size={11} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                            </div>
+                            </div>
+                            <label className="flex items-center gap-2 text-sm text-primary cursor-pointer">
+                              <input type="checkbox" checked={servItemForm.hace_factura}
+                                onChange={e => setServItemForm(f => ({ ...f, hace_factura: e.target.checked }))} className="accent-accent" />
+                              Emite factura
+                            </label>
+                            <div className="flex gap-2">
+                              <button onClick={() => { setShowServItemForm(null); setEditServItemId(null) }}
+                                className="flex-1 border border-border-ds text-muted py-1.5 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-600">Cancelar</button>
+                              <button onClick={() => saveServItem.mutate(s.id)} disabled={saveServItem.isPending}
+                                className="flex-1 bg-accent text-white py-1.5 rounded-lg text-sm hover:bg-accent/90 disabled:opacity-50">
+                                {saveServItem.isPending ? 'Guardando…' : 'Guardar'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {(servicioItems as any[]).length === 0 ? (
+                          <p className="text-xs text-muted text-center py-1">Sin servicios cargados</p>
+                        ) : (
+                          <div className="space-y-1">
+                            {(servicioItems as any[]).map((si: any) => (
+                              <div key={si.id} className="flex items-start justify-between p-2.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-sm text-primary">{si.nombre}</span>
+                                    {si.hace_factura && <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">Factura</span>}
+                                  </div>
+                                  {si.detalle && <p className="text-xs text-muted mt-0.5">{si.detalle}</p>}
+                                  <div className="flex gap-3 mt-1 text-xs text-muted">
+                                    {si.costo != null && <span className="text-green-600 dark:text-green-400 font-medium">${Number(si.costo).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
+                                    {si.forma_pago && <span>{si.forma_pago}</span>}
+                                  </div>
+                                </div>
+                                <button onClick={() => { if (confirm('¿Eliminar este servicio?')) deleteServItem.mutate(si.id) }}
+                                  className="text-muted hover:text-red-500 ml-2 flex-shrink-0"><X className="w-3.5 h-3.5" /></button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Presupuestos */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-semibold text-primary">Presupuestos</p>
+                          <button onClick={() => { setShowPresupForm(s.id); setPresupForm({ nombre: '', fecha: new Date().toISOString().split('T')[0], monto: '', notas: '', servicio_item_id: '' }); setPresupFile(null) }}
+                            className="flex items-center gap-1 text-xs text-accent hover:underline">
+                            <Plus className="w-3 h-3" /> Añadir presupuesto
+                          </button>
+                        </div>
+
+                        {showPresupForm === s.id && (
+                          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-2 mb-2">
+                            <input type="text" value={presupForm.nombre}
+                              onChange={e => setPresupForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre del presupuesto"
+                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="block text-xs text-muted mb-0.5">Fecha</label>
+                                <input type="date" value={presupForm.fecha}
+                                  onChange={e => setPresupForm(f => ({ ...f, fecha: e.target.value }))}
+                                  className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-muted mb-0.5">Monto ($)</label>
+                                <input type="number" onWheel={e => e.currentTarget.blur()} value={presupForm.monto}
+                                  onChange={e => setPresupForm(f => ({ ...f, monto: e.target.value }))} placeholder="0"
+                                  className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                              </div>
+                            </div>
+                            <textarea value={presupForm.notas} onChange={e => setPresupForm(f => ({ ...f, notas: e.target.value }))}
+                              placeholder="Notas" rows={2}
+                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent resize-none" />
+                            <div>
+                              <input ref={presupFileRef} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden"
+                                onChange={e => setPresupFile(e.target.files?.[0] ?? null)} />
+                              <button type="button" onClick={() => presupFileRef.current?.click()}
+                                className="flex items-center gap-2 border border-border-ds rounded-lg px-3 py-1.5 text-sm text-muted hover:bg-gray-100 dark:hover:bg-gray-600">
+                                <Paperclip className="w-3.5 h-3.5" />
+                                {presupFile ? presupFile.name : 'Adjuntar archivo (PDF/imagen)'}
+                              </button>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={resetPresupForm}
+                                className="flex-1 border border-border-ds text-muted py-1.5 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-600">Cancelar</button>
+                              <button onClick={() => savePresupuesto.mutate(s.id)} disabled={savePresupuesto.isPending}
+                                className="flex-1 bg-accent text-white py-1.5 rounded-lg text-sm hover:bg-accent/90 disabled:opacity-50">
+                                {savePresupuesto.isPending ? 'Guardando…' : editPresupId ? 'Actualizar' : 'Guardar'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {(presupuestos as any[]).length === 0 ? (
+                          <p className="text-xs text-muted text-center py-1">Sin presupuestos cargados</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(presupuestos as any[]).map((ps: any) => {
+                              const estadoColor: Record<string, string> = {
+                                pendiente:   'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+                                aprobado:    'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+                                rechazado:   'bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400',
+                                convertido:  'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400',
+                              }
+                              const estado = ps.estado ?? 'pendiente'
+                              const puedeAccionar = estado === 'pendiente'
+                              return (
+                                <div key={ps.id} className="border border-border-ds rounded-xl p-3 bg-surface space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-sm font-medium text-primary">{ps.nombre ?? 'Presupuesto'}</span>
+                                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${estadoColor[estado] ?? estadoColor.pendiente}`}>
+                                          {estado.charAt(0).toUpperCase() + estado.slice(1)}
+                                        </span>
+                                        {ps.gasto_id && <span className="text-xs text-blue-500">→ Gasto creado</span>}
+                                      </div>
+                                      <div className="text-xs text-muted mt-0.5 flex gap-3 flex-wrap">
+                                        <span>{ps.fecha}</span>
+                                        {ps.monto != null && <span className="text-green-600 dark:text-green-400 font-medium">${Number(ps.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
+                                        {ps.servicio_items?.nombre && <span className="text-accent">{ps.servicio_items.nombre}</span>}
+                                        {ps.notas && <span className="italic">{ps.notas}</span>}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      {ps.archivo_url && (
+                                        <button onClick={() => verPresupuesto(ps.archivo_url)}
+                                          title="Ver archivo" className="p-1 text-blue-500 hover:text-blue-700">
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {puedeAccionar && (
+                                        <button onClick={() => {
+                                          setEditPresupId(ps.id)
+                                          setShowPresupForm(s.id)
+                                          setPresupForm({
+                                            nombre: ps.nombre ?? '',
+                                            fecha: ps.fecha ?? new Date().toISOString().split('T')[0],
+                                            monto: ps.monto ? String(ps.monto) : '',
+                                            notas: ps.notas ?? '',
+                                            servicio_item_id: ps.servicio_item_id ?? '',
+                                          })
+                                        }} className="p-1 text-muted hover:text-accent" title="Editar">
+                                          <Pencil className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {puedeAccionar && (
+                                        <button onClick={() => { if (confirm('¿Eliminar presupuesto?')) deletePresupuesto.mutate({ id: ps.id, archivo_url: ps.archivo_url }) }}
+                                          className="p-1 text-muted hover:text-red-500" title="Eliminar">
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {/* Acciones de aprobación */}
+                                  {puedeAccionar && (
+                                    <div className="flex gap-2 pt-1 border-t border-border-ds">
+                                      <button
+                                        onClick={() => { if (confirm(`¿Aprobar y crear gasto de $${Number(ps.monto ?? 0).toLocaleString('es-AR')}?`)) aprobarPresupuesto.mutate(ps) }}
+                                        disabled={aprobarPresupuesto.isPending}
+                                        className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50 transition-colors">
+                                        ✓ Aprobar → Crear gasto
+                                      </button>
+                                      <button
+                                        onClick={() => { if (confirm('¿Rechazar este presupuesto?')) rechazarPresupuesto.mutate(ps.id) }}
+                                        disabled={rechazarPresupuesto.isPending}
+                                        className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs border border-red-200 dark:border-red-800 text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-colors">
+                                        ✗ Rechazar
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -678,7 +1325,7 @@ export default function ProveedoresPage() {
           <div className="bg-surface rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-lg font-bold text-primary mb-4">
-                {editId ? 'Editar proveedor' : 'Nuevo proveedor'}
+                {editId ? `Editar ${form.tipo === 'servicio' ? 'proveedor de servicio' : 'proveedor'}` : `Nuevo ${form.tipo === 'servicio' ? 'proveedor de servicio' : 'proveedor'}`}
               </h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -702,15 +1349,29 @@ export default function ProveedoresPage() {
                     placeholder="Razón social jurídica"
                   />
                 </div>
+                {/* DNI */}
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">DNI</label>
+                  <input className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
+                    value={form.dni} onChange={e => setForm(f => ({ ...f, dni: e.target.value }))} placeholder="Para personas físicas" />
+                </div>
                 {/* CUIT */}
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1">CUIT</label>
-                  <input
-                    className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
-                    value={form.cuit}
-                    onChange={e => setForm(f => ({ ...f, cuit: e.target.value }))}
-                    placeholder="20-12345678-9"
-                  />
+                  <input className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
+                    value={form.cuit} onChange={e => setForm(f => ({ ...f, cuit: e.target.value }))} placeholder="20-12345678-9" />
+                </div>
+                {/* Código fiscal */}
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">Código fiscal</label>
+                  <input className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
+                    value={form.codigo_fiscal} onChange={e => setForm(f => ({ ...f, codigo_fiscal: e.target.value }))} placeholder="Código interno" />
+                </div>
+                {/* Régimen fiscal */}
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">Régimen fiscal</label>
+                  <input className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
+                    value={form.regimen_fiscal} onChange={e => setForm(f => ({ ...f, regimen_fiscal: e.target.value }))} placeholder="Ej: Responsable Inscripto" />
                 </div>
                 {/* Condición IVA */}
                 <div>
@@ -800,16 +1461,22 @@ export default function ProveedoresPage() {
                     placeholder="CBU o alias para transferencias"
                   />
                 </div>
+                {/* Etiquetas */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-medium text-muted mb-1">Etiquetas (separadas por coma)</label>
+                  <input className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
+                    value={form.etiquetas}
+                    onChange={e => setForm(f => ({ ...f, etiquetas: e.target.value }))}
+                    placeholder="Ej: mayorista, importador, local" />
+                  <p className="text-xs text-muted mt-0.5">Usá comas para separar. Se usan para filtrar en la lista.</p>
+                </div>
                 {/* Notas */}
                 <div className="md:col-span-2">
                   <label className="block text-xs font-medium text-muted mb-1">Notas</label>
-                  <textarea
-                    rows={2}
+                  <textarea rows={2}
                     className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm resize-none"
-                    value={form.notas}
-                    onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
-                    placeholder="Notas adicionales sobre el proveedor"
-                  />
+                    value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
+                    placeholder="Notas adicionales" />
                 </div>
               </div>
 

@@ -333,6 +333,37 @@ export default function DashboardPage() {
     enabled: !!tenant,
   })
 
+  // ─── Stock inmovilizado (solo se carga en tab insights) ──────────────────────
+  const { data: stockInmov } = useQuery({
+    queryKey: ['stock-inmovilizado', tenant?.id],
+    queryFn: async () => {
+      const { data: estadosInmov } = await supabase
+        .from('estados_inventario').select('id')
+        .eq('tenant_id', tenant!.id).eq('es_disponible_venta', false)
+      const eIds = (estadosInmov ?? []).map((e: any) => e.id)
+      if (eIds.length === 0) return { unidades: 0, valor: 0, porEstado: [] as {nombre:string;color:string;unidades:number;valor:number}[] }
+
+      const { data: lineas } = await supabase
+        .from('inventario_lineas')
+        .select('cantidad, estado_id, productos(precio_costo), estados_inventario!estado_id(nombre, color)')
+        .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
+        .in('estado_id', eIds)
+
+      const unidades = (lineas ?? []).reduce((s, l: any) => s + Number(l.cantidad), 0)
+      const valor    = (lineas ?? []).reduce((s, l: any) => s + Number(l.cantidad) * Number(l.productos?.precio_costo ?? 0), 0)
+
+      const map: Record<string, {nombre:string;color:string;unidades:number;valor:number}> = {}
+      for (const l of lineas ?? []) {
+        const e = (l as any).estados_inventario
+        if (!map[l.estado_id as string]) map[l.estado_id as string] = { nombre: e?.nombre ?? 'Sin estado', color: e?.color ?? '#888', unidades: 0, valor: 0 }
+        map[l.estado_id as string].unidades += Number(l.cantidad)
+        map[l.estado_id as string].valor    += Number(l.cantidad) * Number((l as any).productos?.precio_costo ?? 0)
+      }
+      return { unidades, valor, porEstado: Object.values(map).sort((a, b) => b.unidades - a.unidades) }
+    },
+    enabled: !!tenant && tab === 'insights',
+  })
+
   // ─── Insights ────────────────────────────────────────────────────────────────
   const insights = useMemo<Insight[]>(() => {
     if (!stats) return []
@@ -485,6 +516,54 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* KPI stock inmovilizado */}
+        {stockInmov && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
+                <Package size={15} className="text-orange-600 dark:text-orange-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Stock inmovilizado</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Unidades en estados no disponibles para la venta</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4 text-center">
+                <p className="text-2xl font-bold text-orange-700 dark:text-orange-400">
+                  {stockInmov.unidades.toLocaleString('es-AR')}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">unidades</p>
+              </div>
+              <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4 text-center">
+                <p className="text-2xl font-bold text-orange-700 dark:text-orange-400">
+                  ${stockInmov.valor.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">valor a costo</p>
+              </div>
+            </div>
+            {stockInmov.porEstado.length > 0 && (
+              <div className="space-y-2">
+                {stockInmov.porEstado.map(e => (
+                  <div key={e.nombre} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
+                      <span className="text-gray-600 dark:text-gray-300">{e.nombre}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                      <span>{e.unidades.toLocaleString('es-AR')} ud.</span>
+                      <span className="font-medium">${e.valor.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {stockInmov.unidades === 0 && (
+              <p className="text-sm text-green-600 dark:text-green-400 text-center">✓ Sin stock inmovilizado</p>
+            )}
           </div>
         )}
 

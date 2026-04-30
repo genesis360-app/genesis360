@@ -743,6 +743,13 @@ export default function InventarioPage() {
     },
     onSuccess: () => {
       toast.success('Ingreso registrado')
+      logActividad({
+        entidad: 'inventario_linea',
+        entidad_nombre: (selectedProduct as any)?.nombre ?? '',
+        accion: 'crear',
+        valor_nuevo: `Ingreso de stock — ${(selectedProduct as any)?.nombre ?? ''}`,
+        pagina: '/inventario',
+      })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
@@ -795,6 +802,13 @@ export default function InventarioPage() {
     },
     onSuccess: () => {
       toast.success('Rebaje registrado')
+      logActividad({
+        entidad: 'inventario_linea',
+        entidad_nombre: (selectedProduct as any)?.nombre ?? '',
+        accion: 'cambio_estado',
+        valor_nuevo: `Rebaje de stock — ${(selectedProduct as any)?.nombre ?? ''}`,
+        pagina: '/inventario',
+      })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
@@ -1351,6 +1365,13 @@ export default function InventarioPage() {
     onSuccess: ({ exitos, errores }) => {
       if (errores.length > 0) toast.error(`${exitos} OK · Errores: ${errores.join(' · ')}`, { duration: 8000 })
       else toast.success(`${exitos} ingreso${exitos !== 1 ? 's' : ''} registrado${exitos !== 1 ? 's' : ''}`)
+      if (exitos > 0) logActividad({
+        entidad: 'inventario_linea',
+        entidad_nombre: `Ingreso masivo (${exitos} producto${exitos !== 1 ? 's' : ''})`,
+        accion: 'crear',
+        valor_nuevo: `Ingreso masivo — ${exitos} producto${exitos !== 1 ? 's' : ''}`,
+        pagina: '/inventario',
+      })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
@@ -1376,9 +1397,10 @@ export default function InventarioPage() {
   // ── Computed values ────────────────────────────────────────────────────────
   const filteredMov = movimientos.filter(m => {
     const tipo = (m as any).tipo as string
-    if (tab === 'agregar') return tipo === 'ingreso' || tipo === 'kitting'
-    if (tab === 'quitar') return tipo === 'rebaje' || tipo === 'des_kitting'
-    // historial: todos los tipos, con filtros adicionales
+    // Filtro por tipo según tab (sin early return para que movSearch también aplique)
+    if (tab === 'agregar' && !(tipo === 'ingreso' || tipo === 'kitting')) return false
+    if (tab === 'quitar' && !(tipo === 'rebaje' || tipo === 'des_kitting')) return false
+    // Filtros adicionales solo en historial
     if (tab === 'historial') {
       if (filterHistFechaDesde && m.created_at < filterHistFechaDesde) return false
       if (filterHistFechaHasta && m.created_at > filterHistFechaHasta + 'T23:59:59') return false
@@ -1386,6 +1408,7 @@ export default function InventarioPage() {
       if (filterHistCatId && (m as any).productos?.categoria_id !== filterHistCatId) return false
       if (filterHistMotivo && !(m as any).motivo?.toLowerCase().includes(filterHistMotivo.toLowerCase())) return false
     }
+    // Búsqueda por producto/SKU — aplica a TODOS los tabs (agregar, quitar, historial)
     if (!movSearch) return true
     const s = movSearch.toLowerCase()
     return (m as any).productos?.nombre?.toLowerCase().includes(s) ||
@@ -1584,12 +1607,24 @@ export default function InventarioPage() {
         <>
           {/* Barra de uso de movimientos — solo en agregar/quitar */}
           {tab !== 'historial' && limits && (
-            <PlanProgressBar
-              actual={limits.movimientos_mes}
-              max={limits.max_movimientos}
-              label="movimientos este mes"
-              addonInfo={limits.addon_movimientos > 0 ? `(incluye ${limits.addon_movimientos} extra)` : undefined}
-            />
+            limits.max_movimientos === -1 ? (
+              // Plan ilimitado: mostrar solo el contador sin barra de límite
+              <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 border border-border-ds bg-surface text-sm">
+                <div className="flex-1 min-w-0">
+                  <span className="text-muted font-medium">
+                    {limits.movimientos_mes.toLocaleString()} movimiento{limits.movimientos_mes !== 1 ? 's' : ''} este mes
+                  </span>
+                  <span className="ml-2 text-xs text-green-600 dark:text-green-400">· Sin límite en tu plan</span>
+                </div>
+              </div>
+            ) : (
+              <PlanProgressBar
+                actual={limits.movimientos_mes}
+                max={limits.max_movimientos}
+                label="movimientos este mes"
+                addonInfo={limits.addon_movimientos > 0 ? `(incluye ${limits.addon_movimientos} extra)` : undefined}
+              />
+            )
           )}
 
           {/* ── MASIVO INLINE VIEW (solo agregar) ─── */}

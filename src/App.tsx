@@ -40,6 +40,8 @@ const AyudaPage           = lazy(() => import('@/pages/AyudaPage'))
 const ProveedoresPage     = lazy(() => import('@/pages/ProveedoresPage'))
 const BibliotecaPage      = lazy(() => import('@/pages/BibliotecaPage'))
 const RecepcionesPage     = lazy(() => import('@/pages/RecepcionesPage'))
+const EnviosPage          = lazy(() => import('@/pages/EnviosPage'))
+const FacturacionPage     = lazy(() => import('@/pages/FacturacionPage'))
 
 // app.genesis360.pro → directo al login/dashboard (sin landing)
 // www.genesis360.pro  → muestra la landing
@@ -50,7 +52,10 @@ const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 1000 * 60 * 5, retry: 1 },
+    // staleTime: 0 → siempre refetch en background al montar un componente.
+    // El usuario ve datos cacheados inmediatamente (sin spinner) y se actualizan
+    // silenciosamente. Patrón stale-while-revalidate: rápido + siempre fresco.
+    queries: { staleTime: 0, retry: 1, refetchOnWindowFocus: true },
   },
 })
 
@@ -146,6 +151,8 @@ function App() {
                   <Route path="/historial" element={<HistorialPage />} />
                   <Route path="/proveedores" element={<ProveedoresPage />} />
                   <Route path="/recepciones" element={<RecepcionesPage />} />
+                  <Route path="/envios"        element={<EnviosPage />} />
+                  <Route path="/facturacion"  element={<FacturacionPage />} />
                   <Route path="/biblioteca" element={<BibliotecaPage />} />
                   <Route path="/configuracion/importar" element={<ImportarMasterPage />} />
                 </Route>

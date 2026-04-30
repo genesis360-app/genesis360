@@ -138,6 +138,11 @@ export default function GastosPage() {
   })
   const [mediosPagoGenerar, setMediosPagoGenerar] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   const [generandoFijo, setGenerandoFijo] = useState(false)
+  const [generarFile, setGenerarFile] = useState<File | null>(null)
+  const [generarTipoComp, setGenerarTipoComp] = useState('')
+  const [generarCompNombre, setGenerarCompNombre] = useState('')
+  const [generarUsaPrefix, setGenerarUsaPrefix] = useState(false)
+  const generarFileRef = useRef<HTMLInputElement>(null)
 
   // Múltiples medios de pago para gastos variables
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
@@ -485,6 +490,7 @@ export default function GastosPage() {
     setModalGenerarFijo(f)
     setFormGenerar({ fecha: new Date().toISOString().split('T')[0], notas: '' })
     setMediosPagoGenerar(f.medio_pago ? [{ tipo: f.medio_pago, monto: String(f.monto) }] : [{ tipo: '', monto: String(f.monto) }])
+    setGenerarFile(null); setGenerarTipoComp(''); setGenerarCompNombre(''); setGenerarUsaPrefix(false)
   }
   const confirmarGenerarFijo = async () => {
     if (!modalGenerarFijo) return
@@ -495,6 +501,12 @@ export default function GastosPage() {
       const medioJson = mediosValGen.length > 0
         ? JSON.stringify(mediosValGen.map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto) })))
         : null
+      const tituloFinal = (() => {
+        const base = generarTipoComp || generarCompNombre.trim()
+        if (!base) return null
+        if (generarUsaPrefix && f.categoria) return `${f.categoria}_${base}`
+        return base
+      })()
       const { data: inserted, error } = await supabase.from('gastos').insert({
         tenant_id: tenant!.id,
         descripcion: f.descripcion, monto: f.monto,
@@ -505,8 +517,16 @@ export default function GastosPage() {
         fecha: formGenerar.fecha,
         notas: formGenerar.notas.trim() || `Generado desde gasto fijo — ${f.frecuencia}`,
         sucursal_id: f.sucursal_id ?? null, usuario_id: user?.id ?? null,
+        comprobante_titulo: tituloFinal,
       }).select('id').single()
       if (error) throw error
+      // Subir comprobante si lo adjuntó
+      if (generarFile && inserted) {
+        const ext = generarFile.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+        const path = `${tenant!.id}/${inserted.id}.${ext}`
+        const { error: upErr } = await supabase.storage.from('comprobantes-gastos').upload(path, generarFile, { upsert: true })
+        if (!upErr) await supabase.from('gastos').update({ comprobante_url: path }).eq('id', inserted.id)
+      }
       // Registrar en caja
       const sesionUsar = sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null
       if (sesionUsar && mediosValGen.length > 0) {
@@ -1451,6 +1471,47 @@ export default function GastosPage() {
                     )}
                   </div>
                 ))}
+              </div>
+              {/* Comprobante */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Comprobante (opcional)</label>
+                <input ref={generarFileRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
+                  className="hidden" onChange={e => setGenerarFile(e.target.files?.[0] ?? null)} />
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => generarFileRef.current?.click()}
+                    className="flex items-center gap-2 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    <Paperclip size={13} />
+                    {generarFile ? generarFile.name : 'Adjuntar archivo'}
+                  </button>
+                  {generarFile && (
+                    <button type="button" onClick={() => setGenerarFile(null)} className="text-gray-400 hover:text-red-500"><X size={14} /></button>
+                  )}
+                </div>
+                {generarFile && (
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <select value={generarTipoComp}
+                        onChange={e => { setGenerarTipoComp(e.target.value); if (e.target.value) setGenerarCompNombre('') }}
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        <option value="">Tipo de comprobante…</option>
+                        {TIPOS_COMPROBANTE.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                    {!generarTipoComp && (
+                      <input type="text" value={generarCompNombre} onChange={e => setGenerarCompNombre(e.target.value)}
+                        placeholder="O escribí un título personalizado"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    )}
+                    {modalGenerarFijo?.categoria && (
+                      <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+                        <input type="checkbox" checked={generarUsaPrefix} onChange={e => setGenerarUsaPrefix(e.target.checked)} className="accent-accent" />
+                        Agregar categoría como prefijo
+                        {generarUsaPrefix && <span className="text-accent font-medium">{modalGenerarFijo.categoria}_{generarTipoComp || generarCompNombre || '…'}</span>}
+                      </label>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>

@@ -1328,11 +1328,22 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 - Sub-tab "Domicilios" en ficha del cliente
 - Prerequisito para módulo Envíos (selector de domicilio al crear envío)
 
+#### Ventas — prompt ¿Facturar ahora? al despachar
+- Si `facturacion_habilitada=true` y CUIT configurado → modal post-despacho
+- Auto-detección tipo: Mono→C · cliente RI→A · resto→B. Selector punto de venta lazy.
+- Llama EF `emitir-factura` → CAE en toast. Aplica en registrarVenta y cambiarEstado.
+
+#### Barra plan movimientos/productos — fix plan ilimitado
+- `PlanProgressBar(max=-1)` retorna null → no visible en Pro/Trial
+- Fix: "X movimientos/productos este mes · Sin límite en tu plan" en neutral
+- 1 fila `movimientos_stock` = 1 movimiento. Masivo 10 prods = 10 movimientos.
+
 #### Fixes / UX
 - `staleTime: 0` global → refresh en background al navegar (stale-while-revalidate)
 - Loop trial vencido: botón "Cerrar sesión" en SuscripcionPage y OnboardingPage
 - Eliminar cliente con ventas: nullea FK en ventas/envíos antes de borrar
 - Config ubicaciones mobile: `flex-wrap` en fila agregar
+- Envíos: bloqueo edición si entregado · servicio selectbox · canal desde venta.origen
  
  # CLAUDE.md
 

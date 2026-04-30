@@ -446,3 +446,22 @@ Próximo RRHH: Bloque 5 — CHECK-IN/CHECK-OUT rápido (v0.76.0)
 - **Envíos**: bloqueo edición si estado='entregado' · servicio selectbox por courier · canal autocompletado desde venta
 - **Proveedores servicios**: forma de pago como select en servicio_items
 - **Config ubicaciones**: `flex-wrap` en fila agregar → botón siempre visible en mobile
+
+---
+
+## ✅ Ventas — prompt facturación al despachar (v1.3.0 DEV)
+
+- Después de despachar una venta, si `tenant.facturacion_habilitada=true` y tiene CUIT configurado → aparece modal "¿Emitir comprobante?"
+- Auto-detección del tipo: Monotributista→C · cliente RI→A · resto→B
+- Selector punto de venta (desde `puntos_venta_afip` o input manual)
+- Botón "Emitir Factura X" → llama EF `emitir-factura` → CAE en toast
+- Botón "Saltar" → cierra sin facturar (venta ya despachada)
+- Funciona tanto en venta nueva (registrarVenta) como en cambio de estado desde historial (cambiarEstado→despachada)
+- `puntosVentaAfip` cargados lazy (solo cuando se abre el modal)
+
+## ✅ Fix barra plan en Inventario/Productos (v1.3.0 DEV)
+
+- `PlanProgressBar` retorna null cuando `max=-1` (Pro/Trial = ilimitado)
+- Fix: en planes ilimitados muestra "X movimientos este mes · Sin límite en tu plan" en estilo neutro
+- Aplicado en InventarioPage (tabs Agregar/Quitar) y ProductosPage
+- **Cómo cuentan los movimientos**: 1 fila en `movimientos_stock` = 1 movimiento. Masivo de 10 productos = 10 movimientos. Free=200/mes · Básico=2.000/mes · Pro/Enterprise=ilimitado.

@@ -1,6 +1,6 @@
 # Genesis360 — Roadmap
 
-**Última actualización:** 28 de Abril, 2026 · **v1.2.1 en PROD · v1.3.0 en DEV (pendiente merge)**
+**Última actualización:** 30 de Abril, 2026 · **v1.4.0 en DEV ✅ · PROD = v1.3.0 (pendiente PR)**
 
 > Stack, arquitectura y convenciones → [CLAUDE.md](CLAUDE.md) · Workflow de deploy → [WORKFLOW.md](WORKFLOW.md)
 

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -28,6 +28,13 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
 }
 
 const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
+
+function isPresupuestoVencido(venta: any, validezDias: number | null | undefined): boolean {
+  if (!validezDias || venta?.estado !== 'pendiente') return false
+  const ref = new Date(venta.updated_at ?? venta.created_at)
+  const dias = (Date.now() - ref.getTime()) / (1000 * 60 * 60 * 24)
+  return dias > validezDias
+}
 
 function calcularEfectivo(mediosPago: MedioPagoItem[], total: number): number {
   const efectivos = mediosPago.filter(m => m.tipo === 'Efectivo')
@@ -79,6 +86,8 @@ export default function VentasPage() {
   const [clienteId, setClienteId] = useState<string | null>(null)
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
+  const [clienteCCEnabled, setClienteCCEnabled] = useState(false)
+  const [modoCC, setModoCC] = useState(false)
   const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
@@ -101,6 +110,7 @@ export default function VentasPage() {
   const [editandoPago, setEditandoPago] = useState(false)
   const [editMontoPagado, setEditMontoPagado] = useState('')
   const [savingMontoPagado, setSavingMontoPagado] = useState(false)
+  const [actualizandoPrecios, setActualizandoPrecios] = useState(false)
 
   // Devoluciones
   interface DevItem {
@@ -405,7 +415,7 @@ export default function VentasPage() {
   const { data: clientesBusqueda = [] } = useQuery({
     queryKey: ['clientes-search', tenant?.id, clienteSearch],
     queryFn: async () => {
-      let q = supabase.from('clientes').select('id, nombre, dni, telefono')
+      let q = supabase.from('clientes').select('id, nombre, dni, telefono, cuenta_corriente_habilitada')
         .eq('tenant_id', tenant!.id).order('nombre').limit(10)
       if (clienteSearch) q = q.or(`nombre.ilike.%${clienteSearch}%,dni.ilike.%${clienteSearch}%`)
       const { data } = await q
@@ -970,21 +980,26 @@ export default function VentasPage() {
       toast.error('Registrá o seleccioná un cliente para continuar.')
       return
     }
-    // Validar medios de pago
-    const errorPago = validarMediosPago(estado, mediosPago, total)
-    if (errorPago) { toast.error(errorPago); return }
-    const vuelto = calcularVuelto(mediosPago, total)
-    const montoEfectivoCaja = calcularEfectivoCaja(mediosPago, total)
-    if (estado === 'despachada' || estado === 'reservada') {
-      if (sesionesAbiertas.length === 0) {
-        toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
-        return
-      }
-      if (sesionesAbiertas.length > 1 && !cajaSeleccionadaId) {
-        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
-        return
+    // Cuenta corriente: requiere cliente, bypasa validación de pago y caja
+    if (modoCC) {
+      if (!clienteId) { toast.error('Seleccioná un cliente para usar cuenta corriente.'); return }
+    } else {
+      // Validar medios de pago (solo si no es CC)
+      const errorPago = validarMediosPago(estado, mediosPago, total)
+      if (errorPago) { toast.error(errorPago); return }
+      if (estado === 'despachada' || estado === 'reservada') {
+        if (sesionesAbiertas.length === 0) {
+          toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
+          return
+        }
+        if (sesionesAbiertas.length > 1 && !cajaSeleccionadaId) {
+          toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
+          return
+        }
       }
     }
+    const vuelto = modoCC ? 0 : calcularVuelto(mediosPago, total)
+    const montoEfectivoCaja = modoCC ? 0 : calcularEfectivoCaja(mediosPago, total)
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     try {
@@ -999,8 +1014,11 @@ export default function VentasPage() {
         subtotal,
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
         total,
-        medio_pago: serializeMediosPago(mediosPago, total),
-        monto_pagado: estado === 'pendiente' ? 0 : Math.min(mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0), total),
+        medio_pago: modoCC
+          ? JSON.stringify([{ tipo: 'Cuenta Corriente', monto: total }])
+          : serializeMediosPago(mediosPago, total),
+        monto_pagado: modoCC ? 0 : (estado === 'pendiente' ? 0 : Math.min(mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0), total)),
+        es_cuenta_corriente: modoCC,
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
@@ -1226,6 +1244,7 @@ export default function VentasPage() {
         triggerFacturaModal(venta.id, venta.numero ?? 0, Number(venta.total ?? 0))
       }
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
+      setClienteCCEnabled(false); setModoCC(false)
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
       setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
@@ -1314,6 +1333,48 @@ export default function VentasPage() {
     setVentaDetalle(null)
     setTab('nueva')
     toast.success('Reserva cancelada — editá el carrito y volvé a reservar')
+  }
+
+  const actualizarPrecios = async () => {
+    if (!ventaDetalle || !tenant) return
+    setActualizandoPrecios(true)
+    try {
+      const productoIds = (ventaDetalle.venta_items ?? []).map((i: any) => i.producto_id).filter(Boolean)
+      const { data: prods } = await supabase
+        .from('productos').select('id, precio_venta, alicuota_iva').in('id', productoIds)
+      if (!prods) throw new Error('No se pudieron cargar los precios')
+      const precioMap: Record<string, { precio_venta: number; alicuota_iva: number }> = {}
+      for (const p of prods) precioMap[p.id] = { precio_venta: p.precio_venta ?? 0, alicuota_iva: p.alicuota_iva ?? 21 }
+      let nuevoTotal = 0
+      for (const item of (ventaDetalle.venta_items ?? [])) {
+        const prod = precioMap[item.producto_id]
+        if (!prod) continue
+        const nuevoPrecio = prod.precio_venta
+        const descu = item.descuento ?? 0
+        const nuevoSubtotal = nuevoPrecio * item.cantidad * (1 - descu / 100)
+        const ivaRate = prod.alicuota_iva / 100
+        const nuevoIva = nuevoSubtotal - nuevoSubtotal / (1 + ivaRate)
+        nuevoTotal += nuevoSubtotal
+        await supabase.from('venta_items').update({
+          precio_unitario: nuevoPrecio,
+          subtotal: nuevoSubtotal,
+          alicuota_iva: prod.alicuota_iva,
+          iva_monto: nuevoIva,
+        }).eq('id', item.id)
+      }
+      const { error } = await supabase.from('ventas').update({
+        total: nuevoTotal,
+        updated_at: new Date().toISOString(),
+      }).eq('id', ventaDetalle.id)
+      if (error) throw error
+      toast.success('Precios actualizados. Ya podés convertir el presupuesto.')
+      setVentaDetalle(null)
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+    } catch (e: any) {
+      toast.error('Error: ' + (e.message ?? 'No se pudieron actualizar los precios'))
+    } finally {
+      setActualizandoPrecios(false)
+    }
   }
 
   const abrirModalDevolucion = (venta: any) => {
@@ -2295,7 +2356,7 @@ export default function VentasPage() {
                 {clienteId ? (
                   <div className="flex items-center gap-2 px-3 py-2.5 border border-blue-300 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-sm">
                     <span className="flex-1 font-medium text-blue-800 dark:text-blue-400">{clienteNombre}</span>
-                    <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch('') }} title="Quitar cliente" className="text-blue-400 hover:text-blue-700 dark:text-blue-400"><X size={14} /></button>
+                    <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch(''); setClienteCCEnabled(false); setModoCC(false) }} title="Quitar cliente" className="text-blue-400 hover:text-blue-700 dark:text-blue-400"><X size={14} /></button>
                   </div>
                 ) : (
                   <>
@@ -2317,6 +2378,8 @@ export default function VentasPage() {
                               setClienteId(c.id)
                               setClienteNombre(c.nombre)
                               setClienteTelefono(c.telefono ?? '')
+                              setClienteCCEnabled(c.cuenta_corriente_habilitada ?? false)
+                              setModoCC(false)
                               setClienteSearch('')
                               setClienteDropOpen(false)
                             }}
@@ -2564,16 +2627,24 @@ export default function VentasPage() {
                       ['despachada', 'Venta directa', Zap],
                       ['pendiente', 'Presupuesto', FileText],
                     ] as const).map(([modo, label, Icon]) => (
-                      <button key={modo} onClick={() => setModoVenta(modo)}
-                        className={`flex-1 flex items-center justify-center gap-1 py-2 transition-colors ${modoVenta === modo ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                      <button key={modo} onClick={() => { setModoVenta(modo); setModoCC(false) }}
+                        className={`flex-1 flex items-center justify-center gap-1 py-2 transition-colors ${modoVenta === modo && !modoCC ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
                         <Icon size={11} />{label}
                       </button>
                     ))}
                   </div>
-                  <button onClick={() => registrarVenta(modoVenta)} disabled={saving}
+                  {/* Botón Cuenta Corriente — visible solo si el cliente tiene CC habilitada */}
+                  {clienteCCEnabled && clienteId && (
+                    <button onClick={() => setModoCC(v => !v)}
+                      className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl border-2 text-sm font-medium transition-colors
+                        ${modoCC ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-emerald-400 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}>
+                      <CreditCard size={14} /> {modoCC ? '✓ Cuenta corriente activa' : 'Despachar a cuenta corriente'}
+                    </button>
+                  )}
+                  <button onClick={() => registrarVenta(modoCC ? 'despachada' : modoVenta)} disabled={saving}
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                    {modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
-                    {saving ? 'Guardando...' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
+                    {modoCC ? <CreditCard size={16} /> : modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
+                    {saving ? 'Guardando...' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
                   </button>
                 </div>
               </div>
@@ -2630,6 +2701,11 @@ export default function VentasPage() {
                           {v.estado === 'reservada' && calcularSaldoPendiente(v.total ?? 0, v.monto_pagado ?? 0) > 0.5 && (
                             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
                               Saldo ${calcularSaldoPendiente(v.total, v.monto_pagado ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                            </span>
+                          )}
+                          {isPresupuestoVencido(v, (tenant as any)?.presupuesto_validez_dias) && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                              Vencido
                             </span>
                           )}
                         </div>
@@ -2850,6 +2926,23 @@ export default function VentasPage() {
             )}
 
             {/* Acciones según estado */}
+            {/* Banner presupuesto vencido */}
+            {isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias) && (
+              <div className="rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 p-3 space-y-2">
+                <p className="text-sm font-semibold text-orange-700 dark:text-orange-400 flex items-center gap-2">
+                  <AlertTriangle size={15} /> Presupuesto vencido
+                </p>
+                <p className="text-xs text-orange-600 dark:text-orange-400">
+                  Superó los {(tenant as any).presupuesto_validez_dias} días de validez. Actualizá los precios antes de convertirlo a venta.
+                </p>
+                <button onClick={actualizarPrecios} disabled={actualizandoPrecios}
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 rounded-lg transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-60">
+                  <RefreshCw size={14} className={actualizandoPrecios ? 'animate-spin' : ''} />
+                  {actualizandoPrecios ? 'Actualizando...' : 'Actualizar precios ahora'}
+                </button>
+              </div>
+            )}
+
             <div className="space-y-2">
               <button
                 onClick={() => {
@@ -2878,45 +2971,52 @@ export default function VentasPage() {
                 className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
                 <Printer size={15} /> Ver / Imprimir ticket
               </button>
-              {ventaDetalle.estado === 'pendiente' && (
-                <button onClick={() => {
-                  if (!(ventaDetalle.monto_pagado > 0)) {
-                    // Sin seña previa → abrir modal para registrar un pago parcial
-                    setSaldoModal({
-                      ventaId: ventaDetalle.id,
-                      total: ventaDetalle.total,
-                      montoPagado: 0,
-                      mediosPago: [{ tipo: '', monto: '' }],
-                      targetEstado: 'reservada',
-                    })
-                    return
-                  }
-                  cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })
-                }}
-                  disabled={cambiarEstado.isPending}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
-                  Reservar stock
-                </button>
-              )}
-              {(ventaDetalle.estado === 'pendiente' || ventaDetalle.estado === 'reservada') && (
-                <button onClick={() => {
-                  const saldo = calcularSaldoPendiente(ventaDetalle.total ?? 0, ventaDetalle.monto_pagado ?? 0)
-                  if (saldo > 0.5) {
-                    setSaldoModal({
-                      ventaId: ventaDetalle.id,
-                      total: ventaDetalle.total,
-                      montoPagado: ventaDetalle.monto_pagado ?? 0,
-                      mediosPago: [{ tipo: '', monto: saldo.toFixed(2) }],
-                    })
-                  } else {
-                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'despachada' })
-                  }
-                }}
-                  disabled={cambiarEstado.isPending}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
-                  <Truck size={16} /> Finalizar (rebaja stock)
-                </button>
-              )}
+              {ventaDetalle.estado === 'pendiente' && (() => {
+                const vencido = isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias)
+                return (
+                  <button onClick={() => {
+                    if (!(ventaDetalle.monto_pagado > 0)) {
+                      setSaldoModal({
+                        ventaId: ventaDetalle.id,
+                        total: ventaDetalle.total,
+                        montoPagado: 0,
+                        mediosPago: [{ tipo: '', monto: '' }],
+                        targetEstado: 'reservada',
+                      })
+                      return
+                    }
+                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'reservada' })
+                  }}
+                    disabled={cambiarEstado.isPending || vencido}
+                    title={vencido ? 'Presupuesto vencido — actualizá los precios primero' : undefined}
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-40">
+                    Reservar stock
+                  </button>
+                )
+              })()}
+              {(ventaDetalle.estado === 'pendiente' || ventaDetalle.estado === 'reservada') && (() => {
+                const vencido = ventaDetalle.estado === 'pendiente' && isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias)
+                return (
+                  <button onClick={() => {
+                    const saldo = calcularSaldoPendiente(ventaDetalle.total ?? 0, ventaDetalle.monto_pagado ?? 0)
+                    if (saldo > 0.5) {
+                      setSaldoModal({
+                        ventaId: ventaDetalle.id,
+                        total: ventaDetalle.total,
+                        montoPagado: ventaDetalle.monto_pagado ?? 0,
+                        mediosPago: [{ tipo: '', monto: saldo.toFixed(2) }],
+                      })
+                    } else {
+                      cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'despachada' })
+                    }
+                  }}
+                    disabled={cambiarEstado.isPending || vencido}
+                    title={vencido ? 'Presupuesto vencido — actualizá los precios primero' : undefined}
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40">
+                    <Truck size={16} /> Finalizar (rebaja stock)
+                  </button>
+                )
+              })()}
               {ventaDetalle.estado === 'despachada' && (
                 <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'facturada' })}
                   disabled={cambiarEstado.isPending}

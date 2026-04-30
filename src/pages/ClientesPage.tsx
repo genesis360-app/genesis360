@@ -5,8 +5,9 @@ import {
   Users, Plus, Search, Phone, Mail, FileText, X,
   ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
   Upload, Download, CheckCircle, XCircle, FileSpreadsheet, ExternalLink, MapPin, Star,
-  Tag, Calendar, StickyNote,
+  Tag, Calendar, StickyNote, CreditCard, AlertCircle, MessageCircle, DollarSign,
 } from 'lucide-react'
+import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -45,12 +46,35 @@ interface ClienteForm {
   cuit_receptor: string; condicion_iva_receptor: string
   fecha_nacimiento: string; etiquetas: string
   codigo_fiscal: string; regimen_fiscal: string
+  cuenta_corriente_habilitada: boolean; limite_credito: string; plazo_pago_dias: string
 }
 const FORM_VACIO: ClienteForm = {
   nombre: '', dni: '', telefono: '', email: '', notas: '',
   cuit_receptor: '', condicion_iva_receptor: '',
   fecha_nacimiento: '', etiquetas: '',
   codigo_fiscal: '', regimen_fiscal: '',
+  cuenta_corriente_habilitada: false, limite_credito: '', plazo_pago_dias: '30',
+}
+
+function validarDNI(valor: string): string | null {
+  const d = valor.replace(/[\.\-\s]/g, '')
+  if (!d) return null
+  if (!/^\d+$/.test(d)) return 'Solo se permiten números'
+  if (d.length < 7 || d.length > 8) return 'El DNI debe tener 7 u 8 dígitos'
+  return null
+}
+
+function validarTelefono(valor: string): string | null {
+  if (!valor) return null
+  let d = valor.replace(/[\s\-\(\)\.]/g, '')
+  if (d.startsWith('+549')) d = d.slice(4)
+  else if (d.startsWith('+54')) d = d.slice(3)
+  else if (d.startsWith('549')) d = d.slice(3)
+  if (d.startsWith('0')) d = d.slice(1)
+  if (d.startsWith('9') && d.length > 9) d = d.slice(1)
+  if (!/^\d+$/.test(d)) return 'Solo se permiten números, +, -, paréntesis y espacios'
+  if (d.length < 8 || d.length > 11) return 'Formato inválido — ej: 11 2345-6789 o +54 9 11 2345-6789'
+  return null
 }
 
 const ESTADOS: Record<string, { label: string; color: string }> = {
@@ -67,11 +91,14 @@ export default function ClientesPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [pageTab, setPageTab] = useState<'lista' | 'cc'>('lista')
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<ClienteForm>(FORM_VACIO)
   const [saving, setSaving] = useState(false)
+  const [dniError, setDniError] = useState<string | null>(null)
+  const [telError, setTelError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(() => searchParams.get('id'))
   const [innerTab, setInnerTab] = useState<'historial' | 'domicilios' | 'notas'>('historial')
   const [filtroEtiqueta, setFiltroEtiqueta] = useState('')
@@ -161,6 +188,33 @@ export default function ClientesPage() {
     enabled: !!expandedId && innerTab === 'domicilios',
   })
 
+  const { data: ventasCC = [] } = useQuery({
+    queryKey: ['ventas-cc', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('ventas')
+        .select('id, numero, total, monto_pagado, estado, created_at, despachado_at, cliente_id, cliente_nombre')
+        .eq('tenant_id', tenant!.id)
+        .eq('es_cuenta_corriente', true)
+        .in('estado', ['despachada', 'facturada'])
+        .order('created_at', { ascending: false })
+      return (data ?? []).filter((v: any) => (v.total ?? 0) - (v.monto_pagado ?? 0) > 0.5)
+    },
+    enabled: !!tenant && pageTab === 'cc',
+  })
+
+  const { data: clientesCC = [] } = useQuery({
+    queryKey: ['clientes-cc', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('clientes')
+        .select('id, nombre, telefono, plazo_pago_dias, limite_credito')
+        .eq('tenant_id', tenant!.id)
+        .eq('cuenta_corriente_habilitada', true)
+        .order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && pageTab === 'cc',
+  })
+
   const { data: notasCliente = [], refetch: refetchNotas } = useQuery({
     queryKey: ['cliente-notas', expandedId],
     queryFn: async () => {
@@ -239,6 +293,8 @@ export default function ClientesPage() {
 
   // ── Modal helpers ─────────────────────────────────────────────────────────
   const abrirModal = (cliente?: any) => {
+    setDniError(null)
+    setTelError(null)
     if (cliente) {
       setEditId(cliente.id)
       setForm({
@@ -248,6 +304,9 @@ export default function ClientesPage() {
         fecha_nacimiento: cliente.fecha_nacimiento ?? '',
         etiquetas: Array.isArray(cliente.etiquetas) ? cliente.etiquetas.join(', ') : '',
         codigo_fiscal: cliente.codigo_fiscal ?? '', regimen_fiscal: cliente.regimen_fiscal ?? '',
+        cuenta_corriente_habilitada: cliente.cuenta_corriente_habilitada ?? false,
+        limite_credito: cliente.limite_credito != null ? String(cliente.limite_credito) : '',
+        plazo_pago_dias: String(cliente.plazo_pago_dias ?? 30),
       })
     } else {
       setEditId(null)
@@ -260,6 +319,11 @@ export default function ClientesPage() {
     if (!form.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
     if (!form.dni.trim()) { toast.error('El DNI es obligatorio'); return }
     if (!form.telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
+    const errDni = validarDNI(form.dni)
+    const errTel = validarTelefono(form.telefono)
+    setDniError(errDni)
+    setTelError(errTel)
+    if (errDni || errTel) { toast.error('Corregí los errores antes de guardar'); return }
     setSaving(true)
     try {
       const etiquetasArr = form.etiquetas.trim()
@@ -275,6 +339,9 @@ export default function ClientesPage() {
         etiquetas: etiquetasArr,
         codigo_fiscal: form.codigo_fiscal.trim() || null,
         regimen_fiscal: form.regimen_fiscal.trim() || null,
+        cuenta_corriente_habilitada: form.cuenta_corriente_habilitada,
+        limite_credito: form.limite_credito ? parseFloat(form.limite_credito) : null,
+        plazo_pago_dias: form.plazo_pago_dias ? parseInt(form.plazo_pago_dias) : 30,
       }
       if (editId) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editId)
@@ -391,16 +458,178 @@ export default function ClientesPage() {
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{clientes.length} registrado{clientes.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }}
-            className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
-            <Upload size={16} /> Importar
-          </button>
-          <button onClick={() => abrirModal()}
-            className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
-            <Plus size={18} /> Nuevo cliente
-          </button>
+          {pageTab === 'lista' && <>
+            <button onClick={() => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }}
+              className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
+              <Upload size={16} /> Importar
+            </button>
+            <button onClick={() => abrirModal()}
+              className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
+              <Plus size={18} /> Nuevo cliente
+            </button>
+          </>}
         </div>
       </div>
+
+      {/* Page tabs */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+        {([
+          { id: 'lista' as const, label: 'Clientes', icon: Users },
+          { id: 'cc' as const, label: 'Cuenta Corriente', icon: CreditCard },
+        ]).map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setPageTab(id)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors
+              ${pageTab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+            <Icon size={15} />{label}
+          </button>
+        ))}
+      </div>
+
+      {/* ═══════════════ TAB CUENTA CORRIENTE ═══════════════ */}
+      {pageTab === 'cc' && (() => {
+        // Agrupar ventas CC por cliente
+        const deudaMap: Record<string, { total: number; count: number; masAntigua: string; masNueva: string }> = {}
+        for (const v of ventasCC as any[]) {
+          const cid = v.cliente_id
+          if (!cid) continue
+          const saldo = (v.total ?? 0) - (v.monto_pagado ?? 0)
+          if (!deudaMap[cid]) deudaMap[cid] = { total: 0, count: 0, masAntigua: v.created_at, masNueva: v.created_at }
+          deudaMap[cid].total += saldo
+          deudaMap[cid].count += 1
+          if (v.created_at < deudaMap[cid].masAntigua) deudaMap[cid].masAntigua = v.created_at
+          if (v.created_at > deudaMap[cid].masNueva) deudaMap[cid].masNueva = v.created_at
+        }
+
+        const totalDeuda = Object.values(deudaMap).reduce((a, d) => a + d.total, 0)
+        const clientesConDeuda = (clientesCC as any[]).filter(c => deudaMap[c.id])
+        const hoy = new Date()
+
+        return (
+          <div className="space-y-5">
+            {/* KPIs */}
+            <div className="grid sm:grid-cols-3 gap-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Deuda total en CC</p>
+                <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatMoneda(totalDeuda)}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{clientesConDeuda.length} clientes con saldo</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Clientes habilitados</p>
+                <p className="text-2xl font-bold text-primary">{(clientesCC as any[]).length}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">con CC activa</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Ventas pendientes</p>
+                <p className="text-2xl font-bold text-primary">{(ventasCC as any[]).length}</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">sin cobrar</p>
+              </div>
+            </div>
+
+            {/* Clientes sin deuda (solo habilitados, sin ventas CC pendientes) */}
+            {(clientesCC as any[]).filter(c => !deudaMap[c.id]).length > 0 && (
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 flex items-center gap-2">
+                <CheckCircle size={15} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                  {(clientesCC as any[]).filter(c => !deudaMap[c.id]).length} cliente{(clientesCC as any[]).filter(c => !deudaMap[c.id]).length !== 1 ? 's' : ''} al día — sin deuda pendiente
+                </p>
+              </div>
+            )}
+
+            {/* Tabla de deudas */}
+            {(clientesCC as any[]).length === 0 ? (
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-10 flex flex-col items-center text-gray-400 dark:text-gray-500">
+                <CreditCard size={36} className="mb-3 opacity-30" />
+                <p className="font-medium text-sm">No hay clientes con CC habilitada</p>
+                <p className="text-xs mt-1">Habilitá la cuenta corriente desde la ficha de un cliente</p>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Detalle por cliente</p>
+                </div>
+                <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {(clientesCC as any[]).map((c: any) => {
+                    const d = deudaMap[c.id]
+                    const plazo = c.plazo_pago_dias ?? 30
+                    const fechaVto = d
+                      ? new Date(new Date(d.masAntigua).getTime() + plazo * 24 * 60 * 60 * 1000)
+                      : null
+                    const diasVto = fechaVto ? Math.ceil((fechaVto.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null
+                    const vencida = diasVto !== null && diasVto < 0
+                    const proxima = diasVto !== null && diasVto >= 0 && diasVto <= 5
+
+                    return (
+                      <div key={c.id} className="px-4 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-gray-800 dark:text-gray-100">{c.nombre}</p>
+                              {!d && <span className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full">Al día</span>}
+                              {d && vencida && <span className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full font-semibold">Vencida</span>}
+                              {d && proxima && !vencida && <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">Vence en {diasVto}d</span>}
+                              {d && !vencida && !proxima && <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full">Vence {fechaVto!.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit' })}</span>}
+                            </div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {c.telefono && <span className="flex items-center gap-1"><Phone size={10} /> {c.telefono}</span>}
+                              <span>Plazo: {plazo} días</span>
+                              {c.limite_credito && <span>Límite: {formatMoneda(c.limite_credito)}</span>}
+                              {d && <span>{d.count} venta{d.count !== 1 ? 's' : ''} pendiente{d.count !== 1 ? 's' : ''}</span>}
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            {d
+                              ? <p className={`text-lg font-bold ${vencida ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>{formatMoneda(d.total)}</p>
+                              : <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">$0</p>
+                            }
+                            {d && <p className="text-xs text-gray-400 dark:text-gray-500">desde {new Date(d.masAntigua).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit' })}</p>}
+                          </div>
+                        </div>
+                        {/* Acciones */}
+                        <div className="flex items-center gap-2 mt-3 flex-wrap">
+                          {c.telefono && (() => {
+                            const msg = d
+                              ? `Hola ${c.nombre}! Te recordamos que tenés un saldo pendiente de ${formatMoneda(d.total)} en cuenta corriente${fechaVto ? `, con vencimiento el ${fechaVto.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric' })}` : ''}. Por favor coordiná el pago. Gracias!`
+                              : `Hola ${c.nombre}! Te contactamos desde el negocio.`
+                            return (
+                              <a href={buildWhatsAppUrl(c.telefono, msg)} target="_blank" rel="noreferrer"
+                                className="flex items-center gap-1.5 text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg transition-colors">
+                                <MessageCircle size={12} /> WhatsApp
+                              </a>
+                            )
+                          })()}
+                          <button
+                            onClick={() => { setPageTab('lista'); setTimeout(() => { setExpandedId(c.id); setInnerTab('historial') }, 100) }}
+                            className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            <ShoppingCart size={12} /> Ver ventas
+                          </button>
+                          <button onClick={() => navigate(`/ventas?cliente=${c.id}`)}
+                            className="flex items-center gap-1.5 text-xs bg-accent hover:bg-accent/90 text-white px-3 py-1.5 rounded-lg transition-colors">
+                            <DollarSign size={12} /> Registrar pago
+                          </button>
+                        </div>
+                        {/* Ventas CC del cliente */}
+                        {d && (
+                          <div className="mt-3 space-y-1.5">
+                            {(ventasCC as any[]).filter((v: any) => v.cliente_id === c.id).slice(0, 5).map((v: any) => (
+                              <div key={v.id} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2">
+                                <span className="text-gray-600 dark:text-gray-400">Venta #{v.numero} · {new Date(v.created_at).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' })}</span>
+                                <span className="font-semibold text-red-600 dark:text-red-400">{formatMoneda((v.total ?? 0) - (v.monto_pagado ?? 0))}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* ═══════════════ TAB LISTA ═══════════════ */}
+      {pageTab === 'lista' && <>
 
       {/* Stats cards */}
       {clientesConCompras > 0 && (
@@ -515,6 +744,11 @@ export default function ClientesPage() {
                           🎂 {esCumple ? '¡Hoy!' : `${nac.getDate()}/${nac.getMonth()+1}`}
                         </span>
                       })()}
+                      {c.cuenta_corriente_habilitada && (
+                        <span className="text-xs bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium">
+                          <CreditCard size={9} /> CC
+                        </span>
+                      )}
                       {Array.isArray(c.etiquetas) && c.etiquetas.map((et: string) => (
                         <span key={et} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-accent px-1.5 py-0.5 rounded flex items-center gap-0.5">
                           <Tag size={9} />{et}
@@ -800,17 +1034,20 @@ export default function ClientesPage() {
         </div>
       )}
 
+      {/* ── Fin tab Lista ── */}
+      </>}
+
       {/* Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
               <h2 className="font-semibold text-gray-800 dark:text-gray-100">{editId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
               <button onClick={() => setModalOpen(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500">
                 <X size={18} />
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre completo *</label>
                 <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
@@ -820,15 +1057,21 @@ export default function ClientesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">DNI *</label>
-                  <input value={form.dni} onChange={e => setForm(f => ({ ...f, dni: e.target.value }))}
+                  <input value={form.dni}
+                    onChange={e => { setForm(f => ({ ...f, dni: e.target.value })); setDniError(null) }}
+                    onBlur={e => setDniError(validarDNI(e.target.value))}
                     placeholder="Ej: 30123456"
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                    className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent ${dniError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`} />
+                  {dniError && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle size={11} />{dniError}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono *</label>
-                  <input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))}
+                  <input value={form.telefono}
+                    onChange={e => { setForm(f => ({ ...f, telefono: e.target.value })); setTelError(null) }}
+                    onBlur={e => setTelError(validarTelefono(e.target.value))}
                     placeholder="Ej: +54 11 1234-5678"
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                    className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent ${telError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`} />
+                  {telError && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle size={11} />{telError}</p>}
                 </div>
               </div>
               <div>
@@ -892,6 +1135,41 @@ export default function ClientesPage() {
                   </div>
                 </div>
               </div>
+              {/* Cuenta Corriente */}
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-3">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-3 flex items-center gap-1.5">
+                  <CreditCard size={12} /> Cuenta Corriente
+                </p>
+                <label className="flex items-center gap-3 cursor-pointer mb-3">
+                  <div
+                    onClick={() => setForm(f => ({ ...f, cuenta_corriente_habilitada: !f.cuenta_corriente_habilitada }))}
+                    className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${form.cuenta_corriente_habilitada ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}`}>
+                    <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${form.cuenta_corriente_habilitada ? 'translate-x-4' : 'translate-x-0'}`} />
+                  </div>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Habilitar cuenta corriente</span>
+                </label>
+                {form.cuenta_corriente_habilitada && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Límite de crédito ($)</label>
+                      <input type="number" min="0" value={form.limite_credito}
+                        onChange={e => setForm(f => ({ ...f, limite_credito: e.target.value }))}
+                        onWheel={e => e.currentTarget.blur()}
+                        placeholder="Sin límite"
+                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Plazo de pago (días)</label>
+                      <input type="number" min="1" max="365" value={form.plazo_pago_dias}
+                        onChange={e => setForm(f => ({ ...f, plazo_pago_dias: e.target.value }))}
+                        onWheel={e => e.currentTarget.blur()}
+                        placeholder="30"
+                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas generales</label>
                 <textarea value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
@@ -899,7 +1177,7 @@ export default function ClientesPage() {
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none" />
               </div>
             </div>
-            <div className="px-5 pb-5 flex gap-3">
+            <div className="px-5 pb-5 pt-4 flex gap-3 border-t border-gray-100 dark:border-gray-700 flex-shrink-0">
               <button onClick={() => setModalOpen(false)}
                 className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
                 Cancelar

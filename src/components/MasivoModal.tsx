@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { logActividad } from '@/lib/actividadLog'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import toast from 'react-hot-toast'
 
@@ -296,9 +297,10 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
           })
 
         } else {
-          // REBAJE — auto-FIFO desde líneas existentes
+          // REBAJE — auto-FIFO/FEFO/LEFO/LIFO/Manual desde líneas existentes
+          // Misma lógica que rebaje individual en InventarioPage
           const { data: lineasRaw } = await supabase.from('inventario_lineas')
-            .select('*, ubicaciones(prioridad)')
+            .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, nro_lote, lpn, ubicaciones(prioridad, disponible_surtido), estados_inventario!estado_id(es_disponible_venta)')
             .eq('tenant_id', tenant!.id)
             .eq('producto_id', it.productoId)
             .eq('activo', true)
@@ -306,13 +308,17 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
           const { data: prodInfo } = await supabase.from('productos')
             .select('regla_inventario, tiene_vencimiento').eq('id', it.productoId).single()
           const sortFn = getRebajeSort(prodInfo?.regla_inventario, tenant!.regla_inventario, prodInfo?.tiene_vencimiento ?? false)
-          // Solo líneas con disponible > 0 (cantidad − cantidad_reservada)
+          const hoy = new Date().toISOString().split('T')[0]
           const lineas = (lineasRaw ?? [])
+            .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+            .filter((l: any) => l.estados_inventario?.es_disponible_venta !== false)
+            .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= hoy)
             .filter((l: any) => (l.cantidad - (l.cantidad_reservada ?? 0)) > 0)
             .sort(sortFn)
 
           let restante = cant
           let primeraLinea: any = null
+          const lpnsConsumidos: string[] = []
           for (const linea of lineas) {
             if (restante <= 0) break
             const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
@@ -324,6 +330,8 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
             if (lineaErr) throw new Error(`${it.productoNombre}: error al actualizar línea — ${lineaErr.message}`)
             restante -= consume
             if (!primeraLinea) primeraLinea = linea
+            const ref = linea.lpn || linea.nro_lote || linea.id.slice(-6)
+            lpnsConsumidos.push(`${ref} (-${consume})`)
           }
           if (restante > 0) throw new Error(`${it.productoNombre}: stock insuficiente en líneas disponibles.`)
 
@@ -339,12 +347,31 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
             linea_id: primeraLinea?.id ?? null,
             sucursal_id: sucursalId || null,
           })
+          // Guardar detalle de LPNs/lotes consumidos en el resultado para el toast
+          ;(it as any).__lpnsConsumidos = lpnsConsumidos
         }
       }
     },
     onSuccess: () => {
-      const total = tipo === 'rebaje' ? items.filter(it => !it.tieneSeries).length : items.length
-      toast.success(`${tipo === 'ingreso' ? 'Ingreso' : 'Rebaje'} masivo registrado (${total} SKU${total !== 1 ? 's' : ''})`)
+      const itemsValidos = tipo === 'rebaje' ? items.filter(it => !it.tieneSeries) : items
+      const total = itemsValidos.length
+      // Para rebaje: mostrar qué LPNs/lotes se consumieron
+      if (tipo === 'rebaje' && itemsValidos.some(it => (it as any).__lpnsConsumidos?.length > 0)) {
+        const detalle = itemsValidos
+          .filter(it => (it as any).__lpnsConsumidos?.length > 0)
+          .map(it => `${it.productoSku}: ${((it as any).__lpnsConsumidos as string[]).join(', ')}`)
+          .join('\n')
+        toast.success(`Rebaje masivo registrado (${total} SKU${total !== 1 ? 's' : ''})\n${detalle}`, { duration: 8000 })
+      } else {
+        toast.success(`${tipo === 'ingreso' ? 'Ingreso' : 'Rebaje'} masivo registrado (${total} SKU${total !== 1 ? 's' : ''})`)
+      }
+      logActividad({
+        entidad: 'inventario_linea',
+        entidad_nombre: `${tipo === 'ingreso' ? 'Ingreso' : 'Rebaje'} masivo (${total} SKU${total !== 1 ? 's' : ''})`,
+        accion: tipo === 'ingreso' ? 'crear' : 'cambio_estado',
+        valor_nuevo: `${tipo === 'ingreso' ? 'Ingreso' : 'Rebaje'} masivo — ${total} producto${total !== 1 ? 's' : ''}`,
+        pagina: '/inventario',
+      })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })

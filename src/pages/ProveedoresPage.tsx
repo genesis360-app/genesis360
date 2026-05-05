@@ -11,7 +11,7 @@ import {
   FileText, Send, CheckCircle, XCircle, Package, Hash, Calendar,
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
-  Upload, Download,
+  Upload, Download, DollarSign, AlertCircle, TrendingDown,
 } from 'lucide-react'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes'
@@ -90,7 +90,7 @@ const CONDICION_IVA_LABEL: Record<string, string> = {
 let itemKey = 0
 
 export default function ProveedoresPage() {
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
   const navigate = useNavigate()
 
@@ -131,6 +131,12 @@ export default function ProveedoresPage() {
   const [expandedOc, setExpandedOc] = useState<string | null>(null)
   const [showOcDetail, setShowOcDetail] = useState<OrdenCompra | null>(null)
 
+  // ── Proveedor CC state ─────────────────────────────────────────────────────
+  const [ccProvId, setCcProvId]             = useState<string | null>(null)
+  const [ccPagoMonto, setCcPagoMonto]       = useState('')
+  const [ccPagoMedio, setCcPagoMedio]       = useState('Transferencia')
+  const [ccGuardando, setCcGuardando]       = useState(false)
+
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: proveedores = [], isLoading: loadingProv } = useQuery({
     queryKey: ['proveedores', tenant?.id],
@@ -157,6 +163,72 @@ export default function ProveedoresPage() {
     },
     enabled: !!tenant && tab === 'ordenes',
   })
+
+  // CC proveedor — historial movimientos
+  const { data: ccMovimientos = [], refetch: refetchCC } = useQuery({
+    queryKey: ['proveedor-cc', ccProvId],
+    queryFn: async () => {
+      const { data } = await supabase.from('proveedor_cc_movimientos')
+        .select('*, ordenes_compra(numero)')
+        .eq('proveedor_id', ccProvId!)
+        .order('fecha', { ascending: false })
+        .limit(50)
+      return data ?? []
+    },
+    enabled: !!ccProvId,
+  })
+
+  const { data: cajasAbiertasProv = [] } = useQuery({
+    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, cajas(nombre)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
+      return data ?? []
+    },
+    enabled: !!ccProvId,
+  })
+
+  const saldoCC = (ccMovimientos as any[]).reduce((s: number, m: any) => s + Number(m.monto ?? 0), 0)
+
+  const registrarPagoCC = async () => {
+    if (!ccProvId) return
+    const monto = parseFloat(ccPagoMonto.replace(',', '.'))
+    if (isNaN(monto) || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    setCcGuardando(true)
+    try {
+      const hoy = new Date().toISOString().split('T')[0]
+      const sesionId = (cajasAbiertasProv as any[])[0]?.id ?? null
+      await supabase.from('proveedor_cc_movimientos').insert({
+        tenant_id:    tenant!.id,
+        proveedor_id: ccProvId,
+        tipo:         'pago',
+        monto:        -monto,
+        fecha:        hoy,
+        medio_pago:   ccPagoMedio,
+        descripcion:  `Pago — ${ccPagoMedio}`,
+        caja_sesion_id: sesionId,
+        created_by:   user!.id,
+      })
+      if (ccPagoMedio === 'Efectivo' && sesionId) {
+        await supabase.from('caja_movimientos').insert({
+          tenant_id:  tenant!.id,
+          sesion_id:  sesionId,
+          tipo:       'egreso',
+          monto,
+          concepto:   `Pago proveedor CC`,
+          created_by: user!.id,
+        })
+      }
+      toast.success('Pago registrado')
+      setCcPagoMonto('')
+      refetchCC()
+      qc.invalidateQueries({ queryKey: ['oc-gastos'] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error')
+    } finally {
+      setCcGuardando(false)
+    }
+  }
 
   const { data: productos = [] } = useQuery({
     queryKey: ['productos-activos', tenant?.id],
@@ -757,6 +829,10 @@ export default function ProveedoresPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => { setCcProvId(p.id); setCcPagoMonto(''); setCcPagoMedio('Transferencia') }}
+                        className="p-1.5 rounded text-muted hover:text-purple-600" title="Cuenta Corriente">
+                        <CreditCard className="w-4 h-4" />
+                      </button>
                       <button onClick={() => setExpandedProvId(expandedProvId === p.id ? null : p.id)}
                         className="p-1.5 rounded text-muted hover:text-accent" title="Ver productos">
                         <ChevronRight className={`w-4 h-4 transition-transform ${expandedProvId === p.id ? 'rotate-90' : ''}`} />
@@ -1257,15 +1333,20 @@ export default function ProveedoresPage() {
                             <Send className="w-4 h-4" />
                           </button>
                         )}
-                        {oc.estado === 'enviada' && (
-                          <button
-                            onClick={() => cambiarEstadoOC.mutate({ id: oc.id, estado: 'confirmada' })}
-                            className="p-1.5 rounded text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"
-                            title="Confirmar"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </button>
-                        )}
+                        {oc.estado === 'enviada' && (() => {
+                          const bloqueada = (oc as any).estado_pago === 'pendiente_pago'
+                          return (
+                            <button
+                              onClick={() => bloqueada
+                                ? toast.error('Regularizá el pago de la OC antes de confirmar (Gastos → Órdenes de Compra)')
+                                : cambiarEstadoOC.mutate({ id: oc.id, estado: 'confirmada' })}
+                              className={`p-1.5 rounded ${bloqueada ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20'}`}
+                              title={bloqueada ? 'Pago pendiente — regularizá en Gastos → OC' : 'Confirmar'}
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                            </button>
+                          )
+                        })()}
                         {oc.estado === 'confirmada' && (
                           <button
                             onClick={() => navigate(`/recepciones?oc_id=${oc.id}&proveedor_id=${oc.proveedor_id}`)}
@@ -1740,14 +1821,24 @@ export default function ProveedoresPage() {
                     <Send className="w-4 h-4" /> Enviar al proveedor
                   </button>
                 )}
-                {showOcDetail.estado === 'enviada' && (
-                  <button
-                    onClick={() => cambiarEstadoOC.mutate({ id: showOcDetail.id, estado: 'confirmada' })}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-green-600 text-white hover:bg-green-700"
-                  >
-                    <CheckCircle className="w-4 h-4" /> Confirmar OC
-                  </button>
-                )}
+                {showOcDetail.estado === 'enviada' && (() => {
+                  const bloqueada = (showOcDetail as any).estado_pago === 'pendiente_pago'
+                  return (
+                    <div className="flex flex-col items-start gap-1">
+                      <button
+                        onClick={() => bloqueada
+                          ? toast.error('Regularizá el pago de la OC antes de confirmar')
+                          : cambiarEstadoOC.mutate({ id: showOcDetail.id, estado: 'confirmada' })}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${bloqueada ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                      >
+                        <CheckCircle className="w-4 h-4" /> Confirmar OC
+                      </button>
+                      {bloqueada && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">⚠ Ir a Gastos → Órdenes de Compra para regularizar el pago</p>
+                      )}
+                    </div>
+                  )
+                })()}
                 {(showOcDetail.estado === 'borrador' || showOcDetail.estado === 'enviada' || showOcDetail.estado === 'confirmada') && (
                   <button
                     onClick={() => { if (confirm('¿Cancelar esta OC?')) cambiarEstadoOC.mutate({ id: showOcDetail.id, estado: 'cancelada' }) }}
@@ -1767,6 +1858,91 @@ export default function ProveedoresPage() {
           </div>
         </div>
       )}
+      {/* ── Modal Cuenta Corriente Proveedor ── */}
+      {ccProvId && (() => {
+        const prov = (proveedores as any[]).find((p: any) => p.id === ccProvId)
+        const hoy = new Date().toISOString().split('T')[0]
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                <div>
+                  <h3 className="font-semibold text-primary dark:text-white">Cuenta Corriente</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{prov?.nombre ?? '—'}</p>
+                </div>
+                <button onClick={() => setCcProvId(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+              </div>
+
+              {/* Saldo */}
+              <div className={`mx-5 mt-4 rounded-xl px-4 py-3 flex items-center justify-between ${saldoCC > 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
+                <div className="flex items-center gap-2">
+                  {saldoCC > 0 ? <AlertCircle className="w-4 h-4 text-red-500" /> : <CheckCircle className="w-4 h-4 text-green-500" />}
+                  <span className="text-sm font-medium text-primary dark:text-white">Saldo adeudado</span>
+                </div>
+                <span className={`text-lg font-bold ${saldoCC > 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                  ${saldoCC.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </span>
+              </div>
+
+              {/* Registrar pago */}
+              {saldoCC > 0.5 && (
+                <div className="mx-5 mt-3 bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-medium text-primary dark:text-white">Registrar pago</p>
+                  <div className="flex gap-2">
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={ccPagoMonto} onChange={e => setCcPagoMonto(e.target.value)}
+                      placeholder={`Hasta $${saldoCC.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-primary" />
+                    <select value={ccPagoMedio} onChange={e => setCcPagoMedio(e.target.value)}
+                      className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-primary">
+                      {['Efectivo','Transferencia','Tarjeta de débito','Cheque','Otro'].map(m => <option key={m}>{m}</option>)}
+                    </select>
+                  </div>
+                  {ccPagoMedio === 'Efectivo' && (cajasAbiertasProv as any[]).length === 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso no se registrará en caja.</p>
+                  )}
+                  <button onClick={registrarPagoCC} disabled={ccGuardando || !ccPagoMonto}
+                    className="w-full py-2 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-accent/90 disabled:opacity-50 flex items-center justify-center gap-2">
+                    <DollarSign className="w-4 h-4" />
+                    {ccGuardando ? 'Guardando…' : 'Confirmar pago'}
+                  </button>
+                </div>
+              )}
+
+              {/* Historial */}
+              <div className="flex-1 overflow-y-auto mx-5 mt-3 mb-5 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Historial de movimientos</p>
+                {(ccMovimientos as any[]).length === 0 ? (
+                  <p className="text-sm text-gray-400 py-4 text-center">Sin movimientos registrados</p>
+                ) : (
+                  (ccMovimientos as any[]).map((m: any) => {
+                    const esDeuda = m.monto > 0
+                    const venc = m.fecha_vencimiento
+                    const vencida = venc && venc < hoy
+                    return (
+                      <div key={m.id} className="flex items-start justify-between gap-3 py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-primary dark:text-white truncate">
+                            {m.descripcion ?? (m.tipo === 'oc' ? 'Orden de Compra' : m.tipo === 'pago' ? 'Pago' : m.tipo)}
+                            {m.ordenes_compra && <span className="text-gray-400 ml-1 text-xs">OC #{m.ordenes_compra.numero}</span>}
+                          </p>
+                          <div className="flex gap-2 text-xs text-gray-400 flex-wrap mt-0.5">
+                            <span>{new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR')}</span>
+                            {m.medio_pago && <span>· {m.medio_pago}</span>}
+                            {venc && <span className={vencida ? 'text-red-500 font-medium' : 'text-amber-500'}>· Vence {new Date(venc + 'T00:00:00').toLocaleDateString('es-AR')}</span>}
+                          </div>
+                        </div>
+                        <span className={`text-sm font-bold flex-shrink-0 ${esDeuda ? 'text-red-500' : 'text-green-600'}`}>
+                          {esDeuda ? '+' : ''}{m.monto < 0 ? '-' : ''}${Math.abs(m.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

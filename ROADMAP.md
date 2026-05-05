@@ -1,6 +1,6 @@
 # Genesis360 — Roadmap
 
-**Última actualización:** 30 de Abril, 2026 · **v1.4.0 en PROD ✅ DEV = PROD**
+**Última actualización:** 5 de Mayo, 2026 · **v1.5.0 en PROD ✅ · v1.6.0 en DEV**
 
 > Stack, arquitectura y convenciones → [CLAUDE.md](CLAUDE.md) · Workflow de deploy → [WORKFLOW.md](WORKFLOW.md)
 
@@ -488,3 +488,64 @@ Próximo RRHH: Bloque 5 — CHECK-IN/CHECK-OUT rápido (v0.76.0)
 ### Bug: búsqueda no funcionaba en tabs Agregar/Quitar Stock
 - `filteredMov` tenía `return tipo === 'ingreso'...` (early return) → `movSearch` nunca se evaluaba
 - Fix: cambio a `if (...) return false` para que la búsqueda aplique a todos los tabs
+
+---
+
+## ✅ v1.5.0 PROD — Notificaciones, Caja Fuerte, PDF Factura QR, CC Clientes
+
+### Notificaciones reales (migration 084)
+- Tabla `notificaciones` (tenant_id, user_id, tipo, titulo, mensaje, leida, action_url). RLS user-only.
+- `NotificacionesButton` reescrito con datos reales, refetch 30s, marcar leída/todas.
+- Diferencia apertura caja → INSERT en `notificaciones` para OWNER/SUPERVISOR + email automático.
+
+### Módulo Caja — 4 mejoras
+- Diferencia apertura: warning inline en tiempo real + confirmación 2-paso + notificación supervisores.
+- `getTipoDisplay()`: distingue "Ingreso Manual" vs "Venta" por patrón `#N` en concepto.
+- Tab Caja Fuerte: historial depósitos, roles configurables (`tenants.caja_fuerte_roles`), trigger auto-creación.
+- Tab Configuración (OWNER/SUPERVISOR): soft delete cajas, configurar roles.
+- Historial sesiones: diferencia apertura y cierre por separado.
+
+### PDF Factura con QR AFIP (RG 4291)
+- `src/lib/facturasPDF.ts`: layout A4 completo con emisor, receptor, ítems IVA desglosado por tasa, totales.
+- QR AFIP: JSON comprobante → base64 → `https://www.afip.gob.ar/fe/qr/?p=<base64>`.
+- Botón en FacturacionPage (historial emitidas) y VentasPage modal detalle (`venta.cae !== null`).
+
+### Cuenta Corriente Clientes — pago inline
+- `registrarPagoCC()`: distribuye FIFO over CC ventas, actualiza `monto_pagado`, marca `despachada` al saldo=0.
+- Panel inline en tab CC de ClientesPage.
+
+---
+
+## ✅ v1.6.0 DEV — OC Gestión de Pagos + CC Proveedores (migration 085)
+
+### Estado: DEV ✅ · PROD pendiente deploy
+
+### Campos de pago en ordenes_compra
+- `estado_pago`: pendiente_pago / pago_parcial / pagada / cuenta_corriente
+- `monto_total`, `monto_pagado`, `fecha_vencimiento_pago`, `dias_plazo_pago`, `condiciones_pago`
+- OC nuevas arrancan con `estado_pago = 'pendiente_pago'` por defecto
+
+### Tab "Órdenes de Compra" en GastosPage
+- Lista filtrable por estado de pago y proveedor
+- Badge visual contextual: 🔴 vencida (mora), ⏰ próxima (≤3d), estado normal
+- Modal "Pagar / CC":
+  - **Registrar pago**: monto + medio de pago. Si es Efectivo y hay caja abierta → egreso automático en `caja_movimientos`
+  - **Cuenta Corriente**: selector 30/60/90d (o personalizado) + fecha vencimiento calculada + condiciones texto libre
+
+### Bloqueo confirmar OC (ProveedoresPage)
+- Botón "Confirmar" deshabilitado + mensaje cuando `estado_pago = 'pendiente_pago'`
+- Tanto en listado de OC (card) como en modal detalle con instrucción a Gastos → OC
+
+### Cuenta Corriente con Proveedores
+- `proveedores.cuenta_corriente_habilitada` + `limite_credito_proveedor`
+- Tabla `proveedor_cc_movimientos`: oc / pago / nota_credito / ajuste. RLS tenant.
+- Función `fn_saldo_proveedor_cc(proveedor_id)` SECURITY DEFINER
+- Botón CreditCard en card de proveedor → modal CC:
+  - Saldo adeudado total (suma de `monto` en movimientos)
+  - Panel "Registrar pago" con egreso automático a caja si efectivo
+  - Historial cronológico de movimientos con fecha vencimiento y medio de pago
+
+### AlertasPage + useAlertas
+- Sección roja "OC vencidas sin pagar": días de mora, botón Regularizar → /gastos
+- Sección ámbar "OC por vencer en 3 días": días restantes, botón Pagar ahora → /gastos
+- Badge sidebar incluye conteo de ambas secciones

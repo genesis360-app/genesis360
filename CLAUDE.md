@@ -1414,6 +1414,31 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 #### send-email EF
 - Nuevo tipo `notificacion`: `{ type: 'notificacion', to, data: { titulo, mensaje, action_url? } }` → `notificacionTemplate()`.
 
+### v1.6.0 — DEV (migration 085)
+
+#### OC — Gestión de pagos
+- `ordenes_compra`: +`estado_pago` (pendiente_pago/pago_parcial/pagada/cuenta_corriente) · +`monto_total` · +`monto_pagado` · +`fecha_vencimiento_pago` · +`dias_plazo_pago` · +`condiciones_pago`.
+- Nuevas OC arrancan con `estado_pago = 'pendiente_pago'` por defecto.
+
+#### GastosPage — tab "Órdenes de Compra"
+- Lista filtrable por estado_pago y proveedor. Badge contextual: 🔴 vencida · ⏰ ≤3d · estado normal.
+- Modal dos modos: **Registrar pago** (monto + medio, egreso automático en caja si Efectivo) / **Cuenta Corriente** (30/60/90d o personalizado, fecha vencimiento calculada, condiciones libre).
+- INSERT en `proveedor_cc_movimientos`: tipo `pago` (monto negativo) o `oc` (monto positivo = deuda).
+
+#### ProveedoresPage — bloqueo y CC
+- Botón Confirmar OC deshabilitado cuando `estado_pago = 'pendiente_pago'` (listado + modal detalle).
+- Botón CreditCard por proveedor → modal CC: saldo adeudado, historial `proveedor_cc_movimientos`, pago inline con egreso a caja.
+
+#### Tabla proveedor_cc_movimientos (migration 085)
+- tipo: oc / pago / nota_credito / ajuste. `monto` positivo = deuda, negativo = cancela deuda.
+- `fn_saldo_proveedor_cc(proveedor_id)` SECURITY DEFINER: `SUM(monto)` para el proveedor.
+- `proveedores`: +`cuenta_corriente_habilitada BOOLEAN` · +`limite_credito_proveedor DECIMAL`.
+
+#### AlertasPage + useAlertas
+- 2 nuevas queries: OC vencidas (`fecha_vencimiento_pago < hoy`) + OC próximas (`≤ hoy+3d`).
+- Sección roja "OC vencidas sin pagar" + sección ámbar "OC por vencer en 3 días".
+- Badge sidebar incluye conteo de ambas.
+
  
  # CLAUDE.md
 

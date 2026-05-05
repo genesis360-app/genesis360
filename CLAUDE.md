@@ -1361,7 +1361,7 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 - Config ubicaciones mobile: `flex-wrap` en fila agregar
 - Envíos: bloqueo edición si entregado · servicio selectbox · canal desde venta.origen
 
-### v1.4.0 DEV — migration 083 · pendiente PR → PROD
+### v1.4.0 ✅ PROD
 
 #### Cuenta Corriente (migration 083)
 - `clientes`: +`cuenta_corriente_habilitada BOOLEAN DEFAULT FALSE` + `limite_credito DECIMAL(12,2)` + `plazo_pago_dias INT DEFAULT 30`
@@ -1391,6 +1391,28 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 
 #### Documentación
 - `docs/arquitectura_escalabilidad.md`: análisis escalabilidad, cola jobs, workers, Sentry, cloud vs DC.
+
+### v1.5.0 — PR #97 (pendiente merge a main)
+
+#### Notificaciones reales (migration 084)
+- Tabla `notificaciones`: tenant_id, user_id, tipo CHECK('info','warning','danger','success'), titulo, mensaje, leida, action_url. RLS: `user_id = auth.uid()`.
+- `NotificacionesButton.tsx` reescrito: query real a Supabase con `refetchInterval: 30_000`. `markRead(id)`, `markAllRead()`. Reemplaza mock anterior.
+- Para notificar a OWNER/SUPERVISOR: query `users WHERE tenant_id = X AND rol IN ('OWNER','SUPERVISOR')` → INSERT en `notificaciones` por cada usuario.
+
+#### Caja — mejoras (migration 084)
+- `caja_sesiones.monto_sugerido_apertura` + `diferencia_apertura`: guardados al abrir caja.
+- Warning inline en apertura: monto ≠ sugerido → aviso ámbar/rojo en tiempo real; botón con confirmación 2-paso. Al confirmar: INSERT en `notificaciones` para OWNER/SUPERVISOR + email via send-email EF.
+- `getTipoDisplay(tipo, concepto)`: si `tipo='ingreso'` y concepto NO contiene `#N` → "Ingreso Manual"; si tiene → "Venta".
+- **Tab Caja Fuerte**: visible si `tenant.caja_fuerte_roles.includes(user.rol) && cajaFuerte`. Historial depósitos (tipo `ingreso_traspaso`). Sin saldo. Botón "Depositar" abre modal existente.
+- **Tab Configuración** (solo OWNER/SUPERVISOR): soft delete cajas operativas (deshabilitado si sesión activa), checkboxes roles acceso caja fuerte.
+- Historial sesiones: diferencia apertura y cierre mostradas por separado.
+- `tenants.caja_fuerte_roles TEXT[] DEFAULT ARRAY['OWNER','SUPERVISOR','ADMIN']`. Trigger `fn_crear_caja_fuerte` + backfill PROD ✅.
+
+#### Cuenta Corriente — pago inline
+- `registrarPagoCC(clienteId)`: distribuye pago FIFO (by `created_at`), `min(restante, saldo_pendiente)` por venta, acumula `medio_pago` JSON, marca `despachada` cuando saldo=0.
+
+#### send-email EF
+- Nuevo tipo `notificacion`: `{ type: 'notificacion', to, data: { titulo, mensaje, action_url? } }` → `notificacionTemplate()`.
 
  
  # CLAUDE.md

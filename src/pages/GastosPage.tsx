@@ -1,9 +1,10 @@
 import { useRef, useState, useMemo } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
   ChevronDown, Paperclip, ExternalLink, Repeat, ToggleLeft, ToggleRight,
-  Info, ChevronRight, User, Bell, History,
+  Info, ChevronRight, User, Bell, History, ShoppingCart, AlertCircle,
+  Clock, CheckCircle, CreditCard, DollarSign,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -102,7 +103,7 @@ export default function GastosPage() {
   const esSoloFijos = !['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<'gastos' | 'historial' | 'fijos'>('gastos')
+  const [tab, setTab] = useState<'gastos' | 'historial' | 'fijos' | 'oc'>('gastos')
 
   // ── Gastos variables — state ─────────────────────────────────────────────
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -146,6 +147,17 @@ export default function GastosPage() {
 
   // Múltiples medios de pago para gastos variables
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
+
+  // ── Tab OC — estado ──────────────────────────────────────────────────────
+  const [ocFiltroEstadoPago, setOcFiltroEstadoPago] = useState('')
+  const [ocFiltroProveedor, setOcFiltroProveedor]   = useState('')
+  const [ocModalId, setOcModalId]                   = useState<string | null>(null)
+  const [ocPagoMonto, setOcPagoMonto]               = useState('')
+  const [ocPagoMedio, setOcPagoMedio]               = useState('Transferencia')
+  const [ocPagoTipo, setOcPagoTipo]                 = useState<'pago' | 'cc'>('pago')
+  const [ocPagoDias, setOcPagoDias]                 = useState('30')
+  const [ocPagoCondiciones, setOcPagoCondiciones]   = useState('')
+  const [ocGuardando, setOcGuardando]               = useState(false)
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -203,6 +215,155 @@ export default function GastosPage() {
     },
     enabled: !!tenant && tab === 'fijos',
   })
+
+  // ── Tab OC — queries ─────────────────────────────────────────────────────
+  const { data: ocs = [], isLoading: loadingOcs, refetch: refetchOcs } = useQuery({
+    queryKey: ['oc-gastos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('ordenes_compra')
+        .select('*, proveedores(id,nombre), orden_compra_items(cantidad, precio_unitario, productos(nombre))')
+        .eq('tenant_id', tenant!.id)
+        .not('estado', 'eq', 'cancelada')
+        .order('created_at', { ascending: false })
+      return (data ?? []) as any[]
+    },
+    enabled: !!tenant && tab === 'oc',
+  })
+
+  const { data: proveedoresOC = [] } = useQuery({
+    queryKey: ['proveedores-simple', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('proveedores')
+        .select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'oc',
+  })
+
+  const { data: cajasAbiertasOC = [] } = useQuery({
+    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, cajas(nombre)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'oc',
+  })
+
+  const ocSeleccionada = ocs.find((o: any) => o.id === ocModalId) ?? null
+
+  const ocsFiltradas = useMemo(() => {
+    return ocs.filter((o: any) => {
+      if (ocFiltroEstadoPago && o.estado_pago !== ocFiltroEstadoPago) return false
+      if (ocFiltroProveedor && o.proveedor_id !== ocFiltroProveedor) return false
+      return true
+    })
+  }, [ocs, ocFiltroEstadoPago, ocFiltroProveedor])
+
+  const hoy = new Date().toISOString().split('T')[0]
+
+  function calcMontoTotalOC(oc: any): number {
+    if (oc.monto_total) return Number(oc.monto_total)
+    return (oc.orden_compra_items ?? []).reduce((s: number, i: any) =>
+      s + Number(i.cantidad ?? 0) * Number(i.precio_unitario ?? 0), 0)
+  }
+
+  function estadoPagoBadge(oc: any) {
+    const venc = oc.fecha_vencimiento_pago
+    const esVencida = venc && venc < hoy
+    const esProxima = venc && !esVencida && (() => {
+      const d = new Date(venc + 'T00:00:00'); d.setDate(d.getDate() + 1)
+      return (d.getTime() - Date.now()) / 86400000 <= 3
+    })()
+
+    const base: Record<string, { label: string; cls: string }> = {
+      pendiente_pago:   { label: 'Pendiente', cls: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300' },
+      pago_parcial:     { label: 'Pago parcial', cls: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300' },
+      pagada:           { label: 'Pagada', cls: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300' },
+      cuenta_corriente: { label: 'Cuenta Corriente', cls: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300' },
+    }
+    const b = base[oc.estado_pago] ?? base.pendiente_pago
+    if (esVencida) return { label: `⚠ Vencida`, cls: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300' }
+    if (esProxima) return { label: `⏰ ${b.label}`, cls: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300' }
+    return b
+  }
+
+  const registrarPagoOC = async () => {
+    if (!ocSeleccionada) return
+    const monto = parseFloat(ocPagoMonto.replace(',', '.'))
+    if (isNaN(monto) || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    setOcGuardando(true)
+    try {
+      const total = calcMontoTotalOC(ocSeleccionada)
+      const nuevoMontoPagado = Number(ocSeleccionada.monto_pagado ?? 0) + monto
+
+      let nuevoEstadoPago: string
+      let fechaVenc: string | null = ocSeleccionada.fecha_vencimiento_pago ?? null
+      let diasPlazo: number | null = ocSeleccionada.dias_plazo_pago ?? null
+
+      if (ocPagoTipo === 'cc') {
+        const dias = parseInt(ocPagoDias) || 30
+        const fv = new Date(); fv.setDate(fv.getDate() + dias)
+        fechaVenc = fv.toISOString().split('T')[0]
+        diasPlazo = dias
+        nuevoEstadoPago = 'cuenta_corriente'
+      } else {
+        nuevoEstadoPago = nuevoMontoPagado >= total - 0.5 ? 'pagada' : 'pago_parcial'
+      }
+
+      // UPDATE ordenes_compra
+      const { error: errOC } = await supabase.from('ordenes_compra').update({
+        estado_pago: nuevoEstadoPago,
+        monto_pagado: ocPagoTipo === 'cc' ? 0 : nuevoMontoPagado,
+        monto_total: total,
+        fecha_vencimiento_pago: fechaVenc,
+        dias_plazo_pago: diasPlazo,
+        condiciones_pago: ocPagoCondiciones || null,
+      }).eq('id', ocSeleccionada.id)
+      if (errOC) throw errOC
+
+      // INSERT proveedor_cc_movimientos
+      const sesionId = (cajasAbiertasOC as any[])[0]?.id ?? null
+      await supabase.from('proveedor_cc_movimientos').insert({
+        tenant_id:    tenant!.id,
+        proveedor_id: ocSeleccionada.proveedor_id,
+        oc_id:        ocSeleccionada.id,
+        tipo:         ocPagoTipo === 'cc' ? 'oc' : 'pago',
+        monto:        ocPagoTipo === 'cc' ? total : -monto,
+        fecha:        hoy,
+        fecha_vencimiento: ocPagoTipo === 'cc' ? fechaVenc : null,
+        medio_pago:   ocPagoTipo === 'cc' ? null : ocPagoMedio,
+        descripcion:  ocPagoTipo === 'cc'
+          ? `CC OC #${ocSeleccionada.numero} — ${diasPlazo}d`
+          : `Pago OC #${ocSeleccionada.numero}`,
+        caja_sesion_id: ocPagoTipo === 'pago' ? sesionId : null,
+        created_by:   user!.id,
+      })
+
+      // Si es pago efectivo, registrar egreso en caja
+      if (ocPagoTipo === 'pago' && ocPagoMedio === 'Efectivo' && sesionId) {
+        await supabase.from('caja_movimientos').insert({
+          tenant_id:  tenant!.id,
+          sesion_id:  sesionId,
+          tipo:       'egreso',
+          monto,
+          concepto:   `Pago OC #${ocSeleccionada.numero} — ${ocSeleccionada.proveedores?.nombre}`,
+          created_by: user!.id,
+        })
+      }
+
+      toast.success(ocPagoTipo === 'cc' ? 'OC asignada a cuenta corriente' : 'Pago registrado')
+      setOcModalId(null)
+      setOcPagoMonto('')
+      setOcPagoCondiciones('')
+      qc.invalidateQueries({ queryKey: ['oc-gastos', tenant?.id] })
+      qc.invalidateQueries({ queryKey: ['proveedor-cc', ocSeleccionada.proveedor_id] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al registrar')
+    } finally {
+      setOcGuardando(false)
+    }
+  }
 
   // ── Stats (tab gastos) ────────────────────────────────────────────────────
   const gastosFiltrados = filtroCategoria
@@ -668,6 +829,7 @@ export default function GastosPage() {
           { id: 'gastos'   as const, label: 'Gastos variables', icon: <Receipt size={14} /> },
           { id: 'historial'as const, label: 'Historial',        icon: <History size={14} /> },
           { id: 'fijos'    as const, label: 'Gastos fijos',     icon: <Repeat size={14} /> },
+          { id: 'oc'       as const, label: 'Órdenes de Compra',icon: <ShoppingCart size={14} /> },
         ].map(({ id, label, icon }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
@@ -1532,6 +1694,174 @@ export default function GastosPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ══ TAB: ÓRDENES DE COMPRA ══ */}
+      {tab === 'oc' && (
+        <div className="space-y-4">
+          {/* Filtros */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <select value={ocFiltroEstadoPago} onChange={e => setOcFiltroEstadoPago(e.target.value)}
+              className="appearance-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent">
+              <option value="">Todos los estados</option>
+              <option value="pendiente_pago">Pendiente de pago</option>
+              <option value="pago_parcial">Pago parcial</option>
+              <option value="cuenta_corriente">Cuenta corriente</option>
+              <option value="pagada">Pagada</option>
+            </select>
+            <select value={ocFiltroProveedor} onChange={e => setOcFiltroProveedor(e.target.value)}
+              className="appearance-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent">
+              <option value="">Todos los proveedores</option>
+              {(proveedoresOC as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+            {(ocFiltroEstadoPago || ocFiltroProveedor) && (
+              <button onClick={() => { setOcFiltroEstadoPago(''); setOcFiltroProveedor('') }}
+                className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <X size={14} /> Limpiar
+              </button>
+            )}
+            <span className="ml-auto text-xs text-gray-400">{ocsFiltradas.length} OC</span>
+          </div>
+
+          {/* Lista */}
+          {loadingOcs ? (
+            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" /></div>
+          ) : ocsFiltradas.length === 0 ? (
+            <div className="flex flex-col items-center py-16 text-gray-400">
+              <ShoppingCart size={36} className="mb-3 opacity-30" />
+              <p className="text-sm">No hay órdenes de compra{ocFiltroEstadoPago || ocFiltroProveedor ? ' con esos filtros' : ''}</p>
+              <p className="text-xs mt-1">Creá OCs desde el módulo Proveedores</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {ocsFiltradas.map((oc: any) => {
+                const total = calcMontoTotalOC(oc)
+                const saldo = total - Number(oc.monto_pagado ?? 0)
+                const badge = estadoPagoBadge(oc)
+                const venc = oc.fecha_vencimiento_pago
+                const esVencida = venc && venc < hoy
+
+                return (
+                  <div key={oc.id} className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border transition-all ${esVencida ? 'border-red-300 dark:border-red-700' : 'border-gray-100 dark:border-gray-700'}`}>
+                    <div className="flex items-center gap-4 px-4 py-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-primary dark:text-white">OC #{oc.numero}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>{badge.label}</span>
+                          {oc.estado !== 'confirmada' && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                              {oc.estado === 'borrador' ? 'Borrador' : oc.estado === 'enviada' ? 'Enviada' : oc.estado}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{oc.proveedores?.nombre ?? '—'}</p>
+                        <div className="flex gap-4 mt-1 text-xs text-gray-400 flex-wrap">
+                          <span>Total: <strong className="text-gray-700 dark:text-gray-200">${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></span>
+                          {oc.monto_pagado > 0 && <span>Pagado: <strong className="text-green-600">${Number(oc.monto_pagado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></span>}
+                          {saldo > 0.5 && <span>Saldo: <strong className="text-red-500">${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></span>}
+                          {venc && <span className={esVencida ? 'text-red-500 font-medium' : 'text-gray-400'}>Vence: {new Date(venc + 'T00:00:00').toLocaleDateString('es-AR')}</span>}
+                        </div>
+                      </div>
+                      {oc.estado_pago !== 'pagada' && (
+                        <button onClick={() => { setOcModalId(oc.id); setOcPagoTipo('pago'); setOcPagoMonto(''); setOcPagoDias('30'); setOcPagoCondiciones('') }}
+                          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/90 transition-all">
+                          <DollarSign size={12} /> Pagar / CC
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Modal pago / CC */}
+          {ocModalId && ocSeleccionada && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                  <h3 className="font-semibold text-primary dark:text-white">OC #{ocSeleccionada.numero} — {ocSeleccionada.proveedores?.nombre}</h3>
+                  <button onClick={() => setOcModalId(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+                </div>
+                <div className="p-5 space-y-4">
+                  {/* Resumen */}
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-xl px-4 py-3 text-sm space-y-1">
+                    <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total OC</span><span className="font-semibold">${calcMontoTotalOC(ocSeleccionada).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
+                    {Number(ocSeleccionada.monto_pagado) > 0 && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Ya pagado</span><span className="text-green-600">${Number(ocSeleccionada.monto_pagado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>}
+                    <div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-600 pt-1 mt-1"><span>Saldo pendiente</span><span className="text-red-500">${(calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
+                  </div>
+
+                  {/* Tipo de operación */}
+                  <div className="flex gap-2">
+                    <button onClick={() => setOcPagoTipo('pago')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-all ${ocPagoTipo === 'pago' ? 'bg-accent text-white border-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent'}`}>
+                      <CheckCircle size={14} /> Registrar pago
+                    </button>
+                    <button onClick={() => setOcPagoTipo('cc')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-all ${ocPagoTipo === 'cc' ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-purple-400'}`}>
+                      <CreditCard size={14} /> Cuenta corriente
+                    </button>
+                  </div>
+
+                  {ocPagoTipo === 'pago' ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto a pagar *</label>
+                        <input type="number" onWheel={e => e.currentTarget.blur()} value={ocPagoMonto} onChange={e => setOcPagoMonto(e.target.value)}
+                          placeholder={`Máx $${(calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medio de pago</label>
+                        <select value={ocPagoMedio} onChange={e => setOcPagoMedio(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                          {['Efectivo','Transferencia','Tarjeta de débito','Cheque','Otro'].map(m => <option key={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      {ocPagoMedio === 'Efectivo' && (cajasAbiertasOC as any[]).length === 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso no se registrará en caja.</p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Días de plazo</label>
+                        <div className="flex gap-2">
+                          {['30','60','90'].map(d => (
+                            <button key={d} onClick={() => setOcPagoDias(d)}
+                              className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-all ${ocPagoDias === d ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-purple-400'}`}>
+                              {d}d
+                            </button>
+                          ))}
+                          <input type="number" onWheel={e => e.currentTarget.blur()} value={ocPagoDias} onChange={e => setOcPagoDias(e.target.value)}
+                            className="w-20 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-center focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        </div>
+                        {ocPagoDias && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            Vence: {(() => { const d = new Date(); d.setDate(d.getDate() + (parseInt(ocPagoDias) || 30)); return d.toLocaleDateString('es-AR') })()}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Condiciones (opcional)</label>
+                        <input type="text" value={ocPagoCondiciones} onChange={e => setOcPagoCondiciones(e.target.value)}
+                          placeholder="Ej: 50% a 30d + 50% a 60d"
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 px-5 pb-5">
+                  <button onClick={() => setOcModalId(null)} className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
+                  <button onClick={registrarPagoOC} disabled={ocGuardando || (ocPagoTipo === 'pago' && !ocPagoMonto)}
+                    className="flex-1 py-2.5 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-accent/90 disabled:opacity-50">
+                    {ocGuardando ? 'Guardando…' : ocPagoTipo === 'pago' ? 'Confirmar pago' : 'Asignar a CC'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

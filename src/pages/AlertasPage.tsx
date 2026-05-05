@@ -1,6 +1,6 @@
 // ─── AlertasPage ──────────────────────────────────────────────────────────────
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX, ShoppingCart } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
@@ -100,6 +100,43 @@ export default function AlertasPage() {
     enabled: !!tenant,
   })
 
+  const hoyStr = new Date().toISOString().split('T')[0]
+  const en3dias = new Date(); en3dias.setDate(en3dias.getDate() + 3)
+  const en3diasStr = en3dias.toISOString().split('T')[0]
+
+  const { data: ocsVencidas = [], isLoading: loadingOcsVenc } = useQuery({
+    queryKey: ['oc-vencidas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('ordenes_compra')
+        .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
+        .not('fecha_vencimiento_pago', 'is', null)
+        .lt('fecha_vencimiento_pago', hoyStr)
+        .order('fecha_vencimiento_pago', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  const { data: ocsProximas = [], isLoading: loadingOcsProx } = useQuery({
+    queryKey: ['oc-proximas-vencer', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('ordenes_compra')
+        .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
+        .not('fecha_vencimiento_pago', 'is', null)
+        .gte('fecha_vencimiento_pago', hoyStr)
+        .lte('fecha_vencimiento_pago', en3diasStr)
+        .order('fecha_vencimiento_pago', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
   const { data: lpnsVencidos = [], isLoading: loadingVencidos } = useQuery({
     queryKey: ['lpns-vencidos', tenant?.id],
     queryFn: async () => {
@@ -157,8 +194,8 @@ export default function AlertasPage() {
     },
   })
 
-  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length + lineasSinUbicacion.length + lineasSinProveedor.length + lpnsVencidos.length
-  const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda || loadingSinUbic || loadingSinProv || loadingVencidos
+  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length + lineasSinUbicacion.length + lineasSinProveedor.length + lpnsVencidos.length + ocsVencidas.length + ocsProximas.length
+  const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda || loadingSinUbic || loadingSinProv || loadingVencidos || loadingOcsVenc || loadingOcsProx
 
   return (
     <div className="space-y-6">
@@ -178,6 +215,78 @@ export default function AlertasPage() {
         </div>
       ) : (
         <div className="space-y-6">
+
+          {/* OC vencidas */}
+          {ocsVencidas.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
+                <ShoppingCart size={14} />
+                OC vencidas sin pagar ({ocsVencidas.length})
+              </h2>
+              {(ocsVencidas as any[]).map((oc: any) => {
+                const saldo = (oc.monto_total ?? 0) - (oc.monto_pagado ?? 0)
+                const diasMora = Math.floor((Date.now() - new Date(oc.fecha_vencimiento_pago + 'T00:00:00').getTime()) / 86400000)
+                return (
+                  <div key={oc.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-red-200 dark:border-red-900/40 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <ShoppingCart size={18} className="text-red-500 dark:text-red-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-800 dark:text-gray-100">
+                          OC #{oc.numero}
+                          {oc.proveedores?.nombre && <span className="font-normal text-gray-500 dark:text-gray-400"> — {oc.proveedores.nombre}</span>}
+                        </p>
+                        <p className="text-xs text-red-500 dark:text-red-400">
+                          Venció {new Date(oc.fecha_vencimiento_pago + 'T00:00:00').toLocaleDateString('es-AR')} · {diasMora}d de mora
+                          {saldo > 0 && ` · Saldo $${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                        </p>
+                      </div>
+                    </div>
+                    <Link to="/gastos" className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                      Regularizar
+                    </Link>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* OC próximas a vencer */}
+          {ocsProximas.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-2">
+                <ShoppingCart size={14} />
+                OC por vencer en 3 días ({ocsProximas.length})
+              </h2>
+              {(ocsProximas as any[]).map((oc: any) => {
+                const saldo = (oc.monto_total ?? 0) - (oc.monto_pagado ?? 0)
+                const diasRestantes = Math.ceil((new Date(oc.fecha_vencimiento_pago + 'T00:00:00').getTime() - Date.now()) / 86400000)
+                return (
+                  <div key={oc.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-amber-200 dark:border-amber-900/40 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <ShoppingCart size={18} className="text-amber-500 dark:text-amber-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-800 dark:text-gray-100">
+                          OC #{oc.numero}
+                          {oc.proveedores?.nombre && <span className="font-normal text-gray-500 dark:text-gray-400"> — {oc.proveedores.nombre}</span>}
+                        </p>
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Vence en {diasRestantes === 0 ? 'hoy' : `${diasRestantes}d`} · {new Date(oc.fecha_vencimiento_pago + 'T00:00:00').toLocaleDateString('es-AR')}
+                          {saldo > 0 && ` · Saldo $${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                        </p>
+                      </div>
+                    </div>
+                    <Link to="/gastos" className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+                      Pagar ahora
+                    </Link>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
           {/* LPNs vencidos */}
           {lpnsVencidos.length > 0 && (

@@ -14,6 +14,9 @@ export function useAlertas() {
       fechaLimite.setDate(fechaLimite.getDate() - RESERVAS_DIAS_LIMITE)
 
       const hoy = new Date().toISOString().split('T')[0]
+      const en3dias = new Date()
+      en3dias.setDate(en3dias.getDate() + 3)
+      const en3diasStr = en3dias.toISOString().split('T')[0]
 
       const [
         { count: countAlertas },
@@ -21,6 +24,8 @@ export function useAlertas() {
         { count: countSinCategoria },
         { count: countVencidos },
         clientesDeudaData,
+        { count: countOcVencidas },
+        { count: countOcProximas },
       ] = await Promise.all([
         supabase
           .from('alertas')
@@ -53,6 +58,23 @@ export function useAlertas() {
           .eq('tenant_id', tenant!.id)
           .in('estado', ['pendiente', 'reservada'])
           .not('cliente_id', 'is', null),
+        // OC con fecha de vencimiento de pago ya pasada y no pagadas
+        supabase
+          .from('ordenes_compra')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant!.id)
+          .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
+          .not('fecha_vencimiento_pago', 'is', null)
+          .lt('fecha_vencimiento_pago', hoy),
+        // OC que vencen en los próximos 3 días
+        supabase
+          .from('ordenes_compra')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant!.id)
+          .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
+          .not('fecha_vencimiento_pago', 'is', null)
+          .gte('fecha_vencimiento_pago', hoy)
+          .lte('fecha_vencimiento_pago', en3diasStr),
       ])
 
       // Contar clientes únicos con saldo > $0.50
@@ -62,7 +84,7 @@ export function useAlertas() {
         if (saldo >= 0.5 && v.cliente_id) clientesUnicos.add(v.cliente_id)
       }
 
-      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + (countVencidos ?? 0) + clientesUnicos.size
+      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + (countVencidos ?? 0) + clientesUnicos.size + (countOcVencidas ?? 0) + (countOcProximas ?? 0)
     },
     enabled: !!tenant,
     refetchInterval: 30000,

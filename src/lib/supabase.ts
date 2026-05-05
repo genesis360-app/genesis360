@@ -106,6 +106,7 @@ export interface Proveedor {
 }
 
 export type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada' | 'recibida_parcial' | 'recibida'
+export type EstadoPagoOC = 'pendiente_pago' | 'pago_parcial' | 'pagada' | 'cuenta_corriente'
 
 export type EstadoRecepcion = 'borrador' | 'confirmada' | 'cancelada'
 
@@ -151,6 +152,13 @@ export interface OrdenCompra {
   proveedor_id: string
   numero: number
   estado: EstadoOC
+  // Pago (migration 085)
+  estado_pago: EstadoPagoOC
+  monto_total?: number | null
+  monto_pagado: number
+  fecha_vencimiento_pago?: string | null
+  dias_plazo_pago?: number | null
+  condiciones_pago?: string | null
   fecha_esperada?: string | null
   notas?: string | null
   created_by?: string | null
@@ -158,6 +166,25 @@ export interface OrdenCompra {
   updated_at: string
   // joins
   proveedores?: Pick<Proveedor, 'id' | 'nombre'>
+  orden_compra_items?: OrdenCompraItem[]
+}
+
+export interface ProveedorCCMovimiento {
+  id: string
+  tenant_id: string
+  proveedor_id: string
+  oc_id?: string | null
+  tipo: 'oc' | 'pago' | 'nota_credito' | 'ajuste'
+  monto: number
+  fecha: string
+  fecha_vencimiento?: string | null
+  medio_pago?: string | null
+  descripcion?: string | null
+  caja_sesion_id?: string | null
+  created_by?: string | null
+  created_at: string
+  // joins
+  ordenes_compra?: Pick<OrdenCompra, 'numero'> | null
 }
 
 export interface OrdenCompraItem {

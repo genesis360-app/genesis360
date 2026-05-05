@@ -1,6 +1,6 @@
 # Genesis360 — Roadmap
 
-**Última actualización:** 5 de Mayo, 2026 · **v1.5.0 en PROD ✅ · v1.6.0 en DEV**
+**Última actualización:** 5 de Mayo, 2026 · **v1.6.0 en PROD ✅ · DEV = PROD**
 
 > Stack, arquitectura y convenciones → [CLAUDE.md](CLAUDE.md) · Workflow de deploy → [WORKFLOW.md](WORKFLOW.md)
 
@@ -516,9 +516,7 @@ Próximo RRHH: Bloque 5 — CHECK-IN/CHECK-OUT rápido (v0.76.0)
 
 ---
 
-## ✅ v1.6.0 DEV — OC Gestión de Pagos + CC Proveedores (migration 085)
-
-### Estado: DEV ✅ · PROD pendiente deploy
+## ✅ v1.6.0 PROD — OC Gestión de Pagos + CC Proveedores (migration 085)
 
 ### Campos de pago en ordenes_compra
 - `estado_pago`: pendiente_pago / pago_parcial / pagada / cuenta_corriente

@@ -123,6 +123,16 @@ function alertaStockTemplate(data: {
   }
 }
 
+function notificacionTemplate(data: { titulo: string; mensaje: string; action_url?: string }) {
+  return {
+    subject: data.titulo,
+    html: templateBase(`
+      <p>${data.mensaje.replace(/\n/g, '<br>')}</p>
+      ${data.action_url ? `<a href="${APP_URL}${data.action_url}" class="btn">Ver en Genesis360 →</a>` : ''}
+    `),
+  }
+}
+
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -146,6 +156,8 @@ serve(async (req) => {
       ;({ subject, html } = ventaConfirmadaTemplate(data))
     } else if (type === 'alerta_stock') {
       ;({ subject, html } = alertaStockTemplate(data))
+    } else if (type === 'notificacion') {
+      ;({ subject, html } = notificacionTemplate(data))
     } else {
       throw new Error(`Tipo de email desconocido: ${type}`)
     }

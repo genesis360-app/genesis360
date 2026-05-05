@@ -104,6 +104,10 @@ export default function ClientesPage() {
   const [filtroEtiqueta, setFiltroEtiqueta] = useState('')
   const [nuevaNota, setNuevaNota] = useState('')
   const [savingNota, setSavingNota] = useState(false)
+  const [pagoInlineId, setPagoInlineId] = useState<string | null>(null)  // cliente_id con pago inline abierto
+  const [pagoMonto, setPagoMonto] = useState('')
+  const [pagoMetodo, setPagoMetodo] = useState('Efectivo')
+  const [savingPago, setSavingPago] = useState(false)
   const [showDomForm, setShowDomForm] = useState(false)
   const [editDomId, setEditDomId] = useState<string | null>(null)
   const [domForm, setDomForm] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false })
@@ -362,6 +366,39 @@ export default function ClientesPage() {
     }
   }
 
+  const registrarPagoCC = async (clienteId: string) => {
+    const monto = parseFloat(pagoMonto)
+    if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    const ventasDelCliente = (ventasCC as any[]).filter(v => v.cliente_id === clienteId)
+    if (!ventasDelCliente.length) { toast.error('Sin ventas CC pendientes'); return }
+    setSavingPago(true)
+    try {
+      // Distribuir el pago entre las ventas más antiguas primero
+      let restante = monto
+      for (const venta of ventasDelCliente.sort((a: any, b: any) => a.created_at.localeCompare(b.created_at))) {
+        if (restante <= 0) break
+        const saldo = (venta.total ?? 0) - (venta.monto_pagado ?? 0)
+        const abono = Math.min(restante, saldo)
+        const nuevoMontoPagado = (venta.monto_pagado ?? 0) + abono
+        const nuevoEstado = nuevoMontoPagado >= (venta.total ?? 0) - 0.5 ? 'despachada' : venta.estado
+        // Acumular medio de pago
+        let medios: any[] = []
+        try { medios = JSON.parse(venta.medio_pago ?? '[]') } catch { medios = [] }
+        medios.push({ tipo: pagoMetodo, monto: abono })
+        await supabase.from('ventas').update({
+          monto_pagado: nuevoMontoPagado,
+          estado: nuevoEstado,
+          medio_pago: JSON.stringify(medios),
+        }).eq('id', venta.id)
+        restante -= abono
+      }
+      toast.success(`Pago de ${formatMoneda(monto)} registrado`)
+      qc.invalidateQueries({ queryKey: ['ventas-cc'] })
+      setPagoInlineId(null); setPagoMonto(''); setPagoMetodo('Efectivo')
+    } catch (e: any) { toast.error(e.message ?? 'Error al registrar pago') }
+    finally { setSavingPago(false) }
+  }
+
   const eliminar = async (id: string, nombre: string) => {
     if (!confirm(`¿Eliminar a ${nombre}? Sus ventas quedarán sin cliente asignado.`)) return
     // Desasociar ventas y envíos antes de eliminar (evita error de FK)
@@ -602,9 +639,10 @@ export default function ClientesPage() {
                             className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             <ShoppingCart size={12} /> Ver ventas
                           </button>
-                          <button onClick={() => navigate(`/ventas?cliente=${c.id}`)}
-                            className="flex items-center gap-1.5 text-xs bg-accent hover:bg-accent/90 text-white px-3 py-1.5 rounded-lg transition-colors">
-                            <DollarSign size={12} /> Registrar pago
+                          <button
+                            onClick={() => { setPagoInlineId(pagoInlineId === c.id ? null : c.id); setPagoMonto(''); setPagoMetodo('Efectivo') }}
+                            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${pagoInlineId === c.id ? 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200' : 'bg-accent hover:bg-accent/90 text-white'}`}>
+                            <DollarSign size={12} /> {pagoInlineId === c.id ? 'Cancelar' : 'Registrar pago'}
                           </button>
                         </div>
                         {/* Ventas CC del cliente */}
@@ -616,6 +654,45 @@ export default function ClientesPage() {
                                 <span className="font-semibold text-red-600 dark:text-red-400">{formatMoneda((v.total ?? 0) - (v.monto_pagado ?? 0))}</span>
                               </div>
                             ))}
+                          </div>
+                        )}
+
+                        {/* Panel inline de pago */}
+                        {pagoInlineId === c.id && d && (
+                          <div className="mt-3 bg-accent/5 border border-accent/20 rounded-xl p-4 space-y-3">
+                            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Registrar pago — Deuda total: <span className="text-red-600 dark:text-red-400">{formatMoneda(d.total)}</span></p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Monto *</label>
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                  <input type="number" min="0" max={d.total} value={pagoMonto}
+                                    onChange={e => setPagoMonto(e.target.value)}
+                                    onWheel={e => e.currentTarget.blur()}
+                                    placeholder="0"
+                                    className="w-full pl-7 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                                </div>
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Método</label>
+                                <select value={pagoMetodo} onChange={e => setPagoMetodo(e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                                  {['Efectivo','Transferencia','Tarjeta','MercadoPago','Otro'].map(m => (
+                                    <option key={m} value={m}>{m}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <button onClick={() => { setPagoInlineId(null); setPagoMonto('') }}
+                                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 py-2 rounded-xl text-sm font-medium">
+                                Cancelar
+                              </button>
+                              <button onClick={() => registrarPagoCC(c.id)} disabled={savingPago || !pagoMonto}
+                                className="flex-1 bg-accent hover:bg-accent/90 text-white py-2 rounded-xl text-sm font-semibold disabled:opacity-50">
+                                {savingPago ? 'Guardando...' : 'Confirmar pago'}
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>

@@ -4,7 +4,7 @@ import { BRAND } from '@/config/brand'
 import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import {
-  DollarSign, Plus, Minus, Lock, Unlock, History,
+  DollarSign, Plus, Minus, Lock, Unlock, History, Trash2,
   Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -14,7 +14,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
 
-type Tab = 'caja' | 'historial' | 'configuracion'
+type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'configuracion'
 
 function formatMoneda(v: number) {
   return `$${v.toLocaleString('es-AR', { minimumFractionDigits: 0 })}`
@@ -35,6 +35,11 @@ const TIPO_LABEL: Record<string, string> = {
 function extraerNumeroVenta(concepto: string): string | null {
   const m = concepto.match(/#(\d+)/)
   return m ? m[1] : null
+}
+
+function getTipoDisplay(tipo: string, concepto: string): string {
+  if (tipo === 'ingreso') return extraerNumeroVenta(concepto) ? 'Venta' : 'Ingreso Manual'
+  return TIPO_LABEL[tipo] ?? tipo
 }
 
 function extraerMedioPago(tipo: string, concepto: string): string {
@@ -64,6 +69,7 @@ export default function CajaPage() {
   // Caja fuerte
   const [showDepositoFuerte, setShowDepositoFuerte] = useState(false)
   const [showRetiroFuerte, setShowRetiroFuerte] = useState(false)
+  const [showDifConfirm, setShowDifConfirm] = useState(false)
   const [fuerteMonto, setFuerteMonto] = useState('')
   const [fuerteConcepto, setFuerteConcepto] = useState('')
   const [sesionExpandida, setSesionExpandida] = useState<string | null>(null)
@@ -329,20 +335,53 @@ export default function CajaPage() {
         const nombre = (existente as any).abrio?.nombre_display ?? 'otro usuario'
         throw new Error(`Esta caja ya está abierta por ${nombre}`)
       }
+      const montoReal = parseFloat(montoApertura) || 0
+      const difApertura = montoSugerido !== null ? montoReal - montoSugerido : null
       const { error } = await supabase.from('caja_sesiones').insert({
         tenant_id: tenant!.id,
         caja_id: cajaId,
         usuario_id: user?.id,
-        monto_apertura: parseFloat(montoApertura) || 0,
+        monto_apertura: montoReal,
+        monto_sugerido_apertura: montoSugerido,
+        diferencia_apertura: difApertura,
         estado: 'abierta',
         sucursal_id: sucursalId || null,
       })
       if (error) throw error
+      // Notificar si hay diferencia
+      if (difApertura !== null && difApertura !== 0) {
+        const { data: supervisores } = await supabase.from('users')
+          .select('id, email, nombre_display')
+          .eq('tenant_id', tenant!.id)
+          .in('rol', ['OWNER', 'SUPERVISOR', 'ADMIN'])
+        if (supervisores?.length) {
+          const difStr = difApertura > 0 ? `+$${Math.abs(difApertura).toLocaleString('es-AR')}` : `-$${Math.abs(difApertura).toLocaleString('es-AR')}`
+          const titulo = `⚠ Diferencia al abrir ${cajaActual?.nombre ?? 'caja'}`
+          const mensaje = `${user?.nombre_display ?? 'Un usuario'} abrió la caja con una diferencia de ${difStr} respecto al cierre anterior (sugerido $${montoSugerido!.toLocaleString('es-AR')}, ingresado $${montoReal.toLocaleString('es-AR')}).`
+          await supabase.from('notificaciones').insert(
+            supervisores.filter(s => s.id !== user?.id).map(s => ({
+              tenant_id: tenant!.id,
+              user_id: s.id,
+              tipo: 'diferencia_apertura_caja',
+              titulo,
+              mensaje,
+              action_url: '/caja',
+            }))
+          )
+          // Email fire-and-forget
+          supervisores.filter(s => s.email && s.id !== user?.id).forEach(s => {
+            supabase.functions.invoke('send-email', {
+              body: { type: 'notificacion', to: s.email, data: { titulo, mensaje, action_url: '/caja' } }
+            }).catch(() => {})
+          })
+        }
+      }
+      return difApertura
     },
     onSuccess: () => {
       toast.success('Caja abierta')
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
-      setShowApertura(false); setMontoApertura('')
+      setShowApertura(false); setShowDifConfirm(false); setMontoApertura('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -641,19 +680,27 @@ export default function CajaPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-fit">
-        {[
-          { id: 'caja', label: 'Caja actual' },
-          { id: 'historial', label: 'Historial' },
-          { id: 'configuracion', label: 'Configuración' },
-        ].map(({ id, label }) => (
-          <button key={id} onClick={() => setTab(id as Tab)}
-            className={`py-2 px-4 rounded-lg text-sm font-medium transition-all
-              ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {(() => {
+        const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['OWNER','SUPERVISOR','ADMIN']
+        const puedeCajaFuerte = !!user?.rol && cajaFuerteRoles.includes(user.rol)
+        const tabs = [
+          { id: 'caja', label: 'Caja actual', visible: true },
+          { id: 'historial', label: 'Historial', visible: true },
+          { id: 'caja_fuerte', label: '🔒 Caja Fuerte', visible: puedeCajaFuerte && !!cajaFuerte },
+          { id: 'configuracion', label: 'Configuración', visible: puedeAdministrarCaja },
+        ].filter(t => t.visible)
+        return (
+          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-fit flex-wrap">
+            {tabs.map(({ id, label }) => (
+              <button key={id} onClick={() => setTab(id as Tab)}
+                className={`py-2 px-4 rounded-lg text-sm font-medium transition-all
+                  ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )
+      })()}
 
       {/* ── CAJA ACTUAL ── */}
       {tab === 'caja' && (
@@ -730,19 +777,43 @@ export default function CajaPage() {
                     )}
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
-                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={montoApertura} onChange={e => setMontoApertura(e.target.value)}
+                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={montoApertura}
+                        onChange={e => { setMontoApertura(e.target.value); setShowDifConfirm(false) }}
                         placeholder="0" autoFocus
                         className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                     </div>
+                    {/* Diferencia en tiempo real */}
+                    {montoSugerido !== null && montoApertura !== '' && (() => {
+                      const dif = parseFloat(montoApertura) - montoSugerido
+                      if (dif === 0) return null
+                      return (
+                        <div className={`mt-2 px-3 py-2 rounded-xl text-xs font-medium flex items-center gap-2 ${dif > 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
+                          <span>⚠</span>
+                          <span>Diferencia de {dif > 0 ? '+' : ''}{dif.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 })} respecto al cierre anterior. Se notificará al supervisor/dueño.</span>
+                        </div>
+                      )
+                    })()}
                   </div>
+                  {/* Confirm diferencia */}
+                  {showDifConfirm && montoSugerido !== null && parseFloat(montoApertura) !== montoSugerido && (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-3 text-sm text-amber-800 dark:text-amber-300">
+                      ¿Confirmás abrir la caja con esta diferencia? Se registrará y se notificará al supervisor/dueño.
+                    </div>
+                  )}
                   <div className="flex gap-2">
-                    <button onClick={() => setShowApertura(false)}
+                    <button onClick={() => { setShowApertura(false); setShowDifConfirm(false) }}
                       className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                       Cancelar
                     </button>
-                    <button onClick={() => abrirCaja.mutate()} disabled={abrirCaja.isPending}
-                      className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm">
-                      {abrirCaja.isPending ? 'Abriendo...' : 'Confirmar apertura'}
+                    <button
+                      onClick={() => {
+                        const dif = montoSugerido !== null ? parseFloat(montoApertura) - montoSugerido : 0
+                        if (dif !== 0 && !showDifConfirm) { setShowDifConfirm(true); return }
+                        abrirCaja.mutate()
+                      }}
+                      disabled={abrirCaja.isPending}
+                      className={`flex-1 font-semibold py-2.5 rounded-xl text-sm text-white transition-all disabled:opacity-50 ${showDifConfirm ? 'bg-amber-500 hover:bg-amber-600' : 'bg-accent hover:bg-accent/90'}`}>
+                      {abrirCaja.isPending ? 'Abriendo...' : showDifConfirm ? 'Sí, abrir con diferencia' : 'Confirmar apertura'}
                     </button>
                   </div>
                 </div>
@@ -849,6 +920,16 @@ export default function CajaPage() {
                   className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-semibold rounded-xl transition-all">
                   <CheckCircle size={16} />
                 </button>
+                {cajaFuerte && (() => {
+                  const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['OWNER','SUPERVISOR','ADMIN']
+                  return cajaFuerteRoles.includes(user?.rol ?? '') ? (
+                    <button onClick={() => setShowDepositoFuerte(true)}
+                      title="Depositar en Caja Fuerte"
+                      className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-yellow-400 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 font-semibold rounded-xl transition-all">
+                      🔒
+                    </button>
+                  ) : null
+                })()}
                 {cajasAbiertas.length >= 2 && (
                   <button onClick={() => setShowTraspaso(true)}
                     title="Transferir efectivo a otra caja"
@@ -875,7 +956,7 @@ export default function CajaPage() {
                         const esInfo = m.tipo === 'ingreso_informativo' || m.tipo === 'egreso_informativo'
                         const numVenta = extraerNumeroVenta(m.concepto)
                         const medio = extraerMedioPago(m.tipo, m.concepto)
-                        const tipoLabel = TIPO_LABEL[m.tipo] ?? m.tipo
+                        const tipoLabel = getTipoDisplay(m.tipo, m.concepto)
                         const conceptoLimpio = esInfo
                           ? m.concepto.replace(/^\[.+?\]\s*/, '')
                           : m.concepto
@@ -994,49 +1075,52 @@ export default function CajaPage() {
       )}
 
       {/* ── CAJA FUERTE ── */}
-      {tab === 'caja' && cajaFuerte && puedeAdministrarCaja && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center">
-                <Lock size={15} className="text-yellow-600 dark:text-yellow-400" />
+      {/* ── CAJA FUERTE TAB ── */}
+      {tab === 'caja_fuerte' && cajaFuerte && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center">
+                <Lock size={18} className="text-yellow-600 dark:text-yellow-400" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Caja Fuerte</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Fondos retirados del negocio</p>
+                <p className="font-semibold text-gray-800 dark:text-gray-100">Caja Fuerte / Bóveda</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Registro de depósitos. No registra saldo.</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-lg font-bold text-gray-900 dark:text-white">{formatMoneda(fuerteSaldo)}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500">Saldo acumulado</p>
+            <div className="flex gap-2">
+              <button onClick={() => setShowDepositoFuerte(true)} disabled={!sesionActiva}
+                title={!sesionActiva ? 'Abrí una caja primero para depositar' : ''}
+                className="flex items-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
+                <Plus size={15} /> Depositar desde caja activa
+              </button>
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <button onClick={() => setShowDepositoFuerte(true)} disabled={!sesionActiva}
-              title={!sesionActiva ? 'Abrí una caja primero' : ''}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-sm font-medium rounded-xl hover:bg-yellow-100 dark:hover:bg-yellow-900/40 disabled:opacity-50 transition-colors">
-              <Plus size={14} /> Depositar
-            </button>
-            <button onClick={() => setShowRetiroFuerte(true)} disabled={fuerteSaldo <= 0 || !sesionActiva}
-              title={!sesionActiva ? 'Abrí una caja primero' : fuerteSaldo <= 0 ? 'Sin saldo en caja fuerte' : ''}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-xl hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors">
-              <Minus size={14} /> Retirar
-            </button>
-          </div>
-
-          {(fuerteMovimientos as any[]).length > 0 && (
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
-              {(fuerteMovimientos as any[]).slice(0, 8).map((m: any) => (
-                <div key={m.id} className="flex items-center justify-between text-xs px-2 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <span className="text-gray-600 dark:text-gray-300 truncate">{m.concepto}</span>
-                  <span className={m.tipo === 'ingreso_traspaso' ? 'text-green-600 dark:text-green-400 font-medium ml-2 flex-shrink-0' : 'text-red-500 dark:text-red-400 font-medium ml-2 flex-shrink-0'}>
-                    {m.tipo === 'ingreso_traspaso' ? '+' : '−'}{formatMoneda(m.monto)}
-                  </span>
-                </div>
-              ))}
+          {/* Historial de depósitos */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Historial de depósitos</p>
             </div>
-          )}
+            {(fuerteMovimientos as any[]).filter((m: any) => m.tipo === 'ingreso_traspaso').length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin depósitos registrados</p>
+            ) : (
+              <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                {(fuerteMovimientos as any[]).filter((m: any) => m.tipo === 'ingreso_traspaso').map((m: any) => (
+                  <div key={m.id} className="px-5 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-800 dark:text-gray-100">{m.concepto}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                        {m.users?.nombre_display && ` · ${m.users.nombre_display}`}
+                      </p>
+                    </div>
+                    <span className="font-bold text-green-600 dark:text-green-400">+{formatMoneda(m.monto)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1129,15 +1213,31 @@ export default function CajaPage() {
                       <p className="text-xs text-gray-400 dark:text-gray-500">Cerró: {cerroNombre}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {dif != null && (
-                        <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${
-                          dif > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' :
-                          dif < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' :
-                          'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                        }`}>
-                          {dif > 0 ? `+${formatMoneda(dif)}` : dif < 0 ? `-${formatMoneda(Math.abs(dif))}` : 'Sin diferencia'}
-                        </span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {/* Diferencia de apertura */}
+                        {(() => {
+                          const da = s.diferencia_apertura
+                          if (da == null) return null
+                          return (
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-lg flex items-center gap-1 ${
+                              da !== 0 ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400' :
+                              'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                            }`}>
+                              Apertura: {da === 0 ? 'Sin diferencia' : (da > 0 ? `+${formatMoneda(da)}` : `-${formatMoneda(Math.abs(da))}`)}
+                            </span>
+                          )
+                        })()}
+                        {/* Diferencia de cierre */}
+                        {dif != null && (
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-lg ${
+                            dif > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' :
+                            dif < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' :
+                            'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                          }`}>
+                            Cierre: {dif === 0 ? 'Sin diferencia' : (dif > 0 ? `+${formatMoneda(dif)}` : `-${formatMoneda(Math.abs(dif))}`)}
+                          </span>
+                        )}
+                      </div>
                       <button onClick={() => imprimirCierre(s)}
                         className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <Printer size={13} /> PDF
@@ -1227,12 +1327,13 @@ export default function CajaPage() {
         </div>
       )}
 
-      {/* ── CONFIGURACIÓN ── */}
-      {tab === 'configuracion' && (
+      {/* ── CONFIGURACIÓN (solo OWNER/SUPERVISOR/ADMIN) ── */}
+      {tab === 'configuracion' && puedeAdministrarCaja && (
         <div className="space-y-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+          {/* Cajas operativas */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Cajas del negocio</h2>
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Cajas operativas</h2>
               <button onClick={() => setShowNuevaCaja(true)}
                 className="flex items-center gap-1.5 text-sm bg-accent hover:bg-accent/90 text-white px-3 py-2 rounded-xl transition-all">
                 <Plus size={15} /> Nueva caja
@@ -1248,29 +1349,77 @@ export default function CajaPage() {
                   className="px-4 py-2 bg-primary text-white rounded-xl text-sm disabled:opacity-50">
                   Crear
                 </button>
-                <button onClick={() => setShowNuevaCaja(false)} className="px-3 py-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400">
+                <button onClick={() => setShowNuevaCaja(false)} className="px-3 py-2 text-gray-400 dark:text-gray-500 hover:text-gray-600">
                   <X size={18} />
                 </button>
               </div>
             )}
 
-            {cajas.length === 0 ? (
+            {cajasOperativas.length === 0 ? (
               <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">No hay cajas creadas</p>
             ) : (
               <div className="space-y-2">
-                {cajas.map((c: any) => (
-                  <div key={c.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                        <DollarSign size={15} className="text-primary" />
+                {cajasOperativas.map((c: any) => {
+                  const tieneSessionActiva = cajasAbiertas.includes(c.id)
+                  return (
+                    <div key={c.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                          <DollarSign size={15} className="text-primary" />
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-800 dark:text-gray-100">{c.nombre}</span>
+                          {tieneSessionActiva && (
+                            <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-medium">● Abierta</span>
+                          )}
+                        </div>
                       </div>
-                      <span className="font-medium text-gray-800 dark:text-gray-100">{c.nombre}</span>
+                      <button
+                        title={tieneSessionActiva ? 'No se puede eliminar una caja abierta' : 'Eliminar caja'}
+                        disabled={tieneSessionActiva}
+                        onClick={async () => {
+                          if (!confirm(`¿Eliminar la caja "${c.nombre}"? El historial de movimientos se conserva.`)) return
+                          const { error } = await supabase.from('cajas').update({ activo: false }).eq('id', c.id)
+                          if (error) { toast.error(error.message); return }
+                          toast.success('Caja eliminada')
+                          qc.invalidateQueries({ queryKey: ['cajas'] })
+                        }}
+                        className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                        <Trash2 size={15} />
+                      </button>
                     </div>
-                    <CheckCircle size={16} className="text-green-500" />
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
+          </div>
+
+          {/* Roles que pueden ver la Caja Fuerte */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Acceso a Caja Fuerte / Bóveda</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">OWNER, SUPERVISOR y ADMIN siempre tienen acceso. Podés habilitar otros roles.</p>
+            <div className="space-y-2">
+              {['CAJERO', 'CONTADOR', 'DEPOSITO', 'RRHH'].map(rol => {
+                const roles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['OWNER','SUPERVISOR','ADMIN']
+                const enabled = roles.includes(rol)
+                return (
+                  <label key={rol} className="flex items-center gap-3 cursor-pointer">
+                    <div onClick={async () => {
+                      const current: string[] = (tenant as any)?.caja_fuerte_roles ?? ['OWNER','SUPERVISOR','ADMIN']
+                      const updated = enabled ? current.filter(r => r !== rol) : [...current, rol]
+                      await supabase.from('tenants').update({ caja_fuerte_roles: updated }).eq('id', tenant!.id)
+                      // Reload tenant data
+                      qc.invalidateQueries({ queryKey: ['cajas'] })
+                      window.location.reload() // reload para que authStore refresque el tenant
+                    }}
+                      className={`w-9 h-5 rounded-full transition-colors flex items-center px-0.5 ${enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}`}>
+                      <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                    </div>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{rol}</span>
+                  </label>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}

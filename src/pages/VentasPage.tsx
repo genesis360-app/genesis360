@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { generarFacturaPDF, normalizarCondIVA } from '@/lib/facturasPDF'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
@@ -106,6 +107,7 @@ export default function VentasPage() {
   const [facturaTipo, setFacturaTipo] = useState<'A' | 'B' | 'C'>('B')
   const [facturaPV, setFacturaPV]     = useState<number>(1)
   const [emitiendoFactura, setEmitiendoFactura] = useState(false)
+  const [descargandoPdfVenta, setDescargandoPdfVenta] = useState(false)
   const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('despachada')
   const [editandoPago, setEditandoPago] = useState(false)
   const [editMontoPagado, setEditMontoPagado] = useState('')
@@ -751,6 +753,48 @@ export default function VentasPage() {
       toast.error('Error al emitir: ' + (e.message ?? 'intente nuevamente'))
     } finally {
       setEmitiendoFactura(false)
+    }
+  }
+
+  async function descargarFacturaPDFVenta() {
+    if (!ventaDetalle?.cae) return
+    setDescargandoPdfVenta(true)
+    try {
+      const { data: pv } = await supabase.from('puntos_venta_afip')
+        .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
+        .order('numero').limit(1).maybeSingle()
+
+      const { data: cfgTenant } = await supabase.from('tenants')
+        .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor')
+        .eq('id', tenant!.id).single()
+
+      await generarFacturaPDF({
+        tipo_comprobante:    ventaDetalle.tipo_comprobante ?? 'B',
+        numero_comprobante:  ventaDetalle.numero_comprobante ?? ventaDetalle.numero,
+        punto_venta:         pv?.numero ?? 1,
+        fecha:               ventaDetalle.created_at,
+        cae:                 ventaDetalle.cae,
+        vencimiento_cae:     ventaDetalle.vencimiento_cae ?? '',
+        emisor_razon_social: cfgTenant?.razon_social_fiscal ?? tenant?.nombre ?? '',
+        emisor_cuit:         cfgTenant?.cuit ?? '',
+        emisor_domicilio:    cfgTenant?.domicilio_fiscal,
+        emisor_condicion_iva: cfgTenant?.condicion_iva_emisor ?? 'responsable_inscripto',
+        receptor_nombre:     ventaDetalle.clientes?.nombre ?? 'Consumidor Final',
+        receptor_cuit_dni:   ventaDetalle.clientes?.cuit_receptor ?? ventaDetalle.clientes?.dni,
+        receptor_condicion_iva: normalizarCondIVA(ventaDetalle.clientes?.condicion_iva_receptor),
+        items: (ventaDetalle.venta_items ?? []).map((i: any) => ({
+          descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
+          cantidad:       Number(i.cantidad),
+          precio_unitario: Number(i.precio_unitario),
+          alicuota_iva:   Number(i.alicuota_iva ?? 21),
+          subtotal:       Number(i.subtotal),
+        })),
+        total: Number(ventaDetalle.total),
+      })
+    } catch (e: any) {
+      toast.error(`Error al generar PDF: ${e.message}`)
+    } finally {
+      setDescargandoPdfVenta(false)
     }
   }
 
@@ -2971,6 +3015,16 @@ export default function VentasPage() {
                 className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
                 <Printer size={15} /> Ver / Imprimir ticket
               </button>
+              {ventaDetalle.cae && (
+                <button
+                  onClick={descargarFacturaPDFVenta}
+                  disabled={descargandoPdfVenta}
+                  className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-medium py-2.5 rounded-xl hover:bg-accent/5 transition-all text-sm disabled:opacity-50">
+                  {descargandoPdfVenta
+                    ? <><RefreshCw size={15} className="animate-spin" /> Generando PDF…</>
+                    : <><FileDown size={15} /> Descargar Factura PDF</>}
+                </button>
+              )}
               {ventaDetalle.estado === 'pendiente' && (() => {
                 const vencido = isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias)
                 return (

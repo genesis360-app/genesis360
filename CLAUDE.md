@@ -1392,7 +1392,7 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 #### Documentación
 - `docs/arquitectura_escalabilidad.md`: análisis escalabilidad, cola jobs, workers, Sentry, cloud vs DC.
 
-### v1.5.0 — PR #97 (pendiente merge a main)
+### v1.5.0 ✅ PROD
 
 #### Notificaciones reales (migration 084)
 - Tabla `notificaciones`: tenant_id, user_id, tipo CHECK('info','warning','danger','success'), titulo, mensaje, leida, action_url. RLS: `user_id = auth.uid()`.

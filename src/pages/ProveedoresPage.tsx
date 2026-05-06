@@ -5,13 +5,16 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
+import { esDecimal } from '@/lib/ventasValidation'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
 import {
   Truck, Plus, Pencil, Trash2, Search, ChevronDown, ChevronUp,
   FileText, Send, CheckCircle, XCircle, Package, Hash, Calendar,
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
-  Upload, Download, DollarSign, AlertCircle, TrendingDown,
+  Upload, Download, DollarSign, AlertCircle, TrendingDown, FileDown,
 } from 'lucide-react'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes'
@@ -228,6 +231,70 @@ export default function ProveedoresPage() {
     } finally {
       setCcGuardando(false)
     }
+  }
+
+  function descargarOCpdf(oc: OrdenCompra, items: OrdenCompraItem[]) {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const W = 210
+    doc.setFontSize(16).setFont('helvetica', 'bold')
+    doc.text('Orden de Compra', 14, 18)
+    doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(80)
+    doc.text(`OC #${oc.numero}`, 14, 26)
+    doc.text(`Proveedor: ${(oc as any).proveedores?.nombre ?? '—'}`, 14, 32)
+    doc.text(`Estado: ${ESTADO_OC_LABEL[oc.estado as EstadoOC] ?? oc.estado}`, 14, 38)
+    if (oc.fecha_esperada) doc.text(`Fecha esperada: ${new Date(oc.fecha_esperada + 'T00:00:00').toLocaleDateString('es-AR')}`, 14, 44)
+    doc.text(`Emitida: ${new Date(oc.created_at).toLocaleDateString('es-AR')}`, W - 14, 38, { align: 'right' })
+    if (oc.notas) {
+      doc.setTextColor(100)
+      doc.text(`Notas: ${oc.notas}`, 14, 52)
+    }
+    const startY = oc.notas ? 58 : 50
+    autoTable(doc, {
+      startY,
+      margin: { left: 14, right: 14 },
+      head: [['Producto', 'SKU', 'Cant.', 'U.M.', 'P. Unit.', 'Subtotal']],
+      body: items.map(it => {
+        const p = (it as any).productos
+        const sub = it.precio_unitario != null ? it.cantidad * it.precio_unitario : null
+        return [
+          p?.nombre ?? '—',
+          p?.sku ?? '—',
+          it.cantidad % 1 === 0 ? String(it.cantidad) : it.cantidad.toFixed(3),
+          p?.unidad_medida ?? '',
+          it.precio_unitario != null ? `$${it.precio_unitario.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—',
+          sub != null ? `$${sub.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : '—',
+        ]
+      }),
+      headStyles: { fillColor: [30, 58, 95], fontSize: 9 },
+      bodyStyles: { fontSize: 9 },
+      columnStyles: {
+        0: { cellWidth: 55 }, 1: { cellWidth: 22 },
+        2: { halign: 'right', cellWidth: 16 }, 3: { cellWidth: 14 },
+        4: { halign: 'right', cellWidth: 26 }, 5: { halign: 'right', cellWidth: 26 },
+      },
+    })
+    const total = items.reduce((s, it) => s + (it.precio_unitario != null ? it.cantidad * it.precio_unitario : 0), 0)
+    if (total > 0) {
+      const ty = (doc as any).lastAutoTable.finalY + 6
+      doc.setFontSize(10).setFont('helvetica', 'bold').setTextColor(0)
+      doc.text(`Total estimado: $${total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`, W - 14, ty, { align: 'right' })
+    }
+    doc.save(`OC_${String(oc.numero).padStart(4, '0')}_${((oc as any).proveedores?.nombre ?? 'proveedor').replace(/\s+/g, '_')}.pdf`)
+  }
+
+  function descargarOCcsv(oc: OrdenCompra, items: OrdenCompraItem[]) {
+    const header = ['Producto', 'SKU', 'Cantidad', 'Unidad', 'Precio Unitario', 'Subtotal']
+    const rows = items.map(it => {
+      const p = (it as any).productos
+      const sub = it.precio_unitario != null ? it.cantidad * it.precio_unitario : ''
+      return [p?.nombre ?? '', p?.sku ?? '', it.cantidad, p?.unidad_medida ?? '', it.precio_unitario ?? '', sub]
+    })
+    const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url
+    a.download = `OC_${String(oc.numero).padStart(4, '0')}_${((oc as any).proveedores?.nombre ?? 'proveedor').replace(/\s+/g, '_')}.csv`
+    a.click(); URL.revokeObjectURL(url)
   }
 
   const { data: productos = [] } = useQuery({
@@ -566,13 +633,17 @@ export default function ProveedoresPage() {
         ocId = data.id
       }
 
-      const itemsPayload = ocItems.map(it => ({
-        orden_compra_id: ocId,
-        producto_id: it.producto_id,
-        cantidad: parseFloat(it.cantidad),
-        precio_unitario: it.precio_unitario ? parseFloat(it.precio_unitario) : null,
-        notas: it.notas.trim() || null,
-      }))
+      const itemsPayload = ocItems.map(it => {
+        const prod = productos.find(p => p.id === it.producto_id)
+        const dec = prod ? esDecimal(prod.unidad_medida ?? '') : false
+        return {
+          orden_compra_id: ocId,
+          producto_id: it.producto_id,
+          cantidad: dec ? parseFloat(it.cantidad) : parseInt(it.cantidad, 10),
+          precio_unitario: it.precio_unitario ? parseFloat(it.precio_unitario) : null,
+          notas: it.notas.trim() || null,
+        }
+      })
       const { error: errItems } = await supabase.from('orden_compra_items').insert(itemsPayload)
       if (errItems) throw errItems
     },
@@ -1637,6 +1708,7 @@ export default function ProveedoresPage() {
                 <div className="space-y-2">
                   {ocItems.map(it => {
                     const prod = productos.find(p => p.id === it.producto_id)
+                    const decimal = prod ? esDecimal(prod.unidad_medida ?? '') : false
                     return (
                       <div key={it._key} className="flex gap-2 items-start">
                         {/* Producto */}
@@ -1650,6 +1722,8 @@ export default function ProveedoresPage() {
                               if (p && !it.precio_unitario) {
                                 updateOcItem(it._key, 'precio_unitario', p.precio_costo?.toString() ?? '')
                               }
+                              // reset cantidad al cambiar producto para evitar valor inválido
+                              updateOcItem(it._key, 'cantidad', '')
                             }}
                           >
                             <option value="">Seleccioná producto…</option>
@@ -1662,12 +1736,20 @@ export default function ProveedoresPage() {
                         <div className="w-24 shrink-0">
                           <input
                             type="number"
-                            min={0}
-                            step="0.001"
+                            min={decimal ? 0.001 : 1}
+                            step={decimal ? 0.001 : 1}
                             className="w-full px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-sm"
-                            placeholder={`Cant. ${prod?.unidad_medida ?? ''}`}
+                            placeholder={prod?.unidad_medida ? `Cant. (${prod.unidad_medida})` : 'Cant.'}
                             value={it.cantidad}
-                            onChange={e => updateOcItem(it._key, 'cantidad', e.target.value)}
+                            onChange={e => {
+                              const v = e.target.value
+                              // para enteros: bloquear punto/coma en keyDown no aplica a onChange, pero parsear como int
+                              if (!decimal && v.includes('.')) return
+                              updateOcItem(it._key, 'cantidad', v)
+                            }}
+                            onKeyDown={e => {
+                              if (!decimal && (e.key === '.' || e.key === ',')) e.preventDefault()
+                            }}
                             onWheel={e => e.currentTarget.blur()}
                           />
                         </div>
@@ -1811,8 +1893,26 @@ export default function ProveedoresPage() {
                 </table>
               </div>
 
+              {/* Descargar */}
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={() => descargarOCpdf(showOcDetail, ocItemsData)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-border-ds text-primary hover:bg-page"
+                  title="Descargar PDF"
+                >
+                  <FileDown className="w-4 h-4" /> PDF
+                </button>
+                <button
+                  onClick={() => descargarOCcsv(showOcDetail, ocItemsData)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-border-ds text-primary hover:bg-page"
+                  title="Descargar CSV (abre en Excel)"
+                >
+                  <FileDown className="w-4 h-4" /> CSV
+                </button>
+              </div>
+
               {/* Lifecycle desde detalle */}
-              <div className="flex flex-wrap gap-2 mt-4">
+              <div className="flex flex-wrap gap-2 mt-3">
                 {showOcDetail.estado === 'borrador' && (
                   <button
                     onClick={() => cambiarEstadoOC.mutate({ id: showOcDetail.id, estado: 'enviada' })}

@@ -1414,7 +1414,7 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 #### send-email EF
 - Nuevo tipo `notificacion`: `{ type: 'notificacion', to, data: { titulo, mensaje, action_url? } }` → `notificacionTemplate()`.
 
-### v1.6.0 — DEV (migration 085)
+### v1.6.0 ✅ PROD
 
 #### OC — Gestión de pagos
 - `ordenes_compra`: +`estado_pago` (pendiente_pago/pago_parcial/pagada/cuenta_corriente) · +`monto_total` · +`monto_pagado` · +`fecha_vencimiento_pago` · +`dias_plazo_pago` · +`condiciones_pago`.

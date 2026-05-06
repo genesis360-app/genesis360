@@ -1439,6 +1439,30 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 - Sección roja "OC vencidas sin pagar" + sección ámbar "OC por vencer en 3 días".
 - Badge sidebar incluye conteo de ambas.
 
+### v1.6.1 ✅ PROD
+
+#### OC — fixes ProveedoresPage
+- Cantidad en ítems de OC respeta `unidad_medida`: `esDecimal()` de `ventasValidation.ts` → `step=1`/`onKeyDown` bloquea punto para enteros; `step=0.001` para kg/l/g/m etc. `parseInt` vs `parseFloat` al guardar.
+- Botones **PDF** (jsPDF+autoTable) y **CSV** (BOM UTF-8) en modal detalle de OC. Nombre: `OC_0001_Proveedor.pdf/.csv`.
+
+#### Security hardening — Supabase (migrations 086 + 086b)
+- **80 → 7 warnings** en Security Advisor.
+- `REVOKE EXECUTE FROM PUBLIC` en funciones de trigger/internas (`trigger_recalcular_stock`, `gen_venta_numero`, `fn_enqueue_tn_stock_sync`, etc.) — no deben llamarse via REST `/rpc/`.
+- `REVOKE FROM PUBLIC + GRANT TO authenticated` en lógica de negocio (`pagar_nomina_empleado`, `aprobar_vacacion`, `rechazar_vacacion`, `process_aging_profiles`, `update_user_avatar`).
+- `REVOKE FROM PUBLIC + GRANT TO authenticated` en auth helpers usados en RLS (`is_admin`, `is_rrhh`, `get_user_role`, `get_user_tenant_id`, `get_supervisor_team_ids`).
+- `SET search_path = public` en ~35 funciones (previene search_path injection).
+- Buckets `avatares` y `productos`: policy SELECT restringida a `authenticated` (previene listing anónimo).
+- 7 restantes aceptados: auth helpers (safe, retornan false para anon), `pg_net` en public (Supabase managed), `planes` sin policy (por diseño), `leaked_password_protection` (Pro plan).
+
+#### Sentry — monitoreo de errores
+- `@sentry/react` en `src/main.tsx`. `tracesSampleRate: 0.1` (10%) · `replaysOnErrorSampleRate: 1.0` (replay completo en errores).
+- Variable `VITE_SENTRY_DSN` en Vercel Production.
+
+#### npm audit — 21 → 7 vulnerabilidades
+- Fixes seguros aplicados via `npm audit fix` (brace-expansion, flatted, lodash, picomatch, postcss, serialize-javascript).
+- `@typescript-eslint/parser` + `eslint-plugin` actualizados a latest (fix minimatch ReDoS).
+- Restantes aceptados: `dompurify`/jsPDF (solo exportamos), `esbuild`/Vite (solo dev server), `xlsx` (solo exportamos, sin fix disponible).
+
  
  # CLAUDE.md
 

@@ -12,7 +12,8 @@ Este archivo es el contrato entre vos y el agente LLM. Define cómo está estruc
 - **Backend:** Supabase (PostgreSQL + Auth + RLS + Edge Functions)
 - **Payments:** Mercado Pago (suscripciones)
 - **Deploy:** Vercel (frontend) + Supabase (backend)
-- **Código fuente:** `E:\OneDrive\Documentos\01_Gastón\04_Emprendimientos\04_StockApp\stockapp\stockapp`
+- **Código fuente:** `D:\Dev\Genesis360` (SSD · migrado desde E:\OneDrive el 2026-05-06)
+- **Wiki (este vault):** `D:\Dev\Genesis360\G360.Wiki` (dentro del mismo repo)
 
 ---
 

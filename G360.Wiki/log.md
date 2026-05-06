@@ -6,6 +6,33 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-06] update | Migración al SSD + consolidación docs — todo listo para compact
+
+**Cambios de sesión (2026-05-06):**
+
+### Migración de paths
+- App movida: `E:\OneDrive\...\stockapp` → `D:\Dev\Genesis360` (SSD, fuera de OneDrive)
+- Vault movido: `D:\Obsidian\boveda\Genesis360` → `D:\Dev\Genesis360\G360.Wiki` (dentro del repo)
+- `npm install` ejecutado en nueva ubicación — build OK (`✓ built in 30.21s`)
+
+### Consolidación de documentación
+- `docs/` eliminado de la app — 8 archivos movidos a `G360.Wiki/sources/raw/`
+- `G360.Wiki/CLAUDE.md` renombrado a `_schema.md` — evita confusión con CLAUDE.md de la app
+- `Bienvenido.md` actualizado con nueva estructura y referencias
+- `G360.Wiki/` commiteada en git (rama `dev`, commit `94b09930`)
+
+### Paths actualizados
+- `_schema.md`: código fuente apunta a `D:\Dev\Genesis360`
+- Memory files: `project_genesis360.md` y `project_wiki_system.md` actualizados con nuevos paths y v1.6.0
+- `index.md`: fuentes en raw/ documentadas
+
+### Estado de cierre de sesión
+- Versión PROD: v1.6.0 · 85 migraciones · 46 páginas wiki
+- Sin pendientes en el wiki
+- Listo para /clear o /compact
+
+---
+
 ## [2026-05-06] update | Reestructura del vault — consolidación de fuentes
 
 **Cambios estructurales:**

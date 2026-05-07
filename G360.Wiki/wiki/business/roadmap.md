@@ -13,6 +13,28 @@ updated: 2026-05-07
 
 ---
 
+## v1.8.1 — Módulo Recursos + estructura en ingreso + fixes (DEV, pendiente PROD)
+
+### Módulo Recursos (migration 089)
+- Nueva tabla `recursos` (patrimonio del negocio, no para vender). Estados: activo/en_reparacion/dado_de_baja/pendiente_adquisicion.
+- `RecursosPage` 2 tabs: Patrimonio + Por adquirir. CRUD, stats, alertas garantía, CTA cotizar → /proveedores.
+- Sidebar: ícono Landmark, ownerOnly, entre Prov./Servicios y Recepciones.
+
+### Estructura de embalaje en ingreso de stock
+- `InventarioPage` modal ingreso: select de estructura preseleccionado con la default del producto.
+- `RecepcionesPage`: idem por cada ítem. Carga estructuras async al agregar producto (manual o desde OC).
+- Guarda `estructura_id` en `inventario_lineas` en ambos flujos.
+
+### Fixes
+- Banner DEV: `h-4 text-[10px]` (~25% más fino) + `mt-4` en AppLayout → no solapa header/sidebar.
+- ProveedoresPage: badge estado_pago en cards de OC (rojo/ámbar/azul/vencida).
+- EnviosPage: botón WhatsApp fallaba — faltaba `telefono` en join de clientes.
+
+### Housekeeping
+- CLAUDE.md reducido de ~1500 a ~120 líneas. Reglas de wiki obligatorias.
+
+---
+
 ## v1.8.0 — NC electrónicas + email CAE + fixes OC (migration 088)
 
 ### Notas de Crédito electrónicas

@@ -6,6 +6,36 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-07] update | v1.8.1 — Recursos, estructuras ingreso, fixes, plan multi-sucursal
+
+**Producido en esta sesión:**
+
+### Features
+- **Módulo Recursos** (migration 089): `RecursosPage` + tabla `recursos`. Patrimonio del negocio (no para vender). 2 tabs: Patrimonio / Por adquirir. Stats, alertas garantía, CTA proveedores.
+- **Estructura en ingreso**: InventarioPage (modal ingreso) + RecepcionesPage (por ítem) — select de estructura que precarga la default del producto y guarda `estructura_id` en `inventario_lineas`.
+
+### Fixes
+- Banner DEV más fino (h-4) y sin overlap sobre header/sidebar.
+- Badge estado_pago en cards de OC en ProveedoresPage.
+- WhatsApp en EnviosPage: faltaba `telefono` en join de clientes.
+
+### Housekeeping
+- CLAUDE.md: reducido a ~120 líneas. Reglas de lectura/escritura wiki.
+- Wiki: roadmap con v1.7.0, v1.8.0, v1.8.1. Plan multi-sucursal documentado.
+
+### Plan aprobado — Multi-sucursal (pendiente implementar)
+- Filtrado estricto: `.eq()` cuando sucursal activa, sin filtro para vista global.
+- Agregar "Vista global" al SucursalSelector.
+- Catálogo global, stock/movimientos/ventas/gastos/caja por sucursal, clientes globales.
+- Datos NULL: solo visibles en vista global.
+- Ver detalle en `wiki/features/multi-sucursal.md`.
+
+**Estado al cierre:**
+- PROD: v1.8.0 ✅ · DEV: v1.8.1 · Migrations DEV: 001–089 · PROD: 001–088
+- Migration 089 (`recursos`): aplicar en PROD al deployar v1.8.1
+
+---
+
 ## [2026-05-07] update | Limpieza CLAUDE.md + reglas wiki + roadmap v1.7.0/v1.8.0
 
 **Cambios de sesión (2026-05-07):**

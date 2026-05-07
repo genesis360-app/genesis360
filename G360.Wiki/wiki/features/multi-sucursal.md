@@ -3,7 +3,7 @@ title: Multi-Sucursal
 category: features
 tags: [sucursales, multi-sucursal, filtros, selector]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-05-07
 ---
 
 # Multi-Sucursal
@@ -43,29 +43,58 @@ setSucursal(id)             // persiste en localStorage
 
 ---
 
-## useSucursalFilter (hook)
+## useSucursalFilter (hook) — estado actual (PENDIENTE MEJORAR)
 
 ```typescript
 applyFilter(query)
-// Con sucursal activa:
+// Con sucursal activa (comportamiento actual — A CAMBIAR):
 //   .or('sucursal_id.eq.{id},sucursal_id.is.null')
-//   — incluye datos NULL (pre-multi-sucursal)
-// Sin sucursal → vista global (sin filtro)
+//   — mezcla datos de la sucursal + datos globales NULL
+// Sin sucursal → sin filtro (vista global)
 ```
+
+> ⚠ **Plan aprobado (2026-05-07)**: cambiar a filtrado estricto. Ver sección abajo.
 
 `sucursalId` siempre incluido en `queryKey` → invalidación automática al cambiar sucursal.
 
 **Filtros aplicados en:**
-- Lectura: inventario, movimientos, ventas, gastos, clientes
+- Lectura: inventario_lineas, movimientos_stock, ventas, gastos, clientes
 - Escritura: `sucursal_id: sucursalId || null` en inserts de movimientos, ventas, gastos, clientes, caja_sesiones
 
 ---
 
-## SucursalSelector (header)
+## Plan: Filtrado estricto por sucursal (aprobado, pendiente implementar)
+
+**Decisiones de diseño confirmadas (2026-05-07):**
+
+| Entidad | Comportamiento |
+|---------|---------------|
+| Productos (catálogo) | **Global** — mismo catálogo en todas las sucursales. Sin filtro. |
+| Inventario / LPNs | **Por sucursal** — stock físico separado por local |
+| Movimientos de stock | **Por sucursal** |
+| Ventas | **Por sucursal** |
+| Gastos | **Por sucursal** |
+| Caja | **Por sucursal** |
+| Clientes | **Global** — con `sucursal_id` en cada venta/devolución como trazabilidad |
+| Proveedores | **Global** |
+
+**Cambios a implementar:**
+
+1. **`useSucursalFilter.applyFilter`**: cambiar `.or(eq+null)` → strict `.eq('sucursal_id', sucursalId)` cuando hay sucursal activa. Sin sucursal → sin filtro (todo visible).
+
+2. **`SucursalSelector` en AppLayout**: agregar opción "🌐 Vista global (todas)" al inicio del select. `setSucursal(null)` cuando se selecciona.
+
+3. **Datos históricos `sucursal_id = NULL`**: visibles únicamente en vista global. No migrar — es el comportamiento esperado.
+
+4. **Auto-selección**: si el tenant tiene sucursales, al cargar se selecciona la primera (ya implementado). La opción global queda disponible para ver todo.
+
+---
+
+## SucursalSelector (header) — estado actual
 
 - `<select>` en el header de AppLayout
 - Visible solo cuando `sucursales.length > 0`
-- **Sin opción "Todas"** — siempre se trabaja en una sucursal específica
+- **Sin opción "Vista global"** — pendiente agregar (ver plan arriba)
 - `useEffect` en AppLayout auto-selecciona la primera si `sucursalId` es null
 - En mobile: `hidden sm:flex`
 

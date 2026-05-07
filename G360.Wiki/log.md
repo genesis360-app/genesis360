@@ -22,9 +22,9 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 - Historial comprimido en tabla para versiones <v1.3.0
 
 ### Estado al cierre
-- PROD real según usuario: **v1.4.0** (discrepancia con project_pendientes.md que dice v1.8.0 — pendiente confirmar qué pasó con los deploys v1.5.0–v1.8.0)
-- DEV Vercel según usuario: **v1.6.1**
-- `dev` branch (código): **v1.8.0** (APP_VERSION en brand.ts)
+- PROD: **v1.8.0** ✅ · DEV: **v1.8.0** ✅ (confirmado — era caché del browser)
+- `main` branch: APP_VERSION = v1.6.0 (pero Vercel sirvió v1.8.0 correctamente)
+- `dev` branch (código): **v1.8.0**
 
 ---
 

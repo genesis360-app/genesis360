@@ -47,6 +47,9 @@ const navItems = [
   { to: '/configuracion', icon: Settings,        label: 'Configuración',  modulo: 'configuracion', ownerOnly: true },
 ]
 
+const PROD_HOSTNAMES = ['app.genesis360.pro', 'genesis360.pro', 'www.genesis360.pro']
+const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
+
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
 const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion']
@@ -292,7 +295,7 @@ export function AppLayout() {
   const hBtn = 'p-2 rounded-lg text-muted hover:text-primary dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-all'
 
   return (
-    <div className="flex h-screen bg-page overflow-hidden">
+    <div className={`flex bg-page overflow-hidden ${isDevEnv ? 'h-[calc(100vh-1rem)] mt-4' : 'h-screen'}`}>
       <Walkthrough open={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
       <AyudaModal isOpen={ayudaOpen} onClose={() => setAyudaOpen(false)} currentModule={pathname} />
 

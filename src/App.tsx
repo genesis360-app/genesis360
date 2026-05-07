@@ -95,7 +95,7 @@ function App() {
     <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       {isDevEnv && (
-        <div className="fixed top-0 inset-x-0 z-[9999] bg-amber-400 text-amber-900 text-xs font-semibold text-center py-0.5 pointer-events-none select-none">
+        <div className="fixed top-0 inset-x-0 z-[9999] h-4 flex items-center justify-center bg-amber-400 text-amber-900 text-[10px] font-semibold pointer-events-none select-none">
           ⚠ Ambiente DEV — {window.location.hostname}
         </div>
       )}

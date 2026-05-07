@@ -39,6 +39,7 @@ const MiCuentaPage        = lazy(() => import('@/pages/MiCuentaPage'))
 const AyudaPage           = lazy(() => import('@/pages/AyudaPage'))
 const ProveedoresPage     = lazy(() => import('@/pages/ProveedoresPage'))
 const BibliotecaPage      = lazy(() => import('@/pages/BibliotecaPage'))
+const RecursosPage        = lazy(() => import('@/pages/RecursosPage'))
 const RecepcionesPage     = lazy(() => import('@/pages/RecepcionesPage'))
 const EnviosPage          = lazy(() => import('@/pages/EnviosPage'))
 const FacturacionPage     = lazy(() => import('@/pages/FacturacionPage'))
@@ -154,6 +155,7 @@ function App() {
                   <Route path="/envios"        element={<EnviosPage />} />
                   <Route path="/facturacion"  element={<FacturacionPage />} />
                   <Route path="/biblioteca" element={<BibliotecaPage />} />
+                  <Route path="/recursos"   element={<RecursosPage />} />
                   <Route path="/configuracion/importar" element={<ImportarMasterPage />} />
                 </Route>
               </Route>

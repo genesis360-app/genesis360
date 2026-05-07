@@ -111,7 +111,7 @@ export default function EnviosPage() {
     queryKey: ['envios', tenant?.id, filtroEstado, filtroCourier, filtroCanal, filtroDesde, filtroHasta, sucursalId],
     queryFn: async () => {
       let q = supabase.from('envios')
-        .select('*, ventas(numero, total, cliente_id, clientes(nombre)), cliente_domicilios(calle, numero, ciudad, provincia)')
+        .select('*, ventas(numero, total, cliente_id, clientes(nombre, telefono)), cliente_domicilios(calle, numero, ciudad, provincia)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)

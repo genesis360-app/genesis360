@@ -3,95 +3,85 @@ name: pendientes_proxima_sesion
 description: Tareas pendientes y contexto para retomar en la próxima sesión de desarrollo
 type: project
 ---
+
 Último release en PROD: **v1.8.0** ✅ · DEV = PROD ✅
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
-## Estado actual
+## Estado actual (al cierre de sesión 2026-05-06)
 
-- v1.6.1 en PROD ✅
 - Migrations DEV+PROD: 001–088 ✅
 - APP_VERSION en brand.ts: `v1.8.0`
+- PR #104 mergeado · release v1.8.0 en GitHub ✅ · Vercel autodeploy en curso
 - pg_cron activo DEV+PROD: `tn-stock-sync` + `meli-stock-sync` cada 5 min
 - Edge Functions PROD: `data-api` · `emitir-factura` · `send-email` · `tn-stock-worker` ✅
-- PR #104 mergeado · release v1.8.0 en GitHub ✅
 - Sentry activo en PROD: `@sentry/react` + `VITE_SENTRY_DSN` en Vercel ✅
-- Supabase Security Advisor: 80 → 7 warnings ✅
-- npm audit: 21 → 7 vulnerabilidades (7 aceptadas) ✅
+- Supabase Security Advisor: 80 → 7 warnings (7 aceptados by design) ✅
+- `.claude/settings.json` → en `.gitignore`. El push con tokens fue bloqueado por GH Push Protection antes de llegar al remoto. Tokens NO expuestos.
 
 ---
 
-## Lo nuevo en v1.8.0 (DEV ✅ · PROD pendiente deploy)
+## Lo producido en esta sesión (ya en PROD)
 
-### Email al cliente al emitir CAE
-- Template `factura_emitida` en EF `send-email`: asunto con tipo+número, tabla de ítems, total, badge verde con CAE y fecha vencimiento.
-- EF `emitir-factura`: fetch `email` del cliente en el select. Fire-and-forget `send-email` tras guardar CAE (solo en facturas, no NC).
+### v1.7.0 — API pull
+- EF `data-api` (--no-verify-jwt): GET por entidad (productos/clientes/proveedores/inventario), json/csv, auth X-API-Key SHA-256, rate 120 req/min
+- Migration 087: tabla `api_keys` con RLS (key_hash SHA-256, key_prefix para display, permisos TEXT[], activo, last_used_at)
+- ConfigPage tab "API" (OWNER/ADMIN): generar key (plain text una sola vez), revocar, docs inline con entidades, params y curl
+- Exportar JSON/CSV en ProductosPage, ClientesPage, ProveedoresPage (dropdown hover, BOM UTF-8)
 
-### Notas de Crédito electrónicas (migration 088)
-- **Migration 088**: `devoluciones` + `nc_cae TEXT`, `nc_vencimiento_cae TEXT`, `nc_numero_comprobante INT`, `nc_tipo CHECK(NC-A/NC-B/NC-C)`, `nc_punto_venta INT`. Índice en `nc_cae`.
-- **EF `emitir-factura` ampliada**: acepta `tipo_comprobante: NC-A|NC-B|NC-C` + `devolucion_id`. Usa ítems de `devolucion_items`. Guarda CAE en `devoluciones` (no en `ventas`). Valida que venta tenga CAE original y que la NC no esté duplicada.
-- **VentasPage**: en sección Devoluciones del modal detalle — badge verde si ya tiene NC (`NC-B #000001`); botón azul "Emitir NC" si la venta tiene CAE y `facturacion_habilitada=true` y la devolución aún no tiene NC. Modal con selector NC-A/B/C + punto de venta.
-
----
-
-## Lo nuevo en v1.7.0 (DEV ✅ · PROD pendiente deploy)
-
-### API pull — acceso externo a datos
-- **Migration 087** (`api_keys`): `id, tenant_id, nombre, key_prefix, key_hash, permisos TEXT[], activo, last_used_at`. RLS tenant. Índices en `key_hash` y `(tenant_id, activo)`.
-- **EF `data-api`** (`--no-verify-jwt`): `GET /data-api?entity=...&format=json|csv&limit&offset&updated_since&sucursal_id`. Entidades: productos / clientes / proveedores / inventario. Auth: `X-API-Key: g360_xxx` (hash SHA-256). Rate limit 120 req/min en memoria. BOM UTF-8 en CSV.
-- **ConfigPage → tab "API"** (OWNER/ADMIN): CRUD de keys (generar → mostrar plain key una sola vez → copiar → revocar), tabla con `key_prefix•••`, `last_used_at`, estado activa/revocada. Documentación inline con tabla de entidades, parámetros y ejemplo curl.
-- **Botones Exportar JSON/CSV**: dropdown `group-hover` en header de ProductosPage (`filtered`), ClientesPage (`clientes`), ProveedoresPage (`filteredProv`). BOM UTF-8 para Excel AR. Función pura `exportar*` local por página.
+### v1.8.0 — NC electrónicas + email CAE + fixes OC
+- `send-email` tipo `factura_emitida`: email con tabla de ítems + badge CAE al cliente al emitir
+- `emitir-factura`: fire-and-forget email + soporte NC-A/B/C via `devolucion_id` + guarda en `devoluciones`
+- Migration 088: `devoluciones` + `nc_cae`, `nc_vencimiento_cae`, `nc_numero_comprobante`, `nc_tipo`, `nc_punto_venta`
+- VentasPage: badge `NC-B #000001` + botón "Emitir NC" en sección devoluciones del modal detalle
+- GastosPage OC: medios de pago mixtos (N filas), fix CC bug, pagadas al fondo con expand de ítems
+- ProveedoresPage: "Confirmar OC" bloqueado con `pago_parcial` — solo habilita `pagada` o `cuenta_corriente`
 
 ---
 
 ## Pendientes próximas sesiones
 
-### Alta prioridad
-- **Nota**: `.claude/settings.json` ahora en `.gitignore` — contenía tokens, bloqueó el push. Rotar tokens si fuera necesario (revisar con el usuario).
-
 ### Media prioridad
-- **Notificación automática CC vencida** — pg_cron diario para clientes y proveedores
-- **OC → Gasto automático** al confirmar recepción
-- **Centro de Soporte `/ayuda`** — plan completo en CLAUDE.md
+- **Notificación automática CC vencida** — pg_cron diario → INSERT en `notificaciones` para clientes con deuda vencida y OC vencidas sin pagar
+- **OC → Gasto automático** al confirmar recepción en RecepcionesPage
+- **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas, form bug-report
 
 ### Backlog
-- Sync catálogo TN/MELI (push nombre/precio/descripción)
+- WMS Fase 3 — tabla `wms_tareas` (putaway/picking/replenishment/conteo) + listas de picking con ruta óptima
+- RecepcionesPage completa (schema ya existe en migrations 050+059, falta flujo UI completo)
+- Sync catálogo TN/MELI (push nombre/precio/descripción hacia los marketplaces)
 - Courier rates APIs reales (OCA/Andreani/CorreoAR)
-- WhatsApp automático (espera WABA)
-- WMS Fase 3 — wms_tareas + picking
-- RecepcionesPage completa (schema ya existe en migrations 050+059)
+- WhatsApp automático (espera WABA — WhatsApp Business API account)
 
 ### Pendiente manual (no código)
-- Activar Dependabot en GitHub Settings (monitorear PRs automáticos)
-- Verificar genesis360.pro en Resend → cambiar FROM a noreply@genesis360.pro
-- Cargar $5 en console.anthropic.com para scan-product IA
-- Iniciar trámite constitución empresa para CUIT activo
-- Iniciar trámite Google Ads Standard Token (proceso largo)
+- Verificar genesis360.pro en Resend → cambiar FROM a `noreply@genesis360.pro`
+- Cargar $5 en console.anthropic.com para `scan-product` IA (Claude Haiku)
+- Iniciar trámite constitución empresa para CUIT activo (bloquea AFIP en PROD real)
+- Iniciar trámite Google Ads Standard Token (proceso manual largo, puede tardar meses)
 
 ---
 
 ## Referencias técnicas clave
 
-### Migrations
-- 085: ordenes_compra pagos + proveedores CC + proveedor_cc_movimientos
-- 086: SET search_path + REVOKE FROM anon
-- 086b: REVOKE FROM PUBLIC + GRANT TO authenticated (corrección definitiva)
-- 087: api_keys (DEV ✅, PROD pendiente)
+### Migrations relevantes
+- 083: `clientes.cuenta_corriente_habilitada` + `ventas.es_cuenta_corriente`
+- 084: tabla `notificaciones` + caja_sesiones mejoras + Caja Fuerte
+- 085: ordenes_compra pagos + proveedores CC + `proveedor_cc_movimientos` + `fn_saldo_proveedor_cc()`
+- 086+086b: security hardening (REVOKE FROM PUBLIC + SET search_path) → 80→7 warnings
+- 087: `api_keys` — API pull externa
+- 088: NC electrónicas en `devoluciones`
 
-### Supabase Security — 7 warnings restantes aceptados
-- Auth helpers (is_admin, is_rrhh, etc.) — anon warning: safe, retornan false para auth.uid()=null
-- fn_crear_caja_fuerte — trigger interno
-- pg_net en public schema — Supabase managed
-- planes sin RLS — datos públicos by design
-- leaked_password_protection — solo plan Pro
-
-### API v1.7.0 — deploy checklist
-1. `supabase db push --project-ref gcmhzdedrkmmzfzfveig` (ya debería estar)
-2. `supabase db push --project-ref jjffnbrdjchquexdfgwq` (PROD)
-3. `supabase functions deploy data-api --project-ref jjffnbrdjchquexdfgwq --no-verify-jwt`
-4. Bump `APP_VERSION` a `v1.7.0` en `brand.ts`
-5. PR dev → main · GitHub release v1.7.0
+### Supabase Security — 7 warnings aceptados
+- Auth helpers (`is_admin`, `is_rrhh`, etc.) — retornan false para anon, sin riesgo
+- `fn_crear_caja_fuerte` — trigger interno
+- `pg_net` en public schema — Supabase managed, no modificable
+- `planes` sin RLS — datos públicos by design
+- `leaked_password_protection` — solo plan Pro
 
 ### PDF Factura QR AFIP (RG 4291)
-- `src/lib/facturasPDF.ts`: QR = `btoa(JSON.stringify(payload))` → URL afip.gob.ar/fe/qr
-- tipoCmp: A=1, B=6, C=11
+- `src/lib/facturasPDF.ts`: QR = `btoa(JSON.stringify(payload))` → `https://www.afip.gob.ar/fe/qr/?p=<base64>`
+- tipoCmp: A=1 · B=6 · C=11 · NC-A=3 · NC-B=8 · NC-C=13
+
+### Supabase projects
+- PROD: `jjffnbrdjchquexdfgwq`
+- DEV: `gcmhzdedrkmmzfzfveig` · Tenant dev: `5f05f3eb-6757-4f60-b9d2-8853fdfae806`

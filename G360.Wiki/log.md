@@ -6,6 +6,28 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-07] update | Limpieza CLAUDE.md + reglas wiki + roadmap v1.7.0/v1.8.0
+
+**Cambios de sesión (2026-05-07):**
+
+### CLAUDE.md — reescritura completa
+- Reducido de ~1.500 líneas a ~120 líneas
+- Eliminado: todo el historial de versiones (v0.26–v1.8.0), todas las secciones "Backlog pendiente" y "Decisiones de arquitectura" — ya están en el wiki
+- Conservado: stack, git/deploy, Supabase IDs, estructura de proyecto, convenciones operacionales, planes, env vars, dominios, gotchas clave
+- Agregado: sección "Wiki — Reglas de oro" con instrucciones de lectura al inicio y escritura al cierre de sesión. Unicidad de documentación en el wiki.
+
+### Wiki roadmap.md actualizado
+- Agregadas secciones v1.7.0 (API pull, migration 087) y v1.8.0 (NC electrónicas, email CAE, migration 088)
+- Backlog actualizado: removidos ítems ya completados, agregados pendientes reales actuales
+- Historial comprimido en tabla para versiones <v1.3.0
+
+### Estado al cierre
+- PROD real según usuario: **v1.4.0** (discrepancia con project_pendientes.md que dice v1.8.0 — pendiente confirmar qué pasó con los deploys v1.5.0–v1.8.0)
+- DEV Vercel según usuario: **v1.6.1**
+- `dev` branch (código): **v1.8.0** (APP_VERSION en brand.ts)
+
+---
+
 ## [2026-05-06] update | Migración al SSD + consolidación docs — todo listo para compact
 
 **Cambios de sesión (2026-05-06):**

@@ -3,18 +3,18 @@ name: pendientes_proxima_sesion
 description: Tareas pendientes y contexto para retomar en la próxima sesión de desarrollo
 type: project
 ---
-Último release en PROD: **v1.6.1** ✅ · DEV adelantado con v1.7.0 (pendiente PR → PROD)
+Último release en PROD: **v1.8.0** ✅ · DEV = PROD ✅
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ## Estado actual
 
 - v1.6.1 en PROD ✅
-- v1.7.0 en DEV (en curso, pendiente PR → PROD)
-- Migrations DEV: 001–087 ✅ · PROD: 001–086b ✅
-- APP_VERSION en brand.ts: `v1.6.1` (bump a v1.7.0 al deployar)
+- Migrations DEV+PROD: 001–088 ✅
+- APP_VERSION en brand.ts: `v1.8.0`
 - pg_cron activo DEV+PROD: `tn-stock-sync` + `meli-stock-sync` cada 5 min
-- Edge Functions DEV+PROD: `tn-stock-worker` · `send-email` · `emitir-factura`
+- Edge Functions PROD: `data-api` · `emitir-factura` · `send-email` · `tn-stock-worker` ✅
+- PR #104 mergeado · release v1.8.0 en GitHub ✅
 - Sentry activo en PROD: `@sentry/react` + `VITE_SENTRY_DSN` en Vercel ✅
 - Supabase Security Advisor: 80 → 7 warnings ✅
 - npm audit: 21 → 7 vulnerabilidades (7 aceptadas) ✅
@@ -47,7 +47,7 @@ type: project
 ## Pendientes próximas sesiones
 
 ### Alta prioridad
-- **Deploy v1.7.0 + v1.8.0 a PROD** — migrations 087+088 · EF `data-api --no-verify-jwt` · EF `emitir-factura` · EF `send-email` · bump APP_VERSION v1.8.0 · PR + release
+- **Nota**: `.claude/settings.json` ahora en `.gitignore` — contenía tokens, bloqueó el push. Rotar tokens si fuera necesario (revisar con el usuario).
 
 ### Media prioridad
 - **Notificación automática CC vencida** — pg_cron diario para clientes y proveedores

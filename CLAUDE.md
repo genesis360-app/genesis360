@@ -1461,6 +1461,31 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 #### npm audit — 21 → 7 vulnerabilidades
 - Fixes seguros aplicados via `npm audit fix` (brace-expansion, flatted, lodash, picomatch, postcss, serialize-javascript).
 - `@typescript-eslint/parser` + `eslint-plugin` actualizados a latest (fix minimatch ReDoS).
+
+### v1.7.0 ✅ PROD
+
+#### API pull — acceso externo a datos
+- **Migration 087** (`api_keys`): tabla con `key_prefix`, `key_hash` SHA-256, `permisos TEXT[]`, `activo`, `last_used_at`. RLS tenant + OWNER/ADMIN.
+- **EF `data-api`** (`--no-verify-jwt`): GET con `entity`, `format`, `limit`, `offset`, `updated_since`, `sucursal_id`. Entidades: productos/clientes/proveedores/inventario. Auth: X-API-Key. Rate 120 req/min.
+- **ConfigPage tab “API”** (OWNER/ADMIN): generar key (plain text una sola vez), tabla prefijo + last_used_at, revocar. Docs inline.
+- **Exportar JSON/CSV**: dropdown en ProductosPage, ClientesPage, ProveedoresPage. BOM UTF-8.
+
+### v1.8.0 ✅ PROD
+
+#### Email al cliente al emitir CAE
+- **EF `send-email`**: nuevo tipo `factura_emitida` con tabla items + badge CAE.
+- **EF `emitir-factura`**: fetch `email` del cliente, fire-and-forget a send-email post-CAE (solo facturas, no NC).
+
+#### Notas de Crédito electrónicas (migration 088)
+- **Migration 088**: `devoluciones` + `nc_cae`, `nc_vencimiento_cae`, `nc_numero_comprobante`, `nc_tipo CHECK(NC-A/NC-B/NC-C)`, `nc_punto_venta`.
+- **EF `emitir-factura`**: acepta `tipo_comprobante: NC-A|NC-B|NC-C` + `devolucion_id`. Usa `devolucion_items`. Guarda CAE en `devoluciones`.
+- **VentasPage**: badge verde si ya tiene NC; botón azul “Emitir NC” cuando aplica.
+
+#### GastosPage — fixes módulo OC
+- Medios de pago mixtos: N filas + “+ Agregar medio”. Total en tiempo real. Egreso de caja por cada Efectivo.
+- Fix CC: ya no valida monto, registra saldo como deuda automáticamente.
+- OC pagadas al fondo con sort + expand items.
+- ProveedoresPage: “Confirmar” solo habilitado con `pagada` o `cuenta_corriente`. `pago_parcial` muestra tooltip.
 - Restantes aceptados: `dompurify`/jsPDF (solo exportamos), `esbuild`/Vite (solo dev server), `xlsx` (solo exportamos, sin fix disponible).
 
  

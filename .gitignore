@@ -18,3 +18,5 @@ supabase/.temp/
 # OS
 .DS_Store
 Thumbs.db
+.claude/settings.json
+.claude/settings.local.json

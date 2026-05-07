@@ -8,8 +8,31 @@ updated: 2026-04-30
 
 # Roadmap y Versiones
 
-**Versión actual en PROD:** v1.6.0  
-**Última actualización:** 5 de Mayo, 2026
+**Versión actual en PROD:** v1.6.1  
+**Última actualización:** 6 de Mayo, 2026
+
+---
+
+## Estado v1.6.1 — En PROD ✅ (migrations 086 + 086b)
+
+### Security hardening (migrations 086 + 086b)
+- `REVOKE EXECUTE FROM PUBLIC` en funciones de trigger/internas (no llamables via REST `/rpc/`)
+- `REVOKE FROM PUBLIC + GRANT TO authenticated` en funciones de negocio y auth helpers
+- `SET search_path = public` en ~35 funciones (previene search_path injection)
+- Buckets `avatares` + `productos`: policy SELECT restringida a `authenticated`
+- **Resultado:** 80 → 7 warnings en Supabase Security Advisor (7 aceptados by design)
+
+### Sentry
+- `@sentry/react` en `src/main.tsx`
+- `tracesSampleRate: 0.1` (10%) · `replaysOnErrorSampleRate: 1.0` (replay completo en errores)
+- Variable `VITE_SENTRY_DSN` en Vercel Production
+
+### OC — fixes v1.6.1
+- Cantidad en ítems de OC respeta `unidad_medida`: enteros bloquean `.`/`,`; decimales usan `step=0.001`
+- Botones **PDF** (jsPDF + autoTable) y **CSV** (BOM UTF-8) en modal detalle OC. Nombre: `OC_0001_Proveedor.pdf/.csv`
+
+### npm audit: 21 → 7 vulnerabilidades
+- Fixes seguros aplicados; `@typescript-eslint` actualizado. 7 restantes aceptados (dompurify/jsPDF, esbuild/Vite dev-only, xlsx sin fix disponible).
 
 ---
 
@@ -93,7 +116,8 @@ updated: 2026-04-30
 - EF `emitir-factura` con AfipSDK
 - Homologación exitosa: CAE emitido en ambiente de prueba
 - Prompt "¿Facturar ahora?" al despachar
-- Pendiente Fase 2: PDF con QR AFIP · email automático · Notas de Crédito
+- ~~PDF con QR AFIP~~ ✅ (completado en v1.5.0 — `src/lib/facturasPDF.ts`)
+- Pendiente Fase 2: email automático al cliente · Notas de Crédito electrónicas
 
 ### Módulo Envíos (migration 075)
 - `EnviosPage` con estados, remito PDF, WhatsApp Click-to-Chat
@@ -147,15 +171,27 @@ updated: 2026-04-30
 | v0.90.0 | TN Webhooks + Sync stock + Monitoring diario |
 | v1.0.0 | Stock reservation + pg_cron sync cada 5min |
 | v1.1.0 | Importar maestros extendido + Config UX |
+| v1.2.0–v1.3.0 | Facturación AFIP + Envíos + WhatsApp + Clientes mejorado |
+| v1.4.0 | Cuenta Corriente clientes + Presupuesto vencido + Bulk actions |
+| v1.5.0 | Notificaciones reales + Caja Fuerte + PDF Factura QR AFIP |
+| v1.6.0 | OC gestión pagos + Cuenta Corriente proveedores |
+| v1.6.1 | Security hardening (80→7 warnings) + Sentry + OC PDF/CSV |
 
 ---
 
 ## Pendientes / Backlog
 
+### v1.7.0 — API pull (próxima versión planificada)
+- [ ] EF `data-api`: GET /data-api?entity=productos|clientes|proveedores|inventario
+- [ ] Migration 087: tabla `api_keys` (hash SHA-256, prefijo g360_, permisos TEXT[])
+- [ ] Tab "API" en ConfigPage (OWNER/ADMIN): CRUD de keys + docs inline
+- [ ] Botones Exportar JSON/CSV en ProductosPage, ClientesPage, ProveedoresPage
+- [ ] Rate limiting 120 req/min por key (Map en memoria del isolate)
+
 ### Facturación (Fase 2)
-- [ ] PDF factura con QR AFIP (obligatorio desde 2021)
-- [ ] Envío automático por email al cliente
-- [ ] Notas de Crédito electrónicas en devoluciones
+- [x] ~~PDF factura con QR AFIP~~ ✅ v1.5.0
+- [ ] Envío automático por email al cliente al emitir CAE
+- [ ] Notas de Crédito electrónicas en devoluciones (NC-A/B/C)
 
 ### WMS (Fase 3)
 - [ ] Tabla `wms_tareas`: putaway / picking / replenishment / conteo

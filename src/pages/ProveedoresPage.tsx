@@ -795,6 +795,28 @@ export default function ProveedoresPage() {
     { id: 'ordenes',     label: 'Órdenes de compra' },
   ]
 
+  const exportarProveedores = (format: 'json' | 'csv') => {
+    const rows = filteredProv.map((p: any) => ({
+      id: p.id, nombre: p.nombre, razon_social: p.razon_social ?? '',
+      cuit: p.cuit ?? '', condicion_iva: p.condicion_iva ?? '',
+      plazo_pago_dias: p.plazo_pago_dias ?? '', banco: p.banco ?? '',
+      cbu: p.cbu ?? '', activo: p.activo,
+    }))
+    const filename = `proveedores_${new Date().toISOString().slice(0,10)}`
+    if (format === 'json') {
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.json`; a.click()
+    } else {
+      const headers = Object.keys(rows[0] ?? {})
+      const lines = rows.map((r: any) => headers.map((h: string) => {
+        const v = String(r[h] ?? '')
+        return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v
+      }).join(','))
+      const blob = new Blob(['﻿' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.csv`; a.click()
+    }
+  }
+
   return (
     <div className="p-4 md:p-6 space-y-4">
       {/* Header */}
@@ -804,12 +826,23 @@ export default function ProveedoresPage() {
           <h1 className="text-xl font-bold text-primary">Proveedores / Servicios</h1>
         </div>
         {tab === 'proveedores' && (
-          <button
-            onClick={() => { setEditId(null); setForm({ ...FORM_PROV_EMPTY, tipo: 'proveedor' }); setShowForm(true) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent/90"
-          >
-            <Plus className="w-4 h-4" /> Nuevo proveedor
-          </button>
+          <div className="flex gap-2">
+            <div className="relative group">
+              <button className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                <Download size={14} /> Exportar <ChevronDown size={12} />
+              </button>
+              <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden z-20 hidden group-hover:block w-28">
+                <button onClick={() => exportarProveedores('json')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">JSON</button>
+                <button onClick={() => exportarProveedores('csv')}  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">CSV</button>
+              </div>
+            </div>
+            <button
+              onClick={() => { setEditId(null); setForm({ ...FORM_PROV_EMPTY, tipo: 'proveedor' }); setShowForm(true) }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent/90"
+            >
+              <Plus className="w-4 h-4" /> Nuevo proveedor
+            </button>
+          </div>
         )}
         {tab === 'servicios' && (
           <button
@@ -1405,14 +1438,19 @@ export default function ProveedoresPage() {
                           </button>
                         )}
                         {oc.estado === 'enviada' && (() => {
-                          const bloqueada = (oc as any).estado_pago === 'pendiente_pago'
+                          const bloqueada = !['pagada','cuenta_corriente'].includes((oc as any).estado_pago)
+                          const tooltipMsg = (oc as any).estado_pago === 'pendiente_pago'
+                            ? 'Pago pendiente — pagá o asigná a CC en Gastos → OC'
+                            : (oc as any).estado_pago === 'pago_parcial'
+                              ? 'Pago parcial — completá el pago o asigná el saldo a CC en Gastos → OC'
+                              : 'Confirmar'
                           return (
                             <button
                               onClick={() => bloqueada
-                                ? toast.error('Regularizá el pago de la OC antes de confirmar (Gastos → Órdenes de Compra)')
+                                ? toast.error(tooltipMsg)
                                 : cambiarEstadoOC.mutate({ id: oc.id, estado: 'confirmada' })}
                               className={`p-1.5 rounded ${bloqueada ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20'}`}
-                              title={bloqueada ? 'Pago pendiente — regularizá en Gastos → OC' : 'Confirmar'}
+                              title={tooltipMsg}
                             >
                               <CheckCircle className="w-4 h-4" />
                             </button>
@@ -1922,12 +1960,17 @@ export default function ProveedoresPage() {
                   </button>
                 )}
                 {showOcDetail.estado === 'enviada' && (() => {
-                  const bloqueada = (showOcDetail as any).estado_pago === 'pendiente_pago'
+                  const bloqueada = !['pagada','cuenta_corriente'].includes((showOcDetail as any).estado_pago)
+                  const tooltipMsg = (showOcDetail as any).estado_pago === 'pendiente_pago'
+                    ? 'Pago pendiente — pagá o asigná a CC en Gastos → OC'
+                    : (showOcDetail as any).estado_pago === 'pago_parcial'
+                      ? 'Pago parcial — completá el pago o asigná el saldo a CC en Gastos → OC'
+                      : 'Confirmar OC'
                   return (
                     <div className="flex flex-col items-start gap-1">
                       <button
                         onClick={() => bloqueada
-                          ? toast.error('Regularizá el pago de la OC antes de confirmar')
+                          ? toast.error(tooltipMsg)
                           : cambiarEstadoOC.mutate({ id: showOcDetail.id, estado: 'confirmada' })}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${bloqueada ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700'}`}
                       >

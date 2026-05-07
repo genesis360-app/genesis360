@@ -8,7 +8,7 @@ updated: 2026-04-30
 
 # Módulo Envíos
 
-Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 DEV.
+Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.
 
 **Página:** `src/pages/EnviosPage.tsx` (`/envios`)  
 **Acceso:** OWNER · SUPERVISOR · CAJERO

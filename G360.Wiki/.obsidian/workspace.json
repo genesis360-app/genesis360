@@ -1,0 +1,222 @@
+{
+  "main": {
+    "id": "1f0cbfffcfff049f",
+    "type": "split",
+    "children": [
+      {
+        "id": "5315deca8bfff0f1",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "96422dc9d10ce30f",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "CLAUDE.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "CLAUDE"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "f85dc2cddd3efd56",
+    "type": "split",
+    "children": [
+      {
+        "id": "e5f8f31858563fc4",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7c43018b7de91b8f",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de archivos"
+            }
+          },
+          {
+            "id": "80c7b976034c9827",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Buscar"
+            }
+          },
+          {
+            "id": "393f042eb663fb6f",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "e21ca4eeb64d9612",
+    "type": "split",
+    "children": [
+      {
+        "id": "9250203d7f4a88fa",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "663084bc1dac547f",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Enlaces entrantes"
+            }
+          },
+          {
+            "id": "749b019794fc710b",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Enlaces salientes"
+            }
+          },
+          {
+            "id": "a9b94624d8e54626",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "4f202e65b6f8b596",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas las propiedades"
+            }
+          },
+          {
+            "id": "fbbe77496c4a4716",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Esquema"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir selector rápido": false,
+      "graph:Abrir vista gráfica": false,
+      "canvas:Crear nuevo lienzo": false,
+      "daily-notes:Abrir la nota de hoy": false,
+      "templates:Insertar plantilla": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Crear nueva base": false
+    }
+  },
+  "active": "96422dc9d10ce30f",
+  "lastOpenFiles": [
+    "Bienvenido.md",
+    "index.md",
+    "wiki/overview/genesis360-overview.md",
+    "wiki/database/rls-policies.md",
+    "wiki/business/modelo-negocio.md",
+    "wiki/business/roadmap.md",
+    "wiki/business/mercado-objetivo.md",
+    "wiki/architecture/frontend-stack.md",
+    "wiki/architecture/estado-global.md",
+    "wiki/architecture/escalabilidad.md",
+    "wiki/architecture/edge-functions.md",
+    "wiki/architecture/backend-supabase.md",
+    "wiki/architecture/pwa-config.md",
+    "wiki/development/reglas-negocio.md",
+    "wiki/integrations/resend-email.md",
+    "wiki/database/triggers.md",
+    "wiki/features/multi-sucursal.md",
+    "wiki/features/escaneo-barcode.md",
+    "wiki/features/reportes-metricas.md",
+    "wiki/database/migraciones.md",
+    "wiki/features/envios.md",
+    "wiki/features/clientes-proveedores.md",
+    "wiki/features/wms.md",
+    "wiki/development/testing.md",
+    "wiki/features/caja.md",
+    "wiki/features/rrhh.md",
+    "wiki/development/deploy.md.tmp.17428.1777608165638",
+    "wiki/overview",
+    "wiki/integrations",
+    "wiki/features",
+    "wiki/development",
+    "wiki/database",
+    "wiki/business",
+    "wiki/architecture",
+    "wiki",
+    "sources/raw"
+  ]
+}

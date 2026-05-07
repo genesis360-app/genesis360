@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   Plus, Search, Package, AlertTriangle, Camera, ChevronDown, ChevronRight,
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
-  CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap,
+  CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -741,6 +741,31 @@ export default function ProductosPage() {
   const allSelected = filtered.length > 0 && selectedIds.size === filtered.length
   const someSelected = selectedIds.size > 0 && selectedIds.size < filtered.length
 
+  const exportarProductos = (format: 'json' | 'csv') => {
+    const rows = filtered.map(p => ({
+      id: p.id, nombre: p.nombre, sku: p.sku,
+      precio_venta: p.precio_venta, precio_costo: p.precio_costo,
+      stock_actual: p.stock_actual, stock_minimo: p.stock_minimo,
+      unidad_medida: p.unidad_medida, activo: p.activo,
+      categoria: (p as any).categorias?.nombre ?? '',
+    }))
+    if (format === 'json') {
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
+      a.download = `productos_${new Date().toISOString().slice(0,10)}.json`; a.click()
+    } else {
+      const headers = Object.keys(rows[0] ?? {})
+      const lines = rows.map(r => headers.map(h => {
+        const v = String((r as any)[h] ?? '')
+        return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v
+      }).join(','))
+      const csv = '﻿' + [headers.join(','), ...lines].join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob)
+      a.download = `productos_${new Date().toISOString().slice(0,10)}.csv`; a.click()
+    }
+  }
+
   function handleSaveModal(form: EstrForm) {
     if (estrModal.editando) {
       editarMut.mutate({ id: estrModal.editando.id, form })
@@ -765,6 +790,15 @@ export default function ProductosPage() {
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{productos.length} productos registrados</p>
         </div>
         <div className="flex gap-2">
+          <div className="relative group">
+            <button className="flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+              <Download size={15} /> Exportar <ChevronDown size={13} />
+            </button>
+            <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden z-20 hidden group-hover:block w-32">
+              <button onClick={() => exportarProductos('json')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">JSON</button>
+              <button onClick={() => exportarProductos('csv')}  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">CSV</button>
+            </div>
+          </div>
           <Link to="/productos/importar"
             className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all">
             Importar

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -106,6 +106,10 @@ export default function VentasPage() {
   const [facturaModal, setFacturaModal] = useState<{ ventaId: string; ventaNumero: number; ventaTotal: number } | null>(null)
   const [facturaTipo, setFacturaTipo] = useState<'A' | 'B' | 'C'>('B')
   const [facturaPV, setFacturaPV]     = useState<number>(1)
+  const [ncModal, setNcModal]         = useState<{ devolucionId: string; ventaId: string; ventaNumero: number; monto: number } | null>(null)
+  const [ncTipo, setNcTipo]           = useState<'NC-A' | 'NC-B' | 'NC-C'>('NC-B')
+  const [ncPV, setNcPV]               = useState<number>(1)
+  const [emitendoNC, setEmitiendoNC]  = useState(false)
   const [emitiendoFactura, setEmitiendoFactura] = useState(false)
   const [descargandoPdfVenta, setDescargandoPdfVenta] = useState(false)
   const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('despachada')
@@ -439,7 +443,7 @@ export default function VentasPage() {
     queryKey: ['devoluciones-venta', ventaDetalle?.id],
     queryFn: async () => {
       const { data } = await supabase.from('devoluciones')
-        .select('*, devolucion_items(*, productos(nombre,sku))')
+        .select('*, devolucion_items(*, productos(nombre,sku)), nc_cae, nc_tipo, nc_numero_comprobante, origen')
         .eq('venta_id', ventaDetalle!.id)
         .order('created_at', { ascending: false })
       return data ?? []
@@ -756,6 +760,31 @@ export default function VentasPage() {
     }
   }
 
+  const emitirNC = async () => {
+    if (!ncModal) return
+    setEmitiendoNC(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('emitir-factura', {
+        body: {
+          venta_id: ncModal.ventaId,
+          tenant_id: tenant!.id,
+          tipo_comprobante: ncTipo,
+          punto_venta: ncPV,
+          devolucion_id: ncModal.devolucionId,
+        },
+      })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      toast.success(`✅ ${ncTipo} emitida — CAE: ${data.cae}`, { duration: 8000 })
+      setNcModal(null)
+      qc.invalidateQueries({ queryKey: ['devoluciones-venta', ncModal.ventaId] })
+    } catch (e: any) {
+      toast.error('Error al emitir NC: ' + (e.message ?? 'intente nuevamente'))
+    } finally {
+      setEmitiendoNC(false)
+    }
+  }
+
   async function descargarFacturaPDFVenta() {
     if (!ventaDetalle?.cae) return
     setDescargandoPdfVenta(true)
@@ -809,7 +838,7 @@ export default function VentasPage() {
         .select('id, numero, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('numero')
       return data ?? []
     },
-    enabled: !!tenant && !!facturaModal,
+    enabled: !!tenant && (!!facturaModal || !!ncModal),
   })
 
   const { data: combosDisp = [] } = useQuery({
@@ -2953,9 +2982,28 @@ export default function VentasPage() {
                   <div className="divide-y divide-orange-100 dark:divide-orange-800/40">
                     {(devolucionesPasadas as any[]).map((d: any) => (
                       <div key={d.id} className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
-                        <div className="flex justify-between">
-                          <span className="font-medium text-orange-600 dark:text-orange-400">{d.numero_nc ?? 'Sin NC'}</span>
-                          <span>{new Date(d.created_at).toLocaleDateString('es-AR')}</span>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="font-medium text-orange-600 dark:text-orange-400">{d.numero_nc ?? 'Sin NC interna'}</span>
+                            <span className="ml-2 text-gray-400">{new Date(d.created_at).toLocaleDateString('es-AR')}</span>
+                          </div>
+                          {/* Badge NC electrónica emitida */}
+                          {d.nc_cae ? (
+                            <span className="flex-shrink-0 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full text-xs font-medium">
+                              {d.nc_tipo} #{d.nc_numero_comprobante}
+                            </span>
+                          ) : d.origen === 'facturada' && ventaDetalle?.cae && (tenant as any)?.facturacion_habilitada ? (
+                            <button
+                              onClick={() => {
+                                const pvDefault = (puntosVentaAfip as any[])[0]?.numero ?? 1
+                                setNcPV(pvDefault)
+                                setNcTipo('NC-B')
+                                setNcModal({ devolucionId: d.id, ventaId: ventaDetalle.id, ventaNumero: ventaDetalle.numero, monto: d.monto_total })
+                              }}
+                              className="flex-shrink-0 flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/40 px-2 py-0.5 rounded-full text-xs font-medium transition-colors">
+                              <Receipt size={11} /> Emitir NC
+                            </button>
+                          ) : null}
                         </div>
                         {d.motivo && <p className="text-gray-400 dark:text-gray-500">{d.motivo}</p>}
                         {(d.devolucion_items ?? []).map((di: any) => (
@@ -3932,6 +3980,71 @@ export default function VentasPage() {
         </div>
       </div>
     )}
+
+      {/* ── MODAL: EMITIR NOTA DE CRÉDITO ── */}
+      {ncModal && (
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📋</span>
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100">Emitir Nota de Crédito</h2>
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Venta #{ncModal.ventaNumero} · Devolución ${ncModal.monto?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+              </p>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de Nota de Crédito</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['NC-A','NC-B','NC-C'] as const).map(t => (
+                    <button key={t} onClick={() => setNcTipo(t)}
+                      className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-all
+                        ${ncTipo === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent/40'}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Punto de venta</label>
+                {(puntosVentaAfip as any[]).length > 0 ? (
+                  <select value={ncPV} onChange={e => setNcPV(parseInt(e.target.value))}
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent">
+                    {(puntosVentaAfip as any[]).map((pv: any) => (
+                      <option key={pv.numero} value={pv.numero}>PV {pv.numero} — {pv.nombre}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input type="number" value={ncPV} onChange={e => setNcPV(parseInt(e.target.value))} min="1"
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent" />
+                )}
+              </div>
+
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                La NC quedará vinculada a la devolución y se enviará al WSFE de AFIP.
+              </p>
+            </div>
+
+            <div className="px-5 pb-5 flex gap-3">
+              <button onClick={() => setNcModal(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
+                Cancelar
+              </button>
+              <button onClick={emitirNC} disabled={emitendoNC}
+                className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
+                {emitendoNC
+                  ? <><span className="animate-spin">⟳</span> Emitiendo…</>
+                  : <>📋 Emitir {ncTipo}</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

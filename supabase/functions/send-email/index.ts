@@ -123,6 +123,48 @@ function alertaStockTemplate(data: {
   }
 }
 
+function facturaEmitidaTemplate(data: {
+  cliente_nombre: string
+  negocio: string
+  tipo_comprobante: string
+  numero_comprobante: number
+  cae: string
+  vencimiento_cae: string
+  items: Array<{ nombre: string; cantidad: number; precio_unitario: number; subtotal: number }>
+  total: number
+}) {
+  const itemsHtml = data.items.map(i =>
+    `<tr>
+      <td>${i.nombre}</td>
+      <td class="right">${i.cantidad}</td>
+      <td class="right">$${Number(i.subtotal).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</td>
+    </tr>`
+  ).join('')
+
+  return {
+    subject: `${data.tipo_comprobante} #${String(data.numero_comprobante).padStart(8,'0')} — ${data.negocio}`,
+    html: templateBase(`
+      <p>Hola <strong>${data.cliente_nombre}</strong>,</p>
+      <p>Te enviamos el comprobante correspondiente a tu compra en <strong>${data.negocio}</strong>.</p>
+      <p><span class="tag">${data.tipo_comprobante} N° ${String(data.numero_comprobante).padStart(8,'0')}</span></p>
+      <table class="table">
+        <thead><tr><th>Producto</th><th class="right">Cant.</th><th class="right">Subtotal</th></tr></thead>
+        <tbody>
+          ${itemsHtml}
+          <tr class="total-row">
+            <td colspan="2">Total</td>
+            <td class="right">$${Number(data.total).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="alert-box" style="background:#f0fdf4;border-color:#86efac">
+        <p style="color:#166534"><strong>CAE:</strong> ${data.cae} &nbsp;·&nbsp; <strong>Vence:</strong> ${data.vencimiento_cae}</p>
+      </div>
+      <p style="font-size:13px;color:#6b7280">Guardá este email como comprobante de tu operación.</p>
+    `),
+  }
+}
+
 function notificacionTemplate(data: { titulo: string; mensaje: string; action_url?: string }) {
   return {
     subject: data.titulo,
@@ -158,6 +200,8 @@ serve(async (req) => {
       ;({ subject, html } = alertaStockTemplate(data))
     } else if (type === 'notificacion') {
       ;({ subject, html } = notificacionTemplate(data))
+    } else if (type === 'factura_emitida') {
+      ;({ subject, html } = facturaEmitidaTemplate(data))
     } else {
       throw new Error(`Tipo de email desconocido: ${type}`)
     }

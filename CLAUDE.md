@@ -1439,6 +1439,55 @@ Cupones, WhatsApp diario, IA chat, benchmark por rubro, tema oscuro, multilengua
 - Sección roja "OC vencidas sin pagar" + sección ámbar "OC por vencer en 3 días".
 - Badge sidebar incluye conteo de ambas.
 
+### v1.6.1 ✅ PROD
+
+#### OC — fixes ProveedoresPage
+- Cantidad en ítems de OC respeta `unidad_medida`: `esDecimal()` de `ventasValidation.ts` → `step=1`/`onKeyDown` bloquea punto para enteros; `step=0.001` para kg/l/g/m etc. `parseInt` vs `parseFloat` al guardar.
+- Botones **PDF** (jsPDF+autoTable) y **CSV** (BOM UTF-8) en modal detalle de OC. Nombre: `OC_0001_Proveedor.pdf/.csv`.
+
+#### Security hardening — Supabase (migrations 086 + 086b)
+- **80 → 7 warnings** en Security Advisor.
+- `REVOKE EXECUTE FROM PUBLIC` en funciones de trigger/internas (`trigger_recalcular_stock`, `gen_venta_numero`, `fn_enqueue_tn_stock_sync`, etc.) — no deben llamarse via REST `/rpc/`.
+- `REVOKE FROM PUBLIC + GRANT TO authenticated` en lógica de negocio (`pagar_nomina_empleado`, `aprobar_vacacion`, `rechazar_vacacion`, `process_aging_profiles`, `update_user_avatar`).
+- `REVOKE FROM PUBLIC + GRANT TO authenticated` en auth helpers usados en RLS (`is_admin`, `is_rrhh`, `get_user_role`, `get_user_tenant_id`, `get_supervisor_team_ids`).
+- `SET search_path = public` en ~35 funciones (previene search_path injection).
+- Buckets `avatares` y `productos`: policy SELECT restringida a `authenticated` (previene listing anónimo).
+- 7 restantes aceptados: auth helpers (safe, retornan false para anon), `pg_net` en public (Supabase managed), `planes` sin policy (por diseño), `leaked_password_protection` (Pro plan).
+
+#### Sentry — monitoreo de errores
+- `@sentry/react` en `src/main.tsx`. `tracesSampleRate: 0.1` (10%) · `replaysOnErrorSampleRate: 1.0` (replay completo en errores).
+- Variable `VITE_SENTRY_DSN` en Vercel Production.
+
+#### npm audit — 21 → 7 vulnerabilidades
+- Fixes seguros aplicados via `npm audit fix` (brace-expansion, flatted, lodash, picomatch, postcss, serialize-javascript).
+- `@typescript-eslint/parser` + `eslint-plugin` actualizados a latest (fix minimatch ReDoS).
+
+### v1.7.0 ✅ PROD
+
+#### API pull — acceso externo a datos
+- **Migration 087** (`api_keys`): tabla con `key_prefix`, `key_hash` SHA-256, `permisos TEXT[]`, `activo`, `last_used_at`. RLS tenant + OWNER/ADMIN.
+- **EF `data-api`** (`--no-verify-jwt`): GET con `entity`, `format`, `limit`, `offset`, `updated_since`, `sucursal_id`. Entidades: productos/clientes/proveedores/inventario. Auth: X-API-Key. Rate 120 req/min.
+- **ConfigPage tab “API”** (OWNER/ADMIN): generar key (plain text una sola vez), tabla prefijo + last_used_at, revocar. Docs inline.
+- **Exportar JSON/CSV**: dropdown en ProductosPage, ClientesPage, ProveedoresPage. BOM UTF-8.
+
+### v1.8.0 ✅ PROD
+
+#### Email al cliente al emitir CAE
+- **EF `send-email`**: nuevo tipo `factura_emitida` con tabla items + badge CAE.
+- **EF `emitir-factura`**: fetch `email` del cliente, fire-and-forget a send-email post-CAE (solo facturas, no NC).
+
+#### Notas de Crédito electrónicas (migration 088)
+- **Migration 088**: `devoluciones` + `nc_cae`, `nc_vencimiento_cae`, `nc_numero_comprobante`, `nc_tipo CHECK(NC-A/NC-B/NC-C)`, `nc_punto_venta`.
+- **EF `emitir-factura`**: acepta `tipo_comprobante: NC-A|NC-B|NC-C` + `devolucion_id`. Usa `devolucion_items`. Guarda CAE en `devoluciones`.
+- **VentasPage**: badge verde si ya tiene NC; botón azul “Emitir NC” cuando aplica.
+
+#### GastosPage — fixes módulo OC
+- Medios de pago mixtos: N filas + “+ Agregar medio”. Total en tiempo real. Egreso de caja por cada Efectivo.
+- Fix CC: ya no valida monto, registra saldo como deuda automáticamente.
+- OC pagadas al fondo con sort + expand items.
+- ProveedoresPage: “Confirmar” solo habilitado con `pagada` o `cuenta_corriente`. `pago_parcial` muestra tooltip.
+- Restantes aceptados: `dompurify`/jsPDF (solo exportamos), `esbuild`/Vite (solo dev server), `xlsx` (solo exportamos, sin fix disponible).
+
  
  # CLAUDE.md
 

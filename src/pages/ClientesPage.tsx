@@ -485,6 +485,28 @@ export default function ClientesPage() {
     toast.success(`${creados} clientes importados`)
   }
 
+  const exportarClientes = (format: 'json' | 'csv') => {
+    const rows = (clientes as any[]).map(c => ({
+      id: c.id, nombre: c.nombre, dni: c.dni ?? '', telefono: c.telefono ?? '',
+      email: c.email ?? '', direccion: c.direccion ?? '',
+      cuenta_corriente_habilitada: c.cuenta_corriente_habilitada ?? false,
+      activo: c.activo,
+    }))
+    const filename = `clientes_${new Date().toISOString().slice(0,10)}`
+    if (format === 'json') {
+      const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.json`; a.click()
+    } else {
+      const headers = Object.keys(rows[0] ?? {})
+      const lines = rows.map((r: any) => headers.map(h => {
+        const v = String(r[h] ?? '')
+        return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g,'""')}"` : v
+      }).join(','))
+      const blob = new Blob(['﻿' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${filename}.csv`; a.click()
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -496,6 +518,15 @@ export default function ClientesPage() {
         </div>
         <div className="flex gap-2">
           {pageTab === 'lista' && <>
+            <div className="relative group">
+              <button className="flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+                <Download size={15} /> Exportar <ChevronDown size={13} />
+              </button>
+              <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden z-20 hidden group-hover:block w-32">
+                <button onClick={() => exportarClientes('json')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">JSON</button>
+                <button onClick={() => exportarClientes('csv')}  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">CSV</button>
+              </div>
+            </div>
             <button onClick={() => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }}
               className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
               <Upload size={16} /> Importar

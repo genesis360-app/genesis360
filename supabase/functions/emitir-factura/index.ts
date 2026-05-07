@@ -42,12 +42,20 @@ serve(async (req) => {
     const {
       venta_id,
       tenant_id,
-      tipo_comprobante = 'B', // 'A' | 'B' | 'C'
+      tipo_comprobante = 'B', // 'A' | 'B' | 'C' | 'NC-A' | 'NC-B' | 'NC-C'
       punto_venta = 1,
+      devolucion_id,           // presente solo al emitir NC
     } = await req.json()
+
+    const esNC = tipo_comprobante.startsWith('NC-')
 
     if (!venta_id || !tenant_id) {
       return new Response(JSON.stringify({ error: 'venta_id y tenant_id son requeridos' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (esNC && !devolucion_id) {
+      return new Response(JSON.stringify({ error: 'devolucion_id es requerido para Notas de Crédito' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -71,14 +79,45 @@ serve(async (req) => {
         id, numero, total, estado, medio_pago,
         venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto,
           productos(nombre, sku, alicuota_iva)),
-        clientes(nombre, dni, cuit_receptor, condicion_iva_receptor)
+        clientes(nombre, dni, email, cuit_receptor, condicion_iva_receptor)
       `)
       .eq('id', venta_id).single()
     if (vErr || !venta) throw new Error('Venta no encontrada')
-    if (venta.cae) throw new Error('Esta venta ya tiene CAE emitido: ' + venta.cae)
+
+    // Para facturas normales, bloquear si ya tiene CAE
+    if (!esNC && venta.cae) throw new Error('Esta venta ya tiene CAE emitido: ' + venta.cae)
 
     const cliente = (venta as any).clientes
-    const items   = (venta as any).venta_items ?? []
+
+    // Para NC, usar los ítems de la devolución; para facturas, los ítems de la venta
+    let items: any[] = (venta as any).venta_items ?? []
+
+    if (esNC) {
+      // Verificar que la venta tiene CAE (requisito para emitir NC)
+      if (!venta.cae) throw new Error('La venta no tiene factura emitida. No se puede emitir NC sin CAE original.')
+
+      // Obtener ítems de la devolución
+      const { data: devolucion, error: devErr } = await supabase
+        .from('devoluciones')
+        .select('id, nc_cae, devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva))')
+        .eq('id', devolucion_id)
+        .eq('tenant_id', tenant_id)
+        .single()
+
+      if (devErr || !devolucion) throw new Error('Devolución no encontrada')
+      if (devolucion.nc_cae) throw new Error('Esta devolución ya tiene NC emitida: ' + devolucion.nc_cae)
+
+      // Mapear ítems de devolución al mismo formato que venta_items
+      items = ((devolucion as any).devolucion_items ?? []).map((di: any) => ({
+        cantidad: di.cantidad,
+        precio_unitario: di.precio_unitario,
+        subtotal: di.precio_unitario * di.cantidad,
+        alicuota_iva: di.productos?.alicuota_iva ?? 21,
+        productos: di.productos,
+      }))
+
+      if (!items.length) throw new Error('La devolución no tiene ítems')
+    }
 
     // 3. Determinar tipo de comprobante y datos del receptor
     const cbteTipo = TIPO_CBTE[tipo_comprobante] ?? 6
@@ -174,22 +213,67 @@ serve(async (req) => {
     console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id}`)
     const resultado = await eb.createVoucher(payload)
 
-    // 9. Guardar CAE en la venta
-    await supabase.from('ventas').update({
-      cae:               resultado.CAE,
-      vencimiento_cae:   resultado.CAEFchVto,
-      tipo_comprobante:  `Factura ${tipo_comprobante}`,
-      numero_comprobante: proximo,
-    }).eq('id', venta_id)
+    // 9. Guardar CAE
+    if (esNC) {
+      // NC: guardar en devoluciones
+      await supabase.from('devoluciones').update({
+        nc_cae:               resultado.CAE,
+        nc_vencimiento_cae:   resultado.CAEFchVto,
+        nc_numero_comprobante: proximo,
+        nc_tipo:              tipo_comprobante,
+        nc_punto_venta:       punto_venta,
+      }).eq('id', devolucion_id)
+    } else {
+      // Factura normal: guardar en ventas
+      await supabase.from('ventas').update({
+        cae:               resultado.CAE,
+        vencimiento_cae:   resultado.CAEFchVto,
+        tipo_comprobante:  `Factura ${tipo_comprobante}`,
+        numero_comprobante: proximo,
+      }).eq('id', venta_id)
+    }
 
-    console.log(`CAE emitido: ${resultado.CAE} — Venta ${venta_id}`)
+    console.log(`CAE emitido: ${resultado.CAE} — ${esNC ? `NC devolucion ${devolucion_id}` : `Venta ${venta_id}`}`)
 
+    // 10. Email al cliente (fire-and-forget — solo para facturas, no NC)
+    const emailCliente = cliente?.email
+    if (emailCliente && !esNC) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+      fetch(`${supabaseUrl}/functions/v1/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}`,
+        },
+        body: JSON.stringify({
+          type: 'factura_emitida',
+          to: emailCliente,
+          data: {
+            cliente_nombre: cliente.nombre ?? 'Cliente',
+            negocio: tenant.nombre ?? 'Tu negocio',
+            tipo_comprobante: `Factura ${tipo_comprobante}`,
+            numero_comprobante: proximo,
+            cae: resultado.CAE,
+            vencimiento_cae: resultado.CAEFchVto,
+            items: items.map((it: any) => ({
+              nombre: it.productos?.nombre ?? 'Producto',
+              cantidad: Number(it.cantidad),
+              precio_unitario: Number(it.precio_unitario),
+              subtotal: Number(it.subtotal ?? it.precio_unitario * it.cantidad),
+            })),
+            total: totalVenta,
+          },
+        }),
+      }).catch(e => console.warn('send-email fire-and-forget failed:', e.message))
+    }
+
+    const tipoLabel = esNC ? tipo_comprobante : `Factura ${tipo_comprobante}`
     return new Response(JSON.stringify({
       ok:           true,
       cae:          resultado.CAE,
       vencimiento:  resultado.CAEFchVto,
       numero:       proximo,
-      tipo:         `Factura ${tipo_comprobante}`,
+      tipo:         tipoLabel,
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -11,7 +11,7 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'metodos_pago' | 'integraciones'
+type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'metodos_pago' | 'integraciones' | 'api'
 type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
@@ -1316,6 +1316,7 @@ export default function ConfigPage() {
     { id: 'combos' as Tab, label: 'Combos', icon: Gift },
     { id: 'metodos_pago' as Tab, label: 'Métodos de pago', icon: CreditCard },
     { id: 'integraciones' as Tab, label: 'Integraciones', icon: Plug },
+    { id: 'api' as Tab, label: 'API', icon: Key },
   ]
 
   return (
@@ -2943,8 +2944,254 @@ export default function ConfigPage() {
         </div>
       )}
 
+      {tab === 'api' && (
+        <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'OWNER' || user?.rol === 'ADMIN'} />
+      )}
+
         </div>{/* end content column */}
       </div>{/* end flex gap-6 */}
+    </div>
+  )
+}
+
+// ─── Tab API ──────────────────────────────────────────────────────────────────
+
+function ApiTab({ tenantId, isOwner }: { tenantId: string; isOwner: boolean }) {
+  const qc = useQueryClient()
+  const [newKeyNombre, setNewKeyNombre] = useState('')
+  const [nuevaKeyPlain, setNuevaKeyPlain] = useState<string | null>(null)
+
+  const { data: apiKeys = [], isLoading } = useQuery({
+    queryKey: ['api_keys', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('api_keys')
+        .select('id, nombre, key_prefix, permisos, activo, last_used_at, created_at')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenantId,
+  })
+
+  const crearKey = useMutation({
+    mutationFn: async (nombre: string) => {
+      // Generar clave: g360_ + 32 chars random
+      const random = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+        .map(b => b.toString(16).padStart(2, '0')).join('')
+      const plainKey = `g360_${random}`
+      const prefix = plainKey.slice(0, 8)
+
+      // Hash SHA-256
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(plainKey))
+      const hash = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+
+      const { error } = await supabase.from('api_keys').insert({
+        tenant_id: tenantId, nombre, key_prefix: prefix, key_hash: hash,
+      })
+      if (error) throw error
+      return plainKey
+    },
+    onSuccess: (plainKey) => {
+      setNuevaKeyPlain(plainKey)
+      setNewKeyNombre('')
+      qc.invalidateQueries({ queryKey: ['api_keys', tenantId] })
+    },
+    onError: () => toast.error('Error al crear la API key'),
+  })
+
+  const revocarKey = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('api_keys').update({ activo: false }).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Key revocada'); qc.invalidateQueries({ queryKey: ['api_keys', tenantId] }) },
+  })
+
+  const DEV_URL  = 'https://gcmhzdedrkmmzfzfveig.supabase.co/functions/v1/data-api'
+  const PROD_URL = 'https://jjffnbrdjchquexdfgwq.supabase.co/functions/v1/data-api'
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-2">
+        <Key size={18} className="text-accent" />
+        <h2 className="font-semibold text-gray-700 dark:text-gray-300">API de datos</h2>
+      </div>
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Consultá datos de tu negocio desde sistemas externos. Solo lectura, sin webhooks.
+      </p>
+
+      {/* Crear key */}
+      {isOwner && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+          <h3 className="font-medium text-gray-700 dark:text-gray-300 text-sm">Nueva API key</h3>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Nombre de la integración (ej: Sistema ERP)"
+              value={newKeyNombre}
+              onChange={e => setNewKeyNombre(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && newKeyNombre.trim() && crearKey.mutate(newKeyNombre.trim())}
+              className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white"
+            />
+            <button
+              onClick={() => newKeyNombre.trim() && crearKey.mutate(newKeyNombre.trim())}
+              disabled={!newKeyNombre.trim() || crearKey.isPending}
+              className="flex items-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-colors">
+              <Plus size={14} /> Generar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de nueva key generada */}
+      {nuevaKeyPlain && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+              Copiá la clave ahora — no se volverá a mostrar
+            </p>
+          </div>
+          <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-amber-200 dark:border-amber-600 rounded-lg px-3 py-2">
+            <code className="flex-1 text-xs font-mono text-gray-800 dark:text-gray-100 break-all">{nuevaKeyPlain}</code>
+            <button
+              onClick={() => { navigator.clipboard.writeText(nuevaKeyPlain); toast.success('Copiado') }}
+              className="text-amber-600 dark:text-amber-400 hover:text-amber-800 flex-shrink-0 ml-2" title="Copiar">
+              <Copy size={14} />
+            </button>
+          </div>
+          <button onClick={() => setNuevaKeyPlain(null)}
+            className="text-xs text-amber-600 dark:text-amber-400 underline hover:no-underline">
+            Ya la copié, cerrar
+          </button>
+        </div>
+      )}
+
+      {/* Listado de keys */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700">
+          <h3 className="font-medium text-gray-700 dark:text-gray-300 text-sm">Mis API keys</h3>
+        </div>
+        {isLoading ? (
+          <p className="text-sm text-gray-400 text-center py-6">Cargando...</p>
+        ) : apiKeys.length === 0 ? (
+          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">Sin API keys generadas</p>
+        ) : (
+          <div className="divide-y divide-gray-50 dark:divide-gray-700">
+            {(apiKeys as any[]).map(k => (
+              <div key={k.id} className="flex items-center gap-3 px-5 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{k.nombre}</p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <code className="text-xs text-gray-400 font-mono">{k.key_prefix}•••••••••••••</code>
+                    {k.last_used_at ? (
+                      <span className="text-xs text-gray-400">Usado {new Date(k.last_used_at).toLocaleDateString('es-AR')}</span>
+                    ) : (
+                      <span className="text-xs text-gray-300 dark:text-gray-600">Nunca usado</span>
+                    )}
+                  </div>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${k.activo ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}>
+                  {k.activo ? 'Activa' : 'Revocada'}
+                </span>
+                {isOwner && k.activo && (
+                  <button onClick={() => revocarKey.mutate(k.id)}
+                    className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Revocar key">
+                    Revocar
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Documentación */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+        <h3 className="font-medium text-gray-700 dark:text-gray-300 text-sm flex items-center gap-2">
+          <Hash size={14} /> Documentación de la API
+        </h3>
+
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Base URL</p>
+          <code className="block text-xs bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300 break-all">{PROD_URL}</code>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Autenticación</p>
+          <code className="block text-xs bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300">X-API-Key: g360_tu_clave_aqui</code>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Entidades disponibles</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-700">
+                  <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300 font-medium">entity</th>
+                  <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300 font-medium">Campos</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {[
+                  { e: 'productos',   c: 'id, nombre, sku, precio_venta, precio_costo, stock_actual, unidad_medida, activo, categoria' },
+                  { e: 'clientes',    c: 'id, nombre, dni, telefono, email, direccion, cuenta_corriente_habilitada, activo' },
+                  { e: 'proveedores', c: 'id, nombre, razon_social, cuit, condicion_iva, plazo_pago_dias, banco, cbu, activo' },
+                  { e: 'inventario',  c: 'lpn, producto, sku, cantidad, cantidad_reservada, disponible, ubicacion, estado, nro_lote, fecha_vencimiento' },
+                ].map(row => (
+                  <tr key={row.e}>
+                    <td className="px-3 py-2"><code className="text-accent font-mono">{row.e}</code></td>
+                    <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{row.c}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Parámetros</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-700">
+                  <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300 font-medium">Parámetro</th>
+                  <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300 font-medium">Descripción</th>
+                  <th className="text-left px-3 py-2 text-gray-600 dark:text-gray-300 font-medium">Default</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {[
+                  { p: 'entity',        d: 'Entidad a consultar (obligatorio)',          def: '—' },
+                  { p: 'format',        d: 'Formato de respuesta: json | csv',           def: 'json' },
+                  { p: 'limit',         d: 'Registros por página (máx. 1.000)',          def: '100' },
+                  { p: 'offset',        d: 'Registros a saltear',                        def: '0' },
+                  { p: 'updated_since', d: 'Filtrar por fecha ISO (sync incremental)',   def: '—' },
+                  { p: 'sucursal_id',   d: 'UUID de sucursal (clientes / inventario)',   def: '—' },
+                ].map(row => (
+                  <tr key={row.p}>
+                    <td className="px-3 py-2"><code className="text-gray-700 dark:text-gray-300 font-mono">{row.p}</code></td>
+                    <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{row.d}</td>
+                    <td className="px-3 py-2 text-gray-400 dark:text-gray-500">{row.def}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Ejemplo curl</p>
+          <pre className="text-xs bg-gray-900 text-green-400 rounded-lg px-3 py-3 overflow-x-auto leading-relaxed">{`curl "${PROD_URL}?entity=productos&limit=50" \\
+  -H "X-API-Key: g360_tu_clave_aqui"`}</pre>
+        </div>
+
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Límite: 120 req/min por key. Solo lectura. Para integraciones de escritura, contactá soporte.
+        </p>
+      </div>
     </div>
   )
 }

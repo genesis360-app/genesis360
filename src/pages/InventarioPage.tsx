@@ -21,7 +21,7 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
-import type { Producto, KitReceta, InventarioConteo } from '@/lib/supabase'
+import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 
@@ -94,6 +94,7 @@ export default function InventarioPage() {
   const [rebajeMotivoSelect, setRebajeMotivoSelect] = useState('')
   const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
   const [rebajeUnitAlt, setRebajeUnitAlt] = useState<string | null>(null)
+  const [ingresoEstructuraId, setIngresoEstructuraId] = useState('')
 
   // ── Inventario tab state ───────────────────────────────────────────────────
   const [invSearch, setInvSearch] = useState('')
@@ -286,6 +287,22 @@ export default function InventarioPage() {
       return data ?? []
     },
     enabled: !!tenant,
+  })
+
+  const { data: estructurasIngreso = [] } = useQuery<ProductoEstructura[]>({
+    queryKey: ['estructuras-producto', selectedProduct?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('producto_estructuras')
+        .select('id, nombre, is_default')
+        .eq('producto_id', selectedProduct!.id)
+        .order('is_default', { ascending: false })
+      const list = (data ?? []) as ProductoEstructura[]
+      const def = list.find(e => e.is_default) ?? list[0]
+      if (def) setIngresoEstructuraId(def.id)
+      return list
+    },
+    enabled: !!selectedProduct && modal === 'ingreso',
   })
 
   const { data: lineasProducto = [] } = useQuery({
@@ -705,6 +722,7 @@ export default function InventarioPage() {
           fecha_vencimiento: form.fechaVencimiento || null,
           precio_costo_snapshot: (selectedProduct as any).precio_costo || null,
           precio_venta_snapshot: (selectedProduct as any).precio_venta || null,
+          estructura_id: ingresoEstructuraId || null,
         })
         .select().single()
       if (lineaError) throw lineaError
@@ -1203,6 +1221,7 @@ export default function InventarioPage() {
     setRebajeSearch(''); setRebajeGrupoId(null)
     setIngresoMotivoSelect(''); setRebajeMotivoSelect('')
     setIngresoUnitAlt(null); setRebajeUnitAlt(null)
+    setIngresoEstructuraId('')
   }
 
   useModalKeyboard({
@@ -2195,6 +2214,19 @@ export default function InventarioPage() {
                         placeholder="Ej: LPN-20260101-A1"
                         className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                     </div>
+
+                    {estructurasIngreso.length > 0 && (
+                      <div className="mb-3">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estructura de embalaje</label>
+                        <select value={ingresoEstructuraId} onChange={e => setIngresoEstructuraId(e.target.value)}
+                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700">
+                          <option value="">Sin estructura</option>
+                          {estructurasIngreso.map(e => (
+                            <option key={e.id} value={e.id}>{e.nombre}{e.is_default ? ' (default)' : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
                     {tieneSeries ? (
                       <div className="mb-3">

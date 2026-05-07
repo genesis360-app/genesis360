@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import type { Recepcion } from '@/lib/supabase'
+import type { Recepcion, ProductoEstructura } from '@/lib/supabase'
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -29,6 +29,7 @@ type FormItem = {
   lpn: string
   series_txt: string
   precio_costo: string
+  estructura_id: string
   expanded: boolean
 }
 
@@ -49,7 +50,7 @@ function nuevoItem(overrides: Partial<FormItem> = {}): FormItem {
     unidad_medida: 'unidad', precio_costo_default: 0,
     oc_item_id: '', cantidad_esperada: 0, cantidad_recibida: '1',
     ubicacion_id: '', estado_id: '', nro_lote: '', fecha_vencimiento: '',
-    lpn: '', series_txt: '', precio_costo: '', expanded: false,
+    lpn: '', series_txt: '', precio_costo: '', estructura_id: '', expanded: false,
     ...overrides,
   }
 }
@@ -78,6 +79,7 @@ export default function RecepcionesPage() {
   const [prodFocused, setProdFocused] = useState(false)
   const [saving, setSaving] = useState(false)
   const [expandedRec, setExpandedRec] = useState<string | null>(null)
+  const [estructurasMap, setEstructurasMap] = useState<Record<string, ProductoEstructura[]>>({})
 
   // ── Queries ─────────────────────────────────────────────────────────────────
 
@@ -162,8 +164,9 @@ export default function RecepcionesPage() {
       if (oc.proveedor_id) setFProveedorId(oc.proveedor_id)
       const ocItems = (oc as any).orden_compra_items ?? []
       if (ocItems.length > 0) {
-        setItems(ocItems.map((it: any) => {
+        const itemsConEstructura = await Promise.all(ocItems.map(async (it: any) => {
           const p = it.productos
+          const estructura_id = await cargarEstructuras(p.id)
           return nuevoItem({
             producto_id: p.id,
             producto_nombre: p.nombre,
@@ -177,8 +180,10 @@ export default function RecepcionesPage() {
             oc_item_id: it.id,
             cantidad_esperada: it.cantidad,
             cantidad_recibida: String(it.cantidad),
+            estructura_id,
           })
         }))
+        setItems(itemsConEstructura)
       }
     }
     cargarOC()
@@ -186,11 +191,28 @@ export default function RecepcionesPage() {
 
   // ── Agregar producto a items ───────────────────────────────────────────────
 
-  const agregarProducto = (p: any) => {
+  const cargarEstructuras = async (productoId: string): Promise<string> => {
+    if (estructurasMap[productoId]) {
+      const def = estructurasMap[productoId].find(e => e.is_default) ?? estructurasMap[productoId][0]
+      return def?.id ?? ''
+    }
+    const { data } = await supabase
+      .from('producto_estructuras')
+      .select('id, nombre, is_default')
+      .eq('producto_id', productoId)
+      .order('is_default', { ascending: false })
+    const list = (data ?? []) as ProductoEstructura[]
+    setEstructurasMap(prev => ({ ...prev, [productoId]: list }))
+    const def = list.find(e => e.is_default) ?? list[0]
+    return def?.id ?? ''
+  }
+
+  const agregarProducto = async (p: any) => {
     if (items.find(it => it.producto_id === p.id)) {
       toast('Ese producto ya está en la lista')
       return
     }
+    const estructura_id = await cargarEstructuras(p.id)
     setItems(prev => [...prev, nuevoItem({
       producto_id: p.id,
       producto_nombre: p.nombre,
@@ -201,6 +223,7 @@ export default function RecepcionesPage() {
       unidad_medida: p.unidad_medida,
       precio_costo_default: p.precio_costo ?? 0,
       precio_costo: String(p.precio_costo ?? ''),
+      estructura_id,
     })])
     setProdSearch('')
     setProdFocused(false)
@@ -266,6 +289,7 @@ export default function RecepcionesPage() {
               fecha_vencimiento: it.fecha_vencimiento || null,
               precio_costo_snapshot: it.precio_costo ? Number(it.precio_costo) : (it.precio_costo_default || null),
               sucursal_id: fSucursalId || null,
+              estructura_id: it.estructura_id || null,
             })
             .select()
             .single()
@@ -577,6 +601,18 @@ export default function RecepcionesPage() {
                 {it.expanded && (
                   <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-700/50">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                      {(estructurasMap[it.producto_id]?.length ?? 0) > 0 && (
+                        <div className="col-span-2 sm:col-span-3">
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Estructura de embalaje</label>
+                          <select value={it.estructura_id} onChange={e => updItem(it._key, { estructura_id: e.target.value })}
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600">
+                            <option value="">Sin estructura</option>
+                            {estructurasMap[it.producto_id].map(e => (
+                              <option key={e.id} value={e.id}>{e.nombre}{e.is_default ? ' (default)' : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       <div>
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ubicación</label>
                         <select value={it.ubicacion_id} onChange={e => updItem(it._key, { ubicacion_id: e.target.value })}

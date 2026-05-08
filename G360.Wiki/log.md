@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-07] update | Deploy v1.8.3 a PROD — Precios mayoristas + mass update
+
+- Migration 092 (`producto_precios_mayorista`) aplicada en PROD ✅
+- PR #107 mergeado `dev → main` ✅
+- GitHub release v1.8.3 ✅
+- Migrations PROD: 001–092 ✅
+
+### Features
+- **Precios mayoristas**: tabla `producto_precios_mayorista`, toggle + tiers en ProductoFormPage
+- **Mass update productos**: +Proveedor, +Precio (% o fijo), +Reactivar en barra bulk
+
+---
+
 ## [2026-05-07] update | Deploy v1.8.2 a PROD
 
 - Migrations 090+091 aplicadas en PROD ✅

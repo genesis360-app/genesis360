@@ -6,6 +6,27 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-07] update | v1.8.2 DEV — OC→Gasto automático + notif CC vencidas
+
+**Cambios:**
+
+### OC → Gasto automático (migration 090)
+- `gastos.recepcion_id` (UUID nullable FK a `recepciones`) para trazabilidad
+- `RecepcionesPage`: al confirmar recepción vinculada a OC, crea `gasto` con monto calculado desde ítems recibidos × precio_costo, categoría "Compras", notas con número de recepción
+- Dedup natural: cada confirmación crea una recepción nueva → un gasto nuevo
+
+### Notificaciones CC vencidas (migration 091)
+- `fn_notificar_cc_vencidas()`: SECURITY DEFINER, notifica OWNER+ADMIN por tenant
+  - CC clientes: ventas CC con saldo > 0 y vencidas (created_at + plazo_pago_dias < hoy)
+  - OC vencidas: `fecha_vencimiento_pago < hoy AND estado_pago != 'pagada'`
+  - Dedup por día: no genera duplicados si ya existe notificación del mismo día para el mismo objeto
+- pg_cron `notif-cc-vencidas`: corre a las 12:00 UTC (09:00 AR) todos los días
+
+**Estado al cierre:**
+- PROD: v1.8.1 ✅ · DEV: v1.8.2 · Migrations DEV: 001–091 · PROD: 001–089
+
+---
+
 ## [2026-05-07] update | Deploy v1.8.1 a PROD
 
 - Migration 089 (`recursos`) aplicada en PROD ✅

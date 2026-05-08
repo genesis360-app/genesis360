@@ -360,6 +360,33 @@ export default function RecepcionesPage() {
         qc.invalidateQueries({ queryKey: ['ordenes', tenant?.id] })
       }
 
+      // Gasto automático al confirmar recepción vinculada a una OC
+      if (confirmar && fOcId && itemsValidos.length > 0) {
+        const montoGasto = itemsValidos.reduce((sum, it) => {
+          const cant = it.tiene_series
+            ? it.series_txt.split('\n').filter(s => s.trim()).length
+            : Number(it.cantidad_recibida)
+          const precio = it.precio_costo ? Number(it.precio_costo) : it.precio_costo_default
+          return sum + cant * precio
+        }, 0)
+        if (montoGasto > 0) {
+          const provNombre = proveedores.find(p => p.id === fProveedorId)?.nombre ?? 'proveedor'
+          const ocNumero = ocsConfirmadas.find(oc => oc.id === fOcId)?.numero
+          await supabase.from('gastos').insert({
+            tenant_id: tenant!.id,
+            recepcion_id: rec.id,
+            descripcion: ocNumero ? `Compra OC #${ocNumero} — ${provNombre}` : `Compra — ${provNombre}`,
+            monto: montoGasto,
+            categoria: 'Compras',
+            fecha: new Date().toISOString().split('T')[0],
+            notas: `Recepción #${rec.numero}`,
+            sucursal_id: fSucursalId || null,
+            usuario_id: user!.id,
+          })
+          qc.invalidateQueries({ queryKey: ['gastos', tenant?.id] })
+        }
+      }
+
       toast.success(confirmar ? `Recepción #${rec.numero} confirmada ✓` : `Borrador #${rec.numero} guardado`)
       qc.invalidateQueries({ queryKey: ['recepciones', tenant?.id] })
       setShowForm(false)

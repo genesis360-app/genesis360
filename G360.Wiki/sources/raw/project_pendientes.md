@@ -47,11 +47,23 @@ type: project
 - ✅ **Notificación automática CC vencida** — migration 091: `fn_notificar_cc_vencidas()` + pg_cron diario 09:00 AR
 - **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas, form bug-report
 
+### Roadmap APIs — plan completo documentado en `wiki/integrations/roadmap-apis.md`
+
+**Fase 1** (quick wins sobre infra existente — pausada, lista para implementar):
+- MELI Rentabilidad Neta Real (extender meli-webhook, leer comisiones/envío/impuestos)
+- MercadoPago Conciliación automática (split comisión/retenciones IIBB en gastos)
+- TiendaNube BOM automático para combos (descontar componentes al pagar kit)
+- AFIP Auto-completado CUIT → Razón Social/IVA/Domicilio desde WS ARCA
+- MELI Repricing automático por margen
+
+**Fase 2**: PagoNube + EnvíoNube (ambos: operaciones propias + checkout TiendaNube)
+**Fase 3**: Logística directa (Andreani/OCA/CorreoAR) — rate shopping, etiquetas, RMA
+**Fase 4**: MELI Ads — ACOS, auto-pausado por margen, inversión atada a stock
+**Fase 5**: Meta Ads + POAS + GA4 UTM + Google Ads (posicionamiento futuro)
+**Fase 6**: Email Marketing (Brevo/Klaviyo RFM) + WhatsApp Cloud API (espera WABA account)
+
 ### Backlog técnico
 - WMS Fase 3 — `wms_tareas` (putaway/picking/replenishment) + listas de picking con ruta óptima
-- Sync catálogo TN/ML (push nombre/precio/descripción hacia marketplaces)
-- Courier rates APIs reales (OCA/Andreani/CorreoAR)
-- WhatsApp automático (espera WABA account)
 
 ### Pendiente manual (no código)
 - Verificar genesis360.pro en Resend → cambiar FROM a `noreply@genesis360.pro`

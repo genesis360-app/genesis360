@@ -6,6 +6,26 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-07] update | Plan Roadmap APIs — documentado, pausado
+
+Relevamiento completo de integraciones API actuales y plan de 6 fases para killer features.
+Ver: `wiki/integrations/roadmap-apis.md`
+
+**Resumen estado actual:**
+- ✅ TiendaNube, MercadoLibre, MercadoPago, Resend, Data-API implementados (básico)
+- ⚠️ AFIP parcial (schema listo, worker facturación pendiente)
+- ❌ Logística directa, PagoNube, EnvíoNube, Ads (Meta/Google/MELI), WhatsApp, Email marketing
+
+**Plan fases priorizadas (implementación futura a confirmar):**
+- Fase 1: MELI rentabilidad neta + MP conciliación + TN BOM + AFIP CUIT + repricing
+- Fase 2: PagoNube + EnvíoNube (para operaciones propias y checkout TN)
+- Fase 3: Logística directa (Andreani/OCA) + rate shopping + RMA
+- Fase 4: MELI Ads (auto-pausado por margen)
+- Fase 5: Meta Ads + POAS + GA4 (posicionamiento futuro)
+- Fase 6: WhatsApp Cloud API (espera WABA) + Brevo/Klaviyo RFM
+
+---
+
 ## [2026-05-07] update | Deploy v1.8.3 a PROD — Precios mayoristas + mass update
 
 - Migration 092 (`producto_precios_mayorista`) aplicada en PROD ✅

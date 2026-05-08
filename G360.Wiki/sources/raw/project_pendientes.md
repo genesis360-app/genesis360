@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.3** ✅
+Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.4** (pendiente PR → PROD)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -12,7 +12,7 @@ type: project
 
 - Migrations DEV: 001–092 ✅
 - Migrations PROD: 001–092 ✅
-- APP_VERSION en brand.ts: `v1.8.3`
+- APP_VERSION en brand.ts: `v1.8.4`
 - pg_cron activo DEV+PROD: `tn-stock-sync` + `meli-stock-sync` cada 5 min
 - Edge Functions PROD: `data-api` · `emitir-factura` · `send-email` · `tn-stock-worker` ✅
 - Sentry activo en PROD ✅
@@ -46,7 +46,7 @@ type: project
 - ✅ **OC → Gasto automático** — migration 090 (`recepcion_id` en `gastos`) + RecepcionesPage crea gasto al confirmar
 - ✅ **Notificación automática CC vencida** — migration 091: `fn_notificar_cc_vencidas()` + pg_cron diario 09:00 AR
 - **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas, form bug-report
-- **Asistente IA en header** — chat contextual en la barra superior (ícono de ayuda): responde preguntas sobre funciones de la app, guía al usuario por módulos, ayuda a reportar problemas (recopila info del error y lo envía como bug-report). Modelo sugerido: Claude Haiku (bajo costo, respuesta rápida). Contexto del sistema: documentación de la app + módulo activo actual.
+- ✅ **Asistente IA en header** — implementado en v1.8.4. Groq/Llama 3.1 8B (free tier). EF `ai-assistant`. Botón Bot en header. Acciones rápidas + flujo bug report + "Enviar reporte" vía email.
 
 ### Roadmap APIs — plan completo documentado en `wiki/integrations/roadmap-apis.md`
 

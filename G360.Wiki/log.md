@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-08] update | v1.8.4 DEV — Asistente IA en header (Groq/Llama 3.1)
+
+- EF `ai-assistant`: Groq API (llama-3.1-8b-instant), auth JWT, system prompt con todos los módulos G360
+- `AiAssistant.tsx`: panel chat flotante en header. Acciones rápidas, flujo bug report guiado, botón "Enviar reporte" (aparece tras 4+ mensajes)
+- `send-email`: template `bug_report` — envía conversación formateada a gaston.otranto@gmail.com
+- Secret `GROQ_API_KEY` configurado en DEV ✅ (pendiente configurar en PROD al deployar)
+- Free tier Groq: 14.400 req/día — sin costo
+
+---
+
 ## [2026-05-07] update | Plan Roadmap APIs — documentado, pausado
 
 Relevamiento completo de integraciones API actuales y plan de 6 fases para killer features.

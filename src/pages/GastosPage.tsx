@@ -220,13 +220,15 @@ export default function GastosPage() {
 
   // ── Tab OC — queries ─────────────────────────────────────────────────────
   const { data: ocs = [], isLoading: loadingOcs, refetch: refetchOcs } = useQuery({
-    queryKey: ['oc-gastos', tenant?.id],
+    queryKey: ['oc-gastos', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('ordenes_compra')
-        .select('*, proveedores(id,nombre), orden_compra_items(cantidad, precio_unitario, productos(nombre))')
-        .eq('tenant_id', tenant!.id)
-        .not('estado', 'eq', 'cancelada')
-        .order('created_at', { ascending: false })
+      const { data } = await applyFilter(
+        supabase.from('ordenes_compra')
+          .select('*, proveedores(id,nombre), orden_compra_items(cantidad, precio_unitario, productos(nombre))')
+          .eq('tenant_id', tenant!.id)
+          .not('estado', 'eq', 'cancelada')
+          .order('created_at', { ascending: false })
+      )
       return (data ?? []) as any[]
     },
     enabled: !!tenant && tab === 'oc',

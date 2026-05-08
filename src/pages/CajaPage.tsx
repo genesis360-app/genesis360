@@ -54,7 +54,7 @@ function extraerMedioPago(tipo: string, concepto: string): string {
 
 export default function CajaPage() {
   const { tenant, user } = useAuthStore()
-  const { sucursalId } = useSucursalFilter()
+  const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('caja')
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string | null>(null)
@@ -132,10 +132,12 @@ export default function CajaPage() {
 
   // Sesiones abiertas en TODAS las cajas (para mostrar indicador en selector)
   const { data: cajasAbiertas = [] } = useQuery({
-    queryKey: ['cajas-abiertas-ids', tenant?.id],
+    queryKey: ['cajas-abiertas-ids', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('caja_sesiones')
-        .select('caja_id').eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      const { data } = await applyFilter(
+        supabase.from('caja_sesiones')
+          .select('caja_id').eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      )
       return (data ?? []).map((r: any) => r.caja_id as string)
     },
     enabled: !!tenant,
@@ -145,10 +147,12 @@ export default function CajaPage() {
 
   // Sesiones abiertas propias del usuario actual (para bloquear segunda apertura en CAJERO)
   const { data: misSesionesAbiertas = [] } = useQuery({
-    queryKey: ['mis-sesiones-abiertas', tenant?.id, user?.id],
+    queryKey: ['mis-sesiones-abiertas', tenant?.id, user?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('caja_sesiones')
-        .select('caja_id').eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
+      const { data } = await applyFilter(
+        supabase.from('caja_sesiones')
+          .select('caja_id').eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
+      )
       return data ?? []
     },
     enabled: !!tenant && !!user,
@@ -158,11 +162,13 @@ export default function CajaPage() {
 
   // Sesiones abiertas con datos completos (para modal traspaso)
   const { data: sesionesAbiertasAll = [] } = useQuery({
-    queryKey: ['sesiones-abiertas-todas', tenant?.id],
+    queryKey: ['sesiones-abiertas-todas', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('caja_sesiones')
-        .select('id, caja_id, monto_apertura, cajas(nombre)')
-        .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      const { data } = await applyFilter(
+        supabase.from('caja_sesiones')
+          .select('id, caja_id, monto_apertura, cajas(nombre)')
+          .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      )
       return data ?? []
     },
     enabled: !!tenant && showTraspaso,
@@ -220,14 +226,16 @@ export default function CajaPage() {
   })
 
   const { data: historialSesiones = [] } = useQuery({
-    queryKey: ['historial-sesiones', cajaId],
+    queryKey: ['historial-sesiones', cajaId, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('caja_sesiones')
-        .select('*, cajas(nombre), abrio:usuario_id(nombre_display), cerrado_por:cerrado_por_id(nombre_display)')
-        .eq('tenant_id', tenant!.id)
-        .eq('estado', 'cerrada')
-        .order('cerrada_at', { ascending: false })
-        .limit(30)
+      const { data } = await applyFilter(
+        supabase.from('caja_sesiones')
+          .select('*, cajas(nombre), abrio:usuario_id(nombre_display), cerrado_por:cerrado_por_id(nombre_display)')
+          .eq('tenant_id', tenant!.id)
+          .eq('estado', 'cerrada')
+          .order('cerrada_at', { ascending: false })
+          .limit(30)
+      )
       return data ?? []
     },
     enabled: !!tenant && tab === 'historial',

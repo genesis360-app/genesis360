@@ -333,7 +333,7 @@ export default function VentasPage() {
   const [viewMode, setViewMode] = useState<'lista' | 'galeria'>('lista')
 
   const { data: productosBusqueda = [] } = useQuery({
-    queryKey: ['productos-venta', tenant?.id, productoSearch, ventaGrupoId, viewMode],
+    queryKey: ['productos-venta', tenant?.id, productoSearch, ventaGrupoId, viewMode, sucursalId],
     queryFn: async () => {
       // Determinar estados del grupo activo
       const grupoActivo = ventaGrupoId === 'todos'
@@ -372,12 +372,14 @@ export default function VentasPage() {
         : estadosVentaIds
 
       // Traer líneas activas de estos productos con ubicación disponible para surtido
-      let lineasQuery = supabase.from('inventario_lineas')
-        .select('producto_id, cantidad, cantidad_reservada, estado_id, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
-        .eq('tenant_id', tenant!.id)
-        .eq('activo', true)
-        .in('producto_id', productoIds)
-        .not('ubicacion_id', 'is', null)
+      let lineasQuery = applyFilter(
+        supabase.from('inventario_lineas')
+          .select('producto_id, cantidad, cantidad_reservada, estado_id, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
+          .eq('tenant_id', tenant!.id)
+          .eq('activo', true)
+          .in('producto_id', productoIds)
+          .not('ubicacion_id', 'is', null)
+      )
 
       // Filtrar por estados válidos (grupo ∩ disponible_venta, o solo disponible_venta si sin grupo)
       if (estadosFinal.length > 0) {
@@ -615,9 +617,11 @@ export default function VentasPage() {
       .limit(1)
     if (!prods || prods.length === 0) { toast.error(`No se encontró ningún producto con código "${code}"`); return }
     const prod = prods[0]
-    const { data: lineasScan } = await supabase.from('inventario_lineas')
-      .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
-      .eq('tenant_id', tenant!.id).eq('producto_id', prod.id).eq('activo', true)
+    const { data: lineasScan } = await applyFilter(
+      supabase.from('inventario_lineas')
+        .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
+        .eq('tenant_id', tenant!.id).eq('producto_id', prod.id).eq('activo', true)
+    )
     let stockDisponibleScan = 0
     for (const l of lineasScan ?? []) {
       if ((l.ubicaciones as any)?.disponible_surtido === false) continue

@@ -20,7 +20,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   tenant: null,
   sucursales: [],
-  sucursalId: typeof window !== 'undefined' ? (localStorage.getItem('sucursal-id') || null) : null,
+  sucursalId: typeof window !== 'undefined'
+    ? (v => v === '__global__' ? null : (v || null))(localStorage.getItem('sucursal-id'))
+    : null,
   loading: true,
   initialized: false,
   needsOnboarding: false,
@@ -28,8 +30,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) => set({ user }),
   setTenant: (tenant) => set({ tenant }),
   setSucursal: (id) => {
-    if (id) localStorage.setItem('sucursal-id', id)
-    else localStorage.removeItem('sucursal-id')
+    localStorage.setItem('sucursal-id', id ?? '__global__')
     set({ sucursalId: id })
   },
 
@@ -63,9 +64,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 		console.log('tenantData:', tenantData, 'error:', tenantError)
 
 		// Validar que el sucursal_id guardado sigue siendo válido
-		const savedId = typeof window !== 'undefined' ? (localStorage.getItem('sucursal-id') || null) : null
+		const savedRaw = typeof window !== 'undefined' ? localStorage.getItem('sucursal-id') : null
 		const ids = (sucursalesData ?? []).map((s: Sucursal) => s.id)
-		const validSucursalId = savedId && ids.includes(savedId) ? savedId : null
+		const validSucursalId = savedRaw === '__global__' ? null
+		  : (savedRaw && ids.includes(savedRaw) ? savedRaw : null)
 
 		const permisosCustom = (rolCustomData?.permisos ?? null) as Record<string, 'no_ver' | 'ver' | 'editar'> | null
 

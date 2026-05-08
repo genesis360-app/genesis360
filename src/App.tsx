@@ -39,6 +39,7 @@ const MiCuentaPage        = lazy(() => import('@/pages/MiCuentaPage'))
 const AyudaPage           = lazy(() => import('@/pages/AyudaPage'))
 const ProveedoresPage     = lazy(() => import('@/pages/ProveedoresPage'))
 const BibliotecaPage      = lazy(() => import('@/pages/BibliotecaPage'))
+const RecursosPage        = lazy(() => import('@/pages/RecursosPage'))
 const RecepcionesPage     = lazy(() => import('@/pages/RecepcionesPage'))
 const EnviosPage          = lazy(() => import('@/pages/EnviosPage'))
 const FacturacionPage     = lazy(() => import('@/pages/FacturacionPage'))
@@ -95,7 +96,7 @@ function App() {
     <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       {isDevEnv && (
-        <div className="fixed top-0 inset-x-0 z-[9999] bg-amber-400 text-amber-900 text-xs font-semibold text-center py-0.5 pointer-events-none select-none">
+        <div className="fixed top-0 inset-x-0 z-[9999] h-4 flex items-center justify-center bg-amber-400 text-amber-900 text-[10px] font-semibold pointer-events-none select-none">
           ⚠ Ambiente DEV — {window.location.hostname}
         </div>
       )}
@@ -154,6 +155,7 @@ function App() {
                   <Route path="/envios"        element={<EnviosPage />} />
                   <Route path="/facturacion"  element={<FacturacionPage />} />
                   <Route path="/biblioteca" element={<BibliotecaPage />} />
+                  <Route path="/recursos"   element={<RecursosPage />} />
                   <Route path="/configuracion/importar" element={<ImportarMasterPage />} />
                 </Route>
               </Route>

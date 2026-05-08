@@ -18,6 +18,7 @@ export type EntidadLog =
   | 'nomina'
   | 'vacacion'
   | 'asistencia'
+  | 'recurso'
 
 export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar'
 

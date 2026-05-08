@@ -519,3 +519,24 @@ export interface InventarioTnMap {
   created_at: string
   productos?: Pick<Producto, 'nombre' | 'sku'>
 }
+
+export interface Recurso {
+  id: string
+  tenant_id: string
+  nombre: string
+  descripcion?: string | null
+  categoria: string
+  estado: 'activo' | 'en_reparacion' | 'dado_de_baja' | 'pendiente_adquisicion'
+  valor?: number | null
+  fecha_adquisicion?: string | null
+  proveedor_id?: string | null
+  ubicacion?: string | null
+  numero_serie?: string | null
+  garantia_hasta?: string | null
+  notas?: string | null
+  sucursal_id?: string | null
+  created_by?: string | null
+  created_at: string
+  updated_at: string
+  proveedores?: Pick<Proveedor, 'id' | 'nombre'> | null
+}

@@ -1397,6 +1397,19 @@ export default function ProveedoresPage() {
                         {ESTADO_OC_LABEL[oc.estado as EstadoOC]}
                       </span>
 
+                      {/* Estado pago badge */}
+                      {(() => {
+                        const ep = (oc as any).estado_pago
+                        const fvp = (oc as any).fecha_vencimiento_pago
+                        const hoyStr = new Date().toISOString().split('T')[0]
+                        const vencida = fvp && fvp < hoyStr && !['pagada','cuenta_corriente'].includes(ep)
+                        if (vencida) return <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Vencida</span>
+                        if (ep === 'pendiente_pago') return <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Pago pendiente</span>
+                        if (ep === 'pago_parcial') return <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Pago parcial</span>
+                        if (ep === 'cuenta_corriente') return <span className="text-xs px-2 py-0.5 rounded-full font-medium shrink-0 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">CC</span>
+                        return null
+                      })()}
+
                       {/* Fecha */}
                       {oc.fecha_esperada && (
                         <span className="text-xs text-muted shrink-0 flex items-center gap-1">

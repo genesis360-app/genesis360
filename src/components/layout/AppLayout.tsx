@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
   ChevronRight, ChevronLeft, ShoppingCart, DollarSign, TrendingDown,
-  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt,
+  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -36,6 +36,7 @@ const navItems = [
   { to: '/envios',        icon: Send,            label: 'Envíos',         modulo: 'envios',        cajeroVisible: true },
   { to: '/facturacion',   icon: Receipt,         label: 'Facturación',    modulo: 'facturacion',   ownerOnly: true },
   { to: '/proveedores',   icon: Truck,           label: 'Prov./Servicios', modulo: 'proveedores',  ownerOnly: true },
+  { to: '/recursos',      icon: Landmark,        label: 'Recursos',       modulo: 'recursos',      ownerOnly: true },
   { to: '/recepciones',   icon: Warehouse,       label: 'Recepciones',    modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true },
   { to: '/biblioteca',    icon: FolderOpen,      label: 'Biblioteca',     modulo: 'biblioteca',    ownerOnly: true },
   { to: '/alertas',       icon: Bell,            label: 'Alertas',        modulo: 'alertas',       badge: true,           depositoVisible: true },
@@ -46,6 +47,9 @@ const navItems = [
   { to: '/usuarios',      icon: Shield,          label: 'Usuarios',       modulo: 'usuarios',      ownerOnly: true },
   { to: '/configuracion', icon: Settings,        label: 'Configuración',  modulo: 'configuracion', ownerOnly: true },
 ]
+
+const PROD_HOSTNAMES = ['app.genesis360.pro', 'genesis360.pro', 'www.genesis360.pro']
+const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
@@ -148,9 +152,10 @@ export function AppLayout() {
 
   const { sucursalId, sucursales, setSucursal } = useSucursalFilter()
 
-  // Auto-seleccionar la primera sucursal si hay sucursales pero ninguna seleccionada
+  // Auto-seleccionar la primera sucursal solo si el usuario nunca configuró una preferencia
   useEffect(() => {
-    if (sucursales.length > 0 && !sucursalId) {
+    const saved = localStorage.getItem('sucursal-id')
+    if (sucursales.length > 0 && !sucursalId && saved !== '__global__') {
       setSucursal(sucursales[0].id)
     }
   }, [sucursales.length])
@@ -292,7 +297,7 @@ export function AppLayout() {
   const hBtn = 'p-2 rounded-lg text-muted hover:text-primary dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-all'
 
   return (
-    <div className="flex h-screen bg-page overflow-hidden">
+    <div className={`flex bg-page overflow-hidden ${isDevEnv ? 'h-[calc(100vh-1rem)] mt-4' : 'h-screen'}`}>
       <Walkthrough open={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
       <AyudaModal isOpen={ayudaOpen} onClose={() => setAyudaOpen(false)} currentModule={pathname} />
 
@@ -343,6 +348,7 @@ export function AppLayout() {
                   className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
                   title="Filtrar por sucursal"
                 >
+                  <option value="">Todas las sucursales</option>
                   {sucursales.map(s => (
                     <option key={s.id} value={s.id}>{s.nombre}</option>
                   ))}

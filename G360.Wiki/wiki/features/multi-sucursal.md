@@ -3,7 +3,7 @@ title: Multi-Sucursal
 category: features
 tags: [sucursales, multi-sucursal, filtros, selector]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-05-07
 ---
 
 # Multi-Sucursal
@@ -47,17 +47,42 @@ setSucursal(id)             // persiste en localStorage
 
 ```typescript
 applyFilter(query)
-// Con sucursal activa:
-//   .or('sucursal_id.eq.{id},sucursal_id.is.null')
-//   — incluye datos NULL (pre-multi-sucursal)
-// Sin sucursal → vista global (sin filtro)
+// Con sucursal activa: .eq('sucursal_id', sucursalId)  ← filtro estricto ✅
+// Sin sucursal (vista global) → sin filtro (todo visible, incluye NULL)
 ```
 
 `sucursalId` siempre incluido en `queryKey` → invalidación automática al cambiar sucursal.
 
 **Filtros aplicados en:**
-- Lectura: inventario, movimientos, ventas, gastos, clientes
+- Lectura: inventario_lineas, movimientos_stock, ventas, gastos, clientes
 - Escritura: `sucursal_id: sucursalId || null` en inserts de movimientos, ventas, gastos, clientes, caja_sesiones
+
+---
+
+## Plan: Filtrado estricto por sucursal (implementado 2026-05-07)
+
+**Decisiones de diseño confirmadas (2026-05-07):**
+
+| Entidad | Comportamiento |
+|---------|---------------|
+| Productos (catálogo) | **Global** — mismo catálogo en todas las sucursales. Sin filtro. |
+| Inventario / LPNs | **Por sucursal** — stock físico separado por local |
+| Movimientos de stock | **Por sucursal** |
+| Ventas | **Por sucursal** |
+| Gastos | **Por sucursal** |
+| Caja | **Por sucursal** |
+| Clientes | **Global** — con `sucursal_id` en cada venta/devolución como trazabilidad |
+| Proveedores | **Global** |
+
+**Cambios implementados:**
+
+1. **`useSucursalFilter.applyFilter`**: filtro estricto `.eq('sucursal_id', sucursalId)` cuando hay sucursal activa. Sin sucursal → sin filtro (todo visible, incluye NULL).
+
+2. **`SucursalSelector` en AppLayout**: opción "Todas las sucursales" al inicio del select (`value=''` → `setSucursal(null)`).
+
+3. **`authStore` — persistencia "Vista global"**: sentinel `'__global__'` en localStorage. `setSucursal(null)` guarda `'__global__'` en lugar de borrar la key. El auto-select del header no sobreescribe una elección explícita de vista global.
+
+4. **Datos históricos `sucursal_id = NULL`**: visibles únicamente en vista global. No migrar — comportamiento esperado.
 
 ---
 
@@ -65,8 +90,8 @@ applyFilter(query)
 
 - `<select>` en el header de AppLayout
 - Visible solo cuando `sucursales.length > 0`
-- **Sin opción "Todas"** — siempre se trabaja en una sucursal específica
-- `useEffect` en AppLayout auto-selecciona la primera si `sucursalId` es null
+- Primera opción: "Todas las sucursales" (value `''` → sucursalId `null`)
+- `useEffect` auto-selecciona la primera sucursal solo si no hay preferencia guardada en localStorage
 - En mobile: `hidden sm:flex`
 
 ---

@@ -165,6 +165,21 @@ function facturaEmitidaTemplate(data: {
   }
 }
 
+function bugReportTemplate(data: { usuario: string; tenant: string; resumen: string }) {
+  return {
+    subject: `🐛 Bug Report — ${data.tenant} (${data.usuario})`,
+    html: templateBase(`
+      <p>Nuevo reporte enviado desde el asistente IA de Genesis360.</p>
+      <div class="alert-box">
+        <p><strong>Usuario:</strong> ${data.usuario}</p>
+        <p style="margin-top:4px"><strong>Negocio:</strong> ${data.tenant}</p>
+      </div>
+      <p><strong>Conversación:</strong></p>
+      <pre style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;font-size:13px;color:#374151;white-space:pre-wrap;word-break:break-word">${data.resumen}</pre>
+    `),
+  }
+}
+
 function notificacionTemplate(data: { titulo: string; mensaje: string; action_url?: string }) {
   return {
     subject: data.titulo,
@@ -202,6 +217,8 @@ serve(async (req) => {
       ;({ subject, html } = notificacionTemplate(data))
     } else if (type === 'factura_emitida') {
       ;({ subject, html } = facturaEmitidaTemplate(data))
+    } else if (type === 'bug_report') {
+      ;({ subject, html } = bugReportTemplate(data))
     } else {
       throw new Error(`Tipo de email desconocido: ${type}`)
     }

@@ -19,6 +19,7 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout'
 import { NotificacionesButton } from '@/components/NotificacionesButton'
+import { AiAssistant } from '@/components/AiAssistant'
 import { AyudaModal } from '@/components/AyudaModal'
 import { RefreshButton } from '@/components/RefreshButton'
 import { AvatarDropdown } from '@/components/AvatarDropdown'
@@ -360,6 +361,7 @@ export function AppLayout() {
             <RefreshButton className={hBtn} />
 
             {/* Notificaciones */}
+            <AiAssistant className={hBtn} />
             <NotificacionesButton className={hBtn} />
 
             {/* Dark / Light */}

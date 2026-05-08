@@ -74,7 +74,7 @@ applyFilter(query)
 | Clientes | **Global** — con `sucursal_id` en cada venta/devolución como trazabilidad |
 | Proveedores | **Global** |
 
-**Cambios implementados:**
+**Cambios implementados (2026-05-07):**
 
 1. **`useSucursalFilter.applyFilter`**: filtro estricto `.eq('sucursal_id', sucursalId)` cuando hay sucursal activa. Sin sucursal → sin filtro (todo visible, incluye NULL).
 
@@ -83,6 +83,28 @@ applyFilter(query)
 3. **`authStore` — persistencia "Vista global"**: sentinel `'__global__'` en localStorage. `setSucursal(null)` guarda `'__global__'` en lugar de borrar la key. El auto-select del header no sobreescribe una elección explícita de vista global.
 
 4. **Datos históricos `sucursal_id = NULL`**: visibles únicamente en vista global. No migrar — comportamiento esperado.
+
+---
+
+## Plan: Expandir filtro de sucursal a todos los módulos operativos (pendiente)
+
+**Regla general** (aprobada 2026-05-08):
+- **Global** (sin filtro): productos, categorías, proveedores (catálogo base)
+- **Por sucursal** (filtro estricto): todo lo operativo
+
+| Módulo/página | Estado | Acción requerida |
+|---|---|---|
+| InventarioPage | ✅ filtra | — |
+| MovimientosPage | ✅ filtra | — |
+| VentasPage | ✅ filtra | — |
+| GastosPage | ✅ filtra | — |
+| CajaPage | ✅ filtra | — |
+| ProductosPage — stock crítico | ❌ no filtra | El badge rojo de alerta y el cálculo de "disponible para venta" usan `inventario_lineas` sin filtro de sucursal. Aplicar `applyFilter` al query de stock disponible. El carrito de OC rápida debe preseleccionar la sucursal activa. |
+| RecepcionesPage — listado | ❌ no filtra | Tabla `recepciones` tiene `sucursal_id`. Aplicar `applyFilter` al query de listado. |
+| EnviosPage — listado | ❌ verificar | Verificar si `envios` tiene `sucursal_id`. Aplicar filtro al listado. |
+| RecursosPage — listado | ❌ no filtra | Tabla `recursos` tiene `sucursal_id`. Aplicar `applyFilter` al listado. |
+| Notificaciones (campana) | ❌ no aplica | Las alertas de stock crítico y CC se generan a nivel tenant. Evaluar si las de stock deben ser por sucursal. |
+| RRHH | ❌ verificar | Si existe módulo, los empleados pertenecen a una sucursal. |
 
 ---
 

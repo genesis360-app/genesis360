@@ -41,12 +41,22 @@ type: project
 
 ### Alta prioridad
 - ✅ **Multi-sucursal: filtrado estricto** — implementado 2026-05-07. Ver `wiki/features/multi-sucursal.md`
+- **Multi-sucursal: expandir filtro a todos los módulos operativos** — el filtro actual solo aplica a inventario_lineas, movimientos, ventas, gastos, caja. Falta extenderlo a:
+  - **ProductosPage**: alerta stock crítico (badge rojo) debe filtrar `inventario_lineas` por sucursal. El carrito de OC rápida también debe preseleccionar la sucursal activa.
+  - **RecepcionesPage**: listar solo recepciones de la sucursal activa (ya tiene `sucursal_id`, falta el `applyFilter`)
+  - **EnviosPage**: listar envíos por sucursal (si la tabla tiene `sucursal_id`)
+  - **RecursosPage**: listar recursos por sucursal (tabla tiene `sucursal_id`)
+  - **Facturación**: ventas ya filtran, pero verificar FacturacionPage si existe como página separada
+  - **Notificaciones / Alertas**: las alertas de stock crítico, CC vencida, etc. deben ser conscientes de la sucursal del usuario
+  - **RRHH** (si existe módulo): empleados pertenecen a una sucursal
+  - **Regla**: catálogo base (productos, categorías, proveedores) sigue siendo global. Todo lo operativo (transacciones, stock, envíos, recepciones, recursos) filtra por sucursal activa.
 
 ### Media prioridad
 - ✅ **OC → Gasto automático** — migration 090 (`recepcion_id` en `gastos`) + RecepcionesPage crea gasto al confirmar
 - ✅ **Notificación automática CC vencida** — migration 091: `fn_notificar_cc_vencidas()` + pg_cron diario 09:00 AR
 - **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas, form bug-report
 - ✅ **Asistente IA en header** — implementado en v1.8.4. Groq/Llama 3.1 8B (free tier). EF `ai-assistant`. Botón Bot en header. Acciones rápidas + flujo bug report + "Enviar reporte" vía email.
+- **Mejora asistente IA** — el system prompt actual describe la UI de forma genérica e imprecisa (dice "barra de navegación superior" en lugar de "sidebar izquierdo", dice "botón Ingresar" en lugar de "Agregar Stock", etc.). Para mejorar: (a) reescribir el system prompt con un mapa exacto de la UI de cada módulo — sidebar, nombres literales de botones, ubicación de acciones; (b) evaluar a futuro inyectar screenshots de la app como contexto visual para que el modelo pueda razonar sobre la UI real.
 
 ### Roadmap APIs — plan completo documentado en `wiki/integrations/roadmap-apis.md`
 

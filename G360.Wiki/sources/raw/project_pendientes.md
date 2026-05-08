@@ -39,14 +39,8 @@ type: project
 
 ## Pendientes próximas sesiones
 
-### Alta prioridad — plan diseñado, listo para implementar
-- **Multi-sucursal: filtrado estricto** — ver plan completo en `wiki/features/multi-sucursal.md`
-  - `useSucursalFilter.applyFilter`: cambiar `.or(eq+null)` → strict `.eq()` cuando hay sucursal activa
-  - `SucursalSelector`: agregar opción "Vista global (todas)" → `sucursalId = null`
-  - Catálogo (productos, proveedores): sin filtro, siempre global
-  - Stock/LPNs, movimientos, ventas, gastos, caja: filtro estricto por sucursal
-  - Clientes: globales pero con `sucursal_id` en historial de compras/devoluciones
-  - Datos históricos `NULL`: visibles solo en vista global
+### Alta prioridad
+- ✅ **Multi-sucursal: filtrado estricto** — implementado 2026-05-07. Ver `wiki/features/multi-sucursal.md`
 
 ### Media prioridad
 - **Notificación automática CC vencida** — pg_cron diario → INSERT en `notificaciones` para clientes con deuda vencida y OC vencidas sin pagar
@@ -79,10 +73,10 @@ type: project
 - 089: `recursos` — patrimonio del negocio
 
 ### Multi-sucursal — estado actual del código
-- `useSucursalFilter.applyFilter`: `.or('sucursal_id.eq.X,sucursal_id.is.null')` → CAMBIAR a strict
-- `authStore`: `sucursalId: string | null` — null = vista global
+- `useSucursalFilter.applyFilter`: `.eq('sucursal_id', sucursalId)` estricto ✅
+- `authStore`: `sucursalId: string | null` — null = vista global. Sentinel `'__global__'` en localStorage ✅
 - Tablas con `sucursal_id`: inventario_lineas, movimientos_stock, ventas, caja_sesiones, gastos, clientes
-- `SucursalSelector` en header: actualmente sin opción "Vista global" → AGREGAR
+- `SucursalSelector` en header: opción "Todas las sucursales" agregada ✅
 
 ### Supabase projects
 - PROD: `jjffnbrdjchquexdfgwq`

@@ -152,9 +152,10 @@ export function AppLayout() {
 
   const { sucursalId, sucursales, setSucursal } = useSucursalFilter()
 
-  // Auto-seleccionar la primera sucursal si hay sucursales pero ninguna seleccionada
+  // Auto-seleccionar la primera sucursal solo si el usuario nunca configuró una preferencia
   useEffect(() => {
-    if (sucursales.length > 0 && !sucursalId) {
+    const saved = localStorage.getItem('sucursal-id')
+    if (sucursales.length > 0 && !sucursalId && saved !== '__global__') {
       setSucursal(sucursales[0].id)
     }
   }, [sucursales.length])
@@ -347,6 +348,7 @@ export function AppLayout() {
                   className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
                   title="Filtrar por sucursal"
                 >
+                  <option value="">Todas las sucursales</option>
                   {sucursales.map(s => (
                     <option key={s.id} value={s.id}>{s.nombre}</option>
                   ))}

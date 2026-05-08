@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-07] update | Multi-sucursal: filtrado estricto implementado
+
+**Cambios:**
+- `useSucursalFilter.applyFilter`: `.or(eq+null)` → `.eq('sucursal_id', sucursalId)` estricto
+- `authStore.setSucursal(null)`: guarda sentinel `'__global__'` en localStorage para distinguir "nunca configurado" de "vista global explícita"
+- `AppLayout` auto-select: no sobreescribe preferencia `'__global__'` guardada
+- `SucursalSelector`: nueva opción "Todas las sucursales" al inicio del select
+
+**Comportamiento:**
+- Sucursal activa → solo datos de esa sucursal (datos NULL históricos no se mezclan)
+- Vista global → todo visible (incluye NULL)
+- La preferencia persiste entre sesiones
+
+---
+
 ## [2026-05-07] update | v1.8.1 — Recursos, estructuras ingreso, fixes, plan multi-sucursal
 
 **Producido en esta sesión:**

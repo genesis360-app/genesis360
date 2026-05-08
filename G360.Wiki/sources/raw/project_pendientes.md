@@ -4,15 +4,15 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.0** ✅ · DEV: **v1.8.1** (pendiente PR → PROD)
+Último release en PROD: **v1.8.1** ✅ · DEV: **v1.8.2** (pendiente PR → PROD)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ## Estado actual (al cierre de sesión 2026-05-07)
 
-- Migrations DEV: 001–089 ✅ (089 = módulo Recursos, aplicar en PROD al deployar)
-- Migrations PROD: 001–088 ✅
-- APP_VERSION en brand.ts: `v1.8.1`
+- Migrations DEV: 001–091 ✅ (090+091 = OC→Gasto + notif CC vencidas, aplicar en PROD al deployar)
+- Migrations PROD: 001–089 ✅
+- APP_VERSION en brand.ts: `v1.8.2`
 - pg_cron activo DEV+PROD: `tn-stock-sync` + `meli-stock-sync` cada 5 min
 - Edge Functions PROD: `data-api` · `emitir-factura` · `send-email` · `tn-stock-worker` ✅
 - Sentry activo en PROD ✅
@@ -43,8 +43,8 @@ type: project
 - ✅ **Multi-sucursal: filtrado estricto** — implementado 2026-05-07. Ver `wiki/features/multi-sucursal.md`
 
 ### Media prioridad
-- **Notificación automática CC vencida** — pg_cron diario → INSERT en `notificaciones` para clientes con deuda vencida y OC vencidas sin pagar
-- **OC → Gasto automático** al confirmar recepción en RecepcionesPage
+- ✅ **OC → Gasto automático** — migration 090 (`recepcion_id` en `gastos`) + RecepcionesPage crea gasto al confirmar
+- ✅ **Notificación automática CC vencida** — migration 091: `fn_notificar_cc_vencidas()` + pg_cron diario 09:00 AR
 - **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas, form bug-report
 
 ### Backlog técnico

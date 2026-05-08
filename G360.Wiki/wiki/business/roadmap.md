@@ -13,7 +13,14 @@ updated: 2026-05-07
 
 ---
 
-## v1.8.1 — Módulo Recursos + estructura en ingreso + fixes (DEV, pendiente PROD)
+## v1.8.1 — Módulo Recursos + estructura en ingreso + multi-sucursal + fixes (PROD ✅)
+
+### Multi-sucursal — filtrado estricto
+- `useSucursalFilter.applyFilter`: `.or(eq+null)` → `.eq()` estricto. Con sucursal activa, datos exclusivos de esa sucursal.
+- Opción "Todas las sucursales" en selector del header.
+- `authStore`: sentinel `'__global__'` en localStorage para persistir vista global entre recargas.
+
+### Módulo Recursos (migration 089)
 
 ### Módulo Recursos (migration 089)
 - Nueva tabla `recursos` (patrimonio del negocio, no para vender). Estados: activo/en_reparacion/dado_de_baja/pendiente_adquisicion.
@@ -32,6 +39,10 @@ updated: 2026-05-07
 
 ### Housekeeping
 - CLAUDE.md reducido de ~1500 a ~120 líneas. Reglas de wiki obligatorias.
+
+**Migration 089 aplicada en PROD** ✅  
+**PR #105** — mergeado a `main` ✅  
+**Release:** https://github.com/genesis360-app/genesis360/releases/tag/v1.8.1
 
 ---
 

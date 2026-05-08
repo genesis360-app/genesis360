@@ -1072,9 +1072,10 @@ export default function ProductosPage() {
                   )}
                 </div>
                 {filtered.map(p => {
-                  const stock   = (p as any).stock_actual ?? 0
-                  const critico = stock <= (p as any).stock_minimo
-                  const expanded = expandedId === p.id
+                  const stock      = (p as any).stock_actual ?? 0
+                  const disponible = stockDisponibleMap[p.id] ?? 0
+                  const critDisp   = disponible <= (p as any).stock_minimo
+                  const expanded   = expandedId === p.id
 
                   return (
                     <div key={p.id}>
@@ -1125,17 +1126,11 @@ export default function ProductosPage() {
 
                         <div className="text-right flex-shrink-0 space-y-0.5">
                           {/* Stock disponible para venta */}
-                          {(() => {
-                            const disponible = stockDisponibleMap[p.id] ?? 0
-                            const critDisp = disponible <= (p as any).stock_minimo
-                            return (
-                              <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-lg text-xs
-                                ${critDisp ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
-                                {critDisp && <AlertTriangle size={11} />}
-                                {disponible} {(p as any).unidad_medida}
-                              </span>
-                            )
-                          })()}
+                          <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-lg text-xs
+                            ${critDisp ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
+                            {critDisp && <AlertTriangle size={11} />}
+                            {disponible} {(p as any).unidad_medida}
+                          </span>
                           {/* Stock total */}
                           {stock !== (stockDisponibleMap[p.id] ?? 0) && (
                             <p className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-lg">
@@ -1169,9 +1164,9 @@ export default function ProductosPage() {
                           {/* Datos del producto */}
                           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
                             <div>
-                              <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Stock actual</p>
-                              <p className={`font-semibold ${critico ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
-                                {stock} {(p as any).unidad_medida}
+                              <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Stock disponible</p>
+                              <p className={`font-semibold ${critDisp ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
+                                {disponible} {(p as any).unidad_medida}
                               </p>
                               {(p as any).stock_minimo != null && (
                                 <p className="text-xs text-gray-400 dark:text-gray-500">Mín: {(p as any).stock_minimo}</p>

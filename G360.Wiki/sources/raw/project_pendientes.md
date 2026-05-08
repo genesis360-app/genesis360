@@ -8,70 +8,80 @@ type: project
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
-## Estado actual (al cierre de sesión 2026-05-07)
+## Estado actual (al cierre de sesión 2026-05-08)
 
 - Migrations DEV: 001–092 ✅
 - Migrations PROD: 001–092 ✅
 - APP_VERSION en brand.ts: `v1.8.4`
-- pg_cron activo DEV+PROD: `tn-stock-sync` + `meli-stock-sync` cada 5 min
-- Edge Functions PROD: `data-api` · `emitir-factura` · `send-email` · `tn-stock-worker` ✅
+- pg_cron activo DEV+PROD: `tn-stock-sync` + `meli-stock-sync` cada 5 min + `notif-cc-vencidas` diario 09:00 AR
+- Edge Functions DEV: agrega `ai-assistant` (Groq/Llama 3.1, GROQ_API_KEY configurada en DEV ✅)
+- Edge Functions PROD: `data-api` · `emitir-factura` · `send-email` · `tn-stock-worker` (falta `ai-assistant`)
 - Sentry activo en PROD ✅
 - Supabase Security Advisor: 7 warnings aceptados by design ✅
 
 ---
 
-## Lo producido hoy (en DEV, pendiente PR → PROD)
+## Lo producido en sesión 2026-05-07/08 (en DEV — v1.8.4 pendiente PR → PROD)
 
-### Fixes
-- **Banner DEV**: `h-4 text-[10px]` (~25% más fino) + `mt-4` en AppLayout → no tapa header/sidebar
-- **ProveedoresPage — badge estado_pago en OC**: cards de OC ahora muestran tag rojo/ámbar/azul según estado de pago (pendiente, parcial, CC, vencida)
-- **EnviosPage — botón WhatsApp**: faltaba `telefono` en el select de `clientes` → "El cliente no tiene teléfono" aunque tuviera
-
-### Features nuevas
-- **Módulo Recursos** (migration 089): patrimonio del negocio. 2 tabs (Patrimonio / Por adquirir), CRUD, stats valor patrimonial + presupuesto estimado, alertas garantía, CTA cotizar con proveedor. Sidebar: Landmark icon, ownerOnly.
-- **Estructura de embalaje en ingreso de stock**: InventarioPage modal ingreso + RecepcionesPage por ítem — select que carga estructuras del producto, preselecciona la default, guarda `estructura_id` en `inventario_lineas`.
-
-### Housekeeping
-- CLAUDE.md: reducido de ~1500 a ~120 líneas. Solo contexto operacional. Reglas wiki obligatorias.
-- Wiki: roadmap actualizado con v1.7.0 + v1.8.0 + v1.8.1. Unicidad de docs en wiki.
+- **Multi-sucursal filtrado estricto**: `useSucursalFilter` → `.eq()` estricto. Opción "Todas las sucursales" en header. Sentinel `__global__` en localStorage.
+- **OC → Gasto automático**: migration 090 (`recepcion_id` en gastos) + RecepcionesPage crea gasto al confirmar.
+- **Notificaciones CC vencidas**: migration 091 + `fn_notificar_cc_vencidas()` + pg_cron 09:00 AR.
+- **Productos — precios mayoristas**: migration 092 (`producto_precios_mayorista`) + toggle tiers en ProductoFormPage.
+- **Productos — mass update expandido**: bulk precio (% o fijo), proveedor, reactivar.
+- **Asistente IA en header**: EF `ai-assistant` (Groq free tier) + `AiAssistant.tsx` + template bug_report en send-email.
+- **Roadmap APIs documentado**: 6 fases en `wiki/integrations/roadmap-apis.md` (pausado, listo para retomar).
 
 ---
 
-## Pendientes próximas sesiones
+## Para mañana — prioridad 1 (arrancar por acá)
 
-### Alta prioridad
-- ✅ **Multi-sucursal: filtrado estricto** — implementado 2026-05-07. Ver `wiki/features/multi-sucursal.md`
-- **Multi-sucursal: expandir filtro a todos los módulos operativos** — el filtro actual solo aplica a inventario_lineas, movimientos, ventas, gastos, caja. Falta extenderlo a:
-  - **ProductosPage**: alerta stock crítico (badge rojo) debe filtrar `inventario_lineas` por sucursal. El carrito de OC rápida también debe preseleccionar la sucursal activa.
-  - **RecepcionesPage**: listar solo recepciones de la sucursal activa (ya tiene `sucursal_id`, falta el `applyFilter`)
-  - **EnviosPage**: listar envíos por sucursal (si la tabla tiene `sucursal_id`)
-  - **RecursosPage**: listar recursos por sucursal (tabla tiene `sucursal_id`)
-  - **Facturación**: ventas ya filtran, pero verificar FacturacionPage si existe como página separada
-  - **Notificaciones / Alertas**: las alertas de stock crítico, CC vencida, etc. deben ser conscientes de la sucursal del usuario
-  - **RRHH** (si existe módulo): empleados pertenecen a una sucursal
-  - **Regla**: catálogo base (productos, categorías, proveedores) sigue siendo global. Todo lo operativo (transacciones, stock, envíos, recepciones, recursos) filtra por sucursal activa.
+### 1. Deploy v1.8.4 a PROD
+Antes de cualquier otra cosa:
+- PR `dev → main` v1.8.4
+- Deploy EF `ai-assistant` en PROD
+- **Configurar secret `GROQ_API_KEY` en PROD** (project `jjffnbrdjchquexdfgwq`) — sin esto el asistente no funciona en PROD
+- GitHub release v1.8.4
+
+### 2. Mejora asistente IA — system prompt preciso
+El prompt actual describe la UI de manera genérica e incorrecta. Reescribir con:
+- Navegación: **sidebar izquierdo** (no "barra superior"). Ítems: Dashboard, Inventario, Productos, Ventas, Clientes, Proveedores, Recepciones, Gastos, Caja, Envíos, Recursos, Configuración.
+- Nombres exactos de botones por módulo (ej: "Agregar Stock" no "Ingresar", "Nueva venta" no "Crear venta")
+- Ubicación real de acciones (esquina superior derecha del listado, panel expandido, modal, etc.)
+- A futuro: evaluar inyectar screenshots como contexto visual
+
+### 3. Multi-sucursal — expandir filtro a todos los módulos operativos
+**Regla**: catálogo base (productos, categorías, proveedores) = global. Todo lo operativo = filtra por sucursal activa.
+
+| Módulo | Estado | Qué hacer |
+|---|---|---|
+| InventarioPage | ✅ | — |
+| MovimientosPage | ✅ | — |
+| VentasPage | ✅ | — |
+| GastosPage | ✅ | — |
+| CajaPage | ✅ | — |
+| **ProductosPage — stock crítico** | ❌ | El badge de alerta y el cálculo de stock disponible usan `inventario_lineas` sin filtro de sucursal. Aplicar `applyFilter`. OC rápida debe preseleccionar sucursal activa. |
+| **RecepcionesPage — listado** | ❌ | Tabla tiene `sucursal_id`. Aplicar `applyFilter` al query del listado. |
+| **EnviosPage — listado** | ❌ | Verificar si tabla `envios` tiene `sucursal_id`. Aplicar filtro. |
+| **RecursosPage — listado** | ❌ | Tabla tiene `sucursal_id`. Aplicar `applyFilter` al listado. |
+| Notificaciones campana | — | Evaluar si alertas de stock deben filtrarse por sucursal del user |
+| RRHH | — | Verificar si existe módulo y si tiene `sucursal_id` |
+
+Ver detalle en `wiki/features/multi-sucursal.md`.
+
+---
+
+## Backlog — próximas sesiones
 
 ### Media prioridad
-- ✅ **OC → Gasto automático** — migration 090 (`recepcion_id` en `gastos`) + RecepcionesPage crea gasto al confirmar
-- ✅ **Notificación automática CC vencida** — migration 091: `fn_notificar_cc_vencidas()` + pg_cron diario 09:00 AR
 - **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas, form bug-report
-- ✅ **Asistente IA en header** — implementado en v1.8.4. Groq/Llama 3.1 8B (free tier). EF `ai-assistant`. Botón Bot en header. Acciones rápidas + flujo bug report + "Enviar reporte" vía email.
-- **Mejora asistente IA** — el system prompt actual describe la UI de forma genérica e imprecisa (dice "barra de navegación superior" en lugar de "sidebar izquierdo", dice "botón Ingresar" en lugar de "Agregar Stock", etc.). Para mejorar: (a) reescribir el system prompt con un mapa exacto de la UI de cada módulo — sidebar, nombres literales de botones, ubicación de acciones; (b) evaluar a futuro inyectar screenshots de la app como contexto visual para que el modelo pueda razonar sobre la UI real.
 
-### Roadmap APIs — plan completo documentado en `wiki/integrations/roadmap-apis.md`
-
-**Fase 1** (quick wins sobre infra existente — pausada, lista para implementar):
-- MELI Rentabilidad Neta Real (extender meli-webhook, leer comisiones/envío/impuestos)
-- MercadoPago Conciliación automática (split comisión/retenciones IIBB en gastos)
-- TiendaNube BOM automático para combos (descontar componentes al pagar kit)
-- AFIP Auto-completado CUIT → Razón Social/IVA/Domicilio desde WS ARCA
-- MELI Repricing automático por margen
-
-**Fase 2**: PagoNube + EnvíoNube (ambos: operaciones propias + checkout TiendaNube)
-**Fase 3**: Logística directa (Andreani/OCA/CorreoAR) — rate shopping, etiquetas, RMA
-**Fase 4**: MELI Ads — ACOS, auto-pausado por margen, inversión atada a stock
-**Fase 5**: Meta Ads + POAS + GA4 UTM + Google Ads (posicionamiento futuro)
-**Fase 6**: Email Marketing (Brevo/Klaviyo RFM) + WhatsApp Cloud API (espera WABA account)
+### Roadmap APIs (pausado — ver `wiki/integrations/roadmap-apis.md`)
+- **Fase 1**: MELI rentabilidad neta · MP conciliación automática · TN BOM combos · AFIP autocomplete CUIT · MELI repricing
+- **Fase 2**: PagoNube + EnvíoNube (operaciones propias + checkout TiendaNube)
+- **Fase 3**: Logística directa (Andreani/OCA) — rate shopping, etiquetas, RMA
+- **Fase 4**: MELI Ads — ACOS, auto-pausado por margen
+- **Fase 5**: Meta Ads + POAS + GA4 (posicionamiento futuro)
+- **Fase 6**: WhatsApp Cloud API (espera WABA) + Brevo/Klaviyo RFM
 
 ### Backlog técnico
 - WMS Fase 3 — `wms_tareas` (putaway/picking/replenishment) + listas de picking con ruta óptima
@@ -94,12 +104,21 @@ type: project
 - 087: `api_keys` — API pull externa
 - 088: NC electrónicas en `devoluciones`
 - 089: `recursos` — patrimonio del negocio
+- 090: `gastos.recepcion_id` — trazabilidad OC→Gasto
+- 091: `fn_notificar_cc_vencidas()` + pg_cron diario
+- 092: `producto_precios_mayorista` — tiers precio mayorista
 
 ### Multi-sucursal — estado actual del código
 - `useSucursalFilter.applyFilter`: `.eq('sucursal_id', sucursalId)` estricto ✅
 - `authStore`: `sucursalId: string | null` — null = vista global. Sentinel `'__global__'` en localStorage ✅
-- Tablas con `sucursal_id`: inventario_lineas, movimientos_stock, ventas, caja_sesiones, gastos, clientes
-- `SucursalSelector` en header: opción "Todas las sucursales" agregada ✅
+- Tablas con `sucursal_id`: inventario_lineas, movimientos_stock, ventas, caja_sesiones, gastos, clientes, recepciones, recursos, envios (verificar)
+- Filtro PENDIENTE en: ProductosPage (stock crítico), RecepcionesPage, EnviosPage, RecursosPage
+
+### Asistente IA
+- EF `ai-assistant`: Groq API, modelo `llama-3.1-8b-instant`, auth JWT, free tier 14.400 req/día
+- Secret `GROQ_API_KEY`: DEV ✅ · PROD ❌ (configurar al deployar v1.8.4)
+- Componente: `src/components/AiAssistant.tsx` — panel chat, acciones rápidas, flujo bug report
+- Mejora pendiente: reescribir system prompt con mapa exacto de UI (sidebar, botones literales)
 
 ### Supabase projects
 - PROD: `jjffnbrdjchquexdfgwq`

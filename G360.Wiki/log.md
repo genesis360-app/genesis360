@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-08] update | Cierre sesión — docs actualizados para mañana
+
+**Estado al cierre:**
+- PROD: v1.8.3 ✅ · DEV: v1.8.4 · Migrations: DEV 001–092 / PROD 001–092
+- Asistente IA deployado en DEV, GROQ_API_KEY configurada en DEV ✅
+- Pendiente para mañana: (1) deploy v1.8.4 a PROD + GROQ_API_KEY en PROD, (2) mejora system prompt asistente, (3) expandir filtro sucursal a RecepcionesPage, EnviosPage, RecursosPage, ProductosPage stock crítico
+
+---
+
 ## [2026-05-08] update | v1.8.4 DEV — Asistente IA en header (Groq/Llama 3.1)
 
 - EF `ai-assistant`: Groq API (llama-3.1-8b-instant), auth JWT, system prompt con todos los módulos G360

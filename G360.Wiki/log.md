@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-07] update | Deploy v1.8.1 a PROD
+
+- Migration 089 (`recursos`) aplicada en PROD ✅
+- PR #105 mergeado `dev → main` ✅
+- GitHub release v1.8.1 creado ✅
+- Migrations PROD: 001–089 ✅
+
+---
+
 ## [2026-05-07] update | Multi-sucursal: filtrado estricto implementado
 
 **Cambios:**

@@ -4,14 +4,14 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.0** ✅ · DEV: **v1.8.1** (pendiente PR → PROD)
+Último release en PROD: **v1.8.1** ✅ · DEV: **v1.8.1** ✅
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ## Estado actual (al cierre de sesión 2026-05-07)
 
-- Migrations DEV: 001–089 ✅ (089 = módulo Recursos, aplicar en PROD al deployar)
-- Migrations PROD: 001–088 ✅
+- Migrations DEV: 001–089 ✅
+- Migrations PROD: 001–089 ✅
 - APP_VERSION en brand.ts: `v1.8.1`
 - pg_cron activo DEV+PROD: `tn-stock-sync` + `meli-stock-sync` cada 5 min
 - Edge Functions PROD: `data-api` · `emitir-factura` · `send-email` · `tn-stock-worker` ✅

@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-07] update | Deploy v1.8.2 a PROD
+
+- Migrations 090+091 aplicadas en PROD ✅
+- PR #106 mergeado `dev → main` ✅
+- GitHub release v1.8.2 creado ✅
+- Migrations PROD: 001–091 ✅
+- pg_cron `notif-cc-vencidas` activo en PROD (09:00 AR diario) ✅
+
+---
+
 ## [2026-05-07] update | v1.8.2 DEV — OC→Gasto automático + notif CC vencidas
 
 **Cambios:**

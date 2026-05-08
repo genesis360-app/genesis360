@@ -4,16 +4,19 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.4** (pendiente PR → PROD)
+Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.5** (pendiente PR → PROD)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
-## Estado actual (al cierre de sesión 2026-05-08 — actualizado)
+## Estado actual (al cierre de sesión 2026-05-08 — v1.8.5)
 
+- APP_VERSION: `v1.8.5` (DEV)
 - Migrations DEV: 001–094 ✅ (093: ordenes_compra.sucursal_id · 094: users.sucursal_id + puede_ver_todas)
 - Migrations PROD: 001–092 ✅ (093–094 pendientes para deploy v1.8.5)
 - Multi-sucursal: TODOS los módulos operativos filtran por sucursal ✅
 - Permisos por usuario: puedeVerTodas en authStore + controls en UsuariosPage ✅
+- Fix: rol ADMIN visible en UsuariosPage (faltaba en mapa local de roles) ✅
+- Docs: app-reference.md completo y corregido (Estructuras, Inventario 7 tabs, Kits vs Combos) ✅
 
 ## Estado original (cierre 2026-05-08)
 

@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-08] update | v1.8.5 DEV — fixes y docs
+
+- fix: rol ADMIN faltaba en mapa local de UsuariosPage — no aparecía en invitar ni cambiar rol
+- docs: app-reference.md — revisión completa (Estructuras correcto, Inventario 7 tabs, tabla Kit/Combo/Estructura)
+
+---
+
 ## [2026-05-08] update | Permisos de sucursal por usuario (migration 094)
 
 - Migration 094: `users.sucursal_id` + `users.puede_ver_todas`; OWNER/ADMIN/SUPERVISOR/CONTADOR init en true

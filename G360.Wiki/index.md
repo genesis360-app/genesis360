@@ -6,9 +6,9 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ## Overview
 
-| Página | Descripción | Estado |
-|--------|-------------|--------|
-| [[wiki/overview/genesis360-overview]] | Visión general v1.4.0, stack, módulos, estado actual | ✅ |
+| Página                                | Descripción                                          | Estado |
+| ------------------------------------- | ---------------------------------------------------- | ------ |
+| [[wiki/overview/genesis360-overview]] | Visión general v1.4.0, stack, módulos, estado actual | ✅      |
 
 ---
 

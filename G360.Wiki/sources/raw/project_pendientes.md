@@ -46,6 +46,7 @@ type: project
 - ✅ **OC → Gasto automático** — migration 090 (`recepcion_id` en `gastos`) + RecepcionesPage crea gasto al confirmar
 - ✅ **Notificación automática CC vencida** — migration 091: `fn_notificar_cc_vencidas()` + pg_cron diario 09:00 AR
 - **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas, form bug-report
+- **Asistente IA en header** — chat contextual en la barra superior (ícono de ayuda): responde preguntas sobre funciones de la app, guía al usuario por módulos, ayuda a reportar problemas (recopila info del error y lo envía como bug-report). Modelo sugerido: Claude Haiku (bajo costo, respuesta rápida). Contexto del sistema: documentación de la app + módulo activo actual.
 
 ### Roadmap APIs — plan completo documentado en `wiki/integrations/roadmap-apis.md`
 

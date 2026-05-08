@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-08] update | Permisos de sucursal por usuario (migration 094)
+
+- Migration 094: `users.sucursal_id` + `users.puede_ver_todas`; OWNER/ADMIN/SUPERVISOR/CONTADOR init en true
+- authStore: `puedeVerTodas` en estado; usuarios restringidos quedan bloqueados a su sucursal (ignorar localStorage)
+- AppLayout: selector visible solo para `puedeVerTodas`; usuarios restringidos ven nombre fijo o badge "Sin sucursal"
+- UsuariosPage: toggle Globe + selector sucursal inline por usuario; `updateRol` auto-actualiza `puede_ver_todas`
+- VentasPage/GastosPage (OC)/CajaPage: filtros multi-sucursal completados (migration 093 para `ordenes_compra.sucursal_id`)
+
+---
+
 ## [2026-05-08] update | Multi-sucursal filtro — RecepcionesPage + ProductosPage
 
 - RecepcionesPage: `useSucursalFilter` + `applyFilter` en query listado + `sucursalId` en queryKey

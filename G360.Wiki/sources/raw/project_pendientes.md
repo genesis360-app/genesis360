@@ -8,7 +8,14 @@ type: project
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
-## Estado actual (al cierre de sesión 2026-05-08)
+## Estado actual (al cierre de sesión 2026-05-08 — actualizado)
+
+- Migrations DEV: 001–094 ✅ (093: ordenes_compra.sucursal_id · 094: users.sucursal_id + puede_ver_todas)
+- Migrations PROD: 001–092 ✅ (093–094 pendientes para deploy v1.8.5)
+- Multi-sucursal: TODOS los módulos operativos filtran por sucursal ✅
+- Permisos por usuario: puedeVerTodas en authStore + controls en UsuariosPage ✅
+
+## Estado original (cierre 2026-05-08)
 
 - Migrations DEV: 001–092 ✅
 - Migrations PROD: 001–092 ✅

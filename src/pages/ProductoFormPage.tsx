@@ -2,7 +2,7 @@ import imageCompression from 'browser-image-compression'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -45,6 +45,9 @@ export default function ProductoFormPage() {
     descripcion_marketplace: '',
   })
   const [showMarketplace, setShowMarketplace] = useState(false)
+  const [showMayorista, setShowMayorista] = useState(false)
+  type TierForm = { _key: string; cantidad_minima: string; precio: string; descripcion: string }
+  const [tiersForm, setTiersForm] = useState<TierForm[]>([])
   // Stock mínimo por sucursal (solo cuando editando)
   const [stockMinimosSucursal, setStockMinimosSucursal] = useState<Record<string, string>>({})
   const [savingMinimos, setSavingMinimos] = useState(false)
@@ -110,6 +113,19 @@ export default function ProductoFormPage() {
     enabled: !!tenant,
   })
 
+  const { data: tiersData = [] } = useQuery({
+    queryKey: ['precios-mayorista', id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('producto_precios_mayorista')
+        .select('*')
+        .eq('producto_id', id!)
+        .order('cantidad_minima')
+      return data ?? []
+    },
+    enabled: isEditing && !!tenant,
+  })
+
   const { data: stockMinimosSucursalData = [] } = useQuery({
     queryKey: ['producto-stock-minimo-sucursal', id],
     queryFn: async () => {
@@ -122,6 +138,18 @@ export default function ProductoFormPage() {
     },
     enabled: isEditing && !!tenant,
   })
+
+  useEffect(() => {
+    if (tiersData.length > 0) {
+      setTiersForm(tiersData.map((t: any) => ({
+        _key: t.id,
+        cantidad_minima: String(t.cantidad_minima),
+        precio: String(t.precio),
+        descripcion: t.descripcion ?? '',
+      })))
+      setShowMayorista(true)
+    }
+  }, [tiersData])
 
   // Inicializar los valores editables cuando llegan los datos
   useEffect(() => {
@@ -278,17 +306,40 @@ export default function ProductoFormPage() {
         stock_reservado_marketplace: parseInt(form.stock_reservado_marketplace) || 0,
         descripcion_marketplace: form.descripcion_marketplace.trim() || null,
       }
+      let productoId: string = id ?? ''
       if (isEditing) {
         const { error } = await supabase.from('productos').update(payload).eq('id', id)
         if (error) throw error
         toast.success('Producto actualizado')
         logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: form.nombre, accion: 'editar', pagina: '/productos' })
       } else {
-        const { error } = await supabase.from('productos').insert(payload)
+        const { data: newProd, error } = await supabase.from('productos').insert(payload).select('id').single()
         if (error) { if (error.code === '23505') throw new Error('Ya existe un producto con ese SKU'); throw error }
+        productoId = newProd.id
         toast.success('Producto creado')
         logActividad({ entidad: 'producto', entidad_nombre: form.nombre, accion: 'crear', pagina: '/productos' })
       }
+
+      // Sincronizar tiers de precio mayorista
+      if (productoId) {
+        await supabase.from('producto_precios_mayorista').delete().eq('producto_id', productoId)
+        if (showMayorista) {
+          const tiersValidos = tiersForm.filter(t => t.cantidad_minima && t.precio !== '')
+          if (tiersValidos.length > 0) {
+            const { error: tiersErr } = await supabase.from('producto_precios_mayorista').insert(
+              tiersValidos.map(t => ({
+                tenant_id: tenant!.id,
+                producto_id: productoId,
+                cantidad_minima: parseInt(t.cantidad_minima),
+                precio: parseFloat(t.precio),
+                descripcion: t.descripcion.trim() || null,
+              }))
+            )
+            if (tiersErr) throw tiersErr
+          }
+        }
+      }
+
       qc.invalidateQueries({ queryKey: ['productos'] })
       navigate('/productos')
     } catch (err: unknown) {
@@ -775,6 +826,69 @@ export default function ProductoFormPage() {
                 </div>
               )}
               {/* Stock mínimo por sucursal — solo cuando hay sucursales configuradas y editando */}
+              {/* Precios mayoristas */}
+              {canEdit && (
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
+                  <button type="button" onClick={() => setShowMayorista(v => !v)}
+                    className="flex items-center gap-3 w-full text-left group">
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors
+                      ${showMayorista ? 'bg-accent border-accent' : 'border-gray-300 dark:border-gray-600 group-hover:border-accent'}`}>
+                      {showMayorista && <Check size={12} className="text-white" />}
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Precios mayoristas</span>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">Precios especiales por cantidad mínima (adicionales al precio minorista)</p>
+                    </div>
+                  </button>
+                  {showMayorista && (
+                    <div className="space-y-2 pl-8">
+                      {tiersForm.length === 0 && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 italic">Sin tiers aún. Agregá uno abajo.</p>
+                      )}
+                      {tiersForm.map((tier, idx) => (
+                        <div key={tier._key} className="flex items-center gap-2">
+                          <div className="w-24">
+                            <input type="number" min="1" step="1" onWheel={e => e.currentTarget.blur()}
+                              placeholder="Cant. mín."
+                              value={tier.cantidad_minima}
+                              onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, cantidad_minima: e.target.value } : t))}
+                              className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                          </div>
+                          <div className="relative flex-1">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                            <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
+                              placeholder="Precio"
+                              value={tier.precio}
+                              onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, precio: e.target.value } : t))}
+                              className="w-full pl-6 pr-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                          </div>
+                          <div className="flex-1">
+                            <input type="text" placeholder="Etiqueta (ej: Docena)"
+                              value={tier.descripcion}
+                              onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, descripcion: e.target.value } : t))}
+                              className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                          </div>
+                          <button type="button" onClick={() => setTiersForm(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-red-400 hover:text-red-600 flex-shrink-0 transition-colors">
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ))}
+                      <button type="button"
+                        onClick={() => setTiersForm(prev => [...prev, { _key: crypto.randomUUID(), cantidad_minima: '', precio: '', descripcion: '' }])}
+                        className="flex items-center gap-1.5 text-xs text-accent hover:underline transition-colors">
+                        <Plus size={13} /> Agregar tier
+                      </button>
+                      {tiersForm.length > 0 && parseFloat(form.precio_venta) > 0 && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
+                          Precio minorista (1 u.): <span className="font-medium">${parseFloat(form.precio_venta).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {isEditing && sucursales.length > 0 && (
                 <div className="border border-gray-100 dark:border-gray-700 rounded-xl p-4 space-y-3">
                   <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Stock mínimo por sucursal</h3>

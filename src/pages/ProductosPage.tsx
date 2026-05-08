@@ -4,6 +4,7 @@ import {
   Plus, Search, Package, AlertTriangle, Camera, ChevronDown, ChevronRight,
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
   CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
+  DollarSign, Percent, Truck, ToggleRight,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -428,10 +429,12 @@ export default function ProductosPage() {
 
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  type BulkAction = 'categoria' | 'regla' | 'aging' | 'atributos' | 'activar' | 'desactivar' | null
+  type BulkAction = 'categoria' | 'regla' | 'aging' | 'atributos' | 'activar' | 'desactivar' | 'precio_venta' | 'proveedor' | null
   const [bulkModal, setBulkModal] = useState<BulkAction>(null)
   const [bulkValue, setBulkValue] = useState('')
   const [bulkAtributos, setBulkAtributos] = useState({ tiene_series: false, tiene_lote: false, tiene_vencimiento: false })
+  const [bulkPrecioTipo, setBulkPrecioTipo] = useState<'pct' | 'fijo'>('pct')
+  const [bulkPrecioValor, setBulkPrecioValor] = useState('')
   const [bulkSaving, setBulkSaving] = useState(false)
 
   // OC rápida
@@ -581,6 +584,15 @@ export default function ProductosPage() {
     enabled: !!tenant && bulkModal === 'aging',
   })
 
+  const { data: proveedoresAll = [] } = useQuery({
+    queryKey: ['proveedores-bulk', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('proveedores').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && bulkModal === 'proveedor',
+  })
+
   // ── Mutations ──────────────────────────────────────────────────────────────
 
   const invalidar = () => {
@@ -593,6 +605,32 @@ export default function ProductosPage() {
     setBulkSaving(true)
     try {
       const ids = Array.from(selectedIds)
+      const n = ids.length
+      const s = n !== 1
+
+      // Precio de venta — lógica especial
+      if (bulkModal === 'precio_venta') {
+        const valor = parseFloat(bulkPrecioValor)
+        if (isNaN(valor)) { toast.error('Ingresá un valor válido'); return }
+        if (bulkPrecioTipo === 'fijo') {
+          if (valor <= 0) { toast.error('El precio debe ser mayor a 0'); return }
+          const { error } = await supabase.from('productos').update({ precio_venta: valor }).in('id', ids)
+          if (error) throw error
+        } else {
+          // % de ajuste: fetch → calculate → upsert
+          const { data: prods, error: fetchErr } = await supabase.from('productos').select('id, precio_venta').in('id', ids)
+          if (fetchErr) throw fetchErr
+          const nuevos = (prods ?? []).map((p: any) => ({ id: p.id, precio_venta: Math.max(0.01, parseFloat((p.precio_venta * (1 + valor / 100)).toFixed(2))) }))
+          if (nuevos.some((p: any) => p.precio_venta <= 0)) { toast.error('El ajuste dejaría algún precio en $0. Revisá el porcentaje.'); return }
+          const { error } = await supabase.from('productos').upsert(nuevos, { onConflict: 'id' })
+          if (error) throw error
+        }
+        toast.success(`Precio actualizado en ${n} producto${s ? 's' : ''}`)
+        setSelectedIds(new Set()); setBulkModal(null); setBulkPrecioValor('')
+        qc.invalidateQueries({ queryKey: ['productos', tenant?.id] })
+        return
+      }
+
       let update: Record<string, unknown> = {}
       if (bulkModal === 'categoria')   update = { categoria_id: bulkValue || null }
       if (bulkModal === 'regla')       update = { regla_inventario: bulkValue || null }
@@ -600,9 +638,10 @@ export default function ProductosPage() {
       if (bulkModal === 'atributos')   update = bulkAtributos
       if (bulkModal === 'activar')     update = { activo: true }
       if (bulkModal === 'desactivar')  update = { activo: false }
+      if (bulkModal === 'proveedor')   update = { proveedor_id: bulkValue || null }
       const { error } = await supabase.from('productos').update(update).in('id', ids)
       if (error) throw error
-      toast.success(`${ids.length} producto${ids.length !== 1 ? 's' : ''} actualizado${ids.length !== 1 ? 's' : ''}`)
+      toast.success(`${n} producto${s ? 's' : ''} actualizado${s ? 's' : ''}`)
       setSelectedIds(new Set())
       setBulkModal(null)
       qc.invalidateQueries({ queryKey: ['productos', tenant?.id] })
@@ -1258,6 +1297,18 @@ export default function ProductosPage() {
             className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
             <Settings2 size={13} /> Atributos
           </button>
+          <button onClick={() => { setBulkValue(''); setBulkModal('proveedor') }}
+            className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            <Truck size={13} /> Proveedor
+          </button>
+          <button onClick={() => { setBulkPrecioTipo('pct'); setBulkPrecioValor(''); setBulkModal('precio_venta') }}
+            className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            <DollarSign size={13} /> Precio
+          </button>
+          <button onClick={() => { setBulkModal('activar') }}
+            className="flex items-center gap-1.5 text-xs bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            <ToggleRight size={13} /> Reactivar
+          </button>
           <button onClick={() => { setBulkModal('desactivar') }}
             className="flex items-center gap-1.5 text-xs bg-red-700 hover:bg-red-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
             <X size={13} /> Desactivar
@@ -1271,7 +1322,7 @@ export default function ProductosPage() {
       )}
 
       {/* ── Modal de acción bulk ─────────────────────────────────────────────── */}
-      {bulkModal && bulkModal !== 'activar' && bulkModal !== 'desactivar' && (
+      {bulkModal && bulkModal !== 'activar' && bulkModal !== 'desactivar' && bulkModal !== 'precio_venta' && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
@@ -1280,6 +1331,7 @@ export default function ProductosPage() {
                 {bulkModal === 'regla'      && 'Cambiar regla de inventario'}
                 {bulkModal === 'aging'      && 'Cambiar aging profile'}
                 {bulkModal === 'atributos'  && 'Cambiar atributos de control'}
+                {bulkModal === 'proveedor'  && 'Cambiar proveedor'}
               </h3>
               <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={18} /></button>
             </div>
@@ -1311,6 +1363,14 @@ export default function ProductosPage() {
               </select>
             )}
 
+            {bulkModal === 'proveedor' && (
+              <select value={bulkValue} onChange={e => setBulkValue(e.target.value)}
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+                <option value="">Sin proveedor</option>
+                {(proveedoresAll as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </select>
+            )}
+
             {bulkModal === 'atributos' && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Seleccioná los atributos que querés activar en los productos seleccionados:</p>
@@ -1338,6 +1398,60 @@ export default function ProductosPage() {
                 Cancelar
               </button>
               <button onClick={aplicarBulk} disabled={bulkSaving}
+                className="flex-1 bg-accent hover:bg-accent/90 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
+                <Zap size={14} />
+                {bulkSaving ? 'Aplicando...' : 'Aplicar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal precio de venta */}
+      {bulkModal === 'precio_venta' && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 dark:text-white">Actualizar precio de venta</h3>
+              <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={18} /></button>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Se aplicará a <strong>{selectedIds.size}</strong> producto{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''}.
+            </p>
+            <div className="flex rounded-xl border border-gray-200 dark:border-gray-600 overflow-hidden text-sm">
+              <button type="button"
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 transition-colors ${bulkPrecioTipo === 'pct' ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                onClick={() => setBulkPrecioTipo('pct')}>
+                <Percent size={13} /> % de ajuste
+              </button>
+              <button type="button"
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 transition-colors ${bulkPrecioTipo === 'fijo' ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                onClick={() => setBulkPrecioTipo('fijo')}>
+                <DollarSign size={13} /> Precio fijo
+              </button>
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
+                {bulkPrecioTipo === 'pct' ? '%' : '$'}
+              </span>
+              <input type="number" step={bulkPrecioTipo === 'pct' ? '0.1' : '0.01'}
+                onWheel={e => e.currentTarget.blur()}
+                value={bulkPrecioValor}
+                onChange={e => setBulkPrecioValor(e.target.value)}
+                placeholder={bulkPrecioTipo === 'pct' ? 'Ej: 15 (aumento) o -10 (descuento)' : 'Precio exacto'}
+                className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent" />
+            </div>
+            {bulkPrecioTipo === 'pct' && bulkPrecioValor && (
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                {parseFloat(bulkPrecioValor) > 0 ? `Aumento del ${bulkPrecioValor}%` : `Descuento del ${Math.abs(parseFloat(bulkPrecioValor))}%`}
+              </p>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setBulkModal(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={aplicarBulk} disabled={bulkSaving || !bulkPrecioValor}
                 className="flex-1 bg-accent hover:bg-accent/90 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
                 <Zap size={14} />
                 {bulkSaving ? 'Aplicando...' : 'Aplicar'}

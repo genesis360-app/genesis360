@@ -49,7 +49,7 @@ El prompt actual describe la UI de manera genérica e incorrecta. Reescribir con
 - Ubicación real de acciones (esquina superior derecha del listado, panel expandido, modal, etc.)
 - A futuro: evaluar inyectar screenshots como contexto visual
 
-### 3. Multi-sucursal — expandir filtro a todos los módulos operativos
+### 3. Multi-sucursal — expandir filtro a todos los módulos operativos ✅ COMPLETO
 **Regla**: catálogo base (productos, categorías, proveedores) = global. Todo lo operativo = filtra por sucursal activa.
 
 | Módulo | Estado | Qué hacer |
@@ -59,10 +59,10 @@ El prompt actual describe la UI de manera genérica e incorrecta. Reescribir con
 | VentasPage | ✅ | — |
 | GastosPage | ✅ | — |
 | CajaPage | ✅ | — |
-| **ProductosPage — stock crítico** | ❌ | El badge de alerta y el cálculo de stock disponible usan `inventario_lineas` sin filtro de sucursal. Aplicar `applyFilter`. OC rápida debe preseleccionar sucursal activa. |
-| **RecepcionesPage — listado** | ❌ | Tabla tiene `sucursal_id`. Aplicar `applyFilter` al query del listado. |
-| **EnviosPage — listado** | ❌ | Verificar si tabla `envios` tiene `sucursal_id`. Aplicar filtro. |
-| **RecursosPage — listado** | ❌ | Tabla tiene `sucursal_id`. Aplicar `applyFilter` al listado. |
+| **ProductosPage — stock crítico** | ✅ | `applyFilter` en query de `inventario_lineas` — badge y disponible filtran por sucursal. |
+| **RecepcionesPage — listado** | ✅ | `applyFilter` en query del listado. |
+| **EnviosPage — listado** | ✅ | Ya tenía `applyFilter` correctamente implementado. |
+| **RecursosPage — listado** | ✅ | Ya tenía `applyFilter` correctamente implementado. |
 | Notificaciones campana | — | Evaluar si alertas de stock deben filtrarse por sucursal del user |
 | RRHH | — | Verificar si existe módulo y si tiene `sucursal_id` |
 

@@ -99,12 +99,12 @@ applyFilter(query)
 | VentasPage | ✅ filtra | — |
 | GastosPage | ✅ filtra | — |
 | CajaPage | ✅ filtra | — |
-| ProductosPage — stock crítico | ❌ no filtra | El badge rojo de alerta y el cálculo de "disponible para venta" usan `inventario_lineas` sin filtro de sucursal. Aplicar `applyFilter` al query de stock disponible. El carrito de OC rápida debe preseleccionar la sucursal activa. |
-| RecepcionesPage — listado | ❌ no filtra | Tabla `recepciones` tiene `sucursal_id`. Aplicar `applyFilter` al query de listado. |
-| EnviosPage — listado | ❌ verificar | Verificar si `envios` tiene `sucursal_id`. Aplicar filtro al listado. |
-| RecursosPage — listado | ❌ no filtra | Tabla `recursos` tiene `sucursal_id`. Aplicar `applyFilter` al listado. |
-| Notificaciones (campana) | ❌ no aplica | Las alertas de stock crítico y CC se generan a nivel tenant. Evaluar si las de stock deben ser por sucursal. |
-| RRHH | ❌ verificar | Si existe módulo, los empleados pertenecen a una sucursal. |
+| EnviosPage — listado | ✅ filtra | — |
+| RecursosPage — listado | ✅ filtra | — |
+| ProductosPage — stock crítico | ✅ filtra | `applyFilter` aplicado al query de `inventario_lineas` (v1.8.5) |
+| RecepcionesPage — listado | ✅ filtra | `applyFilter` aplicado al query del listado (v1.8.5) |
+| Notificaciones (campana) | — | Alertas de stock y CC se generan a nivel tenant. Evaluar si las de stock deben ser por sucursal. |
+| RRHH | — | Verificar si el módulo existe y si empleados tienen `sucursal_id`. |
 
 ---
 

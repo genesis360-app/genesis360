@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-08] update | Multi-sucursal filtro — RecepcionesPage + ProductosPage
+
+- RecepcionesPage: `useSucursalFilter` + `applyFilter` en query listado + `sucursalId` en queryKey
+- ProductosPage: `useSucursalFilter` + `applyFilter` en query `inventario_lineas` (stock crítico badge) + `sucursalId` en queryKey
+- EnviosPage y RecursosPage ya tenían el filtro correctamente implementado
+- Todos los módulos operativos ahora filtran por sucursal ✅
+
+---
+
 ## [2026-05-08] update | Cierre sesión — docs actualizados para mañana
 
 **Estado al cierre:**

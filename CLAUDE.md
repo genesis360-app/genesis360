@@ -21,6 +21,16 @@ Actualizar el wiki **siempre** antes de terminar:
 4. **`G360.Wiki/wiki/business/roadmap.md`** — agregar la versión si fue un release.
 5. **`G360.Wiki/wiki/database/migraciones.md`** — agregar migration si se creó una nueva.
 
+### Responder preguntas generales sobre el proyecto
+
+Antes de responder cualquier pregunta sobre el proyecto (features, arquitectura, estado, decisiones, módulos, etc.):
+
+1. **Buscar primero en el wiki** — `G360.Wiki/wiki/` y `G360.Wiki/sources/raw/`. No leer código fuente si la respuesta ya está documentada.
+2. **Solo si falta detalle**: buscar en los archivos fuente relevantes al tema (página, hook, migration, etc.).
+3. **No leer archivos enteros** cuando alcanza con buscar un símbolo o sección específica (usar Grep/Read con offset).
+
+Objetivo: evitar consumo innecesario de tokens leyendo código que ya está resumido en el wiki.
+
 ### Regla de unicidad de documentación
 
 **El wiki es el único lugar donde vive la documentación.** No crear ni mantener docs en ningún otro lado:

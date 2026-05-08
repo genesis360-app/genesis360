@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import type { Recepcion, ProductoEstructura } from '@/lib/supabase'
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
@@ -59,6 +60,7 @@ function nuevoItem(overrides: Partial<FormItem> = {}): FormItem {
 
 export default function RecepcionesPage() {
   const { tenant, user, sucursales, sucursalId: sucursalCtx } = useAuthStore()
+  const { applyFilter, sucursalId } = useSucursalFilter()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const qc = useQueryClient()
@@ -84,13 +86,16 @@ export default function RecepcionesPage() {
   // ── Queries ─────────────────────────────────────────────────────────────────
 
   const { data: recepciones = [], isLoading } = useQuery<Recepcion[]>({
-    queryKey: ['recepciones', tenant?.id],
+    queryKey: ['recepciones', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('recepciones')
-        .select('*, proveedores(nombre), ordenes_compra(numero)')
-        .eq('tenant_id', tenant!.id)
-        .order('created_at', { ascending: false })
+      const q = applyFilter(
+        supabase
+          .from('recepciones')
+          .select('*, proveedores(nombre), ordenes_compra(numero)')
+          .eq('tenant_id', tenant!.id)
+          .order('created_at', { ascending: false })
+      )
+      const { data } = await q
       return (data ?? []) as Recepcion[]
     },
     enabled: !!tenant,

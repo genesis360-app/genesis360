@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -417,6 +418,7 @@ export default function ProductosPage() {
   const qc = useQueryClient()
   const { limits } = usePlanLimits()
   const { cotizacion } = useCotizacion()
+  const { applyFilter, sucursalId } = useSucursalFilter()
 
   const [tab, setTab] = useState<Tab>('productos')
 
@@ -482,18 +484,20 @@ export default function ProductosPage() {
 
   // Stock disponible para venta (solo líneas en estados con es_disponible_venta = true)
   const { data: stockDisponibleMap = {} } = useQuery({
-    queryKey: ['stock-disponible-map', tenant?.id],
+    queryKey: ['stock-disponible-map', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data: evData } = await supabase
         .from('estados_inventario').select('id')
         .eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
       const evIds = (evData ?? []).map((e: any) => e.id)
       if (evIds.length === 0) return {}
-      const { data: lineas } = await supabase
-        .from('inventario_lineas')
-        .select('producto_id, cantidad, cantidad_reservada, inventario_series(id, activo)')
-        .eq('tenant_id', tenant!.id).eq('activo', true)
-        .in('estado_id', evIds)
+      const { data: lineas } = await applyFilter(
+        supabase
+          .from('inventario_lineas')
+          .select('producto_id, cantidad, cantidad_reservada, inventario_series(id, activo)')
+          .eq('tenant_id', tenant!.id).eq('activo', true)
+          .in('estado_id', evIds)
+      )
       const map: Record<string, number> = {}
       for (const l of lineas ?? []) {
         const pid = (l as any).producto_id

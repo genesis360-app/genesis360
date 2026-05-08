@@ -109,7 +109,8 @@ Caja registradora principal. Permite ventas, presupuestos y devoluciones.
 - **Presupuestos**: ventas en estado borrador/presupuesto pendientes de confirmar
 
 **Pantalla POS — componentes:**
-- **Buscador de productos** (barra superior): busca por nombre, SKU o código de barras. Filtra por grupo de estados activo. Muestra stock disponible para venta en la sucursal activa.
+- **Selector de grupo de estados** (encima del buscador, visible solo si hay grupos configurados): botones por grupo (ej: "Disponible", "Promoción"). El grupo default se preselecciona automáticamente (★). Botón "Todos" para ver sin filtro. Filtra qué LPNs se consideran para stock disponible.
+- **Buscador de productos** (barra superior): busca por nombre, SKU o código de barras. Muestra stock disponible en la sucursal activa según el grupo de estados activo.
 - **Toggle galería/lista**: cambia la vista de los resultados
 - **Carrito** (panel derecho o inferior en mobile): líneas con producto, cantidad editable, precio unitario, descuento por línea individual
 - **Descuento global**: campo sobre el subtotal (% o valor fijo)
@@ -211,7 +212,7 @@ Catálogo base del negocio. **Global** — mismo catálogo en todas las sucursal
 
 **Tabs:**
 - **Productos**: listado con búsqueda por nombre/SKU/código de barras
-- **Estructuras**: definición de combos/kits (qué productos componen un kit)
+- **Estructuras**: definición de estructuras de embalaje escalonadas (unidad → caja → pallet) con dimensiones y pesos
 
 **Listado — fila expandida al hacer clic:**
 - Badge de stock disponible para venta (filtrado por sucursal activa, calculado desde `inventario_lineas`)
@@ -243,32 +244,69 @@ Catálogo base del negocio. **Global** — mismo catálogo en todas las sucursal
 - TiendaNube: habilitar sync, SKU TN
 - MercadoLibre: habilitar sync
 
-**Relaciones:** base de Ventas, Inventario, Recepciones, OC. Estructura define kits/combos.
+**Tab Estructuras — detalle:**
+Cada producto puede tener una o más estructuras de embalaje. Una estructura define 3 niveles escalonados:
+- **Unidad**: peso (kg), alto/ancho/largo (cm)
+- **Caja**: unidades por caja, peso (kg), alto/ancho/largo (cm)
+- **Pallet**: cajas por pallet, peso (kg), alto/ancho/largo (cm)
+
+Se requieren mínimo 2 niveles activos. Se puede marcar una estructura como default. Las estructuras se asignan también a los LPNs desde el modal de acciones del LPN. Sirve para logística (cálculo de volumen, peso de embarques).
+
+> ⚠️ Las estructuras NO son combos/kits. Los combos (bundles promocionales) se configuran en `/configuracion` → tab Combos. Los kits de armado se gestionan en Inventario → tab Kits.
+
+**Relaciones:** base de Ventas, Inventario, Recepciones, OC. Estructuras usadas en LPNs para logística.
 
 ---
 
 ### 3.6 Inventario (`/inventario`)
 
-Gestión del stock físico a nivel de LPN (License Plate Number = unidad de carga) filtrado por sucursal activa.
+Gestión integral del stock físico a nivel de LPN (License Plate Number = unidad de carga), filtrado por sucursal activa.
 
 **Tabs:**
-- **Stock**: agrupado por producto → stock disponible venta, stock total, stock mínimo, badge crítico
-- **LPNs**: todas las líneas de inventario activas. Filtros: estado, ubicación, categoría, producto, alerta
+- **Inventario**: vista de todas las líneas de stock (LPNs) activas. Filtros: estado, ubicación, categoría, proveedor, alerta de stock crítico.
+- **Agregar**: modal de ingreso de stock (= MovimientosPage en modo ingreso)
+- **Quitar**: modal de rebaje de stock (= MovimientosPage en modo rebaje)
+- **Kits**: gestión de armado/desarmado de kits
+- **Conteo**: conteos cíclicos de inventario
+- **Historial**: todos los movimientos de stock del tenant filtrados por sucursal
+- **Autorizaciones**: solicitudes pendientes de aprobación (para rol DEPOSITO)
 
-**Acciones principales (esquina superior derecha):**
-- **Agregar Stock**: modal con producto, cantidad, estado de inventario, ubicación, precio de costo, lote, fecha de vencimiento, números de serie. Crea `inventario_lineas` + `movimientos_stock`.
-- **Ingreso masivo**: `MasivoModal` — carga N productos en grilla (sin CSV)
+**Tab Inventario — acciones globales (esquina superior derecha):**
+- **Agregar Stock**: abre tab Agregar con modal de ingreso
+- **Rebaje masivo / Ingreso masivo**: `MasivoModal` — carga N productos en grilla. Soporta tanto ingreso como rebaje. El rebaje aplica FIFO/FEFO automáticamente.
+- **Escanear** (ícono cámara): lee código de barras → busca LPN o producto
 
-**Acciones por LPN (botón expandido en cada fila):**
-- **Ver historial**: movimientos asociados a esa línea
-- **Rebaje manual**: reducir cantidad con motivo
-- **Mover**: cambiar ubicación dentro de la misma sucursal
-- **Dividir**: partir la línea en dos (para despacho parcial)
-- **Transferir a sucursal**: mueve stock a otra sucursal (movimiento salida + entrada)
+**Tab Inventario — acciones por LPN (modal LpnAccionesModal, 5 tabs internos):**
+- **Editar**: modifica lpn, cantidad (si no tiene series), estado, ubicación, proveedor, lote, fecha de vencimiento. Si rol = DEPOSITO y cambia cantidad → crea solicitud de autorización en lugar de ejecutar.
+- **Mover**: traslado parcial a otra ubicación o sucursal. Ingresa cantidad a mover + destino → crea nuevo LPN con esa cantidad.
+- **Series**: para productos con series. Agregar, editar o eliminar números de serie individuales. Ver cuáles están reservadas.
+- **Estructura**: asignar una de las estructuras de embalaje del producto a este LPN.
+- **Eliminar**: baja del LPN. Si rol = DEPOSITO → crea solicitud de autorización. Si tiene reservas, advierte antes de eliminar.
 
-**Escanear** (header): lee código de barras → busca LPN o producto directamente.
+> ⚠️ Si el LPN tiene `cantidad_reservada > 0`, solo se muestra el tab Mover (para no romper reservas activas).
 
-**Relaciones:** Ventas consumen stock. Recepciones agregan stock. Movimientos registra cada cambio. ProductosPage muestra badge calculado desde aquí.
+**Tab Kits:**
+- Definir receta de un kit (producto componente + cantidad por componente)
+- **Armar kit**: consume los componentes del inventario → genera stock del kit ensamblado
+- **Desarmar kit**: proceso inverso, devuelve componentes al inventario
+
+**Tab Conteo:**
+- Crear conteo cíclico (seleccionar productos a contar)
+- Registrar cantidades físicamente contadas
+- Ver diferencias vs. stock en sistema
+- Aprobar ajuste (genera movimientos de ajuste)
+
+**Tab Historial:**
+- Todos los `movimientos_stock` filtrados por sucursal activa
+- Filtros: categoría, rango de fechas, tipo de movimiento
+- Muestra: producto, cantidad, tipo, usuario, LPN, fecha
+
+**Tab Autorizaciones:**
+- Lista de solicitudes pendientes generadas por usuarios DEPOSITO
+- Tipos: cambio de cantidad, eliminación de LPN, cambio de serie
+- Acciones: Aprobar / Rechazar (roles OWNER, SUPERVISOR, ADMIN)
+
+**Relaciones:** Ventas consumen stock de aquí. Recepciones agregan stock. Movimientos registra cada cambio. ProductosPage calcula badge de stock disponible desde `inventario_lineas`.
 
 ---
 
@@ -532,7 +570,7 @@ Setup completo del negocio y sus parámetros. Solo OWNER.
 - **Estados de inventario**: CRUD de estados (Disponible, Cuarentena, Devuelto, etc.). Flags: `es_disponible_venta` (si ese stock puede venderse), `es_disponible_tn` (si sincroniza con TiendaNube).
 - **Motivos de movimiento**: CRUD de motivos para movimientos de caja (ej: "Pago proveedor") y stock (ej: "Merma").
 - **Métodos de pago**: activar/desactivar cuáles aparecen en el POS (Efectivo, Tarjeta, etc.)
-- **Combos**: crear productos estructurados (un combo = N componentes con cantidades)
+- **Combos**: crear bundles promocionales para el POS. Un combo = N productos juntos con un descuento (% o monto fijo). Ej: "Combo familiar: producto A + producto B con 20% off". Se seleccionan en el POS como si fuera un ítem más. Distinto de Kits (que son ensamblados en inventario físico).
 - **Integraciones**:
   - **TiendaNube**: OAuth, conectar tienda, sincronizar stock, mapear productos
   - **MercadoPago**: OAuth, conectar cuenta, gestionar suscripción Genesis360
@@ -616,15 +654,23 @@ Panel de recomendaciones inteligentes generadas por el sistema.
 
 ### 4.5 Grupos de estados (`/grupos-estados`)
 
-Configuración de grupos de estados de inventario para el POS y movimientos.
+Configuración de grupos de estados de inventario. Permiten filtrar visualmente qué stock es surtible en el POS y en movimientos.
 
-**Concepto:** un grupo agrupa N estados de inventario. Al seleccionar un grupo en el POS, el carrito solo muestra stock de LPNs en esos estados.
+**Concepto:** un grupo agrupa N estados de inventario. Al activar un grupo en el POS, el sistema solo considera stock de LPNs cuyos estados pertenezcan a ese grupo (intersectado con los estados que tienen `es_disponible_venta = true`).
 
-**Datos:** nombre, descripción, es_default (el POS arranca con este grupo), activo, lista de estados incluidos.
+**Datos:** nombre, descripción, `es_default` (el POS arranca con este grupo preseleccionado, marcado con ★), activo, lista de estados incluidos.
 
-**Acciones:** CRUD completo, marcar default (Star), activar/desactivar.
+**Acciones:** CRUD completo, marcar como default (Star), activar/desactivar.
 
-**Relaciones:** VentasPage usa el grupo activo para filtrar qué stock es surtible. MovimientosPage también.
+**Integración con el POS:**
+- Si hay grupos configurados, en el POS aparece una fila de botones sobre el buscador: uno por grupo + botón "Todos".
+- Al arrancar el POS se preselecciona el grupo default.
+- Cambiar de grupo recarga los productos con el nuevo filtro de stock.
+- "Todos" muestra stock de todos los estados disponibles para venta (sin filtro de grupo).
+
+**Integración con Movimientos (rebaje):** el selector de grupo también aparece en el tab Quitar del inventario para filtrar desde qué estados se puede rebajar.
+
+**Relaciones:** VentasPage (selector de grupo en POS), InventarioPage tab Quitar, MovimientosPage.
 
 ---
 
@@ -871,6 +917,14 @@ productos (catálogo)
         └── inventario_series[] (si tiene_series)
               └── id_serie, activo, reservado
 ```
+
+### Kits vs. Combos vs. Estructuras — distinción importante
+
+| Concepto | Dónde se gestiona | Qué es |
+|----------|------------------|--------|
+| **Kit** (`es_kit = true`) | Inventario → tab Kits | Producto ensamblado físicamente desde componentes. Implica movimiento de inventario: consume componentes, genera stock del producto kit. |
+| **Combo** | Configuración → tab Combos | Bundle promocional para POS. No implica movimiento físico. Solo define precio especial para N productos vendidos juntos (descuento % o monto). |
+| **Estructura** | Productos → tab Estructuras | Embalaje logístico (unidad/caja/pallet con dimensiones y pesos). No implica stock ni precio. |
 
 ### Reglas de rebaje (orden de consumo al vender)
 - **FIFO**: primer LPN creado se consume primero (por `created_at`)

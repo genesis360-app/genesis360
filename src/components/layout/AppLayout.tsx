@@ -151,15 +151,15 @@ export function AppLayout() {
     }
   }, [pathname, user?.rol, user?.permisos_custom])
 
-  const { sucursalId, sucursales, setSucursal } = useSucursalFilter()
+  const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
 
-  // Auto-seleccionar la primera sucursal solo si el usuario nunca configuró una preferencia
+  // Auto-seleccionar la primera sucursal solo si el usuario puede ver todas y nunca configuró una preferencia
   useEffect(() => {
     const saved = localStorage.getItem('sucursal-id')
-    if (sucursales.length > 0 && !sucursalId && saved !== '__global__') {
+    if (puedeVerTodas && sucursales.length > 0 && !sucursalId && saved !== '__global__') {
       setSucursal(sucursales[0].id)
     }
-  }, [sucursales.length])
+  }, [sucursales.length, puedeVerTodas])
 
   // Abrir walkthrough la primera vez
   useEffect(() => {
@@ -340,7 +340,7 @@ export function AppLayout() {
           <div className="flex items-center gap-0.5">
 
             {/* Selector de sucursal */}
-            {sucursales.length > 0 && (
+            {sucursales.length > 0 && puedeVerTodas && (
               <div className="hidden sm:flex items-center gap-1.5 mr-1">
                 <Building2 size={14} className="text-muted flex-shrink-0" />
                 <select
@@ -354,6 +354,18 @@ export function AppLayout() {
                     <option key={s.id} value={s.id}>{s.nombre}</option>
                   ))}
                 </select>
+              </div>
+            )}
+            {sucursales.length > 0 && !puedeVerTodas && (
+              <div className="hidden sm:flex items-center gap-1.5 mr-1">
+                <Building2 size={14} className="text-muted flex-shrink-0" />
+                {sucursalId ? (
+                  <span className="text-xs font-medium text-primary dark:text-white truncate max-w-[140px]">
+                    {sucursales.find(s => s.id === sucursalId)?.nombre ?? '—'}
+                  </span>
+                ) : (
+                  <span className="text-xs text-orange-500 font-medium">Sin sucursal</span>
+                )}
               </div>
             )}
 

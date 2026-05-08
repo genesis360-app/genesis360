@@ -1,11 +1,15 @@
 import { create } from 'zustand'
 import { supabase, type User, type Tenant, type Sucursal } from '@/lib/supabase'
 
+// Roles que siempre tienen visión global (no pueden ser restringidos a sucursal)
+const ROLES_SIEMPRE_GLOBALES = ['OWNER', 'ADMIN']
+
 interface AuthState {
   user: User | null
   tenant: Tenant | null
   sucursales: Sucursal[]
   sucursalId: string | null
+  puedeVerTodas: boolean
   loading: boolean
   initialized: boolean
   needsOnboarding: boolean
@@ -23,6 +27,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   sucursalId: typeof window !== 'undefined'
     ? (v => v === '__global__' ? null : (v || null))(localStorage.getItem('sucursal-id'))
     : null,
+  puedeVerTodas: true,
   loading: true,
   initialized: false,
   needsOnboarding: false,
@@ -69,13 +74,20 @@ export const useAuthStore = create<AuthState>((set) => ({
 		const validSucursalId = savedRaw === '__global__' ? null
 		  : (savedRaw && ids.includes(savedRaw) ? savedRaw : null)
 
+		// Permisos de vista global: OWNER y ADMIN siempre, resto según DB
+		const puedeVerTodas = ROLES_SIEMPRE_GLOBALES.includes(userData.rol) || !!userData.puede_ver_todas
+
+		// Usuarios sin vista global quedan bloqueados a su sucursal asignada (ignora localStorage)
+		const effectiveSucursalId = puedeVerTodas ? validSucursalId : (userData.sucursal_id ?? null)
+
 		const permisosCustom = (rolCustomData?.permisos ?? null) as Record<string, 'no_ver' | 'ver' | 'editar'> | null
 
 		set({
 		  user: { ...userData, avatar_url: resolvedAvatar, permisos_custom: permisosCustom },
 		  tenant: tenantData,
 		  sucursales: sucursalesData ?? [],
-		  sucursalId: validSucursalId,
+		  sucursalId: effectiveSucursalId,
+		  puedeVerTodas,
 		  loading: false,
 		  initialized: true,
 		})

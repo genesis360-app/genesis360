@@ -1,7 +1,7 @@
 import { useAuthStore } from '@/store/authStore'
 
 export function useSucursalFilter() {
-  const { sucursalId, sucursales, setSucursal } = useAuthStore()
+  const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useAuthStore()
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function applyFilter(q: any): any {
@@ -9,5 +9,5 @@ export function useSucursalFilter() {
     return q
   }
 
-  return { sucursalId, sucursales, setSucursal, applyFilter }
+  return { sucursalId, sucursales, setSucursal, applyFilter, puedeVerTodas }
 }

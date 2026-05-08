@@ -50,6 +50,8 @@ export interface User {
   activo: boolean
   avatar_url?: string | null
   rol_custom_id?: string | null
+  sucursal_id?: string | null
+  puede_ver_todas?: boolean
   /** Permisos cargados en runtime desde roles_custom.permisos — no existe en DB directamente */
   permisos_custom?: Record<string, 'no_ver' | 'ver' | 'editar'> | null
   created_at: string

@@ -98,9 +98,9 @@ export default function GastosPage() {
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const puedeAdministrarCaja = ['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
+  const puedeAdministrarCaja = ['OWNER', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
   const esCajero = user?.rol === 'CAJERO'
-  const esSoloFijos = !['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
+  const esSoloFijos = !['OWNER', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<'gastos' | 'historial' | 'fijos' | 'oc'>('gastos')

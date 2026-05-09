@@ -12,10 +12,10 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 
-type UserRole = 'OWNER' | 'ADMIN' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO'
+type UserRole = 'OWNER' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO'
 const ROLES: Record<UserRole, { label: string; desc: string; color: string }> = {
   OWNER:      { label: 'Dueño',         desc: 'Acceso completo',                    color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
-  ADMIN:      { label: 'Administrador', desc: 'Acceso total (igual que Dueño)',     color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400' },
+  SUPER_USUARIO: { label: 'Super Usuario', desc: 'Administración técnica y configuración', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400' },
   SUPERVISOR: { label: 'Supervisor',    desc: 'Inventario y movimientos',           color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'        },
   CAJERO:     { label: 'Cajero',        desc: 'Solo ventas y caja',                 color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'     },
   RRHH:       { label: 'RRHH',          desc: 'Gestión de empleados',               color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'     },
@@ -63,7 +63,7 @@ function defaultPermisos(): Record<string, Permiso> {
 }
 
 // Roles que siempre tienen visión global (no configurables)
-const ROLES_SIEMPRE_GLOBALES: string[] = ['OWNER', 'ADMIN']
+const ROLES_SIEMPRE_GLOBALES: string[] = ['OWNER', 'SUPER_USUARIO']
 // Roles con visión global por defecto (configurable)
 const ROLES_GLOBAL_DEFAULT: string[] = ['SUPERVISOR', 'CONTADOR']
 

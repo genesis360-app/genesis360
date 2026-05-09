@@ -2945,7 +2945,7 @@ export default function ConfigPage() {
       )}
 
       {tab === 'api' && (
-        <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'OWNER' || user?.rol === 'ADMIN'} />
+        <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'OWNER' || user?.rol === 'SUPER_USUARIO'} />
       )}
 
         </div>{/* end content column */}

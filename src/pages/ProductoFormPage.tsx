@@ -477,7 +477,7 @@ export default function ProductoFormPage() {
     }
   }
 
-  const canEdit = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
+  const canEdit = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
 
   const saveMinimos = async () => {
     if (!id || !tenant) return

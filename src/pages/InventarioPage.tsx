@@ -463,7 +463,7 @@ export default function InventarioPage() {
   })
 
   // ── Autorizaciones (lazy, solo OWNER/SUPERVISOR/ADMIN) ─────────────────────
-  const puedeVerAutorizaciones = ['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
+  const puedeVerAutorizaciones = ['OWNER', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
 
   const { data: autorizaciones = [], isLoading: autLoading, refetch: refetchAut } = useQuery({
     queryKey: ['autorizaciones_inventario', tenant?.id, autEstado],

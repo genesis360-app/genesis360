@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { supabase, type User, type Tenant, type Sucursal } from '@/lib/supabase'
 
 // Roles que siempre tienen visión global (no pueden ser restringidos a sucursal)
-const ROLES_SIEMPRE_GLOBALES = ['OWNER', 'ADMIN']
+const ROLES_SIEMPRE_GLOBALES = ['OWNER', 'SUPER_USUARIO']
 
 interface AuthState {
   user: User | null

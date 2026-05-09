@@ -98,7 +98,7 @@ export default function HistorialPage() {
   const [selectedLog, setSelectedLog] = useState<any>(null)
 
   // Rol check
-  const puedeVer = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'ADMIN'
+  const puedeVer = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['actividad_log', tenant?.id, filtros, page, pageSize],

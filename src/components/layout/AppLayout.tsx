@@ -230,8 +230,8 @@ export function AppLayout() {
             if (user?.rol === 'CAJERO' && !cajeroVisible) return null
             if (user?.rol === 'CONTADOR' && !contadorVisible) return null
             if (user?.rol === 'DEPOSITO' && !depositoVisible) return null
-            if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN' && user?.rol !== 'RRHH') return null
-            if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
+            if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPER_USUARIO' && user?.rol !== 'RRHH') return null
+            if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'SUPER_USUARIO') return null
             if (user?.permisos_custom?.[modulo] === 'no_ver') return null
             const locked = planFeature && limits != null && !(limits as any)[planFeature]
             return (
@@ -399,7 +399,7 @@ export function AppLayout() {
             </button>
 
             {/* Config */}
-            {(user?.rol === 'OWNER' || user?.rol === 'ADMIN') && (
+            {(user?.rol === 'OWNER' || user?.rol === 'SUPER_USUARIO') && (
               <ConfigButton className={hBtn} />
             )}
 

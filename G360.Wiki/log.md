@@ -6,6 +6,33 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-08] update | v1.8.5 DEV — mejoras Caja/Inventario/Envíos/Ventas/Recepciones
+
+### Caja
+- Historial excluye caja fuerte; historial propio en tab Caja Fuerte (ingresos + egresos)
+- "Ingresar a Caja Fuerte": sin restricción de sesión activa para OWNER/SUPER
+- "Enviar a Caja": selector de caja destino (antes fijado en la caja activa)
+- CAJERO: botón "Caja Fuerte" → genera solicitud (notificación) para OWNER/SUPERVISOR
+
+### Inventario
+- Conteos: muestra usuario en historial
+- Bulk actions en LPNs: barra desde 1 LPN con "Cambiar estado" y "Cambiar ubicación"; cross-producto habilitado
+
+### Envíos
+- Toggle Propio/Tercero; si propio: KM + precio/km → auto-calcula costo
+
+### Ventas
+- Toggle "Requiere envío" en POS → auto-crea envío 'pendiente' al confirmar
+
+### Recepciones (bug fixes anteriores)
+- Fix detalle expandido: carga recepcion_items lazy con tabla Esperado/Recibido/Diferencia
+- Validaciones de atributos (lote, vencimiento, series) antes de confirmar; auto-expande ítem con error
+- Modal de resultado post-confirmación con comparativa vs OC
+- Botones "Crear OC derivada" y "Solicitar reembolso" para diferencias
+- Sucursal predeterminada sincronizada con header
+
+---
+
 ## [2026-05-08] update | v1.8.5 DEV — fixes y docs
 
 - fix: rol ADMIN faltaba en mapa local de UsuariosPage — no aparecía en invitar ni cambiar rol

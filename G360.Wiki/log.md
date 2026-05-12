@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-08] update | v1.8.6 DEV — bump versión + cierre sesión
+
+Bump v1.8.6. Migrations DEV: 093–098. Todo pusheado, pendiente deploy a PROD.
+Rol ADMIN renombrado a SUPER_USUARIO. EF invite-user y cancel-suscripcion deployados en DEV.
+Ventas: panel envío completo (monto/$km/Maps). Gastos: tab Recursos + cuotas tarjeta.
+Recursos: tabs renombrados + flujo gasto automático. Recepciones: bug detalle expandido fix.
+
+---
+
 ## [2026-05-08] update | v1.8.5 DEV — mejoras Caja/Inventario/Envíos/Ventas/Recepciones
 
 ### Caja

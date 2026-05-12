@@ -123,6 +123,19 @@ export default function RecepcionesPage() {
     enabled: !!tenant,
   })
 
+  const { data: recepcionItems = [] } = useQuery({
+    queryKey: ['recepcion-items-detail', expandedRec],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('recepcion_items')
+        .select('*, productos(nombre, sku, unidad_medida)')
+        .eq('recepcion_id', expandedRec!)
+        .order('id')
+      return data ?? []
+    },
+    enabled: !!expandedRec,
+  })
+
   const { data: proveedores = [] } = useQuery({
     queryKey: ['proveedores-rec', tenant?.id],
     queryFn: async () => {
@@ -727,9 +740,63 @@ export default function RecepcionesPage() {
                       </button>
                     )}
                   </div>
-                  {exp && rec.notas && (
-                    <div className="px-6 pb-3 pt-1">
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{rec.notas}</p>
+                  {exp && (
+                    <div className="px-4 pb-4 pt-1 space-y-3 bg-gray-50 dark:bg-gray-700/30">
+                      {rec.notas && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 italic">{rec.notas}</p>
+                      )}
+                      {recepcionItems.length === 0 ? (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">Cargando ítems...</p>
+                      ) : (
+                        <div className="border border-gray-200 dark:border-gray-600 rounded-xl overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-white dark:bg-gray-800">
+                              <tr>
+                                <th className="text-left px-3 py-2 text-xs text-gray-500 dark:text-gray-400 font-medium">Producto</th>
+                                <th className="text-right px-3 py-2 text-xs text-gray-500 dark:text-gray-400 font-medium">Esperado</th>
+                                <th className="text-right px-3 py-2 text-xs text-gray-500 dark:text-gray-400 font-medium">Recibido</th>
+                                <th className="text-right px-3 py-2 text-xs text-gray-500 dark:text-gray-400 font-medium">P. Costo</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                              {(recepcionItems as any[]).map((it, i) => {
+                                const diff = it.cantidad_recibida - it.cantidad_esperada
+                                return (
+                                  <tr key={i}>
+                                    <td className="px-3 py-2">
+                                      <div className="font-medium text-gray-800 dark:text-gray-100">{it.productos?.nombre}</div>
+                                      <div className="text-xs text-gray-400 font-mono">{it.productos?.sku}</div>
+                                      {it.nro_lote && <div className="text-xs text-gray-400">Lote: {it.nro_lote}</div>}
+                                      {it.fecha_vencimiento && <div className="text-xs text-gray-400">Vence: {it.fecha_vencimiento}</div>}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">
+                                      {it.cantidad_esperada} {it.productos?.unidad_medida}
+                                    </td>
+                                    <td className="px-3 py-2 text-right">
+                                      <span className={`font-semibold ${diff < 0 ? 'text-red-600 dark:text-red-400' : diff > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-800 dark:text-gray-100'}`}>
+                                        {it.cantidad_recibida} {it.productos?.unidad_medida}
+                                      </span>
+                                      {diff !== 0 && (
+                                        <div className="text-xs">
+                                          {diff < 0
+                                            ? <span className="text-red-500">{diff} faltante</span>
+                                            : <span className="text-amber-500">+{diff} sobrante</span>
+                                          }
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">
+                                      {it.precio_costo != null
+                                        ? `$${Number(it.precio_costo).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+                                        : '—'}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

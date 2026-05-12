@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -83,6 +83,17 @@ export default function EnviosPage() {
   const [editId, setEditId]         = useState<string | null>(null)
   const [form, setForm]             = useState<FormEnvio>(FORM_VACIO)
   const [saving, setSaving]         = useState(false)
+  const [tipoEnvio, setTipoEnvio]   = useState<'propio' | 'tercero'>('tercero')
+  const [distanciaKm, setDistanciaKm] = useState('')
+  const [precioPorKm, setPrecioPorKm] = useState('')
+
+  // Auto-calcular costo cuando tipo=propio y se tienen km + precio/km
+  useEffect(() => {
+    if (tipoEnvio === 'propio' && distanciaKm && precioPorKm) {
+      const total = parseFloat(distanciaKm) * parseFloat(precioPorKm)
+      if (!isNaN(total) && total > 0) setForm(f => ({ ...f, costo_cotizado: total.toFixed(2) }))
+    }
+  }, [distanciaKm, precioPorKm, tipoEnvio])
 
   // Filtros
   const [filtroEstado,  setFiltroEstado]  = useState('')
@@ -851,9 +862,50 @@ export default function EnviosPage() {
                 )}
               </div>
 
+              {/* Tipo de envío */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tipo de envío</label>
+                <div className="flex gap-2">
+                  {(['propio', 'tercero'] as const).map(t => (
+                    <button key={t} type="button" onClick={() => setTipoEnvio(t)}
+                      className={`flex-1 py-2 rounded-xl text-sm font-medium border-2 transition-colors
+                        ${tipoEnvio === t ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent/50'}`}>
+                      {t === 'propio' ? '🚗 Envío propio' : '📦 Courier / tercero'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Campos KM — solo para envío propio */}
+              {tipoEnvio === 'propio' && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Distancia (km)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={distanciaKm}
+                      onChange={e => setDistanciaKm(e.target.value)} placeholder="0" min="0" step="0.1"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio / km ($)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={precioPorKm}
+                      onChange={e => setPrecioPorKm(e.target.value)} placeholder="0" min="0" step="0.01"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Costo total ($)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={form.costo_cotizado}
+                      onChange={e => setForm(f => ({ ...f, costo_cotizado: e.target.value }))} placeholder="Auto"
+                      className="w-full border border-accent/50 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-accent/5 dark:bg-accent/10 text-gray-800 dark:text-gray-100" />
+                    {distanciaKm && precioPorKm && (
+                      <p className="text-xs text-accent mt-0.5">{distanciaKm} km × ${precioPorKm}/km</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
-                {/* Courier */}
-                <div>
+                {/* Courier — solo tercero */}
+                <div className={tipoEnvio === 'propio' ? 'hidden' : ''}>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Courier</label>
                   <div className="relative">
                     <select value={form.courier} onChange={e => setForm(f => ({ ...f, courier: e.target.value }))}
@@ -864,8 +916,8 @@ export default function EnviosPage() {
                     <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
-                {/* Servicio */}
-                <div>
+                {/* Servicio — solo tercero */}
+                <div className={tipoEnvio === 'propio' ? 'hidden' : ''}>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Servicio</label>
                   {form.courier && SERVICIOS_POR_COURIER[form.courier] ? (
                     <div className="relative">
@@ -900,8 +952,8 @@ export default function EnviosPage() {
                     <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
-                {/* Costo */}
-                <div>
+                {/* Costo — solo para tercero (propio calcula automáticamente arriba) */}
+                <div className={tipoEnvio === 'propio' ? 'hidden' : ''}>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Costo de envío ($)</label>
                   <input type="number" onWheel={e => e.currentTarget.blur()} value={form.costo_cotizado}
                     onChange={e => setForm(f => ({ ...f, costo_cotizado: e.target.value }))} placeholder="0" min="0"

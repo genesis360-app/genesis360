@@ -100,6 +100,7 @@ export default function VentasPage() {
   const [descuentoTotal, setDescuentoTotal] = useState('')
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
   const [notas, setNotas] = useState('')
+  const [requiereEnvio, setRequiereEnvio] = useState(false)
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
@@ -1320,9 +1321,25 @@ export default function VentasPage() {
       if (estado === 'despachada' && factHabilitada) {
         triggerFacturaModal(venta.id, venta.numero ?? 0, Number(venta.total ?? 0))
       }
+      // Auto-crear envío si el toggle está activo
+      if (requiereEnvio && clienteId && estado !== 'pendiente') {
+        await supabase.from('envios').insert({
+          tenant_id: tenant!.id,
+          venta_id: venta.id,
+          estado: 'pendiente',
+          cliente_id: clienteId,
+          canal: 'POS',
+          created_by: user!.id,
+          sucursal_id: sucursalId || null,
+        })
+        qc.invalidateQueries({ queryKey: ['envios'] })
+        toast('Envío creado en estado pendiente', { icon: '📦' })
+      }
+
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setClienteCCEnabled(false); setModoCC(false)
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
+      setRequiereEnvio(false)
       setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
@@ -2540,6 +2557,17 @@ export default function VentasPage() {
                 <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2}
                   placeholder="Notas (opcional)"
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
+                {/* Toggle envío */}
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <div onClick={() => setRequiereEnvio(v => !v)}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${requiereEnvio ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                    <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${requiereEnvio ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Requiere envío</span>
+                  {requiereEnvio && !clienteId && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400">(necesita cliente)</span>
+                  )}
+                </label>
               </div>
             )}
 

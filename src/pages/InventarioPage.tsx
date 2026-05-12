@@ -204,6 +204,11 @@ export default function InventarioPage() {
   const [combinarMode, setCombinarMode] = useState<'fusionar' | 'madre'>('fusionar')
   const [combinarDestinoId, setCombinarDestinoId] = useState('')
   const [combinarParentLpn, setCombinarParentLpn] = useState('')
+  // Bulk actions
+  const [showBulkEstado, setShowBulkEstado] = useState(false)
+  const [showBulkUbicacion, setShowBulkUbicacion] = useState(false)
+  const [bulkEstadoId, setBulkEstadoId] = useState('')
+  const [bulkUbicacionId, setBulkUbicacionId] = useState('')
 
   // ── Shared queries ─────────────────────────────────────────────────────────
   const { data: estados = [] } = useQuery({
@@ -433,7 +438,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       const { data } = await supabase
         .from('inventario_conteos')
-        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida))')
+        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida)), users:created_by(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(30)
@@ -567,6 +572,41 @@ export default function InventarioPage() {
       setAutRechazoId(null)
       setAutMotivoRechazo('')
       qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ── Bulk actions en LPNs ─────────────────────────────────────────────────
+  const bulkCambiarEstado = useMutation({
+    mutationFn: async (estadoId: string) => {
+      const { error } = await supabase
+        .from('inventario_lineas')
+        .update({ estado_id: estadoId })
+        .in('id', selectedLineas)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success(`Estado actualizado en ${selectedLineas.length} LPN(s)`)
+      setSelectedLineas([]); setSelectedLineasInfo([])
+      setShowBulkEstado(false); setBulkEstadoId('')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const bulkCambiarUbicacion = useMutation({
+    mutationFn: async (ubicacionId: string) => {
+      const { error } = await supabase
+        .from('inventario_lineas')
+        .update({ ubicacion_id: ubicacionId })
+        .in('id', selectedLineas)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success(`Ubicación actualizada en ${selectedLineas.length} LPN(s)`)
+      setSelectedLineas([]); setSelectedLineasInfo([])
+      setShowBulkUbicacion(false); setBulkUbicacionId('')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -2965,8 +3005,6 @@ export default function InventarioPage() {
                                       checked={selectedLineas.includes(l.id)}
                                       onChange={e => {
                                         if (e.target.checked) {
-                                          const otroProducto = selectedLineasInfo.length > 0 && selectedLineasInfo.some(x => x.producto_id !== l.producto_id)
-                                          if (otroProducto) { toast.error('Solo podés combinar LPNs del mismo producto'); return }
                                           setSelectedLineas(prev => [...prev, l.id])
                                           setSelectedLineasInfo(prev => [...prev, { id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento }])
                                         } else {
@@ -3104,21 +3142,88 @@ export default function InventarioPage() {
           )}
 
           {/* Barra flotante — LPNs seleccionados */}
-          {selectedLineas.length >= 2 && (
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-gray-800 border border-accent/40 rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-4">
-              <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                <span className="font-bold text-accent">{selectedLineas.length}</span> LPNs seleccionados
+          {selectedLineas.length >= 1 && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-gray-800 border border-accent/40 rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 flex-wrap max-w-[90vw]">
+              <span className="text-sm font-medium text-gray-800 dark:text-gray-100 flex-shrink-0">
+                <span className="font-bold text-accent">{selectedLineas.length}</span> LPN{selectedLineas.length !== 1 ? 's' : ''} seleccionado{selectedLineas.length !== 1 ? 's' : ''}
               </span>
               <button
                 onClick={() => { setSelectedLineas([]); setSelectedLineasInfo([]) }}
-                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1 rounded transition-colors">
+                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1 rounded transition-colors flex-shrink-0">
                 Limpiar
               </button>
+              <div className="h-4 w-px bg-gray-200 dark:bg-gray-600 flex-shrink-0" />
               <button
-                onClick={() => { setCombinarDestinoId(''); setCombinarMode('fusionar'); setShowCombinarModal(true) }}
-                className="bg-accent text-white text-sm px-4 py-1.5 rounded-xl font-medium flex items-center gap-1.5 hover:bg-accent/90 transition-colors">
-                <Combine size={14} /> Combinar
+                onClick={() => { setBulkEstadoId(''); setShowBulkEstado(true) }}
+                className="text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+                Cambiar estado
               </button>
+              <button
+                onClick={() => { setBulkUbicacionId(''); setShowBulkUbicacion(true) }}
+                className="text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+                Cambiar ubicación
+              </button>
+              {selectedLineas.length >= 2 && selectedLineasInfo.every(l => l.producto_id === selectedLineasInfo[0]?.producto_id) && (
+                <button
+                  onClick={() => { setCombinarDestinoId(''); setCombinarMode('fusionar'); setShowCombinarModal(true) }}
+                  className="bg-accent text-white text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 hover:bg-accent/90 transition-colors flex-shrink-0">
+                  <Combine size={14} /> Combinar
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Modal bulk — cambiar estado */}
+          {showBulkEstado && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+                <h3 className="font-semibold text-primary">Cambiar estado — {selectedLineas.length} LPN{selectedLineas.length !== 1 ? 's' : ''}</h3>
+                <select value={bulkEstadoId} onChange={e => setBulkEstadoId(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                  <option value="">Seleccioná un estado</option>
+                  {(estados as any[]).map((e: any) => (
+                    <option key={e.id} value={e.id}>{e.nombre}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowBulkEstado(false)}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium">
+                    Cancelar
+                  </button>
+                  <button onClick={() => bulkCambiarEstado.mutate(bulkEstadoId)}
+                    disabled={!bulkEstadoId || bulkCambiarEstado.isPending}
+                    className="flex-1 bg-accent text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50">
+                    {bulkCambiarEstado.isPending ? 'Actualizando...' : 'Confirmar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal bulk — cambiar ubicación */}
+          {showBulkUbicacion && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+                <h3 className="font-semibold text-primary">Cambiar ubicación — {selectedLineas.length} LPN{selectedLineas.length !== 1 ? 's' : ''}</h3>
+                <select value={bulkUbicacionId} onChange={e => setBulkUbicacionId(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                  <option value="">Seleccioná una ubicación</option>
+                  {(ubicaciones as any[]).map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.nombre}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowBulkUbicacion(false)}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium">
+                    Cancelar
+                  </button>
+                  <button onClick={() => bulkCambiarUbicacion.mutate(bulkUbicacionId)}
+                    disabled={!bulkUbicacionId || bulkCambiarUbicacion.isPending}
+                    className="flex-1 bg-accent text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50">
+                    {bulkCambiarUbicacion.isPending ? 'Actualizando...' : 'Confirmar'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -3793,6 +3898,7 @@ export default function InventarioPage() {
                           </div>
                           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                             {new Date(c.created_at).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                            {(c as any).users?.nombre_display && <span className="ml-1">· {(c as any).users.nombre_display}</span>}
                             {' · '}{items.length} línea{items.length !== 1 ? 's' : ''}
                             {conDiff.length > 0 && <span className="text-red-500 ml-1">· {conDiff.length} con diferencia</span>}
                           </p>

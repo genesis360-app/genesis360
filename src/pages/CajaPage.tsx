@@ -72,6 +72,11 @@ export default function CajaPage() {
   const [showDifConfirm, setShowDifConfirm] = useState(false)
   const [fuerteMonto, setFuerteMonto] = useState('')
   const [fuerteConcepto, setFuerteConcepto] = useState('')
+  const [retiroCajaDestinoSesionId, setRetiroCajaDestinoSesionId] = useState('')
+  // Solicitud CAJERO → caja fuerte
+  const [showSolicitudFuerte, setShowSolicitudFuerte] = useState(false)
+  const [solicitudMonto, setSolicitudMonto] = useState('')
+  const [solicitudConcepto, setSolicitudConcepto] = useState('')
   const [sesionExpandida, setSesionExpandida] = useState<string | null>(null)
   const [showArqueo, setShowArqueo] = useState(false)
   const [arqueoConteo, setArqueoConteo] = useState('')
@@ -226,9 +231,9 @@ export default function CajaPage() {
   })
 
   const { data: historialSesiones = [] } = useQuery({
-    queryKey: ['historial-sesiones', cajaId, sucursalId],
+    queryKey: ['historial-sesiones', cajaId, sucursalId, cajaFuerte?.id],
     queryFn: async () => {
-      const { data } = await applyFilter(
+      let q = applyFilter(
         supabase.from('caja_sesiones')
           .select('*, cajas(nombre), abrio:usuario_id(nombre_display), cerrado_por:cerrado_por_id(nombre_display)')
           .eq('tenant_id', tenant!.id)
@@ -236,6 +241,9 @@ export default function CajaPage() {
           .order('cerrada_at', { ascending: false })
           .limit(30)
       )
+      // Excluir la caja fuerte del historial — tiene su propio historial en el tab Caja Fuerte
+      if (cajaFuerte?.id) q = q.neq('caja_id', cajaFuerte.id)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'historial',
@@ -512,11 +520,13 @@ export default function CajaPage() {
 
   // ── Caja fuerte mutations ──────────────────────────────────────────────────
   const operarCajaFuerte = useMutation({
-    mutationFn: async ({ tipo, monto, concepto }: { tipo: 'deposito' | 'retiro'; monto: number; concepto: string }) => {
+    mutationFn: async ({
+      tipo, monto, concepto, desdeSessionId, hastaSessionId,
+    }: { tipo: 'deposito' | 'retiro'; monto: number; concepto: string; desdeSessionId?: string; hastaSessionId?: string }) => {
       if (!cajaFuerte) throw new Error('No hay caja fuerte configurada')
       if (monto <= 0) throw new Error('Ingresá un monto válido')
-      if (tipo === 'deposito' && !sesionActiva) throw new Error('No hay sesión de caja activa')
-      if (tipo === 'deposito' && monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMoneda(saldoActual)}`)
+      // Depósito desde caja: requiere saldo en esa caja
+      if (tipo === 'deposito' && desdeSessionId && monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMoneda(saldoActual)}`)
       if (tipo === 'retiro' && monto > fuerteSaldo) throw new Error(`Saldo insuficiente en caja fuerte. Disponible: ${formatMoneda(fuerteSaldo)}`)
 
       // Obtener o crear sesión permanente de la fuerte
@@ -532,30 +542,36 @@ export default function CajaPage() {
       }
 
       if (tipo === 'deposito') {
-        const { error: e1 } = await supabase.from('caja_movimientos').insert({
-          tenant_id: tenant!.id, sesion_id: sesionActiva!.id,
-          tipo: 'egreso_traspaso', monto,
-          concepto: concepto || 'Depósito en caja fuerte', usuario_id: user!.id,
-        })
-        if (e1) throw e1
+        // Si viene de una caja activa: egreso en esa caja
+        if (desdeSessionId) {
+          const { error: e1 } = await supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id, sesion_id: desdeSessionId,
+            tipo: 'egreso_traspaso', monto,
+            concepto: concepto || 'Depósito en caja fuerte', usuario_id: user!.id,
+          })
+          if (e1) throw e1
+        }
+        // Ingreso en caja fuerte (siempre)
         const { error: e2 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: fuerteSessionId,
           tipo: 'ingreso_traspaso', monto,
-          concepto: concepto || `Depósito desde ${cajaActual?.nombre ?? 'caja'}`, usuario_id: user!.id,
+          concepto: concepto || (desdeSessionId ? `Depósito desde caja` : 'Ingreso externo'),
+          usuario_id: user!.id,
         })
         if (e2) throw e2
       } else {
-        if (!sesionActiva) throw new Error('Seleccioná una caja de destino (debe estar abierta)')
+        const destSesionId = hastaSessionId
+        if (!destSesionId) throw new Error('Seleccioná la caja de destino')
         const { error: e1 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: fuerteSessionId,
           tipo: 'egreso_traspaso', monto,
-          concepto: concepto || `Retiro a ${cajaActual?.nombre ?? 'caja'}`, usuario_id: user!.id,
+          concepto: concepto || 'Retiro de caja fuerte', usuario_id: user!.id,
         })
         if (e1) throw e1
         const { error: e2 } = await supabase.from('caja_movimientos').insert({
-          tenant_id: tenant!.id, sesion_id: sesionActiva!.id,
+          tenant_id: tenant!.id, sesion_id: destSesionId,
           tipo: 'ingreso_traspaso', monto,
-          concepto: concepto || 'Retiro de caja fuerte', usuario_id: user!.id,
+          concepto: concepto || 'Ingreso desde caja fuerte', usuario_id: user!.id,
         })
         if (e2) throw e2
       }
@@ -567,6 +583,27 @@ export default function CajaPage() {
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
       setShowDepositoFuerte(false); setShowRetiroFuerte(false)
       setFuerteMonto(''); setFuerteConcepto('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const enviarSolicitudFuerte = useMutation({
+    mutationFn: async ({ monto, concepto }: { monto: number; concepto: string }) => {
+      if (!sesionActiva) throw new Error('No hay sesión activa para transferir')
+      if (monto <= 0) throw new Error('Ingresá un monto válido')
+      if (monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMoneda(saldoActual)}`)
+      await supabase.from('notificaciones').insert({
+        tenant_id: tenant!.id,
+        tipo: 'solicitud_caja_fuerte',
+        mensaje: `${user?.nombre_display ?? 'Un cajero'} solicitó transferir ${formatMoneda(monto)} de "${cajaActual?.nombre}" a Caja Fuerte. Concepto: ${concepto || 'Sin concepto'}. Sesión: ${sesionActiva.id}`,
+        leido: false,
+      })
+    },
+    onSuccess: () => {
+      toast.success('Solicitud enviada. El Owner o Supervisor deberá aprobarla.')
+      setShowSolicitudFuerte(false)
+      setSolicitudMonto('')
+      setSolicitudConcepto('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -945,6 +982,14 @@ export default function CajaPage() {
                     <ArrowRightLeft size={16} />
                   </button>
                 )}
+                {/* Solicitud a caja fuerte para CAJERO */}
+                {user?.rol === 'CAJERO' && cajaFuerte && sesionActiva && (
+                  <button onClick={() => setShowSolicitudFuerte(true)}
+                    title="Solicitar transferencia de esta caja a la Caja Fuerte (requiere aprobación)"
+                    className="flex items-center gap-1.5 px-3 py-3 border border-yellow-300 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 text-xs font-medium hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-xl transition-all">
+                    <Lock size={14} /> Caja Fuerte
+                  </button>
+                )}
               </div>
 
               {/* Movimientos */}
@@ -1096,48 +1141,58 @@ export default function CajaPage() {
                 <p className="text-xs text-gray-400 dark:text-gray-500">Registro de depósitos. No registra saldo.</p>
               </div>
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowDepositoFuerte(true)} disabled={!sesionActiva}
-                title={!sesionActiva ? 'Abrí una caja primero para depositar' : ''}
-                className="flex items-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
-                <Plus size={15} /> Depositar desde caja activa
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={() => setShowDepositoFuerte(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-semibold rounded-xl transition-colors">
+                <Plus size={15} /> Ingresar a Caja Fuerte
+              </button>
+              <button onClick={() => { setShowRetiroFuerte(true); setRetiroCajaDestinoSesionId('') }}
+                disabled={fuerteSaldo <= 0}
+                title={fuerteSaldo <= 0 ? 'Sin saldo en caja fuerte' : ''}
+                className="flex items-center gap-2 px-4 py-2.5 bg-gray-700 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
+                <ArrowRightLeft size={15} /> Enviar a Caja
               </button>
             </div>
           </div>
 
-          {/* Historial de depósitos */}
+          {/* Historial completo de caja fuerte */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Historial de depósitos</p>
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Historial de movimientos</p>
             </div>
-            {(fuerteMovimientos as any[]).filter((m: any) => m.tipo === 'ingreso_traspaso').length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin depósitos registrados</p>
+            {fuerteMovimientos.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">Sin movimientos registrados</p>
             ) : (
               <div className="divide-y divide-gray-50 dark:divide-gray-700">
-                {(fuerteMovimientos as any[]).filter((m: any) => m.tipo === 'ingreso_traspaso').map((m: any) => (
-                  <div key={m.id} className="px-5 py-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-800 dark:text-gray-100">{m.concepto}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500">
-                        {new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
-                        {m.users?.nombre_display && ` · ${m.users.nombre_display}`}
-                      </p>
+                {(fuerteMovimientos as any[]).map((m: any) => {
+                  const esIngreso = m.tipo === 'ingreso_traspaso'
+                  return (
+                    <div key={m.id} className="px-5 py-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-800 dark:text-gray-100">{m.concepto}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
+                          {new Date(m.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                          {m.users?.nombre_display && ` · ${m.users.nombre_display}`}
+                        </p>
+                      </div>
+                      <span className={`font-bold ${esIngreso ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {esIngreso ? '+' : '-'}{formatMoneda(m.monto)}
+                      </span>
                     </div>
-                    <span className="font-bold text-green-600 dark:text-green-400">+{formatMoneda(m.monto)}</span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Modal depositar en caja fuerte */}
+      {/* Modal ingresar a caja fuerte */}
       {showDepositoFuerte && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Depositar en Caja Fuerte</h3>
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Ingresar a Caja Fuerte</h3>
               <button onClick={() => { setShowDepositoFuerte(false); setFuerteMonto(''); setFuerteConcepto('') }}
                 className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
             </div>
@@ -1146,31 +1201,61 @@ export default function CajaPage() {
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
                 value={fuerteMonto} onChange={e => setFuerteMonto(e.target.value)} placeholder="0"
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible en caja: {formatMoneda(saldoActual)}</p>
+              {sesionActiva && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible en caja activa: {formatMoneda(saldoActual)}</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
               <input type="text" value={fuerteConcepto} onChange={e => setFuerteConcepto(e.target.value)}
-                placeholder="Depósito en caja fuerte"
+                placeholder={sesionActiva ? 'Depósito desde caja' : 'Ingreso externo'}
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
             </div>
-            <button onClick={() => operarCajaFuerte.mutate({ tipo: 'deposito', monto: parseFloat(fuerteMonto) || 0, concepto: fuerteConcepto })}
+            {sesionActiva && (
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Se descontará de <strong>{cajaActual?.nombre}</strong> e ingresará a la Caja Fuerte.
+              </p>
+            )}
+            {!sesionActiva && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Ingreso externo — no hay caja activa. Solo se registrará el ingreso en la Caja Fuerte.
+              </p>
+            )}
+            <button onClick={() => operarCajaFuerte.mutate({
+              tipo: 'deposito',
+              monto: parseFloat(fuerteMonto) || 0,
+              concepto: fuerteConcepto,
+              desdeSessionId: sesionActiva?.id,
+            })}
               disabled={operarCajaFuerte.isPending || !fuerteMonto}
               className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50">
-              {operarCajaFuerte.isPending ? 'Procesando...' : 'Confirmar depósito'}
+              {operarCajaFuerte.isPending ? 'Procesando...' : 'Confirmar ingreso'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Modal retirar de caja fuerte */}
+      {/* Modal enviar desde caja fuerte a una caja */}
       {showRetiroFuerte && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Retirar de Caja Fuerte</h3>
-              <button onClick={() => { setShowRetiroFuerte(false); setFuerteMonto(''); setFuerteConcepto('') }}
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Enviar desde Caja Fuerte</h3>
+              <button onClick={() => { setShowRetiroFuerte(false); setFuerteMonto(''); setFuerteConcepto(''); setRetiroCajaDestinoSesionId('') }}
                 className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Caja destino *</label>
+              <select value={retiroCajaDestinoSesionId} onChange={e => setRetiroCajaDestinoSesionId(e.target.value)}
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                <option value="">Seleccioná una caja con sesión abierta</option>
+                {(sesionesAbiertasAll as any[]).map((s: any) => (
+                  <option key={s.id} value={s.id}>{s.cajas?.nombre}</option>
+                ))}
+              </select>
+              {(sesionesAbiertasAll as any[]).length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">No hay cajas con sesión abierta en este momento.</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
@@ -1182,14 +1267,54 @@ export default function CajaPage() {
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
               <input type="text" value={fuerteConcepto} onChange={e => setFuerteConcepto(e.target.value)}
-                placeholder="Retiro de caja fuerte"
+                placeholder="Envío desde caja fuerte"
                 className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
             </div>
-            <p className="text-xs text-gray-400 dark:text-gray-500">El monto se acreditará en la caja actualmente seleccionada: <strong>{cajaActual?.nombre}</strong></p>
-            <button onClick={() => operarCajaFuerte.mutate({ tipo: 'retiro', monto: parseFloat(fuerteMonto) || 0, concepto: fuerteConcepto })}
-              disabled={operarCajaFuerte.isPending || !fuerteMonto}
+            <button onClick={() => operarCajaFuerte.mutate({
+              tipo: 'retiro',
+              monto: parseFloat(fuerteMonto) || 0,
+              concepto: fuerteConcepto,
+              hastaSessionId: retiroCajaDestinoSesionId,
+            })}
+              disabled={operarCajaFuerte.isPending || !fuerteMonto || !retiroCajaDestinoSesionId}
               className="w-full bg-gray-700 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50">
-              {operarCajaFuerte.isPending ? 'Procesando...' : 'Confirmar retiro'}
+              {operarCajaFuerte.isPending ? 'Procesando...' : 'Confirmar envío'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal solicitud CAJERO → caja fuerte */}
+      {showSolicitudFuerte && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <Lock size={16} className="text-yellow-500" /> Solicitar transferencia a Caja Fuerte
+              </h3>
+              <button onClick={() => { setShowSolicitudFuerte(false); setSolicitudMonto(''); setSolicitudConcepto('') }}
+                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-3 py-2">
+              Esta solicitud será enviada al Owner o Supervisor para su aprobación. No se ejecutará automáticamente.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
+              <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
+                value={solicitudMonto} onChange={e => setSolicitudMonto(e.target.value)} placeholder="0"
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible: {formatMoneda(saldoActual)}</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
+              <input type="text" value={solicitudConcepto} onChange={e => setSolicitudConcepto(e.target.value)}
+                placeholder="Motivo de la transferencia"
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+            </div>
+            <button onClick={() => enviarSolicitudFuerte.mutate({ monto: parseFloat(solicitudMonto) || 0, concepto: solicitudConcepto })}
+              disabled={enviarSolicitudFuerte.isPending || !solicitudMonto}
+              className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50">
+              {enviarSolicitudFuerte.isPending ? 'Enviando...' : 'Enviar solicitud'}
             </button>
           </div>
         </div>

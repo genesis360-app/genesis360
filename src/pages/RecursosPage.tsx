@@ -20,7 +20,7 @@ const ESTADO_CFG: Record<Recurso['estado'], { label: string; color: string }> = 
   activo:                 { label: 'Activo',         color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
   en_reparacion:         { label: 'En reparación',  color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
   dado_de_baja:          { label: 'Dado de baja',   color: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400' },
-  pendiente_adquisicion: { label: 'Por adquirir',   color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  pendiente_adquisicion: { label: 'Pendiente',      color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
 }
 
 const FORM_EMPTY = {
@@ -34,7 +34,7 @@ const hoy = new Date().toISOString().split('T')[0]
 // ── Componente ────────────────────────────────────────────────────────────────
 export default function RecursosPage() {
   const { tenant, user } = useAuthStore()
-  const { applyFilter }  = useSucursalFilter()
+  const { applyFilter, sucursalId } = useSucursalFilter()
   const qc               = useQueryClient()
   const navigate         = useNavigate()
 
@@ -115,8 +115,25 @@ export default function RecursosPage() {
         const { error } = await supabase.from('recursos').update(payload).eq('id', editId)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('recursos').insert(payload)
+        const { data: nuevoRecurso, error } = await supabase
+          .from('recursos').insert(payload).select('id').single()
         if (error) throw error
+
+        // Crear gasto pendiente de pago si el recurso tiene valor y NO es "por adquirir"
+        if (payload.estado !== 'pendiente_adquisicion' && payload.valor) {
+          await supabase.from('gastos').insert({
+            tenant_id: tenant!.id,
+            recurso_id: nuevoRecurso.id,
+            descripcion: `Adquisición: ${payload.nombre}`,
+            monto: payload.valor,
+            categoria: 'Recurso',
+            fecha: payload.fecha_adquisicion ?? hoy,
+            sucursal_id: sucursalId ?? null,
+            usuario_id: user?.id,
+            notas: payload.descripcion ?? null,
+          })
+          toast('Gasto pendiente creado en Gastos → Recursos', { icon: '💼' })
+        }
       }
       logActividad({ entidad: 'recurso', entidad_id: editId ?? '', accion: editId ? 'editar' : 'crear', entidad_nombre: payload.nombre })
     },
@@ -229,8 +246,8 @@ export default function RecursosPage() {
       <div className="bg-surface rounded-xl shadow-sm overflow-hidden">
         <div className="flex items-center justify-between border-b border-border-ds px-4 flex-wrap gap-2">
           <div className="flex overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
-            {tabBtn('patrimonio', 'Patrimonio', listaPatrimonio.length)}
-            {tabBtn('adquirir',   'Por adquirir', listaAdquirir.length)}
+            {tabBtn('patrimonio', 'Recursos activos', listaPatrimonio.length)}
+            {tabBtn('adquirir',   'Recursos pendientes', listaAdquirir.length)}
           </div>
           <div className="flex items-center gap-2 py-2">
             <div className="relative">

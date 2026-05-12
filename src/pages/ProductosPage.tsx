@@ -1532,11 +1532,10 @@ export default function ProductosPage() {
                     className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio unitario <span className="text-gray-400 text-xs">(opcional)</span></label>
-                  <input type="number" min="0" value={ocPrecio} onChange={e => setOcPrecio(e.target.value)}
-                    placeholder="0"
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio unitario <span className="text-gray-400 text-xs">(basado en costo del producto)</span></label>
+                  <input type="number" min="0" value={ocPrecio} readOnly
                     onWheel={e => e.currentTarget.blur()}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-default" />
                 </div>
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500">Se agrega a la OC borrador del proveedor, o crea una nueva si no existe.</p>

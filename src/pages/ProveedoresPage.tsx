@@ -64,6 +64,8 @@ interface FormOC {
   proveedor_id: string
   fecha_esperada: string
   notas: string
+  tiene_envio: boolean
+  costo_envio: string
 }
 
 interface FormOCItem {
@@ -105,6 +107,12 @@ export default function ProveedoresPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<FormProv>(FORM_PROV_EMPTY)
 
+  // Contactos múltiples
+  type ContactoForm = { id?: string; nombre: string; puesto: string; email: string; telefono: string }
+  const CONTACTO_VACIO: ContactoForm = { nombre: '', puesto: '', email: '', telefono: '' }
+  const [contactos, setContactos] = useState<ContactoForm[]>([])
+  const [contactoEditIdx, setContactoEditIdx] = useState<number | null>(null)
+
   // ── Servicios state ────────────────────────────────────────────────────────
   const [serviciosSearch, setServiciosSearch] = useState('')
   const [expandedServId, setExpandedServId] = useState<string | null>(null)
@@ -129,7 +137,7 @@ export default function ProveedoresPage() {
   const [ocFiltroProv, setOcFiltroProv] = useState('')
   const [showOcForm, setShowOcForm] = useState(false)
   const [editOcId, setEditOcId] = useState<string | null>(null)
-  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', fecha_esperada: '', notas: '' })
+  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '' })
   const [ocItems, setOcItems] = useState<FormOCItem[]>([])
   const [expandedOc, setExpandedOc] = useState<string | null>(null)
   const [showOcDetail, setShowOcDetail] = useState<OrdenCompra | null>(null)
@@ -413,21 +421,44 @@ export default function ProveedoresPage() {
         notas: form.notas.trim() || null,
         etiquetas: etiquetasArr,
       }
+      let provId = editId
       if (editId) {
         const { error } = await supabase.from('proveedores').update(payload).eq('id', editId)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('proveedores').insert({ ...payload, tenant_id: tenant!.id })
+        const { data: newProv, error } = await supabase.from('proveedores')
+          .insert({ ...payload, tenant_id: tenant!.id })
+          .select('id').single()
         if (error) throw error
+        provId = newProv.id
+      }
+      // Guardar contactos: borrar existentes y volver a insertar
+      if (provId) {
+        await supabase.from('proveedor_contactos').delete().eq('proveedor_id', provId)
+        const contactosValidos = contactos.filter(c => c.nombre.trim())
+        if (contactosValidos.length > 0) {
+          await supabase.from('proveedor_contactos').insert(
+            contactosValidos.map(c => ({
+              tenant_id: tenant!.id,
+              proveedor_id: provId!,
+              nombre: c.nombre.trim(),
+              puesto: c.puesto.trim() || null,
+              email: c.email.trim() || null,
+              telefono: c.telefono.trim() || null,
+            }))
+          )
+        }
       }
     },
     onSuccess: () => {
       toast.success(editId ? 'Proveedor actualizado' : 'Proveedor creado')
       logActividad({ entidad: 'proveedor', entidad_nombre: form.nombre, accion: editId ? 'editar' : 'crear', pagina: '/proveedores' })
       qc.invalidateQueries({ queryKey: ['proveedores'] })
+      qc.invalidateQueries({ queryKey: ['proveedor-contactos'] })
       setShowForm(false)
       setEditId(null)
       setForm(FORM_PROV_EMPTY)
+      setContactos([])
     },
     onError: (e: any) => toast.error(e.message),
   })
@@ -648,6 +679,8 @@ export default function ProveedoresPage() {
           numero: 0,
           fecha_esperada: ocForm.fecha_esperada || null,
           notas: ocForm.notas.trim() || null,
+          tiene_envio: ocForm.tiene_envio,
+          costo_envio: ocForm.tiene_envio && ocForm.costo_envio ? parseFloat(ocForm.costo_envio) : null,
           created_by: (await supabase.auth.getUser()).data.user?.id,
         }).select('id').single()
         if (error) throw error
@@ -773,6 +806,12 @@ export default function ProveedoresPage() {
       notas: p.notas ?? '',
       etiquetas: Array.isArray(p.etiquetas) ? p.etiquetas.join(', ') : '',
     })
+    // Cargar contactos existentes del proveedor
+    supabase.from('proveedor_contactos')
+      .select('id, nombre, puesto, email, telefono')
+      .eq('proveedor_id', p.id)
+      .order('created_at')
+      .then(({ data }) => setContactos((data ?? []).map(c => ({ id: c.id, nombre: c.nombre, puesto: c.puesto ?? '', email: c.email ?? '', telefono: c.telefono ?? '' }))))
     setShowForm(true)
   }
 
@@ -780,11 +819,12 @@ export default function ProveedoresPage() {
     setShowForm(false)
     setEditId(null)
     setForm(FORM_PROV_EMPTY)
+    setContactos([])
   }
 
   const openNewOC = () => {
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '' })
+    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '' })
     setOcItems([{ _key: ++itemKey, producto_id: '', cantidad: '', precio_unitario: '', notas: '' }])
     setShowOcForm(true)
   }
@@ -799,6 +839,8 @@ export default function ProveedoresPage() {
       proveedor_id: oc.proveedor_id,
       fecha_esperada: oc.fecha_esperada ?? '',
       notas: oc.notas ?? '',
+      tiene_envio: (oc as any).tiene_envio ?? false,
+      costo_envio: (oc as any).costo_envio ? String((oc as any).costo_envio) : '',
     })
     setOcItems((data ?? []).map(it => ({
       _key: ++itemKey,
@@ -813,7 +855,7 @@ export default function ProveedoresPage() {
   const closeOcForm = () => {
     setShowOcForm(false)
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '' })
+    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '' })
     setOcItems([])
   }
 
@@ -1661,9 +1703,9 @@ export default function ProveedoresPage() {
                     ))}
                   </select>
                 </div>
-                {/* Contacto */}
+                {/* Contacto principal (legacy — único campo rápido) */}
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Contacto</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Contacto principal</label>
                   <input
                     className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
                     value={form.contacto}
@@ -1671,9 +1713,8 @@ export default function ProveedoresPage() {
                     placeholder="Nombre del contacto"
                   />
                 </div>
-                {/* Teléfono */}
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Teléfono</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Teléfono principal</label>
                   <input
                     className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
                     value={form.telefono}
@@ -1681,9 +1722,8 @@ export default function ProveedoresPage() {
                     placeholder="+54 11 1234-5678"
                   />
                 </div>
-                {/* Email */}
                 <div>
-                  <label className="block text-xs font-medium text-muted mb-1">Email</label>
+                  <label className="block text-xs font-medium text-muted mb-1">Email principal</label>
                   <input
                     type="email"
                     className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
@@ -1691,6 +1731,51 @@ export default function ProveedoresPage() {
                     onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                     placeholder="contacto@proveedor.com"
                   />
+                </div>
+
+                {/* Contactos adicionales */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold text-primary uppercase tracking-wide">Contactos adicionales</label>
+                    <button type="button"
+                      onClick={() => setContactos(prev => [...prev, { ...CONTACTO_VACIO }])}
+                      className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 font-medium">
+                      <Plus size={12} /> Agregar contacto
+                    </button>
+                  </div>
+                  {contactos.length === 0 && (
+                    <p className="text-xs text-muted italic">Sin contactos adicionales. Hacé click en "Agregar contacto" para sumar uno.</p>
+                  )}
+                  <div className="space-y-2">
+                    {contactos.map((c, idx) => (
+                      <div key={idx} className="border border-border-ds rounded-xl p-3 bg-page space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={c.nombre}
+                            onChange={e => setContactos(prev => prev.map((x, i) => i === idx ? { ...x, nombre: e.target.value } : x))}
+                            placeholder="Nombre *"
+                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                          <input value={c.puesto}
+                            onChange={e => setContactos(prev => prev.map((x, i) => i === idx ? { ...x, puesto: e.target.value } : x))}
+                            placeholder="Puesto / Cargo"
+                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                          <input value={c.email}
+                            onChange={e => setContactos(prev => prev.map((x, i) => i === idx ? { ...x, email: e.target.value } : x))}
+                            placeholder="Email"
+                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                          <input value={c.telefono}
+                            onChange={e => setContactos(prev => prev.map((x, i) => i === idx ? { ...x, telefono: e.target.value } : x))}
+                            placeholder="Teléfono"
+                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                        </div>
+                        <div className="flex justify-end">
+                          <button type="button" onClick={() => setContactos(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+                            <Trash2 size={12} /> Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 {/* Domicilio */}
                 <div className="md:col-span-2">
@@ -1813,6 +1898,31 @@ export default function ProveedoresPage() {
                     onChange={e => setOcForm(f => ({ ...f, notas: e.target.value }))}
                     placeholder="Condiciones, referencias, notas para el proveedor…"
                   />
+                </div>
+                {/* Costo de envío */}
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Costo de envío</label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setOcForm(f => ({ ...f, tiene_envio: !f.tiene_envio, costo_envio: !f.tiene_envio ? f.costo_envio : '' }))}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors
+                        ${ocForm.tiene_envio ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent/40'}`}>
+                      <Truck size={14} />
+                      {ocForm.tiene_envio ? 'Con envío' : 'Sin envío'}
+                    </button>
+                    {ocForm.tiene_envio && (
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="text-sm text-muted">$</span>
+                        <input
+                          type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
+                          value={ocForm.costo_envio}
+                          onChange={e => setOcForm(f => ({ ...f, costo_envio: e.target.value }))}
+                          placeholder="0.00"
+                          className="flex-1 px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent" />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2142,12 +2252,31 @@ export default function ProveedoresPage() {
                   {ocItemsData.some(it => it.precio_unitario != null) && (
                     <tfoot className="bg-page">
                       <tr>
-                        <td colSpan={3} className="px-3 py-2 text-right text-sm font-semibold text-primary">Total estimado</td>
+                        <td colSpan={3} className="px-3 py-2 text-right text-sm font-semibold text-primary">Subtotal productos</td>
                         <td className="px-3 py-2 text-right font-bold text-primary">
                           ${ocItemsData.reduce((s, it) => s + (it.precio_unitario != null ? it.cantidad * it.precio_unitario : 0), 0)
                             .toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                         </td>
                       </tr>
+                      {(showOcDetail as any).tiene_envio && (
+                        <tr>
+                          <td colSpan={3} className="px-3 py-2 text-right text-sm text-muted flex items-center justify-end gap-1">
+                            <Truck size={12} /> Costo envío
+                          </td>
+                          <td className="px-3 py-2 text-right text-primary">
+                            ${((showOcDetail as any).costo_envio ?? 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      )}
+                      {(showOcDetail as any).tiene_envio && (
+                        <tr className="border-t border-border-ds">
+                          <td colSpan={3} className="px-3 py-2 text-right text-sm font-semibold text-primary">Total estimado</td>
+                          <td className="px-3 py-2 text-right font-bold text-primary">
+                            ${(ocItemsData.reduce((s, it) => s + (it.precio_unitario != null ? it.cantidad * it.precio_unitario : 0), 0) + ((showOcDetail as any).costo_envio ?? 0))
+                              .toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      )}
                     </tfoot>
                   )}
                 </table>

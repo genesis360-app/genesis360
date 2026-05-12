@@ -73,7 +73,7 @@ interface CartItem {
 
 export default function VentasPage() {
   const { tenant, user } = useAuthStore()
-  const { sucursalId, applyFilter } = useSucursalFilter()
+  const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
@@ -2118,6 +2118,14 @@ export default function VentasPage() {
         <div className="grid lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-4">
 
+            {/* Aviso: sin sucursal seleccionada el inventario no está filtrado */}
+            {puedeVerTodas && sucursales.length > 0 && !sucursalId && (
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-sm text-amber-700 dark:text-amber-400">
+                <AlertTriangle size={15} className="flex-shrink-0" />
+                <span>Sin sucursal seleccionada — el inventario mostrado es de <strong>todas las sucursales</strong>. Seleccioná una desde el header para filtrar.</span>
+              </div>
+            )}
+
             {/* Buscador de productos */}
             <div className="bg-surface rounded-xl p-4 shadow-sm border border-border-ds">
               <h2 className="font-semibold text-primary mb-3 flex items-center gap-2"><ShoppingCart size={16} /> Agregar productos</h2>
@@ -2558,16 +2566,23 @@ export default function VentasPage() {
                   placeholder="Notas (opcional)"
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
                 {/* Toggle envío */}
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <div onClick={() => setRequiereEnvio(v => !v)}
-                    className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${requiereEnvio ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                <div
+                  onClick={() => setRequiereEnvio(v => !v)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 cursor-pointer transition-all select-none
+                    ${requiereEnvio ? 'border-accent bg-accent/5 dark:bg-accent/10' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
+                  <Truck size={16} className={requiereEnvio ? 'text-accent' : 'text-gray-400'} />
+                  <span className={`text-sm font-medium flex-1 ${requiereEnvio ? 'text-accent' : 'text-gray-600 dark:text-gray-400'}`}>
+                    Requiere envío
+                  </span>
+                  <div className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${requiereEnvio ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
                     <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${requiereEnvio ? 'translate-x-4' : 'translate-x-0.5'}`} />
                   </div>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">Requiere envío</span>
-                  {requiereEnvio && !clienteId && (
-                    <span className="text-xs text-amber-600 dark:text-amber-400">(necesita cliente)</span>
-                  )}
-                </label>
+                </div>
+                {requiereEnvio && !clienteId && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertTriangle size={11} /> Seleccioná un cliente para poder crear el envío automáticamente
+                  </p>
+                )}
               </div>
             )}
 

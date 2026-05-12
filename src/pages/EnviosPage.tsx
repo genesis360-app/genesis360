@@ -112,10 +112,17 @@ export default function EnviosPage() {
   const [cotAlto,      setCotAlto]      = useState('')
   const [cotizando,    setCotizando]    = useState(false)
   const [cotResultados,setCotResultados]= useState<{courier:string;servicio:string;precio:number;dias:string}[]|null>(null)
+  const [cotPrecioEdit, setCotPrecioEdit] = useState<Record<string,string>>({})
+  const [cotDiasEdit,   setCotDiasEdit]   = useState<Record<string,string>>({})
 
   // Selección de domicilio al crear envío
   const [ventaSearch, setVentaSearch]       = useState('')
   const [ventaSeleccionada, setVentaSeleccionada] = useState<any | null>(null)
+
+  // Edición inline de domicilios
+  const [editandoDomId, setEditandoDomId] = useState<string | null>(null)
+  const [showNuevoDom,  setShowNuevoDom]  = useState(false)
+  const [domForm, setDomForm] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '' })
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: envios = [], isLoading } = useQuery({
@@ -262,6 +269,60 @@ export default function EnviosPage() {
     ])
     setCotizando(false)
   }
+
+  // Usar resultado del cotizador para abrir el formulario de nuevo envío
+  const usarCotizacion = (r: { courier: string; servicio: string }) => {
+    const key = `${r.courier}-${r.servicio}`
+    const precio = cotPrecioEdit[key] ?? ''
+    const diasStr = cotDiasEdit[key] ?? ''
+    let fechaEstimada = ''
+    const diasNum = parseInt(diasStr)
+    if (!isNaN(diasNum) && diasNum > 0) {
+      const fecha = new Date()
+      fecha.setDate(fecha.getDate() + diasNum)
+      fechaEstimada = fecha.toISOString().split('T')[0]
+    }
+    setForm(f => ({
+      ...f,
+      courier: r.courier,
+      servicio: r.servicio,
+      costo_cotizado: precio,
+      fecha_entrega_acordada: fechaEstimada,
+      peso_kg: cotPeso,
+      largo_cm: cotLargo,
+      ancho_cm: cotAncho,
+      alto_cm: cotAlto,
+    }))
+    setTipoEnvio('tercero')
+    setEditId(null)
+    setVentaSeleccionada(null)
+    setShowModal(true)
+  }
+
+  // Guardar domicilio (nuevo o edición)
+  const saveDomicilio = useMutation({
+    mutationFn: async ({ id, data }: { id?: string; data: typeof domForm }) => {
+      if (id) {
+        const { error } = await supabase.from('cliente_domicilios').update(data).eq('id', id)
+        if (error) throw error
+      } else {
+        const clienteId = ventaSeleccionada?.clientes?.id
+        if (!clienteId) throw new Error('Seleccioná una venta con cliente antes de agregar una dirección')
+        const { error } = await supabase.from('cliente_domicilios').insert({
+          ...data, cliente_id: clienteId, tenant_id: tenant!.id,
+        })
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      toast.success('Dirección guardada')
+      qc.invalidateQueries({ queryKey: ['domicilios-cliente-envio'] })
+      setEditandoDomId(null)
+      setShowNuevoDom(false)
+      setDomForm({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '' })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
 
   // ── WhatsApp ─────────────────────────────────────────────────────────────────
   const abrirWhatsApp = (envio: any) => {
@@ -749,33 +810,52 @@ export default function EnviosPage() {
 
           {cotResultados && (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 shadow-sm space-y-3">
-              <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-xs text-amber-700 dark:text-amber-400">
-                <AlertTriangle size={13} />
-                <span>Las tarifas reales estarán disponibles cuando configures tus credenciales con cada courier. Por ahora mostramos los couriers disponibles para integrar.</span>
-              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Ingresá el precio y días estimados consultados en el sitio de cada courier. Luego hacé click en <strong>Usar</strong> para pre-cargar el formulario de envío.
+              </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="border-b border-gray-100 dark:border-gray-700">
                     <tr>
                       <th className="text-left py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Courier</th>
                       <th className="text-left py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Servicio</th>
-                      <th className="text-right py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Tarifa</th>
-                      <th className="text-right py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Días est.</th>
+                      <th className="py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Tarifa ($)</th>
+                      <th className="py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Días est.</th>
                       <th className="py-2" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {cotResultados.map((r, i) => (
-                      <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td className="py-3 font-medium text-gray-800 dark:text-gray-100">{r.courier}</td>
-                        <td className="py-3 text-gray-600 dark:text-gray-300">{r.servicio}</td>
-                        <td className="py-3 text-right text-gray-400 dark:text-gray-500 italic">Sin credenciales</td>
-                        <td className="py-3 text-right text-gray-400 dark:text-gray-500">—</td>
-                        <td className="py-3 pl-2">
-                          <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">Próximamente</span>
-                        </td>
-                      </tr>
-                    ))}
+                    {cotResultados.map((r, i) => {
+                      const key = `${r.courier}-${r.servicio}`
+                      return (
+                        <tr key={i}>
+                          <td className="py-2 font-medium text-gray-800 dark:text-gray-100 pr-2">{r.courier}</td>
+                          <td className="py-2 text-gray-600 dark:text-gray-300 pr-2">{r.servicio}</td>
+                          <td className="py-2 pr-2">
+                            <input type="number" onWheel={e => e.currentTarget.blur()}
+                              value={cotPrecioEdit[key] ?? ''}
+                              onChange={e => setCotPrecioEdit(prev => ({ ...prev, [key]: e.target.value }))}
+                              placeholder="0" min="0" step="0.01"
+                              className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          </td>
+                          <td className="py-2 pr-2">
+                            <input type="number" onWheel={e => e.currentTarget.blur()}
+                              value={cotDiasEdit[key] ?? ''}
+                              onChange={e => setCotDiasEdit(prev => ({ ...prev, [key]: e.target.value }))}
+                              placeholder="días" min="1" step="1"
+                              className="w-16 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          </td>
+                          <td className="py-2">
+                            <button
+                              onClick={() => usarCotizacion(r)}
+                              disabled={!cotPrecioEdit[key]}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold border-2 border-violet-500 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                              Usar
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -831,35 +911,92 @@ export default function EnviosPage() {
               {/* Domicilio de destino */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Domicilio de destino</label>
-                {(domiciliosCliente as any[]).length > 0 ? (
-                  <div className="space-y-1">
-                    {(domiciliosCliente as any[]).map((d: any) => (
-                      <label key={d.id} className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
+                <div className="space-y-1">
+                  {(domiciliosCliente as any[]).map((d: any) => (
+                    <div key={d.id}>
+                      <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
                         ${form.destino_id === d.id ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
                         <input type="radio" checked={form.destino_id === d.id}
                           onChange={() => {
                             setForm(f => ({ ...f, destino_id: d.id, destino_descripcion: `${d.calle}${d.numero ? ` ${d.numero}` : ''}${d.piso_depto ? `, ${d.piso_depto}` : ''}, ${d.ciudad ?? ''} ${d.provincia ?? ''} ${d.codigo_postal ?? ''}`.trim() }))
-                          }} className="accent-accent mt-0.5" />
-                        <div>
+                            setEditandoDomId(null)
+                          }} className="accent-accent mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
                           {d.nombre && <span className="text-xs font-semibold text-accent">{d.nombre} </span>}
                           <span className="text-sm text-gray-800 dark:text-gray-100">{d.calle}{d.numero ? ` ${d.numero}` : ''}{d.piso_depto ? `, ${d.piso_depto}` : ''}</span>
                           <p className="text-xs text-gray-500 dark:text-gray-400">{[d.ciudad, d.provincia, d.codigo_postal].filter(Boolean).join(' · ')}</p>
                         </div>
+                        <button type="button"
+                          onClick={e => { e.preventDefault(); setEditandoDomId(editandoDomId === d.id ? null : d.id); setShowNuevoDom(false) }}
+                          className="p-1 text-gray-400 hover:text-accent flex-shrink-0 transition-colors" title="Editar dirección">
+                          <Pencil size={13} />
+                        </button>
                       </label>
-                    ))}
-                    <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
-                      ${form.destino_id === '' ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
-                      <input type="radio" checked={form.destino_id === ''}
-                        onChange={() => setForm(f => ({ ...f, destino_id: '' }))} className="accent-accent" />
-                      <span className="text-sm text-gray-600 dark:text-gray-300">Ingresar domicilio manualmente</span>
-                    </label>
-                  </div>
-                ) : null}
-                {form.destino_id === '' && (
-                  <textarea value={form.destino_descripcion} onChange={e => setForm(f => ({ ...f, destino_descripcion: e.target.value }))}
-                    placeholder="Calle, número, ciudad, provincia, CP" rows={2}
-                    className="mt-2 w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                )}
+                      {/* Formulario inline de edición */}
+                      {editandoDomId === d.id && (() => {
+                        const [localDom, setLocalDom] = useState({ nombre: d.nombre ?? '', calle: d.calle ?? '', numero: d.numero ?? '', piso_depto: d.piso_depto ?? '', ciudad: d.ciudad ?? '', provincia: d.provincia ?? '', codigo_postal: d.codigo_postal ?? '' })
+                        return (
+                          <div className="mt-1 mb-1 border border-accent/30 rounded-xl p-3 bg-accent/5 space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <input value={localDom.nombre} onChange={e => setLocalDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.calle} onChange={e => setLocalDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.numero} onChange={e => setLocalDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.piso_depto} onChange={e => setLocalDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.codigo_postal} onChange={e => setLocalDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.ciudad} onChange={e => setLocalDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.provincia} onChange={e => setLocalDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              <button type="button" onClick={() => setEditandoDomId(null)} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
+                              <button type="button" onClick={() => saveDomicilio.mutate({ id: d.id, data: localDom })} disabled={!localDom.calle || saveDomicilio.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium disabled:opacity-50">{saveDomicilio.isPending ? 'Guardando…' : 'Guardar'}</button>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  ))}
+
+                  {/* Agregar nueva dirección (solo si hay cliente) */}
+                  {ventaSeleccionada?.clientes?.id && !showNuevoDom && (
+                    <button type="button" onClick={() => { setShowNuevoDom(true); setEditandoDomId(null) }}
+                      className="w-full flex items-center gap-1.5 p-2.5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-500 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors">
+                      <Plus size={14} /> Agregar nueva dirección
+                    </button>
+                  )}
+                  {showNuevoDom && (() => {
+                    const [newDom, setNewDom] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '' })
+                    return (
+                      <div className="border border-accent/30 rounded-xl p-3 bg-accent/5 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={newDom.nombre} onChange={e => setNewDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias (ej: Casa)" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.calle} onChange={e => setNewDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.numero} onChange={e => setNewDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.piso_depto} onChange={e => setNewDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.codigo_postal} onChange={e => setNewDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.ciudad} onChange={e => setNewDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.provincia} onChange={e => setNewDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <button type="button" onClick={() => setShowNuevoDom(false)} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
+                          <button type="button" onClick={() => saveDomicilio.mutate({ data: newDom })} disabled={!newDom.calle || saveDomicilio.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium disabled:opacity-50">{saveDomicilio.isPending ? 'Guardando…' : 'Guardar'}</button>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Opción manual */}
+                  <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
+                    ${form.destino_id === '' ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
+                    <input type="radio" checked={form.destino_id === ''}
+                      onChange={() => { setForm(f => ({ ...f, destino_id: '' })); setShowNuevoDom(false) }} className="accent-accent" />
+                    <span className="text-sm text-gray-600 dark:text-gray-300">Ingresar domicilio manualmente</span>
+                  </label>
+                  {form.destino_id === '' && !showNuevoDom && (
+                    <textarea value={form.destino_descripcion} onChange={e => setForm(f => ({ ...f, destino_descripcion: e.target.value }))}
+                      placeholder="Calle, número, ciudad, provincia, CP" rows={2}
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  )}
+                </div>
               </div>
 
               {/* Tipo de envío */}

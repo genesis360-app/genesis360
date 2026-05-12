@@ -1779,6 +1779,16 @@ export default function GastosPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-sm text-primary dark:text-white">OC #{oc.numero}</span>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>{badge.label}</span>
+                          {(oc as any).tiene_reembolso_pendiente && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">
+                              Reembolso pendiente
+                            </span>
+                          )}
+                          {(oc as any).es_derivada && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-medium">
+                              OC derivada
+                            </span>
+                          )}
                           {oc.estado !== 'confirmada' && (
                             <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
                               {oc.estado === 'borrador' ? 'Borrador' : oc.estado === 'enviada' ? 'Enviada' : oc.estado}

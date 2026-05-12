@@ -166,6 +166,10 @@ export interface OrdenCompra {
   created_by?: string | null
   created_at: string
   updated_at: string
+  // Migration 095
+  oc_padre_id?: string | null
+  es_derivada?: boolean
+  tiene_reembolso_pendiente?: boolean
   // joins
   proveedores?: Pick<Proveedor, 'id' | 'nombre'>
   orden_compra_items?: OrdenCompraItem[]

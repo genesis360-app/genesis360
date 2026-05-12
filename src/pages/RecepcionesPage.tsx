@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, ArrowLeft, Trash2, Search, CheckCircle, XCircle, ChevronDown, ChevronRight, Warehouse } from 'lucide-react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Plus, ArrowLeft, Trash2, Search, CheckCircle, XCircle, ChevronDown, ChevronRight, Warehouse, AlertTriangle, GitBranch, RotateCcw, X } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -9,6 +9,22 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import type { Recepcion, ProductoEstructura } from '@/lib/supabase'
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
+
+type ResultadoRecepcion = {
+  recId: string
+  numero: number
+  ocId: string | null
+  ocNumero: number | null
+  proveedorId: string | null
+  items: Array<{
+    producto_id: string
+    nombre: string
+    sku: string
+    unidad: string
+    esperado: number
+    recibido: number
+  }>
+}
 
 type FormItem = {
   _key: string
@@ -82,6 +98,12 @@ export default function RecepcionesPage() {
   const [saving, setSaving] = useState(false)
   const [expandedRec, setExpandedRec] = useState<string | null>(null)
   const [estructurasMap, setEstructurasMap] = useState<Record<string, ProductoEstructura[]>>({})
+  const [resultadoModal, setResultadoModal] = useState<ResultadoRecepcion | null>(null)
+
+  // Sincronizar sucursal activa al abrir el formulario
+  useEffect(() => {
+    setFSucursalId(sucursalCtx ?? '')
+  }, [sucursalCtx])
 
   // ── Queries ─────────────────────────────────────────────────────────────────
 
@@ -244,6 +266,39 @@ export default function RecepcionesPage() {
 
   const guardar = async (confirmar: boolean) => {
     if (items.length === 0) { toast.error('Agregá al menos un producto'); return }
+
+    if (confirmar) {
+      const errores: string[] = []
+      for (const it of items) {
+        const cant = it.tiene_series
+          ? it.series_txt.split('\n').filter(s => s.trim()).length
+          : Number(it.cantidad_recibida)
+        if (cant === 0) continue
+        if (it.tiene_lote && !it.nro_lote?.trim())
+          errores.push(`"${it.producto_nombre}" requiere número de lote`)
+        if (it.tiene_vencimiento && !it.fecha_vencimiento)
+          errores.push(`"${it.producto_nombre}" requiere fecha de vencimiento`)
+        if (it.tiene_series && !it.series_txt.trim())
+          errores.push(`"${it.producto_nombre}" requiere números de serie`)
+      }
+      if (errores.length > 0) {
+        // Auto-expandir ítems con error para que el usuario vea los campos faltantes
+        setItems(prev => prev.map(it => {
+          const cant = it.tiene_series
+            ? it.series_txt.split('\n').filter(s => s.trim()).length
+            : Number(it.cantidad_recibida)
+          if (cant === 0) return it
+          const conError =
+            (it.tiene_lote && !it.nro_lote?.trim()) ||
+            (it.tiene_vencimiento && !it.fecha_vencimiento) ||
+            (it.tiene_series && !it.series_txt.trim())
+          return conError ? { ...it, expanded: true } : it
+        }))
+        toast.error(errores[0])
+        return
+      }
+    }
+
     setSaving(true)
     try {
       const estado = confirmar ? 'confirmada' : 'borrador'
@@ -392,11 +447,33 @@ export default function RecepcionesPage() {
         }
       }
 
-      toast.success(confirmar ? `Recepción #${rec.numero} confirmada ✓` : `Borrador #${rec.numero} guardado`)
       qc.invalidateQueries({ queryKey: ['recepciones', tenant?.id] })
       setShowForm(false)
       resetForm()
-      navigate('/recepciones', { replace: true })
+
+      if (confirmar) {
+        const ocNumero = fOcId ? (ocsConfirmadas.find(oc => oc.id === fOcId)?.numero ?? null) : null
+        setResultadoModal({
+          recId: rec.id,
+          numero: rec.numero,
+          ocId: fOcId || null,
+          ocNumero: ocNumero ?? null,
+          proveedorId: fProveedorId || null,
+          items: itemsValidos.map(it => ({
+            producto_id: it.producto_id,
+            nombre: it.producto_nombre,
+            sku: it.producto_sku,
+            unidad: it.unidad_medida || 'u',
+            esperado: it.cantidad_esperada,
+            recibido: it.tiene_series
+              ? it.series_txt.split('\n').filter(s => s.trim()).length
+              : Number(it.cantidad_recibida),
+          })),
+        })
+      } else {
+        toast.success(`Borrador #${rec.numero} guardado`)
+        navigate('/recepciones', { replace: true })
+      }
     } catch (e: any) {
       toast.error(e.message ?? 'Error al guardar la recepción')
     } finally {
@@ -409,10 +486,178 @@ export default function RecepcionesPage() {
     setFNotas(''); setItems([]); setProdSearch('')
   }
 
+  const crearOCDerivada = useMutation({
+    mutationFn: async (resultado: ResultadoRecepcion) => {
+      const faltantes = resultado.items.filter(it => it.recibido < it.esperado)
+      const { data: newOC, error } = await supabase
+        .from('ordenes_compra')
+        .insert({
+          tenant_id: tenant!.id,
+          proveedor_id: resultado.proveedorId,
+          estado: 'enviada',
+          es_derivada: true,
+          oc_padre_id: resultado.ocId,
+          notas: `OC derivada de OC #${resultado.ocNumero ?? resultado.ocId} — ítems ya pagados, pendiente de entrega`,
+          created_by: user!.id,
+        })
+        .select('id, numero')
+        .single()
+      if (error) throw error
+      await supabase.from('orden_compra_items').insert(
+        faltantes.map(it => ({
+          orden_compra_id: newOC.id,
+          producto_id: it.producto_id,
+          cantidad: it.esperado - it.recibido,
+          precio_unitario: 0,
+          notas: 'Ya pagado — pendiente de entrega',
+        }))
+      )
+      return newOC.numero
+    },
+    onSuccess: (numero) => {
+      toast.success(`OC derivada #${numero} creada en Proveedores`)
+      qc.invalidateQueries({ queryKey: ['ordenes', tenant?.id] })
+      setResultadoModal(null)
+      navigate('/proveedores')
+    },
+    onError: (e: any) => toast.error(e.message ?? 'Error al crear OC derivada'),
+  })
+
+  const solicitarReembolso = useMutation({
+    mutationFn: async (ocId: string) => {
+      const { error } = await supabase
+        .from('ordenes_compra')
+        .update({ tiene_reembolso_pendiente: true })
+        .eq('id', ocId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Solicitud de reembolso registrada. Revisá Gastos → OC.')
+      qc.invalidateQueries({ queryKey: ['ordenes', tenant?.id] })
+      qc.invalidateQueries({ queryKey: ['oc-gastos', tenant?.id] })
+      setResultadoModal(null)
+      navigate('/recepciones', { replace: true })
+    },
+    onError: (e: any) => toast.error(e.message ?? 'Error al registrar reembolso'),
+  })
+
   const cancelarRecepcion = async (id: string) => {
     if (!confirm('¿Cancelar esta recepción?')) return
     await supabase.from('recepciones').update({ estado: 'cancelada' }).eq('id', id)
     qc.invalidateQueries({ queryKey: ['recepciones', tenant?.id] })
+  }
+
+  // ── Modal resultado de recepción ──────────────────────────────────────────
+
+  if (resultadoModal) {
+    const hayDiferencias = resultadoModal.ocId !== null &&
+      resultadoModal.items.some(it => it.recibido !== it.esperado)
+    const faltantes = resultadoModal.items.filter(it => it.recibido < it.esperado)
+    const sobrantes = resultadoModal.items.filter(it => it.recibido > it.esperado)
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                  <CheckCircle size={20} className="text-green-500" />
+                  Recepción #{resultadoModal.numero} confirmada
+                </h2>
+                {resultadoModal.ocNumero && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">OC #{resultadoModal.ocNumero}</p>
+                )}
+              </div>
+              <button onClick={() => { setResultadoModal(null); navigate('/recepciones', { replace: true }) }}
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Tabla comparativa */}
+            <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-900">
+                  <tr>
+                    <th className="text-left px-3 py-2 text-gray-500 font-medium">Producto</th>
+                    <th className="text-right px-3 py-2 text-gray-500 font-medium">Esperado</th>
+                    <th className="text-right px-3 py-2 text-gray-500 font-medium">Recibido</th>
+                    <th className="text-right px-3 py-2 text-gray-500 font-medium">Diferencia</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {resultadoModal.items.map((it, i) => {
+                    const diff = it.recibido - it.esperado
+                    return (
+                      <tr key={i}>
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-gray-800 dark:text-gray-100">{it.nombre}</div>
+                          <div className="text-xs text-gray-400 font-mono">{it.sku}</div>
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{it.esperado} {it.unidad}</td>
+                        <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{it.recibido} {it.unidad}</td>
+                        <td className="px-3 py-2 text-right font-semibold">
+                          {diff === 0
+                            ? <span className="text-green-600 dark:text-green-400">✓</span>
+                            : diff < 0
+                              ? <span className="text-red-600 dark:text-red-400">{diff} {it.unidad}</span>
+                              : <span className="text-amber-600 dark:text-amber-400">+{diff} {it.unidad}</span>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Acciones si hay diferencias en una OC */}
+            {hayDiferencias && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-medium text-sm">
+                  <AlertTriangle size={16} />
+                  Hay diferencias respecto a la OC. ¿Cómo querés proceder?
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {faltantes.length > 0 && (
+                    <button
+                      onClick={() => crearOCDerivada.mutate(resultadoModal)}
+                      disabled={crearOCDerivada.isPending}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border-2 border-violet-500 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-50">
+                      <GitBranch size={15} />
+                      Crear OC derivada ({faltantes.reduce((s, it) => s + (it.esperado - it.recibido), 0)} unidades faltantes)
+                    </button>
+                  )}
+                  {resultadoModal.ocId && (
+                    <button
+                      onClick={() => solicitarReembolso.mutate(resultadoModal.ocId!)}
+                      disabled={solicitarReembolso.isPending}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border-2 border-violet-500 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-50">
+                      <RotateCcw size={15} />
+                      Solicitar reembolso → Gastos OC
+                    </button>
+                  )}
+                </div>
+                {sobrantes.length > 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    ⚠ Se recibieron más unidades de las esperadas en {sobrantes.length} producto(s). Verificá con el proveedor.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => { setResultadoModal(null); navigate('/recepciones', { replace: true }) }}
+                className="px-4 py-2 rounded-lg text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600">
+                {hayDiferencias ? 'Cerrar sin acción' : 'Cerrar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // ── Render lista ──────────────────────────────────────────────────────────

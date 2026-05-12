@@ -133,6 +133,12 @@ export default function ProveedoresPage() {
   const [ocItems, setOcItems] = useState<FormOCItem[]>([])
   const [expandedOc, setExpandedOc] = useState<string | null>(null)
   const [showOcDetail, setShowOcDetail] = useState<OrdenCompra | null>(null)
+  const [ocDetailTab, setOcDetailTab] = useState<'pedido' | 'entregas' | 'diferencias'>('pedido')
+
+  const abrirOcDetail = (oc: OrdenCompra) => {
+    abrirOcDetail(oc)
+    setOcDetailTab(['recibida', 'recibida_parcial'].includes(oc.estado) ? 'diferencias' : 'pedido')
+  }
 
   // ── Proveedor CC state ─────────────────────────────────────────────────────
   const [ccProvId, setCcProvId]             = useState<string | null>(null)
@@ -322,6 +328,21 @@ export default function ProveedoresPage() {
       return (data ?? []) as OrdenCompraItem[]
     },
     enabled: !!showOcDetail,
+  })
+
+  const { data: recepcionItemsOC = [] } = useQuery({
+    queryKey: ['recepcion-items-oc', showOcDetail?.id, ocItemsData.length],
+    queryFn: async () => {
+      const itemIds = ocItemsData.map(it => it.id)
+      if (itemIds.length === 0) return []
+      const { data } = await supabase
+        .from('recepcion_items')
+        .select('*, productos(nombre, sku, unidad_medida), recepciones(numero, created_at)')
+        .in('oc_item_id', itemIds)
+      return data ?? []
+    },
+    enabled: !!showOcDetail && ocItemsData.length > 0 &&
+      ['recibida', 'recibida_parcial'].includes(showOcDetail.estado),
   })
 
   const { data: provProductos = [] } = useQuery({
@@ -653,6 +674,56 @@ export default function ProveedoresPage() {
       closeOcForm()
     },
     onError: (e: any) => toast.error(e.message),
+  })
+
+  const solicitarReembolsoOC = useMutation({
+    mutationFn: async (ocId: string) => {
+      const { error } = await supabase
+        .from('ordenes_compra').update({ tiene_reembolso_pendiente: true }).eq('id', ocId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Solicitud de reembolso registrada. Revisá Gastos → OC.')
+      qc.invalidateQueries({ queryKey: ['ordenes', tenant?.id] })
+      qc.invalidateQueries({ queryKey: ['oc-gastos', tenant?.id] })
+      if (showOcDetail) setShowOcDetail({ ...showOcDetail, tiene_reembolso_pendiente: true })
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  const crearOCDerivadaOC = useMutation({
+    mutationFn: async ({ oc, faltantes }: { oc: OrdenCompra; faltantes: Array<{ producto_id: string; cantidad: number }> }) => {
+      const { data: newOC, error } = await supabase
+        .from('ordenes_compra')
+        .insert({
+          tenant_id: tenant!.id,
+          proveedor_id: oc.proveedor_id,
+          estado: 'enviada',
+          es_derivada: true,
+          oc_padre_id: oc.id,
+          notas: `OC derivada de OC #${oc.numero} — ítems ya pagados, pendiente de entrega`,
+          created_by: user!.id,
+        })
+        .select('id, numero')
+        .single()
+      if (error) throw error
+      await supabase.from('orden_compra_items').insert(
+        faltantes.map(f => ({
+          orden_compra_id: newOC.id,
+          producto_id: f.producto_id,
+          cantidad: f.cantidad,
+          precio_unitario: 0,
+          notas: 'Ya pagado — pendiente de entrega',
+        }))
+      )
+      return newOC.numero
+    },
+    onSuccess: (numero) => {
+      toast.success(`OC derivada #${numero} creada`)
+      qc.invalidateQueries({ queryKey: ['ordenes', tenant?.id] })
+      setShowOcDetail(null)
+    },
+    onError: (e: any) => toast.error(e.message ?? 'Error al crear OC derivada'),
   })
 
   const cambiarEstadoOC = useMutation({
@@ -1422,7 +1493,7 @@ export default function ProveedoresPage() {
                       <div className="flex items-center gap-1 shrink-0">
                         {/* Ver detalle */}
                         <button
-                          onClick={() => { setShowOcDetail(oc); setExpandedOc(null) }}
+                          onClick={() => { abrirOcDetail(oc); setExpandedOc(null) }}
                           className="p-1.5 rounded text-muted hover:text-primary"
                           title="Ver detalle"
                         >
@@ -1864,15 +1935,153 @@ export default function ProveedoresPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-surface rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h2 className="text-lg font-bold text-primary">OC #{showOcDetail.numero}</h2>
+                  <h2 className="text-lg font-bold text-primary flex items-center gap-2">
+                    OC #{showOcDetail.numero}
+                    {showOcDetail.tiene_reembolso_pendiente && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">Reembolso pendiente</span>
+                    )}
+                    {showOcDetail.es_derivada && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-medium">OC derivada</span>
+                    )}
+                  </h2>
                   <p className="text-sm text-muted">{(showOcDetail as any).proveedores?.nombre}</p>
                 </div>
                 <span className={`text-sm px-3 py-1 rounded-full font-medium ${ESTADO_OC_COLOR[showOcDetail.estado as EstadoOC]}`}>
                   {ESTADO_OC_LABEL[showOcDetail.estado as EstadoOC]}
                 </span>
               </div>
+
+              {/* Tabs — visibles cuando hay recepciones */}
+              {['recibida', 'recibida_parcial'].includes(showOcDetail.estado) && (() => {
+                const diferenciasOC = ocItemsData.map(item => {
+                  const totalRecibido = (recepcionItemsOC as any[])
+                    .filter(ri => ri.oc_item_id === item.id)
+                    .reduce((sum: number, ri: any) => sum + (ri.cantidad_recibida || 0), 0)
+                  return {
+                    producto_id: item.producto_id,
+                    nombre: (item as any).productos?.nombre ?? '—',
+                    sku: (item as any).productos?.sku ?? '—',
+                    unidad: (item as any).productos?.unidad_medida ?? 'u',
+                    esperado: item.cantidad,
+                    recibido: totalRecibido,
+                    diferencia: totalRecibido - item.cantidad,
+                  }
+                })
+                const hayDiferencias = diferenciasOC.some(d => d.diferencia !== 0)
+
+                return (
+                  <>
+                    <div className="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+                      {(['pedido', 'entregas', 'diferencias'] as const).map(t => (
+                        <button key={t} onClick={() => setOcDetailTab(t)}
+                          className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+                            ${ocDetailTab === t ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-muted hover:text-primary'}`}>
+                          {t === 'pedido' ? 'Pedido' : t === 'entregas' ? 'Entregado' : `Diferencias${hayDiferencias ? ' ⚠' : ''}`}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Tab Entregado */}
+                    {ocDetailTab === 'entregas' && (
+                      <div className="border border-border-ds rounded-xl overflow-hidden mb-4">
+                        <table className="w-full text-sm">
+                          <thead className="bg-page">
+                            <tr>
+                              <th className="text-left px-3 py-2 text-muted font-medium">Producto</th>
+                              <th className="text-right px-3 py-2 text-muted font-medium">Recibido</th>
+                              <th className="text-right px-3 py-2 text-muted font-medium">Recepción</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                            {(recepcionItemsOC as any[]).map((ri, i) => (
+                              <tr key={i}>
+                                <td className="px-3 py-2 text-primary">
+                                  <div>{ri.productos?.nombre}</div>
+                                  <div className="text-xs text-muted font-mono">{ri.productos?.sku}</div>
+                                </td>
+                                <td className="px-3 py-2 text-right text-primary">{ri.cantidad_recibida} {ri.productos?.unidad_medida}</td>
+                                <td className="px-3 py-2 text-right text-muted text-xs">
+                                  #{ri.recepciones?.numero} · {new Date(ri.recepciones?.created_at).toLocaleDateString('es-AR')}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Tab Diferencias */}
+                    {ocDetailTab === 'diferencias' && (
+                      <div className="space-y-3 mb-4">
+                        <div className="border border-border-ds rounded-xl overflow-hidden">
+                          <table className="w-full text-sm">
+                            <thead className="bg-page">
+                              <tr>
+                                <th className="text-left px-3 py-2 text-muted font-medium">Producto</th>
+                                <th className="text-right px-3 py-2 text-muted font-medium">Esperado</th>
+                                <th className="text-right px-3 py-2 text-muted font-medium">Recibido</th>
+                                <th className="text-right px-3 py-2 text-muted font-medium">Diferencia</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                              {diferenciasOC.map((d, i) => (
+                                <tr key={i} className={d.diferencia !== 0 ? 'bg-red-50/50 dark:bg-red-900/10' : ''}>
+                                  <td className="px-3 py-2 text-primary">
+                                    <div>{d.nombre}</div>
+                                    <div className="text-xs text-muted font-mono">{d.sku}</div>
+                                  </td>
+                                  <td className="px-3 py-2 text-right text-muted">{d.esperado} {d.unidad}</td>
+                                  <td className="px-3 py-2 text-right text-primary">{d.recibido} {d.unidad}</td>
+                                  <td className="px-3 py-2 text-right font-semibold">
+                                    {d.diferencia === 0
+                                      ? <span className="text-green-600 dark:text-green-400">✓</span>
+                                      : d.diferencia < 0
+                                        ? <span className="text-red-600 dark:text-red-400">{d.diferencia} {d.unidad}</span>
+                                        : <span className="text-amber-600 dark:text-amber-400">+{d.diferencia} {d.unidad}</span>
+                                    }
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {hayDiferencias && (
+                          <div className="flex flex-wrap gap-2">
+                            {diferenciasOC.some(d => d.diferencia < 0) && !showOcDetail.tiene_reembolso_pendiente && (
+                              <button
+                                onClick={() => solicitarReembolsoOC.mutate(showOcDetail.id)}
+                                disabled={solicitarReembolsoOC.isPending}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border-2 border-violet-500 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-50">
+                                Solicitar reembolso → Gastos OC
+                              </button>
+                            )}
+                            {diferenciasOC.some(d => d.diferencia < 0) && (
+                              <button
+                                onClick={() => crearOCDerivadaOC.mutate({
+                                  oc: showOcDetail,
+                                  faltantes: diferenciasOC.filter(d => d.diferencia < 0).map(d => ({
+                                    producto_id: d.producto_id,
+                                    cantidad: Math.abs(d.diferencia),
+                                  })),
+                                })}
+                                disabled={crearOCDerivadaOC.isPending}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border-2 border-violet-500 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-50">
+                                Crear OC derivada (entrega pendiente)
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {!hayDiferencias && (
+                          <p className="text-sm text-green-600 dark:text-green-400 text-center py-2">✓ Sin diferencias — recepción completa</p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
 
               {/* Info */}
               <div className="grid grid-cols-2 gap-3 mb-4 text-sm">

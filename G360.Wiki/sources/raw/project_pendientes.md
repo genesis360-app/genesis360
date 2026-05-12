@@ -8,131 +8,181 @@ type: project
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
-## Estado actual (al cierre de sesión 2026-05-08 — v1.8.5)
+---
 
-- APP_VERSION: `v1.8.5` (DEV)
-- Migrations DEV: 001–094 ✅ (093: ordenes_compra.sucursal_id · 094: users.sucursal_id + puede_ver_todas)
-- Migrations PROD: 001–092 ✅ (093–094 pendientes para deploy v1.8.5)
-- Multi-sucursal: TODOS los módulos operativos filtran por sucursal ✅
-- Permisos por usuario: puedeVerTodas en authStore + controls en UsuariosPage ✅
-- Fix: rol ADMIN visible en UsuariosPage (faltaba en mapa local de roles) ✅
-- Docs: app-reference.md completo y corregido (Estructuras, Inventario 7 tabs, Kits vs Combos) ✅
+## Estado actual DEV — v1.8.6 (al cierre de sesión 2026-05-12)
 
-## Estado original (cierre 2026-05-08)
-
-- Migrations DEV: 001–092 ✅
-- Migrations PROD: 001–092 ✅
-- APP_VERSION en brand.ts: `v1.8.4`
-- pg_cron activo DEV+PROD: `tn-stock-sync` + `meli-stock-sync` cada 5 min + `notif-cc-vencidas` diario 09:00 AR
-- Edge Functions DEV: agrega `ai-assistant` (Groq/Llama 3.1, GROQ_API_KEY configurada en DEV ✅)
-- Edge Functions PROD: `data-api` · `emitir-factura` · `send-email` · `tn-stock-worker` (falta `ai-assistant`)
-- Sentry activo en PROD ✅
-- Supabase Security Advisor: 7 warnings aceptados by design ✅
+- APP_VERSION: `v1.8.6` en `src/config/brand.ts`
+- Migrations DEV: 001–098 ✅
+- Migrations PROD: 001–092 ✅ (093–098 pendientes — aplicar al deployar v1.8.6)
+- Edge Functions DEV: todas activas (invite-user, cancel-suscripcion nuevas en esta sesión)
+- Edge Functions PROD: desactualizadas (falta invite-user, cancel-suscripcion, ai-assistant)
+- GROQ_API_KEY: DEV ✅ · PROD ❌
 
 ---
 
-## Lo producido en sesión 2026-05-07/08 (en DEV — v1.8.4 pendiente PR → PROD)
+## Migrations resumen (093–098) — pendientes en PROD
 
-- **Multi-sucursal filtrado estricto**: `useSucursalFilter` → `.eq()` estricto. Opción "Todas las sucursales" en header. Sentinel `__global__` en localStorage.
-- **OC → Gasto automático**: migration 090 (`recepcion_id` en gastos) + RecepcionesPage crea gasto al confirmar.
-- **Notificaciones CC vencidas**: migration 091 + `fn_notificar_cc_vencidas()` + pg_cron 09:00 AR.
-- **Productos — precios mayoristas**: migration 092 (`producto_precios_mayorista`) + toggle tiers en ProductoFormPage.
-- **Productos — mass update expandido**: bulk precio (% o fijo), proveedor, reactivar.
-- **Asistente IA en header**: EF `ai-assistant` (Groq free tier) + `AiAssistant.tsx` + template bug_report en send-email.
-- **Roadmap APIs documentado**: 6 fases en `wiki/integrations/roadmap-apis.md` (pausado, listo para retomar).
+| # | Archivo | Descripción |
+|---|---------|-------------|
+| 093 | `093_ordenes_compra_sucursal.sql` | `ordenes_compra.sucursal_id` |
+| 094 | `094_users_sucursal_permisos.sql` | `users.sucursal_id` + `puede_ver_todas` + índice |
+| 095 | `095_oc_derivadas_reembolso.sql` | `ordenes_compra.oc_padre_id/es_derivada/tiene_reembolso_pendiente` |
+| 096 | `096_oc_costo_envio_contactos_proveedor.sql` | `ordenes_compra.tiene_envio/costo_envio` + tabla `proveedor_contactos` |
+| 097 | `097_gastos_recurso_cuotas.sql` | `gastos.recurso_id/es_cuota/cuotas_total/monto_cuota/tasa_interes` + tabla `gasto_cuotas` |
+| 098 | `098_ventas_costo_envio.sql` | `ventas.costo_envio` |
 
 ---
 
-## Para mañana — prioridad 1 (arrancar por acá)
+## Lo producido en esta sesión (v1.8.6 DEV)
 
-### 1. Deploy v1.8.4 a PROD
-Antes de cualquier otra cosa:
-- PR `dev → main` v1.8.4
-- Deploy EF `ai-assistant` en PROD
-- **Configurar secret `GROQ_API_KEY` en PROD** (project `jjffnbrdjchquexdfgwq`) — sin esto el asistente no funciona en PROD
-- GitHub release v1.8.4
+### Roles y usuarios
+- Rol ADMIN de tenant renombrado a **SUPER_USUARIO** (ADMIN queda solo para admin de plataforma)
+- EF `invite-user` deployada en DEV (faltaba) — agrega SUPER_USUARIO a roles permitidos
+- EF `cancel-suscripcion` creada y deployada — cancela preapproval en MP + actualiza tenant
+- MiCuentaPage: botón "Cancelar suscripción" (solo OWNER con plan activo)
 
-### 2. Mejora asistente IA — system prompt preciso
-El prompt actual describe la UI de manera genérica e incorrecta. Reescribir con:
-- Navegación: **sidebar izquierdo** (no "barra superior"). Ítems: Dashboard, Inventario, Productos, Ventas, Clientes, Proveedores, Recepciones, Gastos, Caja, Envíos, Recursos, Configuración.
-- Nombres exactos de botones por módulo (ej: "Agregar Stock" no "Ingresar", "Nueva venta" no "Crear venta")
-- Ubicación real de acciones (esquina superior derecha del listado, panel expandido, modal, etc.)
-- A futuro: evaluar inyectar screenshots como contexto visual
+### Recepciones
+- Bug fix: detalle expandido ahora carga `recepcion_items` (antes no mostraba nada)
+- Validaciones: `tiene_lote`, `tiene_vencimiento`, `tiene_series` antes de confirmar — auto-expande ítem con error
+- Sucursal predeterminada sincronizada con header al abrir formulario
+- Modal de resultado post-confirmación: tabla Esperado/Recibido/Diferencia
+- Botones violeta: "Crear OC derivada" (oc_padre_id, precio_unitario=0) y "Solicitar reembolso → Gastos OC"
 
-### 3. Multi-sucursal — expandir filtro a todos los módulos operativos ✅ COMPLETO
-**Regla**: catálogo base (productos, categorías, proveedores) = global. Todo lo operativo = filtra por sucursal activa.
+### Permisos multi-sucursal por usuario
+- `users.sucursal_id` + `users.puede_ver_todas` (migration 094)
+- authStore: `puedeVerTodas` — OWNER/ADMIN hardcoded global; resto desde DB
+- Usuarios restringidos quedan bloqueados a su sucursal al loguearse
+- AppLayout: selector visible solo para `puedeVerTodas`; restringidos ven nombre fijo
+- UsuariosPage: toggle Globe + selector sucursal inline; updateRol auto-actualiza `puede_ver_todas`
 
-| Módulo | Estado | Qué hacer |
-|---|---|---|
-| InventarioPage | ✅ | — |
-| MovimientosPage | ✅ | — |
-| VentasPage | ✅ | — |
-| GastosPage | ✅ | — |
-| CajaPage | ✅ | — |
-| **ProductosPage — stock crítico** | ✅ | `applyFilter` en query de `inventario_lineas` — badge y disponible filtran por sucursal. |
-| **RecepcionesPage — listado** | ✅ | `applyFilter` en query del listado. |
-| **EnviosPage — listado** | ✅ | Ya tenía `applyFilter` correctamente implementado. |
-| **RecursosPage — listado** | ✅ | Ya tenía `applyFilter` correctamente implementado. |
-| Notificaciones campana | — | Evaluar si alertas de stock deben filtrarse por sucursal del user |
-| RRHH | — | Verificar si existe módulo y si tiene `sucursal_id` |
+### Caja
+- Historial tab excluye sesiones de caja fuerte
+- "Ingresar a Caja Fuerte": sin restricción de sesión activa (ingreso externo para OWNER)
+- "Enviar a Caja": selector de caja destino (antes fijo en la caja activa)
+- Historial en tab Caja Fuerte: ingresos + egresos coloreados
+- CAJERO: botón "Caja Fuerte" → crea solicitud de notificación para OWNER/SUPERVISOR
 
-Ver detalle en `wiki/features/multi-sucursal.md`.
+### Inventario
+- Historial de conteos: muestra quién hizo el conteo (`created_by`)
+- Bulk actions en LPNs: barra desde 1 LPN — "Cambiar estado" + "Cambiar ubicación" (cross-producto)
+- "Combinar" solo aparece si todos los LPNs son del mismo producto
+
+### Envíos
+- Cotizador: tabla con inputs de precio+días por courier; botón "Usar" pre-carga el formulario
+- Domicilios cliente: edición inline por tarjeta + agregar nueva dirección inline (guarda en `cliente_domicilios`)
+
+### Ventas
+- Aviso visible cuando no hay sucursal seleccionada (inventario no filtrado)
+- Toggle "Incluir envío" expandible con:
+  - Tipo: monto fijo ($) o por KM (km × $/km → auto-calcula)
+  - Dirección de entrega + botón 🗺 abre Google Maps con ruta
+  - Costo aparece en totales como línea separada + suma al total a pagar
+  - `ventas.costo_envio` guardado en DB; envío creado con destino y costo
+
+### Productos
+- Modal OC rápida: precio unitario read-only (antes era editable)
+
+### Proveedores / OC
+- OC: toggle "Con envío / Sin envío" + campo monto; detalle muestra subtotal+envío+total
+- Contactos múltiples: sección "Contactos adicionales" en form — CRUD inline (nombre, puesto, email, teléfono)
+- Tabla `proveedor_contactos` con RLS
+
+### Recursos
+- Tab "Patrimonio" → **"Recursos activos"**; tab "Por adquirir" → **"Recursos pendientes"**
+- Al crear recurso con valor > 0 (y no pendiente_adquisicion): crea gasto automático en GastosPage tab Recursos
+- Recursos activos: aplica filtro de sucursal activa
+
+### Gastos
+- Nueva tab **"Recursos"**: muestra gastos con `recurso_id`. Botón "Marcar como recibido" → recurso.estado = 'activo'
+- **Cuotas con tarjeta de crédito**: toggle + selector de cuotas (2/3/6/9/12/18/24) + tasa de interés % + cálculo automático del monto por cuota. Genera N registros en `gasto_cuotas` con vencimientos mensuales.
+
+### Documentación
+- `app-reference.md`: revisión completa (7 tabs inventario, Estructuras ≠ combos, Kit vs Combo vs Estructura)
+- `CLAUDE.md`: regla wiki-first para preguntas generales
+- Roles en docs actualizados a SUPER_USUARIO
+
+---
+
+## Para la próxima sesión — prioridad 1
+
+### 1. Deploy v1.8.6 a PROD
+Checklist completo:
+- [ ] PR `dev → main` con título `v1.8.6 — Descripción resumen`
+- [ ] Aplicar migrations 093–098 en PROD (`jjffnbrdjchquexdfgwq`)
+- [ ] Deploy EF `invite-user` en PROD
+- [ ] Deploy EF `cancel-suscripcion` en PROD
+- [ ] Deploy EF `ai-assistant` en PROD
+- [ ] Configurar secret `GROQ_API_KEY` en PROD
+- [ ] GitHub release v1.8.6
+- [ ] Bump APP_VERSION a v1.8.7 en dev
+
+### 2. Mejora system prompt asistente IA
+- Sidebar izquierdo con los 20 ítems reales en orden correcto
+- Nombres exactos de botones por módulo
+- Ver `wiki/features/...` para contexto de cada módulo
 
 ---
 
 ## Backlog — próximas sesiones
 
-### Media prioridad
-- **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas, form bug-report
+### Pendientes de módulos trabajados esta sesión
+- **Ventas → Envíos**: bloquear ventas que ya tienen envío asignado en el selector de nuevos envíos
+- **Envíos proveedor logístico**: mejorar la UI del cotizador (Andreani/OCA) cuando haya APIs disponibles
+- **GS1 Argentina**: integrar en `scan-product` EF cuando el usuario tenga credenciales (gepir.gs1.org — gestionar acceso en gs1ar.org)
+- **Caja fuerte — solicitudes CAJERO**: implementar flujo de aprobación real (ahora solo genera notificación; OWNER debe ejecutar manualmente)
 
-### Roadmap APIs (pausado — ver `wiki/integrations/roadmap-apis.md`)
-- **Fase 1**: MELI rentabilidad neta · MP conciliación automática · TN BOM combos · AFIP autocomplete CUIT · MELI repricing
-- **Fase 2**: PagoNube + EnvíoNube (operaciones propias + checkout TiendaNube)
-- **Fase 3**: Logística directa (Andreani/OCA) — rate shopping, etiquetas, RMA
-- **Fase 4**: MELI Ads — ACOS, auto-pausado por margen
-- **Fase 5**: Meta Ads + POAS + GA4 (posicionamiento futuro)
-- **Fase 6**: WhatsApp Cloud API (espera WABA) + Brevo/Klaviyo RFM
-
-### Backlog técnico
-- WMS Fase 3 — `wms_tareas` (putaway/picking/replenishment) + listas de picking con ruta óptima
+### Backlog general
+- **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas
+- **Roadmap APIs** (pausado — ver `wiki/integrations/roadmap-apis.md`)
+- **WMS Fase 3** — `wms_tareas` (putaway/picking/replenishment)
 
 ### Pendiente manual (no código)
 - Verificar genesis360.pro en Resend → cambiar FROM a `noreply@genesis360.pro`
 - Cargar créditos en console.anthropic.com para `scan-product` (Claude Haiku ~$0.0003/img)
 - Constitución empresa → CUIT activo (bloquea AFIP en PROD real)
 - Google Ads Standard Token (proceso largo)
+- Iniciar proceso de membresía GS1 Argentina (gs1ar.org) para lookup de barcodes nacionales
 
 ---
 
 ## Referencias técnicas clave
 
-### Migrations relevantes
-- 083: `clientes.cuenta_corriente_habilitada` + `ventas.es_cuenta_corriente`
-- 084: tabla `notificaciones` + caja_sesiones mejoras + Caja Fuerte
-- 085: ordenes_compra pagos + proveedores CC + `proveedor_cc_movimientos`
-- 086+086b: security hardening → 80→7 warnings
-- 087: `api_keys` — API pull externa
-- 088: NC electrónicas en `devoluciones`
-- 089: `recursos` — patrimonio del negocio
-- 090: `gastos.recepcion_id` — trazabilidad OC→Gasto
-- 091: `fn_notificar_cc_vencidas()` + pg_cron diario
-- 092: `producto_precios_mayorista` — tiers precio mayorista
+### Edge Functions DEV (activas)
+| EF | Auth | Descripción |
+|---|---|---|
+| `invite-user` | JWT-less | Invita usuario, crea perfil. Roles: OWNER, SUPER_USUARIO, ADMIN |
+| `cancel-suscripcion` | JWT | PATCH preapproval MP + actualiza tenant |
+| `ai-assistant` | JWT-less | Groq/Llama 3.1 — chat + bug report |
+| `scan-product` | JWT-less | Claude Haiku + Open Food Facts — escaneo foto producto |
+| `send-email` | JWT | Resend — invitaciones + bug reports |
+| `emitir-factura` | JWT | AFIP factura electrónica |
+| `crear-suscripcion` | JWT-less | MP preapproval |
+| `mp-webhook` | JWT-less | Webhooks MP |
+| `data-api` | JWT | API pull externa |
+| `tn-stock-worker` | JWT-less | Sync stock TiendaNube |
+| `meli-stock-worker` | JWT-less | Sync stock MercadoLibre |
 
-### Multi-sucursal — estado actual del código
-- `useSucursalFilter.applyFilter`: `.eq('sucursal_id', sucursalId)` estricto ✅
-- `authStore`: `sucursalId: string | null` — null = vista global. Sentinel `'__global__'` en localStorage ✅
-- Tablas con `sucursal_id`: inventario_lineas, movimientos_stock, ventas, caja_sesiones, gastos, clientes, recepciones, recursos, envios (verificar)
-- Filtro PENDIENTE en: ProductosPage (stock crítico), RecepcionesPage, EnviosPage, RecursosPage
-
-### Asistente IA
-- EF `ai-assistant`: Groq API, modelo `llama-3.1-8b-instant`, auth JWT, free tier 14.400 req/día
-- Secret `GROQ_API_KEY`: DEV ✅ · PROD ❌ (configurar al deployar v1.8.4)
-- Componente: `src/components/AiAssistant.tsx` — panel chat, acciones rápidas, flujo bug report
-- Mejora pendiente: reescribir system prompt con mapa exacto de UI (sidebar, botones literales)
+### Roles del sistema
+| Rol | `puedeVerTodas` | Acceso |
+|-----|----------------|--------|
+| OWNER | Siempre sí | Total |
+| ADMIN | Siempre sí | Solo plataforma (`/admin`) |
+| SUPER_USUARIO | Sí por DB | Igual que OWNER dentro del tenant |
+| SUPERVISOR | Sí por DB | Sin config/usuarios |
+| CONTADOR | Sí por DB | Dashboard/gastos/reportes |
+| CAJERO | No | Solo ventas/caja/clientes |
+| DEPOSITO | No | Solo inventario/productos |
+| RRHH | No | Solo módulo RRHH |
 
 ### Supabase projects
 - PROD: `jjffnbrdjchquexdfgwq`
 - DEV: `gcmhzdedrkmmzfzfveig` · Tenant dev: `5f05f3eb-6757-4f60-b9d2-8853fdfae806`
+
+### pg_cron activo DEV+PROD
+- `tn-stock-sync`: cada 5 min
+- `meli-stock-sync`: cada 5 min
+- `notif-cc-vencidas`: diario 09:00 AR
 
 ### PDF Factura QR AFIP (RG 4291)
 - `src/lib/facturasPDF.ts`: QR = `btoa(JSON.stringify(payload))` → `https://www.afip.gob.ar/fe/qr/?p=<base64>`

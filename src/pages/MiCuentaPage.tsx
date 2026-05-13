@@ -40,7 +40,7 @@ export default function MiCuentaPage() {
   }, [])
 
   const isGoogleUser = provider === 'google'
-  const isOwner = user?.rol === 'OWNER'
+  const isOwner = user?.rol === 'DUEÑO'
 
   const planLabel = () => {
     const p = limits?.plan_id
@@ -113,7 +113,7 @@ export default function MiCuentaPage() {
     }
   }
 
-  // ── Leave tenant (non-OWNER) ───────────────────────────────────────────────
+  // ── Leave tenant (no es Dueño) ──────────────────────────────────────────────
   const handleLeave = async () => {
     if (!user) return
     setDeleting(true)
@@ -155,7 +155,7 @@ export default function MiCuentaPage() {
     }
   }
 
-  // ── Delete account (OWNER) ─────────────────────────────────────────────────
+  // ── Delete account (Dueño) ──────────────────────────────────────────────────
   const handleDeleteAccount = async () => {
     if (!user || !tenant) return
     if (confirmText !== tenant.nombre) { toast.error(`Escribí exactamente: ${tenant.nombre}`); return }
@@ -310,7 +310,7 @@ export default function MiCuentaPage() {
               </button>
             </div>
 
-            {/* Non-OWNER: salir del negocio */}
+            {/* No es Dueño: salir del negocio */}
             {!isOwner && (
               <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
                 <p className="text-sm font-medium text-red-700 dark:text-red-400">Salir de "{tenant?.nombre}"</p>
@@ -327,7 +327,7 @@ export default function MiCuentaPage() {
               </div>
             )}
 
-            {/* OWNER: eliminar cuenta completa */}
+            {/* Dueño: eliminar cuenta completa */}
             {isOwner && (
               <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
                 <p className="text-sm font-medium text-red-700 dark:text-red-400">Eliminar cuenta y negocio</p>

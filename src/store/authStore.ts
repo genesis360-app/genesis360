@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { supabase, type User, type Tenant, type Sucursal } from '@/lib/supabase'
 
 // Roles que siempre tienen visión global (no pueden ser restringidos a sucursal)
-const ROLES_SIEMPRE_GLOBALES = ['OWNER', 'SUPER_USUARIO']
+const ROLES_SIEMPRE_GLOBALES = ['DUEÑO', 'SUPER_USUARIO']
 
 interface AuthState {
   user: User | null
@@ -74,7 +74,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 		const validSucursalId = savedRaw === '__global__' ? null
 		  : (savedRaw && ids.includes(savedRaw) ? savedRaw : null)
 
-		// Permisos de vista global: OWNER y ADMIN siempre, resto según DB
+		// Permisos de vista global: DUEÑO y ADMIN siempre, resto según DB
 		const puedeVerTodas = ROLES_SIEMPRE_GLOBALES.includes(userData.rol) || !!userData.puede_ver_todas
 
 		// Usuarios sin vista global quedan bloqueados a su sucursal asignada (ignora localStorage)

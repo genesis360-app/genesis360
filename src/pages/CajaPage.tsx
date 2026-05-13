@@ -323,7 +323,7 @@ export default function CajaPage() {
   // Multi-usuario: quién abrió la sesión
   const abrioNombre = (sesionActiva as any)?.abrio?.nombre_display ?? null
   const esOtroUsuario = !!sesionActiva && sesionActiva.usuario_id !== user?.id
-  const puedeAdministrarCaja = user?.rol === 'OWNER' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
+  const puedeAdministrarCaja = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
   // B2: CAJERO puede abrir 1 caja, pero no más de una simultáneamente
   const puedeAbrirCaja = puedeAdministrarCaja || misSesionesAbiertas.length === 0
   // CAJERO no puede ver el contenido de cajas abiertas por otro usuario
@@ -369,7 +369,7 @@ export default function CajaPage() {
         const { data: supervisores } = await supabase.from('users')
           .select('id, email, nombre_display')
           .eq('tenant_id', tenant!.id)
-          .in('rol', ['OWNER', 'SUPERVISOR', 'SUPER_USUARIO'])
+          .in('rol', ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'])
         if (supervisores?.length) {
           const difStr = difApertura > 0 ? `+$${Math.abs(difApertura).toLocaleString('es-AR')}` : `-$${Math.abs(difApertura).toLocaleString('es-AR')}`
           const titulo = `⚠ Diferencia al abrir ${cajaActual?.nombre ?? 'caja'}`
@@ -596,7 +596,7 @@ export default function CajaPage() {
       const { data: supervisores, error: eS } = await supabase.from('users')
         .select('id')
         .eq('tenant_id', tenant!.id)
-        .in('rol', ['OWNER', 'SUPERVISOR', 'SUPER_USUARIO'])
+        .in('rol', ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'])
       if (eS) throw eS
       if (!supervisores?.length) throw new Error('No hay supervisores para aprobar la solicitud')
 
@@ -749,7 +749,7 @@ export default function CajaPage() {
 
       {/* Tabs */}
       {(() => {
-        const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['OWNER','SUPERVISOR','SUPER_USUARIO']
+        const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO','SUPERVISOR','SUPER_USUARIO']
         const puedeCajaFuerte = !!user?.rol && cajaFuerteRoles.includes(user.rol)
         const tabs = [
           { id: 'caja', label: 'Caja actual', visible: true },
@@ -989,7 +989,7 @@ export default function CajaPage() {
                   <CheckCircle size={16} />
                 </button>
                 {cajaFuerte && (() => {
-                  const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['OWNER','SUPERVISOR','SUPER_USUARIO']
+                  const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO','SUPERVISOR','SUPER_USUARIO']
                   return cajaFuerteRoles.includes(user?.rol ?? '') ? (
                     <button onClick={() => setShowDepositoFuerte(true)}
                       title="Depositar en Caja Fuerte"
@@ -1483,7 +1483,7 @@ export default function CajaPage() {
         </div>
       )}
 
-      {/* ── CONFIGURACIÓN (solo OWNER/SUPERVISOR/ADMIN) ── */}
+      {/* ── CONFIGURACIÓN (solo Dueño/Supervisor/Admin) ── */}
       {tab === 'configuracion' && puedeAdministrarCaja && (
         <div className="space-y-4">
           {/* Cajas operativas */}
@@ -1553,15 +1553,15 @@ export default function CajaPage() {
           {/* Roles que pueden ver la Caja Fuerte */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Acceso a Caja Fuerte / Bóveda</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">OWNER, SUPERVISOR y ADMIN siempre tienen acceso. Podés habilitar otros roles.</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Dueño, Supervisor y Admin siempre tienen acceso. Podés habilitar otros roles.</p>
             <div className="space-y-2">
               {['CAJERO', 'CONTADOR', 'DEPOSITO', 'RRHH'].map(rol => {
-                const roles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['OWNER','SUPERVISOR','SUPER_USUARIO']
+                const roles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO','SUPERVISOR','SUPER_USUARIO']
                 const enabled = roles.includes(rol)
                 return (
                   <label key={rol} className="flex items-center gap-3 cursor-pointer">
                     <div onClick={async () => {
-                      const current: string[] = (tenant as any)?.caja_fuerte_roles ?? ['OWNER','SUPERVISOR','SUPER_USUARIO']
+                      const current: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO','SUPERVISOR','SUPER_USUARIO']
                       const updated = enabled ? current.filter(r => r !== rol) : [...current, rol]
                       await supabase.from('tenants').update({ caja_fuerte_roles: updated }).eq('id', tenant!.id)
                       // Reload tenant data

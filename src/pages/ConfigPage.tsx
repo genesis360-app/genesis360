@@ -293,7 +293,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
 
 function MarketplaceSection() {
   const { tenant, user, setTenant } = useAuthStore()
-  const canEdit = user?.rol === 'OWNER'
+  const canEdit = user?.rol === 'DUEÑO'
   const [activo, setActivo] = useState(tenant?.marketplace_activo ?? false)
   const [webhookUrl, setWebhookUrl] = useState(tenant?.marketplace_webhook_url ?? '')
   const [saving, setSaving] = useState(false)
@@ -376,7 +376,7 @@ export default function ConfigPage() {
   const [estadosSubTab, setEstadosSubTab] = useState<EstadosSubTab>('estados')
   const { tenant, user, setTenant, sucursales } = useAuthStore()
   const qc = useQueryClient()
-  const canEdit = user?.rol === 'OWNER'
+  const canEdit = user?.rol === 'DUEÑO'
 
   // Mostrar resultado de OAuth al volver del redirect
   useState(() => {
@@ -2945,7 +2945,7 @@ export default function ConfigPage() {
       )}
 
       {tab === 'api' && (
-        <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'OWNER' || user?.rol === 'SUPER_USUARIO'} />
+        <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'DUEÑO' || user?.rol === 'SUPER_USUARIO'} />
       )}
 
         </div>{/* end content column */}

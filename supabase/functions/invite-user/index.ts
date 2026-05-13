@@ -38,7 +38,7 @@ serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     })
 
-    // Verificar que el llamador es OWNER o ADMIN del mismo tenant
+    // Verificar que el llamador es DUEÑO o ADMIN del mismo tenant
     const { data: callerProfile } = await supabaseAdmin
       .from('users')
       .select('rol, tenant_id')
@@ -48,7 +48,7 @@ serve(async (req) => {
     if (
       !callerProfile ||
       callerProfile.tenant_id !== tenant_id ||
-      !['OWNER', 'ADMIN'].includes(callerProfile.rol)
+      !['DUEÑO', 'ADMIN'].includes(callerProfile.rol)
     ) {
       throw new Error('No tenés permisos para invitar usuarios a este negocio')
     }

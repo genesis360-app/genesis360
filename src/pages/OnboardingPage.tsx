@@ -97,13 +97,13 @@ export default function OnboardingPage() {
         })
       if (tenantError) throw tenantError
 
-      // 3. Crear perfil de usuario con rol OWNER
+      // 3. Crear perfil de usuario con rol DUEÑO
       const { error: userError } = await supabase
         .from('users')
         .insert({
           id: userId,
           tenant_id: tenantId,
-          rol: 'OWNER',
+          rol: 'DUEÑO',
           nombre_display: displayName,
           activo: true,
         })

@@ -95,7 +95,7 @@ export default function InventarioPage() {
   const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
   const [rebajeUnitAlt, setRebajeUnitAlt] = useState<string | null>(null)
   const [ingresoEstructuraId, setIngresoEstructuraId] = useState('')
-  // Sucursal explícita para el ingreso (solo cuando OWNER está en vista global "todas")
+  // Sucursal explícita para el ingreso (solo cuando Dueño está en vista global "todas")
   const [ingresoSucursalId, setIngresoSucursalId] = useState<string | null>(null)
 
   // ── Inventario tab state ───────────────────────────────────────────────────
@@ -469,8 +469,8 @@ export default function InventarioPage() {
     enabled: !!tenant && tab === 'historial',
   })
 
-  // ── Autorizaciones (lazy, solo OWNER/SUPERVISOR/ADMIN) ─────────────────────
-  const puedeVerAutorizaciones = ['OWNER', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
+  // ── Autorizaciones (lazy, solo Dueño/SUPERVISOR/ADMIN) ─────────────────────
+  const puedeVerAutorizaciones = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
 
   const { data: autorizaciones = [], isLoading: autLoading, refetch: refetchAut } = useQuery({
     queryKey: ['autorizaciones_inventario', tenant?.id, autEstado],
@@ -2248,7 +2248,7 @@ export default function InventarioPage() {
 
                 {selectedProduct && (
                   <>
-                    {/* Selector de sucursal — solo para OWNER/SUPER en vista global "todas" */}
+                    {/* Selector de sucursal — solo para Dueño/SUPER en vista global "todas" */}
                     {!sucursalId && puedeVerTodas && sucursales.length > 0 && (
                       <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3">
                         <label className="block text-sm font-medium text-amber-800 dark:text-amber-300 mb-1.5">

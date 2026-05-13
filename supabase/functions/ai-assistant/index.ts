@@ -56,8 +56,8 @@ Respondé siempre en español rioplatense, de forma concisa y amigable. Si no sa
 20. **Configuración** — Datos del negocio, integraciones (TiendaNube, MercadoLibre, MercadoPago), API externa, certificados AFIP, métodos de pago, grupos y estados personalizados. Solo OWNER.
 
 ## Roles de usuario
-- **OWNER**: acceso total a todo
-- **SUPER_USUARIO**: igual que OWNER dentro del tenant (creado por el Owner)
+- **DUEÑO**: acceso total a todo
+- **SUPER_USUARIO**: igual que DUEÑO dentro del tenant (creado por el Dueño)
 - **SUPERVISOR**: ventas, inventario, clientes, gastos, recepciones, historial. Sin configuración ni usuarios
 - **CAJERO**: solo Ventas, Caja, Clientes, Envíos
 - **DEPOSITO**: solo Inventario, Productos, Alertas, Recepciones

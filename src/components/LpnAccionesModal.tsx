@@ -724,7 +724,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   <ClipboardList size={28} className="text-blue-500 mx-auto mb-2" />
                   <p className="font-semibold text-blue-700 dark:text-blue-400">Solicitar eliminación del LPN {linea.lpn}</p>
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                    Como DEPOSITO, la eliminación requiere aprobación de un OWNER o SUPERVISOR.
+                    Como DEPOSITO, la eliminación requiere aprobación del Dueño o Supervisor.
                   </p>
                 </div>
               ) : (

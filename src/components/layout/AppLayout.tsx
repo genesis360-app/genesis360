@@ -341,7 +341,7 @@ export function AppLayout() {
 
             {/* Sucursal — siempre visible. Dueño puede cambiarla solo en rutas operativas */}
             {sucursales.length > 0 && (() => {
-              const RUTAS_CON_SELECTOR = ['/inventario', '/productos', '/clientes', '/proveedores']
+              const RUTAS_CON_SELECTOR = ['/inventario', '/productos', '/clientes', '/proveedores', '/configuracion']
               const conSelector = puedeVerTodas && RUTAS_CON_SELECTOR.some(r => pathname.startsWith(r))
               const nombreSucursal = sucursalId
                 ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? '—')

@@ -43,7 +43,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   // Mover stock parcial
   const [cantMover, setCantMover] = useState('')
   const [ubicDestino, setUbicDestino] = useState('')
-  const [sucursalDestino, setSucursalDestino] = useState(linea.sucursal_id ?? '')
+  // null = sin sucursal asignada; string = ID de sucursal destino
+  const [sucursalDestino, setSucursalDestino] = useState<string | null>(linea.sucursal_id ?? null)
   const [showQR, setShowQR] = useState(false)
 
   // Series
@@ -228,7 +229,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (cant >= linea.cantidad) throw new Error('La cantidad a mover debe ser menor al total del LPN')
       if (!ubicDestino) throw new Error('Seleccioná una ubicación destino')
-      const sucursalFinal = sucursalDestino || linea.sucursal_id || null
+      const sucursalFinal = sucursalDestino ?? linea.sucursal_id ?? null
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
@@ -548,11 +549,14 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   {sucursales.length > 1 && (
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sucursal destino</label>
-                      <select value={sucursalDestino} onChange={e => { setSucursalDestino(e.target.value); setUbicDestino('') }}
+                      <select
+                        value={sucursalDestino ?? ''}
+                        onChange={e => { setSucursalDestino(e.target.value || null); setUbicDestino('') }}
                         className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                        <option value="">Sin sucursal asignada{!linea.sucursal_id ? ' (actual)' : ''}</option>
                         {(sucursales as Sucursal[]).map(s => (
                           <option key={s.id} value={s.id}>
-                            {s.nombre}{s.id === (linea.sucursal_id ?? '') ? ' (actual)' : ''}
+                            {s.nombre}{s.id === linea.sucursal_id ? ' (actual)' : ''}
                           </option>
                         ))}
                       </select>

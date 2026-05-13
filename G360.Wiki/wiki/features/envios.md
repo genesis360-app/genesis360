@@ -3,7 +3,7 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-04-30
+updated: 2026-05-12
 ---
 
 # Módulo Envíos
@@ -27,6 +27,7 @@ Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.
 - Modal nuevo/editar: vincular venta, domicilio del cliente, courier/tracking/dimensiones
 - Tab **Cotizador**: shell para rate shopping (activo cuando haya contratos con couriers)
 - Bloqueo de edición si estado = `entregado`
+- **Selector de venta**: excluye automáticamente ventas que ya tienen un envío asignado (v1.8.7)
 
 ---
 

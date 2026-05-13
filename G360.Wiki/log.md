@@ -6,6 +6,70 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-12] update | v1.8.11 DEV — Dashboard General: área Productos
+
+- feat: DashProductosArea.tsx — área Productos completa:
+  - 6 KPIs en 2×3: Margen Global, El Motor, La Mina de Oro, Capital Dormido, Tasa Devolución, Quiebre de Stock
+  - Filtros: período + categoría + slider margen mín + ciclo de vida (Estrella/Perro/Nicho)
+  - Gráfico 1: Scatter "Cuadrante Mágico" (cantidad vs margen) — 4 cuadrantes con colores verde/azul/amarillo/rojo
+  - Gráfico 2: Pareto "Concentración de Ingresos" — barras + línea acumulada + referenceLine al 80%
+  - Gráfico 3: Pie "Participación por Categoría"
+  - Gráfico 4: "La Tijera de Precios" — doble línea (precio prom morado vs costo prom rojo) últimos 6 meses
+  - Insights: margen bajo, producto con costo > precio, capital dormido, quiebre de stock, concentración Pareto, devoluciones, mina de oro oculta
+- feat: sub-nav Dashboard General agrega área "Productos" (entre Gastos e Inventario)
+
+---
+
+## [2026-05-12] update | v1.8.10 DEV — Dashboard General: área Gastos
+
+- feat: DashGastosArea.tsx — área Gastos completa:
+  - Filtros propios en popover (período Mes/Trimestre/Año/Custom, ARS/USD, Categoría)
+  - KPI 1: Total Salidas — badge invertido (subir=rojo, bajar=verde)
+  - KPI 2: Velocidad de Gasto / Burn Rate ($X/día)
+  - KPI 3: Peso de la Estructura (Ratio Gastos/Ventas %) con alerta >80%
+  - KPI 4: Rigidez del Gasto — % fijos vs variables con barra bicolor (usa gastos_fijos)
+  - Gráfico 1: Pie por categoría — colores bien diferenciados + leyenda inline
+  - Gráfico 2: Barras mensuales últimos 6 meses + línea referencia (promedio) punteada accent; barras rojas si >15% del promedio
+  - Gráfico 3: Top 5 destinos de gasto — barras horizontales por descripción
+  - Insights: tendencia, cuotas vencidas, por vencer, sin comprobante, anomalía por categoría, ratio crítico, gastos fijos altos
+
+---
+
+## [2026-05-12] update | v1.8.9 DEV — Dashboard General: sub-nav áreas + área Ventas
+
+- feat: DashboardPage — sub-navegación de área en pestaña General (Todo/Ventas/Gastos/Inventario/Clientes/Proveedores/Facturación/Envíos)
+- feat: tab "Gráficos" agregado (placeholder "Próximamente")
+- feat: DashVentasArea.tsx — área Ventas completa:
+  - Filtros propios en popover (período Hoy/7D/15D/30D/Mes/Año/Custom, ARS/USD, c/IVA/s/IVA, Canal)
+  - KPI 1: Total Vendido con badge vs período anterior
+  - KPI 2: Gasto promedio por cliente
+  - KPI 3: Efectividad de presupuestos (% conversión)
+  - KPI 4: Clientes Nuevos vs Frecuentes (mini progress bar bicolor)
+  - Gráfico 1: "El Camino de la Venta" — funnel horizontal 3 etapas (Presupuestado/Pendiente/Pagado)
+  - Gráfico 2: "Tus mejores momentos" — heatmap días×horas con accent color opacity
+  - Gráfico 3: "¿Por dónde compran?" — pie chart canales con recharts + leyenda inline
+  - Insights automáticos: tendencia, pendiente cobro, efectividad, fidelidad, canal dominante, peak hours
+
+---
+
+## [2026-05-12] update | v1.8.8 DEV — fix multi-sucursal inventario
+
+- fix: inventario_lineas INSERT en ingresoMutation omitía sucursal_id → LPNs quedaban sin sucursal → filtrar por sucursal mostraba 0 unidades
+- fix: LpnAccionesModal selector sucursal — sucursalDestino con null en vez de '' para evitar confusión visual del browser; opción "Sin sucursal asignada" explícita; sucursalFinal usa ?? en vez de ||
+- feat: selector de sucursal en form de ingreso para OWNER en vista global (resaltado en ámbar)
+
+---
+
+## [2026-05-12] update | v1.8.7 DEV — aprobación caja fuerte real + envíos + IA
+
+- fix bug crítico: solicitudes CAJERO→CajaFuerte siempre fallaban (tipo inválido, sin user_id). Ahora notifica a OWNER/SUPER_USUARIO/SUPERVISOR con metadata JSONB.
+- NotificacionesButton: botones Aprobar/Rechazar para `solicitud_caja_fuerte` — Aprobar ejecuta egreso+ingreso reales.
+- EnviosPage: selector "Nuevo envío" excluye ventas que ya tienen envío asignado.
+- ai-assistant: system prompt reescrito con 20 módulos en orden sidebar + botones exactos + roles actualizados.
+- Migration 099: `notificaciones.metadata JSONB`.
+
+---
+
 ## [2026-05-08] update | v1.8.6 DEV — bump versión + cierre sesión
 
 Bump v1.8.6. Migrations DEV: 093–098. Todo pusheado, pendiente deploy a PROD.

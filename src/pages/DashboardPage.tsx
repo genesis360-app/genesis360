@@ -23,6 +23,9 @@ import { InsightCard } from '@/components/InsightCard'
 import type { InsightVariant } from '@/components/InsightCard'
 import { VentasVsGastosChart } from '@/components/VentasVsGastosChart'
 import { MixCajaChart } from '@/components/MixCajaChart'
+import { DashVentasArea } from '@/components/DashVentasArea'
+import { DashGastosArea } from '@/components/DashGastosArea'
+import { DashProductosArea } from '@/components/DashProductosArea'
 
 type InsightTipo = 'danger' | 'warning' | 'success' | 'info'
 
@@ -59,7 +62,8 @@ export default function DashboardPage() {
   const { tenant } = useAuthStore()
   const { score, recomendaciones } = useRecomendaciones()
   const { limits } = usePlanLimits()
-  const [tab, setTab] = useState<'general' | 'metricas' | 'insights' | 'rentabilidad' | 'recomendaciones'>('general')
+  const [tab, setTab] = useState<'general' | 'metricas' | 'insights' | 'rentabilidad' | 'recomendaciones' | 'graficos'>('general')
+  const [area, setArea] = useState<'todo' | 'ventas' | 'gastos' | 'productos' | 'inventario' | 'clientes' | 'proveedores' | 'facturacion' | 'envios'>('todo')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
   const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
@@ -441,8 +445,6 @@ export default function DashboardPage() {
     ? (stats.totalVentasMes - stats.totalVentasMesAnt) / stats.totalVentasMesAnt * 100
     : null
 
-  const fecha = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
-
   const tabButtons = (active: typeof tab) => (
     <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl flex-wrap">
       {([
@@ -451,6 +453,7 @@ export default function DashboardPage() {
         { id: 'metricas'        as const, label: 'Métricas',        lock: limits && !limits.puede_metricas },
         { id: 'rentabilidad'    as const, label: 'Rentabilidad' },
         { id: 'recomendaciones' as const, label: 'Recomendaciones' },
+        { id: 'graficos'        as const, label: 'Gráficos' },
       ]).map(({ id, label, lock }) => (
         <button key={id} onClick={() => setTab(id)}
           className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5
@@ -614,6 +617,22 @@ export default function DashboardPage() {
     )
   }
 
+  if (tab === 'graficos') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h1 className="text-2xl font-bold text-primary">{tenant?.nombre ?? 'Dashboard'}</h1>
+          {tabButtons('graficos')}
+        </div>
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+          <BarChart2 size={40} className="mb-3 opacity-30" />
+          <p className="font-medium text-gray-500 dark:text-gray-400">Gráficos avanzados</p>
+          <p className="text-sm mt-1 text-center max-w-xs">Esta sección está en desarrollo. Próximamente encontrarás todos los gráficos del negocio en un solo lugar.</p>
+        </div>
+      </div>
+    )
+  }
+
   if (tab === 'metricas') {
     return (
       <div className="space-y-6">
@@ -687,12 +706,55 @@ export default function DashboardPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-primary">{tenant?.nombre ?? 'Dashboard'}</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5 capitalize">{fecha}</p>
-        </div>
+        <h1 className="text-2xl font-bold text-primary">{tenant?.nombre ?? 'Dashboard'}</h1>
         {tabButtons('general')}
       </div>
+
+      {/* Sub-navegación de área */}
+      <div className="flex gap-1.5 flex-wrap">
+        {([
+          { id: 'todo'        as const, label: 'Todo' },
+          { id: 'ventas'      as const, label: 'Ventas' },
+          { id: 'gastos'      as const, label: 'Gastos' },
+          { id: 'productos'   as const, label: 'Productos' },
+          { id: 'inventario'  as const, label: 'Inventario' },
+          { id: 'clientes'    as const, label: 'Clientes' },
+          { id: 'proveedores' as const, label: 'Proveedores' },
+          { id: 'facturacion' as const, label: 'Facturación' },
+          { id: 'envios'      as const, label: 'Envíos' },
+        ]).map(({ id, label }) => (
+          <button key={id} onClick={() => setArea(id)}
+            className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-all border
+              ${area === id
+                ? 'bg-accent text-white border-accent shadow-sm'
+                : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Área: VENTAS ──────────────────────────────────────────────────────── */}
+      {area === 'ventas' && <DashVentasArea />}
+
+      {/* ── Área: GASTOS ──────────────────────────────────────────────────────── */}
+      {area === 'gastos' && <DashGastosArea />}
+
+      {/* ── Área: PRODUCTOS ───────────────────────────────────────────────────── */}
+      {area === 'productos' && <DashProductosArea />}
+
+      {/* ── Área: TODO + otras (mantienen contenido existente) ────────────────── */}
+      {area !== 'ventas' && area !== 'gastos' && area !== 'productos' && area !== 'todo' && (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+          <BarChart2 size={36} className="mb-3 opacity-30" />
+          <p className="font-medium text-gray-500 dark:text-gray-400">
+            Vista {area.charAt(0).toUpperCase() + area.slice(1)}
+          </p>
+          <p className="text-sm mt-1">Próximamente — en desarrollo</p>
+        </div>
+      )}
+
+      {/* ── Área: TODO — contenido existente ─────────────────────────────────── */}
+      {area === 'todo' && (<>
 
       {/* FilterBar */}
       <FilterBar
@@ -1150,6 +1212,7 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      </>)}  {/* end area === 'todo' */}
     </div>
   )
 }

@@ -4,17 +4,17 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.6** (pendiente PR → PROD)
+Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.11** (pendiente PR → PROD)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV — v1.8.6 (al cierre de sesión 2026-05-12)
+## Estado actual DEV — v1.8.8 (al cierre de sesión 2026-05-12)
 
-- APP_VERSION: `v1.8.6` en `src/config/brand.ts`
-- Migrations DEV: 001–098 ✅
-- Migrations PROD: 001–092 ✅ (093–098 pendientes — aplicar al deployar v1.8.6)
+- APP_VERSION: `v1.8.8` en `src/config/brand.ts` (pendiente bump)
+- Migrations DEV: 001–099 ✅
+- Migrations PROD: 001–092 ✅ (093–099 pendientes — aplicar al deployar v1.8.8)
 - Edge Functions DEV: todas activas (invite-user, cancel-suscripcion nuevas en esta sesión)
 - Edge Functions PROD: desactualizadas (falta invite-user, cancel-suscripcion, ai-assistant)
 - GROQ_API_KEY: DEV ✅ · PROD ❌
@@ -31,6 +31,7 @@ type: project
 | 096 | `096_oc_costo_envio_contactos_proveedor.sql` | `ordenes_compra.tiene_envio/costo_envio` + tabla `proveedor_contactos` |
 | 097 | `097_gastos_recurso_cuotas.sql` | `gastos.recurso_id/es_cuota/cuotas_total/monto_cuota/tasa_interes` + tabla `gasto_cuotas` |
 | 098 | `098_ventas_costo_envio.sql` | `ventas.costo_envio` |
+| 099 | `099_notificaciones_metadata.sql` | `notificaciones.metadata JSONB` |
 
 ---
 
@@ -104,33 +105,48 @@ type: project
 
 ---
 
+## Lo producido en esta sesión (v1.8.7 DEV)
+
+### Envíos
+- Selector de venta en "Nuevo envío" excluye automáticamente ventas que ya tienen envío asignado
+
+### Caja — Solicitudes CAJERO (aprobación real)
+- Fix bug crítico: `enviarSolicitudFuerte` antes insertaba con tipo inválido (`solicitud_caja_fuerte` viola CHECK), sin `user_id` y sin `titulo` → siempre fallaba silenciosamente
+- Corregido: notifica a OWNER/SUPERVISOR/SUPER_USUARIO del tenant con `tipo: 'warning'` y `metadata` JSONB estructurado
+- `NotificacionesButton`: detecta `metadata.accion === 'solicitud_caja_fuerte'` → muestra botones "Aprobar" / "Rechazar"
+  - Aprobar: valida sesión abierta → obtiene/crea sesión permanente caja fuerte → egreso en caja cajero + ingreso en caja fuerte → marca leída
+  - Rechazar: solo marca leída + toast
+
+### Asistente IA — system prompt
+- Reescrito con los 20 módulos del sidebar en orden exacto
+- Botones y acciones clave de cada módulo
+- Roles actualizados (SUPER_USUARIO en lugar de ADMIN, CAJERO correcto)
+
+### DB (migration 099)
+- `notificaciones.metadata JSONB` — payload estructurado para acciones en notificaciones
+
+---
+
 ## Para la próxima sesión — prioridad 1
 
-### 1. Deploy v1.8.6 a PROD
+### 1. Deploy v1.8.6+v1.8.7 a PROD
 Checklist completo:
-- [ ] PR `dev → main` con título `v1.8.6 — Descripción resumen`
-- [ ] Aplicar migrations 093–098 en PROD (`jjffnbrdjchquexdfgwq`)
+- [ ] Bump `APP_VERSION` a `v1.8.7` en `src/config/brand.ts`
+- [ ] PR `dev → main` con título `v1.8.7 — Ventas/Caja/IA mejoras`
+- [ ] Aplicar migrations 093–099 en PROD (`jjffnbrdjchquexdfgwq`)
 - [ ] Deploy EF `invite-user` en PROD
 - [ ] Deploy EF `cancel-suscripcion` en PROD
-- [ ] Deploy EF `ai-assistant` en PROD
+- [ ] Deploy EF `ai-assistant` en PROD (system prompt mejorado incluido)
 - [ ] Configurar secret `GROQ_API_KEY` en PROD
-- [ ] GitHub release v1.8.6
-- [ ] Bump APP_VERSION a v1.8.7 en dev
-
-### 2. Mejora system prompt asistente IA
-- Sidebar izquierdo con los 20 ítems reales en orden correcto
-- Nombres exactos de botones por módulo
-- Ver `wiki/features/...` para contexto de cada módulo
+- [ ] GitHub release v1.8.7
 
 ---
 
 ## Backlog — próximas sesiones
 
 ### Pendientes de módulos trabajados esta sesión
-- **Ventas → Envíos**: bloquear ventas que ya tienen envío asignado en el selector de nuevos envíos
 - **Envíos proveedor logístico**: mejorar la UI del cotizador (Andreani/OCA) cuando haya APIs disponibles
 - **GS1 Argentina**: integrar en `scan-product` EF cuando el usuario tenga credenciales (gepir.gs1.org — gestionar acceso en gs1ar.org)
-- **Caja fuerte — solicitudes CAJERO**: implementar flujo de aprobación real (ahora solo genera notificación; OWNER debe ejecutar manualmente)
 
 ### Backlog general
 - **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas

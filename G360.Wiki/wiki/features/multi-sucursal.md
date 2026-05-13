@@ -3,7 +3,7 @@ title: Multi-Sucursal
 category: features
 tags: [sucursales, multi-sucursal, filtros, selector]
 sources: [CLAUDE.md]
-updated: 2026-05-07
+updated: 2026-05-12
 ---
 
 # Multi-Sucursal
@@ -133,6 +133,31 @@ El header muestra la sucursal activa en lugar del nombre de la app:
 - Sucursal seleccionada → nombre de la sucursal
 - Vista global → nombre del tenant
 - Fallback (datos no cargados) → `BRAND.name`
+
+---
+
+## Bug fixes multi-sucursal (v1.8.8)
+
+### Fix A — `inventario_lineas` INSERT omitía `sucursal_id` (v1.8.8)
+
+**Síntoma:** LPNs creados desde InventarioPage nunca tenían `sucursal_id`. Al filtrar por sucursal → 0 unidades. Solo `movimientos_stock` recibía `sucursal_id`.
+
+**Fix:** `ingresoMutation` en InventarioPage ahora incluye `sucursal_id: sucursalId ?? ingresoSucursalId ?? null` en el INSERT de `inventario_lineas`. `MasivoModal` ya lo tenía correcto.
+
+**Selector para OWNER en vista global:** cuando `sucursalId = null` y `puedeVerTodas = true`, se muestra un selector de sucursal en el form de ingreso (resaltado en ámbar) para que OWNER asigne explícitamente la sucursal del stock.
+
+**Usuarios normales:** su `sucursalId` está fijo en authStore → siempre correcto automáticamente.
+
+### Fix B — LpnAccionesModal: bug value/state en selector de sucursal (v1.8.8)
+
+**Síntoma:** `sucursalDestino` se inicializaba a `''` cuando `linea.sucursal_id = null`. El `<select value="">` renderizaba la primera sucursal visualmente pero el estado era `''`. Al hacer traslado, el nuevo LPN heredaba sucursal null. El usuario veía "Sucursal A seleccionada" pero el LPN quedaba sin sucursal.
+
+**Fix:**
+- `sucursalDestino` es ahora `string | null` (null = sin sucursal, string = UUID de sucursal)
+- `<select value={sucursalDestino ?? ''}>` - conversión explícita para el DOM
+- Primera opción: `<option value="">Sin sucursal asignada (actual)</option>` cuando LPN no tiene sucursal
+- `onChange`: `setSucursalDestino(e.target.value || null)` - vacío → null
+- `sucursalFinal = sucursalDestino ?? linea.sucursal_id ?? null` (usa `??` en vez de `||`)
 
 ---
 

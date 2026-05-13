@@ -148,6 +148,14 @@ export default function EnviosPage() {
   const { data: ventasRecientes = [] } = useQuery({
     queryKey: ['ventas-envio-search', tenant?.id, ventaSearch],
     queryFn: async () => {
+      // Excluir ventas que ya tienen un envío asignado
+      const { data: conEnvio } = await supabase
+        .from('envios')
+        .select('venta_id')
+        .eq('tenant_id', tenant!.id)
+        .not('venta_id', 'is', null)
+      const idsConEnvio = (conEnvio ?? []).map((e: any) => e.venta_id).filter(Boolean)
+
       let q = supabase.from('ventas')
         .select('id, numero, total, estado, origen, created_at, cliente_id, clientes(nombre, id)')
         .eq('tenant_id', tenant!.id)
@@ -158,6 +166,7 @@ export default function EnviosPage() {
         const n = parseInt(ventaSearch)
         if (!isNaN(n)) q = q.eq('numero', n)
       }
+      if (idsConEnvio.length > 0) q = q.not('id', 'in', `(${idsConEnvio.join(',')})`)
       const { data } = await q
       return data ?? []
     },

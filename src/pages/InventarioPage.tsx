@@ -68,7 +68,7 @@ export default function InventarioPage() {
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { limits } = usePlanLimits()
-  const { sucursalId, applyFilter } = useSucursalFilter()
+  const { sucursalId, sucursales, puedeVerTodas, applyFilter } = useSucursalFilter()
 
   // ── Tab state ─────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<Tab>('inventario')
@@ -95,6 +95,8 @@ export default function InventarioPage() {
   const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
   const [rebajeUnitAlt, setRebajeUnitAlt] = useState<string | null>(null)
   const [ingresoEstructuraId, setIngresoEstructuraId] = useState('')
+  // Sucursal explícita para el ingreso (solo cuando OWNER está en vista global "todas")
+  const [ingresoSucursalId, setIngresoSucursalId] = useState<string | null>(null)
 
   // ── Inventario tab state ───────────────────────────────────────────────────
   const [invSearch, setInvSearch] = useState('')
@@ -763,6 +765,7 @@ export default function InventarioPage() {
           precio_costo_snapshot: (selectedProduct as any).precio_costo || null,
           precio_venta_snapshot: (selectedProduct as any).precio_venta || null,
           estructura_id: ingresoEstructuraId || null,
+          sucursal_id: sucursalId ?? ingresoSucursalId ?? null,
         })
         .select().single()
       if (lineaError) throw lineaError
@@ -1262,6 +1265,7 @@ export default function InventarioPage() {
     setIngresoMotivoSelect(''); setRebajeMotivoSelect('')
     setIngresoUnitAlt(null); setRebajeUnitAlt(null)
     setIngresoEstructuraId('')
+    setIngresoSucursalId(null)
   }
 
   useModalKeyboard({
@@ -2244,6 +2248,24 @@ export default function InventarioPage() {
 
                 {selectedProduct && (
                   <>
+                    {/* Selector de sucursal — solo para OWNER/SUPER en vista global "todas" */}
+                    {!sucursalId && puedeVerTodas && sucursales.length > 0 && (
+                      <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3">
+                        <label className="block text-sm font-medium text-amber-800 dark:text-amber-300 mb-1.5">
+                          Sucursal destino del ingreso *
+                        </label>
+                        <select value={ingresoSucursalId ?? ''}
+                          onChange={e => setIngresoSucursalId(e.target.value || null)}
+                          className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                          <option value="">Sin sucursal asignada</option>
+                          {(sucursales as any[]).map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.nombre}</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Estás en vista global. Elegí la sucursal donde va este stock.</p>
+                      </div>
+                    )}
+
                     <div className="mb-3">
                       <label className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         LPN

@@ -592,12 +592,35 @@ export default function CajaPage() {
       if (!sesionActiva) throw new Error('No hay sesión activa para transferir')
       if (monto <= 0) throw new Error('Ingresá un monto válido')
       if (monto > saldoActual) throw new Error(`Saldo insuficiente. Disponible: ${formatMoneda(saldoActual)}`)
-      await supabase.from('notificaciones').insert({
-        tenant_id: tenant!.id,
-        tipo: 'solicitud_caja_fuerte',
-        mensaje: `${user?.nombre_display ?? 'Un cajero'} solicitó transferir ${formatMoneda(monto)} de "${cajaActual?.nombre}" a Caja Fuerte. Concepto: ${concepto || 'Sin concepto'}. Sesión: ${sesionActiva.id}`,
-        leido: false,
-      })
+
+      const { data: supervisores, error: eS } = await supabase.from('users')
+        .select('id')
+        .eq('tenant_id', tenant!.id)
+        .in('rol', ['OWNER', 'SUPERVISOR', 'SUPER_USUARIO'])
+      if (eS) throw eS
+      if (!supervisores?.length) throw new Error('No hay supervisores para aprobar la solicitud')
+
+      const metadata = {
+        accion: 'solicitud_caja_fuerte',
+        monto,
+        concepto: concepto || '',
+        sesion_id: sesionActiva.id,
+        caja_id: cajaActual?.id ?? null,
+        caja_nombre: cajaActual?.nombre ?? 'caja',
+        cajero_nombre: user?.nombre_display ?? 'Un cajero',
+      }
+      const { error } = await supabase.from('notificaciones').insert(
+        supervisores.map(s => ({
+          tenant_id: tenant!.id,
+          user_id: s.id,
+          tipo: 'warning',
+          titulo: `Solicitud de Caja Fuerte — ${user?.nombre_display ?? 'Cajero'}`,
+          mensaje: `Solicitar transferir ${formatMoneda(monto)} de "${cajaActual?.nombre}" a Caja Fuerte.${concepto ? ` Concepto: ${concepto}` : ''}`,
+          action_url: '/caja',
+          metadata,
+        }))
+      )
+      if (error) throw error
     },
     onSuccess: () => {
       toast.success('Solicitud enviada. El Owner o Supervisor deberá aprobarla.')

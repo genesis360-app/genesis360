@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-12] update | v1.8.12 DEV — Dashboard General: área Inventario
+
+- feat: DashInventarioArea.tsx — área Inventario & Recursos completa:
+  - Toggle vista: Todo / Solo Mercadería / Solo Recursos
+  - 8 KPIs: Capital de Trabajo, Patrimonio Operativo, Rotación, Runway, Kits posibles, Recursos en reparación, Reservas, Mermas
+  - Gráfico 1: Dona Patrimonio (Mercadería turquesa/recursos violeta)
+  - Gráfico 2: Gauge SVG semicircular "Salud del Depósito" (4 zonas crítico→óptimo)
+  - Gráfico 3: Barras envejecimiento del capital (0-30/31-90/+90 días)
+  - Gráfico 4: Barras apiladas horizontales "Recursos por categoría" (activo/en_reparacion/dado_de_baja)
+  - Gráfico 5: Treemap "Cuello de Botella de Combos" (kits bloqueados sin componentes)
+  - Insights: recursos en reparación, capital dormido +90 días, combos bloqueados, runway corto, stock crítico, mermas
+
+---
+
 ## [2026-05-12] update | v1.8.11 DEV — Dashboard General: área Productos
 
 - feat: DashProductosArea.tsx — área Productos completa:

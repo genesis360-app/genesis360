@@ -26,6 +26,7 @@ import { MixCajaChart } from '@/components/MixCajaChart'
 import { DashVentasArea } from '@/components/DashVentasArea'
 import { DashGastosArea } from '@/components/DashGastosArea'
 import { DashProductosArea } from '@/components/DashProductosArea'
+import { DashInventarioArea } from '@/components/DashInventarioArea'
 
 type InsightTipo = 'danger' | 'warning' | 'success' | 'info'
 
@@ -742,8 +743,11 @@ export default function DashboardPage() {
       {/* ── Área: PRODUCTOS ───────────────────────────────────────────────────── */}
       {area === 'productos' && <DashProductosArea />}
 
+      {/* ── Área: INVENTARIO ──────────────────────────────────────────────────── */}
+      {area === 'inventario' && <DashInventarioArea />}
+
       {/* ── Área: TODO + otras (mantienen contenido existente) ────────────────── */}
-      {area !== 'ventas' && area !== 'gastos' && area !== 'productos' && area !== 'todo' && (
+      {area !== 'ventas' && area !== 'gastos' && area !== 'productos' && area !== 'inventario' && area !== 'todo' && (
         <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
           <BarChart2 size={36} className="mb-3 opacity-30" />
           <p className="font-medium text-gray-500 dark:text-gray-400">

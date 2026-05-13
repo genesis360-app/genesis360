@@ -27,6 +27,11 @@ import { DashVentasArea } from '@/components/DashVentasArea'
 import { DashGastosArea } from '@/components/DashGastosArea'
 import { DashProductosArea } from '@/components/DashProductosArea'
 import { DashInventarioArea } from '@/components/DashInventarioArea'
+import { DashClientesArea } from '@/components/DashClientesArea'
+import { DashProveedoresArea } from '@/components/DashProveedoresArea'
+import { DashFacturacionArea } from '@/components/DashFacturacionArea'
+import { DashEnviosArea } from '@/components/DashEnviosArea'
+import { DashMarketingArea } from '@/components/DashMarketingArea'
 
 type InsightTipo = 'danger' | 'warning' | 'success' | 'info'
 
@@ -64,7 +69,7 @@ export default function DashboardPage() {
   const { score, recomendaciones } = useRecomendaciones()
   const { limits } = usePlanLimits()
   const [tab, setTab] = useState<'general' | 'metricas' | 'insights' | 'rentabilidad' | 'recomendaciones' | 'graficos'>('general')
-  const [area, setArea] = useState<'todo' | 'ventas' | 'gastos' | 'productos' | 'inventario' | 'clientes' | 'proveedores' | 'facturacion' | 'envios'>('todo')
+  const [area, setArea] = useState<'todo' | 'ventas' | 'gastos' | 'productos' | 'inventario' | 'clientes' | 'proveedores' | 'facturacion' | 'envios' | 'marketing'>('todo')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
   const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
@@ -723,6 +728,7 @@ export default function DashboardPage() {
           { id: 'proveedores' as const, label: 'Proveedores' },
           { id: 'facturacion' as const, label: 'Facturación' },
           { id: 'envios'      as const, label: 'Envíos' },
+          { id: 'marketing'   as const, label: 'Marketing' },
         ]).map(({ id, label }) => (
           <button key={id} onClick={() => setArea(id)}
             className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-all border
@@ -746,12 +752,29 @@ export default function DashboardPage() {
       {/* ── Área: INVENTARIO ──────────────────────────────────────────────────── */}
       {area === 'inventario' && <DashInventarioArea />}
 
+      {/* ── Área: CLIENTES ────────────────────────────────────────────────────── */}
+      {area === 'clientes' && <DashClientesArea />}
+
+      {/* ── Área: PROVEEDORES ─────────────────────────────────────────────────── */}
+      {area === 'proveedores' && <DashProveedoresArea />}
+
+      {/* ── Área: FACTURACIÓN ─────────────────────────────────────────────────── */}
+      {area === 'facturacion' && <DashFacturacionArea />}
+
+      {/* ── Área: ENVÍOS ──────────────────────────────────────────────────────── */}
+      {area === 'envios' && <DashEnviosArea />}
+
+      {/* ── Área: MARKETING ───────────────────────────────────────────────────── */}
+      {area === 'marketing' && <DashMarketingArea />}
+
       {/* ── Área: TODO + otras (mantienen contenido existente) ────────────────── */}
-      {area !== 'ventas' && area !== 'gastos' && area !== 'productos' && area !== 'inventario' && area !== 'todo' && (
+      {area !== 'ventas' && area !== 'gastos' && area !== 'productos' && area !== 'inventario'
+        && area !== 'clientes' && area !== 'proveedores' && area !== 'facturacion'
+        && area !== 'envios' && area !== 'marketing' && area !== 'todo' && (
         <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
           <BarChart2 size={36} className="mb-3 opacity-30" />
           <p className="font-medium text-gray-500 dark:text-gray-400">
-            Vista {area.charAt(0).toUpperCase() + area.slice(1)}
+            Vista {(area as string).charAt(0).toUpperCase() + (area as string).slice(1)}
           </p>
           <p className="text-sm mt-1">Próximamente — en desarrollo</p>
         </div>

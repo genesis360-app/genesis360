@@ -313,7 +313,7 @@ export default function InventarioPage() {
   })
 
   const { data: lineasProducto = [] } = useQuery({
-    queryKey: ['lineas-producto', selectedProduct?.id],
+    queryKey: ['lineas-producto', selectedProduct?.id, sucursalId],
     queryFn: async () => {
       const tieneSeries = (selectedProduct as any).tiene_series
       let q = supabase.from('inventario_lineas')
@@ -322,6 +322,7 @@ export default function InventarioPage() {
         .eq('activo', true)
         .order('created_at', { ascending: true })
       if (!tieneSeries) q = q.gt('cantidad', 0)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       const { data } = await q
       const sortFn = getRebajeSort(
         (selectedProduct as any).regla_inventario,

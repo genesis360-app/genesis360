@@ -380,7 +380,7 @@ export default function InventarioPage() {
 
   // ── Kits queries ───────────────────────────────────────────────────────────
   const { data: kitsProductos = [] } = useQuery({
-    queryKey: ['kits-productos', tenant?.id, kitSearch],
+    queryKey: ['kits-productos', tenant?.id, kitSearch, sucursalId],
     queryFn: async () => {
       let q = supabase.from('productos')
         .select('id, nombre, sku, stock_actual, unidad_medida, es_kit')
@@ -393,7 +393,7 @@ export default function InventarioPage() {
   })
 
   const { data: recetasMap = {} } = useQuery({
-    queryKey: ['kit-recetas', tenant?.id],
+    queryKey: ['kit-recetas', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data } = await supabase.from('kit_recetas')
         .select('*, componente:comp_producto_id(id, nombre, sku, stock_actual, unidad_medida)')
@@ -409,7 +409,7 @@ export default function InventarioPage() {
   })
 
   const { data: kitsEnArmado = [] } = useQuery({
-    queryKey: ['kits-en-armado', tenant?.id],
+    queryKey: ['kits-en-armado', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data } = await supabase.from('kitting_log')
         .select('*, kit:kit_producto_id(nombre, sku)')
@@ -420,6 +420,40 @@ export default function InventarioPage() {
     },
     enabled: !!tenant && tab === 'kits',
   })
+
+  // Stock por sucursal de kits + componentes (reemplaza productos.stock_actual global)
+  const { data: stockKitsSucursal = {} } = useQuery({
+    queryKey: ['stock-kits-sucursal', tenant?.id, sucursalId, kitsProductos.map(k => k.id).join(',')],
+    queryFn: async () => {
+      const allIds = new Set<string>()
+      kitsProductos.forEach(k => allIds.add(k.id))
+      Object.entries(recetasMap).forEach(([kitId, rs]) => {
+        allIds.add(kitId)
+        ;(rs as any[]).forEach(r => allIds.add(r.comp_producto_id))
+      })
+      if (allIds.size === 0) return {}
+      const { data } = await supabase
+        .from('inventario_lineas')
+        .select('producto_id, cantidad')
+        .eq('tenant_id', tenant!.id)
+        .eq('sucursal_id', sucursalId!)
+        .eq('activo', true)
+        .in('producto_id', [...allIds])
+      const map: Record<string, number> = {}
+      for (const l of data ?? []) {
+        map[l.producto_id] = (map[l.producto_id] ?? 0) + (Number(l.cantidad) || 0)
+      }
+      return map
+    },
+    enabled: !!tenant && tab === 'kits' && !!sucursalId && kitsProductos.length > 0,
+    staleTime: 0,
+  })
+
+  // Helper: stock en sucursal activa para kits/componentes (fallback a stock_actual global)
+  function kStock(productoId: string, globalStock: number): number {
+    if (!sucursalId) return globalStock
+    return stockKitsSucursal[productoId] ?? 0
+  }
 
   const { data: compsBusqueda = [] } = useQuery({
     queryKey: ['productos-comps-busqueda', tenant?.id, recetaCompSearch, showRecetaForm],
@@ -439,12 +473,14 @@ export default function InventarioPage() {
   const { data: conteoHistorial = [] } = useQuery({
     queryKey: ['conteo-historial', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('inventario_conteos')
         .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida)), users:created_by(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(30)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return (data ?? []) as InventarioConteo[]
     },
     enabled: !!tenant && tab === 'conteo',
@@ -974,13 +1010,13 @@ export default function InventarioPage() {
       const recetas = recetasMap[kittingKitId] ?? []
       if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
 
-      // 1. Verificar stock disponible (neto de reservas) de cada componente
+      // 1. Verificar stock disponible en la sucursal activa
       for (const r of recetas) {
         const comp = r.componente as any
         const requerido = r.cantidad * cant
-        const disponible = (comp?.stock_actual ?? 0) - 0 // stock_actual ya tiene en cuenta reservas en el trigger
+        const disponible = kStock(r.comp_producto_id, comp?.stock_actual ?? 0)
         if (disponible < requerido) {
-          throw new Error(`Stock insuficiente de ${comp?.nombre ?? r.comp_producto_id}: necesitás ${requerido} ${comp?.unidad_medida ?? ''}, hay ${comp?.stock_actual ?? 0}`)
+          throw new Error(`Stock insuficiente de ${comp?.nombre ?? r.comp_producto_id}: necesitás ${requerido} ${comp?.unidad_medida ?? ''}, hay ${disponible}${sucursalId ? ' (en esta sucursal)' : ''}`)
         }
       }
 
@@ -988,10 +1024,12 @@ export default function InventarioPage() {
       const componentesReservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = []
       for (const r of recetas) {
         const cantComp = r.cantidad * cant
-        const { data: lineas } = await supabase.from('inventario_lineas')
+        let lineasQ = supabase.from('inventario_lineas')
           .select('id, cantidad, cantidad_reservada')
           .eq('tenant_id', tenant!.id).eq('producto_id', r.comp_producto_id).eq('activo', true)
           .order('created_at', { ascending: true })
+        if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
+        const { data: lineas } = await lineasQ
 
         let restante = cantComp
         for (const linea of lineas ?? []) {
@@ -1121,10 +1159,12 @@ export default function InventarioPage() {
       const recetas = recetasMap[desarmarKitId] ?? []
       if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
 
-      // 1. Verificar que hay stock suficiente del KIT en inventario_lineas
-      const { data: lineasKit } = await supabase.from('inventario_lineas')
+      // 1. Verificar que hay stock suficiente del KIT en inventario_lineas (filtrado por sucursal)
+      let lineasKitQ = supabase.from('inventario_lineas')
         .select('id, cantidad, cantidad_reservada')
         .eq('tenant_id', tenant!.id).eq('producto_id', desarmarKitId).eq('activo', true)
+      if (sucursalId) lineasKitQ = lineasKitQ.eq('sucursal_id', sucursalId)
+      const { data: lineasKit } = await lineasKitQ
       const stockDisponibleKit = (lineasKit ?? []).reduce((s: number, l: any) => s + (l.cantidad - (l.cantidad_reservada ?? 0)), 0)
       if (stockDisponibleKit < cant) {
         throw new Error(`Stock insuficiente del KIT: necesitás ${cant}, hay ${stockDisponibleKit} disponibles`)
@@ -1202,6 +1242,7 @@ export default function InventarioPage() {
       } else {
         q = q.eq('producto_id', conteoRefId)
       }
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       const { data } = await q
       const rows: ConteoRow[] = (data ?? []).map((l: any) => {
         const prod = l.productos ?? {}
@@ -3537,7 +3578,7 @@ export default function InventarioPage() {
                 const isExpanded = kitExpandedId === kit.id
                 // Stock mínimo disponible según recetas (cuántos kits se pueden armar)
                 const maxKits = recetas.length === 0 ? 0 : Math.floor(
-                  Math.min(...recetas.map(r => ((r.componente as any)?.stock_actual ?? 0) / r.cantidad))
+                  Math.min(...recetas.map(r => kStock(r.comp_producto_id, (r.componente as any)?.stock_actual ?? 0) / r.cantidad))
                 )
                 return (
                   <div key={kit.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -3550,7 +3591,7 @@ export default function InventarioPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{kit.nombre}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{kit.sku} · Stock: {kit.stock_actual} {kit.unidad_medida}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{kit.sku} · Stock: {kStock(kit.id, kit.stock_actual)} {kit.unidad_medida}</p>
                         </div>
                         <div className="ml-auto flex items-center gap-2">
                           {recetas.length > 0 && (
@@ -3575,8 +3616,8 @@ export default function InventarioPage() {
                       {/* Botón desarmado inverso */}
                       <button
                         onClick={() => { setDesarmarKitId(kit.id); setShowDesarmarModal(true) }}
-                        disabled={recetas.length === 0 || kit.stock_actual <= 0}
-                        title={recetas.length === 0 ? 'Sin receta' : kit.stock_actual <= 0 ? 'Sin stock del KIT para desarmar' : 'Desarmar KIT → devuelve componentes al stock'}
+                        disabled={recetas.length === 0 || kStock(kit.id, kit.stock_actual) <= 0}
+                        title={recetas.length === 0 ? 'Sin receta' : kStock(kit.id, kit.stock_actual) <= 0 ? 'Sin stock del KIT para desarmar' : 'Desarmar KIT → devuelve componentes al stock'}
                         className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
                         <RotateCcw size={13} /> Desarmar
                       </button>
@@ -3601,7 +3642,7 @@ export default function InventarioPage() {
                           <div className="space-y-2">
                             {recetas.map(r => {
                               const comp = r.componente as any
-                              const stockOk = (comp?.stock_actual ?? 0) >= r.cantidad
+                              const stockOk = kStock(r.comp_producto_id, comp?.stock_actual ?? 0) >= r.cantidad
                               return (
                                 <div key={r.id} className="flex items-center gap-3 text-sm">
                                   <div className="flex-1 min-w-0">
@@ -3610,7 +3651,7 @@ export default function InventarioPage() {
                                   </div>
                                   <span className="text-gray-600 dark:text-gray-400 text-xs">× {r.cantidad} {comp?.unidad_medida}</span>
                                   <span className={`text-xs px-1.5 py-0.5 rounded ${stockOk ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'}`}>
-                                    Stock: {comp?.stock_actual ?? '—'}
+                                    Stock: {kStock(r.comp_producto_id, comp?.stock_actual ?? 0)}
                                   </span>
                                   <button onClick={() => eliminarReceta.mutate(r.id)} title="Quitar componente"
                                     className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0">
@@ -3700,13 +3741,13 @@ export default function InventarioPage() {
                         {recetas.map(r => {
                           const comp = r.componente as any
                           const requerido = r.cantidad * cantNum
-                          const ok = (comp?.stock_actual ?? 0) >= requerido
+                          const ok = kStock(r.comp_producto_id, comp?.stock_actual ?? 0) >= requerido
                           return (
                             <div key={r.id} className="flex items-center justify-between text-sm">
                               <span className="text-gray-700 dark:text-gray-300">{comp?.nombre ?? r.comp_producto_id}</span>
                               <span className={`font-medium ${ok ? 'text-gray-900 dark:text-white' : 'text-red-600 dark:text-red-400'}`}>
                                 {requerido} {comp?.unidad_medida}
-                                {!ok && <span className="ml-1 text-xs">(falta {requerido - (comp?.stock_actual ?? 0)})</span>}
+                                {!ok && <span className="ml-1 text-xs">(falta {requerido - kStock(r.comp_producto_id, comp?.stock_actual ?? 0)})</span>}
                               </span>
                             </div>
                           )
@@ -4157,7 +4198,7 @@ export default function InventarioPage() {
                       <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         <RotateCcw size={16} className="text-orange-500" /> Desarmar KIT
                       </h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{kit?.nombre} · Stock: {kit?.stock_actual} {kit?.unidad_medida}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{kit?.nombre} · Stock: {kit ? kStock(kit.id, kit.stock_actual) : 0} {kit?.unidad_medida}</p>
                     </div>
                     <button onClick={() => setShowDesarmarModal(false)} className="text-gray-400 hover:text-gray-600">
                       <X size={20} />
@@ -4167,7 +4208,7 @@ export default function InventarioPage() {
                     <div>
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Cantidad de KITs a desarmar *</label>
                       <input value={desarmarCantidad} onChange={e => setDesarmarCantidad(e.target.value)}
-                        type="number" min="1" step="1" max={kit?.stock_actual}
+                        type="number" min="1" step="1" max={kit ? kStock(kit.id, kit.stock_actual) : 0}
                         onWheel={e => e.currentTarget.blur()}
                         className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
                     </div>

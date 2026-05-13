@@ -153,13 +153,24 @@ export function AppLayout() {
 
   const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
 
-  // Auto-seleccionar la primera sucursal solo si el usuario puede ver todas y nunca configuró una preferencia
+  // Módulos que requieren exactamente una sucursal (sin opción "Todas")
+  const RUTAS_SOLO_SUCURSAL = ['/ventas', '/gastos', '/caja', '/recepciones', '/alertas']
+  const enRutaSoloSucursal = RUTAS_SOLO_SUCURSAL.some(r => pathname.startsWith(r))
+
+  // Auto-seleccionar la primera sucursal si nunca se configuró preferencia
   useEffect(() => {
     const saved = localStorage.getItem('sucursal-id')
     if (puedeVerTodas && sucursales.length > 0 && !sucursalId && saved !== '__global__') {
       setSucursal(sucursales[0].id)
     }
   }, [sucursales.length, puedeVerTodas])
+
+  // En módulos operativos (solo sucursal) forzar selección si está en vista global
+  useEffect(() => {
+    if (puedeVerTodas && enRutaSoloSucursal && !sucursalId && sucursales.length > 0) {
+      setSucursal(sucursales[0].id)
+    }
+  }, [pathname, sucursalId, sucursales.length, puedeVerTodas])
 
   // Abrir walkthrough la primera vez
   useEffect(() => {
@@ -339,17 +350,28 @@ export function AppLayout() {
           {/* Derecha: selector sucursal + acciones */}
           <div className="flex items-center gap-0.5">
 
-            {/* Sucursal — siempre visible. Dueño puede cambiarla solo en rutas operativas */}
+            {/* Sucursal — visible en todas las rutas excepto /sucursales y /usuarios */}
             {sucursales.length > 0 && (() => {
-              const RUTAS_CON_SELECTOR = ['/inventario', '/productos', '/clientes', '/proveedores', '/configuracion']
-              const conSelector = puedeVerTodas && RUTAS_CON_SELECTOR.some(r => pathname.startsWith(r))
+              const RUTAS_SIN_SELECTOR  = ['/sucursales', '/usuarios']
+              const RUTAS_CON_TODAS     = ['/dashboard', '/productos', '/inventario', '/clientes',
+                                            '/facturacion', '/proveedores', '/recursos', '/biblioteca',
+                                            '/rrhh', '/historial', '/reportes', '/configuracion']
+
+              const enRutaSinSelector  = RUTAS_SIN_SELECTOR.some(r => pathname.startsWith(r))
+              const enRutaConTodas     = RUTAS_CON_TODAS.some(r => pathname.startsWith(r))
+              // enRutaSoloSucursal defined above in component scope
+
+              if (enRutaSinSelector) return null
+
               const nombreSucursal = sucursalId
                 ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? '—')
                 : null
+
               return (
                 <div className="hidden sm:flex items-center gap-1.5 mr-1">
                   <Building2 size={14} className="text-muted flex-shrink-0" />
-                  {conSelector ? (
+                  {puedeVerTodas && enRutaConTodas ? (
+                    // Selector completo: Todas + cada sucursal
                     <select
                       value={sucursalId ?? ''}
                       onChange={e => setSucursal(e.target.value || null)}
@@ -361,7 +383,21 @@ export function AppLayout() {
                         <option key={s.id} value={s.id}>{s.nombre}</option>
                       ))}
                     </select>
+                  ) : puedeVerTodas && enRutaSoloSucursal ? (
+                    // Selector sin "Todas": obliga a elegir una sucursal específica
+                    <select
+                      value={sucursalId ?? ''}
+                      onChange={e => setSucursal(e.target.value || null)}
+                      className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
+                      title="Seleccioná una sucursal"
+                    >
+                      <option value="" disabled>Seleccioná sucursal</option>
+                      {sucursales.map(s => (
+                        <option key={s.id} value={s.id}>{s.nombre}</option>
+                      ))}
+                    </select>
                   ) : nombreSucursal ? (
+                    // Read-only: muestra la sucursal asignada
                     <span className="text-xs font-medium text-primary dark:text-white truncate max-w-[140px]">
                       {nombreSucursal}
                     </span>

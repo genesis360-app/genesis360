@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-13] update | Kits y Conteos: filtrado por sucursal activa (v1.8.18)
+
+- Kits: `stockKitsSucursal` query suma `inventario_lineas` por sucursal; helper `kStock()` usado en maxKits, display, desarmar y modal armado
+- Kits: `iniciarArmado` verifica y reserva solo componentes de la sucursal; `desarmarKit` filtra `lineasKit` por sucursal
+- Conteos: `conteoHistorial` aplica `.eq('sucursal_id')` (queryKey ya lo tenía pero no la query); `cargarLineasParaConteo` idem
+
 ## [2026-05-13] update | Inventario: stock por sucursal en movimientos + display (fix integral)
 
 - `getStockAntesSucursal` helper reemplaza `productos.stock_actual` global en todos los inserts de `movimientos_stock`

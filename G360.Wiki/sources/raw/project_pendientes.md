@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.17** (pendiente PR → PROD)
+Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.18** (pendiente PR → PROD)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 

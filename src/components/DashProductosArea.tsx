@@ -102,7 +102,7 @@ export function DashProductosArea() {
 
   // Filtros locales
   const [filterOpen, setFilterOpen] = useState(false)
-  const [periodo, setPeriodo] = useState<ProductosPeriodo>('mes')
+  const [periodo, setPeriodo] = useState<ProductosPeriodo>('trimestre')
   const [customDesde, setCustomDesde] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
   const [customHasta, setCustomHasta] = useState(() => new Date().toISOString())
   const [categoriaFiltro, setCategoriaFiltro] = useState('')
@@ -183,10 +183,18 @@ export function DashProductosArea() {
       }
 
       // 5. Devoluciones del período → tasa de devolución
-      const { data: devItems = [] } = await supabase.from('devolucion_items')
-        .select('cantidad, devoluciones!inner(tenant_id, created_at)')
-        .eq('devoluciones.tenant_id', tenant!.id)
-        .gte('devoluciones.created_at', desde).lte('devoluciones.created_at', hasta)
+      // Primero obtenemos las devoluciones del período, luego sus items
+      const { data: devsDelPeriodo = [] } = await supabase.from('devoluciones')
+        .select('id')
+        .eq('tenant_id', tenant!.id)
+        .gte('created_at', desde).lte('created_at', hasta)
+      const devIds = (devsDelPeriodo ?? []).map((d: any) => d.id)
+      let devItems: any[] = []
+      if (devIds.length > 0) {
+        const { data } = await supabase.from('devolucion_items')
+          .select('cantidad').in('devolucion_id', devIds)
+        devItems = data ?? []
+      }
 
       // 6. Histórico mensual de venta_items (últimos 6 meses) para La Tijera
       const seisMesesAtras = new Date()

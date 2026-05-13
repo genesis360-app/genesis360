@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
-  PieChart, Pie, Legend, Treemap,
+  PieChart, Pie, Legend,
 } from 'recharts'
 import {
   SlidersHorizontal, X, Package, Wrench, Zap, Clock,
@@ -111,35 +111,30 @@ function RecursosTooltip({ active, payload, label }: any) {
   )
 }
 
-function TreemapTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null
-  const d = payload[0]?.payload
-  if (!d) return null
+// Combos bloqueados como barras horizontales (reemplaza Treemap para compatibilidad recharts v3)
+function CombosBloqueadosChart({ data, fmt }: { data: { name: string; kits_bloqueados: number; ingreso_retenido: number; componente: string }[]; fmt: (v: number) => string }) {
+  const maxIngreso = Math.max(...data.map(d => d.ingreso_retenido), 1)
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg px-3 py-2 text-xs max-w-[200px]">
-      <p className="font-semibold text-gray-800 dark:text-gray-100">{d.name}</p>
-      <p className="text-accent mt-0.5">{d.kits_bloqueados} kits bloqueados</p>
-      {d.componente && <p className="text-gray-400 mt-0.5">Falta: {d.componente}</p>}
+    <div className="space-y-2.5">
+      {data.map((d, i) => (
+        <div key={d.name}>
+          <div className="flex items-center justify-between mb-1 gap-2">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{d.name}</p>
+              {d.componente && <p className="text-[10px] text-gray-400 dark:text-gray-500">Falta: {d.componente}</p>}
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <span className="text-xs text-gray-400 dark:text-gray-500">{d.kits_bloqueados} bloq.</span>
+              <span className="text-xs font-semibold text-orange-500 dark:text-orange-400">{fmt(d.ingreso_retenido)}</span>
+            </div>
+          </div>
+          <div className="h-6 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
+            <div className="h-full rounded-lg transition-all flex items-center"
+              style={{ width: `${Math.max(4, (d.ingreso_retenido / maxIngreso) * 100)}%`, backgroundColor: C_ORANGE, opacity: 0.8 - i * 0.08 }} />
+          </div>
+        </div>
+      ))}
     </div>
-  )
-}
-
-function TreemapContent({ x, y, width, height, name, kits_bloqueados, fill }: any) {
-  return (
-    <g>
-      <rect x={x} y={y} width={width} height={height} style={{ fill, stroke: '#fff', strokeWidth: 2, opacity: 0.85 }} />
-      {width > 50 && height > 30 && (
-        <>
-          <text x={x + width / 2} y={y + height / 2 - 5} textAnchor="middle" fill="#fff" fontSize={10} fontWeight="600"
-            style={{ textOverflow: 'ellipsis' }}>
-            {name?.length > 14 ? name.slice(0, 13) + '…' : name}
-          </text>
-          <text x={x + width / 2} y={y + height / 2 + 10} textAnchor="middle" fill="#fff" fontSize={9} opacity={0.85}>
-            {kits_bloqueados} bloq.
-          </text>
-        </>
-      )}
-    </g>
   )
 }
 
@@ -345,6 +340,7 @@ export function DashInventarioArea() {
     },
     enabled: !!tenant,
     staleTime: 0,
+    retry: 1,
   })
 
   // ─── Insights ────────────────────────────────────────────────────────────────
@@ -736,7 +732,7 @@ export function DashInventarioArea() {
         </div>
       )}
 
-      {/* Gráfico 5: Cuello de Botella de Combos (Treemap) */}
+      {/* Gráfico 5: Cuello de Botella de Combos */}
       {vista !== 'recursos' && (
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-1">
@@ -744,16 +740,11 @@ export function DashInventarioArea() {
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Cuello de Botella de Combos</h3>
             <span className="ml-auto text-xs text-muted">Kits bloqueados por falta de componentes</span>
           </div>
-          <p className="text-xs text-muted mb-4 ml-5">Cada bloque = un kit sin poder armarse. Tamaño proporcional al ingreso retenido.</p>
+          <p className="text-xs text-muted mb-4 ml-5">Tamaño de barra proporcional al ingreso retenido estimado.</p>
           {iLoading ? (
             <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" />
           ) : (iData?.treemapData ?? []).length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <Treemap data={iData!.treemapData} dataKey="kits_bloqueados" aspectRatio={4 / 3}
-                content={<TreemapContent />}>
-                <Tooltip content={<TreemapTooltip />} />
-              </Treemap>
-            </ResponsiveContainer>
+            <CombosBloqueadosChart data={iData!.treemapData} fmt={fmt} />
           ) : (
             <div className="flex flex-col items-center justify-center py-10">
               <CheckCircle size={32} className="text-green-500 mb-2" />

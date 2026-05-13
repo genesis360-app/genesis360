@@ -2058,8 +2058,10 @@ export default function InventarioPage() {
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Producto</th>
                       <th className="text-center px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Tipo</th>
                       <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Cantidad</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock prev.</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock nuevo</th>
+                      {tab === 'historial' && <>
+                        <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock prev.</th>
+                        <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock nuevo</th>
+                      </>}
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden lg:table-cell">Motivo</th>
                       <th className="px-4 py-3 w-8" />
                     </tr>
@@ -2083,8 +2085,10 @@ export default function InventarioPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{m.cantidad}</td>
-                        <td className="px-4 py-3 text-right text-gray-400 dark:text-gray-500 hidden md:table-cell">{m.stock_antes}</td>
-                        <td className="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300 hidden md:table-cell">{m.stock_despues}</td>
+                        {tab === 'historial' && <>
+                          <td className="px-4 py-3 text-right text-gray-400 dark:text-gray-500 hidden md:table-cell">{m.stock_antes}</td>
+                          <td className="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300 hidden md:table-cell">{m.stock_despues}</td>
+                        </>}
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">
                           <span>{m.motivo ?? '—'}</span>
                           {m.venta_id && (

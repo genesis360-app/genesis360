@@ -4,24 +4,24 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.14** (pendiente PR → PROD)
+Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.16** (pendiente PR → PROD)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV — v1.8.14 (al cierre de sesión 2026-05-13)
+## Estado actual DEV — v1.8.16 (al cierre de sesión 2026-05-13)
 
-- APP_VERSION: `v1.8.14` en `src/config/brand.ts` ✅
-- Migrations DEV: 001–099 ✅
-- Migrations PROD: 001–092 ✅ (093–099 pendientes — aplicar al deployar)
-- Edge Functions DEV: todas activas (`invite-user`, `cancel-suscripcion`, `ai-assistant`, etc.)
+- APP_VERSION: `v1.8.16` en `src/config/brand.ts` ✅
+- Migrations DEV: 001–101 ✅
+- Migrations PROD: 001–092 ✅ (093–101 pendientes — aplicar al deployar)
+- Edge Functions DEV: todas activas
 - Edge Functions PROD: desactualizadas (falta `invite-user`, `cancel-suscripcion`, `ai-assistant`)
 - GROQ_API_KEY: DEV ✅ · PROD ❌
 
 ---
 
-## Migrations pendientes en PROD (093–099)
+## Migrations pendientes en PROD (093–101)
 
 | # | Archivo | Descripción |
 |---|---------|-------------|
@@ -32,96 +32,102 @@ type: project
 | 097 | `097_gastos_recurso_cuotas.sql` | `gastos.recurso_id/es_cuota/cuotas_total/monto_cuota/tasa_interes` + tabla `gasto_cuotas` |
 | 098 | `098_ventas_costo_envio.sql` | `ventas.costo_envio` |
 | 099 | `099_notificaciones_metadata.sql` | `notificaciones.metadata JSONB` |
+| 100 | `100_rename_owner_to_dueno.sql` | `rol='OWNER'→'DUEÑO'` + políticas RLS + `is_rrhh()` + `caja_fuerte_roles` |
+| 101 | `101_ubicaciones_combos_sucursal.sql` | `ubicaciones.sucursal_id` + `combos.sucursal_id` |
 
 ---
 
-## Lo producido en esta sesión (v1.8.7 → v1.8.14 DEV)
+## Lo producido en esta sesión (v1.8.7 → v1.8.16 DEV)
 
 ### Fixes críticos operativos
 
 **Caja — Solicitudes CAJERO a Caja Fuerte (aprobación real)**
-- Bug fix crítico: `enviarSolicitudFuerte` insertaba con `tipo: 'solicitud_caja_fuerte'` (viola CHECK), sin `user_id`, sin `titulo`, campo `leido` en lugar de `leida` → siempre fallaba silenciosamente
-- Corregido: notifica a OWNER/SUPERVISOR/SUPER_USUARIO del tenant con `tipo: 'warning'` y `metadata` JSONB
-- `NotificacionesButton`: detecta `metadata.accion === 'solicitud_caja_fuerte'` → muestra botones "Aprobar"/"Rechazar"
-  - Aprobar: valida sesión abierta → ejecuta egreso en caja cajero + ingreso en caja fuerte → marca leída
-  - Rechazar: solo marca leída + toast
+- Bug fix: `enviarSolicitudFuerte` tenía tipo inválido, sin `user_id`, sin `titulo`
+- Notifica a OWNER/SUPERVISOR/SUPER_USUARIO con `tipo: 'warning'` y `metadata` JSONB
+- `NotificacionesButton`: botones "Aprobar"/"Rechazar" ejecutan egreso+ingreso reales
 
-**Inventario — Multi-sucursal (fix LPNs)**
-- `inventario_lineas` INSERT en `ingresoMutation` omitía `sucursal_id` → LPNs creados sin sucursal → filtrar por sucursal mostraba 0 unidades
-- Fix: `sucursal_id: sucursalId ?? ingresoSucursalId ?? null` en INSERT
-- Para OWNER en vista global: selector ámbar en el form de ingreso
-- `LpnAccionesModal`: fix selector sucursal (`sucursalDestino: string | null` en lugar de `string`, opción "Sin sucursal" explícita, `??` en lugar de `||` en `sucursalFinal`)
+**Inventario — Multi-sucursal (fix LPNs sin sucursal)**
+- `inventario_lineas` INSERT ahora incluye `sucursal_id`
+- Selector ámbar para Dueño en vista global al agregar stock
+- `LpnAccionesModal`: fix selector sucursal con `string | null`, opción "Sin sucursal" explícita
 
 **Envíos — Selector venta**
-- Selector "Nueva venta" excluye ventas que ya tienen un envío asignado
+- Selector "Nueva venta" excluye ventas ya con envío asignado
 
 **IA Asistente — system prompt**
-- Reescrito con los 20 módulos del sidebar en orden correcto, botones exactos y roles actualizados (SUPER_USUARIO)
+- Reescrito con 20 módulos, botones exactos, roles actualizados
 
 ### Dashboard General — rediseño completo
 
-Nueva arquitectura: tab General con sub-navegación de área. 9 áreas implementadas:
+9 áreas analíticas independientes en la sub-nav de la pestaña General:
+Ventas · Gastos · Productos · Inventario · Clientes · Proveedores · Facturación · Envíos · Marketing
 
-| Área | Componente | KPIs | Gráficos principales |
-|------|-----------|------|---------------------|
-| Ventas | `DashVentasArea` | 4 | Funnel + Heatmap días×horas + Pie canales |
-| Gastos | `DashGastosArea` | 4 | Pie categorías + Barras mensuales + Top 5 destinos |
-| Productos | `DashProductosArea` | 6 | Scatter Cuadrante Mágico + Pareto 80/20 + Pie cat + Tijera precios |
-| Inventario | `DashInventarioArea` | 8 | Dona patrimonio + Gauge SVG salud + Aging barras + Recursos apilados + Combos bloqueados |
-| Clientes | `DashClientesArea` | 6 | Pirámide RFM + Cohort analysis + Origen + Aging CC |
-| Proveedores | `DashProveedoresArea` | 8 | Donut top proveedores + Aging OC + Evolución gastos |
-| Facturación | `DashFacturacionArea` | 6 | Barras IVA apiladas + Donut alícuotas + banner legal |
-| Envíos | `DashEnviosArea` | 6 | Funnel pipeline + Courier 100% barras + Scatter subsidio/ganancia |
-| Marketing | `DashMarketingArea` | 6 | POAS real + Evolución inversión/ganancia + Donut canal + Radar campañas |
+Cada área tiene filtros propios, KPIs, gráficos e insights dinámicos.
 
-**Detalles técnicos relevantes:**
-- recharts `^3.8.0`: `Treemap` con `content={<Comp/>}` crashea en v3 → reemplazado por barras horizontales con divs en `DashInventarioArea`
-- Supabase JS: filtros en tablas unidas via `.eq('joined_table.col', val)` NO funcionan → siempre hacer dos queries separados
-- `DashProductosArea`: período default `'trimestre'` para mostrar datos por defecto
-- `DashFacturacionArea`: topes de Monotributo son estimaciones aproximadas al año 2024 — actualizar anualmente
+**Componentes:** `DashVentasArea`, `DashGastosArea`, `DashProductosArea`, `DashInventarioArea`, `DashClientesArea`, `DashProveedoresArea`, `DashFacturacionArea`, `DashEnviosArea`, `DashMarketingArea`
 
-### DB (migration 099)
-- `notificaciones.metadata JSONB` — payload estructurado para acciones en notificaciones (aprobación caja fuerte, etc.)
+**Tab "Gráficos"** → placeholder "Próximamente".
+
+### Renombrar OWNER → DUEÑO (migration 100)
+
+- DB: constraint, UPDATE users, caja_fuerte_roles, políticas RLS, `is_rrhh()`
+- Frontend: 21 archivos — tipos, comparaciones, arrays, claves de objetos
+- Edge Functions: `invite-user`, `ai-assistant`
+- `ownerOnly` (prop interna de nav, no visible) conservada
+
+### Sucursales — restricciones y mejoras (migration 101)
+
+**AppLayout selector:** Solo en `/inventario`, `/productos`, `/clientes`, `/proveedores`. Solo Dueño ve "Todas las sucursales". Otros roles: nombre fijo de su sucursal (sin cambiar).
+
+**ConfigPage Ubicaciones:** Filtran por sucursal activa + globales (`sucursal_id IS NULL`). INSERT incluye `sucursal_id`.
+
+**ConfigPage Combos:** Mismo comportamiento que ubicaciones.
+
+**Ingreso de stock:** Bloqueado si no hay sucursal seleccionada (simple y masivo). Mensaje claro de error.
+
+**LPN Modal Traslado:** `cantMover` inicializa en `'1'` cuando hay ≥2 unidades → botón habilitado de inmediato.
+
+### DB (migrations nuevas en DEV)
+- Migration 099: `notificaciones.metadata JSONB`
+- Migration 100: rename `DUEÑO` completo
+- Migration 101: `sucursal_id` en `ubicaciones` y `combos`
 
 ---
 
 ## Para la próxima sesión — prioridad 1
 
-### 1. Deploy a PROD (v1.8.14)
-Checklist completo:
-- [ ] PR `dev → main` con título `v1.8.14 — Dashboard General + fixes multi-sucursal, caja, envíos`
-- [ ] Aplicar migrations 093–099 en PROD (`jjffnbrdjchquexdfgwq`)
-- [ ] Deploy EF `invite-user` en PROD
+### 1. Deploy a PROD (v1.8.16)
+- [ ] PR `dev → main` con título `v1.8.16 — Dashboard + DUEÑO + sucursales`
+- [ ] Aplicar migrations 093–101 en PROD (`jjffnbrdjchquexdfgwq`)
+- [ ] Deploy EF `invite-user` en PROD (usa 'DUEÑO')
 - [ ] Deploy EF `cancel-suscripcion` en PROD
-- [ ] Deploy EF `ai-assistant` en PROD (system prompt mejorado incluido)
+- [ ] Deploy EF `ai-assistant` en PROD (system prompt mejorado)
 - [ ] Configurar secret `GROQ_API_KEY` en PROD
-- [ ] GitHub release v1.8.14
-- [ ] Bump APP_VERSION a v1.8.15 en dev (próximo ciclo)
+- [ ] GitHub release v1.8.16
+- [ ] Bump APP_VERSION a v1.8.17 en dev
 
-### 2. Dashboard General — specs pendientes de cada área
-El dashboard tiene 9 áreas funcionales, pero los insights son aproximaciones. Cada área tiene 150 insights documentados en los specs del usuario que se pueden implementar progresivamente.
+### 2. Sucursales — pendientes
+- **Recepciones**: validar sucursal obligatoria (igual que ingreso directo)
+- **Relocacion manual de LPNs existentes sin sucursal**: UI para asignar sucursal masivamente
+- **Traslado LPN**: probar que el flujo completo funciona en prod (cantidad + sucursal + ubicación)
 
 ---
 
-## Backlog — próximas sesiones
+## Backlog
 
-### Dashboard (continuación)
-- **Specs de KPIs por área** pendientes de recibir y validar contra datos reales del tenant
-- **Tab "Gráficos"** — placeholder activo, definir contenido (todos los gráficos en un lugar)
-- **Topes de Monotributo** en `DashFacturacionArea` — actualizar anualmente (valores son aprox. 2024)
+- **Dashboard → Tab "Gráficos"**: definir contenido y spec
+- **Topes Monotributo** en DashFacturacionArea: actualizar anualmente (valores 2024)
+- **Envíos proveedor logístico**: cotizador Andreani/OCA con APIs
+- **GS1 Argentina**: integrar `scan-product` EF
+- **Centro de Soporte `/ayuda`**
+- **WMS Fase 3** — `wms_tareas`
 
-### Funcionalidad
-- **Envíos proveedor logístico**: mejorar UI cotizador (Andreani/OCA) cuando haya APIs disponibles
-- **GS1 Argentina**: integrar en `scan-product` EF cuando usuario tenga credenciales
-- **Centro de Soporte `/ayuda`** — FAQ por módulo, guías interactivas
-- **WMS Fase 3** — `wms_tareas` (putaway/picking/replenishment)
-
-### Pendiente manual (no código)
-- Verificar genesis360.pro en Resend → cambiar FROM a `noreply@genesis360.pro`
-- Cargar créditos en console.anthropic.com para `scan-product` (Claude Haiku ~$0.0003/img)
-- Constitución empresa → CUIT activo (bloquea AFIP en PROD real)
-- Google Ads Standard Token (proceso largo)
-- Iniciar proceso de membresía GS1 Argentina (gs1ar.org) para lookup de barcodes nacionales
+### Pendiente manual
+- Verificar genesis360.pro en Resend → FROM `noreply@genesis360.pro`
+- Créditos Anthropic para `scan-product`
+- Constitución empresa → CUIT activo
+- Google Ads Standard Token
+- Membresía GS1 Argentina
 
 ---
 
@@ -130,34 +136,53 @@ El dashboard tiene 9 áreas funcionales, pero los insights son aproximaciones. C
 ### Componentes Dashboard General
 ```
 src/components/
-├── DashVentasArea.tsx        # área Ventas — POAS, Funnel, Heatmap, Pie canales
-├── DashGastosArea.tsx        # área Gastos — Pie cat, barras mensuales, Top 5
-├── DashProductosArea.tsx     # área Productos — Scatter, Pareto, Pie, Tijera
-├── DashInventarioArea.tsx    # área Inventario — Dona, Gauge SVG, Aging, Combos
-├── DashClientesArea.tsx      # área Clientes — RFM, Cohort, Origen, Aging CC
-├── DashProveedoresArea.tsx   # área Proveedores — Donut, Aging OC, Evolución
-├── DashFacturacionArea.tsx   # área Facturación — IVA, Alícuotas, Topes
-├── DashEnviosArea.tsx        # área Envíos — Funnel, Courier, Scatter subsidio
-└── DashMarketingArea.tsx     # área Marketing — POAS real, Evolución, Radar
+├── DashVentasArea.tsx       # Funnel + Heatmap días×horas + Pie canales
+├── DashGastosArea.tsx       # Pie cat + Barras mensuales + Top 5
+├── DashProductosArea.tsx    # Scatter Cuadrante + Pareto + Pie + Tijera precios
+├── DashInventarioArea.tsx   # Dona + Gauge SVG + Aging + Recursos + Combos bloqueados
+├── DashClientesArea.tsx     # RFM + Cohort + Origen + Aging CC
+├── DashProveedoresArea.tsx  # Donut prov + Aging OC + Evolución gastos
+├── DashFacturacionArea.tsx  # IVA + Alícuotas + Topes (estimaciones, banner legal)
+├── DashEnviosArea.tsx       # Funnel + Courier + Scatter subsidio/ganancia
+└── DashMarketingArea.tsx    # POAS real + Evolución + Donut canal + Radar campañas
 ```
 
+### Roles del sistema (renombrado OWNER → DUEÑO)
+| Rol | `puedeVerTodas` | Acceso |
+|-----|----------------|--------|
+| DUEÑO | Siempre sí | Total |
+| ADMIN | Siempre sí | Solo plataforma (`/admin`) |
+| SUPER_USUARIO | Sí por DB | Igual que DUEÑO dentro del tenant |
+| SUPERVISOR | Sí por DB | Sin config/usuarios |
+| CONTADOR | Sí por DB | Dashboard/gastos/reportes |
+| CAJERO | No | Solo ventas/caja/clientes |
+| DEPOSITO | No | Solo inventario/productos |
+| RRHH | No | Solo módulo RRHH |
+
+### Reglas de sucursal (implementadas v1.8.16)
+- **Selector en header**: solo en `/inventario`, `/productos`, `/clientes`, `/proveedores`
+- **"Todas las sucursales"**: solo visible para rol DUEÑO
+- **Otros roles**: ven su sucursal fija (no pueden cambiarla)
+- **Ingreso de stock**: requiere sucursal seleccionada (bloquea si vacía)
+- **Ubicaciones y Combos en Config**: filtran por sucursal activa + globales (NULL)
+- **LPN Traslado**: `cantMover` default '1' si hay ≥2 unidades; cantidad DEBE ser menor al total
+
 ### Gotchas recharts v3 (`^3.8.0`)
-- `Treemap content={<Comp/>}` → **CRASHEA**. Usar divs custom o función render.
-- `Tooltip formatter={(v, name) => ...}` → `name` es `any` en v3, no `string`
-- `Legend` dentro de `BarChart` con layout="vertical" funciona correctamente
+- `Treemap content={<Comp/>}` → **CRASHEA**. Usar divs custom o función render
+- `Tooltip formatter={(v, name) => ...}` → `name` es `any`, no `string`
 
 ### Gotchas Supabase JS
-- `.eq('joined_table.col', val)` después de join **NO funciona** → hacer 2 queries separados
-- `!inner` en select string (`tabla!inner(cols)`) es válido, pero filtrar en esa tabla via `.eq()` no
+- `.eq('joined_table.col', val)` → **NO funciona**. Hacer 2 queries separados
+- `!inner` en select con filtros en tabla unida → tampoco funciona via `.eq()`
 - `.select('*', { count: 'exact', head: true })` → destructurar `{ count }`, no `{ data: { count } }`
 
 ### Edge Functions DEV (activas)
 | EF | Auth | Descripción |
 |---|---|---|
-| `invite-user` | JWT-less | Invita usuario, crea perfil. Roles: OWNER, SUPER_USUARIO, ADMIN |
+| `invite-user` | JWT-less | Invita usuario. Roles: DUEÑO, SUPER_USUARIO, ADMIN |
 | `cancel-suscripcion` | JWT | PATCH preapproval MP + actualiza tenant |
-| `ai-assistant` | JWT-less | Groq/Llama 3.1 — chat + bug report (system prompt actualizado) |
-| `scan-product` | JWT-less | Claude Haiku + Open Food Facts — escaneo foto producto |
+| `ai-assistant` | JWT-less | Groq/Llama 3.1 — chat + bug report |
+| `scan-product` | JWT-less | Claude Haiku + Open Food Facts |
 | `send-email` | JWT | Resend — invitaciones + bug reports |
 | `emitir-factura` | JWT | AFIP factura electrónica |
 | `crear-suscripcion` | JWT-less | MP preapproval |
@@ -165,18 +190,6 @@ src/components/
 | `data-api` | JWT | API pull externa |
 | `tn-stock-worker` | JWT-less | Sync stock TiendaNube |
 | `meli-stock-worker` | JWT-less | Sync stock MercadoLibre |
-
-### Roles del sistema
-| Rol | `puedeVerTodas` | Acceso |
-|-----|----------------|--------|
-| OWNER | Siempre sí | Total |
-| ADMIN | Siempre sí | Solo plataforma (`/admin`) |
-| SUPER_USUARIO | Sí por DB | Igual que OWNER dentro del tenant |
-| SUPERVISOR | Sí por DB | Sin config/usuarios |
-| CONTADOR | Sí por DB | Dashboard/gastos/reportes |
-| CAJERO | No | Solo ventas/caja/clientes |
-| DEPOSITO | No | Solo inventario/productos |
-| RRHH | No | Solo módulo RRHH |
 
 ### Supabase projects
 - PROD: `jjffnbrdjchquexdfgwq`

@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-13] update | v1.8.16 DEV — cierre sesión completo
+
+Renombrado OWNER→DUEÑO (migration 100): constraint, data, RLS, is_rrhh(), caja_fuerte_roles, 21 archivos frontend.
+Sucursales (migration 101): selector header limitado a 4 rutas solo para Dueño.
+ubicaciones/combos filtran por sucursal. Ingreso bloqueado sin sucursal.
+LPN traslado: cantMover default 1 → botón habilitado.
+Deploy PROD pendiente con migrations 093-101.
+
+---
+
 ## [2026-05-13] update | v1.8.14 DEV — cierre sesión + docs actualizados
 
 Dashboard General completo (9 áreas: Ventas/Gastos/Productos/Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing).

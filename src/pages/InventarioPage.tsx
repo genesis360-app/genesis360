@@ -697,6 +697,9 @@ export default function InventarioPage() {
       if (limits && !limits.puede_crear_movimiento)
         throw new Error('Límite de movimientos del plan alcanzado. Upgradeá tu plan o comprá movimientos extra.')
       if (!selectedProduct) throw new Error('Seleccioná un producto')
+      // Validar sucursal: si no hay sucursal activa ni seleccionada en el form, bloquear
+      if (!sucursalId && !ingresoSucursalId)
+        throw new Error('Seleccioná una sucursal de destino para el ingreso antes de confirmar.')
       const tieneSeries = (selectedProduct as any).tiene_series
       const tieneLote = (selectedProduct as any).tiene_lote
       const tieneVencimiento = (selectedProduct as any).tiene_vencimiento

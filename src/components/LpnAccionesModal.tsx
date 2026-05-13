@@ -40,8 +40,9 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     cantidad: String(linea.cantidad ?? 0),
   })
 
-  // Mover stock parcial
-  const [cantMover, setCantMover] = useState('')
+  // Mover stock parcial — default 1 si hay al menos 2 unidades disponibles
+  const cantDisponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
+  const [cantMover, setCantMover] = useState(cantDisponible >= 2 ? '1' : '')
   const [ubicDestino, setUbicDestino] = useState('')
   // null = sin sucursal asignada; string = ID de sucursal destino
   const [sucursalDestino, setSucursalDestino] = useState<string | null>(linea.sucursal_id ?? null)
@@ -540,11 +541,11 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                      Cantidad a mover (disponible: {linea.cantidad - (linea.cantidad_reservada ?? 0)})
+                      Cantidad a mover * (disponible: {cantDisponible} · debe ser menor al total)
                     </label>
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max={linea.cantidad - (linea.cantidad_reservada ?? 0)}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max={cantDisponible - 1}
                       value={cantMover} onChange={e => setCantMover(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="0" />
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="Ingresá una cantidad" />
                   </div>
                   {sucursales.length > 1 && (
                     <div>

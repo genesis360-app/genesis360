@@ -374,7 +374,7 @@ export default function ConfigPage() {
   const initialTab = searchParams.get('tab') as Tab | null
   const [tab, setTab] = useState<Tab>(initialTab ?? 'negocio')
   const [estadosSubTab, setEstadosSubTab] = useState<EstadosSubTab>('estados')
-  const { tenant, user, setTenant, sucursales } = useAuthStore()
+  const { tenant, user, setTenant, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
   const canEdit = user?.rol === 'DUEÑO'
 
@@ -481,8 +481,14 @@ export default function ConfigPage() {
 
   // Ubicaciones
   const { data: ubicaciones = [], isLoading: loadingUbic } = useQuery({
-    queryKey: ['ubicaciones', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).order('prioridad').order('nombre'); return (data ?? []) },
+    queryKey: ['ubicaciones', tenant?.id, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).order('prioridad').order('nombre')
+      // Filtrar por sucursal: mostrar las de la sucursal activa + las globales (sin sucursal)
+      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      const { data } = await q
+      return data ?? []
+    },
     enabled: !!tenant,
   })
   const [newUbicNombre, setNewUbicNombre] = useState('')
@@ -504,7 +510,7 @@ export default function ConfigPage() {
 
   const addUbicacion = async () => {
     if (!newUbicNombre.trim()) return
-    const { error } = await supabase.from('ubicaciones').insert({ tenant_id: tenant!.id, nombre: newUbicNombre.trim(), descripcion: newUbicDesc || null, prioridad: parseInt(newUbicPrioridad) || 0 })
+    const { error } = await supabase.from('ubicaciones').insert({ tenant_id: tenant!.id, nombre: newUbicNombre.trim(), descripcion: newUbicDesc || null, prioridad: parseInt(newUbicPrioridad) || 0, sucursal_id: sucursalId || null })
     if (error) { toast.error(error.message); return }
     toast.success('Ubicación agregada')
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
@@ -713,12 +719,14 @@ export default function ConfigPage() {
   })
 
   const { data: combos = [], isLoading: loadingCombos } = useQuery({
-    queryKey: ['combos', tenant?.id],
+    queryKey: ['combos', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('combos')
+      let q = supabase.from('combos')
         .select('*, combo_items(producto_id, cantidad, productos(nombre, sku))')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('created_at', { ascending: false })
+      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'combos',
@@ -741,6 +749,7 @@ export default function ConfigPage() {
         descuento_pct,
         descuento_tipo: comboForm.descuento_tipo,
         descuento_monto,
+        sucursal_id: sucursalId || null,
       }).select('id').single()
       if (eC) throw eC
       const { error: eI } = await supabase.from('combo_items').insert(

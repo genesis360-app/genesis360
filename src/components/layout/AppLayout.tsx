@@ -339,35 +339,41 @@ export function AppLayout() {
           {/* Derecha: selector sucursal + acciones */}
           <div className="flex items-center gap-0.5">
 
-            {/* Selector de sucursal */}
-            {sucursales.length > 0 && puedeVerTodas && (
-              <div className="hidden sm:flex items-center gap-1.5 mr-1">
-                <Building2 size={14} className="text-muted flex-shrink-0" />
-                <select
-                  value={sucursalId ?? ''}
-                  onChange={e => setSucursal(e.target.value || null)}
-                  className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
-                  title="Filtrar por sucursal"
-                >
-                  <option value="">Todas las sucursales</option>
-                  {sucursales.map(s => (
-                    <option key={s.id} value={s.id}>{s.nombre}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {sucursales.length > 0 && !puedeVerTodas && (
-              <div className="hidden sm:flex items-center gap-1.5 mr-1">
-                <Building2 size={14} className="text-muted flex-shrink-0" />
-                {sucursalId ? (
-                  <span className="text-xs font-medium text-primary dark:text-white truncate max-w-[140px]">
-                    {sucursales.find(s => s.id === sucursalId)?.nombre ?? '—'}
-                  </span>
-                ) : (
-                  <span className="text-xs text-orange-500 font-medium">Sin sucursal</span>
-                )}
-              </div>
-            )}
+            {/* Selector de sucursal — solo en rutas operativas y solo Dueño puede cambiar */}
+            {sucursales.length > 0 && (() => {
+              const RUTAS_CON_SELECTOR = ['/inventario', '/productos', '/clientes', '/proveedores']
+              const enRutaOperativa = RUTAS_CON_SELECTOR.some(r => pathname.startsWith(r))
+              if (!enRutaOperativa) return null
+              const esDueno = user?.rol === 'DUEÑO'
+              return (
+                <div className="hidden sm:flex items-center gap-1.5 mr-1">
+                  <Building2 size={14} className="text-muted flex-shrink-0" />
+                  {esDueno ? (
+                    // Dueño: selector completo con "Todas las sucursales"
+                    <select
+                      value={sucursalId ?? ''}
+                      onChange={e => setSucursal(e.target.value || null)}
+                      className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
+                      title="Filtrar por sucursal"
+                    >
+                      <option value="">Todas las sucursales</option>
+                      {sucursales.map(s => (
+                        <option key={s.id} value={s.id}>{s.nombre}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    // Otros roles: muestra la sucursal asignada (sin cambiar)
+                    sucursalId ? (
+                      <span className="text-xs font-medium text-primary dark:text-white truncate max-w-[140px]">
+                        {sucursales.find(s => s.id === sucursalId)?.nombre ?? '—'}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-orange-500 font-medium">Sin sucursal</span>
+                    )
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Refresh */}
             <RefreshButton className={hBtn} />

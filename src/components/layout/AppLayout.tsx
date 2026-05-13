@@ -339,17 +339,18 @@ export function AppLayout() {
           {/* Derecha: selector sucursal + acciones */}
           <div className="flex items-center gap-0.5">
 
-            {/* Selector de sucursal — solo en rutas operativas y solo Dueño puede cambiar */}
+            {/* Sucursal — siempre visible. Dueño puede cambiarla solo en rutas operativas */}
             {sucursales.length > 0 && (() => {
               const RUTAS_CON_SELECTOR = ['/inventario', '/productos', '/clientes', '/proveedores']
-              const enRutaOperativa = RUTAS_CON_SELECTOR.some(r => pathname.startsWith(r))
-              if (!enRutaOperativa) return null
               const esDueno = user?.rol === 'DUEÑO'
+              const conSelector = esDueno && RUTAS_CON_SELECTOR.some(r => pathname.startsWith(r))
+              const nombreSucursal = sucursalId
+                ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? '—')
+                : null
               return (
                 <div className="hidden sm:flex items-center gap-1.5 mr-1">
                   <Building2 size={14} className="text-muted flex-shrink-0" />
-                  {esDueno ? (
-                    // Dueño: selector completo con "Todas las sucursales"
+                  {conSelector ? (
                     <select
                       value={sucursalId ?? ''}
                       onChange={e => setSucursal(e.target.value || null)}
@@ -361,15 +362,14 @@ export function AppLayout() {
                         <option key={s.id} value={s.id}>{s.nombre}</option>
                       ))}
                     </select>
+                  ) : nombreSucursal ? (
+                    <span className="text-xs font-medium text-primary dark:text-white truncate max-w-[140px]">
+                      {nombreSucursal}
+                    </span>
+                  ) : esDueno ? (
+                    <span className="text-xs font-medium text-muted truncate max-w-[140px]">Todas las suc.</span>
                   ) : (
-                    // Otros roles: muestra la sucursal asignada (sin cambiar)
-                    sucursalId ? (
-                      <span className="text-xs font-medium text-primary dark:text-white truncate max-w-[140px]">
-                        {sucursales.find(s => s.id === sucursalId)?.nombre ?? '—'}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-orange-500 font-medium">Sin sucursal</span>
-                    )
+                    <span className="text-xs text-orange-500 font-medium">Sin sucursal</span>
                   )}
                 </div>
               )

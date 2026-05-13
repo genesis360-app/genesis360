@@ -541,6 +541,10 @@ export interface Recurso {
   garantia_hasta?: string | null
   notas?: string | null
   sucursal_id?: string | null
+  es_recurrente?: boolean
+  frecuencia_valor?: number | null
+  frecuencia_unidad?: 'dia' | 'semana' | 'mes' | 'año' | null
+  proximo_vencimiento?: string | null
   created_by?: string | null
   created_at: string
   updated_at: string

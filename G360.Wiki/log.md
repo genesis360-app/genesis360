@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-13] update | Inventario: stock por sucursal en movimientos + display (fix integral)
+
+- `getStockAntesSucursal` helper reemplaza `productos.stock_actual` global en todos los inserts de `movimientos_stock`
+- Corregido en: ingreso, rebaje, masivo inline, conteo, autorizaciones, kitting, des-kitting
+- `sucursal_id` agregado en kitting/des-kitting y autorizaciones (faltaba)
+- `inventario_lineas` INSERT del masivo inline ahora incluye `sucursal_id`
+- Display "Stock en sucursal: X" en formularios Agregar Stock y Quitar Stock cuando hay sucursal activa
+- Query reactiva `stockEnSucursal` con `staleTime: 0`
+
+## [2026-05-13] update | Recursos: tab Ubicaciones + recurrencia + GastosPage renovaciones
+
+- Migration 102: columnas `es_recurrente`, `frecuencia_valor`, `frecuencia_unidad`, `proximo_vencimiento` en `recursos`
+- RecursosPage: tab "Ubicaciones" con agrupación por ubicación e inline edit; lógica recurrente en modal (checkbox + frecuencia + fecha próxima calculable); badge visual en cards
+- GastosPage tab Recursos: sección "Renovaciones pendientes" con recursos recurrentes vencidos o próximos (≤7 días) + botón "Registrar compra" que crea gasto y avanza la fecha
+- LpnAccionesModal: sucursal_id en tab Editar (sesión anterior)
+
 ## [2026-05-13] update | v1.8.16 DEV — cierre sesión completo
 
 Renombrado OWNER→DUEÑO (migration 100): constraint, data, RLS, is_rrhh(), caja_fuerte_roles, 21 archivos frontend.

@@ -487,6 +487,41 @@ export default function InventarioPage() {
     enabled: !!tenant && tab === 'autorizaciones' && puedeVerAutorizaciones,
   })
 
+  // ── Helper: stock por sucursal activa (o global si no hay sucursal) ──────────
+  // Uso: movimientos_stock.stock_antes / stock_despues + display en formularios
+  async function getStockAntesSucursal(productoId: string, efectivaSucId: string | null): Promise<number> {
+    if (efectivaSucId) {
+      const { data } = await supabase
+        .from('inventario_lineas')
+        .select('cantidad')
+        .eq('tenant_id', tenant!.id)
+        .eq('producto_id', productoId)
+        .eq('sucursal_id', efectivaSucId)
+        .eq('activo', true)
+      return (data ?? []).reduce((s: number, l: any) => s + (Number(l.cantidad) || 0), 0)
+    }
+    const { data } = await supabase.from('productos').select('stock_actual').eq('id', productoId).single()
+    return data?.stock_actual ?? 0
+  }
+
+  // Query reactiva: stock del producto seleccionado en la sucursal activa (para display en formularios)
+  const effSucursalIngreso = sucursalId ?? ingresoSucursalId
+  const { data: stockEnSucursal } = useQuery({
+    queryKey: ['stock-en-sucursal', selectedProduct?.id, effSucursalIngreso],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('inventario_lineas')
+        .select('cantidad')
+        .eq('tenant_id', tenant!.id)
+        .eq('producto_id', selectedProduct!.id)
+        .eq('sucursal_id', effSucursalIngreso!)
+        .eq('activo', true)
+      return (data ?? []).reduce((s: number, l: any) => s + (Number(l.cantidad) || 0), 0)
+    },
+    enabled: !!selectedProduct && !!effSucursalIngreso,
+    staleTime: 0,
+  })
+
   const aprobarAutorizacion = useMutation({
     mutationFn: async (aut: any) => {
       const linea = aut.inventario_lineas
@@ -496,8 +531,8 @@ export default function InventarioPage() {
         if (error) throw error
         const diff = cantidad_nueva - cantidad_anterior
         if (Math.abs(diff) > 0.001) {
-          const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
-          const stockAntes = prod?.stock_actual ?? 0
+          const lineaSucId = linea?.sucursal_id ?? null
+          const stockAntes = await getStockAntesSucursal(linea?.producto_id, lineaSucId)
           await supabase.from('movimientos_stock').insert({
             tenant_id: tenant!.id, producto_id: linea?.producto_id,
             tipo: diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje',
@@ -506,20 +541,22 @@ export default function InventarioPage() {
             stock_despues: Math.max(0, stockAntes + diff),
             motivo: `Ajuste aprobado — LPN ${linea?.lpn}`,
             usuario_id: user?.id,
+            sucursal_id: lineaSucId,
           })
         }
       } else if (aut.tipo === 'eliminar_serie') {
         const { serie_id } = aut.datos_cambio
         const { error } = await supabase.from('inventario_series').update({ activo: false }).eq('id', serie_id)
         if (error) throw error
-        const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
-        const stockAntes = prod?.stock_actual ?? 0
+        const lineaSucId = linea?.sucursal_id ?? null
+        const stockAntes = await getStockAntesSucursal(linea?.producto_id, lineaSucId)
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: linea?.producto_id,
           tipo: 'rebaje', cantidad: 1,
           stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - 1),
           motivo: `Serie eliminada (aprobada) — LPN ${linea?.lpn}`,
           usuario_id: user?.id,
+          sucursal_id: lineaSucId,
         })
       } else if (aut.tipo === 'eliminar_lpn') {
         const cantEliminada = aut.datos_cambio.cantidad ?? linea?.cantidad ?? 0
@@ -527,14 +564,15 @@ export default function InventarioPage() {
         const { error } = await supabase.from('inventario_lineas').update({ activo: false, cantidad: 0 }).eq('id', aut.linea_id)
         if (error) throw error
         if (cantEliminada > 0) {
-          const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
-          const stockAntes = prod?.stock_actual ?? 0
+          const lineaSucId = linea?.sucursal_id ?? null
+          const stockAntes = await getStockAntesSucursal(linea?.producto_id, lineaSucId)
           await supabase.from('movimientos_stock').insert({
             tenant_id: tenant!.id, producto_id: linea?.producto_id,
             tipo: 'rebaje', cantidad: cantEliminada,
             stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - cantEliminada),
             motivo: `LPN eliminado (aprobado) — ${linea?.lpn}`,
             usuario_id: user?.id,
+            sucursal_id: lineaSucId,
           })
         }
       }
@@ -750,8 +788,7 @@ export default function InventarioPage() {
         }
       }
 
-      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', selectedProduct.id).single()
-      const stockAntes = prodAntes?.stock_actual ?? 0
+      const stockAntes = await getStockAntesSucursal(selectedProduct.id, sucursalId ?? ingresoSucursalId ?? null)
 
       const { data: linea, error: lineaError } = await supabase
         .from('inventario_lineas')
@@ -830,8 +867,7 @@ export default function InventarioPage() {
       if (!selectedProduct || !rebajeLinea) throw new Error('Seleccioná producto y línea')
       const tieneSeries = (selectedProduct as any).tiene_series
 
-      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', selectedProduct.id).single()
-      const stockAntes = prodAntes?.stock_actual ?? 0
+      const stockAntes = await getStockAntesSucursal(selectedProduct.id, sucursalId)
 
       if (tieneSeries) {
         if (rebajeSeries.length === 0) throw new Error('Seleccioná al menos una serie')
@@ -1009,12 +1045,14 @@ export default function InventarioPage() {
         cantsByComp[entry.comp_producto_id] = (cantsByComp[entry.comp_producto_id] ?? 0) + entry.cantidad
       }
       for (const [prodId, cantTotal] of Object.entries(cantsByComp)) {
+        const saComp = await getStockAntesSucursal(prodId, sucursalId)
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: prodId,
           tipo: 'rebaje', cantidad: cantTotal,
-          stock_antes: 0, stock_despues: 0,
+          stock_antes: saComp, stock_despues: Math.max(0, saComp - cantTotal),
           motivo: `Kitting x${log.cantidad_kits} [${log.kit_producto_id}]`,
           usuario_id: user?.id ?? null,
+          sucursal_id: sucursalId || null,
         })
       }
 
@@ -1022,13 +1060,16 @@ export default function InventarioPage() {
       await supabase.from('inventario_lineas').insert({
         tenant_id: tenant!.id, producto_id: log.kit_producto_id,
         cantidad: log.cantidad_kits, ubicacion_id: log.ubicacion_id ?? null, activo: true,
+        sucursal_id: sucursalId || null,
       })
+      const saKit = await getStockAntesSucursal(log.kit_producto_id, sucursalId)
       await supabase.from('movimientos_stock').insert({
         tenant_id: tenant!.id, producto_id: log.kit_producto_id,
         tipo: 'kitting', cantidad: log.cantidad_kits,
-        stock_antes: 0, stock_despues: 0,
+        stock_antes: saKit, stock_despues: saKit + log.cantidad_kits,
         motivo: log.notas || `Kitting x${log.cantidad_kits}`,
         usuario_id: user?.id ?? null,
+        sucursal_id: sucursalId || null,
       })
 
       // 3. Marcar log como completado
@@ -1098,12 +1139,14 @@ export default function InventarioPage() {
         await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
         restanteKit -= aRebajar
       }
+      const saKitDes = await getStockAntesSucursal(desarmarKitId, sucursalId)
       await supabase.from('movimientos_stock').insert({
         tenant_id: tenant!.id, producto_id: desarmarKitId,
         tipo: 'des_kitting', cantidad: cant,
-        stock_antes: 0, stock_despues: 0,
+        stock_antes: saKitDes, stock_despues: Math.max(0, saKitDes - cant),
         motivo: desarmarNotas || `Desarmado x${cant}`,
         usuario_id: user?.id ?? null,
+        sucursal_id: sucursalId || null,
       })
 
       // 3. Ingreso de cada componente según receta
@@ -1112,13 +1155,16 @@ export default function InventarioPage() {
         await supabase.from('inventario_lineas').insert({
           tenant_id: tenant!.id, producto_id: r.comp_producto_id,
           cantidad: cantComp, activo: true,
+          sucursal_id: sucursalId || null,
         })
+        const saComp = await getStockAntesSucursal(r.comp_producto_id, sucursalId)
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: r.comp_producto_id,
           tipo: 'ingreso', cantidad: cantComp,
-          stock_antes: 0, stock_despues: 0,
+          stock_antes: saComp, stock_despues: saComp + cantComp,
           motivo: `Desarmado KIT x${cant} [${desarmarKitId}]`,
           usuario_id: user?.id ?? null,
+          sucursal_id: sucursalId || null,
         })
       }
 
@@ -1234,12 +1280,12 @@ export default function InventarioPage() {
         const diff = contada - row.cantidad_esperada
         if (Math.abs(diff) < 0.001) continue
         await supabase.from('inventario_lineas').update({ cantidad: contada, activo: contada > 0 }).eq('id', row.linea_id)
-        const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', row.producto_id).single()
+        const stockAntes = await getStockAntesSucursal(row.producto_id, sucursalId)
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: row.producto_id,
           tipo: diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje', cantidad: Math.abs(diff),
-          stock_antes: prodAntes?.stock_actual ?? 0,
-          stock_despues: Math.max(0, (prodAntes?.stock_actual ?? 0) + diff),
+          stock_antes: stockAntes,
+          stock_despues: Math.max(0, stockAntes + diff),
           motivo: `Conteo de inventario${row.lpn ? ` — LPN ${row.lpn}` : ` — ${row.sku}`}`,
           usuario_id: user?.id, linea_id: row.linea_id, sucursal_id: sucursalId || null,
         })
@@ -1376,8 +1422,8 @@ export default function InventarioPage() {
           if (row.tiene_lote && !row.nro_lote.trim()) { errores.push(`${row.sku}: requiere lote`); continue }
           if (row.tiene_vencimiento && !row.fecha_vencimiento) { errores.push(`${row.sku}: requiere vencimiento`); continue }
 
-          const { data: prodAntes } = await supabase.from('productos').select('stock_actual,precio_costo,precio_venta').eq('id', row.producto_id).single()
-          const stockAntes = prodAntes?.stock_actual ?? 0
+          const { data: prodAntes } = await supabase.from('productos').select('precio_costo,precio_venta').eq('id', row.producto_id).single()
+          const stockAntes = await getStockAntesSucursal(row.producto_id, sucursalId)
 
           const { data: linea, error: lineaError } = await supabase.from('inventario_lineas').insert({
             tenant_id: tenant!.id,
@@ -1390,6 +1436,7 @@ export default function InventarioPage() {
             fecha_vencimiento: row.fecha_vencimiento || null,
             precio_costo_snapshot: (prodAntes as any)?.precio_costo ?? null,
             precio_venta_snapshot: (prodAntes as any)?.precio_venta ?? null,
+            sucursal_id: sucursalId ?? null,
           }).select().single()
           if (lineaError) { errores.push(`${row.sku}: ${lineaError.message}`); continue }
 
@@ -2207,7 +2254,11 @@ export default function InventarioPage() {
                     <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-accent/30 rounded-xl px-4 py-3">
                       <div>
                         <p className="font-medium text-gray-800 dark:text-gray-100">{selectedProduct.nombre}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">SKU: {selectedProduct.sku} | Stock: {(selectedProduct as any).stock_actual}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          SKU: {selectedProduct.sku} | {effSucursalIngreso
+                            ? <>Stock en sucursal: <span className="font-semibold text-primary">{stockEnSucursal ?? '…'}</span></>
+                            : <>Stock total: {(selectedProduct as any).stock_actual}</>}
+                        </p>
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {(selectedProduct as any).tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1.5 py-0.5 rounded">Nº serie</span>}
                           {(selectedProduct as any).tiene_lote && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">Lote</span>}
@@ -2492,7 +2543,11 @@ export default function InventarioPage() {
                     <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-accent/30 rounded-xl px-4 py-3">
                       <div>
                         <p className="font-medium text-gray-800 dark:text-gray-100">{selectedProduct.nombre}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Stock total: {(selectedProduct as any).stock_actual}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {sucursalId
+                            ? <>Stock en sucursal: <span className="font-semibold text-primary">{stockEnSucursal ?? '…'}</span></>
+                            : <>Stock total: {(selectedProduct as any).stock_actual}</>}
+                        </p>
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {(selectedProduct as any).tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1.5 py-0.5 rounded">Nº serie</span>}
                           {(selectedProduct as any).tiene_lote && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">Lote</span>}

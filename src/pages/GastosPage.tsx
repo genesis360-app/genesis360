@@ -288,6 +288,60 @@ export default function GastosPage() {
     onError: (e: any) => toast.error(e.message),
   })
 
+  // ── Recursos recurrentes vencidos o próximos (≤7 días) ───────────────────
+  const { data: recursosVencidos = [] } = useQuery({
+    queryKey: ['recursos-recurrentes-vencidos', tenant?.id],
+    queryFn: async () => {
+      const en7 = new Date(); en7.setDate(en7.getDate() + 7)
+      const { data } = await supabase.from('recursos')
+        .select('*, proveedores(id, nombre)')
+        .eq('tenant_id', tenant!.id)
+        .eq('es_recurrente', true)
+        .lte('proximo_vencimiento', en7.toISOString().split('T')[0])
+        .order('proximo_vencimiento')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'recursos',
+  })
+
+  function avanzarProximoVenc(venc: string, valor: number, unidad: string): string {
+    const d = new Date(venc + 'T00:00:00')
+    if (unidad === 'dia') d.setDate(d.getDate() + valor)
+    else if (unidad === 'semana') d.setDate(d.getDate() + valor * 7)
+    else if (unidad === 'mes') d.setMonth(d.getMonth() + valor)
+    else if (unidad === 'año') d.setFullYear(d.getFullYear() + valor)
+    return d.toISOString().split('T')[0]
+  }
+
+  const registrarCompraRecurrente = useMutation({
+    mutationFn: async (recurso: any) => {
+      const fechaHoy = new Date().toISOString().split('T')[0]
+      await supabase.from('gastos').insert({
+        tenant_id:   tenant!.id,
+        recurso_id:  recurso.id,
+        descripcion: `Renovación: ${recurso.nombre}`,
+        monto:       recurso.valor ?? 0,
+        categoria:   'Recurso',
+        fecha:       fechaHoy,
+        sucursal_id: recurso.sucursal_id ?? null,
+        usuario_id:  user?.id,
+      })
+      const nuevoVenc = avanzarProximoVenc(
+        recurso.proximo_vencimiento,
+        recurso.frecuencia_valor,
+        recurso.frecuencia_unidad,
+      )
+      await supabase.from('recursos').update({ proximo_vencimiento: nuevoVenc }).eq('id', recurso.id)
+    },
+    onSuccess: () => {
+      toast.success('Gasto pendiente creado · Próxima fecha actualizada')
+      qc.invalidateQueries({ queryKey: ['gastos-recursos'] })
+      qc.invalidateQueries({ queryKey: ['recursos-recurrentes-vencidos'] })
+      qc.invalidateQueries({ queryKey: ['recursos'] })
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
   const ocSeleccionada = ocs.find((o: any) => o.id === ocModalId) ?? null
 
   const ocsFiltradas = useMemo(() => {
@@ -1363,6 +1417,46 @@ export default function GastosPage() {
       {/* ══ TAB: RECURSOS ══ */}
       {tab === 'recursos' && (
         <div className="space-y-3">
+          {/* Renovaciones recurrentes vencidas/próximas */}
+          {recursosVencidos.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-amber-200 dark:border-amber-700 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700">
+                <Clock size={16} className="text-amber-600 dark:text-amber-400" />
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Renovaciones pendientes ({recursosVencidos.length})</p>
+              </div>
+              <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                {recursosVencidos.map((r: any) => {
+                  const fechaVenc = r.proximo_vencimiento
+                  const esVencido = fechaVenc && fechaVenc < new Date().toISOString().split('T')[0]
+                  return (
+                    <div key={r.id} className="flex items-center gap-4 p-4">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-100 dark:bg-amber-900/30">
+                        <Repeat size={16} className="text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{r.nombre}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{r.categoria} · Cada {r.frecuencia_valor} {r.frecuencia_unidad}(s)</p>
+                        <p className={`text-xs font-medium mt-0.5 ${esVencido ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                          {esVencido ? '⚠ Vencido: ' : '⏰ Próximo: '}
+                          {new Date(fechaVenc + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </p>
+                      </div>
+                      {r.valor != null && (
+                        <p className="text-sm font-bold text-gray-800 dark:text-gray-100 shrink-0">${Number(r.valor).toLocaleString('es-AR')}</p>
+                      )}
+                      <button
+                        onClick={() => registrarCompraRecurrente.mutate(r)}
+                        disabled={registrarCompraRecurrente.isPending}
+                        className="shrink-0 px-3 py-2 rounded-xl text-xs font-semibold border-2 border-amber-500 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50 transition-colors">
+                        Registrar compra
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Gastos generados por la adquisición de recursos. Marcalos como pagados para activar el recurso.

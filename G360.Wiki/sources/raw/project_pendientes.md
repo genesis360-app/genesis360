@@ -21,7 +21,7 @@ type: project
 
 ---
 
-## Migrations pendientes en PROD (093–101)
+## Migrations pendientes en PROD (093–102)
 
 | # | Archivo | Descripción |
 |---|---------|-------------|
@@ -34,10 +34,11 @@ type: project
 | 099 | `099_notificaciones_metadata.sql` | `notificaciones.metadata JSONB` |
 | 100 | `100_rename_owner_to_dueno.sql` | `rol='OWNER'→'DUEÑO'` + políticas RLS + `is_rrhh()` + `caja_fuerte_roles` |
 | 101 | `101_ubicaciones_combos_sucursal.sql` | `ubicaciones.sucursal_id` + `combos.sucursal_id` |
+| 102 | `102_recursos_recurrentes_ubicaciones.sql` | `recursos.es_recurrente/frecuencia_valor/frecuencia_unidad/proximo_vencimiento` |
 
 ---
 
-## Lo producido en esta sesión (v1.8.7 → v1.8.16 DEV)
+## Lo producido en esta sesión (v1.8.7 → v1.8.17-dev)
 
 ### Fixes críticos operativos
 
@@ -87,10 +88,31 @@ Cada área tiene filtros propios, KPIs, gráficos e insights dinámicos.
 
 **LPN Modal Traslado:** `cantMover` inicializa en `'1'` cuando hay ≥2 unidades → botón habilitado de inmediato.
 
+**LPN Modal Editar:** Nuevo campo `sucursal_id` en tab Editar para reasignar el LPN completo a otra sucursal.
+
+### Módulo Recursos — nuevas features
+
+**Tab Ubicaciones:** muestra todos los recursos activos/pendientes agrupados por `ubicacion`. Edición inline del campo ubicación (lápiz → input → Enter/Escape). Banner de alerta si hay recurrentes vencidos o próximos.
+
+**Recursos recurrentes:** checkbox "Recurso recurrente" en modal de alta/edición. Define frecuencia (N días/semanas/meses/años) y fecha próxima compra (auto-calculada si se deja vacía). Badge violeta/ámbar/rojo en cards según estado. Migration 102 agrega columnas a `recursos`.
+
+**GastosPage → tab Recursos — Renovaciones pendientes:** nueva sección que muestra recursos recurrentes con `proximo_vencimiento ≤ hoy+7` o vencidos. Botón "Registrar compra" → crea gasto pendiente + avanza la fecha al siguiente ciclo.
+
+### Inventario — stock por sucursal (fix integral)
+
+**Helper `getStockAntesSucursal`:** reemplaza `productos.stock_actual` global en todos los inserts de `movimientos_stock`. Suma `inventario_lineas.cantidad` filtrado por `sucursal_id` cuando hay sucursal activa.
+
+**Correcciones aplicadas en:** ingreso simple, rebaje, masivo inline, conteo, autorizaciones (ajuste/serie/LPN), kitting, des-kitting.
+
+**`sucursal_id` agregado** en todos los movimientos que lo faltaban: kitting, des-kitting, autorizaciones. También en `inventario_lineas` INSERT del masivo inline y kitting/des-kitting.
+
+**Display en formularios:** "Stock en sucursal: X" cuando hay sucursal activa (Agregar Stock y Quitar Stock). Query reactiva `stockEnSucursal` se actualiza al cambiar sucursal o producto.
+
 ### DB (migrations nuevas en DEV)
 - Migration 099: `notificaciones.metadata JSONB`
 - Migration 100: rename `DUEÑO` completo
 - Migration 101: `sucursal_id` en `ubicaciones` y `combos`
+- Migration 102: `es_recurrente/frecuencia_valor/frecuencia_unidad/proximo_vencimiento` en `recursos`
 
 ---
 
@@ -110,6 +132,10 @@ Cada área tiene filtros propios, KPIs, gráficos e insights dinámicos.
 - **Recepciones**: validar sucursal obligatoria (igual que ingreso directo)
 - **Relocacion manual de LPNs existentes sin sucursal**: UI para asignar sucursal masivamente
 - **Traslado LPN**: probar que el flujo completo funciona en prod (cantidad + sucursal + ubicación)
+
+### 3. Recursos — pendientes de esta sesión
+- **Migration 102**: aplicar en DEV y luego en PROD con el siguiente deploy
+- **Recursos recurrentes — cron automático**: generar gastos pendientes automáticamente (pg_cron o GitHub Actions) sin intervención del usuario
 
 ---
 

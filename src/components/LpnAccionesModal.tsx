@@ -33,6 +33,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     lpn: linea.lpn ?? '',
     estado_id: linea.estado_id ?? '',
     ubicacion_id: linea.ubicacion_id ?? '',
+    sucursal_id: linea.sucursal_id ?? '',
     proveedor_id: linea.proveedor_id ?? '',
     nro_lote: linea.nro_lote ?? '',
     // Tomar solo los primeros 10 chars para evitar desfase de timezone
@@ -158,6 +159,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           lpn: editForm.lpn || linea.lpn,
           estado_id: editForm.estado_id || null,
           ubicacion_id: editForm.ubicacion_id || null,
+          sucursal_id: editForm.sucursal_id || null,
           proveedor_id: editForm.proveedor_id || null,
           nro_lote: editForm.nro_lote || null,
           fecha_vencimiento: editForm.fecha_vencimiento || null,
@@ -172,6 +174,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         lpn: editForm.lpn || linea.lpn,
         estado_id: editForm.estado_id || null,
         ubicacion_id: editForm.ubicacion_id || null,
+        sucursal_id: editForm.sucursal_id || null,
         proveedor_id: editForm.proveedor_id || null,
         nro_lote: editForm.nro_lote || null,
         fecha_vencimiento: editForm.fecha_vencimiento || null,
@@ -203,6 +206,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'cambio_estado', campo: 'estado', valor_anterior: linea.estado_id ? resolveNombre(estados, linea.estado_id) : null, valor_nuevo: editForm.estado_id ? resolveNombre(estados, editForm.estado_id) : null, pagina: '/inventario' })
       if ((editForm.ubicacion_id || '') !== (linea.ubicacion_id || ''))
         logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'ubicacion', valor_anterior: linea.ubicacion_id ? resolveNombre(ubicaciones, linea.ubicacion_id) : null, valor_nuevo: editForm.ubicacion_id ? resolveNombre(ubicaciones, editForm.ubicacion_id) : null, pagina: '/inventario' })
+      if ((editForm.sucursal_id || '') !== (linea.sucursal_id || ''))
+        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'sucursal', valor_anterior: linea.sucursal_id ? resolveNombre(sucursales as any[], linea.sucursal_id) : null, valor_nuevo: editForm.sucursal_id ? resolveNombre(sucursales as any[], editForm.sucursal_id) : null, pagina: '/inventario' })
       if ((editForm.nro_lote || '') !== (linea.nro_lote || ''))
         logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'nro_lote', valor_anterior: linea.nro_lote ?? null, valor_nuevo: editForm.nro_lote || null, pagina: '/inventario' })
       const oldVenc = linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : ''
@@ -496,6 +501,18 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
                 </div>
+                {sucursales.length > 1 && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sucursal</label>
+                    <select value={editForm.sucursal_id} onChange={e => setEditForm(p => ({ ...p, sucursal_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                      <option value="">Sin sucursal</option>
+                      {(sucursales as Sucursal[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 {producto.tiene_lote && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">

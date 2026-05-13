@@ -506,6 +506,7 @@ export default function ConfigPage() {
   const [editUbicPallets, setEditUbicPallets] = useState('')
   const [editUbicWmsOpen, setEditUbicWmsOpen] = useState(false)
   const [editUbicMonoSku, setEditUbicMonoSku] = useState(false)
+  const [editUbicSucursalId, setEditUbicSucursalId] = useState('')
   const [ubicSearch, setUbicSearch] = useState('')
 
   const addUbicacion = async () => {
@@ -530,6 +531,7 @@ export default function ConfigPage() {
     setEditUbicPallets(u.capacidad_pallets != null ? String(u.capacidad_pallets) : '')
     setEditUbicWmsOpen(!!(u.tipo_ubicacion || u.alto_cm || u.ancho_cm || u.largo_cm || u.peso_max_kg || u.capacidad_pallets))
     setEditUbicMonoSku(u.mono_sku ?? false)
+    setEditUbicSucursalId(u.sucursal_id ?? '')
   }
   const saveUbicacion = async (id: string) => {
     const old = (ubicaciones as any[]).find(u => u.id === id)
@@ -544,6 +546,7 @@ export default function ConfigPage() {
       peso_max_kg: editUbicPeso ? parseFloat(editUbicPeso) : null,
       capacidad_pallets: editUbicPallets ? parseInt(editUbicPallets) : null,
       mono_sku: editUbicMonoSku,
+      sucursal_id: editUbicSucursalId || null,
     }).eq('id', id)
     if (error) { toast.error(error.message); return }
     toast.success('Actualizada')
@@ -1818,6 +1821,21 @@ export default function ConfigPage() {
                           <button onClick={() => saveUbicacion(u.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 p-1"><Check size={15} /></button>
                           <button onClick={() => setEditUbicId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 p-1"><X size={15} /></button>
                         </div>
+                        {/* Sucursal */}
+                        {sucursales.length > 1 && (
+                          <div className="flex items-center gap-2">
+                            <Building2 size={13} className="text-muted flex-shrink-0" />
+                            <select
+                              value={editUbicSucursalId}
+                              onChange={e => setEditUbicSucursalId(e.target.value)}
+                              className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-primary">
+                              <option value="">Global (todas las sucursales)</option>
+                              {(sucursales as any[]).map(s => (
+                                <option key={s.id} value={s.id}>{s.nombre}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                         {/* Dimensiones WMS (colapsable) */}
                         <button
                           type="button"
@@ -1876,6 +1894,13 @@ export default function ConfigPage() {
                             <span className="ml-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded" title="Mono-SKU: solo un producto">
                               <Tag size={9} className="inline mb-0.5 mr-0.5" />Mono-SKU
                             </span>
+                          )}
+                          {sucursales.length > 1 && (
+                            u.sucursal_id
+                              ? <span className="ml-2 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded flex-shrink-0 inline-flex items-center gap-1">
+                                  <Building2 size={9} />{(sucursales as any[]).find(s => s.id === u.sucursal_id)?.nombre ?? u.sucursal_id}
+                                </span>
+                              : <span className="ml-2 text-xs bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded flex-shrink-0">Global</span>
                           )}
                         </div>
                         {(u.prioridad ?? 0) > 0 && (

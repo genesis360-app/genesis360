@@ -1,8 +1,10 @@
 import { create } from 'zustand'
 import { supabase, type User, type Tenant, type Sucursal } from '@/lib/supabase'
 
-// Roles que pueden ver y cambiar entre sucursales (visión multi-sucursal)
-const ROLES_SIEMPRE_GLOBALES = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO']
+// Solo DUEÑO es siempre global — no se puede restringir a una sucursal
+const ROLES_SIEMPRE_GLOBALES = ['DUEÑO']
+// Estos roles son globales por defecto, pero pueden restringirse con puede_ver_todas = false en DB
+const ROLES_GLOBAL_POR_DEFECTO = ['SUPERVISOR', 'SUPER_USUARIO']
 
 interface AuthState {
   user: User | null
@@ -74,8 +76,13 @@ export const useAuthStore = create<AuthState>((set) => ({
 		const validSucursalId = savedRaw === '__global__' ? null
 		  : (savedRaw && ids.includes(savedRaw) ? savedRaw : null)
 
-		// Permisos de vista global: DUEÑO y ADMIN siempre, resto según DB
-		const puedeVerTodas = ROLES_SIEMPRE_GLOBALES.includes(userData.rol) || !!userData.puede_ver_todas
+		// DUEÑO: siempre global (hardcoded)
+		// SUPERVISOR/SUPER_USUARIO: global por defecto, restringible con puede_ver_todas=false en DB
+		// Resto: solo si puede_ver_todas=true explícito en DB
+		const puedeVerTodas =
+		  ROLES_SIEMPRE_GLOBALES.includes(userData.rol) ||
+		  (ROLES_GLOBAL_POR_DEFECTO.includes(userData.rol) && userData.puede_ver_todas !== false) ||
+		  !!userData.puede_ver_todas
 
 		// Usuarios sin vista global quedan bloqueados a su sucursal asignada (ignora localStorage)
 		const effectiveSucursalId = puedeVerTodas ? validSucursalId : (userData.sucursal_id ?? null)

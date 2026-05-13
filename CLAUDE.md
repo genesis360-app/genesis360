@@ -20,6 +20,7 @@ Actualizar el wiki **siempre** antes de terminar:
 3. **Página de feature afectada** en `G360.Wiki/wiki/features/` o `wiki/integrations/` — actualizar con los cambios.
 4. **`G360.Wiki/wiki/business/roadmap.md`** — agregar la versión si fue un release.
 5. **`G360.Wiki/wiki/database/migraciones.md`** — agregar migration si se creó una nueva.
+6. **Git tag + GitHub release** — crear tag `vX.Y.Z` en el commit correspondiente y `gh release create` con notas de los cambios. Hacerlo en **cada sesión** que produzca código, no solo al deployar a PROD. Usar `--latest` solo en el release más reciente.
 
 ### Responder preguntas generales sobre el proyecto
 

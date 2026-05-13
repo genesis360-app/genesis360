@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX, ShoppingCart } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Link } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -13,6 +14,7 @@ const RESERVAS_DIAS_LIMITE = 3
 
 export default function AlertasPage() {
   const { tenant } = useAuthStore()
+  const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
 
   const fechaLimite = new Date()
@@ -34,14 +36,14 @@ export default function AlertasPage() {
   })
 
   const { data: reservasViejas = [], isLoading: loadingReservas } = useQuery({
-    queryKey: ['reservas-viejas', tenant?.id],
+    queryKey: ['reservas-viejas', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await applyFilter(supabase
         .from('ventas')
         .select('id, numero, cliente_nombre, cliente_telefono, total, created_at')
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'reservada')
-        .lt('created_at', fechaLimite.toISOString())
+        .lt('created_at', fechaLimite.toISOString()))
         .order('created_at', { ascending: true })
       if (error) throw error
       return data ?? []
@@ -67,14 +69,14 @@ export default function AlertasPage() {
 
   // Clientes con saldo pendiente (ventas pendientes/reservadas con deuda)
   const { data: lineasSinUbicacion = [], isLoading: loadingSinUbic } = useQuery({
-    queryKey: ['lineas-sin-ubicacion', tenant?.id],
+    queryKey: ['lineas-sin-ubicacion', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await applyFilter(supabase
         .from('inventario_lineas')
         .select('id, lpn, nro_lote, cantidad, productos(nombre, sku)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
-        .is('ubicacion_id', null)
+        .is('ubicacion_id', null))
         .gt('cantidad', 0)
         .order('created_at', { ascending: false })
       if (error) throw error
@@ -84,16 +86,16 @@ export default function AlertasPage() {
   })
 
   const { data: lineasSinProveedor = [], isLoading: loadingSinProv } = useQuery({
-    queryKey: ['lineas-sin-proveedor', tenant?.id],
+    queryKey: ['lineas-sin-proveedor', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await applyFilter(supabase
         .from('inventario_lineas')
         .select('id, lpn, nro_lote, cantidad, productos(nombre, sku)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .is('proveedor_id', null)
         .gt('cantidad', 0)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }))
       if (error) throw error
       return data ?? []
     },
@@ -105,25 +107,25 @@ export default function AlertasPage() {
   const en3diasStr = en3dias.toISOString().split('T')[0]
 
   const { data: ocsVencidas = [], isLoading: loadingOcsVenc } = useQuery({
-    queryKey: ['oc-vencidas', tenant?.id],
+    queryKey: ['oc-vencidas', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await applyFilter(supabase
         .from('ordenes_compra')
         .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
         .not('fecha_vencimiento_pago', 'is', null)
         .lt('fecha_vencimiento_pago', hoyStr)
-        .order('fecha_vencimiento_pago', { ascending: true })
+        .order('fecha_vencimiento_pago', { ascending: true }))
       return data ?? []
     },
     enabled: !!tenant,
   })
 
   const { data: ocsProximas = [], isLoading: loadingOcsProx } = useQuery({
-    queryKey: ['oc-proximas-vencer', tenant?.id],
+    queryKey: ['oc-proximas-vencer', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await applyFilter(supabase
         .from('ordenes_compra')
         .select('id, numero, estado_pago, fecha_vencimiento_pago, monto_total, monto_pagado, proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
@@ -131,17 +133,17 @@ export default function AlertasPage() {
         .not('fecha_vencimiento_pago', 'is', null)
         .gte('fecha_vencimiento_pago', hoyStr)
         .lte('fecha_vencimiento_pago', en3diasStr)
-        .order('fecha_vencimiento_pago', { ascending: true })
+        .order('fecha_vencimiento_pago', { ascending: true }))
       return data ?? []
     },
     enabled: !!tenant,
   })
 
   const { data: lpnsVencidos = [], isLoading: loadingVencidos } = useQuery({
-    queryKey: ['lpns-vencidos', tenant?.id],
+    queryKey: ['lpns-vencidos', tenant?.id, sucursalId],
     queryFn: async () => {
       const hoy = new Date().toISOString().split('T')[0]
-      const { data, error } = await supabase
+      const { data, error } = await applyFilter(supabase
         .from('inventario_lineas')
         .select('id, lpn, cantidad, fecha_vencimiento, productos(id, nombre, sku)')
         .eq('tenant_id', tenant!.id)
@@ -149,7 +151,7 @@ export default function AlertasPage() {
         .gt('cantidad', 0)
         .not('fecha_vencimiento', 'is', null)
         .lt('fecha_vencimiento', hoy)
-        .order('fecha_vencimiento', { ascending: true })
+        .order('fecha_vencimiento', { ascending: true }))
       if (error) throw error
       return data ?? []
     },
@@ -157,14 +159,14 @@ export default function AlertasPage() {
   })
 
   const { data: clientesConDeuda = [], isLoading: loadingDeuda } = useQuery({
-    queryKey: ['clientes-con-deuda', tenant?.id],
+    queryKey: ['clientes-con-deuda', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await applyFilter(supabase
         .from('ventas')
         .select('id, numero, total, monto_pagado, cliente_id, clientes(id, nombre, telefono)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['pendiente', 'reservada'])
-        .not('cliente_id', 'is', null)
+        .not('cliente_id', 'is', null))
       if (error) throw error
       // Agrupar por cliente, sumar saldo pendiente
       const mapa: Record<string, { clienteId: string; nombre: string; telefono: string; saldo: number; ventas: number }> = {}
@@ -329,7 +331,7 @@ export default function AlertasPage() {
                 <Clock size={14} />
                 Reservas sin despachar (+{RESERVAS_DIAS_LIMITE} días)
               </h2>
-              {reservasViejas.map(v => (
+              {(reservasViejas as any[]).map(v => (
                 <div key={v.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-amber-100 dark:border-amber-900/30 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center flex-shrink-0">

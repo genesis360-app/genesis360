@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-13] update | v1.8.14 DEV — cierre sesión + docs actualizados
+
+Dashboard General completo (9 áreas: Ventas/Gastos/Productos/Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing).
+Fixes: DashInventarioArea Treemap→barras custom (recharts v3 bug), DashProductosArea devolucion_items query + periodo default.
+Gotchas documentados: recharts v3 Treemap crash, Supabase JS !inner filter.
+Pendientes: deploy PROD v1.8.14 (migrations 093-099, EFs, GROQ_API_KEY, GitHub release).
+
+---
+
 ## [2026-05-12] update | v1.8.12 DEV — Dashboard General: área Inventario
 
 - feat: DashInventarioArea.tsx — área Inventario & Recursos completa:

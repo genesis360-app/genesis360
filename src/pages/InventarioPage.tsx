@@ -211,6 +211,9 @@ export default function InventarioPage() {
   const [showBulkUbicacion, setShowBulkUbicacion] = useState(false)
   const [bulkEstadoId, setBulkEstadoId] = useState('')
   const [bulkUbicacionId, setBulkUbicacionId] = useState('')
+  const [showBulkEditar, setShowBulkEditar] = useState(false)
+  const [bulkEditForm, setBulkEditForm] = useState({ sucursal_id: '', nro_lote: '', fecha_vencimiento: '', proveedor_id: '' })
+  const [bulkEditCampos, setBulkEditCampos] = useState({ sucursal: false, lote: false, vencimiento: false, proveedor: false })
 
   // ── Shared queries ─────────────────────────────────────────────────────────
   const { data: estados = [] } = useQuery({
@@ -612,18 +615,30 @@ export default function InventarioPage() {
             sucursal_id: lineaSucId,
           })
         }
+      } else if (aut.tipo === 'bulk_edit') {
+        const { linea_ids, campos } = aut.datos_cambio as { linea_ids: string[]; campos: Record<string, any> }
+        if (linea_ids?.length && Object.keys(campos).length) {
+          const { error } = await supabase.from('inventario_lineas').update(campos).in('id', linea_ids)
+          if (error) throw error
+        }
       }
       await supabase.from('autorizaciones_inventario').update({ estado: 'aprobada', aprobado_por: user?.id }).eq('id', aut.id)
-      // Registrar en historial de actividad para que aparezca en /historial
-      const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad' : aut.tipo === 'eliminar_serie' ? 'Eliminación de serie' : 'Eliminación de LPN'
+      const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad'
+        : aut.tipo === 'eliminar_serie' ? 'Eliminación de serie'
+        : aut.tipo === 'eliminar_lpn' ? 'Eliminación de LPN'
+        : 'Edición masiva de atributos'
       logActividad({
         entidad: 'inventario_linea',
-        entidad_id: aut.linea_id,
-        entidad_nombre: linea?.productos?.nombre ?? linea?.lpn ?? aut.linea_id,
+        entidad_id: aut.linea_id ?? '',
+        entidad_nombre: aut.tipo === 'bulk_edit'
+          ? `Bulk edit — ${(aut.datos_cambio?.linea_ids?.length ?? 0)} LPN(s)`
+          : (linea?.productos?.nombre ?? linea?.lpn ?? aut.linea_id),
         accion: 'editar',
         campo: aut.tipo,
         valor_anterior: String(aut.datos_cambio?.cantidad_anterior ?? ''),
-        valor_nuevo: String(aut.datos_cambio?.cantidad_nueva ?? aut.datos_cambio?.cantidad ?? ''),
+        valor_nuevo: aut.tipo === 'bulk_edit'
+          ? JSON.stringify(aut.datos_cambio?.campos ?? {})
+          : String(aut.datos_cambio?.cantidad_nueva ?? aut.datos_cambio?.cantidad ?? ''),
         pagina: '/inventario',
       })
     },
@@ -684,6 +699,55 @@ export default function InventarioPage() {
       setSelectedLineas([]); setSelectedLineasInfo([])
       setShowBulkUbicacion(false); setBulkUbicacionId('')
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const bulkEditarAtributos = useMutation({
+    mutationFn: async () => {
+      if (selectedLineas.length === 0) throw new Error('No hay LPNs seleccionados')
+      const esDeposito = user?.rol === 'DEPOSITO'
+
+      // Construir payload de campos a cambiar
+      const campos: Record<string, any> = {}
+      if (bulkEditCampos.sucursal && bulkEditForm.sucursal_id !== '') campos.sucursal_id = bulkEditForm.sucursal_id || null
+      if (bulkEditCampos.lote)      campos.nro_lote = bulkEditForm.nro_lote.trim() || null
+      if (bulkEditCampos.vencimiento) campos.fecha_vencimiento = bulkEditForm.fecha_vencimiento || null
+      if (bulkEditCampos.proveedor && bulkEditForm.proveedor_id !== '') campos.proveedor_id = bulkEditForm.proveedor_id || null
+
+      if (Object.keys(campos).length === 0) throw new Error('Seleccioná al menos un campo para cambiar')
+
+      if (esDeposito) {
+        const { error } = await supabase.from('autorizaciones_inventario').insert({
+          tenant_id: tenant!.id,
+          tipo: 'bulk_edit',
+          linea_id: null,
+          datos_cambio: { linea_ids: selectedLineas, campos },
+          estado: 'pendiente',
+          solicitado_por: user?.id,
+        })
+        if (error) throw error
+        return { esAutorizacion: true }
+      }
+
+      const { error } = await supabase
+        .from('inventario_lineas')
+        .update(campos)
+        .in('id', selectedLineas)
+      if (error) throw error
+    },
+    onSuccess: (result: any) => {
+      if (result?.esAutorizacion) {
+        toast.success(`Solicitud de edición enviada — ${selectedLineas.length} LPN(s) pendientes de aprobación`)
+        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+      } else {
+        toast.success(`${selectedLineas.length} LPN(s) actualizados`)
+        qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      }
+      setSelectedLineas([]); setSelectedLineasInfo([])
+      setShowBulkEditar(false)
+      setBulkEditForm({ sucursal_id: '', nro_lote: '', fecha_vencimiento: '', proveedor_id: '' })
+      setBulkEditCampos({ sucursal: false, lote: false, vencimiento: false, proveedor: false })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -3289,6 +3353,11 @@ export default function InventarioPage() {
                 className="text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
                 Cambiar ubicación
               </button>
+              <button
+                onClick={() => { setShowBulkEditar(true); setBulkEditForm({ sucursal_id: '', nro_lote: '', fecha_vencimiento: '', proveedor_id: '' }); setBulkEditCampos({ sucursal: false, lote: false, vencimiento: false, proveedor: false }) }}
+                className="text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border border-violet-200 dark:border-violet-700 text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors flex-shrink-0">
+                Editar atributos
+              </button>
               {selectedLineas.length >= 2 && selectedLineasInfo.every(l => l.producto_id === selectedLineasInfo[0]?.producto_id) && (
                 <button
                   onClick={() => { setCombinarDestinoId(''); setCombinarMode('fusionar'); setShowCombinarModal(true) }}
@@ -3347,6 +3416,122 @@ export default function InventarioPage() {
                     disabled={!bulkUbicacionId || bulkCambiarUbicacion.isPending}
                     className="flex-1 bg-accent text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50">
                     {bulkCambiarUbicacion.isPending ? 'Actualizando...' : 'Confirmar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal bulk — editar atributos (sucursal, lote, vencimiento, proveedor) */}
+          {showBulkEditar && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md shadow-xl max-h-[90vh] flex flex-col">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                  <div>
+                    <h3 className="font-semibold text-primary">Editar atributos — {selectedLineas.length} LPN{selectedLineas.length !== 1 ? 's' : ''}</h3>
+                    <p className="text-xs text-muted mt-0.5">Tildá los campos que querés cambiar</p>
+                  </div>
+                  <button onClick={() => setShowBulkEditar(false)} className="text-muted hover:text-primary"><X size={18} /></button>
+                </div>
+                <div className="overflow-y-auto flex-1 p-5 space-y-4">
+                  {user?.rol === 'DEPOSITO' && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-3 text-xs text-blue-700 dark:text-blue-400">
+                      Como DEPOSITO, el cambio quedará pendiente de aprobación por el Dueño o Supervisor.
+                    </div>
+                  )}
+
+                  {/* Sucursal */}
+                  {sucursales.length > 1 && (
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input type="checkbox" checked={bulkEditCampos.sucursal}
+                        onChange={e => setBulkEditCampos(p => ({ ...p, sucursal: e.target.checked }))}
+                        className="mt-2.5 accent-violet-600" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-primary mb-1">Sucursal</p>
+                        <select
+                          disabled={!bulkEditCampos.sucursal}
+                          value={bulkEditForm.sucursal_id}
+                          onChange={e => setBulkEditForm(p => ({ ...p, sucursal_id: e.target.value }))}
+                          className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary disabled:opacity-40">
+                          <option value="">Sin sucursal</option>
+                          {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                        </select>
+                      </div>
+                    </label>
+                  )}
+
+                  {/* Proveedor */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bulkEditCampos.proveedor}
+                      onChange={e => setBulkEditCampos(p => ({ ...p, proveedor: e.target.checked }))}
+                      className="mt-2.5 accent-violet-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-primary mb-1">Proveedor</p>
+                      <select
+                        disabled={!bulkEditCampos.proveedor}
+                        value={bulkEditForm.proveedor_id}
+                        onChange={e => setBulkEditForm(p => ({ ...p, proveedor_id: e.target.value }))}
+                        className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary disabled:opacity-40">
+                        <option value="">Sin proveedor</option>
+                        {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      </select>
+                    </div>
+                  </label>
+
+                  {/* Nro. Lote */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bulkEditCampos.lote}
+                      onChange={e => setBulkEditCampos(p => ({ ...p, lote: e.target.checked }))}
+                      className="mt-2.5 accent-violet-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-primary mb-1">Nro. de lote</p>
+                      <input type="text"
+                        disabled={!bulkEditCampos.lote}
+                        value={bulkEditForm.nro_lote}
+                        onChange={e => setBulkEditForm(p => ({ ...p, nro_lote: e.target.value }))}
+                        placeholder="Ej: LOTE-2024-01 (vacío = borrar)"
+                        className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary disabled:opacity-40" />
+                    </div>
+                  </label>
+
+                  {/* Fecha vencimiento */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bulkEditCampos.vencimiento}
+                      onChange={e => setBulkEditCampos(p => ({ ...p, vencimiento: e.target.checked }))}
+                      className="mt-2.5 accent-violet-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-primary mb-1">Fecha de vencimiento</p>
+                      <input type="date"
+                        disabled={!bulkEditCampos.vencimiento}
+                        value={bulkEditForm.fecha_vencimiento}
+                        onChange={e => setBulkEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
+                        className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary disabled:opacity-40" />
+                    </div>
+                  </label>
+
+                  {/* Preview de qué se va a cambiar */}
+                  {Object.values(bulkEditCampos).some(Boolean) && (
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 text-xs text-muted space-y-0.5">
+                      <p className="font-medium text-primary mb-1">Cambios a aplicar en {selectedLineas.length} LPN(s):</p>
+                      {bulkEditCampos.sucursal && <p>· Sucursal → {(sucursales as any[]).find(s => s.id === bulkEditForm.sucursal_id)?.nombre ?? 'Sin sucursal'}</p>}
+                      {bulkEditCampos.proveedor && <p>· Proveedor → {(proveedores as any[]).find(p => p.id === bulkEditForm.proveedor_id)?.nombre ?? 'Sin proveedor'}</p>}
+                      {bulkEditCampos.lote && <p>· Lote → {bulkEditForm.nro_lote.trim() || '(borrar)'}</p>}
+                      {bulkEditCampos.vencimiento && <p>· Vencimiento → {bulkEditForm.fecha_vencimiento || '(borrar)'}</p>}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 p-5 border-t border-border-ds">
+                  <button onClick={() => setShowBulkEditar(false)}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium">
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => bulkEditarAtributos.mutate()}
+                    disabled={!Object.values(bulkEditCampos).some(Boolean) || bulkEditarAtributos.isPending}
+                    className="flex-1 bg-violet-600 hover:bg-violet-700 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50">
+                    {bulkEditarAtributos.isPending ? 'Procesando...'
+                      : user?.rol === 'DEPOSITO' ? 'Solicitar aprobación'
+                      : 'Aplicar cambios'}
                   </button>
                 </div>
               </div>

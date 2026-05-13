@@ -101,8 +101,8 @@ export function AppLayout() {
         .select('id, webhook_external_id, payload_raw, procesado_at')
         .eq('tenant_id', tenant.id)
         .eq('integracion', 'MercadoPago')
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
+        .gte('procesado_at', since)
+        .order('procesado_at', { ascending: false })
         .limit(10)
       for (const log of logs ?? []) {
         if (seenMpLogs.current.has(log.id)) continue

@@ -110,7 +110,7 @@ export default function ReportesPage() {
   })
   const { data: masterEstados = [] } = useQuery({
     queryKey: ['reporte-master-estados', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('estados_inventario').select('nombre, color, es_default').eq('tenant_id', tenant!.id).order('nombre'); return data ?? [] },
+    queryFn: async () => { const { data } = await supabase.from('estados_inventario').select('nombre, color').eq('tenant_id', tenant!.id).order('nombre'); return data ?? [] },
     enabled: !!tenant,
   })
   const { data: masterMotivos = [] } = useQuery({

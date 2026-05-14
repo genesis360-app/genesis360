@@ -27,7 +27,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/rrhh]] | 5 fases: empleados, nómina, vacaciones, asistencia, supervisor | ✅ |
 | [[wiki/features/wms]] | Estructuras, ubicaciones, KITs, kitting, conteos, recepciones | ✅ |
 | [[wiki/features/marketplace]] | API pública, webhook saliente, publicación por producto | ✅ |
-| [[wiki/features/envios]] | Estados, remito PDF, WhatsApp Click-to-Chat, cotizador | ✅ DEV |
+| [[wiki/features/envios]] | Propio (Google Maps + KM auto) · Courier (tarifas config) · canal auto · sin cotizador | ✅ DEV |
 | [[wiki/features/notificaciones]] | Tabla real, campana, email, diferencia apertura caja — v1.5.0 | ✅ |
 | [[wiki/features/suscripciones-planes]] | Planes Free/Básico/Pro/Enterprise, trial, Mercado Pago | ✅ |
 | [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku fallback | ✅ |
@@ -123,4 +123,4 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
-*Última actualización: 2026-05-13 — 48 páginas · 8 fuentes en raw/ · 103 migraciones · v1.8.18*
+*Última actualización: 2026-05-14 — 48 páginas · 8 fuentes en raw/ · 107 migraciones · v1.8.19*

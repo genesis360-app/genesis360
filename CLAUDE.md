@@ -94,7 +94,8 @@ src/
 │   ├── useAlertas.ts / useGruposEstados.ts / usePlanLimits.ts
 │   ├── useCotizacion.ts   # hook global — no estado local por página
 │   ├── useModalKeyboard.ts  # ESC=cerrar / Enter=confirmar en modales
-│   └── useSucursalFilter.ts # applyFilter(q) — agrega .eq('sucursal_id', id) si hay sucursal activa
+│   ├── useSucursalFilter.ts # applyFilter(q) — agrega .eq('sucursal_id', id) si hay sucursal activa
+│   └── useGoogleMaps.ts     # getGoogleMapsLoader() / calcularDistanciaKm() — Distance Matrix API
 ├── components/
 │   ├── AuthGuard.tsx      # AuthGuard + SubscriptionGuard (mismo archivo, nunca separar)
 │   ├── LpnAccionesModal.tsx / Walkthrough.tsx
@@ -128,6 +129,7 @@ src/
 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY / VITE_MP_PUBLIC_KEY
 VITE_MP_PLAN_BASICO / VITE_MP_PLAN_PRO / VITE_APP_URL
 VITE_SENTRY_DSN / VITE_TN_APP_ID / VITE_MP_CLIENT_ID
+VITE_GOOGLE_MAPS_API_KEY   # Places Autocomplete + Distance Matrix (Envíos)
 MP_ACCESS_TOKEN (solo Edge Functions)
 ```
 

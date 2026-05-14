@@ -4,24 +4,25 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.18** (pendiente PR → PROD)
+Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.19** (pendiente PR → PROD)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV — v1.8.16 (al cierre de sesión 2026-05-13)
+## Estado actual DEV — v1.8.19 (al cierre de sesión 2026-05-14)
 
-- APP_VERSION: `v1.8.17` en `src/config/brand.ts` ✅
-- Migrations DEV: 001–101 ✅
-- Migrations PROD: 001–092 ✅ (093–101 pendientes — aplicar al deployar)
+- APP_VERSION: `v1.8.19` en `src/config/brand.ts` ✅
+- Migrations DEV: 001–107 ✅ (103–107 aplicadas en DEV)
+- Migrations PROD: 001–092 ✅ (093–107 pendientes — aplicar al deployar)
 - Edge Functions DEV: todas activas
 - Edge Functions PROD: desactualizadas (falta `invite-user`, `cancel-suscripcion`, `ai-assistant`)
 - GROQ_API_KEY: DEV ✅ · PROD ❌
+- VITE_GOOGLE_MAPS_API_KEY: DEV ✅ · Vercel ✅ · PROD ❌ (agregar al deploy)
 
 ---
 
-## Migrations pendientes en PROD (093–102)
+## Migrations pendientes en PROD (093–107)
 
 | # | Archivo | Descripción |
 |---|---------|-------------|
@@ -35,6 +36,62 @@ type: project
 | 100 | `100_rename_owner_to_dueno.sql` | `rol='OWNER'→'DUEÑO'` + políticas RLS + `is_rrhh()` + `caja_fuerte_roles` |
 | 101 | `101_ubicaciones_combos_sucursal.sql` | `ubicaciones.sucursal_id` + `combos.sucursal_id` |
 | 102 | `102_recursos_recurrentes_ubicaciones.sql` | `recursos.es_recurrente/frecuencia_valor/frecuencia_unidad/proximo_vencimiento` |
+| 103 | `103_autorizaciones_bulk_edit.sql` | `linea_id` nullable + tipo `bulk_edit` en `autorizaciones_inventario` |
+| 104 | `104_cron_cleanup_job_queue.sql` | cron diario limpieza `integration_job_queue` (status=done, +7 días) |
+| 105 | `105_tenant_sql_query.sql` | función `tenant_sql_query` — SQL Runner ReportesPage |
+| 106 | `106_process_single_aging_profile.sql` | función `process_aging_profile_single` — procesar un perfil de aging |
+| 107 | `107_sucursales_envio_config.sql` | `sucursales.costo_km_envio` + tabla `courier_tarifas` |
+
+---
+
+## Lo producido en sesión 2026-05-14 (v1.8.19-dev)
+
+### SQL Runner (migration 105 + fix regex 106)
+- `tenant_sql_query(TEXT)` — SECURITY INVOKER, solo SELECT/WITH, 500 filas, 10s timeout
+- ReportesPage: editor SQL monospace con Ctrl+Enter, tabla dinámica, export Excel/PDF
+- Solo visible para DUEÑO y SUPER_USUARIO
+- Fix: `\b` en PG string literals no funciona → reemplazado por `([[:space:]]|$)`
+
+### Aging profiles — procesar individualmente (migration 106)
+- `process_aging_profile_single(p_profile_id)` — misma lógica que general pero filtrada
+- Botón "Procesar" por perfil en ConfigPage → tab Progresión de Estados
+- `processingAgingId` independiente por perfil
+
+### Shortcuts teclado ESC/ENTER en InventarioPage
+- LpnAccionesModal: ESC=cierra, ENTER=guarda (editar/mover/estructura)
+- Tab Agregar Stock: ENTER=abre modal ingreso, ESC=limpia selección
+- Tab Quitar Stock: ENTER=abre modal rebaje, ESC=limpia selección
+- Tab Conteos: ENTER flujo 3 estados (abrir → cargar → finalizar), ESC=cancelar
+
+### Envíos — Google Maps + tarifas (migrations 107 + env vars)
+- Migration 107: `sucursales.costo_km_envio` + tabla `courier_tarifas` (por sucursal)
+- SucursalesPage: dirección OBLIGATORIA, campo $/km, panel couriers con inline edit
+- `useGoogleMaps.ts`: hook con `setOptions/importLibrary` API, `calcularDistanciaKm()`
+- `AddressAutocompleteInput`: Places Autocomplete + dropdown domicilios del cliente
+- ISS-083 (propio): dirección con autocompletado Google Maps, KM y costo auto-calculados
+- ISS-098 (tercero): canal auto desde la venta (read-only), costo auto desde courier_tarifas
+- Tab Cotizador: eliminado completamente
+- `VITE_GOOGLE_MAPS_API_KEY`: configurada en .env.local y Vercel
+
+---
+
+## Para la próxima sesión — prioridades
+
+### 1. Deploy a PROD (v1.8.19)
+- [ ] PR `dev → main` con título `v1.8.19 — SQL Runner, Envíos Google Maps, Shortcuts`
+- [ ] Aplicar migrations 093–107 en PROD (`jjffnbrdjchquexdfgwq`)
+- [ ] Agregar `VITE_GOOGLE_MAPS_API_KEY` en Vercel Production
+- [ ] Deploy EF `invite-user`, `cancel-suscripcion`, `ai-assistant` en PROD
+- [ ] Configurar secret `GROQ_API_KEY` en PROD
+- [ ] GitHub release v1.8.19
+
+### 2. Reglas de negocio — relevar e implementar
+- **Pendientes de relevar:** Gastos (completo), RRHH (completo), Ventas (devoluciones/límites), Clientes (deuda configurable)
+- **Pendientes de implementar:** Bóveda (Caja), contraseña maestra cierre caja ajena, ticket cierre PDF, alerta diferencia cierre
+
+### 3. Envíos — pendientes
+- Probar Google Maps en DEV con la key recién configurada
+- Verificar cálculo de distancia sucursal → cliente funciona end-to-end
 
 ---
 

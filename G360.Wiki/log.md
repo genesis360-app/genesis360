@@ -6,6 +6,35 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-14] update | v1.8.19 — SQL Runner + Envíos Google Maps + shortcuts + aging + Dashboard
+
+### SQL Runner (ReportesPage)
+- Migration 105: `tenant_sql_query` SECURITY INVOKER, solo SELECT/WITH, 500 filas
+- Fix regex: `\b` → `([[:space:]]|$)` (no funciona en PG string literals)
+- UI: editor monospace, Ctrl+Enter, tabla dinámica, export Excel/PDF, solo DUEÑO/SUPER_USUARIO
+
+### Aging profiles individual
+- Migration 106: `process_aging_profile_single(p_profile_id)`
+- Botón "Procesar" por perfil en ConfigPage con spinner independiente
+
+### Shortcuts ESC/ENTER en InventarioPage
+- LpnAccionesModal: ESC=cierra, ENTER=guarda según tab activo
+- Tab Agregar/Quitar Stock: ENTER=abre modal, ESC=limpia
+- Tab Conteos: flujo 3 estados con ENTER, ESC=cancelar
+
+### Envíos — Google Maps + tarifas (migration 107)
+- `sucursales.costo_km_envio` + tabla `courier_tarifas`
+- SucursalesPage: dirección obligatoria, costo_km_envio, panel couriers inline
+- `useGoogleMaps.ts` + `AddressAutocompleteInput` component
+- ISS-083: autocomplete Places, KM auto via Distance Matrix, costo = KM × rate
+- ISS-098: canal auto desde venta (read-only), costo courier auto desde tarifas
+- Tab Cotizador eliminado
+- `VITE_GOOGLE_MAPS_API_KEY` configurada en .env.local y Vercel
+
+### Wiki y docs
+- index.md, multi-sucursal.md, inventario-stock.md, alertas.md, recursos.md actualizados
+- Regla de cierre de sesión (wiki + GitHub releases) grabada en CLAUDE.md y memory
+
 ## [2026-05-13] update | Soporte DB: incidente pool saturado + manual de rescate
 
 - Causa: AppLayout tenía query a `ventas_externas_logs.created_at` (columna inexistente, era `procesado_at`) corriendo cada 30s → saturó el pool de 60 conexiones

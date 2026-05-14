@@ -2,7 +2,7 @@
 title: Referencia completa de funcionalidades — Genesis360
 category: overview
 tags: [referencia, módulos, funcionalidades, procesos, flujos]
-updated: 2026-05-08
+updated: 2026-05-14
 ---
 
 # Genesis360 — Referencia completa de funcionalidades
@@ -19,8 +19,8 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 - **Frontend:** React 18 + Vite + TypeScript + Tailwind + shadcn/ui
 - **Backend:** Supabase (PostgreSQL + Auth + RLS + Edge Functions)
 - **Multi-tenant:** cada negocio tiene datos completamente aislados via RLS
-- **Multi-sucursal:** cada módulo operativo filtra por sucursal activa
-- **Versión actual:** v1.8.3 PROD / v1.8.4 DEV
+- **Multi-sucursal:** cada módulo operativo filtra por sucursal activa (selector en header por módulo)
+- **Versión actual:** v1.8.19 PROD / v1.8.20 DEV
 
 ---
 
@@ -69,7 +69,11 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 | `/onboarding` | Flujo de registro inicial |
 
 ### Header (izquierda → derecha)
-- **Selector de sucursal**: dropdown con sucursales + "Todas las sucursales". Visible solo para usuarios con `puedeVerTodas = true`. Usuarios restringidos ven el nombre fijo de su sucursal asignada (sin selector).
+- **Selector de sucursal**: comportamiento diferenciado por módulo y rol:
+  - **12 módulos** (Dashboard, Productos, Inventario, Clientes, Facturación, Proveedores, Recursos, Biblioteca, RRHH, Historial, Reportes, Configuración): dropdown con "Todas las sucursales" + cada sucursal. Solo para DUEÑO / SUPERVISOR / SUPER_USUARIO.
+  - **5 módulos operativos** (Ventas, Gastos, Caja, Recepciones, Alertas): dropdown solo con sucursales individuales (sin "Todas"). Si el usuario llega en vista global, se auto-selecciona la primera sucursal.
+  - **Sin selector** (Sucursales, Usuarios).
+  - Usuarios sin `puedeVerTodas`: ven siempre un label fijo con su sucursal asignada (sin dropdown).
 - **Refresh manual**: recarga datos de la página actual sin recargar la SPA
 - **Asistente IA** (ícono chat): panel flotante de chat con Groq/Llama 3.1 (gratis, 14.400 req/día). Responde preguntas sobre la app, guía al usuario por los módulos. Tiene flujo de bug report que envía la conversación formateada al admin por email.
 - **Campana de notificaciones**: muestra alertas de stock crítico y cuotas de CC vencidas. Badge con contador de no leídas.
@@ -86,16 +90,28 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 
 ### 3.1 Dashboard (`/dashboard`)
 
-Vista de control general del negocio.
+Vista de control general del negocio con 9 áreas analíticas independientes. Filtra por sucursal activa con filtro inclusivo (sucursal seleccionada + datos históricos sin sucursal asignada).
 
-**Secciones:**
-- **KPIs del día**: ventas del día, cantidad de transacciones, ticket promedio, margen estimado
-- **Alertas activas**: productos con stock crítico (≤ stock mínimo), cuotas de CC vencidas
-- **Gráfico de ventas**: evolución diaria/semanal/mensual (Recharts)
-- **Últimas ventas**: listado con monto, cliente, fecha
-- **Top productos**: más vendidos del período
+**Tab "General" — sub-navegación de áreas:**
 
-**Relaciones:** consume datos de ventas, inventario, clientes (CC), notificaciones.
+| Área | Contenido principal |
+|------|---------------------|
+| **Todo** | KPIs globales del día: ventas, ticket promedio, margen, stock crítico |
+| **Ventas** | Funnel (presupuestado/pendiente/pagado), heatmap días×horas, pie canales, insights |
+| **Gastos** | Burn rate diario, rigidez del gasto (fijos vs. variables), pie categoría, barras mensuales |
+| **Productos** | Cuadrante mágico (scatter), pareto ingresos, participación por categoría, tijera de precios |
+| **Inventario** | Capital de trabajo, gauge salud depósito, aging del capital, recursos por categoría, kits bloqueados |
+| **Clientes** | RFM, cohort retención, origen de clientes, aging cuenta corriente |
+| **Proveedores** | Donut proveedores, aging OC, evolución gastos 6 meses |
+| **Facturación** | IVA débito/crédito, alícuotas, topes Monotributo (con banner legal) |
+| **Envíos** | Funnel envíos, courier dominante, scatter subsidio/ganancia |
+| **Marketing** | POAS real, evolución, donut canal, radar campañas |
+
+**Tab "Gráficos":** placeholder "Próximamente".
+
+**Tab "IA / Recomendaciones":** panel de `RecomendacionesPage`.
+
+**Relaciones:** consume datos de ventas, inventario, clientes, gastos, envíos, OC. Cada área tiene su propio filtro de período + sub-filtros adicionales.
 
 ---
 
@@ -277,13 +293,30 @@ Gestión integral del stock físico a nivel de LPN (License Plate Number = unida
 - **Escanear** (ícono cámara): lee código de barras → busca LPN o producto
 
 **Tab Inventario — acciones por LPN (modal LpnAccionesModal, 5 tabs internos):**
-- **Editar**: modifica lpn, cantidad (si no tiene series), estado, ubicación, proveedor, lote, fecha de vencimiento. Si rol = DEPOSITO y cambia cantidad → crea solicitud de autorización en lugar de ejecutar.
+- **Editar**: modifica lpn, cantidad (si no tiene series), estado, ubicación, **sucursal** (para reasignar el LPN completo a otra sucursal), proveedor, lote, fecha de vencimiento. Si rol = DEPOSITO y cambia cantidad → crea solicitud de autorización en lugar de ejecutar.
 - **Mover**: traslado parcial a otra ubicación o sucursal. Ingresa cantidad a mover + destino → crea nuevo LPN con esa cantidad.
 - **Series**: para productos con series. Agregar, editar o eliminar números de serie individuales. Ver cuáles están reservadas.
 - **Estructura**: asignar una de las estructuras de embalaje del producto a este LPN.
 - **Eliminar**: baja del LPN. Si rol = DEPOSITO → crea solicitud de autorización. Si tiene reservas, advierte antes de eliminar.
 
 > ⚠️ Si el LPN tiene `cantidad_reservada > 0`, solo se muestra el tab Mover (para no romper reservas activas).
+
+**Shortcuts de teclado en InventarioPage:**
+- `ENTER` en tab Agregar → abre modal de ingreso
+- `ESC` en tab Agregar → limpia selección de producto
+- `ENTER` en tab Quitar → abre modal de rebaje
+- `ENTER` en tab Conteos (estado 1: sin conteo) → abre nuevo conteo
+- `ENTER` en tab Conteos (estado 2: conteo abierto) → carga stock de la ubicación/SKU seleccionada
+- `ENTER` en tab Conteos (estado 3: con filas cargadas) → finaliza y aplica ajustes
+- `ESC` con conteo activo → cancela el conteo
+- En el modal LPN: `ESC` cierra, `ENTER` guarda (según tab activo)
+
+**Bulk Edit de LPNs (selección múltiple):**
+Barra de acciones con LPNs seleccionados ofrece:
+- Cambiar estado
+- Cambiar ubicación
+- **Editar atributos** (sucursal, proveedor, lote, fecha vencimiento — cualquier combinación). DEPOSITO genera solicitud de autorización; otros roles aplican directo.
+- Combinar LPNs (solo mismo producto)
 
 **Tab Kits:**
 - Definir receta de un kit (producto componente + cantidad por componente)
@@ -339,16 +372,32 @@ CRM básico + cuenta corriente.
 
 Gestión de despachos filtrado por sucursal activa.
 
-**Datos de envío:** venta asociada, cliente, domicilio de entrega, método de envío, estado, número de tracking, costo, notas.
+**Estados:** `pendiente → despachado → en_camino → entregado → devolucion → cancelado`
 
-**Estados:** `pendiente → preparando → despachado → entregado → devuelto`
+**Tipos de envío al crear:**
+
+**Envío Propio (KM-based):**
+- Campo de dirección con Google Places Autocomplete (sugerencias mientras se escribe) + dropdown con domicilios guardados del cliente
+- KM calculado automáticamente via Distance Matrix API (sucursal activa → cliente)
+- Costo = KM × `sucursales.costo_km_envio` (configurado en SucursalesPage, no editable manualmente)
+- La dirección de entrega se pre-completa como destino del envío
+
+**Envío por Tercero (Courier):**
+- Selección de courier (OCA, Andreani, Correo Argentino, DHL, etc.)
+- Costo auto-completado desde `courier_tarifas` configuradas en SucursalesPage (editable como override)
+- Canal de venta: auto-populado desde `venta.origen` si viene de una venta (read-only)
+- Tracking number y URL
 
 **Acciones:**
-- **+ Nuevo envío**: desde venta existente o independiente
-- **Actualizar estado**: registra cambio con timestamp
-- **Imprimir etiqueta**: PDF con datos del destinatario
+- **+ Nuevo envío** (esquina superior derecha): modal con selección de venta, tipo de envío y campos
+- **Avanzar estado**: botón contextual según estado actual
+- **Imprimir remito**: PDF (jsPDF)
+- **Ver tracking externo**: abre URL de tracking en nueva pestaña
+- **WhatsApp**: enviar mensaje al cliente con datos del envío
 
-**Relaciones:** enlazado a Ventas. Usa domicilios de Clientes.
+**Nota:** el tab Cotizador fue eliminado. Los precios de couriers se configuran en SucursalesPage.
+
+**Relaciones:** enlazado a Ventas. Usa domicilios de Clientes. Google Maps API para distancia. Tarifas configuradas en Sucursales.
 
 ---
 
@@ -424,13 +473,23 @@ Ingreso físico de mercadería, filtrado por sucursal activa.
 
 ### 3.12 Recursos (`/recursos`)
 
-Registro del patrimonio y activos del negocio, filtrado por sucursal activa.
+Registro del patrimonio y activos del negocio, filtrado por sucursal activa. Solo DUEÑO.
 
-**Categorías:** muebles, equipos, vehículos, tecnología, instalaciones, otros.
+**Tabs:**
 
-**Datos:** nombre, descripción, categoría, valor de adquisición, valor actual, fecha de adquisición, proveedor (opcional), sucursal, notas.
+**Recursos activos**: listado de activos con estado activo/en reparación/dado de baja. Muestra: nombre, categoría, estado, valor, ubicación, proveedor, garantía, badge de recurrencia.
 
-**Acciones:** + Nuevo recurso, Editar, Desactivar. Vista de valorización total del patrimonio.
+**Recursos pendientes**: lista de adquisición (estado `pendiente_adquisicion`). Presupuesto estimado, botón "Marcar como adquirido".
+
+**Ubicaciones**: vista de todos los recursos agrupados por su campo `ubicacion`. Edición inline de la ubicación con clic en el lápiz. Banner de alerta si hay recurrentes vencidos/próximos.
+
+**Datos por recurso:** nombre, descripción, categoría, estado, valor, fecha de adquisición, proveedor (opcional), ubicación (texto libre), número de serie, garantía hasta, notas, sucursal.
+
+**Recursos recurrentes:** checkbox "Recurso recurrente" → define frecuencia (N días/semanas/meses/años) + fecha próxima compra (auto-calculada si se deja vacía). Badges en cards: 🔄 violeta (recurrente normal), ámbar (próximo ≤7 días), rojo (vencido).
+
+**Integración con Gastos:** al crear un recurso no-pendiente con valor → crea gasto automático. GastosPage → tab Recursos → sección "Renovaciones pendientes": muestra recursos recurrentes con próxima compra vencida o en ≤7 días, botón "Registrar compra" crea el gasto y avanza la fecha al siguiente ciclo.
+
+**Relaciones:** GastosPage (gastos de adquisición y renovaciones). DashInventarioArea (patrimonio de recursos).
 
 ---
 
@@ -450,17 +509,24 @@ Gestor de documentos y archivos del negocio. Solo OWNER.
 
 Centro de alertas del negocio pendientes de resolver.
 
+Todas las secciones filtran por **sucursal activa**. Solo la sección de alertas de stock mínimo es global (la tabla `alertas` aún no tiene `sucursal_id`).
+
 **Tipos de alerta:**
-- **Stock crítico**: productos con stock disponible ≤ stock mínimo → botón "Crear OC rápida"
-- **Reservas viejas**: `inventario_lineas` en estado reservado por más de 3 días → botón "Revisar"
-- **Productos sin categoría**: catálogo incompleto → botón "Asignar categoría"
-- **Próximos a vencer**: lotes con fecha de vencimiento en los próximos días → botón "Revisar"
+- **Stock crítico** (global): productos con stock disponible ≤ stock mínimo → botón "Crear OC rápida"
+- **Reservas viejas** (filtrada): ventas en estado reservada > 3 días → botón "Ver venta"
+- **LPNs vencidos** (filtrada): lotes con `fecha_vencimiento < hoy` → botón "Ver en inventario"
+- **LPNs sin ubicación** (filtrada): LPNs activos sin ubicación asignada
+- **LPNs sin proveedor** (filtrada): LPNs activos sin proveedor
+- **OC vencidas sin pagar** (filtrada): OC con `fecha_vencimiento_pago < hoy`
+- **OC próximas a vencer** (filtrada): OC con vencimiento en ≤3 días
+- **Clientes con deuda** (filtrada): clientes con saldo pendiente en CC
+- **Productos sin categoría** (global): catálogo incompleto
 
 **Acciones:** marcar alerta como resuelta (oculta de la lista).
 
 **Badge en sidebar:** muestra el conteo de alertas activas no resueltas.
 
-**Relaciones:** Stock → Inventario/Productos. Reservas → Inventario. Categorías → Productos. Vencimientos → Inventario.
+**Relaciones:** Stock → Inventario/Productos. Reservas → Inventario. Categorías → Productos. OC → Proveedores. CC → Clientes.
 
 ---
 
@@ -502,7 +568,7 @@ Auditoría completa de cambios en el sistema. Acceso: Supervisor+ / Contador (pl
 
 Generador de reportes exportables. Acceso: Contador+ (plan Básico+).
 
-**Tipos de reporte:**
+**Tipos de reporte predefinidos:**
 - **Stock actual**: existencias por producto con precio de costo y valorización
 - **Movimientos**: todos los movimientos de stock en un período
 - **Ventas**: detalle de ventas con ítems, medios de pago, clientes
@@ -515,15 +581,35 @@ Generador de reportes exportables. Acceso: Contador+ (plan Básico+).
 
 **Configuración:** fecha desde/hasta para todos los reportes basados en período.
 
+**SQL Runner** (solo DUEÑO y SUPER_USUARIO):
+- Editor SQL con fondo oscuro/texto verde (estilo terminal)
+- `Ctrl+Enter` para ejecutar
+- Solo permite `SELECT` o `WITH` — bloquea INSERT/UPDATE/DELETE/DROP/etc.
+- SECURITY INVOKER: corre con los permisos del usuario → RLS activo → solo ve sus datos
+- Límite 500 filas, timeout 10 segundos
+- Referencia colapsable de tablas disponibles (click inserta en el editor)
+- Tabla de resultados dinámica (columnas auto-detectadas, scroll horizontal/vertical)
+- Exportar resultados a Excel (XLSX) o PDF
+
 ---
 
 ### 3.18 Sucursales (`/sucursales`)
 
-CRUD de sucursales del negocio. Solo OWNER.
+CRUD de sucursales del negocio. Solo DUEÑO.
 
-**Datos:** nombre, dirección, teléfono, activo.
+**Datos por sucursal:**
+- **Nombre** (requerido)
+- **Dirección** (requerida — necesaria para calcular distancias de envíos)
+- **Teléfono** (opcional)
+- **Costo por km** (`costo_km_envio`): tarifa para envíos propios. Varía por sucursal. Se usa para calcular el costo automáticamente al crear un envío propio.
 
-**Al crear/modificar/eliminar:** recarga `loadUserData()` para sincronizar el selector del header. Cada integración (TN, MP, ML) tiene credenciales independientes por sucursal.
+**Panel de tarifas de couriers** (expandible por sucursal):
+- Click en "Couriers" → lista de couriers con precio editable inline (Enter para guardar)
+- Se guardan en tabla `courier_tarifas(tenant_id, sucursal_id, courier, precio)`
+- Couriers disponibles: OCA, Correo Argentino, Andreani, DHL Express, FedEx, Otro
+
+**Al crear/modificar/eliminar:** recarga `loadUserData()` para sincronizar el selector del header.
+Cada integración (TN, MP, ML) tiene credenciales independientes por sucursal.
 
 ---
 
@@ -543,15 +629,17 @@ Gestión de accesos. Solo OWNER y ADMIN.
 **Invitar usuario:** email + rol → envía email con link (Resend).
 
 **Roles del sistema:**
-| Rol | Descripción | `puedeVerTodas` por defecto |
-|-----|-------------|--------------------------|
-| OWNER | Dueño — acceso total | Siempre sí (hardcoded) |
-| ADMIN | Administrador — acceso total | Siempre sí (hardcoded) |
-| SUPERVISOR | Inventario y movimientos | Sí (configurable) |
-| CONTADOR | Dashboard, gastos y reportes | Sí (configurable) |
-| CAJERO | Solo ventas y caja | No (debe tener sucursal) |
-| DEPOSITO | Productos e inventario | No (debe tener sucursal) |
-| RRHH | Gestión de empleados | No (debe tener sucursal) |
+| Rol | Descripción | `puedeVerTodas` por defecto | Restringible |
+|-----|-------------|--------------------------|-------------|
+| **DUEÑO** | Dueño — acceso total | Siempre sí (hardcoded) | ❌ No |
+| **SUPER_USUARIO** | Admin de sistemas | Sí por defecto | ✅ con `puede_ver_todas=false` en DB |
+| **SUPERVISOR** | Inventario y movimientos | Sí por defecto | ✅ con `puede_ver_todas=false` en DB |
+| **CONTADOR** | Dashboard, gastos y reportes | No | ✅ con `puede_ver_todas=true` en DB |
+| **CAJERO** | Solo ventas y caja | No (debe tener sucursal) | — |
+| **DEPOSITO** | Productos e inventario | No (debe tener sucursal) | — |
+| **RRHH** | Gestión de empleados | No (debe tener sucursal) | — |
+
+> ⚠️ El rol **OWNER** fue renombrado a **DUEÑO** en migration 100 (2026-05-13).
 
 **Roles personalizados:** sección colapsable al final. Nombre libre + permisos por módulo. Se aplican como overlay sobre el rol base.
 
@@ -566,7 +654,7 @@ Setup completo del negocio y sus parámetros. Solo OWNER.
 **Tabs:**
 - **Negocio**: nombre, logo, tipo de comercio, CUIT, datos fiscales, contacto, moneda principal
 - **Categorías**: CRUD de categorías de productos
-- **Ubicaciones**: CRUD de ubicaciones del depósito. Flag `disponible_surtido`: si `false`, el stock de esa ubicación NO se considera para venta.
+- **Ubicaciones**: CRUD de ubicaciones del depósito. Cada ubicación puede tener `sucursal_id` (específica de una sucursal) o ser "Global" (visible en todas). Badge azul o "Global" en la lista. Selector de sucursal en el formulario de edición. Flag `disponible_surtido`: si `false`, el stock de esa ubicación NO se considera para venta.
 - **Estados de inventario**: CRUD de estados (Disponible, Cuarentena, Devuelto, etc.). Flags: `es_disponible_venta` (si ese stock puede venderse), `es_disponible_tn` (si sincroniza con TiendaNube).
 - **Motivos de movimiento**: CRUD de motivos para movimientos de caja (ej: "Pago proveedor") y stock (ej: "Merma").
 - **Métodos de pago**: activar/desactivar cuáles aparecen en el POS (Efectivo, Tarjeta, etc.)
@@ -577,6 +665,11 @@ Setup completo del negocio y sus parámetros. Solo OWNER.
   - **MercadoLibre**: OAuth, conectar cuenta, mapear publicaciones
   - **AFIP**: subir certificado .p12, ingresar clave privada, CUIT, puntos de venta
 - **API**: generar y revocar API keys para integración de sistemas externos (solo lectura)
+- **Estados** (sub-tab): dentro del tab "Estados" hay 3 sub-tabs:
+  - **Estados**: CRUD de estados de inventario
+  - **Grupos**: grupos de estados para filtrar el POS
+  - **Progresión** (ex Aging Profiles): perfiles de progresión automática de estado según días hasta vencimiento. Botón "**Procesar ahora**" (procesa todos los perfiles del tenant). Botón "**Procesar**" por perfil individual (procesa solo ese perfil).
+- **SQL Runner**: ver módulo Reportes — disponible para DUEÑO y SUPER_USUARIO
 
 ---
 

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
 
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
@@ -35,6 +36,7 @@ function CohortTooltip({ active, payload, label }: any) {
 
 export function DashClientesArea() {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
 
@@ -45,7 +47,7 @@ export function DashClientesArea() {
   }, [filterOpen])
 
   const { data: cData, isLoading } = useQuery({
-    queryKey: ['dash-clientes-area', tenant?.id],
+    queryKey: ['dash-clientes-area', tenant?.id, sucursalId],
     queryFn: async () => {
       const hoy = new Date()
       const hace90  = new Date(Date.now() - 90  * 86400000).toISOString()
@@ -55,11 +57,13 @@ export function DashClientesArea() {
       const hace6m_start  = new Date(hoy.getFullYear(), hoy.getMonth() - 6, 1).toISOString()
 
       // 1. Ventas últimos 12 meses (base de cálculo)
-      const { data: ventas12m = [] } = await supabase.from('ventas')
+      let qVentas12m = supabase.from('ventas')
         .select('id, total, monto_pagado, estado, created_at, cliente_id, origen, es_cuenta_corriente')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', hace365)
+      if (sucursalId) qVentas12m = qVentas12m.eq('sucursal_id', sucursalId)
+      const { data: ventas12m = [] } = await qVentas12m
       const ventasConf = ventas12m ?? []
 
       // 2. Deuda CC (toda la historia)

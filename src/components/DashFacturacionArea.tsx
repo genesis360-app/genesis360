@@ -7,6 +7,7 @@ import {
 import { SlidersHorizontal, X, Shield, AlertTriangle, CheckCircle, Clock, BarChart2, Zap, FileText } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
 
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
@@ -36,6 +37,7 @@ const MONOTRIB_LIMITES = [
 
 export function DashFacturacionArea() {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
 
@@ -51,7 +53,7 @@ export function DashFacturacionArea() {
   }, [filterOpen])
 
   const { data: fData, isLoading } = useQuery({
-    queryKey: ['dash-facturacion-area', tenant?.id],
+    queryKey: ['dash-facturacion-area', tenant?.id, sucursalId],
     queryFn: async () => {
       // 1. venta_items del mes (IVA Débito)
       const { data: itemsMes = [] } = await supabase.from('venta_items')
@@ -62,18 +64,22 @@ export function DashFacturacionArea() {
 
       // 2. IVA Crédito desde gastos del mes (iva_deducible=true)
       const iniciomesDate = inicioMes.split('T')[0]
-      const { data: gastosMes = [] } = await supabase.from('gastos')
+      let qGastosMes = supabase.from('gastos')
         .select('iva_monto, iva_deducible').eq('tenant_id', tenant!.id)
         .eq('iva_deducible', true).gte('fecha', iniciomesDate)
+      if (sucursalId) qGastosMes = qGastosMes.eq('sucursal_id', sucursalId)
+      const { data: gastosMes = [] } = await qGastosMes
       const ivaCredito = (gastosMes ?? []).reduce((a: number, g: any) => a + (g.iva_monto ?? 0), 0)
 
       // 3. Posición
       const posicion = ivaDebito - ivaCredito
 
       // 4. Facturación del año (para topes)
-      const { data: ventasAnio = [] } = await supabase.from('ventas')
+      let qVentasAnio = supabase.from('ventas')
         .select('total').eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada']).gte('created_at', inicioAnio)
+      if (sucursalId) qVentasAnio = qVentasAnio.eq('sucursal_id', sucursalId)
+      const { data: ventasAnio = [] } = await qVentasAnio
       const totalAnio = (ventasAnio ?? []).reduce((a: number, v: any) => a + (v.total ?? 0), 0)
 
       // Encontrar categoría de monotributo

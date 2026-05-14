@@ -11,6 +11,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCotizacion } from '@/hooks/useCotizacion'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 
@@ -113,6 +114,7 @@ function BarTooltipMensual({ active, payload, label, fmt }: any) {
 export function DashGastosArea() {
   const { tenant } = useAuthStore()
   const { cotizacion } = useCotizacion()
+  const { sucursalId } = useSucursalFilter()
 
   // Filtros
   const [filterOpen, setFilterOpen] = useState(false)
@@ -155,7 +157,7 @@ export function DashGastosArea() {
 
   // ─── Query principal ──────────────────────────────────────────────────────
   const { data: gData, isLoading } = useQuery({
-    queryKey: ['dash-gastos-area', tenant?.id, desde, hasta, desdePrev, hastaPrev, categoriaFiltro, moneda],
+    queryKey: ['dash-gastos-area', tenant?.id, desde, hasta, desdePrev, hastaPrev, categoriaFiltro, moneda, sucursalId],
     queryFn: async () => {
 
       // Gastos del período
@@ -164,13 +166,16 @@ export function DashGastosArea() {
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdeDate).lte('fecha', hastaDate)
       if (categoriaFiltro) q = q.eq('categoria', categoriaFiltro)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       const { data: gastos = [] } = await q
 
       // Gastos período anterior
-      const { data: gastosPrev = [] } = await supabase.from('gastos')
+      let qGastosPrev = supabase.from('gastos')
         .select('monto')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
+      if (sucursalId) qGastosPrev = qGastosPrev.eq('sucursal_id', sucursalId)
+      const { data: gastosPrev = [] } = await qGastosPrev
 
       // Gastos fijos activos (para estimación fijos vs variables)
       const { data: gastosFijos = [] } = await supabase.from('gastos_fijos')
@@ -181,18 +186,22 @@ export function DashGastosArea() {
       const seisMesesAtras = new Date()
       seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 5)
       seisMesesAtras.setDate(1)
-      const { data: gastosHistorico = [] } = await supabase.from('gastos')
+      let qGastosHist = supabase.from('gastos')
         .select('monto, fecha')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', seisMesesAtras.toISOString().split('T')[0])
         .order('fecha')
+      if (sucursalId) qGastosHist = qGastosHist.eq('sucursal_id', sucursalId)
+      const { data: gastosHistorico = [] } = await qGastosHist
 
       // Ventas del período (para ratio Gastos/Ventas)
-      const { data: ventas = [] } = await supabase.from('ventas')
+      let qVentas = supabase.from('ventas')
         .select('total')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', desde).lte('created_at', hasta)
+      if (sucursalId) qVentas = qVentas.eq('sucursal_id', sucursalId)
+      const { data: ventas = [] } = await qVentas
 
       // Cuotas por vencer próximos 7 días
       const en7Dias = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
@@ -290,10 +299,12 @@ export function DashGastosArea() {
       // ── Categoría con mayor anomalía vs período anterior ──────────────────
       // Comparar distribución por categoría entre períodos
       const catMapPrev: Record<string, number> = {}
-      const { data: gastosPrevCat = [] } = await supabase.from('gastos')
+      let qGastosPrevCat = supabase.from('gastos')
         .select('categoria, monto')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
+      if (sucursalId) qGastosPrevCat = qGastosPrevCat.eq('sucursal_id', sucursalId)
+      const { data: gastosPrevCat = [] } = await qGastosPrevCat
       for (const g of gastosPrevCat ?? []) {
         const cat = (g as any).categoria || 'Sin categoría'
         catMapPrev[cat] = (catMapPrev[cat] ?? 0) + ((g as any).monto ?? 0)

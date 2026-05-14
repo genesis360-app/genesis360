@@ -8,6 +8,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useCotizacion } from '@/hooks/useCotizacion'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 import { Link } from 'react-router-dom'
@@ -210,6 +211,7 @@ function PieTooltipCustom({ active, payload, fmt }: any) {
 export function DashVentasArea() {
   const { tenant } = useAuthStore()
   const { cotizacion } = useCotizacion()
+  const { sucursalId } = useSucursalFilter()
 
   // Filtros internos
   const [filterOpen, setFilterOpen] = useState(false)
@@ -244,7 +246,7 @@ export function DashVentasArea() {
 
   // ─── Data query ──────────────────────────────────────────────────────────────
   const { data: vData, isLoading } = useQuery({
-    queryKey: ['dash-ventas-area', tenant?.id, desde, hasta, desdePrev, hastaPrev, canal, moneda, iva],
+    queryKey: ['dash-ventas-area', tenant?.id, desde, hasta, desdePrev, hastaPrev, canal, moneda, iva, sucursalId],
     queryFn: async () => {
       // Ventas del período
       let q = supabase.from('ventas')
@@ -254,14 +256,17 @@ export function DashVentasArea() {
         .lte('created_at', hasta)
         .neq('estado', 'cancelada')
       if (canal) q = q.eq('origen', canal)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       const { data: ventasRaw = [] } = await q
 
       // Ventas del período anterior (solo confirmadas)
-      const { data: ventasPrev = [] } = await supabase.from('ventas')
+      let qPrev = supabase.from('ventas')
         .select('total')
         .eq('tenant_id', tenant!.id)
         .gte('created_at', desdePrev).lte('created_at', hastaPrev)
         .in('estado', ['despachada', 'facturada'])
+      if (sucursalId) qPrev = qPrev.eq('sucursal_id', sucursalId)
+      const { data: ventasPrev = [] } = await qPrev
 
       const ventas = ventasRaw ?? []
       const ventasConf = ventas.filter((v: any) => ['despachada', 'facturada'].includes(v.estado))
@@ -327,11 +332,13 @@ export function DashVentasArea() {
         .sort((a, b) => b.total - a.total)
 
       // ── Canales disponibles (para filtro) ────────────────────────────────────
-      const { data: canalOpts } = await supabase.from('ventas')
+      let qCanales = supabase.from('ventas')
         .select('origen')
         .eq('tenant_id', tenant!.id)
         .not('origen', 'is', null)
         .limit(200)
+      if (sucursalId) qCanales = qCanales.eq('sucursal_id', sucursalId)
+      const { data: canalOpts } = await qCanales
       const canalesDisp = [...new Set((canalOpts ?? []).map((v: any) => v.origen).filter(Boolean))]
 
       return {

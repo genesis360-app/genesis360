@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -142,6 +143,7 @@ function CombosBloqueadosChart({ data, fmt }: { data: { name: string; kits_bloqu
 
 export function DashInventarioArea() {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
 
   const [vista, setVista] = useState<Vista>('todo')
   const [filterOpen, setFilterOpen] = useState(false)
@@ -165,7 +167,7 @@ export function DashInventarioArea() {
 
   // ─── Query: mercadería (inventario_lineas + productos) ────────────────────
   const { data: iData, isLoading: iLoading } = useQuery({
-    queryKey: ['dash-inv-area', tenant?.id],
+    queryKey: ['dash-inv-area', tenant?.id, sucursalId],
     queryFn: async () => {
       // 1. Todos los productos activos
       const { data: productos = [] } = await supabase.from('productos')
@@ -173,39 +175,49 @@ export function DashInventarioArea() {
         .eq('tenant_id', tenant!.id).eq('activo', true)
 
       // 2. Inventario_lineas activas con ubicacion + estado
-      const { data: lineas = [] } = await supabase.from('inventario_lineas')
+      let qLineas = supabase.from('inventario_lineas')
         .select('id, producto_id, cantidad, cantidad_reservada, estado_id, ubicacion_id, created_at, sucursal_id, productos(precio_costo, nombre)')
         .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
+      if (sucursalId) qLineas = qLineas.eq('sucursal_id', sucursalId)
+      const { data: lineas = [] } = await qLineas
 
       // 3. Recursos
-      const { data: recursos = [] } = await supabase.from('recursos')
+      let qRecursos = supabase.from('recursos')
         .select('id, nombre, categoria, estado, valor, ubicacion')
         .eq('tenant_id', tenant!.id)
         .neq('estado', 'pendiente_adquisicion')
+      if (sucursalId) qRecursos = qRecursos.eq('sucursal_id', sucursalId)
+      const { data: recursos = [] } = await qRecursos
 
       // 4. Movimientos últimos 30 días (rebajes para rotación y runway)
       const hace30 = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]
-      const { data: movs30 = [] } = await supabase.from('movimientos_stock')
+      let qMovs30 = supabase.from('movimientos_stock')
         .select('tipo, cantidad, producto_id, created_at')
         .eq('tenant_id', tenant!.id)
         .in('tipo', ['rebaje', 'kitting', 'des_kitting'])
         .gte('created_at', hace30)
+      if (sucursalId) qMovs30 = qMovs30.eq('sucursal_id', sucursalId)
+      const { data: movs30 = [] } = await qMovs30
 
       // 5. Movimientos últimos 365 días (para rotación anual)
       const hace365 = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0]
-      const { data: movs365 = [] } = await supabase.from('movimientos_stock')
+      let qMovs365 = supabase.from('movimientos_stock')
         .select('cantidad, tipo')
         .eq('tenant_id', tenant!.id)
         .eq('tipo', 'rebaje')
         .gte('created_at', hace365)
+      if (sucursalId) qMovs365 = qMovs365.eq('sucursal_id', sucursalId)
+      const { data: movs365 = [] } = await qMovs365
 
       // 6. Movimientos tipo ajuste_rebaje del mes (mermas)
       const iniciomes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
-      const { data: mermas = [] } = await supabase.from('movimientos_stock')
+      let qMermas = supabase.from('movimientos_stock')
         .select('cantidad, productos(precio_costo)')
         .eq('tenant_id', tenant!.id)
         .eq('tipo', 'ajuste_rebaje')
         .gte('created_at', iniciomes)
+      if (sucursalId) qMermas = qMermas.eq('sucursal_id', sucursalId)
+      const { data: mermas = [] } = await qMermas
 
       // 7. Kit recetas
       const { data: recetas = [] } = await supabase.from('kit_recetas')

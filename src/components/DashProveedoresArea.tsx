@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
 
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
@@ -26,6 +27,7 @@ type Vista = 'consolidado' | 'mercaderia' | 'servicios'
 
 export function DashProveedoresArea() {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const [vista, setVista] = useState<Vista>('consolidado')
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -37,7 +39,7 @@ export function DashProveedoresArea() {
   }, [filterOpen])
 
   const { data: pData, isLoading } = useQuery({
-    queryKey: ['dash-proveedores-area', tenant?.id],
+    queryKey: ['dash-proveedores-area', tenant?.id, sucursalId],
     queryFn: async () => {
       const hoy = new Date()
       const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0]
@@ -47,10 +49,12 @@ export function DashProveedoresArea() {
       const seisMesesAtras = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1).toISOString().split('T')[0]
 
       // 1. OC pendientes de pago
-      const { data: ocPendientes = [] } = await supabase.from('ordenes_compra')
+      let qOcPendientes = supabase.from('ordenes_compra')
         .select('id, monto_total, monto_pagado, estado_pago, fecha_vencimiento_pago, proveedor_id, created_at, proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
+      if (sucursalId) qOcPendientes = qOcPendientes.eq('sucursal_id', sucursalId)
+      const { data: ocPendientes = [] } = await qOcPendientes
 
       // 2. OC próximas 48h
       const ocUrgentes = (ocPendientes ?? []).filter((oc: any) =>
@@ -62,21 +66,27 @@ export function DashProveedoresArea() {
         .select('monto, descripcion, categoria').eq('tenant_id', tenant!.id).eq('activo', true)
 
       // 4. Gastos por mes (últimos 6)
-      const { data: gastosHist = [] } = await supabase.from('gastos')
+      let qGastosHist = supabase.from('gastos')
         .select('monto, fecha').eq('tenant_id', tenant!.id).gte('fecha', seisMesesAtras).order('fecha')
+      if (sucursalId) qGastosHist = qGastosHist.eq('sucursal_id', sucursalId)
+      const { data: gastosHist = [] } = await qGastosHist
 
       // 5. OC por proveedor (para donut)
-      const { data: ocAll = [] } = await supabase.from('ordenes_compra')
+      let qOcAll = supabase.from('ordenes_compra')
         .select('monto_total, proveedor_id, proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .gte('created_at', new Date(hoy.getFullYear(), 0, 1).toISOString())
+      if (sucursalId) qOcAll = qOcAll.eq('sucursal_id', sucursalId)
+      const { data: ocAll = [] } = await qOcAll
 
       // 6. Recepciones (para lead time proxy)
-      const { data: recepciones = [] } = await supabase.from('recepciones')
+      let qRecepciones = supabase.from('recepciones')
         .select('created_at, oc_id, ordenes_compra!inner(created_at)')
         .eq('tenant_id', tenant!.id)
         .gte('created_at', new Date(hoy.getFullYear(), hoy.getMonth() - 3, 1).toISOString())
         .limit(100)
+      if (sucursalId) qRecepciones = qRecepciones.eq('sucursal_id', sucursalId)
+      const { data: recepciones = [] } = await qRecepciones
 
       // KPI 1: Total cuentas por pagar
       const totalPorPagar = (ocPendientes ?? []).reduce((a: number, oc: any) => {
@@ -116,9 +126,11 @@ export function DashProveedoresArea() {
         : null
 
       // KPI 7: Suscripciones zombi (gastos_fijos sin gastos recientes)
-      const { data: gastosRecientes30 = [] } = await supabase.from('gastos')
+      let qGastosRecientes30 = supabase.from('gastos')
         .select('descripcion').eq('tenant_id', tenant!.id)
         .gte('fecha', new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0])
+      if (sucursalId) qGastosRecientes30 = qGastosRecientes30.eq('sucursal_id', sucursalId)
+      const { data: gastosRecientes30 = [] } = await qGastosRecientes30
       const descRecientes = new Set((gastosRecientes30 ?? []).map((g: any) => g.descripcion?.toLowerCase().slice(0, 20)))
       const zombis = (gastosFijos ?? []).filter((gf: any) => !descRecientes.has(gf.descripcion?.toLowerCase().slice(0, 20))).length
 

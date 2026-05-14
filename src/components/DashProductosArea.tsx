@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -99,6 +100,7 @@ function TijeraTooltip({ active, payload, label, fmt }: any) {
 
 export function DashProductosArea() {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
 
   // Filtros locales
   const [filterOpen, setFilterOpen] = useState(false)
@@ -134,15 +136,17 @@ export function DashProductosArea() {
 
   // ─── Query principal ──────────────────────────────────────────────────────
   const { data: pData, isLoading } = useQuery({
-    queryKey: ['dash-productos-area', tenant?.id, desde, hasta, categoriaFiltro],
+    queryKey: ['dash-productos-area', tenant?.id, desde, hasta, categoriaFiltro, sucursalId],
     queryFn: async () => {
 
       // 1. Ventas confirmadas del período → IDs
-      const { data: ventasConf = [] } = await supabase.from('ventas')
+      let qVentasConf = supabase.from('ventas')
         .select('id')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', desde).lte('created_at', hasta)
+      if (sucursalId) qVentasConf = qVentasConf.eq('sucursal_id', sucursalId)
+      const { data: ventasConf = [] } = await qVentasConf
       const ventaIds = (ventasConf ?? []).map((v: any) => v.id)
 
       // 2. venta_items del período con producto
@@ -168,11 +172,13 @@ export function DashProductosArea() {
 
       // 4. Productos con ventas en los últimos 90 días (para dormancy)
       const hace90 = new Date(Date.now() - 90 * 86400000).toISOString()
-      const { data: ventasRecientes90 = [] } = await supabase.from('ventas')
+      let qVentasRecientes90 = supabase.from('ventas')
         .select('id')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', hace90)
+      if (sucursalId) qVentasRecientes90 = qVentasRecientes90.eq('sucursal_id', sucursalId)
+      const { data: ventasRecientes90 = [] } = await qVentasRecientes90
       const ventaIds90 = (ventasRecientes90 ?? []).map((v: any) => v.id)
       let conVentas90 = new Set<string>()
       if (ventaIds90.length > 0) {
@@ -199,11 +205,13 @@ export function DashProductosArea() {
       // 6. Histórico mensual de venta_items (últimos 6 meses) para La Tijera
       const seisMesesAtras = new Date()
       seisMesesAtras.setMonth(seisMesesAtras.getMonth() - 5); seisMesesAtras.setDate(1)
-      const { data: ventasHist = [] } = await supabase.from('ventas')
+      let qVentasHist = supabase.from('ventas')
         .select('id, created_at')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', seisMesesAtras.toISOString())
+      if (sucursalId) qVentasHist = qVentasHist.eq('sucursal_id', sucursalId)
+      const { data: ventasHist = [] } = await qVentasHist
       const ventaIdsHist = (ventasHist ?? []).map((v: any) => ({ id: v.id, mes: v.created_at.slice(0, 7) }))
       const mesMap: Record<string, string> = {}
       ventaIdsHist.forEach((v: any) => { mesMap[v.id] = v.mes })

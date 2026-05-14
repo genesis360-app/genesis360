@@ -7,6 +7,7 @@ import {
 import { SlidersHorizontal, X, Send, AlertTriangle, CheckCircle, Clock, BarChart2, Zap, TrendingDown, Package } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
 
 const COURIER_COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444','#6B7280']
@@ -37,6 +38,7 @@ function EnvioTooltip({ active, payload }: any) {
 
 export function DashEnviosArea() {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
 
@@ -49,14 +51,16 @@ export function DashEnviosArea() {
   const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
 
   const { data: eData, isLoading } = useQuery({
-    queryKey: ['dash-envios-area', tenant?.id],
+    queryKey: ['dash-envios-area', tenant?.id, sucursalId],
     queryFn: async () => {
       // 1. Todos los envíos del mes
-      const { data: envios = [] } = await supabase.from('envios')
+      let qEnvios = supabase.from('envios')
         .select('id, numero, estado, courier, costo_cotizado, venta_id, created_at')
         .eq('tenant_id', tenant!.id)
         .gte('created_at', inicioMes)
         .order('created_at', { ascending: false })
+      if (sucursalId) qEnvios = qEnvios.eq('sucursal_id', sucursalId)
+      const { data: envios = [] } = await qEnvios
 
       // 2. Ventas vinculadas con costo_envio
       const ventaIds = (envios ?? []).filter((e: any) => e.venta_id).map((e: any) => e.venta_id)

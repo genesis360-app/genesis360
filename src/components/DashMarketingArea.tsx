@@ -7,6 +7,7 @@ import {
 import { SlidersHorizontal, X, TrendingUp, TrendingDown, Zap, AlertTriangle, CheckCircle, Clock, BarChart2, Target } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
 
 const CANAL_COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444']
@@ -32,6 +33,7 @@ function PoasTooltip({ active, payload, label }: any) {
 
 export function DashMarketingArea() {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
 
@@ -46,20 +48,24 @@ export function DashMarketingArea() {
   const seisMAtras = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1).toISOString()
 
   const { data: mData, isLoading } = useQuery({
-    queryKey: ['dash-marketing-area', tenant?.id],
+    queryKey: ['dash-marketing-area', tenant?.id, sucursalId],
     queryFn: async () => {
       // 1. Gastos de marketing del mes (por categoría)
       const inicioMesDate = inicioMes.split('T')[0]
-      const { data: gastosMarketing = [] } = await supabase.from('gastos')
+      let qGastosMarketing = supabase.from('gastos')
         .select('monto, descripcion, categoria, fecha').eq('tenant_id', tenant!.id)
         .gte('fecha', inicioMesDate)
         .or('categoria.ilike.%marketing%,categoria.ilike.%publicidad%,categoria.ilike.%advertising%,categoria.ilike.%pauta%,descripcion.ilike.%facebook%,descripcion.ilike.%google%,descripcion.ilike.%instagram%,descripcion.ilike.%meta%')
+      if (sucursalId) qGastosMarketing = qGastosMarketing.eq('sucursal_id', sucursalId)
+      const { data: gastosMarketing = [] } = await qGastosMarketing
       const inversionTotal = (gastosMarketing ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
 
       // 2. Ventas del mes con items (para calcular ganancia neta y POAS)
-      const { data: ventas = [] } = await supabase.from('ventas')
+      let qVentas = supabase.from('ventas')
         .select('id, total, costo_envio, origen').eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)
+      if (sucursalId) qVentas = qVentas.eq('sucursal_id', sucursalId)
+      const { data: ventas = [] } = await qVentas
       const ventaIds = (ventas ?? []).map((v: any) => v.id)
 
       let itemsData: any[] = []
@@ -97,9 +103,11 @@ export function DashMarketingArea() {
 
       // ── KPI: Dependencia publicidad ─────────────────────────────────────
       // Ventas totales en el mes
-      const { data: ventasTotales = [] } = await supabase.from('ventas')
+      let qVentasTotales = supabase.from('ventas')
         .select('total').eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)
+      if (sucursalId) qVentasTotales = qVentasTotales.eq('sucursal_id', sucursalId)
+      const { data: ventasTotales = [] } = await qVentasTotales
       const totalMes = (ventasTotales ?? []).reduce((a: number, v: any) => a + (v.total ?? 0), 0)
       const dependencia = totalMes > 0 && inversionTotal > 0 ? Math.round((totalVentas / totalMes) * 100) : null
 
@@ -116,13 +124,17 @@ export function DashMarketingArea() {
       const cac = clientesNuevosMes > 0 && inversionTotal > 0 ? Math.round(inversionTotal / clientesNuevosMes) : null
 
       // ── Chart 1: Evolución Inversión vs Ganancia ─────────────────────────
-      const { data: gastosHist = [] } = await supabase.from('gastos')
+      let qGastosHist = supabase.from('gastos')
         .select('monto, fecha').eq('tenant_id', tenant!.id)
         .gte('fecha', seisMAtras.split('T')[0])
         .or('categoria.ilike.%marketing%,categoria.ilike.%publicidad%,descripcion.ilike.%facebook%,descripcion.ilike.%google%,descripcion.ilike.%instagram%')
-      const { data: ventasHist = [] } = await supabase.from('ventas')
+      if (sucursalId) qGastosHist = qGastosHist.eq('sucursal_id', sucursalId)
+      const { data: gastosHist = [] } = await qGastosHist
+      let qVentasHist = supabase.from('ventas')
         .select('id, total, created_at').eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada']).gte('created_at', seisMAtras)
+      if (sucursalId) qVentasHist = qVentasHist.eq('sucursal_id', sucursalId)
+      const { data: ventasHist = [] } = await qVentasHist
       const { data: viHist = [] } = await supabase.from('venta_items')
         .select('venta_id, cantidad, precio_unitario, precio_costo_historico, iva_monto')
         .eq('tenant_id', tenant!.id).gte('created_at', seisMAtras).limit(2000)

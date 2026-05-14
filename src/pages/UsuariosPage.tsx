@@ -119,7 +119,12 @@ export default function UsuariosPage() {
     setSaving(true)
     try {
       const { data, error } = await supabase.functions.invoke('invite-user', {
-        body: { email: invEmail.trim(), rol: invRol, tenant_id: tenant!.id },
+        body: {
+          email: invEmail.trim(),
+          rol: invRol,
+          tenant_id: tenant!.id,
+          redirect_to: `${window.location.origin}/dashboard`,
+        },
       })
       if (error) {
         // Extraer el mensaje real del body de la respuesta (Supabase FunctionsHttpError)

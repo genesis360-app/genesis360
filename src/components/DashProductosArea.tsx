@@ -102,6 +102,11 @@ export function DashProductosArea() {
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
 
+  const dashFilter = (q: any) => {
+    if (!sucursalId) return q
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+  }
+
   // Filtros locales
   const [filterOpen, setFilterOpen] = useState(false)
   const [periodo, setPeriodo] = useState<ProductosPeriodo>('trimestre')
@@ -145,7 +150,7 @@ export function DashProductosArea() {
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', desde).lte('created_at', hasta)
-      if (sucursalId) qVentasConf = qVentasConf.eq('sucursal_id', sucursalId)
+      qVentasConf = dashFilter(qVentasConf)
       const { data: ventasConf = [] } = await qVentasConf
       const ventaIds = (ventasConf ?? []).map((v: any) => v.id)
 
@@ -177,7 +182,7 @@ export function DashProductosArea() {
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', hace90)
-      if (sucursalId) qVentasRecientes90 = qVentasRecientes90.eq('sucursal_id', sucursalId)
+      qVentasRecientes90 = dashFilter(qVentasRecientes90)
       const { data: ventasRecientes90 = [] } = await qVentasRecientes90
       const ventaIds90 = (ventasRecientes90 ?? []).map((v: any) => v.id)
       let conVentas90 = new Set<string>()
@@ -210,7 +215,7 @@ export function DashProductosArea() {
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', seisMesesAtras.toISOString())
-      if (sucursalId) qVentasHist = qVentasHist.eq('sucursal_id', sucursalId)
+      qVentasHist = dashFilter(qVentasHist)
       const { data: ventasHist = [] } = await qVentasHist
       const ventaIdsHist = (ventasHist ?? []).map((v: any) => ({ id: v.id, mes: v.created_at.slice(0, 7) }))
       const mesMap: Record<string, string> = {}

@@ -39,6 +39,12 @@ function EnvioTooltip({ active, payload }: any) {
 export function DashEnviosArea() {
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
+
+  const dashFilter = (q: any) => {
+    if (!sucursalId) return q
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+  }
+
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
 
@@ -59,7 +65,7 @@ export function DashEnviosArea() {
         .eq('tenant_id', tenant!.id)
         .gte('created_at', inicioMes)
         .order('created_at', { ascending: false })
-      if (sucursalId) qEnvios = qEnvios.eq('sucursal_id', sucursalId)
+      qEnvios = dashFilter(qEnvios)
       const { data: envios = [] } = await qEnvios
 
       // 2. Ventas vinculadas con costo_envio

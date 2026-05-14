@@ -38,6 +38,12 @@ const MONOTRIB_LIMITES = [
 export function DashFacturacionArea() {
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
+
+  const dashFilter = (q: any) => {
+    if (!sucursalId) return q
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+  }
+
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
 
@@ -59,7 +65,7 @@ export function DashFacturacionArea() {
       // venta_items no tiene sucursal_id: primero obtenemos IDs de ventas filtradas
       let qVentasMes = supabase.from('ventas').select('id')
         .eq('tenant_id', tenant!.id).gte('created_at', inicioMes)
-      if (sucursalId) qVentasMes = qVentasMes.eq('sucursal_id', sucursalId)
+      qVentasMes = dashFilter(qVentasMes)
       const { data: ventasMesRaw = [] } = await qVentasMes
       const ventaIdsMes = (ventasMesRaw ?? []).map((v: any) => v.id)
       let itemsMes: any[] = []
@@ -77,7 +83,7 @@ export function DashFacturacionArea() {
       let qGastosMes = supabase.from('gastos')
         .select('iva_monto, iva_deducible').eq('tenant_id', tenant!.id)
         .eq('iva_deducible', true).gte('fecha', iniciomesDate)
-      if (sucursalId) qGastosMes = qGastosMes.eq('sucursal_id', sucursalId)
+      qGastosMes = dashFilter(qGastosMes)
       const { data: gastosMes = [] } = await qGastosMes
       const ivaCredito = (gastosMes ?? []).reduce((a: number, g: any) => a + (g.iva_monto ?? 0), 0)
 
@@ -88,7 +94,7 @@ export function DashFacturacionArea() {
       let qVentasAnio = supabase.from('ventas')
         .select('total').eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada']).gte('created_at', inicioAnio)
-      if (sucursalId) qVentasAnio = qVentasAnio.eq('sucursal_id', sucursalId)
+      qVentasAnio = dashFilter(qVentasAnio)
       const { data: ventasAnio = [] } = await qVentasAnio
       const totalAnio = (ventasAnio ?? []).reduce((a: number, v: any) => a + (v.total ?? 0), 0)
 
@@ -107,7 +113,7 @@ export function DashFacturacionArea() {
       // 6. Evolución mensual IVA (últimos 6 meses) — filtrado por sucursal via ventas
       let qVentasHist6m = supabase.from('ventas').select('id')
         .eq('tenant_id', tenant!.id).gte('created_at', seisMAtras)
-      if (sucursalId) qVentasHist6m = qVentasHist6m.eq('sucursal_id', sucursalId)
+      qVentasHist6m = dashFilter(qVentasHist6m)
       const { data: ventasHist6mRaw = [] } = await qVentasHist6m
       const ventaIdsHist6m = (ventasHist6mRaw ?? []).map((v: any) => v.id)
       let itemsHist: any[] = []

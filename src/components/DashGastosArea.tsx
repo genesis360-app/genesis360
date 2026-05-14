@@ -116,6 +116,11 @@ export function DashGastosArea() {
   const { cotizacion } = useCotizacion()
   const { sucursalId } = useSucursalFilter()
 
+  const dashFilter = (q: any) => {
+    if (!sucursalId) return q
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+  }
+
   // Filtros
   const [filterOpen, setFilterOpen] = useState(false)
   const [periodo, setPeriodo] = useState<GastosPeriodo>('mes')
@@ -166,7 +171,7 @@ export function DashGastosArea() {
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdeDate).lte('fecha', hastaDate)
       if (categoriaFiltro) q = q.eq('categoria', categoriaFiltro)
-      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      q = dashFilter(q)
       const { data: gastos = [] } = await q
 
       // Gastos período anterior
@@ -174,7 +179,7 @@ export function DashGastosArea() {
         .select('monto')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
-      if (sucursalId) qGastosPrev = qGastosPrev.eq('sucursal_id', sucursalId)
+      qGastosPrev = dashFilter(qGastosPrev)
       const { data: gastosPrev = [] } = await qGastosPrev
 
       // Gastos fijos activos (para estimación fijos vs variables)
@@ -191,7 +196,7 @@ export function DashGastosArea() {
         .eq('tenant_id', tenant!.id)
         .gte('fecha', seisMesesAtras.toISOString().split('T')[0])
         .order('fecha')
-      if (sucursalId) qGastosHist = qGastosHist.eq('sucursal_id', sucursalId)
+      qGastosHist = dashFilter(qGastosHist)
       const { data: gastosHistorico = [] } = await qGastosHist
 
       // Ventas del período (para ratio Gastos/Ventas)
@@ -200,7 +205,7 @@ export function DashGastosArea() {
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', desde).lte('created_at', hasta)
-      if (sucursalId) qVentas = qVentas.eq('sucursal_id', sucursalId)
+      qVentas = dashFilter(qVentas)
       const { data: ventas = [] } = await qVentas
 
       // Cuotas por vencer próximos 7 días
@@ -303,7 +308,7 @@ export function DashGastosArea() {
         .select('categoria, monto')
         .eq('tenant_id', tenant!.id)
         .gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
-      if (sucursalId) qGastosPrevCat = qGastosPrevCat.eq('sucursal_id', sucursalId)
+      qGastosPrevCat = dashFilter(qGastosPrevCat)
       const { data: gastosPrevCat = [] } = await qGastosPrevCat
       for (const g of gastosPrevCat ?? []) {
         const cat = (g as any).categoria || 'Sin categoría'

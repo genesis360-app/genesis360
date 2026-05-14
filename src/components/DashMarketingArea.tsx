@@ -34,6 +34,12 @@ function PoasTooltip({ active, payload, label }: any) {
 export function DashMarketingArea() {
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
+
+  const dashFilter = (q: any) => {
+    if (!sucursalId) return q
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+  }
+
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
 
@@ -56,7 +62,7 @@ export function DashMarketingArea() {
         .select('monto, descripcion, categoria, fecha').eq('tenant_id', tenant!.id)
         .gte('fecha', inicioMesDate)
         .or('categoria.ilike.%marketing%,categoria.ilike.%publicidad%,categoria.ilike.%advertising%,categoria.ilike.%pauta%,descripcion.ilike.%facebook%,descripcion.ilike.%google%,descripcion.ilike.%instagram%,descripcion.ilike.%meta%')
-      if (sucursalId) qGastosMarketing = qGastosMarketing.eq('sucursal_id', sucursalId)
+      qGastosMarketing = dashFilter(qGastosMarketing)
       const { data: gastosMarketing = [] } = await qGastosMarketing
       const inversionTotal = (gastosMarketing ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
 
@@ -64,7 +70,7 @@ export function DashMarketingArea() {
       let qVentas = supabase.from('ventas')
         .select('id, total, costo_envio, origen').eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)
-      if (sucursalId) qVentas = qVentas.eq('sucursal_id', sucursalId)
+      qVentas = dashFilter(qVentas)
       const { data: ventas = [] } = await qVentas
       const ventaIds = (ventas ?? []).map((v: any) => v.id)
 
@@ -106,7 +112,7 @@ export function DashMarketingArea() {
       let qVentasTotales = supabase.from('ventas')
         .select('total').eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)
-      if (sucursalId) qVentasTotales = qVentasTotales.eq('sucursal_id', sucursalId)
+      qVentasTotales = dashFilter(qVentasTotales)
       const { data: ventasTotales = [] } = await qVentasTotales
       const totalMes = (ventasTotales ?? []).reduce((a: number, v: any) => a + (v.total ?? 0), 0)
       const dependencia = totalMes > 0 && inversionTotal > 0 ? Math.round((totalVentas / totalMes) * 100) : null
@@ -128,12 +134,12 @@ export function DashMarketingArea() {
         .select('monto, fecha').eq('tenant_id', tenant!.id)
         .gte('fecha', seisMAtras.split('T')[0])
         .or('categoria.ilike.%marketing%,categoria.ilike.%publicidad%,descripcion.ilike.%facebook%,descripcion.ilike.%google%,descripcion.ilike.%instagram%')
-      if (sucursalId) qGastosHist = qGastosHist.eq('sucursal_id', sucursalId)
+      qGastosHist = dashFilter(qGastosHist)
       const { data: gastosHist = [] } = await qGastosHist
       let qVentasHist = supabase.from('ventas')
         .select('id, total, created_at').eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada']).gte('created_at', seisMAtras)
-      if (sucursalId) qVentasHist = qVentasHist.eq('sucursal_id', sucursalId)
+      qVentasHist = dashFilter(qVentasHist)
       const { data: ventasHist = [] } = await qVentasHist
       const { data: viHist = [] } = await supabase.from('venta_items')
         .select('venta_id, cantidad, precio_unitario, precio_costo_historico, iva_monto')

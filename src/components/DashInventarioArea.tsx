@@ -145,6 +145,11 @@ export function DashInventarioArea() {
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
 
+  const dashFilter = (q: any) => {
+    if (!sucursalId) return q
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+  }
+
   const [vista, setVista] = useState<Vista>('todo')
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -178,7 +183,7 @@ export function DashInventarioArea() {
       let qLineas = supabase.from('inventario_lineas')
         .select('id, producto_id, cantidad, cantidad_reservada, estado_id, ubicacion_id, created_at, sucursal_id, productos(precio_costo, nombre)')
         .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
-      if (sucursalId) qLineas = qLineas.eq('sucursal_id', sucursalId)
+      qLineas = dashFilter(qLineas)
       const { data: lineas = [] } = await qLineas
 
       // 3. Recursos
@@ -186,7 +191,7 @@ export function DashInventarioArea() {
         .select('id, nombre, categoria, estado, valor, ubicacion')
         .eq('tenant_id', tenant!.id)
         .neq('estado', 'pendiente_adquisicion')
-      if (sucursalId) qRecursos = qRecursos.eq('sucursal_id', sucursalId)
+      qRecursos = dashFilter(qRecursos)
       const { data: recursos = [] } = await qRecursos
 
       // 4. Movimientos últimos 30 días (rebajes para rotación y runway)
@@ -196,7 +201,7 @@ export function DashInventarioArea() {
         .eq('tenant_id', tenant!.id)
         .in('tipo', ['rebaje', 'kitting', 'des_kitting'])
         .gte('created_at', hace30)
-      if (sucursalId) qMovs30 = qMovs30.eq('sucursal_id', sucursalId)
+      qMovs30 = dashFilter(qMovs30)
       const { data: movs30 = [] } = await qMovs30
 
       // 5. Movimientos últimos 365 días (para rotación anual)
@@ -206,7 +211,7 @@ export function DashInventarioArea() {
         .eq('tenant_id', tenant!.id)
         .eq('tipo', 'rebaje')
         .gte('created_at', hace365)
-      if (sucursalId) qMovs365 = qMovs365.eq('sucursal_id', sucursalId)
+      qMovs365 = dashFilter(qMovs365)
       const { data: movs365 = [] } = await qMovs365
 
       // 6. Movimientos tipo ajuste_rebaje del mes (mermas)
@@ -216,7 +221,7 @@ export function DashInventarioArea() {
         .eq('tenant_id', tenant!.id)
         .eq('tipo', 'ajuste_rebaje')
         .gte('created_at', iniciomes)
-      if (sucursalId) qMermas = qMermas.eq('sucursal_id', sucursalId)
+      qMermas = dashFilter(qMermas)
       const { data: mermas = [] } = await qMermas
 
       // 7. Kit recetas

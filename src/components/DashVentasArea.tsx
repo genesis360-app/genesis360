@@ -213,6 +213,11 @@ export function DashVentasArea() {
   const { cotizacion } = useCotizacion()
   const { sucursalId } = useSucursalFilter()
 
+  const dashFilter = (q: any) => {
+    if (!sucursalId) return q
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+  }
+
   // Filtros internos
   const [filterOpen, setFilterOpen] = useState(false)
   const [periodo, setPeriodo] = useState<VentasPeriodo>('mes')
@@ -256,7 +261,7 @@ export function DashVentasArea() {
         .lte('created_at', hasta)
         .neq('estado', 'cancelada')
       if (canal) q = q.eq('origen', canal)
-      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      q = dashFilter(q)
       const { data: ventasRaw = [] } = await q
 
       // Ventas del período anterior (solo confirmadas)
@@ -265,7 +270,7 @@ export function DashVentasArea() {
         .eq('tenant_id', tenant!.id)
         .gte('created_at', desdePrev).lte('created_at', hastaPrev)
         .in('estado', ['despachada', 'facturada'])
-      if (sucursalId) qPrev = qPrev.eq('sucursal_id', sucursalId)
+      qPrev = dashFilter(qPrev)
       const { data: ventasPrev = [] } = await qPrev
 
       const ventas = ventasRaw ?? []
@@ -337,7 +342,7 @@ export function DashVentasArea() {
         .eq('tenant_id', tenant!.id)
         .not('origen', 'is', null)
         .limit(200)
-      if (sucursalId) qCanales = qCanales.eq('sucursal_id', sucursalId)
+      qCanales = dashFilter(qCanales)
       const { data: canalOpts } = await qCanales
       const canalesDisp = [...new Set((canalOpts ?? []).map((v: any) => v.origen).filter(Boolean))]
 

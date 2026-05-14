@@ -28,6 +28,12 @@ type Vista = 'consolidado' | 'mercaderia' | 'servicios'
 export function DashProveedoresArea() {
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
+
+  const dashFilter = (q: any) => {
+    if (!sucursalId) return q
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+  }
+
   const [vista, setVista] = useState<Vista>('consolidado')
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -53,7 +59,7 @@ export function DashProveedoresArea() {
         .select('id, monto_total, monto_pagado, estado_pago, fecha_vencimiento_pago, proveedor_id, created_at, proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
-      if (sucursalId) qOcPendientes = qOcPendientes.eq('sucursal_id', sucursalId)
+      qOcPendientes = dashFilter(qOcPendientes)
       const { data: ocPendientes = [] } = await qOcPendientes
 
       // 2. OC próximas 48h
@@ -68,7 +74,7 @@ export function DashProveedoresArea() {
       // 4. Gastos por mes (últimos 6)
       let qGastosHist = supabase.from('gastos')
         .select('monto, fecha').eq('tenant_id', tenant!.id).gte('fecha', seisMesesAtras).order('fecha')
-      if (sucursalId) qGastosHist = qGastosHist.eq('sucursal_id', sucursalId)
+      qGastosHist = dashFilter(qGastosHist)
       const { data: gastosHist = [] } = await qGastosHist
 
       // 5. OC por proveedor (para donut)
@@ -76,7 +82,7 @@ export function DashProveedoresArea() {
         .select('monto_total, proveedor_id, proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
         .gte('created_at', new Date(hoy.getFullYear(), 0, 1).toISOString())
-      if (sucursalId) qOcAll = qOcAll.eq('sucursal_id', sucursalId)
+      qOcAll = dashFilter(qOcAll)
       const { data: ocAll = [] } = await qOcAll
 
       // 6. Recepciones (para lead time proxy)
@@ -85,7 +91,7 @@ export function DashProveedoresArea() {
         .eq('tenant_id', tenant!.id)
         .gte('created_at', new Date(hoy.getFullYear(), hoy.getMonth() - 3, 1).toISOString())
         .limit(100)
-      if (sucursalId) qRecepciones = qRecepciones.eq('sucursal_id', sucursalId)
+      qRecepciones = dashFilter(qRecepciones)
       const { data: recepciones = [] } = await qRecepciones
 
       // KPI 1: Total cuentas por pagar
@@ -129,7 +135,7 @@ export function DashProveedoresArea() {
       let qGastosRecientes30 = supabase.from('gastos')
         .select('descripcion').eq('tenant_id', tenant!.id)
         .gte('fecha', new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0])
-      if (sucursalId) qGastosRecientes30 = qGastosRecientes30.eq('sucursal_id', sucursalId)
+      qGastosRecientes30 = dashFilter(qGastosRecientes30)
       const { data: gastosRecientes30 = [] } = await qGastosRecientes30
       const descRecientes = new Set((gastosRecientes30 ?? []).map((g: any) => g.descripcion?.toLowerCase().slice(0, 20)))
       const zombis = (gastosFijos ?? []).filter((gf: any) => !descRecientes.has(gf.descripcion?.toLowerCase().slice(0, 20))).length

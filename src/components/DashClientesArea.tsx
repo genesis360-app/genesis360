@@ -37,6 +37,12 @@ function CohortTooltip({ active, payload, label }: any) {
 export function DashClientesArea() {
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
+
+  const dashFilter = (q: any) => {
+    if (!sucursalId) return q
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+  }
+
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
 
@@ -62,7 +68,7 @@ export function DashClientesArea() {
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', hace365)
-      if (sucursalId) qVentas12m = qVentas12m.eq('sucursal_id', sucursalId)
+      qVentas12m = dashFilter(qVentas12m)
       const { data: ventas12m = [] } = await qVentas12m
       const ventasConf = ventas12m ?? []
 

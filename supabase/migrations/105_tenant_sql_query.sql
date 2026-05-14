@@ -13,10 +13,10 @@ DECLARE
   normalized TEXT;
 BEGIN
   -- Normalizar para validación
-  normalized := trim(regexp_replace(lower(query_text), '\s+', ' ', 'g'));
+  normalized := trim(regexp_replace(lower(query_text), '[[:space:]]+', ' ', 'g'));
 
-  -- Solo SELECT o WITH (CTEs)
-  IF NOT (normalized ~* '^\s*(select|with)\b') THEN
+  -- Solo SELECT o WITH — usar ([[:space:]]|$) en vez de \b (\b no funciona en PG string literals)
+  IF NOT (normalized ~* '^(select|with)([[:space:]]|$)') THEN
     RAISE EXCEPTION 'Solo se permiten consultas SELECT o WITH.';
   END IF;
 
@@ -25,7 +25,7 @@ BEGIN
     RAISE EXCEPTION 'La consulta contiene operaciones no permitidas.';
   END IF;
 
-  -- Bloquear acceso a schemas de sistema
+  -- Bloquear acceso a schemas del sistema
   IF normalized ~* '\m(pg_catalog|information_schema|auth|storage|realtime|supabase_functions|cron|net)\M' THEN
     RAISE EXCEPTION 'No se puede acceder a schemas del sistema.';
   END IF;

@@ -99,6 +99,14 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
+## Support
+
+| Página | Descripción | Estado |
+|--------|-------------|--------|
+| [[wiki/support/supabase-db-rescue]] | Diagnóstico, rescate y mantenimiento de la DB Supabase (pool saturado, conexiones colgadas, restart) | ✅ |
+
+---
+
 ## Sources (en `sources/raw/`)
 
 | Archivo | Tipo | Descripción |
@@ -114,4 +122,4 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
-*Última actualización: 2026-05-06 — 46 páginas · 8 fuentes en raw/ · 85 migraciones · v1.6.0*
+*Última actualización: 2026-05-13 — 47 páginas · 8 fuentes en raw/ · 103 migraciones · v1.8.18*

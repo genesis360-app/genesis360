@@ -13,6 +13,11 @@ Referencia rápida para diagnosticar y resolver problemas de base de datos en pr
 - DEV: `gcmhzdedrkmmzfzfveig` — `https://supabase.com/dashboard/project/gcmhzdedrkmmzfzfveig`
 - PROD: `jjffnbrdjchquexdfgwq` — `https://supabase.com/dashboard/project/jjffnbrdjchquexdfgwq`
 
+**Ver también:**
+- [[wiki/architecture/backend-supabase]] — arquitectura general del backend
+- [[wiki/development/supabase-dev-vs-prod]] — reglas DEV vs PROD y flujo de migraciones
+- [[wiki/database/migraciones]] — historial completo de migraciones
+
 ---
 
 ## 1. Diagnóstico rápido

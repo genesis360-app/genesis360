@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-13] update | Soporte DB: incidente pool saturado + manual de rescate
+
+- Causa: AppLayout tenía query a `ventas_externas_logs.created_at` (columna inexistente, era `procesado_at`) corriendo cada 30s → saturó el pool de 60 conexiones
+- Segunda causa: ReportesPage pedía `estados_inventario.es_default` (inexistente en esa tabla)
+- Fix: columnas corregidas en el código, restart del proyecto DEV desde dashboard
+- Creado: `G360.Wiki/wiki/support/supabase-db-rescue.md` con manual completo de diagnóstico y rescate
+
 ## [2026-05-13] update | Kits y Conteos: filtrado por sucursal activa (v1.8.18)
 
 - Kits: `stockKitsSucursal` query suma `inventario_lineas` por sucursal; helper `kStock()` usado en maxKits, display, desarmar y modal armado

@@ -10,9 +10,10 @@ interface SucursalForm {
   direccion: string
   telefono: string
   costo_km_envio: string
+  codigo: string
 }
 
-const EMPTY: SucursalForm = { nombre: '', direccion: '', telefono: '', costo_km_envio: '' }
+const EMPTY: SucursalForm = { nombre: '', direccion: '', telefono: '', costo_km_envio: '', codigo: '' }
 
 const COURIERS_DEFAULT = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 'FedEx', 'Otro']
 
@@ -56,6 +57,7 @@ export default function SucursalesPage() {
       direccion: s.direccion ?? '',
       telefono: s.telefono ?? '',
       costo_km_envio: s.costo_km_envio != null ? String(s.costo_km_envio) : '',
+      codigo: s.codigo ?? '',
     })
     setModal(true)
   }
@@ -69,6 +71,7 @@ export default function SucursalesPage() {
         direccion: form.direccion.trim(),
         telefono: form.telefono.trim() || null,
         costo_km_envio: form.costo_km_envio ? parseFloat(form.costo_km_envio) : 0,
+        codigo: form.codigo.trim().toUpperCase() || null,
       }
       if (editId) {
         const { error } = await supabase.from('sucursales').update(payload).eq('id', editId)
@@ -253,14 +256,27 @@ export default function SucursalesPage() {
             </h2>
 
             <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Nombre <span className="text-red-500">*</span>
-                </label>
-                <input autoFocus value={form.nombre}
-                  onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-                  placeholder="Ej: Casa Central, Sucursal Norte"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Nombre <span className="text-red-500">*</span>
+                  </label>
+                  <input autoFocus value={form.nombre}
+                    onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                    placeholder="Ej: Casa Central, Sucursal Norte"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Código ticket
+                  </label>
+                  <input value={form.codigo}
+                    onChange={e => setForm(f => ({ ...f, codigo: e.target.value.toUpperCase() }))}
+                    placeholder="S1"
+                    maxLength={5}
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                  <p className="text-xs text-gray-400 mt-1">Prefijo del # de venta</p>
+                </div>
               </div>
 
               <div>

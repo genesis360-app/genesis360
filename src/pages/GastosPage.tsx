@@ -163,8 +163,28 @@ export default function GastosPage() {
   const [ocPagoCondiciones, setOcPagoCondiciones]   = useState('')
   const [ocGuardando, setOcGuardando]               = useState(false)
   const [ocExpandedId, setOcExpandedId]             = useState<string | null>(null)
+  // ISS-096: comprobante de pago en OC
+  const [ocSubiendoFile, setOcSubiendoFile]         = useState(false)
 
-  const MEDIOS_OC = ['Efectivo','Transferencia','Tarjeta de débito','Cheque','Otro']
+  const subirComprobanteOC = async (ocId: string, file: File, titulo?: string) => {
+    setOcSubiendoFile(true)
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'pdf'
+      const path = `${tenant!.id}/oc/${ocId}.${ext}`
+      const { error: upErr } = await supabase.storage.from('comprobantes-gastos').upload(path, file, { upsert: true })
+      if (upErr) throw upErr
+      const { error } = await supabase.from('ordenes_compra').update({
+        comprobante_url: path, comprobante_titulo: titulo ?? file.name,
+      }).eq('id', ocId)
+      if (error) throw error
+      toast.success('Comprobante adjuntado')
+      qc.invalidateQueries({ queryKey: ['oc-gastos'] })
+    } catch (e: any) { toast.error(e.message ?? 'Error al subir archivo') }
+    finally { setOcSubiendoFile(false) }
+  }
+
+  // ISS-095: CC como método de pago parcial en OC
+  const MEDIOS_OC = ['Efectivo','Transferencia','Tarjeta de débito','Cheque','Cuenta Corriente','Otro']
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -401,79 +421,76 @@ export default function GastosPage() {
       const total = calcMontoTotalOC(ocSeleccionada)
       const saldo = total - Number(ocSeleccionada.monto_pagado ?? 0)
 
-      let nuevoEstadoPago: string
-      let fechaVenc: string | null = ocSeleccionada.fecha_vencimiento_pago ?? null
-      let diasPlazo: number | null = ocSeleccionada.dias_plazo_pago ?? null
       const sesionId = (cajasAbiertasOC as any[])[0]?.id ?? null
 
-      if (ocPagoTipo === 'cc') {
-        // CC: registrar el saldo restante como deuda — no se necesita monto
+      // ISS-095: CC como medio de pago parcial — unificar flujo
+      const mediosValidos = ocMediosPago
+        .map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto.replace(',', '.')) }))
+        .filter(m => !isNaN(m.monto) && m.monto > 0)
+
+      if (!mediosValidos.length) { toast.error('Ingresá al menos un monto válido'); setOcGuardando(false); return }
+
+      const montoCC = mediosValidos.filter(m => m.tipo === 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
+      const montoNoCc = mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
+      const montoTotalMedios = montoCC + montoNoCc
+
+      if (montoTotalMedios > saldo + 0.5) {
+        toast.error(`El monto $${montoTotalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })} supera el saldo de $${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`)
+        setOcGuardando(false); return
+      }
+
+      const nuevoMontoPagado = Number(ocSeleccionada.monto_pagado ?? 0) + montoNoCc
+      const nuevoEstadoPago = (nuevoMontoPagado + montoCC) >= total - 0.5
+        ? (montoCC > 0 && montoNoCc === 0 ? 'cuenta_corriente' : 'pagada')
+        : 'pago_parcial'
+
+      let fechaVenc: string | null = ocSeleccionada.fecha_vencimiento_pago ?? null
+      let diasPlazo: number | null = ocSeleccionada.dias_plazo_pago ?? null
+      if (montoCC > 0) {
         const dias = parseInt(ocPagoDias) || 30
         const fv = new Date(); fv.setDate(fv.getDate() + dias)
-        fechaVenc = fv.toISOString().split('T')[0]
-        diasPlazo = dias
-        nuevoEstadoPago = 'cuenta_corriente'
+        fechaVenc = fv.toISOString().split('T')[0]; diasPlazo = dias
+      }
 
-        await supabase.from('ordenes_compra').update({
-          estado_pago: nuevoEstadoPago,
-          monto_total: total,
-          fecha_vencimiento_pago: fechaVenc,
-          dias_plazo_pago: diasPlazo,
-          condiciones_pago: ocPagoCondiciones || null,
-        }).eq('id', ocSeleccionada.id)
+      await supabase.from('ordenes_compra').update({
+        estado_pago: nuevoEstadoPago,
+        monto_pagado: nuevoMontoPagado,
+        monto_total: total,
+        ...(montoCC > 0 ? { fecha_vencimiento_pago: fechaVenc, dias_plazo_pago: diasPlazo, condiciones_pago: ocPagoCondiciones || null } : {}),
+      }).eq('id', ocSeleccionada.id)
 
-        // CC movement por el saldo pendiente (positivo = deuda)
+      // Registro en proveedor_cc_movimientos (pago en cash/transferencia cancela deuda; CC suma nueva deuda)
+      if (montoNoCc > 0) {
         await supabase.from('proveedor_cc_movimientos').insert({
           tenant_id: tenant!.id, proveedor_id: ocSeleccionada.proveedor_id,
-          oc_id: ocSeleccionada.id, tipo: 'oc',
-          monto: saldo, fecha: hoy,
-          fecha_vencimiento: fechaVenc, medio_pago: null,
-          descripcion: `CC OC #${ocSeleccionada.numero} — ${diasPlazo}d`,
-          created_by: user!.id,
-        })
-
-      } else {
-        // Pago: sumar todos los medios
-        const mediosValidos = ocMediosPago
-          .map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto.replace(',', '.')) }))
-          .filter(m => !isNaN(m.monto) && m.monto > 0)
-
-        if (!mediosValidos.length) { toast.error('Ingresá al menos un monto válido'); return }
-        const montoTotal = mediosValidos.reduce((s, m) => s + m.monto, 0)
-        if (montoTotal > saldo + 0.5) { toast.error(`El monto $${montoTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })} supera el saldo de $${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`); return }
-
-        const nuevoMontoPagado = Number(ocSeleccionada.monto_pagado ?? 0) + montoTotal
-        nuevoEstadoPago = nuevoMontoPagado >= total - 0.5 ? 'pagada' : 'pago_parcial'
-
-        await supabase.from('ordenes_compra').update({
-          estado_pago: nuevoEstadoPago,
-          monto_pagado: nuevoMontoPagado,
-          monto_total: total,
-        }).eq('id', ocSeleccionada.id)
-
-        // CC movement por el pago (negativo = cancela deuda)
-        await supabase.from('proveedor_cc_movimientos').insert({
-          tenant_id: tenant!.id, proveedor_id: ocSeleccionada.proveedor_id,
-          oc_id: ocSeleccionada.id, tipo: 'pago',
-          monto: -montoTotal, fecha: hoy,
-          medio_pago: JSON.stringify(mediosValidos.map(m => ({ tipo: m.tipo, monto: m.monto }))),
+          oc_id: ocSeleccionada.id, tipo: 'pago', monto: -montoNoCc, fecha: hoy,
+          medio_pago: JSON.stringify(mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente').map(m => ({ tipo: m.tipo, monto: m.monto }))),
           descripcion: `Pago OC #${ocSeleccionada.numero}`,
           caja_sesion_id: sesionId, created_by: user!.id,
         })
-
-        // Caja: egreso por cada medio Efectivo
-        for (const m of mediosValidos.filter(m => m.tipo === 'Efectivo')) {
-          if (!sesionId) { toast(`⚠ Sin caja abierta — egreso de $${m.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no registrado en caja`, { icon: '⚠' }); continue }
-          await supabase.from('caja_movimientos').insert({
-            tenant_id: tenant!.id, sesion_id: sesionId, tipo: 'egreso',
-            monto: m.monto,
-            concepto: `Pago OC #${ocSeleccionada.numero} — ${ocSeleccionada.proveedores?.nombre}`,
-            created_by: user!.id,
-          })
-        }
+      }
+      if (montoCC > 0) {
+        await supabase.from('proveedor_cc_movimientos').insert({
+          tenant_id: tenant!.id, proveedor_id: ocSeleccionada.proveedor_id,
+          oc_id: ocSeleccionada.id, tipo: 'oc', monto: montoCC, fecha: hoy,
+          fecha_vencimiento: fechaVenc,
+          descripcion: `CC OC #${ocSeleccionada.numero} — ${diasPlazo}d`,
+          created_by: user!.id,
+        })
       }
 
-      toast.success(ocPagoTipo === 'cc' ? 'OC asignada a cuenta corriente' : 'Pago registrado')
+      // Caja: egreso por cada medio Efectivo (no CC)
+      for (const m of mediosValidos.filter(m => m.tipo === 'Efectivo')) {
+        if (!sesionId) { toast(`⚠ Sin caja abierta — egreso de $${m.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no registrado en caja`, { icon: '⚠' }); continue }
+        await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id, sesion_id: sesionId, tipo: 'egreso',
+          monto: m.monto,
+          concepto: `Pago OC #${ocSeleccionada.numero} — ${ocSeleccionada.proveedores?.nombre}`,
+          created_by: user!.id,
+        })
+      }
+
+      toast.success('Pago registrado')
       setOcModalId(null)
       setOcMediosPago([{ tipo: 'Transferencia', monto: '' }])
       setOcPagoCondiciones('')
@@ -2099,32 +2116,61 @@ export default function GastosPage() {
                         </div>
                       </div>
                       {oc.estado_pago !== 'pagada' && (
-                        <button onClick={() => { setOcModalId(oc.id); setOcPagoTipo('pago'); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones('') }}
+                        <button onClick={() => { setOcModalId(oc.id); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones('') }}
                           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/90 transition-all">
                           <DollarSign size={12} /> Pagar / CC
                         </button>
                       )}
                     </div>
 
-                    {/* Ítems expandibles */}
+                    {/* Ítems expandibles + comprobante */}
                     {expanded && (
-                      <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 space-y-1">
-                        {(oc.orden_compra_items ?? []).length === 0 ? (
-                          <p className="text-xs text-gray-400">Sin ítems cargados</p>
-                        ) : (
-                          <>
-                            {(oc.orden_compra_items as any[]).map((it: any, idx: number) => (
-                              <div key={idx} className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                                <span>{it.productos?.nombre ?? '—'}</span>
-                                <span className="text-gray-400">{it.cantidad} × ${Number(it.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 0 })} = <strong className="text-gray-700 dark:text-gray-200">${(it.cantidad * it.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></span>
+                      <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 space-y-3">
+                        {/* Ítems */}
+                        <div className="space-y-1">
+                          {(oc.orden_compra_items ?? []).length === 0 ? (
+                            <p className="text-xs text-gray-400">Sin ítems cargados</p>
+                          ) : (
+                            <>
+                              {(oc.orden_compra_items as any[]).map((it: any, idx: number) => (
+                                <div key={idx} className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                                  <span>{it.productos?.nombre ?? '—'}</span>
+                                  <span className="text-gray-400">{it.cantidad} × ${Number(it.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 0 })} = <strong className="text-gray-700 dark:text-gray-200">${(it.cantidad * it.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></span>
+                                </div>
+                              ))}
+                              <div className="flex justify-between text-xs font-semibold border-t border-gray-100 dark:border-gray-600 pt-1 mt-1">
+                                <span className="text-gray-700 dark:text-gray-200">Total</span>
+                                <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                               </div>
-                            ))}
-                            <div className="flex justify-between text-xs font-semibold border-t border-gray-100 dark:border-gray-600 pt-1 mt-1">
-                              <span className="text-gray-700 dark:text-gray-200">Total</span>
-                              <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                            </>
+                          )}
+                        </div>
+                        {/* ISS-096: Comprobante de pago */}
+                        <div className="border-t border-gray-100 dark:border-gray-700 pt-2">
+                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Comprobante de pago</p>
+                          {(oc as any).comprobante_url ? (
+                            <div className="flex items-center gap-2">
+                              <a href={supabase.storage.from('comprobantes-gastos').getPublicUrl((oc as any).comprobante_url).data.publicUrl}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-accent hover:underline flex items-center gap-1">
+                                <Receipt size={12} /> {(oc as any).comprobante_titulo ?? 'Ver comprobante'}
+                              </a>
+                              <label className="text-xs text-gray-400 hover:text-accent cursor-pointer">
+                                Cambiar
+                                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden"
+                                  onChange={e => { if (e.target.files?.[0]) subirComprobanteOC(oc.id, e.target.files[0]) }} />
+                              </label>
                             </div>
-                          </>
-                        )}
+                          ) : (
+                            <label className={`flex items-center gap-2 text-xs cursor-pointer ${ocSubiendoFile ? 'text-gray-400' : 'text-accent hover:underline'}`}>
+                              {ocSubiendoFile ? 'Subiendo...' : <><Receipt size={12} /> Adjuntar comprobante</>}
+                              {!ocSubiendoFile && (
+                                <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden"
+                                  onChange={e => { if (e.target.files?.[0]) subirComprobanteOC(oc.id, e.target.files[0]) }} />
+                              )}
+                            </label>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2149,99 +2195,77 @@ export default function GastosPage() {
                     <div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-600 pt-1 mt-1"><span>Saldo pendiente</span><span className="text-red-500">${(calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
                   </div>
 
-                  {/* Tipo de operación */}
-                  <div className="flex gap-2">
-                    <button onClick={() => setOcPagoTipo('pago')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-all ${ocPagoTipo === 'pago' ? 'bg-accent text-white border-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent'}`}>
-                      <CheckCircle size={14} /> Registrar pago
-                    </button>
-                    <button onClick={() => setOcPagoTipo('cc')}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border text-sm font-medium transition-all ${ocPagoTipo === 'cc' ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-purple-400'}`}>
-                      <CreditCard size={14} /> Cuenta corriente
-                    </button>
-                  </div>
-
-                  {ocPagoTipo === 'pago' ? (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medios de pago</label>
-                        <div className="space-y-2">
-                          {ocMediosPago.map((m, i) => (
-                            <div key={i} className="flex gap-2 items-center">
-                              <select value={m.tipo}
-                                onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, tipo: e.target.value } : x))}
-                                className="flex-1 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-                                {MEDIOS_OC.map(t => <option key={t}>{t}</option>)}
-                              </select>
-                              <input type="number" onWheel={e => e.currentTarget.blur()}
-                                value={m.monto} onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
-                                placeholder="$0"
-                                className="w-28 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              {ocMediosPago.length > 1 && (
-                                <button onClick={() => setOcMediosPago(prev => prev.filter((_, j) => j !== i))}
-                                  className="text-gray-400 hover:text-red-500"><X size={14} /></button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                        <button onClick={() => setOcMediosPago(prev => [...prev, { tipo: 'Transferencia', monto: '' }])}
-                          className="mt-2 flex items-center gap-1 text-xs text-accent hover:underline">
-                          <Plus size={12} /> Agregar medio
-                        </button>
+                  {/* ISS-095: Medios de pago unificados (CC como método parcial) */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medios de pago</label>
+                      <div className="space-y-2">
+                        {ocMediosPago.map((m, i) => (
+                          <div key={i} className="flex gap-2 items-center">
+                            <select value={m.tipo}
+                              onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, tipo: e.target.value } : x))}
+                              className="flex-1 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                              {MEDIOS_OC.map(t => <option key={t}>{t}</option>)}
+                            </select>
+                            <input type="number" onWheel={e => e.currentTarget.blur()}
+                              value={m.monto} onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
+                              placeholder="$0"
+                              className="w-28 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            {ocMediosPago.length > 1 && (
+                              <button onClick={() => setOcMediosPago(prev => prev.filter((_, j) => j !== i))}
+                                className="text-gray-400 hover:text-red-500"><X size={14} /></button>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                      {(() => {
-                        const total = ocMediosPago.reduce((s, m) => s + (parseFloat(m.monto.replace(',', '.')) || 0), 0)
-                        const saldo = calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0)
-                        return (
-                          <>
-                            {total > 0 && (
-                              <div className="flex justify-between text-sm font-semibold">
-                                <span className="text-gray-600 dark:text-gray-400">Total a pagar</span>
-                                <span className={total > saldo + 0.5 ? 'text-red-500' : 'text-accent'}>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                              </div>
-                            )}
-                            {ocMediosPago.some(m => m.tipo === 'Efectivo') && (cajasAbiertasOC as any[]).length === 0 && (
-                              <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso en efectivo no se registrará en caja.</p>
-                            )}
-                          </>
-                        )
-                      })()}
+                      <button onClick={() => setOcMediosPago(prev => [...prev, { tipo: 'Transferencia', monto: '' }])}
+                        className="mt-2 flex items-center gap-1 text-xs text-accent hover:underline">
+                        <Plus size={12} /> Agregar medio
+                      </button>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
+                    {/* Días de plazo — solo si hay CC en medios */}
+                    {ocMediosPago.some(m => m.tipo === 'Cuenta Corriente' && parseFloat(m.monto.replace(',','.')) > 0) && (
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Días de plazo</label>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Días de plazo para la parte en CC</label>
                         <div className="flex gap-2">
                           {['30','60','90'].map(d => (
                             <button key={d} onClick={() => setOcPagoDias(d)}
-                              className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-all ${ocPagoDias === d ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-purple-400'}`}>
+                              className={`flex-1 py-1.5 rounded-xl border text-xs font-medium transition-all ${ocPagoDias === d ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-purple-400'}`}>
                               {d}d
                             </button>
                           ))}
                           <input type="number" onWheel={e => e.currentTarget.blur()} value={ocPagoDias} onChange={e => setOcPagoDias(e.target.value)}
-                            className="w-20 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-center focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="w-16 px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs text-center focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                         </div>
-                        {ocPagoDias && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            Vence: {(() => { const d = new Date(); d.setDate(d.getDate() + (parseInt(ocPagoDias) || 30)); return d.toLocaleDateString('es-AR') })()}
-                          </p>
-                        )}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Condiciones (opcional)</label>
                         <input type="text" value={ocPagoCondiciones} onChange={e => setOcPagoCondiciones(e.target.value)}
-                          placeholder="Ej: 50% a 30d + 50% a 60d"
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          placeholder="Condiciones (opcional)" className="mt-2 w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       </div>
-                    </div>
-                  )}
+                    )}
+                    {(() => {
+                      const totalMedios = ocMediosPago.reduce((s, m) => s + (parseFloat(m.monto.replace(',', '.')) || 0), 0)
+                      const saldo = calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0)
+                      return (
+                        <>
+                          {totalMedios > 0 && (
+                            <div className="flex justify-between text-sm font-semibold">
+                              <span className="text-gray-600 dark:text-gray-400">Total asignado</span>
+                              <span className={totalMedios > saldo + 0.5 ? 'text-red-500' : 'text-accent'}>${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                            </div>
+                          )}
+                          {ocMediosPago.some(m => m.tipo === 'Efectivo') && (cajasAbiertasOC as any[]).length === 0 && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso en efectivo no se registrará en caja.</p>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
                 </div>
                 <div className="flex gap-2 px-5 pb-5">
                   <button onClick={() => setOcModalId(null)} className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
                   <button onClick={registrarPagoOC}
-                    disabled={ocGuardando || (ocPagoTipo === 'pago' && !ocMediosPago.some(m => parseFloat(m.monto.replace(',','.')) > 0))}
+                    disabled={ocGuardando || !ocMediosPago.some(m => parseFloat(m.monto.replace(',','.')) > 0)}
                     className="flex-1 py-2.5 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-accent/90 disabled:opacity-50">
-                    {ocGuardando ? 'Guardando…' : ocPagoTipo === 'pago' ? 'Confirmar pago' : 'Asignar a CC'}
+                    {ocGuardando ? 'Guardando…' : 'Confirmar pago'}
                   </button>
                 </div>
               </div>

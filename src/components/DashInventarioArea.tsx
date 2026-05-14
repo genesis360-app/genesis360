@@ -534,14 +534,14 @@ export function DashInventarioArea() {
 
         {/* KPI 4: Runway */}
         {vista !== 'recursos' && (
-          <div className={`bg-surface border rounded-xl p-5 shadow-sm ${iData?.runway !== null && iData!.runway < 15 ? 'border-red-300 dark:border-red-800' : 'border-border-ds'}`}>
+          <div className={`bg-surface border rounded-xl p-5 shadow-sm ${iData?.runway != null && iData.runway < 15 ? 'border-red-300 dark:border-red-800' : 'border-border-ds'}`}>
             <div className="mb-3">
-              <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${iData?.runway !== null && iData!.runway < 15 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'}`}>
+              <div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${iData?.runway != null && iData.runway < 15 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'}`}>
                 <Clock size={20} />
               </div>
             </div>
             <p className="text-sm font-medium text-muted">Días de Supervivencia</p>
-            <p className={`text-2xl font-semibold mt-1 tabular-nums ${iData?.runway !== null && iData!.runway < 15 ? 'text-red-600 dark:text-red-400' : 'text-primary'}`}>
+            <p className={`text-2xl font-semibold mt-1 tabular-nums ${iData?.runway != null && iData.runway < 15 ? 'text-red-600 dark:text-red-400' : 'text-primary'}`}>
               {iLoading ? '—' : iData?.runway != null ? `${iData.runway}d` : '—'}
             </p>
             <p className="text-xs text-muted mt-1.5">Stock actual vs. ritmo de ventas diario.</p>

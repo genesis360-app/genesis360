@@ -171,14 +171,22 @@ export default function GastosPage() {
     queryKey: ['caja-sesiones-abiertas', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, caja_id, usuario_id, cajas(nombre), abrio:usuario_id(nombre_display)')
+        .select('id, caja_id, usuario_id, monto_apertura, cajas(nombre, es_caja_fuerte), abrio:usuario_id(nombre_display)')
         .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
       return data ?? []
     },
     enabled: !!tenant, refetchInterval: 60_000,
   })
 
-  const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
+  const sesionFuerte = (sesionesAbiertas as any[]).find(s => s.cajas?.es_caja_fuerte) ?? null
+  const sesionesOperativas = (sesionesAbiertas as any[]).filter(s => !s.cajas?.es_caja_fuerte)
+  const efectivoEnMedios = mediosPago.some(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0)
+  const montoEfectivo = mediosPago.filter(m => m.tipo === 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+
+  // ID real de la sesión a usar (resuelve '__fuerte__' al ID real)
+  const sesionCajaId = cajaSeleccionadaId === '__fuerte__'
+    ? (sesionFuerte?.id ?? null)
+    : cajaSeleccionadaId ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0].id : null)
 
   // Gastos últimos 30 días (tab gastos)
   const fechaDesde30 = useMemo(() => {
@@ -598,19 +606,41 @@ export default function GastosPage() {
 
     // Validación de caja (solo en creación nueva)
     if (!editandoId) {
-      if (sesionesAbiertas.length === 0) {
+      if (sesionesOperativas.length === 0 && !sesionFuerte) {
         toast.error('No hay ninguna caja abierta. Abrí una caja antes de registrar gastos.')
         return
       }
       if (esCajero) {
-        const misSesiones = (sesionesAbiertas as any[]).filter(s => s.usuario_id === user?.id)
-        if (misSesiones.length === 0) {
+        const misSesiones = sesionesOperativas.filter((s: any) => s.usuario_id === user?.id)
+        if (misSesiones.length === 0 && !sesionFuerte) {
           toast.error('No tenés caja abierta. Pedile a tu supervisor que abra una para vos.')
           return
         }
       }
+      // ISS-084: Si hay efectivo, validar que haya caja seleccionada
+      if (efectivoEnMedios && !sesionCajaId) {
+        toast.error('Seleccioná desde qué caja sale el efectivo.')
+        return
+      }
+      // ISS-084: Si la sesión seleccionada es regular, validar saldo disponible
+      if (efectivoEnMedios && sesionCajaId && cajaSeleccionadaId !== '__fuerte__') {
+        const sesion = sesionesOperativas.find((s: any) => s.id === sesionCajaId)
+        if (sesion) {
+          const { data: movsSaldo } = await supabase.from('caja_movimientos')
+            .select('tipo, monto').eq('sesion_id', sesionCajaId)
+          const saldo = (sesion.monto_apertura ?? 0) + (movsSaldo ?? []).reduce((acc: number, m: any) => {
+            if (m.tipo === 'ingreso' || m.tipo === 'ingreso_reserva' || m.tipo === 'ingreso_traspaso') return acc + m.monto
+            if (m.tipo === 'egreso' || m.tipo === 'egreso_devolucion_sena' || m.tipo === 'egreso_traspaso') return acc - m.monto
+            return acc
+          }, 0)
+          if (montoEfectivo > saldo) {
+            toast.error(`Saldo insuficiente en caja. Disponible: $${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`)
+            return
+          }
+        }
+      }
       // Aviso si Owner/Supervisor usa la caja de otro usuario
-      const sesionAUsar = (sesionesAbiertas as any[]).find(s => s.id === sesionCajaId) ?? (sesionesAbiertas as any[])[0]
+      const sesionAUsar = sesionesOperativas.find((s: any) => s.id === sesionCajaId)
       if (sesionAUsar && puedeAdministrarCaja && sesionAUsar.usuario_id !== user?.id) {
         const nombreAbridor = (sesionAUsar as any).abrio?.nombre_display ?? 'otro usuario'
         toast(`⚠️ Gasto en caja de ${nombreAbridor}. Quedarás registrado como quien lo agregó.`, { duration: 6000, icon: '⚠️' })
@@ -660,16 +690,20 @@ export default function GastosPage() {
         toast.success('Gasto registrado')
         logActividad({ entidad: 'gasto', entidad_nombre: form.descripcion.trim(), accion: 'crear', valor_nuevo: `$${monto}`, pagina: '/gastos' })
 
-        // Registrar en caja — un movimiento por cada medio de pago
-        const sesionUsar = sesionCajaId ?? (sesionesAbiertas as any[])[0]?.id
+        // ISS-084: Registrar en caja — un movimiento por cada medio de pago
+        const sesionUsar = sesionCajaId ?? sesionesOperativas[0]?.id
+        const esFuerte = cajaSeleccionadaId === '__fuerte__'
         if (sesionUsar && mediosValidos.length > 0) {
           const concepto = `Gasto: ${form.descripcion.trim()}`
           for (const mp of mediosValidos) {
             const montoMp = parseFloat(mp.monto)
+            const esEfectivo = mp.tipo === 'Efectivo'
+            // Caja fuerte: egreso_traspaso (visible en historial de caja fuerte)
+            const tipo = esFuerte && esEfectivo ? 'egreso_traspaso' : esEfectivo ? 'egreso' : 'egreso_informativo'
             void supabase.from('caja_movimientos').insert({
               tenant_id: tenant!.id, sesion_id: sesionUsar,
-              tipo: mp.tipo === 'Efectivo' ? 'egreso' : 'egreso_informativo',
-              concepto: mp.tipo === 'Efectivo' ? concepto : `[${mp.tipo}] ${concepto}`,
+              tipo,
+              concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
               monto: montoMp, usuario_id: user?.id,
             })
           }
@@ -1714,40 +1748,45 @@ export default function GastosPage() {
               </div>
             </div>
 
-            {/* Selector de caja */}
+            {/* ISS-084: Selector de caja — siempre visible cuando hay efectivo */}
             {!editandoId && (
               <div className="px-5 pb-3">
-                {sesionesAbiertas.length === 0 ? (
+                {sesionesOperativas.length === 0 && !sesionFuerte ? (
                   <div className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2.5">
                     <span>⚠️</span><span>No hay caja abierta. Debés abrir una caja antes de registrar gastos.</span>
                   </div>
-                ) : sesionesAbiertas.length > 1 ? (
+                ) : efectivoEnMedios || sesionesOperativas.length > 1 ? (
                   <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar en caja:</label>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      {efectivoEnMedios ? 'Efectivo sale de:' : 'Registrar en caja:'}
+                    </label>
                     <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
                       className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-                      <option value="">— Seleccioná una caja —</option>
-                      {(sesionesAbiertas as any[]).map(s => {
+                      <option value="">{sesionesOperativas.length > 1 ? '— Seleccioná una caja —' : '— Seleccioná origen del efectivo —'}</option>
+                      {sesionesOperativas.map((s: any) => {
                         const esPropia = s.usuario_id === user?.id
                         return (
                           <option key={s.id} value={s.id}>
-                            {(s as any).cajas?.nombre ?? 'Caja'}{esPropia ? ' (mía)' : ` — de ${(s as any).abrio?.nombre_display ?? 'otro usuario'}`}
+                            {s.cajas?.nombre ?? 'Caja'}{esPropia ? ' (mía)' : ` — de ${s.abrio?.nombre_display ?? 'otro usuario'}`}
                           </option>
                         )
                       })}
+                      {sesionFuerte && (
+                        <option value="__fuerte__">🔒 Caja Fuerte (sin límite de saldo)</option>
+                      )}
                     </select>
                   </div>
-                ) : (
+                ) : sesionesOperativas.length === 1 ? (
                   <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-3 py-2.5">
                     <span>✓</span>
                     <span>
-                      {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja'}
-                      {(sesionesAbiertas[0] as any).usuario_id !== user?.id && (
-                        <span className="text-amber-600 dark:text-amber-400"> · Caja de {(sesionesAbiertas[0] as any).abrio?.nombre_display ?? 'otro usuario'}</span>
+                      {sesionesOperativas[0].cajas?.nombre ?? 'Caja'}
+                      {sesionesOperativas[0].usuario_id !== user?.id && (
+                        <span className="text-amber-600 dark:text-amber-400"> · Caja de {sesionesOperativas[0].abrio?.nombre_display ?? 'otro usuario'}</span>
                       )}
                     </span>
                   </div>
-                )}
+                ) : null}
               </div>
             )}
 

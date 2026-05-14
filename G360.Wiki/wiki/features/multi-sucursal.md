@@ -1,9 +1,9 @@
 ---
 title: Multi-Sucursal
 category: features
-tags: [sucursales, multi-sucursal, filtros, selector]
+tags: [sucursales, multi-sucursal, filtros, selector, roles, stock-por-sucursal]
 sources: [CLAUDE.md]
-updated: 2026-05-12
+updated: 2026-05-13
 ---
 
 # Multi-Sucursal
@@ -195,9 +195,140 @@ Un tenant puede tener cada marketplace conectado en distintas sucursales indepen
 
 ---
 
+---
+
+## Roles y puedeVerTodas (v1.8.18 — 2026-05-13)
+
+### authStore — lógica de puedeVerTodas
+
+```typescript
+// Solo DUEÑO es siempre global — hardcoded, no se puede restringir
+const ROLES_SIEMPRE_GLOBALES = ['DUEÑO']
+
+// Estos son globales por defecto pero restringibles con puede_ver_todas=false en DB
+const ROLES_GLOBAL_POR_DEFECTO = ['SUPERVISOR', 'SUPER_USUARIO']
+
+const puedeVerTodas =
+  ROLES_SIEMPRE_GLOBALES.includes(rol) ||                           // DUEÑO: siempre
+  (ROLES_GLOBAL_POR_DEFECTO.includes(rol) && puede_ver_todas !== false) ||  // SUP/SUPER: default true
+  !!puede_ver_todas                                                  // otros: solo si explícito en DB
+```
+
+| Rol | `puede_ver_todas` DB | Resultado |
+|---|---|---|
+| DUEÑO | — (ignorado) | Siempre global |
+| SUPERVISOR | null o true | Global por defecto |
+| SUPERVISOR | false | Restringido a `sucursal_id` |
+| SUPER_USUARIO | null o true | Global por defecto |
+| SUPER_USUARIO | false | Restringido a `sucursal_id` |
+| CAJERO / DEPOSITO / RRHH / CONTADOR | null o false | Restringido a `sucursal_id` |
+
+---
+
+## Selector de sucursal por módulo (v1.8.18 — 2026-05-13)
+
+El header muestra distinto control según la ruta activa:
+
+### RUTAS_CON_TODAS — dropdown "Todas las sucursales" + cada sucursal
+`/dashboard` · `/productos` · `/inventario` · `/clientes` · `/facturacion`  
+`/proveedores` · `/recursos` · `/biblioteca` · `/rrhh` · `/historial` · `/reportes` · `/configuracion`
+
+### RUTAS_SOLO_SUCURSAL — dropdown solo sucursales (sin "Todas")
+`/ventas` · `/gastos` · `/caja` · `/recepciones` · `/alertas`
+
+> Auto-select: si el usuario con `puedeVerTodas` navega a una ruta solo-sucursal en vista global, se auto-selecciona la primera sucursal disponible.
+
+### Sin selector
+`/sucursales` · `/usuarios`
+
+### Todos los demás roles (sin puedeVerTodas)
+Label fijo de solo lectura con la sucursal asignada. Sin opción de cambiar.
+
+---
+
+## Stock por sucursal — fix integral (v1.8.17-18 — 2026-05-13)
+
+### Problema original
+`movimientos_stock.stock_antes` y `stock_despues` se calculaban con `productos.stock_actual` (global — suma de todas las sucursales), no con el stock de la sucursal activa.
+
+### Helper `getStockAntesSucursal`
+
+```typescript
+// En InventarioPage — clausura sobre tenant y sucursalId del store
+async function getStockAntesSucursal(productoId: string, efectivaSucId: string | null): Promise<number> {
+  if (efectivaSucId) {
+    const { data } = await supabase.from('inventario_lineas').select('cantidad')
+      .eq('tenant_id', tenant.id).eq('producto_id', productoId)
+      .eq('sucursal_id', efectivaSucId).eq('activo', true)
+    return (data ?? []).reduce((s, l) => s + (Number(l.cantidad) || 0), 0)
+  }
+  const { data } = await supabase.from('productos').select('stock_actual').eq('id', productoId).single()
+  return data?.stock_actual ?? 0
+}
+```
+
+**Corregido en:** ingreso, rebaje, masivo inline, conteo, autorizaciones (ajuste/serie/LPN), kitting, des-kitting.
+
+**`sucursal_id` ahora se guarda en** todos los inserts de `movimientos_stock` e `inventario_lineas` (kitting, des-kitting, autorizaciones, masivo inline).
+
+**Display en formularios:** "Stock en sucursal: X" cuando hay sucursal activa (reactivo, `staleTime: 0`). Columnas "Stock prev./Stock nuevo" ocultadas en tabs Agregar/Quitar — solo visibles en Historial.
+
+---
+
+## Filtros por sucursal por módulo (2026-05-13)
+
+Módulos donde se aplicó `applyFilter` / `.eq('sucursal_id')`:
+
+| Módulo / Query | Estado |
+|---|---|
+| InventarioPage — movimientos historial | ✅ |
+| InventarioPage — rebaje (lineas-producto) | ✅ fix v1.8.18 |
+| InventarioPage — kits (stock y reserva de componentes) | ✅ fix v1.8.18 |
+| InventarioPage — conteos (historial + carga de líneas) | ✅ fix v1.8.18 |
+| AlertasPage — reservas, lineas sin ubic/prov, OCs, LPNs, deuda | ✅ fix v1.8.19 |
+| ConfigPage — ubicaciones y combos | ✅ (selector en header activo en /configuracion) |
+| RecursosPage — listado | ✅ |
+
+---
+
+## Ubicaciones — asignación por sucursal (2026-05-13)
+
+- `ubicaciones.sucursal_id` existe desde migration 101
+- `saveUbicacion` en ConfigPage ahora guarda `sucursal_id`
+- Formulario de edición: selector "Global / Sucursal X"
+- Lista: badge azul con nombre de sucursal o badge gris "Global" (null)
+- Filtro en Config: muestra ubicaciones de la sucursal activa + las globales (`sucursal_id IS NULL`)
+- Nuevas ubicaciones creadas con sucursal activa se asignan automáticamente
+
+---
+
+## Bulk Edit de LPNs (migration 103 — 2026-05-13)
+
+Cambio masivo de atributos en múltiples LPNs desde InventarioPage:
+
+**Campos editables en bulk:** sucursal, proveedor, nro_lote, fecha_vencimiento
+
+**Flujo:**
+1. Seleccionar LPNs (checkbox por fila)
+2. Botón "Editar atributos" (barra de acciones)
+3. Modal: tildar campos a cambiar + preview antes de confirmar
+4. DEPOSITO → genera `autorizaciones_inventario` tipo `bulk_edit` (pendiente de aprobación)
+5. Otros roles → aplica directamente `.update().in('id', ids)`
+
+**Migration 103:** `linea_id` nullable en `autorizaciones_inventario` + nuevo tipo `bulk_edit` en CHECK constraint.
+
+---
+
+## LPN — sucursal en tab Editar (2026-05-13)
+
+`LpnAccionesModal` tab Editar: nuevo selector `sucursal_id` para reasignar el LPN completo a otra sucursal sin usar el flujo de traslado. Guarda con logActividad.
+
+---
+
 ## Links relacionados
 
 - [[wiki/architecture/estado-global]]
 - [[wiki/architecture/multi-tenant-rls]]
 - [[wiki/features/inventario-stock]]
+- [[wiki/support/supabase-db-rescue]]
 - [[wiki/integrations/tienda-nube]]

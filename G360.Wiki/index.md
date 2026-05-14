@@ -17,7 +17,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/features/autenticacion-onboarding]] | Google OAuth, roles, trial, session timeout | ✅ |
-| [[wiki/features/inventario-stock]] | LPNs, movimientos, reglas FIFO/FEFO/LEFO/LIFO, aging | ✅ |
+| [[wiki/features/inventario-stock]] | LPNs, movimientos, FIFO/FEFO, stock por sucursal, bulk edit atributos | ✅ |
 | [[wiki/features/ventas-pos]] | Carrito, checkout, métodos de pago, reservas, combos | ✅ |
 | [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja, roles | ✅ |
 | [[wiki/features/gastos]] | Variables, fijos, IVA deducible, comprobantes, múltiples medios | ✅ |
@@ -31,8 +31,9 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/notificaciones]] | Tabla real, campana, email, diferencia apertura caja — v1.5.0 | ✅ |
 | [[wiki/features/suscripciones-planes]] | Planes Free/Básico/Pro/Enterprise, trial, Mercado Pago | ✅ |
 | [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku fallback | ✅ |
-| [[wiki/features/multi-sucursal]] | SucursalSelector, filtros, SucursalesPage CRUD, stock por sucursal | ✅ |
-| [[wiki/features/alertas]] | Stock bajo, LPNs vencidos, reservas viejas, sin categoría, deuda | ✅ |
+| [[wiki/features/multi-sucursal]] | Selector por módulo, roles puedeVerTodas, stock por sucursal, bulk edit LPNs | ✅ |
+| [[wiki/features/alertas]] | Stock bajo, LPNs vencidos, reservas viejas, sin categoría, deuda · filtro por sucursal | ✅ |
+| [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos | ✅ |
 | [[wiki/features/reportes-metricas]] | KPIs, dashboard 5 tabs, FilterBar, Recharts, exportación | ✅ |
 
 ---
@@ -122,4 +123,4 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
-*Última actualización: 2026-05-13 — 47 páginas · 8 fuentes en raw/ · 103 migraciones · v1.8.18*
+*Última actualización: 2026-05-13 — 48 páginas · 8 fuentes en raw/ · 103 migraciones · v1.8.18*

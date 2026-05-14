@@ -18,9 +18,11 @@ Actualizar el wiki **siempre** antes de terminar:
 1. **`G360.Wiki/sources/raw/project_pendientes.md`** — actualizar versión actual, migrations, estado DEV/PROD, pendientes.
 2. **`G360.Wiki/log.md`** — agregar entrada `## [YYYY-MM-DD] update | título` con resumen de lo hecho.
 3. **Página de feature afectada** en `G360.Wiki/wiki/features/` o `wiki/integrations/` — actualizar con los cambios.
-4. **`G360.Wiki/wiki/business/roadmap.md`** — agregar la versión si fue un release.
-5. **`G360.Wiki/wiki/database/migraciones.md`** — agregar migration si se creó una nueva.
-6. **Git tag + GitHub release** — crear tag `vX.Y.Z` en el commit correspondiente y `gh release create` con notas de los cambios. Hacerlo en **cada sesión** que produzca código, no solo al deployar a PROD. Usar `--latest` solo en el release más reciente.
+4. **`G360.Wiki/index.md`** — actualizar descripción de la página modificada, agregar nuevas páginas, actualizar contador del pie.
+5. **Documentos relacionados** — cualquier página del wiki que referencie la feature modificada debe recibir un link o nota de actualización. Nunca crear o modificar una página de wiki sin verificar si el index y los docs relacionados deben actualizarse.
+6. **`G360.Wiki/wiki/business/roadmap.md`** — agregar la versión si fue un release.
+7. **`G360.Wiki/wiki/database/migraciones.md`** — agregar migration si se creó una nueva.
+8. **Git tag + GitHub release** — crear tag `vX.Y.Z` en el commit correspondiente y `gh release create` con notas de los cambios. Hacerlo en **cada sesión** que produzca código, no solo al deployar a PROD. Usar `--latest` solo en el release más reciente.
 
 ### Responder preguntas generales sobre el proyecto
 

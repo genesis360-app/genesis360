@@ -6,6 +6,33 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-14] update | v1.8.21 DEV — bugfixes batch ISS-081/082/084/087/088/089/091/092/093/094/097/102/103
+
+### Caja
+- ISS-087: ★ visual en caja predeterminada (localStorage pref)
+- ISS-088: sugerir apertura usa monto_real_cierre (si > 0) ?? monto_cierre
+- ISS-089: selector de caja origen en modal "Ingresar a Caja Fuerte" + validación saldo
+
+### Ventas
+- ISS-094: rollback automático de venta CC si falla stock (delete ventas en catch)
+- ISS-081: total redondeado a 2 decimales + display maximumFractionDigits: 2
+- ISS-082: committedAsignado — "Falta asignar" estático hasta blur/enter
+- ISS-091: badge "Stock insuf." en items del carrito (desde lineas_disponibles)
+- ISS-092: draft carrito guarda modoCC; restaura clienteCCEnabled desde DB
+- ISS-093: tag CC en historial cuando es_cuenta_corriente = true
+- ISS-103: selector canal de venta en POS (Presencial default, Instagram, Facebook, WhatsApp, Otros)
+
+### Gastos
+- ISS-084: efectivo requiere selección de caja; saldo validation; Caja Fuerte como opción (egreso_traspaso)
+
+### Envíos
+- ISS-097: fix crítico — useState en IIFE viola Rules of Hooks → usa domForm existente
+
+### Clientes/Proveedores
+- ISS-102: selector sucursal oculto en /clientes y /proveedores; sin applyFilter en query clientes
+
+---
+
 ## [2026-05-14] update | v1.8.20 DEV — fix invite-user redirect dinámico
 
 - `invite-user` EF: redirectTo hardcodeado a genesis360.pro → ahora el frontend pasa

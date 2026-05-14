@@ -4,13 +4,13 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.19** ✅ · DEV: **v1.8.20** (fixes post-deploy)
+Último release en PROD: **v1.8.19** ✅ · DEV: **v1.8.21** (bugfixes batch)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.20 / PROD v1.8.19 (cierre sesión 2026-05-14)
+## Estado actual DEV v1.8.21 / PROD v1.8.19 (cierre sesión 2026-05-14)
 
 - APP_VERSION DEV: `v1.8.20` en `src/config/brand.ts` ✅
 - APP_VERSION PROD: `v1.8.19` ✅
@@ -73,6 +73,32 @@ type: project
 - ISS-098 (tercero): canal auto desde la venta (read-only), costo auto desde courier_tarifas
 - Tab Cotizador: eliminado completamente
 - `VITE_GOOGLE_MAPS_API_KEY`: configurada en .env.local y Vercel
+
+---
+
+## Lo producido en esta sesión (v1.8.21-dev)
+
+### Bugfixes batch — 13 issues resueltos
+- ISS-087: ★ visual en caja predeterminada
+- ISS-088: sugerido apertura caja usa monto_cierre (confiable)
+- ISS-089: selector caja origen en modal Ingresar a Caja Fuerte + validación saldo
+- ISS-094: rollback venta CC cuando falla stock (delete ventas en catch)
+- ISS-097: fix Rules of Hooks en EnviosPage (useState en IIFE → usa domForm)
+- ISS-081: total ventas redondeado a 2 decimales; display correcto
+- ISS-082: "Falta asignar" estático mientras se tipea (committedAsignado + onBlur)
+- ISS-091: badge stock insuficiente en carrito de ventas
+- ISS-092: carrito recuperado restaura modoCC y clienteCCEnabled desde DB
+- ISS-093: tag CC en historial de ventas
+- ISS-103: selector canal de venta en POS (Presencial, Instagram, Facebook, WhatsApp, Otros)
+- ISS-084: gastos efectivo → selector de caja obligatorio + validación saldo + caja fuerte
+- ISS-102: clientes y proveedores globales (sin filtro de sucursal)
+
+### Issues pendientes para próximas sesiones (requieren planificación mayor)
+- ISS-085: Historial ventas por sucursal + reset # ticket por sucursal → requiere migración DB
+- ISS-086: Cuotas tarjeta de crédito → requiere config bancos/tasas en tenant, nueva UI
+- ISS-090: CC como método de pago parcial + eliminar lógica actual → refactor mayor VentasPage
+- ISS-095: OC con CC como método de pago parcial
+- ISS-096: Adjuntar archivos en OC/gastos (Storage Supabase)
 
 ---
 

@@ -4,13 +4,13 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.19** ✅ · DEV: **v1.8.21** (bugfixes batch)
+Último release en PROD: **v1.8.19** ✅ · DEV: **v1.8.22** (features batch)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.21 / PROD v1.8.19 (cierre sesión 2026-05-14)
+## Estado actual DEV v1.8.22 / PROD v1.8.19 (cierre sesión 2026-05-14)
 
 - APP_VERSION DEV: `v1.8.20` en `src/config/brand.ts` ✅
 - APP_VERSION PROD: `v1.8.19` ✅
@@ -76,7 +76,7 @@ type: project
 
 ---
 
-## Lo producido en esta sesión (v1.8.21-dev)
+## Lo producido en sesiones 2026-05-14 (v1.8.21 + v1.8.22-dev)
 
 ### Bugfixes batch — 13 issues resueltos
 - ISS-087: ★ visual en caja predeterminada

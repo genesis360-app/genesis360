@@ -6,6 +6,34 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-14] update | v1.8.22 DEV — ISS-085/086/090/095/096 batch features
+
+### ISS-085: Número de ticket por sucursal con prefijo
+- Migration 108: `sucursales.codigo` + `ventas.numero_sucursal` + trigger actualizado
+- SucursalesPage: campo "Código ticket" en formulario
+- VentasPage: `formatTicket()` → "S1-0001" cuando hay sucursal, "#N" global
+
+### ISS-086: Cuotas tarjeta de crédito
+- Migration 108: `tenants.cuotas_bancos` JSONB + `ventas.cuotas_info` JSONB
+- ConfigPage: sección "Cuotas por banco" con add/edit bancos y planes de cuotas
+- VentasPage: picker de cuotas al seleccionar "Tarjeta crédito" — banco, cuotas, interés, badge "Sin interés"
+
+### ISS-090: CC como método de pago parcial en ventas
+- Elimina toggle "Despachar a cuenta corriente" — CC es opción en medios de pago
+- `modoCC` derivado de `mediosPago` (no estado). Pago mixto soportado.
+- CC excluida de movimientos de caja; valida cliente y CC habilitada
+
+### ISS-095: OC con CC como método de pago parcial
+- Elimina toggle Pago/CC en OC — CC es un método más en `MEDIOS_OC`
+- Pago mixto: ej 30% Transferencia + 70% Cuenta Corriente
+- Días plazo CC aparecen solo cuando hay CC en medios
+
+### ISS-096: Comprobante de pago en OC
+- Migration 108: `ordenes_compra.comprobante_url` + `comprobante_titulo`
+- GastosPage: botón adjuntar comprobante en expanded OC (Storage: comprobantes-gastos/oc/)
+
+---
+
 ## [2026-05-14] update | v1.8.21 DEV — bugfixes batch ISS-081/082/084/087/088/089/091/092/093/094/097/102/103
 
 ### Caja

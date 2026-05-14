@@ -848,6 +848,7 @@ export default function ConfigPage() {
   const [addRuleEstadoId, setAddRuleEstadoId] = useState('')
   const [addRuleDias, setAddRuleDias] = useState('')
   const [processingAging, setProcessingAging] = useState(false)
+  const [processingAgingId, setProcessingAgingId] = useState<string | null>(null)
 
   const toggleAgingExpand = (id: string) => setAgingExpanded(prev => {
     const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
@@ -892,6 +893,23 @@ export default function ConfigPage() {
       toast.error(e.message ?? 'Error al procesar aging')
     } finally {
       setProcessingAging(false)
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+    }
+  }
+
+  const processAgingProfile = async (profileId: string, profileNombre: string) => {
+    setProcessingAgingId(profileId)
+    try {
+      const { data, error } = await supabase.rpc('process_aging_profile_single', { p_profile_id: profileId })
+      if (error) throw error
+      const cambios = (data as any)?.cambios ?? 0
+      toast.success(cambios > 0
+        ? `${cambios} estado${cambios !== 1 ? 's' : ''} actualizado${cambios !== 1 ? 's' : ''} en "${profileNombre}"`
+        : `Sin cambios en "${profileNombre}"`)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al procesar el perfil')
+    } finally {
+      setProcessingAgingId(null)
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
     }
   }
@@ -2230,6 +2248,13 @@ export default function ConfigPage() {
                             <>
                               <span className="flex-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{ap.nombre}</span>
                               <span className="text-xs text-gray-400 dark:text-gray-500 mr-1">{reglas.length} regla{reglas.length !== 1 ? 's' : ''}</span>
+                              <button
+                                onClick={e => { e.stopPropagation(); processAgingProfile(ap.id, ap.nombre) }}
+                                disabled={processingAgingId === ap.id || processingAging}
+                                title="Procesar solo este perfil ahora"
+                                className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-accent bg-accent/10 hover:bg-accent/20 rounded-lg transition-colors disabled:opacity-50 mr-1">
+                                <Play size={10} /> {processingAgingId === ap.id ? 'Procesando...' : 'Procesar'}
+                              </button>
                               <button onClick={e => { e.stopPropagation(); setEditAgingId(ap.id); setEditAgingNombre(ap.nombre) }} className="text-gray-400 dark:text-gray-500 hover:text-accent p-1"><Pencil size={13} /></button>
                               <button onClick={e => { e.stopPropagation(); deleteAgingProfile(ap.id) }} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={13} /></button>
                             </>

@@ -4,21 +4,21 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.19** (pendiente PR → PROD)
+Último release en PROD: **v1.8.19** ✅ · DEV: **v1.8.19** (en sync)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV — v1.8.19 (al cierre de sesión 2026-05-14)
+## Estado actual DEV/PROD — v1.8.19 (deploy 2026-05-14)
 
 - APP_VERSION: `v1.8.19` en `src/config/brand.ts` ✅
-- Migrations DEV: 001–107 ✅ (103–107 aplicadas en DEV)
-- Migrations PROD: 001–092 ✅ (093–107 pendientes — aplicar al deployar)
+- Migrations DEV: 001–107 ✅
+- Migrations PROD: 001–107 ✅ (todas aplicadas)
 - Edge Functions DEV: todas activas
-- Edge Functions PROD: desactualizadas (falta `invite-user`, `cancel-suscripcion`, `ai-assistant`)
-- GROQ_API_KEY: DEV ✅ · PROD ❌
-- VITE_GOOGLE_MAPS_API_KEY: DEV ✅ · Vercel ✅ · PROD ❌ (agregar al deploy)
+- Edge Functions PROD: `invite-user` ✅ · `ai-assistant` ✅ · `cancel-suscripcion` ❌ (no existe en repo)
+- GROQ_API_KEY: DEV ✅ · PROD ❌ (pendiente — agregar en Supabase PROD secrets)
+- VITE_GOOGLE_MAPS_API_KEY: DEV ✅ · PROD ✅ (Vercel Production)
 
 ---
 

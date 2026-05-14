@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-14] update | PROD deploy v1.8.19 — PR #110 mergeado, migrations 093-107 aplicadas
+
+- PR #110 mergeado dev → main
+- Migrations 093-107 aplicadas en PROD (jjffnbrdjchquexdfgwq)
+- Edge Functions PROD: invite-user + ai-assistant deployadas
+- VITE_GOOGLE_MAPS_API_KEY configurada en Vercel Production
+- GROQ_API_KEY: pendiente en Supabase PROD secrets
+- Vercel PROD deployment: READY ✅
+
 ## [2026-05-14] update | v1.8.19 — SQL Runner + Envíos Google Maps + shortcuts + aging + Dashboard
 
 ### SQL Runner (ReportesPage)

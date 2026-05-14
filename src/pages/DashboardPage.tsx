@@ -32,6 +32,27 @@ import { DashProveedoresArea } from '@/components/DashProveedoresArea'
 import { DashFacturacionArea } from '@/components/DashFacturacionArea'
 import { DashEnviosArea } from '@/components/DashEnviosArea'
 import { DashMarketingArea } from '@/components/DashMarketingArea'
+import { Component, type ReactNode } from 'react'
+
+// Error boundary local para áreas del Dashboard — no tira la página entera
+class AreaErrorBoundary extends Component<{ label: string; children: ReactNode }, { err: string | null }> {
+  state = { err: null }
+  static getDerivedStateFromError(e: Error) { return { err: e.message } }
+  componentDidCatch(e: Error, info: any) {
+    console.error(`[Dashboard ${this.props.label}] crash:`, e.message, e.stack, info?.componentStack)
+  }
+  render() {
+    if (this.state.err) return (
+      <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-6 text-center space-y-2">
+        <p className="text-sm font-semibold text-red-700 dark:text-red-400">Error en área {this.props.label}</p>
+        <p className="text-xs text-red-500 dark:text-red-500 font-mono">{this.state.err}</p>
+        <button onClick={() => this.setState({ err: null })}
+          className="text-xs text-red-600 underline hover:no-underline">Reintentar</button>
+      </div>
+    )
+    return this.props.children
+  }
+}
 
 type InsightTipo = 'danger' | 'warning' | 'success' | 'info'
 
@@ -740,32 +761,15 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Área: VENTAS ──────────────────────────────────────────────────────── */}
-      {area === 'ventas' && <DashVentasArea />}
-
-      {/* ── Área: GASTOS ──────────────────────────────────────────────────────── */}
-      {area === 'gastos' && <DashGastosArea />}
-
-      {/* ── Área: PRODUCTOS ───────────────────────────────────────────────────── */}
-      {area === 'productos' && <DashProductosArea />}
-
-      {/* ── Área: INVENTARIO ──────────────────────────────────────────────────── */}
-      {area === 'inventario' && <DashInventarioArea />}
-
-      {/* ── Área: CLIENTES ────────────────────────────────────────────────────── */}
-      {area === 'clientes' && <DashClientesArea />}
-
-      {/* ── Área: PROVEEDORES ─────────────────────────────────────────────────── */}
-      {area === 'proveedores' && <DashProveedoresArea />}
-
-      {/* ── Área: FACTURACIÓN ─────────────────────────────────────────────────── */}
-      {area === 'facturacion' && <DashFacturacionArea />}
-
-      {/* ── Área: ENVÍOS ──────────────────────────────────────────────────────── */}
-      {area === 'envios' && <DashEnviosArea />}
-
-      {/* ── Área: MARKETING ───────────────────────────────────────────────────── */}
-      {area === 'marketing' && <DashMarketingArea />}
+      {area === 'ventas'      && <AreaErrorBoundary label="Ventas"><DashVentasArea /></AreaErrorBoundary>}
+      {area === 'gastos'      && <AreaErrorBoundary label="Gastos"><DashGastosArea /></AreaErrorBoundary>}
+      {area === 'productos'   && <AreaErrorBoundary label="Productos"><DashProductosArea /></AreaErrorBoundary>}
+      {area === 'inventario'  && <AreaErrorBoundary label="Inventario"><DashInventarioArea /></AreaErrorBoundary>}
+      {area === 'clientes'    && <AreaErrorBoundary label="Clientes"><DashClientesArea /></AreaErrorBoundary>}
+      {area === 'proveedores' && <AreaErrorBoundary label="Proveedores"><DashProveedoresArea /></AreaErrorBoundary>}
+      {area === 'facturacion' && <AreaErrorBoundary label="Facturación"><DashFacturacionArea /></AreaErrorBoundary>}
+      {area === 'envios'      && <AreaErrorBoundary label="Envíos"><DashEnviosArea /></AreaErrorBoundary>}
+      {area === 'marketing'   && <AreaErrorBoundary label="Marketing"><DashMarketingArea /></AreaErrorBoundary>}
 
       {/* ── Área: TODO + otras (mantienen contenido existente) ────────────────── */}
       {area !== 'ventas' && area !== 'gastos' && area !== 'productos' && area !== 'inventario'

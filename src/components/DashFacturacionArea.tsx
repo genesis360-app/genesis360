@@ -55,12 +55,22 @@ export function DashFacturacionArea() {
   const { data: fData, isLoading } = useQuery({
     queryKey: ['dash-facturacion-area', tenant?.id, sucursalId],
     queryFn: async () => {
-      // 1. venta_items del mes (IVA Débito)
-      const { data: itemsMes = [] } = await supabase.from('venta_items')
-        .select('cantidad, precio_unitario, iva_monto, created_at')
+      // 1. venta_items del mes (IVA Débito) — filtrado por sucursal via ventas
+      // venta_items no tiene sucursal_id: primero obtenemos IDs de ventas filtradas
+      let qVentasMes = supabase.from('ventas').select('id')
         .eq('tenant_id', tenant!.id).gte('created_at', inicioMes)
-      const ivaDebito = (itemsMes ?? []).reduce((a: number, vi: any) => a + (vi.iva_monto ?? 0), 0)
-      const netoVentas = (itemsMes ?? []).reduce((a: number, vi: any) => a + ((vi.precio_unitario ?? 0) - (vi.iva_monto ?? 0)), 0)
+      if (sucursalId) qVentasMes = qVentasMes.eq('sucursal_id', sucursalId)
+      const { data: ventasMesRaw = [] } = await qVentasMes
+      const ventaIdsMes = (ventasMesRaw ?? []).map((v: any) => v.id)
+      let itemsMes: any[] = []
+      if (ventaIdsMes.length > 0) {
+        const { data } = await supabase.from('venta_items')
+          .select('cantidad, precio_unitario, iva_monto, created_at')
+          .in('venta_id', ventaIdsMes)
+        itemsMes = data ?? []
+      }
+      const ivaDebito = itemsMes.reduce((a: number, vi: any) => a + (vi.iva_monto ?? 0), 0)
+      const netoVentas = itemsMes.reduce((a: number, vi: any) => a + ((vi.precio_unitario ?? 0) - (vi.iva_monto ?? 0)), 0)
 
       // 2. IVA Crédito desde gastos del mes (iva_deducible=true)
       const iniciomesDate = inicioMes.split('T')[0]
@@ -94,10 +104,18 @@ export function DashFacturacionArea() {
         .is('cae', null)
       const sinCAE = (ventasSinCAE as any)?.count ?? 0
 
-      // 6. Evolución mensual IVA (últimos 6 meses)
-      const { data: itemsHist = [] } = await supabase.from('venta_items')
-        .select('iva_monto, precio_unitario, created_at').eq('tenant_id', tenant!.id)
-        .gte('created_at', seisMAtras)
+      // 6. Evolución mensual IVA (últimos 6 meses) — filtrado por sucursal via ventas
+      let qVentasHist6m = supabase.from('ventas').select('id')
+        .eq('tenant_id', tenant!.id).gte('created_at', seisMAtras)
+      if (sucursalId) qVentasHist6m = qVentasHist6m.eq('sucursal_id', sucursalId)
+      const { data: ventasHist6mRaw = [] } = await qVentasHist6m
+      const ventaIdsHist6m = (ventasHist6mRaw ?? []).map((v: any) => v.id)
+      let itemsHist: any[] = []
+      if (ventaIdsHist6m.length > 0) {
+        const { data } = await supabase.from('venta_items')
+          .select('iva_monto, precio_unitario, created_at').in('venta_id', ventaIdsHist6m)
+        itemsHist = data ?? []
+      }
       const monthlyIVA: Record<string, { neto: number; iva: number }> = {}
       for (const vi of itemsHist ?? []) {
         const mes = (vi as any).created_at.slice(0, 7)

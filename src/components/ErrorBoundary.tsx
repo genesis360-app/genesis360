@@ -22,7 +22,9 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, isChunkError }
   }
 
-  componentDidCatch(error: Error) {
+  componentDidCatch(error: Error, info: any) {
+    // Loguear para diagnóstico (visible en browser console → F12)
+    console.error('[ErrorBoundary] Error capturado:', error.message, error.stack, info?.componentStack)
     // Auto-reload en errores de chunk (deploy nuevo, chunk viejo)
     if (
       error.name === 'ChunkLoadError' ||

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BRAND } from '@/config/brand'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -6,7 +6,8 @@ import { UpgradePrompt } from '@/components/UpgradePrompt'
 import {
   BarChart2, Download, FileSpreadsheet, FileText,
   Package, AlertTriangle, ArrowLeftRight, ShoppingCart,
-  TrendingUp, DollarSign, Calendar, Tag, Truck, MapPin, Layers, CornerDownRight
+  TrendingUp, DollarSign, Calendar, Tag, Truck, MapPin, Layers, CornerDownRight,
+  Terminal, Play, Trash2, Info, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -45,7 +46,7 @@ function formatMoneda(valor: number) {
 
 export default function ReportesPage() {
   const { limits } = usePlanLimits()
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
 
   const [reporteActivo, setReporteActivo] = useState<ReporteId | null>(null)
   const [fechaDesde, setFechaDesde] = useState(() => {
@@ -54,6 +55,70 @@ export default function ReportesPage() {
   })
   const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split('T')[0])
   const [generando, setGenerando] = useState(false)
+
+  // ── SQL Runner state ─────────────────────────────────────────────────────────
+  const esSqlUser = ['DUEÑO', 'SUPER_USUARIO'].includes(user?.rol ?? '')
+  const [sqlQuery, setSqlQuery] = useState('')
+  const [sqlResult, setSqlResult] = useState<{ columns: string[]; rows: any[][] } | null>(null)
+  const [sqlError, setSqlError] = useState<string | null>(null)
+  const [sqlLoading, setSqlLoading] = useState(false)
+  const [sqlRowCount, setSqlRowCount] = useState(0)
+  const [showSqlRef, setShowSqlRef] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const runSql = useCallback(async () => {
+    if (!sqlQuery.trim() || sqlLoading) return
+    setSqlLoading(true); setSqlError(null); setSqlResult(null)
+    try {
+      const { data, error } = await supabase.rpc('tenant_sql_query', { query_text: sqlQuery.trim() })
+      if (error) throw new Error(error.message)
+      const rows = (data as any[]) ?? []
+      setSqlRowCount(rows.length)
+      if (rows.length === 0) { setSqlResult({ columns: [], rows: [] }); return }
+      const columns = Object.keys(rows[0])
+      setSqlResult({ columns, rows: rows.map((r: any) => columns.map(c => r[c])) })
+    } catch (e: any) {
+      setSqlError(e.message ?? 'Error al ejecutar la consulta')
+    } finally {
+      setSqlLoading(false)
+    }
+  }, [sqlQuery, sqlLoading])
+
+  // Ctrl+Enter para ejecutar
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runSql() }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [runSql])
+
+  const exportSqlCsv = () => {
+    if (!sqlResult || sqlResult.rows.length === 0) return
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([sqlResult.columns, ...sqlResult.rows])
+    XLSX.utils.book_append_sheet(wb, ws, 'Resultado')
+    XLSX.writeFile(wb, `genesis360_sql_${new Date().toISOString().split('T')[0]}.xlsx`)
+    toast.success('Exportado a Excel')
+  }
+
+  const printSqlPdf = () => {
+    if (!sqlResult || sqlResult.rows.length === 0) return
+    const doc = new jsPDF({ orientation: sqlResult.columns.length > 5 ? 'landscape' : 'portrait' })
+    doc.setFontSize(12)
+    doc.text('Resultado SQL — Genesis360', 14, 15)
+    doc.setFontSize(8)
+    doc.text(`Exportado: ${new Date().toLocaleString('es-AR')}`, 14, 21)
+    autoTable(doc, {
+      head: [sqlResult.columns],
+      body: sqlResult.rows.map(r => r.map(v => v === null ? '—' : String(v))),
+      startY: 26,
+      styles: { fontSize: 7, cellPadding: 2 },
+      headStyles: { fillColor: [99, 0, 210] },
+    })
+    doc.save(`genesis360_sql_${new Date().toISOString().split('T')[0]}.pdf`)
+    toast.success('PDF descargado')
+  }
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
@@ -592,6 +657,134 @@ export default function ReportesPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── SQL Runner (solo DUEÑO y SUPER_USUARIO) ───────────────────────────── */}
+      {esSqlUser && (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+            <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+              <Terminal size={17} className="text-violet-600 dark:text-violet-400" />
+            </div>
+            <div className="flex-1">
+              <h2 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">SQL Runner</h2>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Consultas personalizadas · Solo SELECT · Máx. 500 filas · <kbd className="bg-gray-100 dark:bg-gray-700 px-1 rounded text-[10px]">Ctrl+Enter</kbd> para ejecutar</p>
+            </div>
+            <button onClick={() => setShowSqlRef(v => !v)}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+              <Info size={13} /> Referencia {showSqlRef ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+          </div>
+
+          {/* Referencia de tablas */}
+          {showSqlRef && (
+            <div className="px-5 py-3 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Tablas disponibles (ejemplos)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {['productos', 'inventario_lineas', 'ventas', 'venta_items', 'gastos', 'clientes', 'proveedores', 'movimientos_stock', 'ordenes_compra', 'categorias', 'ubicaciones', 'recursos', 'empleados'].map(t => (
+                  <button key={t} onClick={() => setSqlQuery(q => q ? q + `\n-- ${t}\n` : `SELECT * FROM ${t} LIMIT 20`)}
+                    className="text-[11px] font-mono bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 px-2 py-0.5 rounded text-gray-600 dark:text-gray-300 hover:border-violet-400 hover:text-violet-600 transition-colors">
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                Tip: todas las tablas tienen <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded text-[10px]">tenant_id</code> — RLS filtra automáticamente solo tus datos.
+              </p>
+            </div>
+          )}
+
+          {/* Editor SQL */}
+          <div className="p-4">
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                value={sqlQuery}
+                onChange={e => setSqlQuery(e.target.value)}
+                placeholder={`SELECT p.nombre, p.sku, p.stock_actual, p.precio_venta\nFROM productos p\nWHERE p.activo = true\nORDER BY p.stock_actual DESC\nLIMIT 50`}
+                rows={6}
+                spellCheck={false}
+                className="w-full font-mono text-xs bg-gray-900 text-green-400 dark:bg-gray-900 border border-gray-700 rounded-xl p-4 resize-y focus:outline-none focus:border-violet-500 placeholder-gray-600 leading-relaxed"
+              />
+            </div>
+
+            {/* Acciones */}
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={runSql}
+                disabled={!sqlQuery.trim() || sqlLoading}
+                className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-50 transition-colors">
+                <Play size={14} />
+                {sqlLoading ? 'Ejecutando...' : 'Ejecutar'}
+              </button>
+              <button
+                onClick={() => { setSqlQuery(''); setSqlResult(null); setSqlError(null) }}
+                className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 transition-colors">
+                <Trash2 size={13} /> Limpiar
+              </button>
+              {sqlResult && sqlResult.rows.length > 0 && (
+                <>
+                  <button onClick={exportSqlCsv}
+                    className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400 px-3 py-2 rounded-xl border border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">
+                    <FileSpreadsheet size={13} /> Excel
+                  </button>
+                  <button onClick={printSqlPdf}
+                    className="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400 px-3 py-2 rounded-xl border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                    <FileText size={13} /> PDF
+                  </button>
+                  <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
+                    {sqlRowCount} fila{sqlRowCount !== 1 ? 's' : ''}{sqlRowCount === 500 ? ' (límite)' : ''}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Error */}
+            {sqlError && (
+              <div className="mt-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3">
+                <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-0.5">Error</p>
+                <p className="text-xs text-red-600 dark:text-red-400 font-mono">{sqlError}</p>
+              </div>
+            )}
+
+            {/* Resultado */}
+            {sqlResult && !sqlError && (
+              <div className="mt-3">
+                {sqlResult.rows.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400 dark:text-gray-500 text-sm">
+                    La consulta no devolvió resultados
+                  </div>
+                ) : (
+                  <div className="overflow-auto rounded-xl border border-gray-200 dark:border-gray-700 max-h-96">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 dark:bg-gray-700 sticky top-0">
+                        <tr>
+                          {sqlResult.columns.map(col => (
+                            <th key={col} className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap font-mono">
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sqlResult.rows.map((row, i) => (
+                          <tr key={i} className={`border-b border-gray-100 dark:border-gray-700 ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-gray-700/20'}`}>
+                            {row.map((cell, j) => (
+                              <td key={j} className="px-3 py-1.5 text-gray-700 dark:text-gray-300 whitespace-nowrap max-w-xs truncate font-mono">
+                                {cell === null ? <span className="text-gray-300 dark:text-gray-600">null</span> : String(cell)}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

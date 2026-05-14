@@ -29,6 +29,9 @@ export default function MiCuentaPage() {
   const [confirmText, setConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
 
+  // Cancelar suscripción
+  const [cancelando, setCancelando] = useState(false)
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const p = data?.user?.app_metadata?.provider ?? 'email'
@@ -37,7 +40,7 @@ export default function MiCuentaPage() {
   }, [])
 
   const isGoogleUser = provider === 'google'
-  const isOwner = user?.rol === 'OWNER'
+  const isOwner = user?.rol === 'DUEÑO'
 
   const planLabel = () => {
     const p = limits?.plan_id
@@ -110,7 +113,7 @@ export default function MiCuentaPage() {
     }
   }
 
-  // ── Leave tenant (non-OWNER) ───────────────────────────────────────────────
+  // ── Leave tenant (no es Dueño) ──────────────────────────────────────────────
   const handleLeave = async () => {
     if (!user) return
     setDeleting(true)
@@ -127,7 +130,32 @@ export default function MiCuentaPage() {
     }
   }
 
-  // ── Delete account (OWNER) ─────────────────────────────────────────────────
+  // ── Cancelar suscripción MP ────────────────────────────────────────────────
+  const handleCancelarSuscripcion = async () => {
+    if (!tenant || !confirm('¿Cancelar tu suscripción? Tu plan pasará a Free al finalizar el período.')) return
+    setCancelando(true)
+    try {
+      const mpSubId = (tenant as any).mp_subscription_id
+      if (mpSubId) {
+        // Llamar a la Edge Function que cancela el preapproval en MP
+        const { error } = await supabase.functions.invoke('cancel-suscripcion', {
+          body: { preapproval_id: mpSubId, tenant_id: tenant.id },
+        })
+        if (error) throw error
+      } else {
+        // Sin ID de MP: solo marcar en la DB
+        await supabase.from('tenants').update({ subscription_status: 'cancelled', mp_subscription_id: null }).eq('id', tenant.id)
+      }
+      await loadUserData(user!.id)
+      toast.success('Suscripción cancelada. Tu plan pasará a Free al finalizar el período.')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al cancelar suscripción')
+    } finally {
+      setCancelando(false)
+    }
+  }
+
+  // ── Delete account (Dueño) ──────────────────────────────────────────────────
   const handleDeleteAccount = async () => {
     if (!user || !tenant) return
     if (confirmText !== tenant.nombre) { toast.error(`Escribí exactamente: ${tenant.nombre}`); return }
@@ -203,9 +231,19 @@ export default function MiCuentaPage() {
             <p className="font-bold text-gray-900 dark:text-white text-lg">Plan {planLabel()}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">{estadoLabel()}</p>
           </div>
-          <button onClick={() => navigate('/suscripcion')} className={`${BTN.outline} ${BTN.sm}`}>
-            Ver planes →
-          </button>
+          <div className="flex items-center gap-2">
+            {isOwner && tenant?.subscription_status === 'active' && (
+              <button
+                onClick={handleCancelarSuscripcion}
+                disabled={cancelando}
+                className="text-xs px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-colors">
+                {cancelando ? 'Cancelando…' : 'Cancelar suscripción'}
+              </button>
+            )}
+            <button onClick={() => navigate('/suscripcion')} className={`${BTN.outline} ${BTN.sm}`}>
+              Ver planes →
+            </button>
+          </div>
         </div>
       </div>
 
@@ -272,7 +310,7 @@ export default function MiCuentaPage() {
               </button>
             </div>
 
-            {/* Non-OWNER: salir del negocio */}
+            {/* No es Dueño: salir del negocio */}
             {!isOwner && (
               <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
                 <p className="text-sm font-medium text-red-700 dark:text-red-400">Salir de "{tenant?.nombre}"</p>
@@ -289,7 +327,7 @@ export default function MiCuentaPage() {
               </div>
             )}
 
-            {/* OWNER: eliminar cuenta completa */}
+            {/* Dueño: eliminar cuenta completa */}
             {isOwner && (
               <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
                 <p className="text-sm font-medium text-red-700 dark:text-red-400">Eliminar cuenta y negocio</p>

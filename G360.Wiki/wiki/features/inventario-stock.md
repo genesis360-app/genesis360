@@ -234,11 +234,62 @@ Filtros en tab Historial:
 
 ---
 
+---
+
+## Stock por sucursal — fix integral (v1.8.17-18 · 2026-05-13)
+
+### getStockAntesSucursal
+
+Helper interno en `InventarioPage` que reemplaza `productos.stock_actual` (global) por la suma de `inventario_lineas.cantidad` filtrada por `sucursal_id` activa.
+
+Corregido en: ingreso simple, rebaje, masivo inline, conteo, autorizaciones (ajuste/serie/LPN), kitting, des-kitting.
+
+### Display en formularios
+
+- "Stock en sucursal: X" cuando hay sucursal activa (query reactiva `staleTime: 0`)
+- Columnas "Stock prev./Stock nuevo" **ocultadas** en tabs Agregar y Quitar — solo visibles en Historial (valores históricos son globales, confunden en vista por sucursal)
+
+### Filtros por sucursal en todas las tabs
+
+| Tab | Fix |
+|---|---|
+| Agregar Stock | Movimientos filtrados por `sucursal_id` ✅ |
+| Quitar Stock | `lineas-producto` query filtra por `sucursal_id` ✅ |
+| Kits | `stockKitsSucursal` query + helper `kStock()` + iniciarArmado/desarmarKit filtran lineas ✅ |
+| Conteos | Historial + carga de líneas filtran por `sucursal_id` ✅ |
+| Historial | `applyFilter` en query de movimientos ✅ |
+
+---
+
+## LPN Acciones — mejoras 2026-05-13
+
+- **Tab Editar:** nuevo campo `sucursal_id` (selector de sucursal) para reasignar el LPN completo sin usar el flujo de traslado
+- **Tab Mover:** `cantMover` inicializa en `1` cuando hay ≥2 unidades → botón habilitado de inmediato
+
+---
+
+## Bulk Edit de atributos LPN (migration 103 · 2026-05-13)
+
+Cambio masivo de atributos en LPNs seleccionados:
+
+**Acceso:** barra de selección → botón "Editar atributos" (violeta)
+
+**Campos:** sucursal, proveedor, nro_lote, fecha_vencimiento (cualquier combinación con checkbox)
+
+**Flujo DEPOSITO:** genera `autorizaciones_inventario` tipo `bulk_edit` → pendiente de aprobación.
+
+**Flujo otros roles:** aplica directo con `.update().in('id', selectedLineas)`.
+
+**Migration 103:** `linea_id` nullable + tipo `bulk_edit` en CHECK de `autorizaciones_inventario`.
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/alertas]]
 - [[wiki/features/wms]]
 - [[wiki/features/escaneo-barcode]]
+- [[wiki/features/multi-sucursal]]
 - [[wiki/database/triggers]]
 - [[wiki/database/schema-overview]]

@@ -8,13 +8,13 @@ El wiki es mantenido por el agente LLM (Claude Code). Vos aportás fuentes y hac
 
 ## Cómo usar este wiki
 
-| Acción | Qué hacer |
-|--------|-----------|
-| **Agregar una fuente** | Copiá el archivo a `sources/raw/` y pedile al agente que lo procese |
-| **Hacer una pregunta** | Preguntale al agente directamente — buscará en el wiki |
-| **Ver todo** | Abrí [[index]] |
-| **Ver actividad** | Abrí [[log]] |
-| **Ver reglas del agente** | Abrí [[_schema]] |
+| Acción                    | Qué hacer                                                           |
+| ------------------------- | ------------------------------------------------------------------- |
+| **Agregar una fuente**    | Copiá el archivo a `sources/raw/` y pedile al agente que lo procese |
+| **Hacer una pregunta**    | Preguntale al agente directamente — buscará en el wiki              |
+| **Ver todo**              | Abrí [[index]]                                                      |
+| **Ver actividad**         | Abrí [[log]]                                                        |
+| **Ver reglas del agente** | Abrí [[_schema]]                                                    |
 
 ---
 

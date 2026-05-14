@@ -16,7 +16,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 // ─── Tipos TypeScript ─────────────────────────────────────────────────────────
 
-export type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'ADMIN' | 'RRHH' | 'CONTADOR' | 'DEPOSITO'
+export type UserRole = 'DUEÑO' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO' | 'ADMIN'
 export type SubscriptionStatus = 'trial' | 'active' | 'inactive' | 'cancelled'
 export type MovimientoTipo = 'ingreso' | 'rebaje' | 'ajuste' | 'kitting' | 'des_kitting'
 
@@ -50,6 +50,8 @@ export interface User {
   activo: boolean
   avatar_url?: string | null
   rol_custom_id?: string | null
+  sucursal_id?: string | null
+  puede_ver_todas?: boolean
   /** Permisos cargados en runtime desde roles_custom.permisos — no existe en DB directamente */
   permisos_custom?: Record<string, 'no_ver' | 'ver' | 'editar'> | null
   created_at: string
@@ -164,6 +166,10 @@ export interface OrdenCompra {
   created_by?: string | null
   created_at: string
   updated_at: string
+  // Migration 095
+  oc_padre_id?: string | null
+  es_derivada?: boolean
+  tiene_reembolso_pendiente?: boolean
   // joins
   proveedores?: Pick<Proveedor, 'id' | 'nombre'>
   orden_compra_items?: OrdenCompraItem[]
@@ -535,6 +541,10 @@ export interface Recurso {
   garantia_hasta?: string | null
   notas?: string | null
   sucursal_id?: string | null
+  es_recurrente?: boolean
+  frecuencia_valor?: number | null
+  frecuencia_unidad?: 'dia' | 'semana' | 'mes' | 'año' | null
+  proximo_vencimiento?: string | null
   created_by?: string | null
   created_at: string
   updated_at: string

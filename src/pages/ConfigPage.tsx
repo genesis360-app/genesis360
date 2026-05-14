@@ -293,7 +293,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
 
 function MarketplaceSection() {
   const { tenant, user, setTenant } = useAuthStore()
-  const canEdit = user?.rol === 'OWNER'
+  const canEdit = user?.rol === 'DUEÑO'
   const [activo, setActivo] = useState(tenant?.marketplace_activo ?? false)
   const [webhookUrl, setWebhookUrl] = useState(tenant?.marketplace_webhook_url ?? '')
   const [saving, setSaving] = useState(false)
@@ -374,9 +374,9 @@ export default function ConfigPage() {
   const initialTab = searchParams.get('tab') as Tab | null
   const [tab, setTab] = useState<Tab>(initialTab ?? 'negocio')
   const [estadosSubTab, setEstadosSubTab] = useState<EstadosSubTab>('estados')
-  const { tenant, user, setTenant, sucursales } = useAuthStore()
+  const { tenant, user, setTenant, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
-  const canEdit = user?.rol === 'OWNER'
+  const canEdit = user?.rol === 'DUEÑO'
 
   // Mostrar resultado de OAuth al volver del redirect
   useState(() => {
@@ -481,8 +481,14 @@ export default function ConfigPage() {
 
   // Ubicaciones
   const { data: ubicaciones = [], isLoading: loadingUbic } = useQuery({
-    queryKey: ['ubicaciones', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).order('prioridad').order('nombre'); return (data ?? []) },
+    queryKey: ['ubicaciones', tenant?.id, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).order('prioridad').order('nombre')
+      // Filtrar por sucursal: mostrar las de la sucursal activa + las globales (sin sucursal)
+      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      const { data } = await q
+      return data ?? []
+    },
     enabled: !!tenant,
   })
   const [newUbicNombre, setNewUbicNombre] = useState('')
@@ -500,11 +506,12 @@ export default function ConfigPage() {
   const [editUbicPallets, setEditUbicPallets] = useState('')
   const [editUbicWmsOpen, setEditUbicWmsOpen] = useState(false)
   const [editUbicMonoSku, setEditUbicMonoSku] = useState(false)
+  const [editUbicSucursalId, setEditUbicSucursalId] = useState('')
   const [ubicSearch, setUbicSearch] = useState('')
 
   const addUbicacion = async () => {
     if (!newUbicNombre.trim()) return
-    const { error } = await supabase.from('ubicaciones').insert({ tenant_id: tenant!.id, nombre: newUbicNombre.trim(), descripcion: newUbicDesc || null, prioridad: parseInt(newUbicPrioridad) || 0 })
+    const { error } = await supabase.from('ubicaciones').insert({ tenant_id: tenant!.id, nombre: newUbicNombre.trim(), descripcion: newUbicDesc || null, prioridad: parseInt(newUbicPrioridad) || 0, sucursal_id: sucursalId || null })
     if (error) { toast.error(error.message); return }
     toast.success('Ubicación agregada')
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
@@ -524,6 +531,7 @@ export default function ConfigPage() {
     setEditUbicPallets(u.capacidad_pallets != null ? String(u.capacidad_pallets) : '')
     setEditUbicWmsOpen(!!(u.tipo_ubicacion || u.alto_cm || u.ancho_cm || u.largo_cm || u.peso_max_kg || u.capacidad_pallets))
     setEditUbicMonoSku(u.mono_sku ?? false)
+    setEditUbicSucursalId(u.sucursal_id ?? '')
   }
   const saveUbicacion = async (id: string) => {
     const old = (ubicaciones as any[]).find(u => u.id === id)
@@ -538,6 +546,7 @@ export default function ConfigPage() {
       peso_max_kg: editUbicPeso ? parseFloat(editUbicPeso) : null,
       capacidad_pallets: editUbicPallets ? parseInt(editUbicPallets) : null,
       mono_sku: editUbicMonoSku,
+      sucursal_id: editUbicSucursalId || null,
     }).eq('id', id)
     if (error) { toast.error(error.message); return }
     toast.success('Actualizada')
@@ -713,12 +722,14 @@ export default function ConfigPage() {
   })
 
   const { data: combos = [], isLoading: loadingCombos } = useQuery({
-    queryKey: ['combos', tenant?.id],
+    queryKey: ['combos', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('combos')
+      let q = supabase.from('combos')
         .select('*, combo_items(producto_id, cantidad, productos(nombre, sku))')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('created_at', { ascending: false })
+      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'combos',
@@ -741,6 +752,7 @@ export default function ConfigPage() {
         descuento_pct,
         descuento_tipo: comboForm.descuento_tipo,
         descuento_monto,
+        sucursal_id: sucursalId || null,
       }).select('id').single()
       if (eC) throw eC
       const { error: eI } = await supabase.from('combo_items').insert(
@@ -836,6 +848,7 @@ export default function ConfigPage() {
   const [addRuleEstadoId, setAddRuleEstadoId] = useState('')
   const [addRuleDias, setAddRuleDias] = useState('')
   const [processingAging, setProcessingAging] = useState(false)
+  const [processingAgingId, setProcessingAgingId] = useState<string | null>(null)
 
   const toggleAgingExpand = (id: string) => setAgingExpanded(prev => {
     const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
@@ -880,6 +893,23 @@ export default function ConfigPage() {
       toast.error(e.message ?? 'Error al procesar aging')
     } finally {
       setProcessingAging(false)
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+    }
+  }
+
+  const processAgingProfile = async (profileId: string, profileNombre: string) => {
+    setProcessingAgingId(profileId)
+    try {
+      const { data, error } = await supabase.rpc('process_aging_profile_single', { p_profile_id: profileId })
+      if (error) throw error
+      const cambios = (data as any)?.cambios ?? 0
+      toast.success(cambios > 0
+        ? `${cambios} estado${cambios !== 1 ? 's' : ''} actualizado${cambios !== 1 ? 's' : ''} en "${profileNombre}"`
+        : `Sin cambios en "${profileNombre}"`)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al procesar el perfil')
+    } finally {
+      setProcessingAgingId(null)
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
     }
   }
@@ -1809,6 +1839,21 @@ export default function ConfigPage() {
                           <button onClick={() => saveUbicacion(u.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 p-1"><Check size={15} /></button>
                           <button onClick={() => setEditUbicId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 p-1"><X size={15} /></button>
                         </div>
+                        {/* Sucursal */}
+                        {sucursales.length > 1 && (
+                          <div className="flex items-center gap-2">
+                            <Building2 size={13} className="text-muted flex-shrink-0" />
+                            <select
+                              value={editUbicSucursalId}
+                              onChange={e => setEditUbicSucursalId(e.target.value)}
+                              className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-primary">
+                              <option value="">Global (todas las sucursales)</option>
+                              {(sucursales as any[]).map(s => (
+                                <option key={s.id} value={s.id}>{s.nombre}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                         {/* Dimensiones WMS (colapsable) */}
                         <button
                           type="button"
@@ -1867,6 +1912,13 @@ export default function ConfigPage() {
                             <span className="ml-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded" title="Mono-SKU: solo un producto">
                               <Tag size={9} className="inline mb-0.5 mr-0.5" />Mono-SKU
                             </span>
+                          )}
+                          {sucursales.length > 1 && (
+                            u.sucursal_id
+                              ? <span className="ml-2 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded flex-shrink-0 inline-flex items-center gap-1">
+                                  <Building2 size={9} />{(sucursales as any[]).find(s => s.id === u.sucursal_id)?.nombre ?? u.sucursal_id}
+                                </span>
+                              : <span className="ml-2 text-xs bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded flex-shrink-0">Global</span>
                           )}
                         </div>
                         {(u.prioridad ?? 0) > 0 && (
@@ -2196,6 +2248,13 @@ export default function ConfigPage() {
                             <>
                               <span className="flex-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{ap.nombre}</span>
                               <span className="text-xs text-gray-400 dark:text-gray-500 mr-1">{reglas.length} regla{reglas.length !== 1 ? 's' : ''}</span>
+                              <button
+                                onClick={e => { e.stopPropagation(); processAgingProfile(ap.id, ap.nombre) }}
+                                disabled={processingAgingId === ap.id || processingAging}
+                                title="Procesar solo este perfil ahora"
+                                className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-accent bg-accent/10 hover:bg-accent/20 rounded-lg transition-colors disabled:opacity-50 mr-1">
+                                <Play size={10} /> {processingAgingId === ap.id ? 'Procesando...' : 'Procesar'}
+                              </button>
                               <button onClick={e => { e.stopPropagation(); setEditAgingId(ap.id); setEditAgingNombre(ap.nombre) }} className="text-gray-400 dark:text-gray-500 hover:text-accent p-1"><Pencil size={13} /></button>
                               <button onClick={e => { e.stopPropagation(); deleteAgingProfile(ap.id) }} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={13} /></button>
                             </>
@@ -2945,7 +3004,7 @@ export default function ConfigPage() {
       )}
 
       {tab === 'api' && (
-        <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'OWNER' || user?.rol === 'ADMIN'} />
+        <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'DUEÑO' || user?.rol === 'SUPER_USUARIO'} />
       )}
 
         </div>{/* end content column */}

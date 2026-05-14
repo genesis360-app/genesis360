@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
@@ -33,6 +33,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     lpn: linea.lpn ?? '',
     estado_id: linea.estado_id ?? '',
     ubicacion_id: linea.ubicacion_id ?? '',
+    sucursal_id: linea.sucursal_id ?? '',
     proveedor_id: linea.proveedor_id ?? '',
     nro_lote: linea.nro_lote ?? '',
     // Tomar solo los primeros 10 chars para evitar desfase de timezone
@@ -40,10 +41,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     cantidad: String(linea.cantidad ?? 0),
   })
 
-  // Mover stock parcial
-  const [cantMover, setCantMover] = useState('')
+  // Mover stock parcial — default 1 si hay al menos 2 unidades disponibles
+  const cantDisponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
+  const [cantMover, setCantMover] = useState(cantDisponible >= 2 ? '1' : '')
   const [ubicDestino, setUbicDestino] = useState('')
-  const [sucursalDestino, setSucursalDestino] = useState(linea.sucursal_id ?? '')
+  // null = sin sucursal asignada; string = ID de sucursal destino
+  const [sucursalDestino, setSucursalDestino] = useState<string | null>(linea.sucursal_id ?? null)
   const [showQR, setShowQR] = useState(false)
 
   // Series
@@ -156,6 +159,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           lpn: editForm.lpn || linea.lpn,
           estado_id: editForm.estado_id || null,
           ubicacion_id: editForm.ubicacion_id || null,
+          sucursal_id: editForm.sucursal_id || null,
           proveedor_id: editForm.proveedor_id || null,
           nro_lote: editForm.nro_lote || null,
           fecha_vencimiento: editForm.fecha_vencimiento || null,
@@ -170,6 +174,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         lpn: editForm.lpn || linea.lpn,
         estado_id: editForm.estado_id || null,
         ubicacion_id: editForm.ubicacion_id || null,
+        sucursal_id: editForm.sucursal_id || null,
         proveedor_id: editForm.proveedor_id || null,
         nro_lote: editForm.nro_lote || null,
         fecha_vencimiento: editForm.fecha_vencimiento || null,
@@ -201,6 +206,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'cambio_estado', campo: 'estado', valor_anterior: linea.estado_id ? resolveNombre(estados, linea.estado_id) : null, valor_nuevo: editForm.estado_id ? resolveNombre(estados, editForm.estado_id) : null, pagina: '/inventario' })
       if ((editForm.ubicacion_id || '') !== (linea.ubicacion_id || ''))
         logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'ubicacion', valor_anterior: linea.ubicacion_id ? resolveNombre(ubicaciones, linea.ubicacion_id) : null, valor_nuevo: editForm.ubicacion_id ? resolveNombre(ubicaciones, editForm.ubicacion_id) : null, pagina: '/inventario' })
+      if ((editForm.sucursal_id || '') !== (linea.sucursal_id || ''))
+        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'sucursal', valor_anterior: linea.sucursal_id ? resolveNombre(sucursales as any[], linea.sucursal_id) : null, valor_nuevo: editForm.sucursal_id ? resolveNombre(sucursales as any[], editForm.sucursal_id) : null, pagina: '/inventario' })
       if ((editForm.nro_lote || '') !== (linea.nro_lote || ''))
         logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'nro_lote', valor_anterior: linea.nro_lote ?? null, valor_nuevo: editForm.nro_lote || null, pagina: '/inventario' })
       const oldVenc = linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : ''
@@ -228,7 +235,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (cant >= linea.cantidad) throw new Error('La cantidad a mover debe ser menor al total del LPN')
       if (!ubicDestino) throw new Error('Seleccioná una ubicación destino')
-      const sucursalFinal = sucursalDestino || linea.sucursal_id || null
+      const sucursalFinal = sucursalDestino ?? linea.sucursal_id ?? null
 
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
@@ -370,6 +377,25 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
   const seriesActivas = (linea.inventario_series ?? []).filter((s: any) => s.activo)
 
+  // ── Teclado: ESC = cerrar, ENTER = guardar según tab ──────────────────────
+  useEffect(() => {
+    if (showQR) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
+      if (e.key === 'Enter') {
+        const target = e.target as HTMLElement
+        if (['TEXTAREA', 'BUTTON'].includes(target.tagName)) return
+        e.preventDefault()
+        if (tab === 'editar' && !guardarEdicion.isPending) guardarEdicion.mutate()
+        if (tab === 'mover' && cantMover && ubicDestino && !moverStock.isPending) moverStock.mutate()
+        if (tab === 'estructura' && !guardarEstructura.isPending) guardarEstructura.mutate()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [showQR, tab, cantMover, ubicDestino,
+      guardarEdicion.isPending, moverStock.isPending, guardarEstructura.isPending])
+
   const TABS: { id: AccionTab; label: string; icon: any }[] = tieneReservas
     ? [{ id: 'mover', label: 'Mover', icon: ArrowRightLeft }]
     : [
@@ -494,6 +520,18 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
                 </div>
+                {sucursales.length > 1 && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sucursal</label>
+                    <select value={editForm.sucursal_id} onChange={e => setEditForm(p => ({ ...p, sucursal_id: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                      <option value="">Sin sucursal</option>
+                      {(sucursales as Sucursal[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                    </select>
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 {producto.tiene_lote && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -539,20 +577,23 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                      Cantidad a mover (disponible: {linea.cantidad - (linea.cantidad_reservada ?? 0)})
+                      Cantidad a mover * (disponible: {cantDisponible} · debe ser menor al total)
                     </label>
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max={linea.cantidad - (linea.cantidad_reservada ?? 0)}
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max={cantDisponible - 1}
                       value={cantMover} onChange={e => setCantMover(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="0" />
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="Ingresá una cantidad" />
                   </div>
                   {sucursales.length > 1 && (
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sucursal destino</label>
-                      <select value={sucursalDestino} onChange={e => { setSucursalDestino(e.target.value); setUbicDestino('') }}
+                      <select
+                        value={sucursalDestino ?? ''}
+                        onChange={e => { setSucursalDestino(e.target.value || null); setUbicDestino('') }}
                         className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                        <option value="">Sin sucursal asignada{!linea.sucursal_id ? ' (actual)' : ''}</option>
                         {(sucursales as Sucursal[]).map(s => (
                           <option key={s.id} value={s.id}>
-                            {s.nombre}{s.id === (linea.sucursal_id ?? '') ? ' (actual)' : ''}
+                            {s.nombre}{s.id === linea.sucursal_id ? ' (actual)' : ''}
                           </option>
                         ))}
                       </select>
@@ -720,7 +761,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   <ClipboardList size={28} className="text-blue-500 mx-auto mb-2" />
                   <p className="font-semibold text-blue-700 dark:text-blue-400">Solicitar eliminación del LPN {linea.lpn}</p>
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                    Como DEPOSITO, la eliminación requiere aprobación de un OWNER o SUPERVISOR.
+                    Como DEPOSITO, la eliminación requiere aprobación del Dueño o Supervisor.
                   </p>
                 </div>
               ) : (

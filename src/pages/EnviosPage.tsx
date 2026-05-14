@@ -1,12 +1,14 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
-  Package2, Plus, ChevronRight, Search, Filter, X, Printer,
+  Package2, Plus, ChevronRight, Search, X, Printer,
   ExternalLink, MapPin, Truck, Clock, CheckCircle, RotateCcw,
   AlertTriangle, Send, Scale, Ruler, ChevronDown, Pencil, Trash2,
-  FileText, RefreshCw, Calculator,
+  FileText, RefreshCw, Navigation, Loader2,
 } from 'lucide-react'
+import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
+import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { supabase } from '@/lib/supabase'
@@ -18,7 +20,7 @@ import { BRAND } from '@/config/brand'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'entregado' | 'devolucion' | 'cancelado'
-type TabEnvio = 'envios' | 'cotizador'
+type TabEnvio = 'envios'
 
 const COURIERS = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 'Otro']
 
@@ -83,6 +85,10 @@ export default function EnviosPage() {
   const [editId, setEditId]         = useState<string | null>(null)
   const [form, setForm]             = useState<FormEnvio>(FORM_VACIO)
   const [saving, setSaving]         = useState(false)
+  const [tipoEnvio, setTipoEnvio]   = useState<'propio' | 'tercero'>('tercero')
+  const [distanciaKm, setDistanciaKm] = useState<number | null>(null)
+  const [calculandoKm, setCalculandoKm] = useState(false)
+  const [direccionEntrega, setDireccionEntrega] = useState('')
 
   // Filtros
   const [filtroEstado,  setFiltroEstado]  = useState('')
@@ -92,19 +98,14 @@ export default function EnviosPage() {
   const [filtroHasta,   setFiltroHasta]   = useState('')
   const [busqueda,      setBusqueda]      = useState('')
 
-  // Cotizador
-  const [cotCpOrigen,  setCotCpOrigen]  = useState('')
-  const [cotCpDestino, setCotCpDestino] = useState('')
-  const [cotPeso,      setCotPeso]      = useState('')
-  const [cotLargo,     setCotLargo]     = useState('')
-  const [cotAncho,     setCotAncho]     = useState('')
-  const [cotAlto,      setCotAlto]      = useState('')
-  const [cotizando,    setCotizando]    = useState(false)
-  const [cotResultados,setCotResultados]= useState<{courier:string;servicio:string;precio:number;dias:string}[]|null>(null)
-
   // Selección de domicilio al crear envío
   const [ventaSearch, setVentaSearch]       = useState('')
   const [ventaSeleccionada, setVentaSeleccionada] = useState<any | null>(null)
+
+  // Edición inline de domicilios
+  const [editandoDomId, setEditandoDomId] = useState<string | null>(null)
+  const [showNuevoDom,  setShowNuevoDom]  = useState(false)
+  const [domForm, setDomForm] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '' })
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: envios = [], isLoading } = useQuery({
@@ -130,6 +131,14 @@ export default function EnviosPage() {
   const { data: ventasRecientes = [] } = useQuery({
     queryKey: ['ventas-envio-search', tenant?.id, ventaSearch],
     queryFn: async () => {
+      // Excluir ventas que ya tienen un envío asignado
+      const { data: conEnvio } = await supabase
+        .from('envios')
+        .select('venta_id')
+        .eq('tenant_id', tenant!.id)
+        .not('venta_id', 'is', null)
+      const idsConEnvio = (conEnvio ?? []).map((e: any) => e.venta_id).filter(Boolean)
+
       let q = supabase.from('ventas')
         .select('id, numero, total, estado, origen, created_at, cliente_id, clientes(nombre, id)')
         .eq('tenant_id', tenant!.id)
@@ -140,6 +149,7 @@ export default function EnviosPage() {
         const n = parseInt(ventaSearch)
         if (!isNaN(n)) q = q.eq('numero', n)
       }
+      if (idsConEnvio.length > 0) q = q.not('id', 'in', `(${idsConEnvio.join(',')})`)
       const { data } = await q
       return data ?? []
     },
@@ -169,6 +179,61 @@ export default function EnviosPage() {
     },
     enabled: !!expandedId,
   })
+
+  // Datos de la sucursal activa (dirección origen + costo_km_envio)
+  const { data: sucursalActiva } = useQuery({
+    queryKey: ['sucursal-activa-envio', sucursalId],
+    queryFn: async () => {
+      if (!sucursalId) return null
+      const { data } = await supabase.from('sucursales').select('id, nombre, direccion, costo_km_envio').eq('id', sucursalId).single()
+      return data
+    },
+    enabled: !!sucursalId,
+  })
+
+  // Tarifas de couriers para la sucursal activa
+  const { data: courierTarifas = [] } = useQuery({
+    queryKey: ['courier-tarifas-envio', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const { data } = await supabase.from('courier_tarifas')
+        .select('courier, precio').eq('tenant_id', tenant!.id)
+        .eq('sucursal_id', sucursalId!).eq('activo', true)
+      return data ?? []
+    },
+    enabled: !!tenant && !!sucursalId,
+  })
+
+  // Auto-calcular KM cuando hay dirección de entrega + sucursal con dirección
+  const calcularKmAuto = async (destino: string) => {
+    const origen = sucursalActiva?.direccion
+    if (!origen || !destino.trim()) return
+    setCalculandoKm(true)
+    try {
+      const km = await calcularDistanciaKm(origen, destino)
+      if (km !== null) {
+        setDistanciaKm(km)
+        const costoKm = sucursalActiva?.costo_km_envio ?? 0
+        if (costoKm > 0) {
+          setForm(f => ({ ...f, costo_cotizado: (km * costoKm).toFixed(2) }))
+        }
+      }
+    } finally {
+      setCalculandoKm(false)
+    }
+  }
+
+  // Direcciones guardadas del cliente formateadas para autocomplete
+  const domiciliosFormateados = (domiciliosCliente as any[]).map(d =>
+    [d.calle, d.numero, d.piso_depto, d.ciudad, d.provincia].filter(Boolean).join(', ')
+  )
+
+  // Auto-completar costo courier al seleccionar courier
+  const handleCourierChange = (courier: string) => {
+    setForm(f => {
+      const tarifa = (courierTarifas as any[]).find(t => t.courier === courier)
+      return { ...f, courier, costo_cotizado: tarifa ? String(tarifa.precio) : f.costo_cotizado }
+    })
+  }
 
   // ── Mutations ────────────────────────────────────────────────────────────────
   const saveEnvio = useMutation({
@@ -208,6 +273,7 @@ export default function EnviosPage() {
       qc.invalidateQueries({ queryKey: ['envios'] })
       setShowModal(false); setEditId(null); setForm(FORM_VACIO)
       setVentaSeleccionada(null); setVentaSearch('')
+      setDistanciaKm(null); setDireccionEntrega('')
     },
     onError: (e: any) => toast.error(e.message ?? 'Error al guardar'),
   })
@@ -233,24 +299,30 @@ export default function EnviosPage() {
     onError: (e: any) => toast.error(e.message),
   })
 
-  // ── Cotizador ────────────────────────────────────────────────────────────────
-  const cotizar = async () => {
-    if (!cotCpOrigen || !cotCpDestino || !cotPeso) {
-      toast.error('Completá origen, destino y peso')
-      return
-    }
-    setCotizando(true)
-    // TODO: llamar a Edge Function courier-rates cuando haya contratos
-    // Por ahora retorna datos de ejemplo con mensaje informativo
-    await new Promise(r => setTimeout(r, 800))
-    setCotResultados([
-      { courier: 'OCA',              servicio: 'Estandar',   precio: 0, dias: '—' },
-      { courier: 'Correo Argentino', servicio: 'Encomienda', precio: 0, dias: '—' },
-      { courier: 'Andreani',         servicio: 'Estandar',   precio: 0, dias: '—' },
-      { courier: 'DHL Express',      servicio: 'Express',    precio: 0, dias: '—' },
-    ])
-    setCotizando(false)
-  }
+  // Guardar domicilio (nuevo o edición)
+  const saveDomicilio = useMutation({
+    mutationFn: async ({ id, data }: { id?: string; data: typeof domForm }) => {
+      if (id) {
+        const { error } = await supabase.from('cliente_domicilios').update(data).eq('id', id)
+        if (error) throw error
+      } else {
+        const clienteId = ventaSeleccionada?.clientes?.id
+        if (!clienteId) throw new Error('Seleccioná una venta con cliente antes de agregar una dirección')
+        const { error } = await supabase.from('cliente_domicilios').insert({
+          ...data, cliente_id: clienteId, tenant_id: tenant!.id,
+        })
+        if (error) throw error
+      }
+    },
+    onSuccess: () => {
+      toast.success('Dirección guardada')
+      qc.invalidateQueries({ queryKey: ['domicilios-cliente-envio'] })
+      setEditandoDomId(null)
+      setShowNuevoDom(false)
+      setDomForm({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '' })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
 
   // ── WhatsApp ─────────────────────────────────────────────────────────────────
   const abrirWhatsApp = (envio: any) => {
@@ -344,7 +416,9 @@ export default function EnviosPage() {
   // ── Helpers form ─────────────────────────────────────────────────────────────
   const abrirNuevo = () => {
     setEditId(null); setForm(FORM_VACIO)
-    setVentaSeleccionada(null); setVentaSearch(''); setShowModal(true)
+    setVentaSeleccionada(null); setVentaSearch('')
+    setDistanciaKm(null); setDireccionEntrega('')
+    setShowModal(true)
   }
   const abrirEdicion = (e: any) => {
     if (e.estado === 'entregado') { toast('Este envío ya fue entregado y no puede editarse.', { icon: '🔒' }); return }
@@ -399,16 +473,10 @@ export default function EnviosPage() {
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
-        {[
-          { id: 'envios' as const,    label: 'Envíos',     icon: <Package2 size={14} /> },
-          { id: 'cotizador' as const, label: 'Cotizador',  icon: <Calculator size={14} /> },
-        ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
-              ${tab === t.id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-            {t.icon}{t.label}
-          </button>
-        ))}
+        <button
+          className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 border-accent text-accent -mb-px">
+          <Package2 size={14} /> Envíos
+        </button>
       </div>
 
       {/* ══ TAB: ENVÍOS ══ */}
@@ -693,85 +761,6 @@ export default function EnviosPage() {
         </div>
       )}
 
-      {/* ══ TAB: COTIZADOR ══ */}
-      {tab === 'cotizador' && (
-        <div className="max-w-2xl space-y-5">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 shadow-sm space-y-4">
-            <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-              <Calculator size={18} className="text-accent" /> Comparar tarifas de couriers
-            </h2>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Código postal origen</label>
-                <input type="text" value={cotCpOrigen} onChange={e => setCotCpOrigen(e.target.value)} placeholder="C1043"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Código postal destino</label>
-                <input type="text" value={cotCpDestino} onChange={e => setCotCpDestino(e.target.value)} placeholder="5000"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Peso (kg) *</label>
-                <input type="number" onWheel={e => e.currentTarget.blur()} value={cotPeso} onChange={e => setCotPeso(e.target.value)} placeholder="1.5" min="0" step="0.1"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-              </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { label: 'Largo', val: cotLargo, set: setCotLargo },
-                  { label: 'Ancho', val: cotAncho, set: setCotAncho },
-                  { label: 'Alto',  val: cotAlto,  set: setCotAlto  },
-                ].map(({ label, val, set }) => (
-                  <div key={label}>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label} (cm)</label>
-                    <input type="number" onWheel={e => e.currentTarget.blur()} value={val} onChange={e => set(e.target.value)} placeholder="0" min="0"
-                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                  </div>
-                ))}
-              </div>
-            </div>
-            <button onClick={cotizar} disabled={cotizando}
-              className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-              {cotizando ? <><RefreshCw size={15} className="animate-spin" /> Cotizando…</> : <><Calculator size={15} /> Comparar tarifas</>}
-            </button>
-          </div>
-
-          {cotResultados && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 shadow-sm space-y-3">
-              <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-xs text-amber-700 dark:text-amber-400">
-                <AlertTriangle size={13} />
-                <span>Las tarifas reales estarán disponibles cuando configures tus credenciales con cada courier. Por ahora mostramos los couriers disponibles para integrar.</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-gray-100 dark:border-gray-700">
-                    <tr>
-                      <th className="text-left py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Courier</th>
-                      <th className="text-left py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Servicio</th>
-                      <th className="text-right py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Tarifa</th>
-                      <th className="text-right py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">Días est.</th>
-                      <th className="py-2" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {cotResultados.map((r, i) => (
-                      <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <td className="py-3 font-medium text-gray-800 dark:text-gray-100">{r.courier}</td>
-                        <td className="py-3 text-gray-600 dark:text-gray-300">{r.servicio}</td>
-                        <td className="py-3 text-right text-gray-400 dark:text-gray-500 italic">Sin credenciales</td>
-                        <td className="py-3 text-right text-gray-400 dark:text-gray-500">—</td>
-                        <td className="py-3 pl-2">
-                          <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-full">Próximamente</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ══ MODAL: NUEVO / EDITAR ENVÍO ══ */}
       {showModal && (
@@ -820,43 +809,163 @@ export default function EnviosPage() {
               {/* Domicilio de destino */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Domicilio de destino</label>
-                {(domiciliosCliente as any[]).length > 0 ? (
-                  <div className="space-y-1">
-                    {(domiciliosCliente as any[]).map((d: any) => (
-                      <label key={d.id} className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
+                <div className="space-y-1">
+                  {(domiciliosCliente as any[]).map((d: any) => (
+                    <div key={d.id}>
+                      <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
                         ${form.destino_id === d.id ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
                         <input type="radio" checked={form.destino_id === d.id}
                           onChange={() => {
                             setForm(f => ({ ...f, destino_id: d.id, destino_descripcion: `${d.calle}${d.numero ? ` ${d.numero}` : ''}${d.piso_depto ? `, ${d.piso_depto}` : ''}, ${d.ciudad ?? ''} ${d.provincia ?? ''} ${d.codigo_postal ?? ''}`.trim() }))
-                          }} className="accent-accent mt-0.5" />
-                        <div>
+                            setEditandoDomId(null)
+                          }} className="accent-accent mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
                           {d.nombre && <span className="text-xs font-semibold text-accent">{d.nombre} </span>}
                           <span className="text-sm text-gray-800 dark:text-gray-100">{d.calle}{d.numero ? ` ${d.numero}` : ''}{d.piso_depto ? `, ${d.piso_depto}` : ''}</span>
                           <p className="text-xs text-gray-500 dark:text-gray-400">{[d.ciudad, d.provincia, d.codigo_postal].filter(Boolean).join(' · ')}</p>
                         </div>
+                        <button type="button"
+                          onClick={e => { e.preventDefault(); setEditandoDomId(editandoDomId === d.id ? null : d.id); setShowNuevoDom(false) }}
+                          className="p-1 text-gray-400 hover:text-accent flex-shrink-0 transition-colors" title="Editar dirección">
+                          <Pencil size={13} />
+                        </button>
                       </label>
-                    ))}
-                    <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
-                      ${form.destino_id === '' ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
-                      <input type="radio" checked={form.destino_id === ''}
-                        onChange={() => setForm(f => ({ ...f, destino_id: '' }))} className="accent-accent" />
-                      <span className="text-sm text-gray-600 dark:text-gray-300">Ingresar domicilio manualmente</span>
-                    </label>
-                  </div>
-                ) : null}
-                {form.destino_id === '' && (
-                  <textarea value={form.destino_descripcion} onChange={e => setForm(f => ({ ...f, destino_descripcion: e.target.value }))}
-                    placeholder="Calle, número, ciudad, provincia, CP" rows={2}
-                    className="mt-2 w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                )}
+                      {/* Formulario inline de edición */}
+                      {editandoDomId === d.id && (() => {
+                        const [localDom, setLocalDom] = useState({ nombre: d.nombre ?? '', calle: d.calle ?? '', numero: d.numero ?? '', piso_depto: d.piso_depto ?? '', ciudad: d.ciudad ?? '', provincia: d.provincia ?? '', codigo_postal: d.codigo_postal ?? '' })
+                        return (
+                          <div className="mt-1 mb-1 border border-accent/30 rounded-xl p-3 bg-accent/5 space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              <input value={localDom.nombre} onChange={e => setLocalDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.calle} onChange={e => setLocalDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.numero} onChange={e => setLocalDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.piso_depto} onChange={e => setLocalDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.codigo_postal} onChange={e => setLocalDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.ciudad} onChange={e => setLocalDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.provincia} onChange={e => setLocalDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              <button type="button" onClick={() => setEditandoDomId(null)} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
+                              <button type="button" onClick={() => saveDomicilio.mutate({ id: d.id, data: localDom })} disabled={!localDom.calle || saveDomicilio.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium disabled:opacity-50">{saveDomicilio.isPending ? 'Guardando…' : 'Guardar'}</button>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  ))}
+
+                  {/* Agregar nueva dirección (solo si hay cliente) */}
+                  {ventaSeleccionada?.clientes?.id && !showNuevoDom && (
+                    <button type="button" onClick={() => { setShowNuevoDom(true); setEditandoDomId(null) }}
+                      className="w-full flex items-center gap-1.5 p-2.5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-500 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors">
+                      <Plus size={14} /> Agregar nueva dirección
+                    </button>
+                  )}
+                  {showNuevoDom && (() => {
+                    const [newDom, setNewDom] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '' })
+                    return (
+                      <div className="border border-accent/30 rounded-xl p-3 bg-accent/5 space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={newDom.nombre} onChange={e => setNewDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias (ej: Casa)" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.calle} onChange={e => setNewDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.numero} onChange={e => setNewDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.piso_depto} onChange={e => setNewDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.codigo_postal} onChange={e => setNewDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.ciudad} onChange={e => setNewDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input value={newDom.provincia} onChange={e => setNewDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <button type="button" onClick={() => setShowNuevoDom(false)} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
+                          <button type="button" onClick={() => saveDomicilio.mutate({ data: newDom })} disabled={!newDom.calle || saveDomicilio.isPending} className="px-3 py-1.5 text-xs bg-accent text-white rounded-lg font-medium disabled:opacity-50">{saveDomicilio.isPending ? 'Guardando…' : 'Guardar'}</button>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* Opción manual */}
+                  <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
+                    ${form.destino_id === '' ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
+                    <input type="radio" checked={form.destino_id === ''}
+                      onChange={() => { setForm(f => ({ ...f, destino_id: '' })); setShowNuevoDom(false) }} className="accent-accent" />
+                    <span className="text-sm text-gray-600 dark:text-gray-300">Ingresar domicilio manualmente</span>
+                  </label>
+                  {form.destino_id === '' && !showNuevoDom && (
+                    <textarea value={form.destino_descripcion} onChange={e => setForm(f => ({ ...f, destino_descripcion: e.target.value }))}
+                      placeholder="Calle, número, ciudad, provincia, CP" rows={2}
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  )}
+                </div>
               </div>
 
+              {/* Tipo de envío */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tipo de envío</label>
+                <div className="flex gap-2">
+                  {(['propio', 'tercero'] as const).map(t => (
+                    <button key={t} type="button" onClick={() => setTipoEnvio(t)}
+                      className={`flex-1 py-2 rounded-xl text-sm font-medium border-2 transition-colors
+                        ${tipoEnvio === t ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent/50'}`}>
+                      {t === 'propio' ? '🚗 Envío propio' : '📦 Courier / tercero'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dirección de entrega — solo para envío propio */}
+              {tipoEnvio === 'propio' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Dirección de entrega
+                      {!sucursalActiva?.direccion && (
+                        <span className="ml-2 text-xs text-amber-500">⚠ Configurá la dirección de la sucursal para calcular distancia</span>
+                      )}
+                    </label>
+                    <AddressAutocompleteInput
+                      value={direccionEntrega}
+                      onChange={setDireccionEntrega}
+                      onPlaceSelected={(addr) => {
+                        setDireccionEntrega(addr)
+                        setForm(f => ({ ...f, destino_descripcion: addr }))
+                        calcularKmAuto(addr)
+                      }}
+                      savedAddresses={domiciliosFormateados}
+                      placeholder="Escribí la dirección de entrega…"
+                    />
+                  </div>
+                  {/* Resultado del cálculo */}
+                  <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-700 rounded-xl px-4 py-3">
+                    {calculandoKm ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <Loader2 size={14} className="animate-spin" /> Calculando distancia…
+                      </div>
+                    ) : distanciaKm !== null ? (
+                      <>
+                        <Navigation size={14} className="text-accent flex-shrink-0" />
+                        <div className="flex-1 text-sm">
+                          <span className="font-semibold text-primary">{distanciaKm} km</span>
+                          <span className="text-gray-400 mx-1">×</span>
+                          <span className="text-gray-600 dark:text-gray-400">${Number(sucursalActiva?.costo_km_envio ?? 0).toLocaleString('es-AR')}/km</span>
+                          <span className="text-gray-400 mx-1">=</span>
+                          <span className="font-semibold text-accent">${(distanciaKm * (sucursalActiva?.costo_km_envio ?? 0)).toLocaleString('es-AR', { minimumFractionDigits: 0 })}</span>
+                        </div>
+                        {!sucursalActiva?.costo_km_envio && (
+                          <span className="text-xs text-amber-500">Configurá el costo/km en Sucursales</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-sm text-gray-400">Ingresá la dirección para calcular distancia y costo automáticamente</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
-                {/* Courier */}
-                <div>
+                {/* Courier — solo tercero */}
+                <div className={tipoEnvio === 'propio' ? 'hidden' : ''}>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Courier</label>
                   <div className="relative">
-                    <select value={form.courier} onChange={e => setForm(f => ({ ...f, courier: e.target.value }))}
+                    <select value={form.courier} onChange={e => handleCourierChange(e.target.value)}
                       className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                       <option value="">Sin especificar</option>
                       {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -864,8 +973,8 @@ export default function EnviosPage() {
                     <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
-                {/* Servicio */}
-                <div>
+                {/* Servicio — solo tercero */}
+                <div className={tipoEnvio === 'propio' ? 'hidden' : ''}>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Servicio</label>
                   {form.courier && SERVICIOS_POR_COURIER[form.courier] ? (
                     <div className="relative">
@@ -889,20 +998,34 @@ export default function EnviosPage() {
                     placeholder="Código de seguimiento"
                     className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
-                {/* Canal */}
+                {/* Canal — auto-populado desde la venta, read-only si viene de una venta */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Canal de venta</label>
-                  <div className="relative">
-                    <select value={form.canal} onChange={e => setForm(f => ({ ...f, canal: e.target.value }))}
-                      className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-                      {CANALES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Canal de venta
+                    {ventaSeleccionada && <span className="ml-1 text-xs text-gray-400">(de la venta)</span>}
+                  </label>
+                  {ventaSeleccionada ? (
+                    <div className="border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400">
+                      {form.canal || 'POS'}
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <select value={form.canal} onChange={e => setForm(f => ({ ...f, canal: e.target.value }))}
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        {CANALES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                  )}
                 </div>
-                {/* Costo */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Costo de envío ($)</label>
+                {/* Costo — solo para tercero (propio calcula automáticamente arriba) */}
+                <div className={tipoEnvio === 'propio' ? 'hidden' : ''}>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Costo de envío ($)
+                    {form.courier && (courierTarifas as any[]).find(t => t.courier === form.courier) && (
+                      <span className="ml-1 text-xs text-accent">(tarifa configurada)</span>
+                    )}
+                  </label>
                   <input type="number" onWheel={e => e.currentTarget.blur()} value={form.costo_cotizado}
                     onChange={e => setForm(f => ({ ...f, costo_cotizado: e.target.value }))} placeholder="0" min="0"
                     className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />

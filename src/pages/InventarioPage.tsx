@@ -68,7 +68,7 @@ export default function InventarioPage() {
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { limits } = usePlanLimits()
-  const { sucursalId, applyFilter } = useSucursalFilter()
+  const { sucursalId, sucursales, puedeVerTodas, applyFilter } = useSucursalFilter()
 
   // ── Tab state ─────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<Tab>('inventario')
@@ -95,6 +95,8 @@ export default function InventarioPage() {
   const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
   const [rebajeUnitAlt, setRebajeUnitAlt] = useState<string | null>(null)
   const [ingresoEstructuraId, setIngresoEstructuraId] = useState('')
+  // Sucursal explícita para el ingreso (solo cuando Dueño está en vista global "todas")
+  const [ingresoSucursalId, setIngresoSucursalId] = useState<string | null>(null)
 
   // ── Inventario tab state ───────────────────────────────────────────────────
   const [invSearch, setInvSearch] = useState('')
@@ -204,6 +206,14 @@ export default function InventarioPage() {
   const [combinarMode, setCombinarMode] = useState<'fusionar' | 'madre'>('fusionar')
   const [combinarDestinoId, setCombinarDestinoId] = useState('')
   const [combinarParentLpn, setCombinarParentLpn] = useState('')
+  // Bulk actions
+  const [showBulkEstado, setShowBulkEstado] = useState(false)
+  const [showBulkUbicacion, setShowBulkUbicacion] = useState(false)
+  const [bulkEstadoId, setBulkEstadoId] = useState('')
+  const [bulkUbicacionId, setBulkUbicacionId] = useState('')
+  const [showBulkEditar, setShowBulkEditar] = useState(false)
+  const [bulkEditForm, setBulkEditForm] = useState({ sucursal_id: '', nro_lote: '', fecha_vencimiento: '', proveedor_id: '' })
+  const [bulkEditCampos, setBulkEditCampos] = useState({ sucursal: false, lote: false, vencimiento: false, proveedor: false })
 
   // ── Shared queries ─────────────────────────────────────────────────────────
   const { data: estados = [] } = useQuery({
@@ -306,7 +316,7 @@ export default function InventarioPage() {
   })
 
   const { data: lineasProducto = [] } = useQuery({
-    queryKey: ['lineas-producto', selectedProduct?.id],
+    queryKey: ['lineas-producto', selectedProduct?.id, sucursalId],
     queryFn: async () => {
       const tieneSeries = (selectedProduct as any).tiene_series
       let q = supabase.from('inventario_lineas')
@@ -315,6 +325,7 @@ export default function InventarioPage() {
         .eq('activo', true)
         .order('created_at', { ascending: true })
       if (!tieneSeries) q = q.gt('cantidad', 0)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       const { data } = await q
       const sortFn = getRebajeSort(
         (selectedProduct as any).regla_inventario,
@@ -372,7 +383,7 @@ export default function InventarioPage() {
 
   // ── Kits queries ───────────────────────────────────────────────────────────
   const { data: kitsProductos = [] } = useQuery({
-    queryKey: ['kits-productos', tenant?.id, kitSearch],
+    queryKey: ['kits-productos', tenant?.id, kitSearch, sucursalId],
     queryFn: async () => {
       let q = supabase.from('productos')
         .select('id, nombre, sku, stock_actual, unidad_medida, es_kit')
@@ -385,7 +396,7 @@ export default function InventarioPage() {
   })
 
   const { data: recetasMap = {} } = useQuery({
-    queryKey: ['kit-recetas', tenant?.id],
+    queryKey: ['kit-recetas', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data } = await supabase.from('kit_recetas')
         .select('*, componente:comp_producto_id(id, nombre, sku, stock_actual, unidad_medida)')
@@ -401,7 +412,7 @@ export default function InventarioPage() {
   })
 
   const { data: kitsEnArmado = [] } = useQuery({
-    queryKey: ['kits-en-armado', tenant?.id],
+    queryKey: ['kits-en-armado', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data } = await supabase.from('kitting_log')
         .select('*, kit:kit_producto_id(nombre, sku)')
@@ -412,6 +423,40 @@ export default function InventarioPage() {
     },
     enabled: !!tenant && tab === 'kits',
   })
+
+  // Stock por sucursal de kits + componentes (reemplaza productos.stock_actual global)
+  const { data: stockKitsSucursal = {} } = useQuery({
+    queryKey: ['stock-kits-sucursal', tenant?.id, sucursalId, kitsProductos.map(k => k.id).join(',')],
+    queryFn: async () => {
+      const allIds = new Set<string>()
+      kitsProductos.forEach(k => allIds.add(k.id))
+      Object.entries(recetasMap).forEach(([kitId, rs]) => {
+        allIds.add(kitId)
+        ;(rs as any[]).forEach(r => allIds.add(r.comp_producto_id))
+      })
+      if (allIds.size === 0) return {}
+      const { data } = await supabase
+        .from('inventario_lineas')
+        .select('producto_id, cantidad')
+        .eq('tenant_id', tenant!.id)
+        .eq('sucursal_id', sucursalId!)
+        .eq('activo', true)
+        .in('producto_id', [...allIds])
+      const map: Record<string, number> = {}
+      for (const l of data ?? []) {
+        map[l.producto_id] = (map[l.producto_id] ?? 0) + (Number(l.cantidad) || 0)
+      }
+      return map
+    },
+    enabled: !!tenant && tab === 'kits' && !!sucursalId && kitsProductos.length > 0,
+    staleTime: 0,
+  })
+
+  // Helper: stock en sucursal activa para kits/componentes (fallback a stock_actual global)
+  function kStock(productoId: string, globalStock: number): number {
+    if (!sucursalId) return globalStock
+    return stockKitsSucursal[productoId] ?? 0
+  }
 
   const { data: compsBusqueda = [] } = useQuery({
     queryKey: ['productos-comps-busqueda', tenant?.id, recetaCompSearch, showRecetaForm],
@@ -431,12 +476,14 @@ export default function InventarioPage() {
   const { data: conteoHistorial = [] } = useQuery({
     queryKey: ['conteo-historial', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase
+      let q = supabase
         .from('inventario_conteos')
-        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida))')
+        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida)), users:created_by(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(30)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return (data ?? []) as InventarioConteo[]
     },
     enabled: !!tenant && tab === 'conteo',
@@ -462,8 +509,8 @@ export default function InventarioPage() {
     enabled: !!tenant && tab === 'historial',
   })
 
-  // ── Autorizaciones (lazy, solo OWNER/SUPERVISOR/ADMIN) ─────────────────────
-  const puedeVerAutorizaciones = ['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
+  // ── Autorizaciones (lazy, solo Dueño/SUPERVISOR/ADMIN) ─────────────────────
+  const puedeVerAutorizaciones = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
 
   const { data: autorizaciones = [], isLoading: autLoading, refetch: refetchAut } = useQuery({
     queryKey: ['autorizaciones_inventario', tenant?.id, autEstado],
@@ -480,6 +527,41 @@ export default function InventarioPage() {
     enabled: !!tenant && tab === 'autorizaciones' && puedeVerAutorizaciones,
   })
 
+  // ── Helper: stock por sucursal activa (o global si no hay sucursal) ──────────
+  // Uso: movimientos_stock.stock_antes / stock_despues + display en formularios
+  async function getStockAntesSucursal(productoId: string, efectivaSucId: string | null): Promise<number> {
+    if (efectivaSucId) {
+      const { data } = await supabase
+        .from('inventario_lineas')
+        .select('cantidad')
+        .eq('tenant_id', tenant!.id)
+        .eq('producto_id', productoId)
+        .eq('sucursal_id', efectivaSucId)
+        .eq('activo', true)
+      return (data ?? []).reduce((s: number, l: any) => s + (Number(l.cantidad) || 0), 0)
+    }
+    const { data } = await supabase.from('productos').select('stock_actual').eq('id', productoId).single()
+    return data?.stock_actual ?? 0
+  }
+
+  // Query reactiva: stock del producto seleccionado en la sucursal activa (para display en formularios)
+  const effSucursalIngreso = sucursalId ?? ingresoSucursalId
+  const { data: stockEnSucursal } = useQuery({
+    queryKey: ['stock-en-sucursal', selectedProduct?.id, effSucursalIngreso],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('inventario_lineas')
+        .select('cantidad')
+        .eq('tenant_id', tenant!.id)
+        .eq('producto_id', selectedProduct!.id)
+        .eq('sucursal_id', effSucursalIngreso!)
+        .eq('activo', true)
+      return (data ?? []).reduce((s: number, l: any) => s + (Number(l.cantidad) || 0), 0)
+    },
+    enabled: !!selectedProduct && !!effSucursalIngreso,
+    staleTime: 0,
+  })
+
   const aprobarAutorizacion = useMutation({
     mutationFn: async (aut: any) => {
       const linea = aut.inventario_lineas
@@ -489,8 +571,8 @@ export default function InventarioPage() {
         if (error) throw error
         const diff = cantidad_nueva - cantidad_anterior
         if (Math.abs(diff) > 0.001) {
-          const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
-          const stockAntes = prod?.stock_actual ?? 0
+          const lineaSucId = linea?.sucursal_id ?? null
+          const stockAntes = await getStockAntesSucursal(linea?.producto_id, lineaSucId)
           await supabase.from('movimientos_stock').insert({
             tenant_id: tenant!.id, producto_id: linea?.producto_id,
             tipo: diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje',
@@ -499,20 +581,22 @@ export default function InventarioPage() {
             stock_despues: Math.max(0, stockAntes + diff),
             motivo: `Ajuste aprobado — LPN ${linea?.lpn}`,
             usuario_id: user?.id,
+            sucursal_id: lineaSucId,
           })
         }
       } else if (aut.tipo === 'eliminar_serie') {
         const { serie_id } = aut.datos_cambio
         const { error } = await supabase.from('inventario_series').update({ activo: false }).eq('id', serie_id)
         if (error) throw error
-        const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
-        const stockAntes = prod?.stock_actual ?? 0
+        const lineaSucId = linea?.sucursal_id ?? null
+        const stockAntes = await getStockAntesSucursal(linea?.producto_id, lineaSucId)
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: linea?.producto_id,
           tipo: 'rebaje', cantidad: 1,
           stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - 1),
           motivo: `Serie eliminada (aprobada) — LPN ${linea?.lpn}`,
           usuario_id: user?.id,
+          sucursal_id: lineaSucId,
         })
       } else if (aut.tipo === 'eliminar_lpn') {
         const cantEliminada = aut.datos_cambio.cantidad ?? linea?.cantidad ?? 0
@@ -520,28 +604,41 @@ export default function InventarioPage() {
         const { error } = await supabase.from('inventario_lineas').update({ activo: false, cantidad: 0 }).eq('id', aut.linea_id)
         if (error) throw error
         if (cantEliminada > 0) {
-          const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', linea?.producto_id).single()
-          const stockAntes = prod?.stock_actual ?? 0
+          const lineaSucId = linea?.sucursal_id ?? null
+          const stockAntes = await getStockAntesSucursal(linea?.producto_id, lineaSucId)
           await supabase.from('movimientos_stock').insert({
             tenant_id: tenant!.id, producto_id: linea?.producto_id,
             tipo: 'rebaje', cantidad: cantEliminada,
             stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - cantEliminada),
             motivo: `LPN eliminado (aprobado) — ${linea?.lpn}`,
             usuario_id: user?.id,
+            sucursal_id: lineaSucId,
           })
+        }
+      } else if (aut.tipo === 'bulk_edit') {
+        const { linea_ids, campos } = aut.datos_cambio as { linea_ids: string[]; campos: Record<string, any> }
+        if (linea_ids?.length && Object.keys(campos).length) {
+          const { error } = await supabase.from('inventario_lineas').update(campos).in('id', linea_ids)
+          if (error) throw error
         }
       }
       await supabase.from('autorizaciones_inventario').update({ estado: 'aprobada', aprobado_por: user?.id }).eq('id', aut.id)
-      // Registrar en historial de actividad para que aparezca en /historial
-      const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad' : aut.tipo === 'eliminar_serie' ? 'Eliminación de serie' : 'Eliminación de LPN'
+      const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad'
+        : aut.tipo === 'eliminar_serie' ? 'Eliminación de serie'
+        : aut.tipo === 'eliminar_lpn' ? 'Eliminación de LPN'
+        : 'Edición masiva de atributos'
       logActividad({
         entidad: 'inventario_linea',
-        entidad_id: aut.linea_id,
-        entidad_nombre: linea?.productos?.nombre ?? linea?.lpn ?? aut.linea_id,
+        entidad_id: aut.linea_id ?? '',
+        entidad_nombre: aut.tipo === 'bulk_edit'
+          ? `Bulk edit — ${(aut.datos_cambio?.linea_ids?.length ?? 0)} LPN(s)`
+          : (linea?.productos?.nombre ?? linea?.lpn ?? aut.linea_id),
         accion: 'editar',
         campo: aut.tipo,
         valor_anterior: String(aut.datos_cambio?.cantidad_anterior ?? ''),
-        valor_nuevo: String(aut.datos_cambio?.cantidad_nueva ?? aut.datos_cambio?.cantidad ?? ''),
+        valor_nuevo: aut.tipo === 'bulk_edit'
+          ? JSON.stringify(aut.datos_cambio?.campos ?? {})
+          : String(aut.datos_cambio?.cantidad_nueva ?? aut.datos_cambio?.cantidad ?? ''),
         pagina: '/inventario',
       })
     },
@@ -567,6 +664,90 @@ export default function InventarioPage() {
       setAutRechazoId(null)
       setAutMotivoRechazo('')
       qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ── Bulk actions en LPNs ─────────────────────────────────────────────────
+  const bulkCambiarEstado = useMutation({
+    mutationFn: async (estadoId: string) => {
+      const { error } = await supabase
+        .from('inventario_lineas')
+        .update({ estado_id: estadoId })
+        .in('id', selectedLineas)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success(`Estado actualizado en ${selectedLineas.length} LPN(s)`)
+      setSelectedLineas([]); setSelectedLineasInfo([])
+      setShowBulkEstado(false); setBulkEstadoId('')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const bulkCambiarUbicacion = useMutation({
+    mutationFn: async (ubicacionId: string) => {
+      const { error } = await supabase
+        .from('inventario_lineas')
+        .update({ ubicacion_id: ubicacionId })
+        .in('id', selectedLineas)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success(`Ubicación actualizada en ${selectedLineas.length} LPN(s)`)
+      setSelectedLineas([]); setSelectedLineasInfo([])
+      setShowBulkUbicacion(false); setBulkUbicacionId('')
+      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const bulkEditarAtributos = useMutation({
+    mutationFn: async () => {
+      if (selectedLineas.length === 0) throw new Error('No hay LPNs seleccionados')
+      const esDeposito = user?.rol === 'DEPOSITO'
+
+      // Construir payload de campos a cambiar
+      const campos: Record<string, any> = {}
+      if (bulkEditCampos.sucursal && bulkEditForm.sucursal_id !== '') campos.sucursal_id = bulkEditForm.sucursal_id || null
+      if (bulkEditCampos.lote)      campos.nro_lote = bulkEditForm.nro_lote.trim() || null
+      if (bulkEditCampos.vencimiento) campos.fecha_vencimiento = bulkEditForm.fecha_vencimiento || null
+      if (bulkEditCampos.proveedor && bulkEditForm.proveedor_id !== '') campos.proveedor_id = bulkEditForm.proveedor_id || null
+
+      if (Object.keys(campos).length === 0) throw new Error('Seleccioná al menos un campo para cambiar')
+
+      if (esDeposito) {
+        const { error } = await supabase.from('autorizaciones_inventario').insert({
+          tenant_id: tenant!.id,
+          tipo: 'bulk_edit',
+          linea_id: null,
+          datos_cambio: { linea_ids: selectedLineas, campos },
+          estado: 'pendiente',
+          solicitado_por: user?.id,
+        })
+        if (error) throw error
+        return { esAutorizacion: true }
+      }
+
+      const { error } = await supabase
+        .from('inventario_lineas')
+        .update(campos)
+        .in('id', selectedLineas)
+      if (error) throw error
+    },
+    onSuccess: (result: any) => {
+      if (result?.esAutorizacion) {
+        toast.success(`Solicitud de edición enviada — ${selectedLineas.length} LPN(s) pendientes de aprobación`)
+        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+      } else {
+        toast.success(`${selectedLineas.length} LPN(s) actualizados`)
+        qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      }
+      setSelectedLineas([]); setSelectedLineasInfo([])
+      setShowBulkEditar(false)
+      setBulkEditForm({ sucursal_id: '', nro_lote: '', fecha_vencimiento: '', proveedor_id: '' })
+      setBulkEditCampos({ sucursal: false, lote: false, vencimiento: false, proveedor: false })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -655,6 +836,9 @@ export default function InventarioPage() {
       if (limits && !limits.puede_crear_movimiento)
         throw new Error('Límite de movimientos del plan alcanzado. Upgradeá tu plan o comprá movimientos extra.')
       if (!selectedProduct) throw new Error('Seleccioná un producto')
+      // Validar sucursal: si no hay sucursal activa ni seleccionada en el form, bloquear
+      if (!sucursalId && !ingresoSucursalId)
+        throw new Error('Seleccioná una sucursal de destino para el ingreso antes de confirmar.')
       const tieneSeries = (selectedProduct as any).tiene_series
       const tieneLote = (selectedProduct as any).tiene_lote
       const tieneVencimiento = (selectedProduct as any).tiene_vencimiento
@@ -705,8 +889,7 @@ export default function InventarioPage() {
         }
       }
 
-      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', selectedProduct.id).single()
-      const stockAntes = prodAntes?.stock_actual ?? 0
+      const stockAntes = await getStockAntesSucursal(selectedProduct.id, sucursalId ?? ingresoSucursalId ?? null)
 
       const { data: linea, error: lineaError } = await supabase
         .from('inventario_lineas')
@@ -723,6 +906,7 @@ export default function InventarioPage() {
           precio_costo_snapshot: (selectedProduct as any).precio_costo || null,
           precio_venta_snapshot: (selectedProduct as any).precio_venta || null,
           estructura_id: ingresoEstructuraId || null,
+          sucursal_id: sucursalId ?? ingresoSucursalId ?? null,
         })
         .select().single()
       if (lineaError) throw lineaError
@@ -784,8 +968,7 @@ export default function InventarioPage() {
       if (!selectedProduct || !rebajeLinea) throw new Error('Seleccioná producto y línea')
       const tieneSeries = (selectedProduct as any).tiene_series
 
-      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', selectedProduct.id).single()
-      const stockAntes = prodAntes?.stock_actual ?? 0
+      const stockAntes = await getStockAntesSucursal(selectedProduct.id, sucursalId)
 
       if (tieneSeries) {
         if (rebajeSeries.length === 0) throw new Error('Seleccioná al menos una serie')
@@ -891,13 +1074,13 @@ export default function InventarioPage() {
       const recetas = recetasMap[kittingKitId] ?? []
       if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
 
-      // 1. Verificar stock disponible (neto de reservas) de cada componente
+      // 1. Verificar stock disponible en la sucursal activa
       for (const r of recetas) {
         const comp = r.componente as any
         const requerido = r.cantidad * cant
-        const disponible = (comp?.stock_actual ?? 0) - 0 // stock_actual ya tiene en cuenta reservas en el trigger
+        const disponible = kStock(r.comp_producto_id, comp?.stock_actual ?? 0)
         if (disponible < requerido) {
-          throw new Error(`Stock insuficiente de ${comp?.nombre ?? r.comp_producto_id}: necesitás ${requerido} ${comp?.unidad_medida ?? ''}, hay ${comp?.stock_actual ?? 0}`)
+          throw new Error(`Stock insuficiente de ${comp?.nombre ?? r.comp_producto_id}: necesitás ${requerido} ${comp?.unidad_medida ?? ''}, hay ${disponible}${sucursalId ? ' (en esta sucursal)' : ''}`)
         }
       }
 
@@ -905,10 +1088,12 @@ export default function InventarioPage() {
       const componentesReservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = []
       for (const r of recetas) {
         const cantComp = r.cantidad * cant
-        const { data: lineas } = await supabase.from('inventario_lineas')
+        let lineasQ = supabase.from('inventario_lineas')
           .select('id, cantidad, cantidad_reservada')
           .eq('tenant_id', tenant!.id).eq('producto_id', r.comp_producto_id).eq('activo', true)
           .order('created_at', { ascending: true })
+        if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
+        const { data: lineas } = await lineasQ
 
         let restante = cantComp
         for (const linea of lineas ?? []) {
@@ -963,12 +1148,14 @@ export default function InventarioPage() {
         cantsByComp[entry.comp_producto_id] = (cantsByComp[entry.comp_producto_id] ?? 0) + entry.cantidad
       }
       for (const [prodId, cantTotal] of Object.entries(cantsByComp)) {
+        const saComp = await getStockAntesSucursal(prodId, sucursalId)
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: prodId,
           tipo: 'rebaje', cantidad: cantTotal,
-          stock_antes: 0, stock_despues: 0,
+          stock_antes: saComp, stock_despues: Math.max(0, saComp - cantTotal),
           motivo: `Kitting x${log.cantidad_kits} [${log.kit_producto_id}]`,
           usuario_id: user?.id ?? null,
+          sucursal_id: sucursalId || null,
         })
       }
 
@@ -976,13 +1163,16 @@ export default function InventarioPage() {
       await supabase.from('inventario_lineas').insert({
         tenant_id: tenant!.id, producto_id: log.kit_producto_id,
         cantidad: log.cantidad_kits, ubicacion_id: log.ubicacion_id ?? null, activo: true,
+        sucursal_id: sucursalId || null,
       })
+      const saKit = await getStockAntesSucursal(log.kit_producto_id, sucursalId)
       await supabase.from('movimientos_stock').insert({
         tenant_id: tenant!.id, producto_id: log.kit_producto_id,
         tipo: 'kitting', cantidad: log.cantidad_kits,
-        stock_antes: 0, stock_despues: 0,
+        stock_antes: saKit, stock_despues: saKit + log.cantidad_kits,
         motivo: log.notas || `Kitting x${log.cantidad_kits}`,
         usuario_id: user?.id ?? null,
+        sucursal_id: sucursalId || null,
       })
 
       // 3. Marcar log como completado
@@ -1033,10 +1223,12 @@ export default function InventarioPage() {
       const recetas = recetasMap[desarmarKitId] ?? []
       if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
 
-      // 1. Verificar que hay stock suficiente del KIT en inventario_lineas
-      const { data: lineasKit } = await supabase.from('inventario_lineas')
+      // 1. Verificar que hay stock suficiente del KIT en inventario_lineas (filtrado por sucursal)
+      let lineasKitQ = supabase.from('inventario_lineas')
         .select('id, cantidad, cantidad_reservada')
         .eq('tenant_id', tenant!.id).eq('producto_id', desarmarKitId).eq('activo', true)
+      if (sucursalId) lineasKitQ = lineasKitQ.eq('sucursal_id', sucursalId)
+      const { data: lineasKit } = await lineasKitQ
       const stockDisponibleKit = (lineasKit ?? []).reduce((s: number, l: any) => s + (l.cantidad - (l.cantidad_reservada ?? 0)), 0)
       if (stockDisponibleKit < cant) {
         throw new Error(`Stock insuficiente del KIT: necesitás ${cant}, hay ${stockDisponibleKit} disponibles`)
@@ -1052,12 +1244,14 @@ export default function InventarioPage() {
         await supabase.from('inventario_lineas').update({ cantidad: linea.cantidad - aRebajar }).eq('id', linea.id)
         restanteKit -= aRebajar
       }
+      const saKitDes = await getStockAntesSucursal(desarmarKitId, sucursalId)
       await supabase.from('movimientos_stock').insert({
         tenant_id: tenant!.id, producto_id: desarmarKitId,
         tipo: 'des_kitting', cantidad: cant,
-        stock_antes: 0, stock_despues: 0,
+        stock_antes: saKitDes, stock_despues: Math.max(0, saKitDes - cant),
         motivo: desarmarNotas || `Desarmado x${cant}`,
         usuario_id: user?.id ?? null,
+        sucursal_id: sucursalId || null,
       })
 
       // 3. Ingreso de cada componente según receta
@@ -1066,13 +1260,16 @@ export default function InventarioPage() {
         await supabase.from('inventario_lineas').insert({
           tenant_id: tenant!.id, producto_id: r.comp_producto_id,
           cantidad: cantComp, activo: true,
+          sucursal_id: sucursalId || null,
         })
+        const saComp = await getStockAntesSucursal(r.comp_producto_id, sucursalId)
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: r.comp_producto_id,
           tipo: 'ingreso', cantidad: cantComp,
-          stock_antes: 0, stock_despues: 0,
+          stock_antes: saComp, stock_despues: saComp + cantComp,
           motivo: `Desarmado KIT x${cant} [${desarmarKitId}]`,
           usuario_id: user?.id ?? null,
+          sucursal_id: sucursalId || null,
         })
       }
 
@@ -1109,6 +1306,7 @@ export default function InventarioPage() {
       } else {
         q = q.eq('producto_id', conteoRefId)
       }
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       const { data } = await q
       const rows: ConteoRow[] = (data ?? []).map((l: any) => {
         const prod = l.productos ?? {}
@@ -1188,12 +1386,12 @@ export default function InventarioPage() {
         const diff = contada - row.cantidad_esperada
         if (Math.abs(diff) < 0.001) continue
         await supabase.from('inventario_lineas').update({ cantidad: contada, activo: contada > 0 }).eq('id', row.linea_id)
-        const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', row.producto_id).single()
+        const stockAntes = await getStockAntesSucursal(row.producto_id, sucursalId)
         await supabase.from('movimientos_stock').insert({
           tenant_id: tenant!.id, producto_id: row.producto_id,
           tipo: diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje', cantidad: Math.abs(diff),
-          stock_antes: prodAntes?.stock_actual ?? 0,
-          stock_despues: Math.max(0, (prodAntes?.stock_actual ?? 0) + diff),
+          stock_antes: stockAntes,
+          stock_despues: Math.max(0, stockAntes + diff),
           motivo: `Conteo de inventario${row.lpn ? ` — LPN ${row.lpn}` : ` — ${row.sku}`}`,
           usuario_id: user?.id, linea_id: row.linea_id, sucursal_id: sucursalId || null,
         })
@@ -1222,6 +1420,7 @@ export default function InventarioPage() {
     setIngresoMotivoSelect(''); setRebajeMotivoSelect('')
     setIngresoUnitAlt(null); setRebajeUnitAlt(null)
     setIngresoEstructuraId('')
+    setIngresoSucursalId(null)
   }
 
   useModalKeyboard({
@@ -1232,6 +1431,52 @@ export default function InventarioPage() {
       if (modal === 'rebaje' && !rebajeMutation.isPending) rebajeMutation.mutate()
     },
   })
+
+  // ── Shortcuts de teclado por tab (cuando no hay modal abierto) ────────────
+  useEffect(() => {
+    if (modal !== null || lpnAcciones) return // modal ya abierto, lo maneja useModalKeyboard
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      const enInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+
+      // ── Tab Agregar Stock ──────────────────────────────────────────────────
+      if (tab === 'agregar') {
+        if (e.key === 'Enter' && !enInput) { e.preventDefault(); setModal('ingreso') }
+        if (e.key === 'Escape') { e.preventDefault(); setSelectedProduct(null); setForm(emptyIngreso) }
+      }
+
+      // ── Tab Quitar Stock ───────────────────────────────────────────────────
+      if (tab === 'quitar') {
+        if (e.key === 'Enter' && !enInput) { e.preventDefault(); setModal('rebaje') }
+        if (e.key === 'Escape') { e.preventDefault(); setSelectedProduct(null); setRebajeLinea(null) }
+      }
+
+      // ── Tab Conteos ────────────────────────────────────────────────────────
+      if (tab === 'conteo') {
+        if (e.key === 'Escape' && showConteoForm) {
+          e.preventDefault()
+          resetConteoForm()
+          return
+        }
+        if (e.key === 'Enter' && !enInput) {
+          e.preventDefault()
+          if (!showConteoForm) {
+            // Estado 1: abrir nuevo conteo
+            setShowConteoForm(true)
+          } else if (conteoRows.length === 0 && conteoRefId && !conteoLoading) {
+            // Estado 2: cargar stock (solo si hay ubicación/SKU seleccionado)
+            cargarLineasParaConteo()
+          } else if (conteoRows.length > 0 && !finalizarConteoYAplicar.isPending) {
+            // Estado 3: finalizar y aplicar ajustes
+            finalizarConteoYAplicar.mutate()
+          }
+        }
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [tab, modal, lpnAcciones, showConteoForm, conteoRows.length, conteoRefId,
+      conteoLoading, finalizarConteoYAplicar.isPending])
 
   const handleBarcodeScan = async (code: string) => {
     setMovScannerOpen(false)
@@ -1329,8 +1574,8 @@ export default function InventarioPage() {
           if (row.tiene_lote && !row.nro_lote.trim()) { errores.push(`${row.sku}: requiere lote`); continue }
           if (row.tiene_vencimiento && !row.fecha_vencimiento) { errores.push(`${row.sku}: requiere vencimiento`); continue }
 
-          const { data: prodAntes } = await supabase.from('productos').select('stock_actual,precio_costo,precio_venta').eq('id', row.producto_id).single()
-          const stockAntes = prodAntes?.stock_actual ?? 0
+          const { data: prodAntes } = await supabase.from('productos').select('precio_costo,precio_venta').eq('id', row.producto_id).single()
+          const stockAntes = await getStockAntesSucursal(row.producto_id, sucursalId)
 
           const { data: linea, error: lineaError } = await supabase.from('inventario_lineas').insert({
             tenant_id: tenant!.id,
@@ -1343,6 +1588,7 @@ export default function InventarioPage() {
             fecha_vencimiento: row.fecha_vencimiento || null,
             precio_costo_snapshot: (prodAntes as any)?.precio_costo ?? null,
             precio_venta_snapshot: (prodAntes as any)?.precio_venta ?? null,
+            sucursal_id: sucursalId ?? null,
           }).select().single()
           if (lineaError) { errores.push(`${row.sku}: ${lineaError.message}`); continue }
 
@@ -1922,8 +2168,10 @@ export default function InventarioPage() {
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Producto</th>
                       <th className="text-center px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Tipo</th>
                       <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400">Cantidad</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock prev.</th>
-                      <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock nuevo</th>
+                      {tab === 'historial' && <>
+                        <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock prev.</th>
+                        <th className="text-right px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden md:table-cell">Stock nuevo</th>
+                      </>}
                       <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-gray-400 hidden lg:table-cell">Motivo</th>
                       <th className="px-4 py-3 w-8" />
                     </tr>
@@ -1947,8 +2195,10 @@ export default function InventarioPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{m.cantidad}</td>
-                        <td className="px-4 py-3 text-right text-gray-400 dark:text-gray-500 hidden md:table-cell">{m.stock_antes}</td>
-                        <td className="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300 hidden md:table-cell">{m.stock_despues}</td>
+                        {tab === 'historial' && <>
+                          <td className="px-4 py-3 text-right text-gray-400 dark:text-gray-500 hidden md:table-cell">{m.stock_antes}</td>
+                          <td className="px-4 py-3 text-right font-medium text-gray-700 dark:text-gray-300 hidden md:table-cell">{m.stock_despues}</td>
+                        </>}
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden lg:table-cell">
                           <span>{m.motivo ?? '—'}</span>
                           {m.venta_id && (
@@ -2160,7 +2410,11 @@ export default function InventarioPage() {
                     <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-accent/30 rounded-xl px-4 py-3">
                       <div>
                         <p className="font-medium text-gray-800 dark:text-gray-100">{selectedProduct.nombre}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">SKU: {selectedProduct.sku} | Stock: {(selectedProduct as any).stock_actual}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          SKU: {selectedProduct.sku} | {effSucursalIngreso
+                            ? <>Stock en sucursal: <span className="font-semibold text-primary">{stockEnSucursal ?? '…'}</span></>
+                            : <>Stock total: {(selectedProduct as any).stock_actual}</>}
+                        </p>
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {(selectedProduct as any).tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1.5 py-0.5 rounded">Nº serie</span>}
                           {(selectedProduct as any).tiene_lote && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">Lote</span>}
@@ -2204,6 +2458,24 @@ export default function InventarioPage() {
 
                 {selectedProduct && (
                   <>
+                    {/* Selector de sucursal — solo para Dueño/SUPER en vista global "todas" */}
+                    {!sucursalId && puedeVerTodas && sucursales.length > 0 && (
+                      <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3">
+                        <label className="block text-sm font-medium text-amber-800 dark:text-amber-300 mb-1.5">
+                          Sucursal destino del ingreso *
+                        </label>
+                        <select value={ingresoSucursalId ?? ''}
+                          onChange={e => setIngresoSucursalId(e.target.value || null)}
+                          className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                          <option value="">Sin sucursal asignada</option>
+                          {(sucursales as any[]).map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.nombre}</option>
+                          ))}
+                        </select>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Estás en vista global. Elegí la sucursal donde va este stock.</p>
+                      </div>
+                    )}
+
                     <div className="mb-3">
                       <label className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         LPN
@@ -2427,7 +2699,11 @@ export default function InventarioPage() {
                     <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-accent/30 rounded-xl px-4 py-3">
                       <div>
                         <p className="font-medium text-gray-800 dark:text-gray-100">{selectedProduct.nombre}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Stock total: {(selectedProduct as any).stock_actual}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {sucursalId
+                            ? <>Stock en sucursal: <span className="font-semibold text-primary">{stockEnSucursal ?? '…'}</span></>
+                            : <>Stock total: {(selectedProduct as any).stock_actual}</>}
+                        </p>
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {(selectedProduct as any).tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1.5 py-0.5 rounded">Nº serie</span>}
                           {(selectedProduct as any).tiene_lote && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">Lote</span>}
@@ -2965,8 +3241,6 @@ export default function InventarioPage() {
                                       checked={selectedLineas.includes(l.id)}
                                       onChange={e => {
                                         if (e.target.checked) {
-                                          const otroProducto = selectedLineasInfo.length > 0 && selectedLineasInfo.some(x => x.producto_id !== l.producto_id)
-                                          if (otroProducto) { toast.error('Solo podés combinar LPNs del mismo producto'); return }
                                           setSelectedLineas(prev => [...prev, l.id])
                                           setSelectedLineasInfo(prev => [...prev, { id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento }])
                                         } else {
@@ -3104,21 +3378,209 @@ export default function InventarioPage() {
           )}
 
           {/* Barra flotante — LPNs seleccionados */}
-          {selectedLineas.length >= 2 && (
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-gray-800 border border-accent/40 rounded-2xl shadow-2xl px-5 py-3 flex items-center gap-4">
-              <span className="text-sm font-medium text-gray-800 dark:text-gray-100">
-                <span className="font-bold text-accent">{selectedLineas.length}</span> LPNs seleccionados
+          {selectedLineas.length >= 1 && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-gray-800 border border-accent/40 rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 flex-wrap max-w-[90vw]">
+              <span className="text-sm font-medium text-gray-800 dark:text-gray-100 flex-shrink-0">
+                <span className="font-bold text-accent">{selectedLineas.length}</span> LPN{selectedLineas.length !== 1 ? 's' : ''} seleccionado{selectedLineas.length !== 1 ? 's' : ''}
               </span>
               <button
                 onClick={() => { setSelectedLineas([]); setSelectedLineasInfo([]) }}
-                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1 rounded transition-colors">
+                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 px-2 py-1 rounded transition-colors flex-shrink-0">
                 Limpiar
               </button>
+              <div className="h-4 w-px bg-gray-200 dark:bg-gray-600 flex-shrink-0" />
               <button
-                onClick={() => { setCombinarDestinoId(''); setCombinarMode('fusionar'); setShowCombinarModal(true) }}
-                className="bg-accent text-white text-sm px-4 py-1.5 rounded-xl font-medium flex items-center gap-1.5 hover:bg-accent/90 transition-colors">
-                <Combine size={14} /> Combinar
+                onClick={() => { setBulkEstadoId(''); setShowBulkEstado(true) }}
+                className="text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+                Cambiar estado
               </button>
+              <button
+                onClick={() => { setBulkUbicacionId(''); setShowBulkUbicacion(true) }}
+                className="text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+                Cambiar ubicación
+              </button>
+              <button
+                onClick={() => { setShowBulkEditar(true); setBulkEditForm({ sucursal_id: '', nro_lote: '', fecha_vencimiento: '', proveedor_id: '' }); setBulkEditCampos({ sucursal: false, lote: false, vencimiento: false, proveedor: false }) }}
+                className="text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border border-violet-200 dark:border-violet-700 text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors flex-shrink-0">
+                Editar atributos
+              </button>
+              {selectedLineas.length >= 2 && selectedLineasInfo.every(l => l.producto_id === selectedLineasInfo[0]?.producto_id) && (
+                <button
+                  onClick={() => { setCombinarDestinoId(''); setCombinarMode('fusionar'); setShowCombinarModal(true) }}
+                  className="bg-accent text-white text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 hover:bg-accent/90 transition-colors flex-shrink-0">
+                  <Combine size={14} /> Combinar
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Modal bulk — cambiar estado */}
+          {showBulkEstado && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+                <h3 className="font-semibold text-primary">Cambiar estado — {selectedLineas.length} LPN{selectedLineas.length !== 1 ? 's' : ''}</h3>
+                <select value={bulkEstadoId} onChange={e => setBulkEstadoId(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                  <option value="">Seleccioná un estado</option>
+                  {(estados as any[]).map((e: any) => (
+                    <option key={e.id} value={e.id}>{e.nombre}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowBulkEstado(false)}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium">
+                    Cancelar
+                  </button>
+                  <button onClick={() => bulkCambiarEstado.mutate(bulkEstadoId)}
+                    disabled={!bulkEstadoId || bulkCambiarEstado.isPending}
+                    className="flex-1 bg-accent text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50">
+                    {bulkCambiarEstado.isPending ? 'Actualizando...' : 'Confirmar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal bulk — cambiar ubicación */}
+          {showBulkUbicacion && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+                <h3 className="font-semibold text-primary">Cambiar ubicación — {selectedLineas.length} LPN{selectedLineas.length !== 1 ? 's' : ''}</h3>
+                <select value={bulkUbicacionId} onChange={e => setBulkUbicacionId(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                  <option value="">Seleccioná una ubicación</option>
+                  {(ubicaciones as any[]).map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.nombre}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowBulkUbicacion(false)}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium">
+                    Cancelar
+                  </button>
+                  <button onClick={() => bulkCambiarUbicacion.mutate(bulkUbicacionId)}
+                    disabled={!bulkUbicacionId || bulkCambiarUbicacion.isPending}
+                    className="flex-1 bg-accent text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50">
+                    {bulkCambiarUbicacion.isPending ? 'Actualizando...' : 'Confirmar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal bulk — editar atributos (sucursal, lote, vencimiento, proveedor) */}
+          {showBulkEditar && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md shadow-xl max-h-[90vh] flex flex-col">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                  <div>
+                    <h3 className="font-semibold text-primary">Editar atributos — {selectedLineas.length} LPN{selectedLineas.length !== 1 ? 's' : ''}</h3>
+                    <p className="text-xs text-muted mt-0.5">Tildá los campos que querés cambiar</p>
+                  </div>
+                  <button onClick={() => setShowBulkEditar(false)} className="text-muted hover:text-primary"><X size={18} /></button>
+                </div>
+                <div className="overflow-y-auto flex-1 p-5 space-y-4">
+                  {user?.rol === 'DEPOSITO' && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-3 text-xs text-blue-700 dark:text-blue-400">
+                      Como DEPOSITO, el cambio quedará pendiente de aprobación por el Dueño o Supervisor.
+                    </div>
+                  )}
+
+                  {/* Sucursal */}
+                  {sucursales.length > 1 && (
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input type="checkbox" checked={bulkEditCampos.sucursal}
+                        onChange={e => setBulkEditCampos(p => ({ ...p, sucursal: e.target.checked }))}
+                        className="mt-2.5 accent-violet-600" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-primary mb-1">Sucursal</p>
+                        <select
+                          disabled={!bulkEditCampos.sucursal}
+                          value={bulkEditForm.sucursal_id}
+                          onChange={e => setBulkEditForm(p => ({ ...p, sucursal_id: e.target.value }))}
+                          className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary disabled:opacity-40">
+                          <option value="">Sin sucursal</option>
+                          {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                        </select>
+                      </div>
+                    </label>
+                  )}
+
+                  {/* Proveedor */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bulkEditCampos.proveedor}
+                      onChange={e => setBulkEditCampos(p => ({ ...p, proveedor: e.target.checked }))}
+                      className="mt-2.5 accent-violet-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-primary mb-1">Proveedor</p>
+                      <select
+                        disabled={!bulkEditCampos.proveedor}
+                        value={bulkEditForm.proveedor_id}
+                        onChange={e => setBulkEditForm(p => ({ ...p, proveedor_id: e.target.value }))}
+                        className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary disabled:opacity-40">
+                        <option value="">Sin proveedor</option>
+                        {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                      </select>
+                    </div>
+                  </label>
+
+                  {/* Nro. Lote */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bulkEditCampos.lote}
+                      onChange={e => setBulkEditCampos(p => ({ ...p, lote: e.target.checked }))}
+                      className="mt-2.5 accent-violet-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-primary mb-1">Nro. de lote</p>
+                      <input type="text"
+                        disabled={!bulkEditCampos.lote}
+                        value={bulkEditForm.nro_lote}
+                        onChange={e => setBulkEditForm(p => ({ ...p, nro_lote: e.target.value }))}
+                        placeholder="Ej: LOTE-2024-01 (vacío = borrar)"
+                        className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary disabled:opacity-40" />
+                    </div>
+                  </label>
+
+                  {/* Fecha vencimiento */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bulkEditCampos.vencimiento}
+                      onChange={e => setBulkEditCampos(p => ({ ...p, vencimiento: e.target.checked }))}
+                      className="mt-2.5 accent-violet-600" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-primary mb-1">Fecha de vencimiento</p>
+                      <input type="date"
+                        disabled={!bulkEditCampos.vencimiento}
+                        value={bulkEditForm.fecha_vencimiento}
+                        onChange={e => setBulkEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
+                        className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary disabled:opacity-40" />
+                    </div>
+                  </label>
+
+                  {/* Preview de qué se va a cambiar */}
+                  {Object.values(bulkEditCampos).some(Boolean) && (
+                    <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 text-xs text-muted space-y-0.5">
+                      <p className="font-medium text-primary mb-1">Cambios a aplicar en {selectedLineas.length} LPN(s):</p>
+                      {bulkEditCampos.sucursal && <p>· Sucursal → {(sucursales as any[]).find(s => s.id === bulkEditForm.sucursal_id)?.nombre ?? 'Sin sucursal'}</p>}
+                      {bulkEditCampos.proveedor && <p>· Proveedor → {(proveedores as any[]).find(p => p.id === bulkEditForm.proveedor_id)?.nombre ?? 'Sin proveedor'}</p>}
+                      {bulkEditCampos.lote && <p>· Lote → {bulkEditForm.nro_lote.trim() || '(borrar)'}</p>}
+                      {bulkEditCampos.vencimiento && <p>· Vencimiento → {bulkEditForm.fecha_vencimiento || '(borrar)'}</p>}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 p-5 border-t border-border-ds">
+                  <button onClick={() => setShowBulkEditar(false)}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium">
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => bulkEditarAtributos.mutate()}
+                    disabled={!Object.values(bulkEditCampos).some(Boolean) || bulkEditarAtributos.isPending}
+                    className="flex-1 bg-violet-600 hover:bg-violet-700 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50">
+                    {bulkEditarAtributos.isPending ? 'Procesando...'
+                      : user?.rol === 'DEPOSITO' ? 'Solicitar aprobación'
+                      : 'Aplicar cambios'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -3351,7 +3813,7 @@ export default function InventarioPage() {
                 const isExpanded = kitExpandedId === kit.id
                 // Stock mínimo disponible según recetas (cuántos kits se pueden armar)
                 const maxKits = recetas.length === 0 ? 0 : Math.floor(
-                  Math.min(...recetas.map(r => ((r.componente as any)?.stock_actual ?? 0) / r.cantidad))
+                  Math.min(...recetas.map(r => kStock(r.comp_producto_id, (r.componente as any)?.stock_actual ?? 0) / r.cantidad))
                 )
                 return (
                   <div key={kit.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -3364,7 +3826,7 @@ export default function InventarioPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{kit.nombre}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{kit.sku} · Stock: {kit.stock_actual} {kit.unidad_medida}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">{kit.sku} · Stock: {kStock(kit.id, kit.stock_actual)} {kit.unidad_medida}</p>
                         </div>
                         <div className="ml-auto flex items-center gap-2">
                           {recetas.length > 0 && (
@@ -3389,8 +3851,8 @@ export default function InventarioPage() {
                       {/* Botón desarmado inverso */}
                       <button
                         onClick={() => { setDesarmarKitId(kit.id); setShowDesarmarModal(true) }}
-                        disabled={recetas.length === 0 || kit.stock_actual <= 0}
-                        title={recetas.length === 0 ? 'Sin receta' : kit.stock_actual <= 0 ? 'Sin stock del KIT para desarmar' : 'Desarmar KIT → devuelve componentes al stock'}
+                        disabled={recetas.length === 0 || kStock(kit.id, kit.stock_actual) <= 0}
+                        title={recetas.length === 0 ? 'Sin receta' : kStock(kit.id, kit.stock_actual) <= 0 ? 'Sin stock del KIT para desarmar' : 'Desarmar KIT → devuelve componentes al stock'}
                         className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-xs font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0">
                         <RotateCcw size={13} /> Desarmar
                       </button>
@@ -3415,7 +3877,7 @@ export default function InventarioPage() {
                           <div className="space-y-2">
                             {recetas.map(r => {
                               const comp = r.componente as any
-                              const stockOk = (comp?.stock_actual ?? 0) >= r.cantidad
+                              const stockOk = kStock(r.comp_producto_id, comp?.stock_actual ?? 0) >= r.cantidad
                               return (
                                 <div key={r.id} className="flex items-center gap-3 text-sm">
                                   <div className="flex-1 min-w-0">
@@ -3424,7 +3886,7 @@ export default function InventarioPage() {
                                   </div>
                                   <span className="text-gray-600 dark:text-gray-400 text-xs">× {r.cantidad} {comp?.unidad_medida}</span>
                                   <span className={`text-xs px-1.5 py-0.5 rounded ${stockOk ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'}`}>
-                                    Stock: {comp?.stock_actual ?? '—'}
+                                    Stock: {kStock(r.comp_producto_id, comp?.stock_actual ?? 0)}
                                   </span>
                                   <button onClick={() => eliminarReceta.mutate(r.id)} title="Quitar componente"
                                     className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0">
@@ -3514,13 +3976,13 @@ export default function InventarioPage() {
                         {recetas.map(r => {
                           const comp = r.componente as any
                           const requerido = r.cantidad * cantNum
-                          const ok = (comp?.stock_actual ?? 0) >= requerido
+                          const ok = kStock(r.comp_producto_id, comp?.stock_actual ?? 0) >= requerido
                           return (
                             <div key={r.id} className="flex items-center justify-between text-sm">
                               <span className="text-gray-700 dark:text-gray-300">{comp?.nombre ?? r.comp_producto_id}</span>
                               <span className={`font-medium ${ok ? 'text-gray-900 dark:text-white' : 'text-red-600 dark:text-red-400'}`}>
                                 {requerido} {comp?.unidad_medida}
-                                {!ok && <span className="ml-1 text-xs">(falta {requerido - (comp?.stock_actual ?? 0)})</span>}
+                                {!ok && <span className="ml-1 text-xs">(falta {requerido - kStock(r.comp_producto_id, comp?.stock_actual ?? 0)})</span>}
                               </span>
                             </div>
                           )
@@ -3793,6 +4255,7 @@ export default function InventarioPage() {
                           </div>
                           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                             {new Date(c.created_at).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                            {(c as any).users?.nombre_display && <span className="ml-1">· {(c as any).users.nombre_display}</span>}
                             {' · '}{items.length} línea{items.length !== 1 ? 's' : ''}
                             {conDiff.length > 0 && <span className="text-red-500 ml-1">· {conDiff.length} con diferencia</span>}
                           </p>
@@ -3970,7 +4433,7 @@ export default function InventarioPage() {
                       <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
                         <RotateCcw size={16} className="text-orange-500" /> Desarmar KIT
                       </h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{kit?.nombre} · Stock: {kit?.stock_actual} {kit?.unidad_medida}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{kit?.nombre} · Stock: {kit ? kStock(kit.id, kit.stock_actual) : 0} {kit?.unidad_medida}</p>
                     </div>
                     <button onClick={() => setShowDesarmarModal(false)} className="text-gray-400 hover:text-gray-600">
                       <X size={20} />
@@ -3980,7 +4443,7 @@ export default function InventarioPage() {
                     <div>
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Cantidad de KITs a desarmar *</label>
                       <input value={desarmarCantidad} onChange={e => setDesarmarCantidad(e.target.value)}
-                        type="number" min="1" step="1" max={kit?.stock_actual}
+                        type="number" min="1" step="1" max={kit ? kStock(kit.id, kit.stock_actual) : 0}
                         onWheel={e => e.currentTarget.blur()}
                         className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-400/30" />
                     </div>

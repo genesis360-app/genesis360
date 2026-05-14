@@ -186,6 +186,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
   // ── Validación ─────────────────────────────────────────────────────────────
 
   function validate(): string | null {
+    if (tipo === 'ingreso' && !sucursalId) return 'Seleccioná una sucursal en el header antes de hacer un ingreso masivo.'
     if (items.length === 0) return 'Agregá al menos un producto.'
     for (const it of items) {
       if (tipo === 'rebaje' && it.tieneSeries) continue  // se ignoran en rebaje

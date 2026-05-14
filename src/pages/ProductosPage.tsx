@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/authStore'
 import toast from 'react-hot-toast'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -417,6 +418,7 @@ export default function ProductosPage() {
   const qc = useQueryClient()
   const { limits } = usePlanLimits()
   const { cotizacion } = useCotizacion()
+  const { applyFilter, sucursalId } = useSucursalFilter()
 
   const [tab, setTab] = useState<Tab>('productos')
 
@@ -482,18 +484,20 @@ export default function ProductosPage() {
 
   // Stock disponible para venta (solo líneas en estados con es_disponible_venta = true)
   const { data: stockDisponibleMap = {} } = useQuery({
-    queryKey: ['stock-disponible-map', tenant?.id],
+    queryKey: ['stock-disponible-map', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data: evData } = await supabase
         .from('estados_inventario').select('id')
         .eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
       const evIds = (evData ?? []).map((e: any) => e.id)
       if (evIds.length === 0) return {}
-      const { data: lineas } = await supabase
-        .from('inventario_lineas')
-        .select('producto_id, cantidad, cantidad_reservada, inventario_series(id, activo)')
-        .eq('tenant_id', tenant!.id).eq('activo', true)
-        .in('estado_id', evIds)
+      const { data: lineas } = await applyFilter(
+        supabase
+          .from('inventario_lineas')
+          .select('producto_id, cantidad, cantidad_reservada, inventario_series(id, activo)')
+          .eq('tenant_id', tenant!.id).eq('activo', true)
+          .in('estado_id', evIds)
+      )
       const map: Record<string, number> = {}
       for (const l of lineas ?? []) {
         const pid = (l as any).producto_id
@@ -1068,9 +1072,10 @@ export default function ProductosPage() {
                   )}
                 </div>
                 {filtered.map(p => {
-                  const stock   = (p as any).stock_actual ?? 0
-                  const critico = stock <= (p as any).stock_minimo
-                  const expanded = expandedId === p.id
+                  const stock      = (p as any).stock_actual ?? 0
+                  const disponible = stockDisponibleMap[p.id] ?? 0
+                  const critDisp   = disponible <= (p as any).stock_minimo
+                  const expanded   = expandedId === p.id
 
                   return (
                     <div key={p.id}>
@@ -1121,17 +1126,11 @@ export default function ProductosPage() {
 
                         <div className="text-right flex-shrink-0 space-y-0.5">
                           {/* Stock disponible para venta */}
-                          {(() => {
-                            const disponible = stockDisponibleMap[p.id] ?? 0
-                            const critDisp = disponible <= (p as any).stock_minimo
-                            return (
-                              <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-lg text-xs
-                                ${critDisp ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
-                                {critDisp && <AlertTriangle size={11} />}
-                                {disponible} {(p as any).unidad_medida}
-                              </span>
-                            )
-                          })()}
+                          <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-lg text-xs
+                            ${critDisp ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
+                            {critDisp && <AlertTriangle size={11} />}
+                            {disponible} {(p as any).unidad_medida}
+                          </span>
                           {/* Stock total */}
                           {stock !== (stockDisponibleMap[p.id] ?? 0) && (
                             <p className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-lg">
@@ -1165,9 +1164,9 @@ export default function ProductosPage() {
                           {/* Datos del producto */}
                           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 text-sm">
                             <div>
-                              <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Stock actual</p>
-                              <p className={`font-semibold ${critico ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
-                                {stock} {(p as any).unidad_medida}
+                              <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Stock disponible</p>
+                              <p className={`font-semibold ${critDisp ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
+                                {disponible} {(p as any).unidad_medida}
                               </p>
                               {(p as any).stock_minimo != null && (
                                 <p className="text-xs text-gray-400 dark:text-gray-500">Mín: {(p as any).stock_minimo}</p>
@@ -1533,11 +1532,10 @@ export default function ProductosPage() {
                     className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio unitario <span className="text-gray-400 text-xs">(opcional)</span></label>
-                  <input type="number" min="0" value={ocPrecio} onChange={e => setOcPrecio(e.target.value)}
-                    placeholder="0"
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio unitario <span className="text-gray-400 text-xs">(basado en costo del producto)</span></label>
+                  <input type="number" min="0" value={ocPrecio} readOnly
                     onWheel={e => e.currentTarget.blur()}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-default" />
                 </div>
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500">Se agrega a la OC borrador del proveedor, o crea una nueva si no existe.</p>

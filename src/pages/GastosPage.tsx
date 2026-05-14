@@ -4,7 +4,7 @@ import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
   ChevronDown, ChevronUp, Paperclip, ExternalLink, Repeat, ToggleLeft, ToggleRight,
   Info, ChevronRight, User, Bell, History, ShoppingCart, AlertCircle,
-  Clock, CheckCircle, CreditCard, DollarSign,
+  Clock, CheckCircle, CreditCard, DollarSign, Landmark,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -98,12 +98,17 @@ export default function GastosPage() {
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const puedeAdministrarCaja = ['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
+  const puedeAdministrarCaja = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
   const esCajero = user?.rol === 'CAJERO'
-  const esSoloFijos = !['OWNER', 'SUPERVISOR', 'ADMIN'].includes(user?.rol ?? '')
+  const esSoloFijos = !['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<'gastos' | 'historial' | 'fijos' | 'oc'>('gastos')
+  const [tab, setTab] = useState<'gastos' | 'historial' | 'fijos' | 'oc' | 'recursos'>('gastos')
+
+  // Cuotas state (para gastos con tarjeta de crédito)
+  const [esCuota, setEsCuota] = useState(false)
+  const [cuotasTotal, setCuotasTotal] = useState('12')
+  const [tasaInteres, setTasaInteres] = useState('0')
 
   // ── Gastos variables — state ─────────────────────────────────────────────
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -220,13 +225,15 @@ export default function GastosPage() {
 
   // ── Tab OC — queries ─────────────────────────────────────────────────────
   const { data: ocs = [], isLoading: loadingOcs, refetch: refetchOcs } = useQuery({
-    queryKey: ['oc-gastos', tenant?.id],
+    queryKey: ['oc-gastos', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('ordenes_compra')
-        .select('*, proveedores(id,nombre), orden_compra_items(cantidad, precio_unitario, productos(nombre))')
-        .eq('tenant_id', tenant!.id)
-        .not('estado', 'eq', 'cancelada')
-        .order('created_at', { ascending: false })
+      const { data } = await applyFilter(
+        supabase.from('ordenes_compra')
+          .select('*, proveedores(id,nombre), orden_compra_items(cantidad, precio_unitario, productos(nombre))')
+          .eq('tenant_id', tenant!.id)
+          .not('estado', 'eq', 'cancelada')
+          .order('created_at', { ascending: false })
+      )
       return (data ?? []) as any[]
     },
     enabled: !!tenant && tab === 'oc',
@@ -250,6 +257,89 @@ export default function GastosPage() {
       return data ?? []
     },
     enabled: !!tenant && tab === 'oc',
+  })
+
+  // ── Tab Recursos — gastos vinculados a recursos ───────────────────────────
+  const { data: gastosRecursos = [], refetch: refetchGastosRecursos } = useQuery({
+    queryKey: ['gastos-recursos', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const { data } = await applyFilter(
+        supabase.from('gastos')
+          .select('*, recursos(id, nombre, categoria, estado)')
+          .eq('tenant_id', tenant!.id)
+          .not('recurso_id', 'is', null)
+          .order('fecha', { ascending: false })
+      )
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'recursos',
+  })
+
+  const marcarRecursoRecibido = useMutation({
+    mutationFn: async ({ gastoId, recursoId }: { gastoId: string; recursoId: string }) => {
+      await supabase.from('recursos').update({ estado: 'activo' }).eq('id', recursoId)
+      await supabase.from('gastos').update({ notas: 'Pago confirmado — recurso recibido' }).eq('id', gastoId)
+    },
+    onSuccess: () => {
+      toast.success('Recurso marcado como recibido')
+      qc.invalidateQueries({ queryKey: ['gastos-recursos', tenant?.id] })
+      qc.invalidateQueries({ queryKey: ['recursos'] })
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  // ── Recursos recurrentes vencidos o próximos (≤7 días) ───────────────────
+  const { data: recursosVencidos = [] } = useQuery({
+    queryKey: ['recursos-recurrentes-vencidos', tenant?.id],
+    queryFn: async () => {
+      const en7 = new Date(); en7.setDate(en7.getDate() + 7)
+      const { data } = await supabase.from('recursos')
+        .select('*, proveedores(id, nombre)')
+        .eq('tenant_id', tenant!.id)
+        .eq('es_recurrente', true)
+        .lte('proximo_vencimiento', en7.toISOString().split('T')[0])
+        .order('proximo_vencimiento')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'recursos',
+  })
+
+  function avanzarProximoVenc(venc: string, valor: number, unidad: string): string {
+    const d = new Date(venc + 'T00:00:00')
+    if (unidad === 'dia') d.setDate(d.getDate() + valor)
+    else if (unidad === 'semana') d.setDate(d.getDate() + valor * 7)
+    else if (unidad === 'mes') d.setMonth(d.getMonth() + valor)
+    else if (unidad === 'año') d.setFullYear(d.getFullYear() + valor)
+    return d.toISOString().split('T')[0]
+  }
+
+  const registrarCompraRecurrente = useMutation({
+    mutationFn: async (recurso: any) => {
+      const fechaHoy = new Date().toISOString().split('T')[0]
+      await supabase.from('gastos').insert({
+        tenant_id:   tenant!.id,
+        recurso_id:  recurso.id,
+        descripcion: `Renovación: ${recurso.nombre}`,
+        monto:       recurso.valor ?? 0,
+        categoria:   'Recurso',
+        fecha:       fechaHoy,
+        sucursal_id: recurso.sucursal_id ?? null,
+        usuario_id:  user?.id,
+      })
+      const nuevoVenc = avanzarProximoVenc(
+        recurso.proximo_vencimiento,
+        recurso.frecuencia_valor,
+        recurso.frecuencia_unidad,
+      )
+      await supabase.from('recursos').update({ proximo_vencimiento: nuevoVenc }).eq('id', recurso.id)
+    },
+    onSuccess: () => {
+      toast.success('Gasto pendiente creado · Próxima fecha actualizada')
+      qc.invalidateQueries({ queryKey: ['gastos-recursos'] })
+      qc.invalidateQueries({ queryKey: ['recursos-recurrentes-vencidos'] })
+      qc.invalidateQueries({ queryKey: ['recursos'] })
+    },
+    onError: (e: any) => toast.error(e.message),
   })
 
   const ocSeleccionada = ocs.find((o: any) => o.id === ocModalId) ?? null
@@ -463,6 +553,7 @@ export default function GastosPage() {
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
     setCajaSeleccionadaId(null)
+    setEsCuota(false); setCuotasTotal('12'); setTasaInteres('0')
   }
   useModalKeyboard({ isOpen: modalAbierto, onClose: cerrarModal, onConfirm: () => { if (!guardando) guardar() } })
 
@@ -584,6 +675,33 @@ export default function GastosPage() {
           }
           qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
         }
+      }
+
+      // Generar cuotas si aplica (solo creación, no edición)
+      if (!editandoId && esCuota && gastoId) {
+        const nCuotas = parseInt(cuotasTotal) || 1
+        const tasa = parseFloat(tasaInteres) || 0
+        const montoConInteres = monto * (1 + tasa / 100)
+        const montoPorCuota = montoConInteres / nCuotas
+        const cuotasArr = Array.from({ length: nCuotas }, (_, i) => {
+          const fecha = new Date()
+          fecha.setMonth(fecha.getMonth() + i + 1)
+          return {
+            tenant_id: tenant!.id,
+            gasto_id: gastoId!,
+            numero: i + 1,
+            monto: parseFloat(montoPorCuota.toFixed(2)),
+            fecha_vencimiento: fecha.toISOString().split('T')[0],
+            estado: 'pendiente' as const,
+          }
+        })
+        await supabase.from('gasto_cuotas').insert(cuotasArr)
+        await supabase.from('gastos').update({
+          es_cuota: true,
+          cuotas_total: nCuotas,
+          monto_cuota: parseFloat(montoPorCuota.toFixed(2)),
+          tasa_interes: tasa,
+        }).eq('id', gastoId)
       }
 
       // Subir comprobante
@@ -853,6 +971,7 @@ export default function GastosPage() {
           { id: 'historial'as const, label: 'Historial',        icon: <History size={14} /> },
           { id: 'fijos'    as const, label: 'Gastos fijos',     icon: <Repeat size={14} /> },
           { id: 'oc'       as const, label: 'Órdenes de Compra',icon: <ShoppingCart size={14} /> },
+          { id: 'recursos' as const, label: 'Recursos',         icon: <Landmark size={14} /> },
         ].map(({ id, label, icon }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
@@ -1295,6 +1414,93 @@ export default function GastosPage() {
         </div>
       )}
 
+      {/* ══ TAB: RECURSOS ══ */}
+      {tab === 'recursos' && (
+        <div className="space-y-3">
+          {/* Renovaciones recurrentes vencidas/próximas */}
+          {recursosVencidos.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-amber-200 dark:border-amber-700 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700">
+                <Clock size={16} className="text-amber-600 dark:text-amber-400" />
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Renovaciones pendientes ({recursosVencidos.length})</p>
+              </div>
+              <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                {recursosVencidos.map((r: any) => {
+                  const fechaVenc = r.proximo_vencimiento
+                  const esVencido = fechaVenc && fechaVenc < new Date().toISOString().split('T')[0]
+                  return (
+                    <div key={r.id} className="flex items-center gap-4 p-4">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-amber-100 dark:bg-amber-900/30">
+                        <Repeat size={16} className="text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{r.nombre}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{r.categoria} · Cada {r.frecuencia_valor} {r.frecuencia_unidad}(s)</p>
+                        <p className={`text-xs font-medium mt-0.5 ${esVencido ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                          {esVencido ? '⚠ Vencido: ' : '⏰ Próximo: '}
+                          {new Date(fechaVenc + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </p>
+                      </div>
+                      {r.valor != null && (
+                        <p className="text-sm font-bold text-gray-800 dark:text-gray-100 shrink-0">${Number(r.valor).toLocaleString('es-AR')}</p>
+                      )}
+                      <button
+                        onClick={() => registrarCompraRecurrente.mutate(r)}
+                        disabled={registrarCompraRecurrente.isPending}
+                        className="shrink-0 px-3 py-2 rounded-xl text-xs font-semibold border-2 border-amber-500 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50 transition-colors">
+                        Registrar compra
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Gastos generados por la adquisición de recursos. Marcalos como pagados para activar el recurso.
+            </p>
+          </div>
+          {gastosRecursos.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-10 text-center">
+              <Landmark size={32} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+              <p className="text-sm text-gray-400 dark:text-gray-500">Sin gastos de recursos registrados</p>
+            </div>
+          ) : gastosRecursos.map((g: any) => {
+            const recurso = g.recursos
+            const yaPagado = recurso?.estado === 'activo'
+            return (
+              <div key={g.id} className={`bg-white dark:bg-gray-800 rounded-xl border p-4 flex items-center gap-4
+                ${yaPagado ? 'border-green-200 dark:border-green-700' : 'border-amber-200 dark:border-amber-700'}`}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-gray-100 dark:bg-gray-700">
+                  <Landmark size={18} className="text-gray-500 dark:text-gray-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-800 dark:text-gray-100">{recurso?.nombre ?? '—'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{recurso?.categoria} · {g.fecha}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{g.descripcion}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="font-bold text-gray-800 dark:text-gray-100">${Number(g.monto).toLocaleString('es-AR', { minimumFractionDigits: 0 })}</p>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${yaPagado ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                    {yaPagado ? 'Pagado · Activo' : 'Pago pendiente'}
+                  </span>
+                </div>
+                {!yaPagado && (
+                  <button
+                    onClick={() => marcarRecursoRecibido.mutate({ gastoId: g.id, recursoId: recurso.id })}
+                    disabled={marcarRecursoRecibido.isPending}
+                    className="flex-shrink-0 px-3 py-2 rounded-xl text-xs font-semibold border-2 border-violet-500 text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 disabled:opacity-50 transition-colors">
+                    Marcar como recibido
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
       {/* ══ MODAL: NUEVO / EDITAR GASTO ══ */}
       {modalAbierto && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -1395,6 +1601,58 @@ export default function GastosPage() {
                   )
                 })()}
               </div>
+
+              {/* Cuotas — solo si medio de pago es Tarjeta crédito y es creación */}
+              {!editandoId && mediosPago.some(m => m.tipo === 'Tarjeta crédito') && (
+                <div className={`border-2 rounded-xl p-3 space-y-3 ${esCuota ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600'}`}>
+                  <div
+                    onClick={() => setEsCuota(v => !v)}
+                    className="flex items-center gap-3 cursor-pointer select-none">
+                    <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${esCuota ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${esCuota ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <CreditCard size={14} /> Pago en cuotas (tarjeta de crédito)
+                    </span>
+                  </div>
+                  {esCuota && (() => {
+                    const monto = parseFloat(form.monto.replace(',', '.')) || 0
+                    const n = parseInt(cuotasTotal) || 1
+                    const tasa = parseFloat(tasaInteres) || 0
+                    const totalConInteres = monto * (1 + tasa / 100)
+                    const montoCuota = n > 0 ? totalConInteres / n : 0
+                    return (
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cantidad de cuotas</label>
+                          <select value={cuotasTotal} onChange={e => setCuotasTotal(e.target.value)}
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                            {[2,3,6,9,12,18,24].map(n => <option key={n} value={n}>{n} cuotas</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Interés mensual (%)</label>
+                          <input type="number" min="0" step="0.1" onWheel={e => e.currentTarget.blur()}
+                            value={tasaInteres} onChange={e => setTasaInteres(e.target.value)}
+                            placeholder="0"
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Valor por cuota</label>
+                          <p className="text-sm font-semibold text-accent px-2.5 py-1.5 bg-accent/10 rounded-lg">
+                            ${montoCuota.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        {tasa > 0 && (
+                          <p className="col-span-3 text-xs text-gray-500 dark:text-gray-400">
+                            Total con interés: ${totalConInteres.toLocaleString('es-AR', { minimumFractionDigits: 2 })} · Vencimientos el día {new Date().getDate()} de cada mes
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
 
               {/* Comprobante */}
               <div className="space-y-2">
@@ -1777,6 +2035,16 @@ export default function GastosPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-sm text-primary dark:text-white">OC #{oc.numero}</span>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>{badge.label}</span>
+                          {(oc as any).tiene_reembolso_pendiente && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">
+                              Reembolso pendiente
+                            </span>
+                          )}
+                          {(oc as any).es_derivada && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-medium">
+                              OC derivada
+                            </span>
+                          )}
                           {oc.estado !== 'confirmada' && (
                             <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
                               {oc.estado === 'borrador' ? 'Borrador' : oc.estado === 'enviada' ? 'Enviada' : oc.estado}

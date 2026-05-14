@@ -30,6 +30,8 @@ updated: 2026-04-30
 - ❌ Reescribir una migration ya aplicada en PROD (crear una nueva en su lugar)
 - ✅ Claude Code **no aplica** migraciones en PROD salvo pedido explícito del usuario
 
+> 🚨 **Si la DB está caída o lenta:** ver [[wiki/support/supabase-db-rescue]] para el procedimiento completo de diagnóstico y rescate.
+
 ---
 
 ## Flujo de migraciones

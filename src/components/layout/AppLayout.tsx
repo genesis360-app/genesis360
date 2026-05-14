@@ -19,6 +19,7 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout'
 import { NotificacionesButton } from '@/components/NotificacionesButton'
+import { AiAssistant } from '@/components/AiAssistant'
 import { AyudaModal } from '@/components/AyudaModal'
 import { RefreshButton } from '@/components/RefreshButton'
 import { AvatarDropdown } from '@/components/AvatarDropdown'
@@ -100,8 +101,8 @@ export function AppLayout() {
         .select('id, webhook_external_id, payload_raw, procesado_at')
         .eq('tenant_id', tenant.id)
         .eq('integracion', 'MercadoPago')
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
+        .gte('procesado_at', since)
+        .order('procesado_at', { ascending: false })
         .limit(10)
       for (const log of logs ?? []) {
         if (seenMpLogs.current.has(log.id)) continue
@@ -150,15 +151,26 @@ export function AppLayout() {
     }
   }, [pathname, user?.rol, user?.permisos_custom])
 
-  const { sucursalId, sucursales, setSucursal } = useSucursalFilter()
+  const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
 
-  // Auto-seleccionar la primera sucursal solo si el usuario nunca configuró una preferencia
+  // Módulos que requieren exactamente una sucursal (sin opción "Todas")
+  const RUTAS_SOLO_SUCURSAL = ['/ventas', '/gastos', '/caja', '/recepciones', '/alertas']
+  const enRutaSoloSucursal = RUTAS_SOLO_SUCURSAL.some(r => pathname.startsWith(r))
+
+  // Auto-seleccionar la primera sucursal si nunca se configuró preferencia
   useEffect(() => {
     const saved = localStorage.getItem('sucursal-id')
-    if (sucursales.length > 0 && !sucursalId && saved !== '__global__') {
+    if (puedeVerTodas && sucursales.length > 0 && !sucursalId && saved !== '__global__') {
       setSucursal(sucursales[0].id)
     }
-  }, [sucursales.length])
+  }, [sucursales.length, puedeVerTodas])
+
+  // En módulos operativos (solo sucursal) forzar selección si está en vista global
+  useEffect(() => {
+    if (puedeVerTodas && enRutaSoloSucursal && !sucursalId && sucursales.length > 0) {
+      setSucursal(sucursales[0].id)
+    }
+  }, [pathname, sucursalId, sucursales.length, puedeVerTodas])
 
   // Abrir walkthrough la primera vez
   useEffect(() => {
@@ -229,8 +241,8 @@ export function AppLayout() {
             if (user?.rol === 'CAJERO' && !cajeroVisible) return null
             if (user?.rol === 'CONTADOR' && !contadorVisible) return null
             if (user?.rol === 'DEPOSITO' && !depositoVisible) return null
-            if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN' && user?.rol !== 'RRHH') return null
-            if (supervisorOnly && user?.rol !== 'OWNER' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'ADMIN') return null
+            if (ownerOnly && user?.rol !== 'DUEÑO' && user?.rol !== 'SUPER_USUARIO' && user?.rol !== 'RRHH') return null
+            if (supervisorOnly && user?.rol !== 'DUEÑO' && user?.rol !== 'SUPERVISOR' && user?.rol !== 'SUPER_USUARIO') return null
             if (user?.permisos_custom?.[modulo] === 'no_ver') return null
             const locked = planFeature && limits != null && !(limits as any)[planFeature]
             return (
@@ -338,28 +350,71 @@ export function AppLayout() {
           {/* Derecha: selector sucursal + acciones */}
           <div className="flex items-center gap-0.5">
 
-            {/* Selector de sucursal */}
-            {sucursales.length > 0 && (
-              <div className="hidden sm:flex items-center gap-1.5 mr-1">
-                <Building2 size={14} className="text-muted flex-shrink-0" />
-                <select
-                  value={sucursalId ?? ''}
-                  onChange={e => setSucursal(e.target.value || null)}
-                  className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
-                  title="Filtrar por sucursal"
-                >
-                  <option value="">Todas las sucursales</option>
-                  {sucursales.map(s => (
-                    <option key={s.id} value={s.id}>{s.nombre}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            {/* Sucursal — visible en todas las rutas excepto /sucursales y /usuarios */}
+            {sucursales.length > 0 && (() => {
+              const RUTAS_SIN_SELECTOR  = ['/sucursales', '/usuarios']
+              const RUTAS_CON_TODAS     = ['/dashboard', '/productos', '/inventario', '/clientes',
+                                            '/facturacion', '/proveedores', '/recursos', '/biblioteca',
+                                            '/rrhh', '/historial', '/reportes', '/configuracion']
+
+              const enRutaSinSelector  = RUTAS_SIN_SELECTOR.some(r => pathname.startsWith(r))
+              const enRutaConTodas     = RUTAS_CON_TODAS.some(r => pathname.startsWith(r))
+              // enRutaSoloSucursal defined above in component scope
+
+              if (enRutaSinSelector) return null
+
+              const nombreSucursal = sucursalId
+                ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? '—')
+                : null
+
+              return (
+                <div className="hidden sm:flex items-center gap-1.5 mr-1">
+                  <Building2 size={14} className="text-muted flex-shrink-0" />
+                  {puedeVerTodas && enRutaConTodas ? (
+                    // Selector completo: Todas + cada sucursal
+                    <select
+                      value={sucursalId ?? ''}
+                      onChange={e => setSucursal(e.target.value || null)}
+                      className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
+                      title="Filtrar por sucursal"
+                    >
+                      <option value="">Todas las sucursales</option>
+                      {sucursales.map(s => (
+                        <option key={s.id} value={s.id}>{s.nombre}</option>
+                      ))}
+                    </select>
+                  ) : puedeVerTodas && enRutaSoloSucursal ? (
+                    // Selector sin "Todas": obliga a elegir una sucursal específica
+                    <select
+                      value={sucursalId ?? ''}
+                      onChange={e => setSucursal(e.target.value || null)}
+                      className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
+                      title="Seleccioná una sucursal"
+                    >
+                      <option value="" disabled>Seleccioná sucursal</option>
+                      {sucursales.map(s => (
+                        <option key={s.id} value={s.id}>{s.nombre}</option>
+                      ))}
+                    </select>
+                  ) : nombreSucursal ? (
+                    // Read-only: muestra la sucursal asignada
+                    <span className="text-xs font-medium text-primary dark:text-white truncate max-w-[140px]">
+                      {nombreSucursal}
+                    </span>
+                  ) : puedeVerTodas ? (
+                    <span className="text-xs font-medium text-muted truncate max-w-[140px]">Todas las suc.</span>
+                  ) : (
+                    <span className="text-xs text-orange-500 font-medium">Sin sucursal</span>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Refresh */}
             <RefreshButton className={hBtn} />
 
             {/* Notificaciones */}
+            <AiAssistant className={hBtn} />
             <NotificacionesButton className={hBtn} />
 
             {/* Dark / Light */}
@@ -385,7 +440,7 @@ export function AppLayout() {
             </button>
 
             {/* Config */}
-            {(user?.rol === 'OWNER' || user?.rol === 'ADMIN') && (
+            {(user?.rol === 'DUEÑO' || user?.rol === 'SUPER_USUARIO') && (
               <ConfigButton className={hBtn} />
             )}
 

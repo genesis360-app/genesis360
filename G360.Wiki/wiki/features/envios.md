@@ -1,9 +1,9 @@
 ---
 title: Módulo Envíos
 category: features
-tags: [envios, logistica, courier, remito, tracking, whatsapp]
+tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-04-30
+updated: 2026-05-14
 ---
 
 # Módulo Envíos
@@ -25,8 +25,43 @@ Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.
 - Ver tracking externo en nueva pestaña
 - Ver venta asociada con link directo
 - Modal nuevo/editar: vincular venta, domicilio del cliente, courier/tracking/dimensiones
-- Tab **Cotizador**: shell para rate shopping (activo cuando haya contratos con couriers)
 - Bloqueo de edición si estado = `entregado`
+
+---
+
+## Tipos de envío (2026-05-14)
+
+### Envío Propio (KM-based)
+- **Dirección de entrega**: `AddressAutocompleteInput` con Google Places Autocomplete
+  - Sugerencias de Google Maps mientras se escribe
+  - Dropdown de domicilios guardados del cliente (de `cliente_domicilios`)
+- **KM auto**: calcula distancia sucursal → cliente via Distance Matrix API
+- **Costo auto**: `KM × costo_km_envio` (configurado en SucursalesPage)
+- No editable manualmente — resultado se muestra en panel informativo
+
+### Envío por Tercero (courier)
+- **Canal de venta**: auto-populado desde `venta.origen` cuando viene de una venta (read-only)
+- **Costo courier**: auto-completa desde `courier_tarifas` al seleccionar el courier
+- Editable como override si el precio difiere
+- Tab Cotizador: **eliminado** (reemplazado por tarifa configurada en SucursalesPage)
+
+---
+
+## Configuración de tarifas (migration 107)
+
+### En SucursalesPage:
+- Campo `costo_km_envio` ($ por km, varía por sucursal)
+- Panel expandible "Couriers" → edición inline de precios por courier
+- Guarda en tabla `courier_tarifas(tenant_id, sucursal_id, courier, precio)`
+
+### Google Maps (env var requerida)
+```
+VITE_GOOGLE_MAPS_API_KEY=...   # Places API + Distance Matrix API habilitadas
+```
+- Sin key: funciona como input de texto normal, sin autocomplete ni cálculo de KM
+- `src/hooks/useGoogleMaps.ts`: `getGoogleMapsLoader()`, `calcularDistanciaKm()`
+- `src/components/AddressAutocompleteInput.tsx`: componente reutilizable
+- **Selector de venta**: excluye automáticamente ventas que ya tienen un envío asignado (v1.8.7)
 
 ---
 

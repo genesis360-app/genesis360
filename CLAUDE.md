@@ -18,8 +18,21 @@ Actualizar el wiki **siempre** antes de terminar:
 1. **`G360.Wiki/sources/raw/project_pendientes.md`** — actualizar versión actual, migrations, estado DEV/PROD, pendientes.
 2. **`G360.Wiki/log.md`** — agregar entrada `## [YYYY-MM-DD] update | título` con resumen de lo hecho.
 3. **Página de feature afectada** en `G360.Wiki/wiki/features/` o `wiki/integrations/` — actualizar con los cambios.
-4. **`G360.Wiki/wiki/business/roadmap.md`** — agregar la versión si fue un release.
-5. **`G360.Wiki/wiki/database/migraciones.md`** — agregar migration si se creó una nueva.
+4. **`G360.Wiki/index.md`** — actualizar descripción de la página modificada, agregar nuevas páginas, actualizar contador del pie.
+5. **Documentos relacionados** — cualquier página del wiki que referencie la feature modificada debe recibir un link o nota de actualización. Nunca crear o modificar una página de wiki sin verificar si el index y los docs relacionados deben actualizarse.
+6. **`G360.Wiki/wiki/business/roadmap.md`** — agregar la versión si fue un release.
+7. **`G360.Wiki/wiki/database/migraciones.md`** — agregar migration si se creó una nueva.
+8. **Git tag + GitHub release** — crear tag `vX.Y.Z` en el commit correspondiente y `gh release create` con notas de los cambios. Hacerlo en **cada sesión** que produzca código, no solo al deployar a PROD. Usar `--latest` solo en el release más reciente.
+
+### Responder preguntas generales sobre el proyecto
+
+Antes de responder cualquier pregunta sobre el proyecto (features, arquitectura, estado, decisiones, módulos, etc.):
+
+1. **Buscar primero en el wiki** — `G360.Wiki/wiki/` y `G360.Wiki/sources/raw/`. No leer código fuente si la respuesta ya está documentada.
+2. **Solo si falta detalle**: buscar en los archivos fuente relevantes al tema (página, hook, migration, etc.).
+3. **No leer archivos enteros** cuando alcanza con buscar un símbolo o sección específica (usar Grep/Read con offset).
+
+Objetivo: evitar consumo innecesario de tokens leyendo código que ya está resumido en el wiki.
 
 ### Regla de unicidad de documentación
 
@@ -81,7 +94,8 @@ src/
 │   ├── useAlertas.ts / useGruposEstados.ts / usePlanLimits.ts
 │   ├── useCotizacion.ts   # hook global — no estado local por página
 │   ├── useModalKeyboard.ts  # ESC=cerrar / Enter=confirmar en modales
-│   └── useSucursalFilter.ts # applyFilter(q) — agrega .eq('sucursal_id', id) si hay sucursal activa
+│   ├── useSucursalFilter.ts # applyFilter(q) — agrega .eq('sucursal_id', id) si hay sucursal activa
+│   └── useGoogleMaps.ts     # getGoogleMapsLoader() / calcularDistanciaKm() — Distance Matrix API
 ├── components/
 │   ├── AuthGuard.tsx      # AuthGuard + SubscriptionGuard (mismo archivo, nunca separar)
 │   ├── LpnAccionesModal.tsx / Walkthrough.tsx
@@ -115,6 +129,7 @@ src/
 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY / VITE_MP_PUBLIC_KEY
 VITE_MP_PLAN_BASICO / VITE_MP_PLAN_PRO / VITE_APP_URL
 VITE_SENTRY_DSN / VITE_TN_APP_ID / VITE_MP_CLIENT_ID
+VITE_GOOGLE_MAPS_API_KEY   # Places Autocomplete + Distance Matrix (Envíos)
 MP_ACCESS_TOKEN (solo Edge Functions)
 ```
 

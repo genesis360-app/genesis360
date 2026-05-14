@@ -1374,7 +1374,7 @@ export default function RrhhPage() {
   if (limits && !limits.puede_rrhh) return <UpgradePrompt feature="rrhh" />
 
   const esSupervisor = user?.rol === 'SUPERVISOR'
-  const esRrhhAdmin = user?.rol === 'OWNER' || user?.rol === 'RRHH'
+  const esRrhhAdmin = user?.rol === 'DUEÑO' || user?.rol === 'RRHH'
 
   if (!esRrhhAdmin && !esSupervisor) {
     return (

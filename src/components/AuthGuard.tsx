@@ -28,7 +28,7 @@ export function SubscriptionGuard() {
   if (!tenant) return <Navigate to="/login" replace />
 
   // ADMIN siempre pasa
-  if (user?.rol === 'ADMIN') return <Outlet />
+  if (user?.rol === 'SUPER_USUARIO') return <Outlet />
 
   const now = new Date()
   const trialEnd = new Date(tenant.trial_ends_at)

@@ -74,7 +74,7 @@ CREATE TABLE users (
   id             UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   tenant_id      UUID REFERENCES tenants(id) ON DELETE CASCADE,
   rol            TEXT NOT NULL DEFAULT 'CAJERO'
-    CHECK (rol IN ('OWNER','SUPERVISOR','CAJERO','ADMIN','RRHH','DEPOSITO','CONTADOR')),
+    CHECK (rol IN ('DUEÑO','SUPER_USUARIO','SUPERVISOR','CAJERO','ADMIN','RRHH','DEPOSITO','CONTADOR')),
   nombre_display TEXT,
   activo         BOOLEAN DEFAULT TRUE,
   created_at     TIMESTAMPTZ DEFAULT NOW()
@@ -611,7 +611,7 @@ CREATE POLICY "tenants_insert_new_user" ON tenants FOR INSERT
 CREATE POLICY "tenants_update" ON tenants FOR UPDATE
   USING (
     (id IN (SELECT tenant_id FROM users WHERE id = auth.uid()) AND
-     EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND rol IN ('OWNER','ADMIN')))
+     EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND rol IN ('DUEÑO','ADMIN')))
     OR is_admin()
   );
 
@@ -621,9 +621,9 @@ CREATE POLICY "users_select" ON users FOR SELECT
 CREATE POLICY "users_insert_self" ON users FOR INSERT
   WITH CHECK (id = auth.uid());
 CREATE POLICY "users_insert_owner" ON users FOR INSERT
-  WITH CHECK (tenant_id = get_user_tenant_id() AND get_user_role() IN ('OWNER','ADMIN'));
+  WITH CHECK (tenant_id = get_user_tenant_id() AND get_user_role() IN ('DUEÑO','ADMIN'));
 CREATE POLICY "users_update_owner" ON users FOR UPDATE
-  USING (tenant_id = get_user_tenant_id() AND get_user_role() IN ('OWNER','ADMIN'));
+  USING (tenant_id = get_user_tenant_id() AND get_user_role() IN ('DUEÑO','ADMIN'));
 
 -- CATEGORÍAS
 CREATE POLICY "categorias_tenant" ON categorias FOR ALL
@@ -835,7 +835,7 @@ CREATE POLICY "actividad_log_insert" ON actividad_log
 CREATE POLICY "actividad_log_select" ON actividad_log
   FOR SELECT USING (
     is_admin()
-    OR tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid() AND rol IN ('OWNER', 'SUPERVISOR'))
+    OR tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid() AND rol IN ('DUEÑO', 'SUPERVISOR'))
   );
 
 -- ============================================================
@@ -914,11 +914,11 @@ $$;
 -- M18. RRHH — EMPLEADOS (Phase 1)
 -- ============================================================
 
--- Helper function para validar que usuario es RRHH o OWNER
+-- Helper function para validar que usuario es RRHH o Dueño
 CREATE OR REPLACE FUNCTION public.is_rrhh()
 RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER AS $$
   SELECT EXISTS (
-    SELECT 1 FROM users WHERE id = auth.uid() AND (rol = 'RRHH' OR rol = 'OWNER')
+    SELECT 1 FROM users WHERE id = auth.uid() AND (rol = 'RRHH' OR rol = 'DUEÑO')
   )
 $$;
 
@@ -1730,7 +1730,7 @@ CREATE INDEX IF NOT EXISTS idx_metodos_pago_tenant ON metodos_pago(tenant_id);
 -- ─── Migration 058: Ampliar users.rol CHECK ──────────────────────────────────
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_rol_check;
 ALTER TABLE users ADD CONSTRAINT users_rol_check
-  CHECK (rol IN ('OWNER', 'SUPERVISOR', 'CAJERO', 'ADMIN', 'RRHH', 'DEPOSITO', 'CONTADOR'));
+  CHECK (rol IN ('DUEÑO', 'SUPER_USUARIO', 'SUPERVISOR', 'CAJERO', 'ADMIN', 'RRHH', 'DEPOSITO', 'CONTADOR'));
 
 -- ─── Migration 057: Sprint D — LPN Madre ─────────────────────────────────────
 ALTER TABLE inventario_lineas ADD COLUMN IF NOT EXISTS parent_lpn_id TEXT DEFAULT NULL;
@@ -1924,7 +1924,7 @@ DO $$ BEGIN
     SELECT 1 FROM pg_policies
     WHERE tablename = 'tiendanube_credentials' AND policyname = 'tn_creds_tenant'
   ) THEN
-    -- Solo OWNER/SUPERVISOR pueden ver el estado de conexión (no los tokens)
+    -- Solo Dueño/SUPERVISOR pueden ver el estado de conexión (no los tokens)
     CREATE POLICY tn_creds_tenant ON tiendanube_credentials
       USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
   END IF;
@@ -2059,7 +2059,7 @@ ALTER TABLE caja_sesiones
   ADD COLUMN IF NOT EXISTS diferencia_apertura     DECIMAL(12,2);
 
 ALTER TABLE tenants
-  ADD COLUMN IF NOT EXISTS caja_fuerte_roles TEXT[] DEFAULT ARRAY['OWNER','SUPERVISOR','ADMIN'];
+  ADD COLUMN IF NOT EXISTS caja_fuerte_roles TEXT[] DEFAULT ARRAY['DUEÑO','SUPERVISOR','ADMIN'];
 
 CREATE OR REPLACE FUNCTION fn_crear_caja_fuerte()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$

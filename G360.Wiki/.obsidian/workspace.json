@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "CLAUDE.md",
+                "file": "wiki/overview/genesis360-overview.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "CLAUDE"
+              "title": "genesis360-overview"
             }
           }
         ]
@@ -182,8 +182,13 @@
   },
   "active": "96422dc9d10ce30f",
   "lastOpenFiles": [
-    "Bienvenido.md",
+    "wiki/overview/app-reference_tmp.html",
+    "wiki/overview/app-reference.pdf",
+    "wiki/overview/app-reference.md",
     "index.md",
+    "Bienvenido.md",
+    "_schema.md",
+    "sources/raw/reglas_negocio.md",
     "wiki/overview/genesis360-overview.md",
     "wiki/database/rls-policies.md",
     "wiki/business/modelo-negocio.md",
@@ -204,10 +209,6 @@
     "wiki/database/migraciones.md",
     "wiki/features/envios.md",
     "wiki/features/clientes-proveedores.md",
-    "wiki/features/wms.md",
-    "wiki/development/testing.md",
-    "wiki/features/caja.md",
-    "wiki/features/rrhh.md",
     "wiki/development/deploy.md.tmp.17428.1777608165638",
     "wiki/overview",
     "wiki/integrations",
@@ -216,7 +217,6 @@
     "wiki/database",
     "wiki/business",
     "wiki/architecture",
-    "wiki",
-    "sources/raw"
+    "wiki"
   ]
 }

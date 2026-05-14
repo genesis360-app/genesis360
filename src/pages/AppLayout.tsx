@@ -54,7 +54,7 @@ export function AppLayout() {
       {/* Navegación */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map(({ to, icon: Icon, label, badge, ownerOnly }) => {
-          if (ownerOnly && user?.rol !== 'OWNER' && user?.rol !== 'ADMIN') return null
+          if (ownerOnly && user?.rol !== 'DUEÑO' && user?.rol !== 'SUPER_USUARIO') return null
           return (
             <NavLink
               key={to}

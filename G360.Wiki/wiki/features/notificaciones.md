@@ -3,7 +3,7 @@ title: Notificaciones
 category: features
 tags: [notificaciones, campana, alertas, push, email, v1.5.0]
 sources: [CLAUDE.md]
-updated: 2026-05-05
+updated: 2026-05-12
 ---
 
 # Notificaciones
@@ -21,7 +21,8 @@ notificaciones(
   titulo TEXT,
   mensaje TEXT,
   leida BOOLEAN DEFAULT FALSE,
-  action_url TEXT    -- URL a la que navegar al hacer click
+  action_url TEXT,   -- URL a la que navegar al hacer click
+  metadata JSONB     -- payload estructurado para acciones (v1.8.7, migration 099)
 )
 -- RLS: user_id = auth.uid() (cada usuario ve solo sus notificaciones)
 ```
@@ -62,11 +63,34 @@ const supervisores = await supabase
 
 ### Otras fuentes de notificaciones
 
-| Evento | Tipo | Destinatarios |
-|--------|------|--------------|
-| Diferencia apertura caja | `warning` | OWNER + SUPERVISOR |
-| *(futuro)* Stock crítico | `danger` | OWNER + SUPERVISOR |
-| *(futuro)* Venta CC sin cobrar vencida | `warning` | OWNER |
+| Evento | Tipo | Destinatarios | Acción en UI |
+|--------|------|--------------|--------------|
+| Diferencia apertura caja | `warning` | OWNER + SUPERVISOR | Ir → /caja |
+| CC clientes vencida | `warning` | OWNER + ADMIN | Ir → /clientes |
+| OC vencida sin pagar | `danger` | OWNER + ADMIN | Ir → /proveedores |
+| Solicitud Caja Fuerte (CAJERO) | `warning` + `metadata` | OWNER + SUPERVISOR + SUPER_USUARIO | Aprobar / Rechazar (ejecuta transferencia real) |
+
+### Notificaciones con metadata (v1.8.7+)
+
+Cuando `metadata.accion === 'solicitud_caja_fuerte'`, `NotificacionesButton` muestra botones "Aprobar" y "Rechazar" en lugar del botón "Ir →". Al aprobar:
+1. Valida que la sesión del cajero sigue abierta
+2. Crea/obtiene la sesión permanente de la caja fuerte
+3. Inserta `egreso_traspaso` en la sesión del cajero
+4. Inserta `ingreso_traspaso` en la sesión de la caja fuerte
+5. Marca la notificación como leída
+
+Payload `metadata` de `solicitud_caja_fuerte`:
+```json
+{
+  "accion": "solicitud_caja_fuerte",
+  "monto": 1500,
+  "concepto": "Para el cierre",
+  "sesion_id": "uuid-sesion-cajero",
+  "caja_id": "uuid-caja",
+  "caja_nombre": "Caja 1",
+  "cajero_nombre": "Juan Pérez"
+}
+```
 
 ---
 

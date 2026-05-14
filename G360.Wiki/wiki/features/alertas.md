@@ -1,9 +1,9 @@
 ---
 title: Alertas
 category: features
-tags: [alertas, stock-minimo, lpn-vencidos, reservas, categorias]
+tags: [alertas, stock-minimo, lpn-vencidos, reservas, categorias, sucursal]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-05-13
 ---
 
 # Alertas
@@ -104,9 +104,32 @@ La EF `monitoring-check` incluye stock crítico y reservas viejas en el email di
 
 ---
 
+---
+
+## Filtrado por sucursal (v1.8.19 · 2026-05-13)
+
+`AlertasPage` ahora usa `useSucursalFilter` y aplica `applyFilter` a las queries que tienen `sucursal_id`:
+
+| Query | Filtro |
+|---|---|
+| Reservas viejas (`ventas`) | ✅ `applyFilter` |
+| LPNs sin ubicación (`inventario_lineas`) | ✅ `applyFilter` |
+| LPNs sin proveedor (`inventario_lineas`) | ✅ `applyFilter` |
+| OCs vencidas (`ordenes_compra`) | ✅ `applyFilter` |
+| OCs próximas a vencer (`ordenes_compra`) | ✅ `applyFilter` |
+| LPNs vencidos (`inventario_lineas`) | ✅ `applyFilter` |
+| Clientes con deuda (`ventas`) | ✅ `applyFilter` |
+| Alertas de stock (`alertas`) | ⚠️ Sin `sucursal_id` — tabla creada sin esa columna, pendiente migration |
+| Productos sin categoría (`productos`) | — Catálogo global, no aplica filtro |
+
+> [!NOTE] La tabla `alertas` (stock mínimo) no tiene `sucursal_id` — se ve en todas las vistas. Requiere migration para agregar la columna y actualizar el trigger `check_stock_minimo`.
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/features/gastos]]
+- [[wiki/features/multi-sucursal]]

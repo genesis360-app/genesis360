@@ -34,6 +34,8 @@ Genesis360 usa Supabase como backend completo. No hay servidor propio.
 
 > [!WARNING] Las migraciones siempre se aplican primero en DEV. Nunca aplicar directo a PROD sin pruebas.
 
+> 🚨 **Si la DB se cae o está lenta:** ver [[wiki/support/supabase-db-rescue]] — diagnóstico, rescate de pool y procedimiento de restart.
+
 ---
 
 ## Auth

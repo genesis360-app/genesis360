@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   UserPlus, Trash2, Shield, User, Mail, AlertTriangle,
-  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders,
+  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Building2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -12,14 +12,15 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 
-type UserRole = 'OWNER' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO'
+type UserRole = 'DUEÑO' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO'
 const ROLES: Record<UserRole, { label: string; desc: string; color: string }> = {
-  OWNER:      { label: 'Dueño',      desc: 'Acceso completo',                    color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
-  SUPERVISOR: { label: 'Supervisor', desc: 'Inventario y movimientos',           color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'        },
-  CAJERO:     { label: 'Cajero',     desc: 'Solo ventas y caja',                 color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'     },
-  RRHH:       { label: 'RRHH',       desc: 'Gestión de empleados',               color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'     },
-  CONTADOR:   { label: 'Contador',   desc: 'Dashboard, gastos y reportes',       color: 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400'         },
-  DEPOSITO:   { label: 'Depósito',   desc: 'Productos e inventario',             color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' },
+  DUEÑO:      { label: 'Dueño',         desc: 'Acceso completo',                    color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
+  SUPER_USUARIO: { label: 'Super Usuario', desc: 'Administración técnica y configuración', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400' },
+  SUPERVISOR: { label: 'Supervisor',    desc: 'Inventario y movimientos',           color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'        },
+  CAJERO:     { label: 'Cajero',        desc: 'Solo ventas y caja',                 color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'     },
+  RRHH:       { label: 'RRHH',          desc: 'Gestión de empleados',               color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'     },
+  CONTADOR:   { label: 'Contador',      desc: 'Dashboard, gastos y reportes',       color: 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400'         },
+  DEPOSITO:   { label: 'Depósito',      desc: 'Productos e inventario',             color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' },
 }
 
 type Permiso = 'no_ver' | 'ver' | 'editar'
@@ -61,8 +62,13 @@ function defaultPermisos(): Record<string, Permiso> {
   return Object.fromEntries(MODULOS.map(m => [m.key, 'no_ver' as Permiso]))
 }
 
+// Roles que siempre tienen visión global (no configurables)
+const ROLES_SIEMPRE_GLOBALES: string[] = ['DUEÑO', 'SUPER_USUARIO']
+// Roles con visión global por defecto (configurable)
+const ROLES_GLOBAL_DEFAULT: string[] = ['SUPERVISOR', 'CONTADOR']
+
 export default function UsuariosPage() {
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, sucursales } = useAuthStore()
   const qc = useQueryClient()
   const { limits } = usePlanLimits()
   const [showInvitar, setShowInvitar] = useState(false)
@@ -137,12 +143,23 @@ export default function UsuariosPage() {
 
   const updateRol = useMutation({
     mutationFn: async ({ userId, rol, rolAnterior, nombreUsuario }: { userId: string; rol: UserRole; rolAnterior?: string; nombreUsuario?: string }) => {
-      const { error } = await supabase.from('users').update({ rol, rol_custom_id: null }).eq('id', userId)
+      // Al cambiar rol, actualizar puede_ver_todas según el rol nuevo
+      const puede_ver_todas = [...ROLES_SIEMPRE_GLOBALES, ...ROLES_GLOBAL_DEFAULT].includes(rol)
+      const { error } = await supabase.from('users').update({ rol, rol_custom_id: null, puede_ver_todas }).eq('id', userId)
       if (error) throw error
       logActividad({ entidad: 'usuario', entidad_id: userId, entidad_nombre: nombreUsuario, accion: 'editar', campo: 'rol', valor_anterior: rolAnterior ?? null, valor_nuevo: rol, pagina: '/usuarios' })
     },
     onSuccess: () => { toast.success('Rol actualizado'); qc.invalidateQueries({ queryKey: ['usuarios'] }) },
     onError: () => toast.error('Error al actualizar rol'),
+  })
+
+  const updateSucursalPerms = useMutation({
+    mutationFn: async ({ userId, sucursal_id, puede_ver_todas }: { userId: string; sucursal_id: string | null; puede_ver_todas: boolean }) => {
+      const { error } = await supabase.from('users').update({ sucursal_id, puede_ver_todas }).eq('id', userId)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Permisos de sucursal actualizados'); qc.invalidateQueries({ queryKey: ['usuarios'] }) },
+    onError: () => toast.error('Error al actualizar permisos'),
   })
 
   const assignRolCustom = useMutation({
@@ -236,25 +253,25 @@ export default function UsuariosPage() {
     setUserPermisosTarget(u)
   }
 
-  const canManage = user?.rol === 'OWNER'
+  const canManage = user?.rol === 'DUEÑO'
 
   const usuariosFiltrados = filterRol === 'TODOS'
     ? (usuarios as any[])
     : (usuarios as any[]).filter(u => u.rol === filterRol)
 
   const PERMISOS: Record<string, Partial<Record<UserRole, boolean>>> = {
-    'Ver inventario':       { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: true  },
-    'Movimientos de stock': { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: true  },
-    'Ventas y caja':        { OWNER: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false, CONTADOR: false, DEPOSITO: false },
-    'Gastos':               { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: true,  DEPOSITO: false },
-    'Clientes':             { OWNER: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false, CONTADOR: false, DEPOSITO: false },
-    'Reportes e historial': { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: true,  DEPOSITO: false },
-    'Métricas e insights':  { OWNER: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: true,  DEPOSITO: false },
-    'Importar datos':       { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
-    'Configuración':        { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
-    'Usuarios':             { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
-    'RRHH (empleados)':     { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: true,  CONTADOR: false, DEPOSITO: false },
-    'Sucursales':           { OWNER: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'Ver inventario':       { DUEÑO: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: true  },
+    'Movimientos de stock': { DUEÑO: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: true  },
+    'Ventas y caja':        { DUEÑO: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'Gastos':               { DUEÑO: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: true,  DEPOSITO: false },
+    'Clientes':             { DUEÑO: true,  SUPERVISOR: true,  CAJERO: true,  RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'Reportes e historial': { DUEÑO: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: true,  DEPOSITO: false },
+    'Métricas e insights':  { DUEÑO: true,  SUPERVISOR: true,  CAJERO: false, RRHH: false, CONTADOR: true,  DEPOSITO: false },
+    'Importar datos':       { DUEÑO: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'Configuración':        { DUEÑO: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'Usuarios':             { DUEÑO: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
+    'RRHH (empleados)':     { DUEÑO: true,  SUPERVISOR: false, CAJERO: false, RRHH: true,  CONTADOR: false, DEPOSITO: false },
+    'Sucursales':           { DUEÑO: true,  SUPERVISOR: false, CAJERO: false, RRHH: false, CONTADOR: false, DEPOSITO: false },
   }
 
   function formatFechaCorta(iso: string) {
@@ -333,7 +350,7 @@ export default function UsuariosPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rol</label>
             <div className="grid grid-cols-3 gap-2">
               {(Object.entries(ROLES) as [UserRole, any][])
-                .filter(([r]) => r !== 'OWNER')
+                .filter(([r]) => r !== 'DUEÑO')
                 .map(([rol, cfg]) => (
                   <button key={rol} type="button" onClick={() => setInvRol(rol)}
                     className={`px-3 py-2.5 rounded-xl border-2 text-left transition-all
@@ -419,16 +436,52 @@ export default function UsuariosPage() {
                   </div>
 
                   {canManage && u.activo && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
                       <select value={u.rol}
                         onChange={e => updateRol.mutate({ userId: u.id, rol: e.target.value as UserRole, rolAnterior: u.rol, nombreUsuario: u.nombre_display })}
                         className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
                         {(Object.entries(ROLES) as [UserRole, any][])
-                          .filter(([r]) => r !== 'OWNER')
+                          .filter(([r]) => r !== 'DUEÑO')
                           .map(([r, cfg]) => (
                             <option key={r} value={r}>{cfg.label}</option>
                           ))}
                       </select>
+
+                      {/* Controles de sucursal — solo para roles configurables */}
+                      {!ROLES_SIEMPRE_GLOBALES.includes(u.rol) && sucursales.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          {/* Toggle puede_ver_todas */}
+                          <button
+                            title={u.puede_ver_todas ? 'Ve todas las sucursales — click para restringir' : 'Restringido a sucursal — click para dar acceso global'}
+                            onClick={() => updateSucursalPerms.mutate({
+                              userId: u.id,
+                              sucursal_id: u.puede_ver_todas ? (u.sucursal_id ?? null) : null,
+                              puede_ver_todas: !u.puede_ver_todas,
+                            })}
+                            className={`p-1.5 rounded-lg transition-colors ${u.puede_ver_todas
+                              ? 'text-accent bg-accent/10 hover:bg-accent/20'
+                              : 'text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10'}`}>
+                            <Globe size={15} />
+                          </button>
+                          {/* Selector sucursal (solo cuando está restringido) */}
+                          {!u.puede_ver_todas && (
+                            <select
+                              value={u.sucursal_id ?? ''}
+                              onChange={e => updateSucursalPerms.mutate({
+                                userId: u.id,
+                                sucursal_id: e.target.value || null,
+                                puede_ver_todas: false,
+                              })}
+                              className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white max-w-[120px]">
+                              <option value="">Sin sucursal</option>
+                              {sucursales.map(s => (
+                                <option key={s.id} value={s.id}>{s.nombre}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                      )}
+
                       <button onClick={() => openUserPermisos(u)} title="Editar permisos del módulo por usuario"
                         className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
                         <Sliders size={15} />
@@ -453,7 +506,7 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* ── Roles personalizados (OWNER only) ─────────────────────────────────── */}
+      {/* ── Roles personalizados (solo Dueño) ─────────────────────────────────── */}
       {canManage && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
           <button onClick={() => setShowRolesSection(v => !v)}

@@ -73,7 +73,7 @@ interface CartItem {
 
 export default function VentasPage() {
   const { tenant, user } = useAuthStore()
-  const { sucursalId, applyFilter } = useSucursalFilter()
+  const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
@@ -100,6 +100,12 @@ export default function VentasPage() {
   const [descuentoTotal, setDescuentoTotal] = useState('')
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
   const [notas, setNotas] = useState('')
+  const [requiereEnvio, setRequiereEnvio] = useState(false)
+  const [costoEnvioVenta, setCostoEnvioVenta] = useState('')
+  const [envioTipoVenta, setEnvioTipoVenta]   = useState<'monto' | 'km'>('monto')
+  const [envioKmVenta, setEnvioKmVenta]       = useState('')
+  const [precioPorKmVenta, setPrecioPorKmVenta] = useState('')
+  const [envioDestinoVenta, setEnvioDestinoVenta] = useState('')
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
@@ -251,6 +257,14 @@ export default function VentasPage() {
   // Resetear paginación cuando cambian los filtros
   useEffect(() => { setVentasLimit(50) }, [filterEstado, sucursalId])
 
+  // Auto-calcular costo de envío cuando cambian km o precio/km
+  useEffect(() => {
+    if (envioTipoVenta === 'km' && envioKmVenta && precioPorKmVenta) {
+      const calc = parseFloat(envioKmVenta) * parseFloat(precioPorKmVenta)
+      if (!isNaN(calc) && calc > 0) setCostoEnvioVenta(calc.toFixed(2))
+    }
+  }, [envioKmVenta, precioPorKmVenta, envioTipoVenta])
+
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
   const [seriesBusqueda, setSeriesBusqueda] = useState('')
@@ -333,7 +347,7 @@ export default function VentasPage() {
   const [viewMode, setViewMode] = useState<'lista' | 'galeria'>('lista')
 
   const { data: productosBusqueda = [] } = useQuery({
-    queryKey: ['productos-venta', tenant?.id, productoSearch, ventaGrupoId, viewMode],
+    queryKey: ['productos-venta', tenant?.id, productoSearch, ventaGrupoId, viewMode, sucursalId],
     queryFn: async () => {
       // Determinar estados del grupo activo
       const grupoActivo = ventaGrupoId === 'todos'
@@ -372,12 +386,14 @@ export default function VentasPage() {
         : estadosVentaIds
 
       // Traer líneas activas de estos productos con ubicación disponible para surtido
-      let lineasQuery = supabase.from('inventario_lineas')
-        .select('producto_id, cantidad, cantidad_reservada, estado_id, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
-        .eq('tenant_id', tenant!.id)
-        .eq('activo', true)
-        .in('producto_id', productoIds)
-        .not('ubicacion_id', 'is', null)
+      let lineasQuery = applyFilter(
+        supabase.from('inventario_lineas')
+          .select('producto_id, cantidad, cantidad_reservada, estado_id, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
+          .eq('tenant_id', tenant!.id)
+          .eq('activo', true)
+          .in('producto_id', productoIds)
+          .not('ubicacion_id', 'is', null)
+      )
 
       // Filtrar por estados válidos (grupo ∩ disponible_venta, o solo disponible_venta si sin grupo)
       if (estadosFinal.length > 0) {
@@ -615,9 +631,11 @@ export default function VentasPage() {
       .limit(1)
     if (!prods || prods.length === 0) { toast.error(`No se encontró ningún producto con código "${code}"`); return }
     const prod = prods[0]
-    const { data: lineasScan } = await supabase.from('inventario_lineas')
-      .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
-      .eq('tenant_id', tenant!.id).eq('producto_id', prod.id).eq('activo', true)
+    const { data: lineasScan } = await applyFilter(
+      supabase.from('inventario_lineas')
+        .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
+        .eq('tenant_id', tenant!.id).eq('producto_id', prod.id).eq('activo', true)
+    )
     let stockDisponibleScan = 0
     for (const l of lineasScan ?? []) {
       if ((l.ubicaciones as any)?.disponible_surtido === false) continue
@@ -1007,6 +1025,10 @@ export default function VentasPage() {
   const descCombosMulti = combosActivosMulti.reduce((s, c) => s + c.monto, 0)
   const total = Math.max(0, subtotal - descTotalMonto - descCombosMulti)
 
+  // Auto-calcular costo de envío por KM
+  const costoEnvioNum = requiereEnvio ? (parseFloat(costoEnvioVenta) || 0) : 0
+  const totalConEnvio = total + costoEnvioNum
+
   // Medios de pago helpers
   const updateMedioPago = (idx: number, field: keyof MedioPagoItem, value: string) =>
     setMediosPago(prev => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m))
@@ -1071,7 +1093,7 @@ export default function VentasPage() {
         }
       }
     }
-    const vuelto = modoCC ? 0 : calcularVuelto(mediosPago, total)
+    const vuelto = modoCC ? 0 : calcularVuelto(mediosPago, totalConEnvio)
     const montoEfectivoCaja = modoCC ? 0 : calcularEfectivoCaja(mediosPago, total)
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
@@ -1095,6 +1117,7 @@ export default function VentasPage() {
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
+        ...(costoEnvioNum > 0 ? { costo_envio: costoEnvioNum } : {}),
         ...(estado === 'despachada' ? { despachado_at: new Date().toISOString() } : {}),
       }).select().single()
       if (ventaError) throw ventaError
@@ -1316,9 +1339,29 @@ export default function VentasPage() {
       if (estado === 'despachada' && factHabilitada) {
         triggerFacturaModal(venta.id, venta.numero ?? 0, Number(venta.total ?? 0))
       }
+      // Auto-crear envío si el toggle está activo
+      if (requiereEnvio && estado !== 'pendiente') {
+        await supabase.from('envios').insert({
+          tenant_id: tenant!.id,
+          venta_id: venta.id,
+          estado: 'pendiente',
+          cliente_id: clienteId || null,
+          canal: 'POS',
+          created_by: user!.id,
+          sucursal_id: sucursalId || null,
+          destino_descripcion: envioDestinoVenta || null,
+          costo_cotizado: costoEnvioNum > 0 ? costoEnvioNum : null,
+        })
+        qc.invalidateQueries({ queryKey: ['envios'] })
+        toast('Envío creado en estado pendiente', { icon: '📦' })
+      }
+
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setClienteCCEnabled(false); setModoCC(false)
       setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
+      setRequiereEnvio(false)
+      setCostoEnvioVenta(''); setEnvioTipoVenta('monto'); setEnvioKmVenta('')
+      setPrecioPorKmVenta(''); setEnvioDestinoVenta('')
       setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
@@ -2097,6 +2140,14 @@ export default function VentasPage() {
         <div className="grid lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 space-y-4">
 
+            {/* Aviso: sin sucursal seleccionada el inventario no está filtrado */}
+            {puedeVerTodas && sucursales.length > 0 && !sucursalId && (
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-sm text-amber-700 dark:text-amber-400">
+                <AlertTriangle size={15} className="flex-shrink-0" />
+                <span>Sin sucursal seleccionada — el inventario mostrado es de <strong>todas las sucursales</strong>. Seleccioná una desde el header para filtrar.</span>
+              </div>
+            )}
+
             {/* Buscador de productos */}
             <div className="bg-surface rounded-xl p-4 shadow-sm border border-border-ds">
               <h2 className="font-semibold text-primary mb-3 flex items-center gap-2"><ShoppingCart size={16} /> Agregar productos</h2>
@@ -2536,6 +2587,99 @@ export default function VentasPage() {
                 <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2}
                   placeholder="Notas (opcional)"
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
+                {/* Toggle envío */}
+                <div className={`rounded-xl border-2 overflow-hidden transition-all
+                  ${requiereEnvio ? 'border-accent' : 'border-gray-200 dark:border-gray-600'}`}>
+                  {/* Header toggle */}
+                  <div
+                    onClick={() => setRequiereEnvio(v => !v)}
+                    className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer select-none transition-colors
+                      ${requiereEnvio ? 'bg-accent/5 dark:bg-accent/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}>
+                    <Truck size={16} className={requiereEnvio ? 'text-accent' : 'text-gray-400'} />
+                    <span className={`text-sm font-medium flex-1 ${requiereEnvio ? 'text-accent' : 'text-gray-600 dark:text-gray-400'}`}>
+                      Incluir envío
+                    </span>
+                    <div className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${requiereEnvio ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${requiereEnvio ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    </div>
+                  </div>
+
+                  {/* Panel expandido */}
+                  {requiereEnvio && (
+                    <div className="px-3 pb-3 pt-2 space-y-3 border-t border-accent/20">
+                      {/* Tipo de costo */}
+                      <div className="flex gap-2">
+                        {(['monto', 'km'] as const).map(t => (
+                          <button key={t} type="button" onClick={() => { setEnvioTipoVenta(t); setCostoEnvioVenta(''); setEnvioKmVenta(''); setPrecioPorKmVenta('') }}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors
+                              ${envioTipoVenta === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                            {t === 'monto' ? '$ Monto fijo' : '📍 Por KM'}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Campos según tipo */}
+                      {envioTipoVenta === 'monto' ? (
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Costo de envío ($)</label>
+                          <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
+                            value={costoEnvioVenta} onChange={e => setCostoEnvioVenta(e.target.value)}
+                            placeholder="0.00"
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Distancia (km)</label>
+                              <input type="number" min="0" step="0.1" onWheel={e => e.currentTarget.blur()}
+                                value={envioKmVenta} onChange={e => setEnvioKmVenta(e.target.value)}
+                                placeholder="0"
+                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">$/km</label>
+                              <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
+                                value={precioPorKmVenta} onChange={e => setPrecioPorKmVenta(e.target.value)}
+                                placeholder="0"
+                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            </div>
+                          </div>
+                          {costoEnvioNum > 0 && (
+                            <p className="text-xs text-accent font-medium">{envioKmVenta} km × ${precioPorKmVenta}/km = ${costoEnvioNum.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Destino */}
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Dirección de entrega</label>
+                        <div className="flex gap-1.5">
+                          <input type="text"
+                            value={envioDestinoVenta} onChange={e => setEnvioDestinoVenta(e.target.value)}
+                            placeholder="Calle, número, ciudad"
+                            className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          {envioDestinoVenta && (() => {
+                            const origen = sucursales.find(s => s.id === sucursalId)?.direccion ?? ''
+                            const url = `https://www.google.com/maps/dir/${encodeURIComponent(origen)}/${encodeURIComponent(envioDestinoVenta)}`
+                            return (
+                              <a href={url} target="_blank" rel="noopener noreferrer"
+                                className="flex-shrink-0 px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors"
+                                title="Ver ruta en Google Maps">
+                                🗺
+                              </a>
+                            )
+                          })()}
+                        </div>
+                        {envioDestinoVenta && envioTipoVenta === 'km' && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                            Calculá los km abriendo la ruta en Maps y cargalos arriba.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -2579,9 +2723,15 @@ export default function VentasPage() {
                     <span>−${c.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 ))}
+                {costoEnvioNum > 0 && (
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300">
+                    <span className="flex items-center gap-1"><Truck size={13} /> Envío</span>
+                    <span>+${costoEnvioNum.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                )}
                 <div className="flex justify-between font-bold text-primary text-lg border-t border-border-ds pt-2">
                   <span>Total</span>
-                  <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  <span>${totalConEnvio.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
                 {/* IVA desglosado por alícuota real */}
                 {total > 0 && (() => {
@@ -2648,7 +2798,7 @@ export default function VentasPage() {
                 </button>
 
                 {cart.length > 0 && totalAsignado > 0 && (() => {
-                  const vueltoUI = calcularVuelto(mediosPago, total)
+                  const vueltoUI = calcularVuelto(mediosPago, totalConEnvio)
                   const esVuelto = vueltoUI > 0.5
                   return (
                     <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600 dark:text-green-400' : totalFaltante > 0 ? 'text-orange-500' : esVuelto ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>

@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-14] update | v1.8.20 DEV — fix invite-user redirect dinámico
+
+- `invite-user` EF: redirectTo hardcodeado a genesis360.pro → ahora el frontend pasa
+  window.location.origin/dashboard (funciona en localhost, DEV y PROD sin tocar whitelists)
+- UsuariosPage: extrae mensaje real del body del FunctionsHttpError para toast útil
+- GROQ_API_KEY configurada en Supabase PROD secrets ✅
+- Deployado invite-user en DEV y PROD
+
 ## [2026-05-14] update | PROD deploy v1.8.19 — PR #110 mergeado, migrations 093-107 aplicadas
 
 - PR #110 mergeado dev → main

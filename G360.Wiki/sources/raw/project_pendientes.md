@@ -17,7 +17,7 @@ type: project
 - Migrations PROD: 001–107 ✅ (todas aplicadas)
 - Edge Functions DEV: todas activas
 - Edge Functions PROD: `invite-user` ✅ · `ai-assistant` ✅ · `cancel-suscripcion` ❌ (no existe en repo)
-- GROQ_API_KEY: DEV ✅ · PROD ❌ (pendiente — agregar en Supabase PROD secrets)
+- GROQ_API_KEY: DEV ✅ · PROD ✅
 - VITE_GOOGLE_MAPS_API_KEY: DEV ✅ · PROD ✅ (Vercel Production)
 
 ---

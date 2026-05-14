@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
@@ -376,6 +376,25 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   })
 
   const seriesActivas = (linea.inventario_series ?? []).filter((s: any) => s.activo)
+
+  // ── Teclado: ESC = cerrar, ENTER = guardar según tab ──────────────────────
+  useEffect(() => {
+    if (showQR) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
+      if (e.key === 'Enter') {
+        const target = e.target as HTMLElement
+        if (['TEXTAREA', 'BUTTON'].includes(target.tagName)) return
+        e.preventDefault()
+        if (tab === 'editar' && !guardarEdicion.isPending) guardarEdicion.mutate()
+        if (tab === 'mover' && cantMover && ubicDestino && !moverStock.isPending) moverStock.mutate()
+        if (tab === 'estructura' && !guardarEstructura.isPending) guardarEstructura.mutate()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [showQR, tab, cantMover, ubicDestino,
+      guardarEdicion.isPending, moverStock.isPending, guardarEstructura.isPending])
 
   const TABS: { id: AccionTab; label: string; icon: any }[] = tieneReservas
     ? [{ id: 'mover', label: 'Mover', icon: ArrowRightLeft }]

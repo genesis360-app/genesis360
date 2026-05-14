@@ -133,7 +133,22 @@ Cada área tiene filtros propios, KPIs, gráficos e insights dinámicos.
 - **Relocacion manual de LPNs existentes sin sucursal**: UI para asignar sucursal masivamente
 - **Traslado LPN**: probar que el flujo completo funciona en prod (cantidad + sucursal + ubicación)
 
-### 3. Recursos — pendientes de esta sesión
+### 3. Reglas de negocio — relevar y/o implementar (pendiente próxima sesión)
+
+**Ya relevadas, pendientes de implementar:**
+- **Caja**: Bóveda (saldo + transferencias caja↔bóveda)
+- **Caja**: Contraseña maestra para cerrar caja ajena (`clave_maestra` en `tenants`)
+- **Caja**: Ticket de cierre PDF imprimible + reimpresión desde historial
+- **Caja**: Alerta automática a OWNER/SUPERVISOR si hay diferencia al cierre
+- **Caja**: Arqueo parcial (sin cerrar sesión, sin rastro en historial)
+
+**Pendiente de relevar con GO:**
+- **Gastos**: reglas de negocio completas
+- **RRHH**: reglas de negocio completas
+- **Ventas**: devoluciones/reapertura de despachada/límite de ítems
+- **Clientes**: límite de deuda configurable / notificación al cliente
+
+### 4. Recursos — pendientes de esta sesión
 - **Migration 102**: aplicar en DEV y luego en PROD con el siguiente deploy
 - **Recursos recurrentes — cron automático**: generar gastos pendientes automáticamente (pg_cron o GitHub Actions) sin intervención del usuario
 

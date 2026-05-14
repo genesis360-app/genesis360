@@ -1432,6 +1432,52 @@ export default function InventarioPage() {
     },
   })
 
+  // ── Shortcuts de teclado por tab (cuando no hay modal abierto) ────────────
+  useEffect(() => {
+    if (modal !== null || lpnAcciones) return // modal ya abierto, lo maneja useModalKeyboard
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      const enInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+
+      // ── Tab Agregar Stock ──────────────────────────────────────────────────
+      if (tab === 'agregar') {
+        if (e.key === 'Enter' && !enInput) { e.preventDefault(); setModal('ingreso') }
+        if (e.key === 'Escape') { e.preventDefault(); setSelectedProduct(null); setForm(emptyIngreso) }
+      }
+
+      // ── Tab Quitar Stock ───────────────────────────────────────────────────
+      if (tab === 'quitar') {
+        if (e.key === 'Enter' && !enInput) { e.preventDefault(); setModal('rebaje') }
+        if (e.key === 'Escape') { e.preventDefault(); setSelectedProduct(null); setRebajeLinea(null) }
+      }
+
+      // ── Tab Conteos ────────────────────────────────────────────────────────
+      if (tab === 'conteo') {
+        if (e.key === 'Escape' && showConteoForm) {
+          e.preventDefault()
+          resetConteoForm()
+          return
+        }
+        if (e.key === 'Enter' && !enInput) {
+          e.preventDefault()
+          if (!showConteoForm) {
+            // Estado 1: abrir nuevo conteo
+            setShowConteoForm(true)
+          } else if (conteoRows.length === 0 && conteoRefId && !conteoLoading) {
+            // Estado 2: cargar stock (solo si hay ubicación/SKU seleccionado)
+            cargarLineasParaConteo()
+          } else if (conteoRows.length > 0 && !finalizarConteoYAplicar.isPending) {
+            // Estado 3: finalizar y aplicar ajustes
+            finalizarConteoYAplicar.mutate()
+          }
+        }
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [tab, modal, lpnAcciones, showConteoForm, conteoRows.length, conteoRefId,
+      conteoLoading, finalizarConteoYAplicar.isPending])
+
   const handleBarcodeScan = async (code: string) => {
     setMovScannerOpen(false)
     const { data: prods } = await supabase.from('productos')

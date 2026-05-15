@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-15] update | PROD deploy v1.8.27 — fix registro nuevo negocio
+
+- Fix crítico: `fn_crear_caja_fuerte` SECURITY DEFINER — trigger bloqueaba RLS al registrar tenant nuevo
+- Migration 109 (modo_credentials) y 110 (fix fn) aplicadas en PROD ✅
+- PR #112 mergeado a main · GitHub release v1.8.27 ✅
+
 ## [2026-05-15] update | v1.8.26 DEV — ISS-072/044 + ISS-100/012/107 + ISS-105/106
 
 - ISS-100: conteos borrador funcionales (continuar, eliminar, actualizar)

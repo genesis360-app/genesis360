@@ -13,6 +13,17 @@ updated: 2026-05-07
 
 ---
 
+## v1.8.27 — Fix crítico registro nuevo negocio (PROD ✅)
+
+**PR #112** — mergeado a `main` ✅  
+**Release:** https://github.com/genesis360-app/genesis360/releases/tag/v1.8.27  
+**Migrations 109–110** aplicadas en DEV y PROD ✅
+
+- Fix: `fn_crear_caja_fuerte` declarada `SECURITY DEFINER` — el trigger disparaba antes de que el user existiera en `users`, bloqueando el INSERT en `cajas` por RLS
+- Migration 109: tabla `modo_credentials` (MODO payments — ISS-072)
+
+---
+
 ## v1.8.22 — Cuotas tarjeta + CC parcial + Ticket sucursal + Bugfixes (PROD ✅)
 
 **PR #111** — mergeado a `main` ✅  

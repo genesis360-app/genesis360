@@ -6,6 +6,11 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-15] update | v1.8.24 DEV — ISS-105/106 fixes
+
+- ISS-105: validación medios de pago usa totalConEnvio; monto_pagado incluye envío
+- ISS-106: historial OR(sucursal_id=X, null) para incluir ventas previas al multi-sucursal; badge ghost CC
+
 ## [2026-05-15] update | v1.8.23 DEV — ISS-100/012/107 fixes
 
 - ISS-100: conteos borrador — continuar, eliminar y actualizar desde historial

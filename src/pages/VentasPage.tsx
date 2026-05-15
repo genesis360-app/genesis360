@@ -28,7 +28,7 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
   devuelta:   { label: 'Devuelta',   color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
 }
 
-const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
+const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'MODO', 'Otro']
 
 function isPresupuestoVencido(venta: any, validezDias: number | null | undefined): boolean {
   if (!validezDias || venta?.estado !== 'pendiente') return false
@@ -165,6 +165,10 @@ export default function VentasPage() {
   // MP link de pago
   const [mpLinkModal, setMpLinkModal] = useState<{ ventaId: string; monto: number; initPoint: string; qrDataUrl: string } | null>(null)
   const [generandoMpLink, setGenerandoMpLink] = useState(false)
+  // ISS-072: MODO link + QR
+  const [modoModal, setModoModal] = useState<{ qrDataUrl: string; deepLink: string; paymentId: string } | null>(null)
+  const [generandoModo, setGenerandoModo] = useState(false)
+  const [modoConectado, setModoConectado] = useState<boolean | null>(null)
   const [preVentaId, setPreVentaId] = useState<string | null>(null)
   const [mpPagoRecibido, setMpPagoRecibido] = useState(false)
   const [canalFiltro, setCanalFiltro] = useState<string | null>(null)
@@ -200,6 +204,38 @@ export default function VentasPage() {
     if (!preVentaId) setPreVentaId(id)
     setMpPagoRecibido(false)
     await generarLinkMP(id, monto)
+  }
+
+  // ISS-072: MODO — genera QR + link de pago
+  const generarPagoMODO = async (monto: number) => {
+    if (!monto || monto <= 0) { toast.error('Ingresá un monto para generar el QR MODO'); return }
+    setGenerandoModo(true)
+    try {
+      const id = preVentaId ?? crypto.randomUUID()
+      if (!preVentaId) setPreVentaId(id)
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/modo-crear-pago`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ venta_id: id, monto }),
+      })
+      const json = await res.json()
+      if (!res.ok) { toast.error(json.error ?? 'Error al generar pago MODO'); return }
+      // Generar imagen QR a partir del string MODO
+      const qrDataUrl = await QRCode.toDataURL(json.qr, { width: 260, margin: 2 })
+      setModoModal({ qrDataUrl, deepLink: json.deep_link, paymentId: json.payment_id })
+    } catch (e: any) { toast.error(e.message ?? 'Error al conectar con MODO') }
+    finally { setGenerandoModo(false) }
+  }
+
+  // Verificar si MODO está conectado (lazy, solo cuando se necesita)
+  const checkModoConectado = async () => {
+    if (modoConectado !== null) return modoConectado
+    const { data } = await supabase.from('modo_credentials')
+      .select('conectado').eq('tenant_id', tenant!.id).maybeSingle()
+    const conectado = data?.conectado ?? false
+    setModoConectado(conectado)
+    return conectado
   }
 
   // Polling: mientras el modal QR está abierto, consulta cada 4s si llegó el pago.
@@ -2856,6 +2892,14 @@ export default function VentasPage() {
                         <QrCode size={16} />
                       </button>
                     )}
+                    {/* ISS-072: botón QR MODO */}
+                    {mp.tipo === 'MODO' && parseFloat(mp.monto) > 0 && (
+                      <button onClick={() => generarPagoMODO(parseFloat(mp.monto))} disabled={generandoModo}
+                        title="Generar QR MODO (bancos interoperable)"
+                        className="p-1.5 text-purple-500 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg flex-shrink-0 disabled:opacity-50 transition-colors">
+                        <QrCode size={16} />
+                      </button>
+                    )}
                     {/* ISS-086: indicador cuotas si ya seleccionó */}
                     {mp.tipo === 'Tarjeta crédito' && cuotasSeleccion[idx] && (
                       <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 font-medium ${cuotasSeleccion[idx].sinInteres ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
@@ -4202,6 +4246,41 @@ export default function VentasPage() {
                 </p>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── ISS-072: Modal QR MODO ── */}
+      {modoModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-primary text-base flex items-center gap-2">
+                <QrCode size={16} className="text-purple-500" /> Cobrar con MODO
+              </h3>
+              <button onClick={() => setModoModal(null)} className="text-gray-400 hover:text-gray-600 p-1"><X size={18} /></button>
+            </div>
+            <div className="flex flex-col items-center gap-3">
+              <img src={modoModal.qrDataUrl} alt="QR MODO" className="w-48 h-48 rounded-xl" />
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                Escaneá con cualquier app bancaria (MODO, Banco, Billetera)
+              </p>
+              <a href={modoModal.deepLink} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-purple-600 hover:underline">
+                <ExternalLink size={12} /> Abrir link de pago
+              </a>
+              <button onClick={() => { navigator.clipboard.writeText(modoModal.deepLink); toast.success('Link copiado') }}
+                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 transition-colors">
+                <Copy size={12} /> Copiar link
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
+              El pago se confirmará automáticamente vía webhook cuando el cliente pague.
+            </p>
+            <button onClick={() => setModoModal(null)}
+              className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+              Cerrar
+            </button>
           </div>
         </div>
       )}

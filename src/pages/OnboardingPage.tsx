@@ -1,6 +1,6 @@
 import { BRAND } from '@/config/brand'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { Package, Building2, Globe, Phone, Mail, Lock, LogOut } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -30,19 +30,29 @@ export default function OnboardingPage() {
 
   // Si el usuario ya tiene sesión (ej: vino de Google OAuth), saltear paso de cuenta
   const [existingAuthUser, setExistingAuthUser] = useState<{ id: string; email: string; name: string } | null>(null)
-  useState(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const u = session.user
-        setExistingAuthUser({
-          id: u.id,
-          email: u.email ?? '',
-          name: u.user_metadata?.full_name ?? u.user_metadata?.name ?? '',
-        })
-        setStep('business')
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session?.user) return
+      const u = session.user
+      // Si ya tiene tenant registrado, ir directo al dashboard (evita duplicados)
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('tenant_id')
+        .eq('id', u.id)
+        .maybeSingle()
+      if (existingUser?.tenant_id) {
+        await loadUserData(u.id)
+        navigate('/dashboard')
+        return
       }
+      setExistingAuthUser({
+        id: u.id,
+        email: u.email ?? '',
+        name: u.user_metadata?.full_name ?? u.user_metadata?.name ?? '',
+      })
+      setStep('business')
     })
-  })
+  }, [])
 
   const handleAccountSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -107,7 +117,11 @@ export default function OnboardingPage() {
           nombre_display: displayName,
           activo: true,
         })
-      if (userError) throw userError
+      if (userError) {
+        // Rollback manual del tenant para evitar huérfanos
+        await supabase.from('tenants').delete().eq('id', tenantId)
+        throw userError
+      }
 
       // Email de bienvenida (fire-and-forget, no bloquea el flujo)
       const emailTo = existingAuthUser ? existingAuthUser.email : accountData.email
@@ -120,7 +134,10 @@ export default function OnboardingPage() {
       await loadUserData(userId)
       navigate('/dashboard')
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Error al registrar')
+      const msg = err instanceof Error
+        ? err.message
+        : (err as { message?: string })?.message ?? 'Error al registrar'
+      toast.error(msg)
     } finally {
       setLoading(false)
     }

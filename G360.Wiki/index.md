@@ -8,7 +8,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 | Página                                | Descripción                                          | Estado |
 | ------------------------------------- | ---------------------------------------------------- | ------ |
-| [[wiki/overview/genesis360-overview]] | Visión general v1.4.0, stack, módulos, estado actual | ✅      |
+| [[wiki/overview/genesis360-overview]] | Visión general v1.8.22-prod, stack, módulos, estado actual | ✅      |
 
 ---
 
@@ -17,9 +17,9 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/features/autenticacion-onboarding]] | Google OAuth, roles, trial, session timeout | ✅ |
-| [[wiki/features/inventario-stock]] | LPNs, movimientos, FIFO/FEFO, stock por sucursal, bulk edit atributos | ✅ |
-| [[wiki/features/ventas-pos]] | Carrito, checkout, métodos de pago, reservas, combos (+ v1.8.21-22: CC parcial, cuotas, ticket sucursal, fixes) | ✅ |
-| [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja, roles (+ v1.8.21: caja predeterminada visual, fix sugerido, Caja Fuerte origen) | ✅ |
+| [[wiki/features/inventario-stock]] | LPNs, movimientos, FIFO/FEFO, stock por sucursal, bulk edit atributos (+ v1.8.23: conteos borrador, rebaje masivo FIFO fix) | ✅ |
+| [[wiki/features/ventas-pos]] | Carrito, checkout, métodos de pago, reservas, combos (+ v1.8.21-22: CC parcial, cuotas, ticket sucursal, fixes) (+ v1.8.23-24: fix envío, historial sucursal) | ✅ |
+| [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja, roles (+ v1.8.21: caja predeterminada ★, fix sugerido, selector origen Caja Fuerte) | ✅ |
 | [[wiki/features/gastos]] | Variables, fijos, IVA deducible, comprobantes, múltiples medios (+ v1.8.21-22: efectivo en caja, CC en OC, comprobante OC) | ✅ |
 | [[wiki/features/devoluciones]] | Stock serializado/no-serializado, NC, caja | ✅ |
 | [[wiki/features/clientes-proveedores]] | CRM, cuenta corriente, OC, domicilios, servicios (+ v1.8.21: globales entre sucursales) | ✅ |
@@ -73,6 +73,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/facturacion-afip]] | ← Ver features/facturacion-afip (cubre integración AFIP) | ✅ |
 | [[wiki/features/envios]] | ← WhatsApp documentado en features/envios | ✅ |
 | [[wiki/integrations/resend-email]] | send-email EF, tipos, FROM, monitoring diario | ✅ |
+| [[wiki/integrations/roadmap-apis]] | MODO (v1.8.25 framework), TiendaNube, MercadoLibre, roadmap completo | ✅ |
 
 ---
 
@@ -123,4 +124,4 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
-*Última actualización: 2026-05-14 — 48 páginas · 8 fuentes en raw/ · 109 migraciones (108 + 086b) · v1.8.22-prod*
+*Última actualización: 2026-05-15 — 48 páginas · 8 fuentes en raw/ · 110 migraciones (108+109 + 086b) · v1.8.26-dev / v1.8.22-prod*

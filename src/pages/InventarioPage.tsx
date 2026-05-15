@@ -184,6 +184,7 @@ export default function InventarioPage() {
   const [conteoNotas, setConteoNotas] = useState('')
   const [showConteoForm, setShowConteoForm] = useState(false)
   const [conteoExpandedId, setConteoExpandedId] = useState<string | null>(null)
+  const [continuandoConteoId, setContinuandoConteoId] = useState<string | null>(null)
   const [conteoLoading, setConteoLoading] = useState(false)
 
   // ── Historial filters ──────────────────────────────────────────────────────
@@ -1332,22 +1333,53 @@ export default function InventarioPage() {
 
   const resetConteoForm = () => {
     setShowConteoForm(false); setConteoRows([]); setConteoNotas(''); setConteoRefId('')
+    setContinuandoConteoId(null)
+  }
+
+  // ISS-100: Cargar borrador en el form para continuar editando
+  const continuarConteo = (c: InventarioConteo) => {
+    setConteoTipo(c.tipo)
+    setConteoRefId(c.ubicacion_id ?? c.producto_id ?? '')
+    setConteoNotas(c.notas ?? '')
+    setConteoRows((c.inventario_conteo_items ?? []).map(item => ({
+      linea_id: item.inventario_linea_id ?? '',
+      producto_id: item.producto_id,
+      nombre: item.productos?.nombre ?? '—',
+      sku: item.productos?.sku ?? '',
+      unidad_medida: item.productos?.unidad_medida ?? 'unidad',
+      lpn: item.lpn ?? '',
+      cantidad_esperada: item.cantidad_esperada,
+      cantidad_contada: String(item.cantidad_contada),
+    })))
+    setContinuandoConteoId(c.id)
+    setShowConteoForm(true)
+    setConteoExpandedId(null)
   }
 
   const guardarConteoBorrador = useMutation({
     mutationFn: async () => {
       if (conteoRows.length === 0) throw new Error('Cargá el stock antes de guardar')
-      const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
-        tenant_id: tenant!.id, tipo: conteoTipo,
-        ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
-        producto_id: conteoTipo === 'producto' ? conteoRefId : null,
-        estado: 'borrador', notas: conteoNotas || null, ajuste_aplicado: false,
-        created_by: user?.id, sucursal_id: sucursalId || null,
-      }).select().single()
-      if (cErr) throw cErr
+      let conteoId = continuandoConteoId
+      if (conteoId) {
+        // ISS-100: actualizar borrador existente
+        const { error: uErr } = await supabase.from('inventario_conteos')
+          .update({ notas: conteoNotas || null }).eq('id', conteoId)
+        if (uErr) throw uErr
+        await supabase.from('inventario_conteo_items').delete().eq('conteo_id', conteoId)
+      } else {
+        const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
+          tenant_id: tenant!.id, tipo: conteoTipo,
+          ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
+          producto_id: conteoTipo === 'producto' ? conteoRefId : null,
+          estado: 'borrador', notas: conteoNotas || null, ajuste_aplicado: false,
+          created_by: user?.id, sucursal_id: sucursalId || null,
+        }).select().single()
+        if (cErr) throw cErr
+        conteoId = conteo.id
+      }
       const { error: iErr } = await supabase.from('inventario_conteo_items').insert(
         conteoRows.map(row => ({
-          conteo_id: conteo.id, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
+          conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
           lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
           cantidad_contada: parseFloat(row.cantidad_contada) || 0,
         }))
@@ -1365,17 +1397,27 @@ export default function InventarioPage() {
   const finalizarConteoYAplicar = useMutation({
     mutationFn: async () => {
       if (conteoRows.length === 0) throw new Error('Cargá el stock antes de finalizar')
-      const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
-        tenant_id: tenant!.id, tipo: conteoTipo,
-        ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
-        producto_id: conteoTipo === 'producto' ? conteoRefId : null,
-        estado: 'finalizado', notas: conteoNotas || null, ajuste_aplicado: true,
-        created_by: user?.id, sucursal_id: sucursalId || null,
-      }).select().single()
-      if (cErr) throw cErr
+      let conteoId = continuandoConteoId
+      if (conteoId) {
+        // ISS-100: actualizar borrador existente → marcar como finalizado
+        const { error: uErr } = await supabase.from('inventario_conteos')
+          .update({ estado: 'finalizado', notas: conteoNotas || null, ajuste_aplicado: true }).eq('id', conteoId)
+        if (uErr) throw uErr
+        await supabase.from('inventario_conteo_items').delete().eq('conteo_id', conteoId)
+      } else {
+        const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
+          tenant_id: tenant!.id, tipo: conteoTipo,
+          ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
+          producto_id: conteoTipo === 'producto' ? conteoRefId : null,
+          estado: 'finalizado', notas: conteoNotas || null, ajuste_aplicado: true,
+          created_by: user?.id, sucursal_id: sucursalId || null,
+        }).select().single()
+        if (cErr) throw cErr
+        conteoId = conteo.id
+      }
       await supabase.from('inventario_conteo_items').insert(
         conteoRows.map(row => ({
-          conteo_id: conteo.id, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
+          conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
           lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
           cantidad_contada: parseFloat(row.cantidad_contada) || 0,
         }))
@@ -1407,6 +1449,19 @@ export default function InventarioPage() {
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
       qc.invalidateQueries({ queryKey: ['alertas'] })
       resetConteoForm()
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ISS-100: eliminar borrador de conteo
+  const eliminarConteo = useMutation({
+    mutationFn: async (conteoId: string) => {
+      const { error } = await supabase.from('inventario_conteos').delete().eq('id', conteoId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Borrador eliminado')
+      qc.invalidateQueries({ queryKey: ['conteo-historial'] })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -4086,10 +4141,17 @@ export default function InventarioPage() {
                   className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
                   <ChevronLeft size={16} /> Cancelar
                 </button>
-                <span className="text-sm font-semibold text-primary">Nuevo conteo</span>
+                <span className="text-sm font-semibold text-primary">
+                  {continuandoConteoId ? 'Continuar borrador' : 'Nuevo conteo'}
+                </span>
+                {continuandoConteoId && (
+                  <span className="text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 px-2 py-0.5 rounded-full font-medium">
+                    Borrador
+                  </span>
+                )}
               </div>
 
-              {/* Toggle tipo */}
+              {/* Toggle tipo — deshabilitado si se continúa un borrador */}
               <div className="flex gap-2">
                 {(['ubicacion', 'producto'] as const).map(t => (
                   <button key={t} onClick={() => { setConteoTipo(t); setConteoRefId(''); setConteoRows([]) }}
@@ -4260,6 +4322,22 @@ export default function InventarioPage() {
                             {conDiff.length > 0 && <span className="text-red-500 ml-1">· {conDiff.length} con diferencia</span>}
                           </p>
                         </div>
+                        {/* ISS-100: acciones para borradores */}
+                        {c.estado === 'borrador' && (
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-1">
+                            <button
+                              onClick={e => { e.stopPropagation(); continuarConteo(c) }}
+                              className="text-xs px-2 py-1 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors">
+                              Continuar
+                            </button>
+                            <button
+                              onClick={e => { e.stopPropagation(); if (confirm('¿Eliminar este borrador?')) eliminarConteo.mutate(c.id) }}
+                              disabled={eliminarConteo.isPending}
+                              className="text-xs px-2 py-1 border border-red-200 dark:border-red-700 text-red-500 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50">
+                              Eliminar
+                            </button>
+                          </div>
+                        )}
                         <ChevronRight size={16} className={`text-gray-400 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                       </button>
 

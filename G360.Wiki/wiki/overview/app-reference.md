@@ -20,7 +20,8 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 - **Backend:** Supabase (PostgreSQL + Auth + RLS + Edge Functions)
 - **Multi-tenant:** cada negocio tiene datos completamente aislados via RLS
 - **Multi-sucursal:** cada módulo operativo filtra por sucursal activa (selector en header por módulo)
-- **Versión actual:** v1.8.19 PROD / v1.8.20 DEV
+- **Logo:** Ícono G azul (sidebar + favicon + PWA icons — v1.8.26)
+- **Versión actual:** v1.8.22 PROD / v1.8.26 DEV
 
 ---
 
@@ -70,7 +71,7 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 
 ### Header (izquierda → derecha)
 - **Selector de sucursal**: comportamiento diferenciado por módulo y rol:
-  - **12 módulos** (Dashboard, Productos, Inventario, Clientes, Facturación, Proveedores, Recursos, Biblioteca, RRHH, Historial, Reportes, Configuración): dropdown con "Todas las sucursales" + cada sucursal. Solo para DUEÑO / SUPERVISOR / SUPER_USUARIO.
+  - **10 módulos** (Dashboard, Productos, Inventario, Facturación, Recursos, Biblioteca, RRHH, Historial, Reportes, Configuración): dropdown con "Todas las sucursales" + cada sucursal. Solo para DUEÑO / SUPERVISOR / SUPER_USUARIO. **Nota: /clientes y /proveedores son globales entre sucursales — no muestran selector de sucursal (v1.8.21)**
   - **5 módulos operativos** (Ventas, Gastos, Caja, Recepciones, Alertas): dropdown solo con sucursales individuales (sin "Todas"). Si el usuario llega en vista global, se auto-selecciona la primera sucursal.
   - **Sin selector** (Sucursales, Usuarios).
   - Usuarios sin `puedeVerTodas`: ven siempre un label fijo con su sucursal asignada (sin dropdown).
@@ -131,17 +132,33 @@ Caja registradora principal. Permite ventas, presupuestos y devoluciones.
 - **Carrito** (panel derecho o inferior en mobile): líneas con producto, cantidad editable, precio unitario, descuento por línea individual
 - **Descuento global**: campo sobre el subtotal (% o valor fijo)
 - **Selector de cliente**: busca cliente existente o crea uno nuevo inline con nombre + teléfono
-- **Medios de pago**: uno o múltiples simultáneos — Efectivo, Tarjeta, Transferencia, MercadoPago, Cheque, Cuenta Corriente, Seña. Cada uno con monto asignable. Muestra vuelto calculado automáticamente cuando supera el total.
+- **Medios de pago**: uno o múltiples simultáneos — Efectivo, Tarjeta débito, Tarjeta crédito, Transferencia, MercadoPago, **MODO** (QR interoperable bancario), **Cuenta Corriente** (parcial o total, solo clientes con CC habilitada), Cheque, Otro. Cada uno con monto asignable. Muestra vuelto calculado automáticamente cuando supera el total.
 - **Modo venta**: Venta / Presupuesto / Reserva
+- **Canal de venta** (v1.8.22): selector antes del botón de confirmar — Presencial (default), Instagram, Facebook, WhatsApp, Otros. Se guarda en ventas.origen.
 - **Notas**: texto libre asociado a la venta
+- **Cuotas tarjeta de crédito** (v1.8.22): al seleccionar "Tarjeta crédito" con monto > 0, aparece picker de banco y cuotas. Muestra monto por cuota, total con interés, badge verde "Sin interés". Requiere configurar bancos en Configuración → Métodos de pago.
 - **Botón "Confirmar venta"** (parte inferior derecha): ejecuta la venta
 
 **Al confirmar venta:**
-1. Trigger DB asigna número de venta (`ventas.numero`) — nunca incluir en INSERT
+1. Trigger DB asigna número de venta (ventas.numero global + ventas.numero_sucursal por sucursal). Display: "S1-0001" con sucursal activa, "#N" global sin sucursal. Código de sucursal configurable en SucursalesPage (v1.8.22).
 2. Rebaje de stock según regla del producto (FIFO/FEFO/LEFO/LIFO/Manual)
 3. Si hay sesión de caja abierta: registra movimiento de ingreso por medio de pago
-4. Si medio = Cuenta Corriente: genera deuda en CC del cliente
+4. Si hay medio = Cuenta Corriente (parcial o total): genera deuda en CC del cliente por el monto CC. monto_pagado = total pagado en otros medios. Es_cuenta_corriente=true aunque sea pago mixto (v1.8.22 — reemplaza el toggle todo-o-nada anterior).
 5. Si integración TN/ML activa: actualiza stock en marketplace
+
+**Número de ticket por sucursal (v1.8.22):**
+- ventas.numero_sucursal: contador secuencial reiniciado por sucursal
+- Formato display: S1-0001 (con sucursal), #N (sin sucursal)
+- Código "S1" configurable en SucursalesPage → campo "Código ticket"
+
+**Validaciones y UX mejoradas (v1.8.21-22):**
+- Total incluye costo de envío en la validación de medios de pago
+- "Falta asignar" no parpadea mientras se escribe (actualiza en blur/Enter)
+- Badge "Stock insuf. (X disp.)" en ítems del carrito con stock insuficiente
+- Tag CC (verde) en historial de ventas cuando es_cuenta_corriente = true
+- Historial incluye ventas sin sucursal_id (retrocompatibilidad pre multi-sucursal)
+- Badge "⚠ Error — Cancelar" para ghost ventas CC sin items
+- Rollback automático: si falla por stock, la venta se elimina del DB
 
 **Acciones en historial (panel expandido):**
 - Ver ítems, medios de pago, cliente, notas
@@ -173,6 +190,8 @@ Registro y seguimiento de todos los gastos del negocio.
 - **Registrar en caja**: asocia el gasto a la sesión de caja activa (egreso)
 - **Editar / Eliminar**
 - Gastos creados desde Recepciones tienen `recepcion_id` visible (trazabilidad de costo de mercadería)
+- **Efectivo en gastos → caja específica**: al registrar gasto en efectivo, aparece selector de caja obligatorio con validación de saldo. Opción "🔒 Caja Fuerte" disponible (sin límite de saldo, registra como egreso_traspaso) (v1.8.21)
+- **Cuotas con tarjeta de crédito**: al seleccionar tarjeta de crédito como medio de pago, aparece panel de cuotas (N cuotas, interés %, sin interés). Solo en gastos variables.
 
 **Gastos fijos:**
 - CRUD de gastos recurrentes (nombre, monto mensual, categoría)
@@ -180,7 +199,11 @@ Registro y seguimiento de todos los gastos del negocio.
 
 **Tab OC:**
 - Lista de OC activas (no canceladas) filtradas por sucursal
-- Botón "Registrar pago" inline por OC
+- OC pagadas aparecen al final con opacidad reducida
+- Filtros: estado de pago, proveedor
+- Al expandir: detalle en formato ticket (font mono, secciones separadas, ítems, totales, estado de pago, fecha vencimiento CC) (v1.8.26)
+- Comprobante de pago: botón "Adjuntar comprobante" por OC — upload PDF/imagen a Storage (v1.8.22)
+- Registrar pago: CC es un método de pago más (pago mixto posible, ej: 30% efectivo + 70% CC). Días de plazo aparecen solo cuando CC está en medios (v1.8.22)
 
 **Relaciones:** Recepciones generan gastos automáticos. Caja egresa gastos en efectivo. OC enlaza con Proveedores.
 
@@ -196,10 +219,10 @@ Gestión del flujo de efectivo y medios de pago del negocio.
 - **Caja Fuerte**: safe vault del negocio
 - **Configuración**: crear y nombrar nuevas cajas
 
-**Selector de caja** (superior): dropdown con todas las cajas operativas. Ícono verde = sesión abierta. Recuerda la última caja usada por usuario (localStorage).
+**Selector de caja** (superior): dropdown con todas las cajas operativas. Ícono verde = sesión abierta. Recuerda la última caja usada por usuario (localStorage). La caja predeterminada del usuario muestra ★ amarillo en el selector y en los botones rápidos. Se guarda en localStorage por usuario (v1.8.21).
 
 **Con sesión cerrada muestra:**
-- Botón **Abrir caja**: ingresa monto inicial. Un CAJERO con sesión ya abierta no puede abrir otra.
+- Botón **Abrir caja**: ingresa monto inicial. Un CAJERO con sesión ya abierta no puede abrir otra. Sugerido de monto inicial: usa monto_real_cierre del último cierre (si > 0) o monto_cierre calculado como fallback. Alerta de diferencia si el monto ingresado difiere del sugerido (v1.8.21).
 
 **Con sesión abierta muestra:**
 - Saldo actual desglosado por medio de pago
@@ -213,8 +236,10 @@ Gestión del flujo de efectivo y medios de pago del negocio.
 
 **Caja Fuerte:**
 - Sesión permanente (nunca se cierra)
-- Solo acepta traspasos desde/hacia cajas operativas
-- Muestra saldo acumulado histórico
+- "Ingresar a Caja Fuerte": selector de caja origen (cualquier caja con sesión abierta). Sin caja seleccionada = ingreso externo. Valida saldo de la caja de origen (v1.8.21).
+- "Enviar a Caja": selector de caja destino (sesiones abiertas).
+- Muestra saldo acumulado + historial de movimientos.
+- Acceso configurable por roles en tab Configuración.
 
 **Historial:** sesiones cerradas con fecha, usuario que abrió/cerró, monto apertura, monto real, diferencia, movimientos detallados (expandible por sesión).
 
@@ -289,7 +314,7 @@ Gestión integral del stock físico a nivel de LPN (License Plate Number = unida
 
 **Tab Inventario — acciones globales (esquina superior derecha):**
 - **Agregar Stock**: abre tab Agregar con modal de ingreso
-- **Rebaje masivo / Ingreso masivo**: `MasivoModal` — carga N productos en grilla. Soporta tanto ingreso como rebaje. El rebaje aplica FIFO/FEFO automáticamente.
+- **Rebaje masivo / Ingreso masivo**: `MasivoModal` — carga N productos en grilla. Soporta tanto ingreso como rebaje. El rebaje aplica FIFO/FEFO automáticamente (filtros corregidos: incluye sucursal_id y excluye lineas sin ubicacion). Campo "LPN o Lote preferido" por ítem para consumir ese LPN primero. Preview en tiempo real de qué LPNs se van a consumir antes de confirmar (v1.8.23).
 - **Escanear** (ícono cámara): lee código de barras → busca LPN o producto
 
 **Tab Inventario — acciones por LPN (modal LpnAccionesModal, 5 tabs internos):**
@@ -324,10 +349,12 @@ Barra de acciones con LPNs seleccionados ofrece:
 - **Desarmar kit**: proceso inverso, devuelve componentes al inventario
 
 **Tab Conteo:**
-- Crear conteo cíclico (seleccionar productos a contar)
-- Registrar cantidades físicamente contadas
+- Crear conteo cíclico por ubicación o por producto
+- Registrar cantidades físicas (con carga automática de stock esperado)
 - Ver diferencias vs. stock en sistema
-- Aprobar ajuste (genera movimientos de ajuste)
+- **Borrador**: guardar conteo sin finalizar. Los borradores aparecen en el historial con badge amarillo + botones "Continuar" (carga el form con los datos) y "Eliminar" (v1.8.23).
+- Al continuar un borrador: el form carga tipo, referencia, notas y filas. Al guardar/finalizar: actualiza el registro existente sin duplicar.
+- Aprobar ajuste: genera movimientos de ajuste en inventario_lineas y movimientos_stock
 
 **Tab Historial:**
 - Todos los `movimientos_stock` filtrados por sucursal activa
@@ -344,6 +371,8 @@ Barra de acciones con LPNs seleccionados ofrece:
 ---
 
 ### 3.7 Clientes (`/clientes`)
+
+**Directorio global:** Clientes son compartidos por todas las sucursales del tenant. No hay selector de sucursal en /clientes ni filtro por sucursal en la query (v1.8.21).
 
 CRM básico + cuenta corriente.
 
@@ -363,6 +392,7 @@ CRM básico + cuenta corriente.
 - **Registrar cobro**: asigna pago a una deuda específica
 - Historial de todos los movimientos (débitos de ventas + créditos de cobros)
 - Cron diario 09:00 AR detecta cuotas vencidas → notificación en campana
+- **Cancelar deuda** (solo DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN): botón por venta en el tab CC. Marca monto_pagado = total, registra "Cancelación CC" en medios de pago con nombre del operador (v1.8.23).
 
 **Relaciones:** Ventas crea deudas en CC. Cobros reducen saldo. Envíos usan domicilios del cliente.
 
@@ -390,6 +420,7 @@ Gestión de despachos filtrado por sucursal activa.
 
 **Acciones:**
 - **+ Nuevo envío** (esquina superior derecha): modal con selección de venta, tipo de envío y campos
+- **Agregar nueva dirección**: el formulario inline de nueva dirección funciona correctamente al seleccionar un cliente (fix Rules of Hooks v1.8.21).
 - **Avanzar estado**: botón contextual según estado actual
 - **Imprimir remito**: PDF (jsPDF)
 - **Ver tracking externo**: abre URL de tracking en nueva pestaña
@@ -602,6 +633,7 @@ CRUD de sucursales del negocio. Solo DUEÑO.
 - **Dirección** (requerida — necesaria para calcular distancias de envíos)
 - **Teléfono** (opcional)
 - **Costo por km** (`costo_km_envio`): tarifa para envíos propios. Varía por sucursal. Se usa para calcular el costo automáticamente al crear un envío propio.
+- **Código ticket** (v1.8.22): código corto configurable (ej: "S1", "CC") — se usa como prefijo del número de ticket en ventas por sucursal. Máximo 5 caracteres, auto-uppercase.
 
 **Panel de tarifas de couriers** (expandible por sucursal):
 - Click en "Couriers" → lista de couriers con precio editable inline (Enter para guardar)
@@ -657,13 +689,14 @@ Setup completo del negocio y sus parámetros. Solo OWNER.
 - **Ubicaciones**: CRUD de ubicaciones del depósito. Cada ubicación puede tener `sucursal_id` (específica de una sucursal) o ser "Global" (visible en todas). Badge azul o "Global" en la lista. Selector de sucursal en el formulario de edición. Flag `disponible_surtido`: si `false`, el stock de esa ubicación NO se considera para venta.
 - **Estados de inventario**: CRUD de estados (Disponible, Cuarentena, Devuelto, etc.). Flags: `es_disponible_venta` (si ese stock puede venderse), `es_disponible_tn` (si sincroniza con TiendaNube).
 - **Motivos de movimiento**: CRUD de motivos para movimientos de caja (ej: "Pago proveedor") y stock (ej: "Merma").
-- **Métodos de pago**: activar/desactivar cuáles aparecen en el POS (Efectivo, Tarjeta, etc.)
+- **Métodos de pago**: activar/desactivar cuáles aparecen en el POS (Efectivo, Tarjeta, etc.). Sección "Cuotas por banco": agregar bancos (nombre) con sus planes de cuotas (N cuotas, interés %, flag sin interés). Se usa en el POS al pagar con Tarjeta crédito. Config guardada en tenants.cuotas_bancos JSONB.
 - **Combos**: crear bundles promocionales para el POS. Un combo = N productos juntos con un descuento (% o monto fijo). Ej: "Combo familiar: producto A + producto B con 20% off". Se seleccionan en el POS como si fuera un ítem más. Distinto de Kits (que son ensamblados en inventario físico).
 - **Integraciones**:
   - **TiendaNube**: OAuth, conectar tienda, sincronizar stock, mapear productos
   - **MercadoPago**: OAuth, conectar cuenta, gestionar suscripción Genesis360
   - **MercadoLibre**: OAuth, conectar cuenta, mapear publicaciones
   - **AFIP**: subir certificado .p12, ingresar clave privada, CUIT, puntos de venta
+  - **MODO** (v1.8.25): QR interoperable bancario. Configura Merchant ID + API Key + ambiente (test/prod). Al conectar: botón QR aparece en VentasPage al seleccionar "MODO" como medio de pago. Genera QR + deep link para compartir. Edge Function: modo-crear-pago.
 - **API**: generar y revocar API keys para integración de sistemas externos (solo lectura)
 - **Estados** (sub-tab): dentro del tab "Estados" hay 3 sub-tabs:
   - **Estados**: CRUD de estados de inventario
@@ -1087,6 +1120,12 @@ Alertas operativas sin resolver: stock crítico, reservas antiguas, productos si
 - `api_keys` table: claves generadas en `/configuracion` → tab API.
 - `data-api` Edge Function: permite consultas de datos por sistemas externos (solo lectura).
 
+### MODO (v1.8.25 — framework listo, pendiente credenciales)
+- Tabla modo_credentials por tenant (merchant_id, api_key, ambiente test/prod)
+- Edge Function modo-crear-pago: genera QR + deep link via MODO API
+- Integrado en VentasPage: "MODO" como medio de pago, botón QR morado, modal con QR escaneabile + link para compartir
+- Pendiente: conectar credenciales reales cuando MODO las provea
+
 ---
 
 ## 9. Planes y límites
@@ -1134,4 +1173,4 @@ Permisos granulares por módulo overrideables por usuario individual (Sliders en
 
 ---
 
-*Última actualización: 2026-05-08 — v1.8.4 DEV / v1.8.3 PROD*
+*Última actualización: 2026-05-15 — v1.8.26 DEV / v1.8.22 PROD*

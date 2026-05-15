@@ -12,17 +12,18 @@ export default defineConfig({
     topLevelAwait(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'favicon-16x16.png', 'favicon-32x32.png'],
       manifest: {
-        name: 'StockApp',
-        short_name: 'StockApp',
-        description: 'Gestión de inventario para pequeños comercios',
-        theme_color: '#1E3A5F',
-        background_color: '#F5F7FA',
+        name: 'Genesis360',
+        short_name: 'Genesis360',
+        description: 'El cerebro del negocio físico',
+        theme_color: '#0000FF',
+        background_color: '#0000FF',
         display: 'standalone',
         icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'android-chrome-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
       },
       workbox: {

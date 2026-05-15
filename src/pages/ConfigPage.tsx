@@ -1311,6 +1311,56 @@ export default function ConfigPage() {
   const [meliMapExpanded, setMeliMapExpanded] = useState(false)
   const [meliMapForm, setMeliMapForm] = useState<{ productoId: string; meliItemId: string; meliVariationId: string; syncStock: boolean; syncPrecio: boolean } | null>(null)
 
+  // ISS-072: MODO integration
+  const { data: modoCred, refetch: refetchModo } = useQuery({
+    queryKey: ['modo_credentials', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('modo_credentials')
+        .select('id, merchant_id, api_key, ambiente, conectado, conectado_at')
+        .eq('tenant_id', tenant!.id).maybeSingle()
+      return data
+    },
+    enabled: !!tenant && tab === 'integraciones',
+  })
+  const [modoForm, setModoForm] = useState({ merchant_id: '', api_key: '', ambiente: 'test' as 'test' | 'prod' })
+  const [savingModo, setSavingModo] = useState(false)
+
+  const conectarModo = async () => {
+    if (!modoForm.merchant_id.trim() || !modoForm.api_key.trim()) {
+      toast.error('Completá el Merchant ID y la API Key')
+      return
+    }
+    setSavingModo(true)
+    try {
+      const payload = {
+        tenant_id: tenant!.id,
+        merchant_id: modoForm.merchant_id.trim(),
+        api_key: modoForm.api_key.trim(),
+        ambiente: modoForm.ambiente,
+        conectado: true,
+        conectado_at: new Date().toISOString(),
+      }
+      if (modoCred?.id) {
+        const { error } = await supabase.from('modo_credentials').update(payload).eq('id', modoCred.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('modo_credentials').insert(payload)
+        if (error) throw error
+      }
+      toast.success('MODO configurado correctamente')
+      refetchModo()
+      setModoForm({ merchant_id: '', api_key: '', ambiente: 'test' })
+    } catch (e: any) { toast.error(e.message ?? 'Error al guardar') }
+    finally { setSavingModo(false) }
+  }
+
+  const desconectarModo = async () => {
+    if (!confirm('¿Desconectar MODO?')) return
+    await supabase.from('modo_credentials').update({ conectado: false }).eq('tenant_id', tenant!.id)
+    toast.success('MODO desconectado')
+    refetchModo()
+  }
+
   const upsertMeliMap = useMutation({
     mutationFn: async () => {
       if (!meliMapForm || !tenant) return
@@ -3094,6 +3144,83 @@ export default function ConfigPage() {
               </div>
             )}
           </div>
+
+          {/* ISS-072: MODO — cobro QR interoperable */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-sm">M</span>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">MODO — QR Interoperable</h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Cobros QR con todos los bancos argentinos · QR en POS + link de pago</p>
+            </div>
+            {modoCred?.conectado && (
+              <span className="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium flex-shrink-0">
+                ✓ Conectado
+              </span>
+            )}
+          </div>
+
+          {modoCred?.conectado ? (
+            <div className="space-y-3">
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl px-4 py-3 space-y-1 text-sm">
+                <p className="text-gray-600 dark:text-gray-300"><span className="text-gray-400 dark:text-gray-500">Merchant ID:</span> {modoCred.merchant_id}</p>
+                <p className="text-gray-600 dark:text-gray-300"><span className="text-gray-400 dark:text-gray-500">Ambiente:</span> {modoCred.ambiente === 'prod' ? '🟢 Producción' : '🟡 Sandbox/Test'}</p>
+                {modoCred.conectado_at && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Configurado: {new Date(modoCred.conectado_at).toLocaleDateString('es-AR')}</p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setModoForm({ merchant_id: modoCred.merchant_id, api_key: '', ambiente: modoCred.ambiente as 'test' | 'prod' })}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors">
+                  <Pencil size={12} /> Editar credenciales
+                </button>
+                <button onClick={desconectarModo}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-red-200 dark:border-red-700 rounded-lg text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                  <Unplug size={12} /> Desconectar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl px-4 py-3 text-xs text-blue-700 dark:text-blue-300">
+                Para obtener las credenciales, solicitá acceso al programa de merchants en <strong>modo.com.ar</strong>. Te proveerán un Merchant ID y API Key.
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Merchant ID *</label>
+                  <input type="text" value={modoForm.merchant_id}
+                    onChange={e => setModoForm(f => ({ ...f, merchant_id: e.target.value }))}
+                    placeholder="Tu Merchant ID de MODO"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 dark:text-white" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">API Key *</label>
+                  <input type="password" value={modoForm.api_key}
+                    onChange={e => setModoForm(f => ({ ...f, api_key: e.target.value }))}
+                    placeholder="Tu API Key de MODO"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 dark:text-white" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Ambiente</label>
+                <div className="flex gap-2">
+                  {(['test', 'prod'] as const).map(a => (
+                    <button key={a} onClick={() => setModoForm(f => ({ ...f, ambiente: a }))}
+                      className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-all ${modoForm.ambiente === a ? 'bg-accent border-accent text-white' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent'}`}>
+                      {a === 'test' ? '🟡 Sandbox (test)' : '🟢 Producción'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button onClick={conectarModo} disabled={savingModo || !modoForm.merchant_id || !modoForm.api_key}
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
+                {savingModo ? 'Guardando...' : 'Conectar MODO'}
+              </button>
+            </div>
+          )}
+        </div>
         </div>
       )}
 

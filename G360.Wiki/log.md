@@ -6,6 +6,34 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-15] update | v1.8.26 DEV — ISS-072/044 + ISS-100/012/107 + ISS-105/106
+
+- ISS-100: conteos borrador funcionales (continuar, eliminar, actualizar)
+- ISS-012: rebaje masivo FIFO/FEFO corregido + preview LPNs + override
+- ISS-107: cancelar deuda CC en clientes (DUEÑO/SUPERVISOR)
+- ISS-105: costo envío incluido en validación de medios de pago
+- ISS-106: historial ventas OR(sucursal, null) + badge ghost CC ventas
+- ISS-072: framework MODO (migration 109 + Edge Function + ConfigPage + VentasPage)
+- ISS-044: OC expanded view rediseñado como ticket/recibo (font mono, secciones, totales)
+
+## [2026-05-15] update | v1.8.24 DEV — ISS-105/106 fixes
+
+- ISS-105: validación medios de pago usa totalConEnvio; monto_pagado incluye envío
+- ISS-106: historial OR(sucursal_id=X, null) para incluir ventas previas al multi-sucursal; badge ghost CC
+
+## [2026-05-15] update | v1.8.23 DEV — ISS-100/012/107 fixes
+
+- ISS-100: conteos borrador — continuar, eliminar y actualizar desde historial
+- ISS-012: rebaje masivo FIFO/FEFO corregido — filtro sucursal + ubicacion + preview LPNs + override
+- ISS-107: cancelación de deuda CC por venta (solo DUEÑO/SUPERVISOR)
+
+## [2026-05-15] update | PROD deploy v1.8.22 — PR #111 mergeado, migration 108 aplicada
+
+- PR #111 `dev → main` mergeado ✅
+- Migration 108 aplicada en PROD (jjffnbrdjchquexdfgwq): sucursales.codigo, ventas.numero_sucursal, tenants.cuotas_bancos, ventas.cuotas_info, ordenes_compra.comprobante_url/titulo
+- GitHub release v1.8.22 marcado como latest en main
+- Wiki actualizado: caja.md, ventas-pos.md, gastos.md, envios.md, clientes-proveedores.md, migraciones.md, roadmap.md, index.md
+
 ## [2026-05-14] update | v1.8.22 DEV — ISS-085/086/090/095/096 batch features
 
 ### ISS-085: Número de ticket por sucursal con prefijo

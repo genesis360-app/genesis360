@@ -153,3 +153,12 @@ Cuando haya contratos con OCA / CorreoAR / Andreani / DHL:
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/facturacion-afip]]
+
+---
+
+## Mejoras v1.8.21
+
+### ISS-097 — Fix crítico: "Agregar nueva dirección"
+- Bug: `useState` dentro de una IIFE (función autoejecutable) violaba las Rules of Hooks de React → error "Algo salió mal"
+- Fix: la sección del formulario de nueva dirección ahora usa el `domForm` / `setDomForm` que ya existía en el scope del componente
+- Comportamiento restaurado: al hacer click en "Agregar nueva dirección" dentro del modal de nuevo envío con cliente seleccionado, aparece el formulario correctamente

@@ -50,6 +50,8 @@ type MasivoItem = {
   lpn: string
   seriesText: string   // una por línea (solo serializado + ingreso)
   expanded: boolean    // opcionales expandidos
+  // ISS-012: rebaje — LPN/lote preferido (override del FIFO/FEFO automático)
+  lpnPreferido: string
 }
 
 function mkItem(p: any): MasivoItem {
@@ -75,6 +77,7 @@ function mkItem(p: any): MasivoItem {
     lpn: '',
     seriesText: '',
     expanded: false,
+    lpnPreferido: '',
   }
 }
 
@@ -91,6 +94,8 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
   const qc = useQueryClient()
   const { sucursalId } = useSucursalFilter()
   const [items, setItems] = useState<MasivoItem[]>([])
+  // ISS-012: cache de líneas ordenadas por producto (para preview FIFO/FEFO en rebaje)
+  const [lineasCache, setLineasCache] = useState<Record<string, { id: string; lpn: string | null; lote: string | null; disponible: number; sorted: boolean }[]>>({})
   const [prodSearch, setProdSearch] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
@@ -164,10 +169,45 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
     setItems(prev => prev.map(it => it.localId === localId ? { ...it, ...patch } : it))
   }
 
+  // ISS-012: cargar líneas disponibles para rebaje (preview FIFO/FEFO)
+  async function cargarLineasParaRebaje(productoId: string, reglaInventario: string | null | undefined, tieneVencimiento: boolean) {
+    if (lineasCache[productoId]) return  // ya cargado
+    try {
+      let q = supabase.from('inventario_lineas')
+        .select('id, lpn, nro_lote, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+        .eq('tenant_id', tenant!.id)
+        .eq('producto_id', productoId)
+        .eq('activo', true)
+        .gt('cantidad', 0)
+        .not('ubicacion_id', 'is', null)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data: lineasRaw } = await q
+      const hoy = new Date().toISOString().split('T')[0]
+      const sortFn = getRebajeSort(reglaInventario, tenant!.regla_inventario, tieneVencimiento)
+      const lineas = (lineasRaw ?? [])
+        .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+        .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= hoy)
+        .filter((l: any) => (l.cantidad - (l.cantidad_reservada ?? 0)) > 0)
+        .sort(sortFn)
+        .map((l: any) => ({
+          id: l.id,
+          lpn: l.lpn ?? null,
+          lote: l.nro_lote ?? null,
+          disponible: l.cantidad - (l.cantidad_reservada ?? 0),
+          sorted: true,
+        }))
+      setLineasCache(prev => ({ ...prev, [productoId]: lineas }))
+    } catch { /* silencioso */ }
+  }
+
   function addProduct(p: any) {
     const yaExiste = items.find(it => it.productoId === p.id)
     if (yaExiste) { toast.error('Ese producto ya está en la lista'); return }
     setItems(prev => [...prev, mkItem(p)])
+    // ISS-012: cargar líneas para preview en rebaje
+    if (tipo === 'rebaje' && !p.tiene_series) {
+      cargarLineasParaRebaje(p.id, p.regla_inventario, p.tiene_vencimiento ?? false)
+    }
     setProdSearch('')
     setDropdownOpen(false)
   }
@@ -298,24 +338,35 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
           })
 
         } else {
-          // REBAJE — auto-FIFO/FEFO/LEFO/LIFO/Manual desde líneas existentes
-          // Misma lógica que rebaje individual en InventarioPage
-          const { data: lineasRaw } = await supabase.from('inventario_lineas')
+          // ISS-012: REBAJE — FIFO/FEFO/LEFO/LIFO/Manual corregido
+          // Fix: incluye filtros por sucursal y excluye lineas sin ubicacion
+          let lineasQ = supabase.from('inventario_lineas')
             .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, nro_lote, lpn, ubicaciones(prioridad, disponible_surtido), estados_inventario!estado_id(es_disponible_venta)')
             .eq('tenant_id', tenant!.id)
             .eq('producto_id', it.productoId)
             .eq('activo', true)
             .gt('cantidad', 0)
+            .not('ubicacion_id', 'is', null)
+          if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
+          const { data: lineasRaw } = await lineasQ
           const { data: prodInfo } = await supabase.from('productos')
             .select('regla_inventario, tiene_vencimiento').eq('id', it.productoId).single()
           const sortFn = getRebajeSort(prodInfo?.regla_inventario, tenant!.regla_inventario, prodInfo?.tiene_vencimiento ?? false)
           const hoy = new Date().toISOString().split('T')[0]
-          const lineas = (lineasRaw ?? [])
+          let lineas = (lineasRaw ?? [])
             .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
             .filter((l: any) => l.estados_inventario?.es_disponible_venta !== false)
             .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= hoy)
             .filter((l: any) => (l.cantidad - (l.cantidad_reservada ?? 0)) > 0)
             .sort(sortFn)
+          // Si el usuario especificó un LPN/lote preferido, ponerlo primero
+          if (it.lpnPreferido.trim()) {
+            const pref = it.lpnPreferido.trim()
+            lineas = [
+              ...lineas.filter((l: any) => l.lpn === pref || l.nro_lote === pref),
+              ...lineas.filter((l: any) => l.lpn !== pref && l.nro_lote !== pref),
+            ]
+          }
 
           let restante = cant
           let primeraLinea: any = null
@@ -538,15 +589,65 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                               className={inp} placeholder="0" />
                           </div>
                           {tipo === 'rebaje' && (
-                            <div className="flex-1">
-                              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Motivo</label>
-                              <input type="text" value={it.motivo}
-                                onChange={e => upd(it.localId, { motivo: e.target.value })}
-                                className={inp} placeholder="Opcional" />
+                            <div className="flex-1 space-y-2">
+                              <div>
+                                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Motivo</label>
+                                <input type="text" value={it.motivo}
+                                  onChange={e => upd(it.localId, { motivo: e.target.value })}
+                                  className={inp} placeholder="Opcional" />
+                              </div>
+                              {/* ISS-012: LPN/lote preferido override */}
+                              <div>
+                                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                  LPN o Lote preferido <span className="text-gray-400">(opcional — deja vacío para auto-{tenant?.regla_inventario ?? 'FIFO'})</span>
+                                </label>
+                                <input type="text" value={it.lpnPreferido}
+                                  onChange={e => upd(it.localId, { lpnPreferido: e.target.value })}
+                                  className={inp} placeholder="Ej: LPN-0042 o LOTE-2024-01" />
+                              </div>
                             </div>
                           )}
                         </div>
                       )}
+
+                      {/* ISS-012: Preview de LPNs/líneas a consumir (rebaje) */}
+                      {tipo === 'rebaje' && !it.tieneSeries && lineasCache[it.productoId] && (() => {
+                        const cant = getCantidad(it)
+                        if (cant <= 0) return null
+                        const pref = it.lpnPreferido.trim()
+                        let ordenadas = pref
+                          ? [
+                              ...lineasCache[it.productoId].filter(l => l.lpn === pref || l.lote === pref),
+                              ...lineasCache[it.productoId].filter(l => l.lpn !== pref && l.lote !== pref),
+                            ]
+                          : lineasCache[it.productoId]
+                        let restante = cant
+                        const preview: { label: string; consume: number }[] = []
+                        for (const l of ordenadas) {
+                          if (restante <= 0) break
+                          const consume = Math.min(restante, l.disponible)
+                          preview.push({ label: l.lpn ?? l.lote ?? `(sin LPN)`, consume })
+                          restante -= consume
+                        }
+                        if (preview.length === 0) return null
+                        return (
+                          <div className="mt-1 bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-2">
+                            <p className="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1">
+                              Consumirá (orden {pref ? 'manual' : (tenant?.regla_inventario ?? 'FIFO')}):
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {preview.map((p, i) => (
+                                <span key={i} className="text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded font-mono">
+                                  {p.label} × {p.consume}
+                                </span>
+                              ))}
+                              {restante > 0 && (
+                                <span className="text-xs text-red-500">⚠ Falta stock: {restante}</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()}
 
                       {/* Opciones avanzadas (solo ingreso) */}
                       {tipo === 'ingreso' && (

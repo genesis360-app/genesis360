@@ -153,3 +153,26 @@ OC nuevas arrancan con `estado_pago = 'pendiente_pago'` por defecto.
 - [[wiki/features/facturacion-afip]]
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/features/alertas]]
+
+---
+
+## Mejoras v1.8.21–v1.8.22
+
+### ISS-084 — Efectivo en gastos sale de caja específica
+- Al registrar un gasto en efectivo, aparece selector de caja de origen (siempre, no solo cuando hay múltiples cajas)
+- Valida saldo disponible en la caja seleccionada antes de confirmar
+- Opción "🔒 Caja Fuerte" disponible: sin límite de saldo, registra como `egreso_traspaso`
+- Si no hay efectivo en medios de pago, el selector solo aparece cuando hay múltiples cajas
+
+### ISS-095 — OC con CC como método de pago parcial
+- "Cuenta Corriente" es ahora un método más en `MEDIOS_OC`
+- Flujo unificado: elimina el toggle Pago/CC — pago mixto posible
+- Ej: 30% Transferencia + 70% Cuenta Corriente
+- Los días de plazo de CC aparecen solo cuando hay CC en los medios
+- Registra en `proveedor_cc_movimientos` tanto el pago (negativo) como la deuda CC (positivo)
+
+### ISS-096 — Comprobante de pago en OC (migration 108)
+- `ordenes_compra.comprobante_url TEXT` + `comprobante_titulo TEXT`
+- En el expanded view de cada OC: sección "Comprobante de pago"
+- Upload de PDF/imágenes → Storage bucket `comprobantes-gastos` (path: `{tenant}/oc/{id}.ext`)
+- Si ya hay comprobante: link para ver + opción de reemplazar

@@ -108,6 +108,9 @@ export default function ClientesPage() {
   const [pagoMonto, setPagoMonto] = useState('')
   const [pagoMetodo, setPagoMetodo] = useState('Efectivo')
   const [savingPago, setSavingPago] = useState(false)
+  // ISS-107: cancelación de deuda CC
+  const [cancelandoDeudaId, setCancelandoDeudaId] = useState<string | null>(null)
+  const puedeGestionarCC = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
   const [showDomForm, setShowDomForm] = useState(false)
   const [editDomId, setEditDomId] = useState<string | null>(null)
   const [domForm, setDomForm] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false })
@@ -398,6 +401,29 @@ export default function ClientesPage() {
     finally { setSavingPago(false) }
   }
 
+  // ISS-107: cancelar deuda de una venta CC (solo DUEÑO/SUPERVISOR/ADMIN)
+  const cancelarDeudaCC = async (ventaId: string, ventaNumero: number) => {
+    if (!confirm(`¿Cancelar la deuda de la Venta #${ventaNumero}? La deuda quedará marcada como saldada sin pago registrado.`)) return
+    setCancelandoDeudaId(ventaId)
+    try {
+      const { data: venta } = await supabase.from('ventas').select('total, medio_pago').eq('id', ventaId).single()
+      if (!venta) throw new Error('Venta no encontrada')
+      // Marcar como pagada por cancelación (monto_pagado = total, agrega nota en medio_pago)
+      let medios: any[] = []
+      try { medios = JSON.parse(venta.medio_pago ?? '[]') } catch { medios = [] }
+      const saldo = venta.total - medios.filter((m: any) => m.tipo !== 'Cuenta Corriente').reduce((acc: number, m: any) => acc + (m.monto || 0), 0)
+      if (saldo > 0) medios.push({ tipo: 'Cancelación CC', monto: saldo, cancelado_por: user?.nombre_display ?? user?.id })
+      const { error } = await supabase.from('ventas').update({
+        monto_pagado: venta.total,
+        medio_pago: JSON.stringify(medios),
+      }).eq('id', ventaId)
+      if (error) throw error
+      toast.success(`Deuda Venta #${ventaNumero} cancelada`)
+      qc.invalidateQueries({ queryKey: ['ventas-cc'] })
+    } catch (e: any) { toast.error(e.message ?? 'Error al cancelar deuda') }
+    finally { setCancelandoDeudaId(null) }
+  }
+
   const eliminar = async (id: string, nombre: string) => {
     if (!confirm(`¿Eliminar a ${nombre}? Sus ventas quedarán sin cliente asignado.`)) return
     // Desasociar ventas y envíos antes de eliminar (evita error de FK)
@@ -679,9 +705,19 @@ export default function ClientesPage() {
                         {d && (
                           <div className="mt-3 space-y-1.5">
                             {(ventasCC as any[]).filter((v: any) => v.cliente_id === c.id).slice(0, 5).map((v: any) => (
-                              <div key={v.id} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2">
-                                <span className="text-gray-600 dark:text-gray-400">Venta #{v.numero} · {new Date(v.created_at).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' })}</span>
-                                <span className="font-semibold text-red-600 dark:text-red-400">{formatMoneda((v.total ?? 0) - (v.monto_pagado ?? 0))}</span>
+                              <div key={v.id} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 gap-2">
+                                <span className="text-gray-600 dark:text-gray-400 flex-1 min-w-0 truncate">Venta #{v.numero} · {new Date(v.created_at).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' })}</span>
+                                <span className="font-semibold text-red-600 dark:text-red-400 flex-shrink-0">{formatMoneda((v.total ?? 0) - (v.monto_pagado ?? 0))}</span>
+                                {/* ISS-107: cancelar deuda CC (solo DUEÑO/SUPERVISOR/ADMIN) */}
+                                {puedeGestionarCC && (
+                                  <button
+                                    onClick={() => cancelarDeudaCC(v.id, v.numero)}
+                                    disabled={cancelandoDeudaId === v.id}
+                                    title="Cancelar deuda de esta venta (condonar)"
+                                    className="flex-shrink-0 text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-red-400 hover:text-red-500 transition-colors disabled:opacity-50">
+                                    {cancelandoDeudaId === v.id ? '...' : 'Cancelar deuda'}
+                                  </button>
+                                )}
                               </div>
                             ))}
                           </div>

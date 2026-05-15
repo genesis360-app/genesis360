@@ -13,6 +13,35 @@ updated: 2026-05-07
 
 ---
 
+## v1.8.22 — Cuotas tarjeta + CC parcial + Ticket sucursal + Bugfixes (PROD ✅)
+
+**PR #111** — mergeado a `main` ✅  
+**Release:** https://github.com/genesis360-app/genesis360/releases/tag/v1.8.22  
+**Migration 108** aplicada en DEV y PROD ✅
+
+### v1.8.21 — Bugfixes batch (13 issues)
+- ISS-087: ★ visual en caja predeterminada
+- ISS-088: fix monto sugerido apertura (monto_cierre confiable)
+- ISS-089: selector caja origen en modal Ingresar a Caja Fuerte + validación saldo
+- ISS-094: rollback venta CC cuando falla stock
+- ISS-097: fix crítico Rules of Hooks en EnviosPage
+- ISS-081/082: decimales en ventas + faltante estático al tipear
+- ISS-091: badge stock insuficiente en carrito
+- ISS-092: carrito recuperado restaura modoCC + clienteCCEnabled desde DB
+- ISS-093: tag CC en historial de ventas
+- ISS-103: selector canal de venta en POS
+- ISS-084: gastos efectivo con caja específica + validación saldo + Caja Fuerte
+- ISS-102: clientes y proveedores globales (sin filtro de sucursal)
+
+### v1.8.22 — Features batch (5 issues)
+- ISS-085: Número de ticket por sucursal con prefijo (migration 108)
+- ISS-086: Cuotas tarjeta de crédito — config bancos en ConfigPage + picker en POS
+- ISS-090: CC como método de pago parcial en ventas (pago mixto)
+- ISS-095: OC con CC como método de pago parcial (flujo unificado)
+- ISS-096: Comprobante de pago en OC — adjuntar PDF/imagen
+
+---
+
 ## v1.8.1 — Módulo Recursos + estructura en ingreso + multi-sucursal + fixes (PROD ✅)
 
 ### Multi-sucursal — filtrado estricto

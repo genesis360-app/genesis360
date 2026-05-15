@@ -194,3 +194,14 @@ Botón CreditCard por proveedor → modal con:
 - [[wiki/features/gastos]]
 - [[wiki/features/alertas]]
 - [[wiki/database/schema-overview]]
+
+---
+
+## Mejoras v1.8.21
+
+### ISS-102 — Clientes y proveedores globales entre sucursales
+- Clientes y proveedores son compartidos por todas las sucursales del tenant
+- El selector de sucursal se ocultó en `/clientes` y `/proveedores` (en `AppLayout.tsx`)
+- La query de clientes ya no aplica `applyFilter()` (no filtra por `sucursal_id`)
+- Al crear un nuevo cliente ya no se asigna `sucursal_id`
+- **Motivación**: la base de clientes y proveedores es del negocio completo, no de cada sucursal

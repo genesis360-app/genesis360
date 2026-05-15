@@ -211,9 +211,7 @@ export function AppLayout() {
             title="Ir al sitio de Genesis360"
             className="flex items-center gap-3 flex-1 min-w-0 group"
           >
-            <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-accent/80 transition-colors">
-              <Package size={18} className="text-white" />
-            </div>
+            <img src="/android-chrome-192x192.png" alt="Genesis360" className="w-8 h-8 rounded-lg flex-shrink-0 object-cover" />
             {!collapsed && (
               <div className="flex flex-col min-w-0">
                 <span className="text-primary dark:text-white font-bold text-lg tracking-tight leading-tight truncate">

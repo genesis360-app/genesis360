@@ -202,3 +202,21 @@ La EF `monitoring-check` alerta cuando hay **cajas abiertas > 16 horas** (umbral
 - [[wiki/features/gastos]]
 - [[wiki/features/rrhh]]
 - [[wiki/database/schema-overview]]
+
+---
+
+## Mejoras v1.8.21
+
+### ISS-087 — Caja predeterminada visual
+- Ícono ★ (amarillo) junto al nombre de la caja predeterminada en el selector y los botones rápidos
+- La preferida se guarda en `localStorage` con clave `caja_preferida_{tenantId}_{userId}`
+
+### ISS-088 — Sugerido de apertura corregido
+- Al abrir caja, el monto sugerido usa `monto_real_cierre` (si > 0) o `monto_cierre` como fallback
+- Corrige bug que mostraba `diferencia_cierre` en lugar del saldo real
+
+### ISS-089 — Ingresar a Caja Fuerte con selector de caja origen
+- Modal "Ingresar a Caja Fuerte" incluye selector de caja de origen (antes usaba solo la caja activa)
+- Valida saldo disponible en la caja de origen
+- Sin caja seleccionada = ingreso externo (sin límite)
+- Query `sesionesAbiertasAll` habilitada también cuando `showDepositoFuerte = true`

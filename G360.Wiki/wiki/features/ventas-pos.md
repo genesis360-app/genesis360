@@ -226,3 +226,52 @@ calcularLpnFuentes(lineas, cant)
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/features/escaneo-barcode]]
 - [[wiki/development/testing]]
+
+---
+
+## Mejoras v1.8.21–v1.8.22
+
+### ISS-081 — Decimales en totales
+- `total` redondeado a 2 decimales con `Math.round(...*100)/100`
+- Display del total y faltante con `maximumFractionDigits: 2`
+- Fix `esVuelto = vueltoUI >= 0.5` (antes `>` causaba "Excede por $1")
+
+### ISS-082 — "Falta asignar" estático al tipear
+- `committedAsignado`: estado que se actualiza solo en `onBlur` o Enter del input de monto
+- La UI de "Falta asignar / Vuelto / Excede" no parpadea mientras se escribe
+
+### ISS-090 — CC como método de pago parcial
+- "Cuenta Corriente" es ahora una opción en el select de medios de pago (requiere cliente con CC habilitada)
+- Pago mixto: ej. $500 Efectivo + $300 CC → `monto_pagado = $500`, deuda CC = $300
+- Elimina el toggle "Despachar a cuenta corriente" (era todo-o-nada)
+- `modoCC` derivado de `mediosPago` (no estado)
+- CC excluida de movimientos en caja y del `ingreso_informativo`
+
+### ISS-091 — Badge stock insuficiente en carrito
+- Cuando `item.cantidad > stock disponible en lineas_disponibles`, aparece badge rojo "Stock insuf. (X disp.)"
+
+### ISS-092 — Recuperación de carrito restaura CC
+- El draft guardado en localStorage incluye `mediosPago` (con CC si estaba activo)
+- Al restaurar: consulta DB para `clienteCCEnabled` del cliente recuperado
+- El botón CC aparece correctamente al volver al módulo
+
+### ISS-093 — Tag CC en historial
+- Badge verde "CC" en historial cuando `venta.es_cuenta_corriente = true`
+
+### ISS-103 — Canal de venta en POS
+- Selector de canal antes del botón "Venta directa": Presencial (default), Instagram, Facebook, WhatsApp, Otros
+- Guarda en `ventas.origen`
+- Se resetea a "POS" al completar la venta
+
+### ISS-085 — Número de ticket por sucursal (migration 108)
+- `sucursales.codigo TEXT`: código corto configurable (ej: "S1", "CC", "N")
+- `ventas.numero_sucursal INTEGER`: contador secuencial reiniciado por sucursal
+- Trigger `gen_venta_numero()` actualizado para asignar ambos campos
+- Display en historial: `S1-0001` (sucursal) o `#N` (global sin sucursal)
+- El código se configura en SucursalesPage → formulario de edición
+
+### ISS-086 — Cuotas en tarjeta de crédito (migration 108)
+- `tenants.cuotas_bancos JSONB`: config de bancos y planes de cuotas por tenant
+- `ventas.cuotas_info JSONB`: info de cuotas guardada en la venta
+- **ConfigPage → tab Métodos de pago**: nueva sección "Cuotas por banco" — agregar bancos, planes de cuotas (N cuotas, interés %, sin interés)
+- **VentasPage**: al seleccionar "Tarjeta crédito" con monto > 0, aparece picker de banco + cuotas con display monto/cuota, total con interés, badge verde "Sin interés"

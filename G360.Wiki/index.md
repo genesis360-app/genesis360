@@ -18,16 +18,16 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 |--------|-------------|--------|
 | [[wiki/features/autenticacion-onboarding]] | Google OAuth, roles, trial, session timeout | ✅ |
 | [[wiki/features/inventario-stock]] | LPNs, movimientos, FIFO/FEFO, stock por sucursal, bulk edit atributos | ✅ |
-| [[wiki/features/ventas-pos]] | Carrito, checkout, métodos de pago, reservas, combos | ✅ |
-| [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja, roles | ✅ |
-| [[wiki/features/gastos]] | Variables, fijos, IVA deducible, comprobantes, múltiples medios | ✅ |
+| [[wiki/features/ventas-pos]] | Carrito, checkout, métodos de pago, reservas, combos (+ v1.8.21-22: CC parcial, cuotas, ticket sucursal, fixes) | ✅ |
+| [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja, roles (+ v1.8.21: caja predeterminada visual, fix sugerido, Caja Fuerte origen) | ✅ |
+| [[wiki/features/gastos]] | Variables, fijos, IVA deducible, comprobantes, múltiples medios (+ v1.8.21-22: efectivo en caja, CC en OC, comprobante OC) | ✅ |
 | [[wiki/features/devoluciones]] | Stock serializado/no-serializado, NC, caja | ✅ |
-| [[wiki/features/clientes-proveedores]] | CRM, cuenta corriente, OC, domicilios, servicios | ✅ |
+| [[wiki/features/clientes-proveedores]] | CRM, cuenta corriente, OC, domicilios, servicios (+ v1.8.21: globales entre sucursales) | ✅ |
 | [[wiki/features/facturacion-afip]] | AFIP WSFE, tipos A/B/C, AfipSDK, FacturacionPage 4 tabs | ✅ DEV |
 | [[wiki/features/rrhh]] | 5 fases: empleados, nómina, vacaciones, asistencia, supervisor | ✅ |
 | [[wiki/features/wms]] | Estructuras, ubicaciones, KITs, kitting, conteos, recepciones | ✅ |
 | [[wiki/features/marketplace]] | API pública, webhook saliente, publicación por producto | ✅ |
-| [[wiki/features/envios]] | Propio (Google Maps + KM auto) · Courier (tarifas config) · canal auto · sin cotizador | ✅ DEV |
+| [[wiki/features/envios]] | Propio (Google Maps + KM auto) · Courier (tarifas config) · canal auto · sin cotizador (+ v1.8.21: fix dirección) | ✅ DEV |
 | [[wiki/features/notificaciones]] | Tabla real, campana, email, diferencia apertura caja — v1.5.0 | ✅ |
 | [[wiki/features/suscripciones-planes]] | Planes Free/Básico/Pro/Enterprise, trial, Mercado Pago | ✅ |
 | [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku fallback | ✅ |
@@ -57,7 +57,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | Las 83 migraciones con descripción completa (001-083) | ✅ |
+| [[wiki/database/migraciones]] | 108 + 086b aplicadas en DEV y PROD — descripción completa (001-108) | ✅ |
 | [[wiki/database/rls-policies]] | Patrón subquery, funciones helper, Storage, Edge Functions | ✅ |
 | [[wiki/database/triggers]] | Stock, numeración, integraciones, nómina, stock mínimo | ✅ |
 
@@ -123,4 +123,4 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
-*Última actualización: 2026-05-14 — 48 páginas · 8 fuentes en raw/ · 107 migraciones · v1.8.20-dev / v1.8.19-prod*
+*Última actualización: 2026-05-14 — 48 páginas · 8 fuentes en raw/ · 109 migraciones (108 + 086b) · v1.8.22-prod*

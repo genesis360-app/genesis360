@@ -4,22 +4,22 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.19** ✅ · DEV: **v1.8.22** (features batch)
+Último release en PROD: **v1.8.22** ✅ · DEV: **v1.8.22** (en sync con PROD)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.22 / PROD v1.8.19 (cierre sesión 2026-05-14)
+## Estado actual DEV v1.8.22 / PROD v1.8.22 (cierre sesión 2026-05-15)
 
-- APP_VERSION DEV: `v1.8.20` en `src/config/brand.ts` ✅
-- APP_VERSION PROD: `v1.8.19` ✅
-- Migrations DEV: 001–107 ✅
-- Migrations PROD: 001–107 ✅ (todas aplicadas)
+- APP_VERSION DEV: `v1.8.22` en `src/config/brand.ts` ✅
+- APP_VERSION PROD: `v1.8.22` ✅ (PR #111 mergeado)
+- Migrations DEV: 001–108 ✅
+- Migrations PROD: 001–108 ✅ (migration 108 aplicada en PROD)
 - Edge Functions DEV: todas activas (`invite-user` v3 — redirect dinámico)
 - Edge Functions PROD: `invite-user` ✅ · `ai-assistant` ✅ · `cancel-suscripcion` ❌ (no existe en repo)
 - GROQ_API_KEY: DEV ✅ · PROD ✅
-- VITE_GOOGLE_MAPS_API_KEY: DEV ✅ · PROD ✅ (Vercel Production — redeploy pendiente para activar)
+- VITE_GOOGLE_MAPS_API_KEY: DEV ✅ · PROD ✅
 
 ---
 

@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-15] update | PROD deploy v1.8.22 — PR #111 mergeado, migration 108 aplicada
+
+- PR #111 `dev → main` mergeado ✅
+- Migration 108 aplicada en PROD (jjffnbrdjchquexdfgwq): sucursales.codigo, ventas.numero_sucursal, tenants.cuotas_bancos, ventas.cuotas_info, ordenes_compra.comprobante_url/titulo
+- GitHub release v1.8.22 marcado como latest en main
+- Wiki actualizado: caja.md, ventas-pos.md, gastos.md, envios.md, clientes-proveedores.md, migraciones.md, roadmap.md, index.md
+
 ## [2026-05-14] update | v1.8.22 DEV — ISS-085/086/090/095/096 batch features
 
 ### ISS-085: Número de ticket por sucursal con prefijo

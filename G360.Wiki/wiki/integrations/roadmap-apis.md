@@ -18,6 +18,7 @@ Plan aprobado 2026-05-07. Implementación pausada — retomar cuando se decida a
 | TiendaNube | orders + stock sync | BOM combos, FIFO lotes | ✅ básico / ❌ killers |
 | MercadoLibre | orders + stock/precio | Rentabilidad neta, repricing | ✅ básico / ❌ killers |
 | MercadoPago | pagos QR + suscripciones | Conciliación, chargeback | ✅ básico / ❌ killers |
+| MODO | Framework listo (migration 109) | Pagos en POS | ⚠️ schema+UI listos / pendiente activar |
 | AFIP | facturación electrónica (parcial) | Auto-completado CUIT | ⚠️ parcial / ❌ killer |
 | Logística (Andreani/OCA) | — | Rate shopping, RMA | ❌ todo |
 | PagoNube | — | — | ❌ todo |
@@ -28,6 +29,34 @@ Plan aprobado 2026-05-07. Implementación pausada — retomar cuando se decida a
 | Google Ads / GA4 | — | Atribución UTM | ❌ todo |
 | MELI Ads | — | Auto-pausado margen | ❌ todo |
 | Shopify / WooCommerce | — | — | ❌ todo |
+
+---
+
+## MODO Payments — Framework v1.8.26 (ISS-072, migration 109)
+
+**Schema:**
+```sql
+modo_credentials(
+  tenant_id UUID UNIQUE,
+  merchant_id TEXT,
+  api_key TEXT,
+  ambiente CHECK('test' | 'prod'),
+  conectado BOOLEAN,
+  conectado_at TIMESTAMPTZ
+)
+```
+
+**ConfigPage → tab Integraciones → MODO:**
+- Formulario para ingresar `merchant_id` + `api_key`
+- Toggle ambiente test/prod
+- Botón "Conectar" → valida con la API de MODO
+- Badge "Conectado ✅" con fecha de conexión
+
+**VentasPage:**
+- "MODO" disponible como método de pago (igual que MP QR)
+- Solo visible si el tenant tiene `modo_credentials.conectado = true`
+
+**Pendiente:** endpoint de creación de pago y webhook de confirmación MODO (requiere cuenta de producción).
 
 **PagoNube / EnvíoNube scope**: ambos usos — operaciones propias del tenant + integración checkout TiendaNube.  
 **Meta Ads / MELI Ads**: posicionamiento futuro, no hay demanda actual de tenants.

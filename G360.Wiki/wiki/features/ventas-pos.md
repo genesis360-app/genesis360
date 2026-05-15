@@ -270,6 +270,16 @@ calcularLpnFuentes(lineas, cant)
 - Display en historial: `S1-0001` (sucursal) o `#N` (global sin sucursal)
 - El código se configura en SucursalesPage → formulario de edición
 
+### ISS-105 — Costo de envío en validación de medios de pago (v1.8.24)
+- `totalConEnvio = total + costo_envio` — la validación de medios usa este total
+- `monto_pagado` incluye el costo de envío si el cliente lo abona en el mismo acto
+- `validarDespacho()` actualizada para cubrir el total con envío
+
+### ISS-106 — Historial de ventas: sucursal + badge CC (v1.8.24)
+- Query usa `.or('sucursal_id.eq.X,sucursal_id.is.null')` para incluir ventas históricas sin sucursal asignada
+- Badge "CC" en historial: ghost-style (outline, no relleno) cuando `es_cuenta_corriente = true`
+- Evita que ventas anteriores al lanzamiento multi-sucursal desaparezcan del historial
+
 ### ISS-086 — Cuotas en tarjeta de crédito (migration 108)
 - `tenants.cuotas_bancos JSONB`: config de bancos y planes de cuotas por tenant
 - `ventas.cuotas_info JSONB`: info de cuotas guardada en la venta

@@ -10,7 +10,7 @@ updated: 2026-04-30
 
 **Genesis360** es un SaaS de gestión de inventario (WMS) para pequeños comercios físicos de Argentina. Tagline: *"El cerebro del negocio físico"*. La propuesta central no es solo mostrar datos, sino **recomendar acciones**.
 
-**Versión actual:** v1.6.0 en PROD ✅ (al 2026-05-05)
+**Versión actual:** v1.8.27 en PROD ✅ (al 2026-05-15)
 
 ---
 
@@ -79,7 +79,7 @@ Usuario
 Vercel (React SPA + PWA)
   ↓
 Supabase
-  ├── PostgreSQL (83 migraciones, multi-tenant RLS)
+  ├── PostgreSQL (110 migraciones, multi-tenant RLS)
   ├── Auth (Google OAuth + Email/Password)
   ├── Storage (productos, avatares, empleados, certificados AFIP, etc.)
   └── 26 Edge Functions (Deno)
@@ -94,15 +94,15 @@ Supabase
 
 ---
 
-## Estado del proyecto al 2026-04-30
+## Estado del proyecto al 2026-05-15
 
 | Métrica | Valor |
 |---------|-------|
-| Versión PROD | v1.6.0 |
-| Migraciones DB | 85 |
-| Edge Functions | 26 |
+| Versión PROD | v1.8.27 |
+| Migraciones DB | 110 + 086b |
+| Edge Functions | ~26 |
 | Unit tests | 154+ (Vitest) |
-| Archivos TS/TSX | ~80 |
+| Archivos TS/TSX | ~100 |
 | Supabase PROD | `jjffnbrdjchquexdfgwq` |
 | Supabase DEV | `gcmhzdedrkmmzfzfveig` |
 

@@ -127,10 +127,27 @@ No es exactamente un trigger, sino una función cron llamada por `pg_cron`:
 
 ---
 
+## Trigger de creación automática de Caja Fuerte (migration 110)
+
+### `trg_crear_caja_fuerte`
+
+```sql
+AFTER INSERT ON tenants
+→ fn_crear_caja_fuerte() SECURITY DEFINER
+→ INSERT cajas (tenant_id, nombre='Caja Fuerte / Bóveda', es_caja_fuerte=true, activo=true)
+```
+
+**Por qué SECURITY DEFINER:** el trigger dispara justo después de insertar el tenant, antes de que el usuario exista en `users`. La RLS de `cajas` (`tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid())`) no puede resolverse porque el user aún no está en la tabla. Con SECURITY DEFINER el INSERT omite la RLS.
+
+> [!WARNING] Sin `SECURITY DEFINER`, el registro de nuevo negocio falla silenciosamente con "Error al registrar" porque `PostgrestError` no es instancia de `Error` y el catch muestra el fallback genérico.
+
+---
+
 ## Links relacionados
 
 - [[wiki/database/schema-overview]]
 - [[wiki/database/migraciones]]
 - [[wiki/features/inventario-stock]]
+- [[wiki/features/autenticacion-onboarding]]
 - [[wiki/integrations/tienda-nube]]
 - [[wiki/integrations/mercado-libre]]

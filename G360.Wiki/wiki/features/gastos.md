@@ -171,6 +171,13 @@ OC nuevas arrancan con `estado_pago = 'pendiente_pago'` por defecto.
 - Los días de plazo de CC aparecen solo cuando hay CC en los medios
 - Registra en `proveedor_cc_movimientos` tanto el pago (negativo) como la deuda CC (positivo)
 
+### ISS-044 — OC expanded view rediseñado como ticket/recibo (v1.8.26)
+- El detalle expandido de cada OC adopta formato de ticket/recibo
+- Tipografía monospace para los valores numéricos
+- Secciones diferenciadas: encabezado (proveedor + número + estado) / ítems / totales
+- Totales calculados al pie: subtotal, descuentos, IVA, total
+- Sin cambios en el schema; es puramente presentación
+
 ### ISS-096 — Comprobante de pago en OC (migration 108)
 - `ordenes_compra.comprobante_url TEXT` + `comprobante_titulo TEXT`
 - En el expanded view de cada OC: sección "Comprobante de pago"

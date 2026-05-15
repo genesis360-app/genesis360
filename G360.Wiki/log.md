@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-15] update | Wiki — actualización completa v1.8.23 a v1.8.27
+
+Páginas actualizadas:
+- `inventario-stock.md` — conteos borrador (ISS-100), rebaje masivo FIFO fix (ISS-012), shortcuts ESC/ENTER
+- `ventas-pos.md` — ISS-105 costo envío en validación, ISS-106 historial OR(sucursal/null) + badge CC ghost
+- `clientes-proveedores.md` — ISS-107 cancelar deuda CC (DUEÑO/SUPERVISOR)
+- `gastos.md` — ISS-044 OC expanded como ticket/recibo
+- `autenticacion-onboarding.md` — roles renombrados (DUEÑO/SUPER_USUARIO), fix registro v1.8.27
+- `reportes-metricas.md` — Dashboard 9 áreas, SQL Runner (migration 105), aging individual (migration 106)
+- `triggers.md` — trg_crear_caja_fuerte SECURITY DEFINER + explicación RLS
+- `migraciones.md` — migrations 109 y 110
+- `roadmap-apis.md` — MODO payments framework (ISS-072, migration 109)
+- `overview.md` — versión v1.8.27, 110 migraciones
+- `index.md` — descripciones actualizadas, pie de página
+
 ## [2026-05-15] update | PROD deploy v1.8.27 — fix registro nuevo negocio
 
 - Fix crítico: `fn_crear_caja_fuerte` SECURITY DEFINER — trigger bloqueaba RLS al registrar tenant nuevo

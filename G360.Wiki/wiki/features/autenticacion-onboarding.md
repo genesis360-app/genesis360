@@ -72,13 +72,16 @@ App carga
 
 ## Roles de usuario
 
+> Renombrado `OWNER → DUEÑO` en **migration 100** (v1.8.16). El frontend y todas las políticas RLS usan `'DUEÑO'`. La prop interna `ownerOnly` se conserva con ese nombre.
+
 | Rol | Acceso |
 |-----|--------|
-| `OWNER` | Todo |
+| `DUEÑO` | Todo |
+| `SUPER_USUARIO` | Igual que DUEÑO dentro del tenant (antes `ADMIN`) |
 | `SUPERVISOR` | Todo excepto `/configuracion`, `/usuarios`, `/sucursales`, `/rrhh` |
 | `CAJERO` | Solo `/ventas`, `/caja`, `/clientes`, `/mi-cuenta` |
 | `RRHH` | Solo `/rrhh`, `/mi-cuenta` |
-| `ADMIN` | Similar a OWNER |
+| `ADMIN` | Solo `/admin` (plataforma interna) |
 | `CONTADOR` | `/dashboard`, `/gastos`, `/reportes`, `/historial`, `/metricas`, `/mi-cuenta`, `/suscripcion` |
 | `DEPOSITO` | `/inventario`, `/productos`, `/alertas`, `/mi-cuenta` |
 
@@ -144,8 +147,21 @@ Los tests E2E lo marcan como visto en localStorage antes de correr.
 
 ---
 
+## Fix registro nuevo negocio — v1.8.27 (migration 110)
+
+**Bug:** Al registrar un negocio nuevo con email nuevo, el formulario mostraba "Error al registrar" sin completar el registro.
+
+**Causa raíz:** El trigger `trg_crear_caja_fuerte` en la tabla `tenants` (que crea la Caja Fuerte/Bóveda por defecto) disparaba inmediatamente al hacer el INSERT del tenant. Como el usuario todavía no había sido insertado en `users` (paso siguiente), la RLS de `cajas` rechazaba el INSERT.
+
+**Fix:** `fn_crear_caja_fuerte` declarada `SECURITY DEFINER` + `SET search_path = public`. Ahora el INSERT en `cajas` omite la RLS durante la creación inicial del tenant.
+
+> [!NOTE] `PostgrestError` (Supabase) no es instancia de `Error`, por lo que el catch mostraba el fallback genérico "Error al registrar" en vez del mensaje real.
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/suscripciones-planes]]
 - [[wiki/architecture/multi-tenant-rls]]
 - [[wiki/architecture/estado-global]]
+- [[wiki/database/triggers]]

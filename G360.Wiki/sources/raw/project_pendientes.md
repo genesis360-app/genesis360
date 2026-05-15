@@ -4,18 +4,21 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.22** ✅ · DEV: **v1.8.24** (fixes post-deploy)
+Último release en PROD: **v1.8.22** ✅ · DEV: **v1.8.26** (fixes + features post-deploy)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.24 / PROD v1.8.22 (cierre sesión 2026-05-15)
+## Estado actual DEV v1.8.26 / PROD v1.8.22 (cierre sesión 2026-05-15)
 
-- APP_VERSION DEV: `v1.8.24` en `src/config/brand.ts` ✅
+- APP_VERSION DEV: `v1.8.26` en `src/config/brand.ts` ✅
 - APP_VERSION PROD: `v1.8.22` ✅ (PR #111 mergeado)
-- Migrations DEV: 001–108 ✅
-- Migrations PROD: 001–108 ✅ (migration 108 aplicada en PROD)
+- Migrations DEV: 001–109 ✅ (migration 109 modo_credentials aplicada en DEV)
+- Migrations PROD: 001–108 ✅
+
+### Pendiente de aplicar en PROD
+- Migration 109: `modo_credentials` (aplicar con próximo deploy)
 - Edge Functions DEV: todas activas (`invite-user` v3 — redirect dinámico)
 - Edge Functions PROD: `invite-user` ✅ · `ai-assistant` ✅ · `cancel-suscripcion` ❌ (no existe en repo)
 - GROQ_API_KEY: DEV ✅ · PROD ✅

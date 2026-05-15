@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-15] update | v1.8.26 DEV — ISS-072/044 + ISS-100/012/107 + ISS-105/106
+
+- ISS-100: conteos borrador funcionales (continuar, eliminar, actualizar)
+- ISS-012: rebaje masivo FIFO/FEFO corregido + preview LPNs + override
+- ISS-107: cancelar deuda CC en clientes (DUEÑO/SUPERVISOR)
+- ISS-105: costo envío incluido en validación de medios de pago
+- ISS-106: historial ventas OR(sucursal, null) + badge ghost CC ventas
+- ISS-072: framework MODO (migration 109 + Edge Function + ConfigPage + VentasPage)
+- ISS-044: OC expanded view rediseñado como ticket/recibo (font mono, secciones, totales)
+
 ## [2026-05-15] update | v1.8.24 DEV — ISS-105/106 fixes
 
 - ISS-105: validación medios de pago usa totalConEnvio; monto_pagado incluye envío

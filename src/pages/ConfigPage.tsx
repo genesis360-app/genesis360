@@ -980,6 +980,21 @@ export default function ConfigPage() {
   const [editMetodoId, setEditMetodoId] = useState<string | null>(null)
   const [editMetodoData, setEditMetodoData] = useState({ nombre: '', color: '' })
 
+  // ISS-086: Cuotas por banco
+  type BancoCuota = { id: string; nombre: string; cuotas: { cant: number; sin_interes: boolean; interes: number }[] }
+  const [cuotasBancos, setCuotasBancos] = useState<BancoCuota[]>(() =>
+    ((tenant as any)?.cuotas_bancos ?? []) as BancoCuota[]
+  )
+  const [nuevoBancoNombre, setNuevoBancoNombre] = useState('')
+  const [editBancoId, setEditBancoId] = useState<string | null>(null)
+  const [nuevaCuota, setNuevaCuota] = useState({ cant: '', interes: '', sin_interes: false })
+
+  const saveCuotasBancos = async (bancos: BancoCuota[]) => {
+    const { error } = await supabase.from('tenants').update({ cuotas_bancos: bancos }).eq('id', tenant!.id)
+    if (error) toast.error('Error al guardar configuración de cuotas')
+    else { setCuotasBancos(bancos); toast.success('Cuotas actualizadas') }
+  }
+
   const METODOS_DEFAULTS = [
     { nombre: 'Efectivo',           color: '#22c55e', orden: 1 },
     { nombre: 'Mercado Pago',       color: '#06b6d4', orden: 2 },
@@ -2536,6 +2551,85 @@ export default function ConfigPage() {
                 disabled={!nuevoMetodo.nombre.trim() || addMetodoPago.isPending}
                 className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5">
                 <Plus size={14} /> Agregar
+              </button>
+            </div>
+          </div>
+
+          {/* ISS-086: Cuotas por banco — Tarjeta de crédito */}
+          <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cuotas por banco (Tarjeta de crédito)</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Configurá los planes de cuotas que ofrecés con cada banco. Las cuotas sin interés se muestran en verde al cobrar con tarjeta.</p>
+
+            {cuotasBancos.map((banco) => (
+              <div key={banco.id} className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-700/50">
+                  <span className="font-medium text-sm text-gray-800 dark:text-gray-100 flex-1">{banco.nombre}</span>
+                  <button onClick={() => setEditBancoId(editBancoId === banco.id ? null : banco.id)}
+                    className="text-xs text-accent hover:underline">
+                    {editBancoId === banco.id ? 'Cerrar' : 'Editar cuotas'}
+                  </button>
+                  <button onClick={() => saveCuotasBancos(cuotasBancos.filter(b => b.id !== banco.id))}
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
+                </div>
+
+                {/* Cuotas del banco */}
+                <div className="px-4 py-2 flex flex-wrap gap-2">
+                  {banco.cuotas.map((c, ci) => (
+                    <span key={ci} className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${c.sin_interes ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                      {c.cant}x {c.sin_interes ? 'sin interés' : `+${c.interes}%`}
+                      {editBancoId === banco.id && (
+                        <button onClick={() => saveCuotasBancos(cuotasBancos.map(b => b.id === banco.id ? { ...b, cuotas: b.cuotas.filter((_, i) => i !== ci) } : b))}
+                          className="ml-0.5 text-gray-400 hover:text-red-500"><X size={10} /></button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Agregar cuota */}
+                {editBancoId === banco.id && (
+                  <div className="px-4 pb-3 flex items-center gap-2 flex-wrap">
+                    <input type="number" min="1" value={nuevaCuota.cant} onChange={e => setNuevaCuota(p => ({ ...p, cant: e.target.value }))}
+                      placeholder="Cuotas" className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                    <input type="number" min="0" step="0.1" value={nuevaCuota.interes} onChange={e => setNuevaCuota(p => ({ ...p, interes: e.target.value }))}
+                      placeholder="Interés %" className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+                      <input type="checkbox" checked={nuevaCuota.sin_interes} onChange={e => setNuevaCuota(p => ({ ...p, sin_interes: e.target.checked, interes: e.target.checked ? '0' : p.interes }))}
+                        className="accent-green-500" /> Sin interés
+                    </label>
+                    <button onClick={() => {
+                      const cant = parseInt(nuevaCuota.cant)
+                      if (!cant || cant < 1) { toast.error('Ingresá la cantidad de cuotas'); return }
+                      const interes = parseFloat(nuevaCuota.interes) || 0
+                      const updated = cuotasBancos.map(b => b.id === banco.id
+                        ? { ...b, cuotas: [...b.cuotas, { cant, sin_interes: nuevaCuota.sin_interes, interes }].sort((a, b) => a.cant - b.cant) }
+                        : b)
+                      saveCuotasBancos(updated)
+                      setNuevaCuota({ cant: '', interes: '', sin_interes: false })
+                    }} className="px-3 py-1.5 bg-accent hover:bg-accent/90 text-white rounded-lg text-xs font-medium flex items-center gap-1">
+                      <Plus size={12} /> Agregar cuota
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Agregar banco */}
+            <div className="flex gap-2">
+              <input type="text" value={nuevoBancoNombre} onChange={e => setNuevoBancoNombre(e.target.value)}
+                placeholder="Ej: Banco Galicia, Santander..."
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && nuevoBancoNombre.trim()) {
+                    saveCuotasBancos([...cuotasBancos, { id: crypto.randomUUID(), nombre: nuevoBancoNombre.trim(), cuotas: [] }])
+                    setNuevoBancoNombre('')
+                  }
+                }}
+                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+              <button onClick={() => {
+                if (!nuevoBancoNombre.trim()) return
+                saveCuotasBancos([...cuotasBancos, { id: crypto.randomUUID(), nombre: nuevoBancoNombre.trim(), cuotas: [] }])
+                setNuevoBancoNombre('')
+              }} className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium flex items-center gap-1.5">
+                <Plus size={14} /> Agregar banco
               </button>
             </div>
           </div>

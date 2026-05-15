@@ -119,9 +119,18 @@ export default function UsuariosPage() {
     setSaving(true)
     try {
       const { data, error } = await supabase.functions.invoke('invite-user', {
-        body: { email: invEmail.trim(), rol: invRol, tenant_id: tenant!.id },
+        body: {
+          email: invEmail.trim(),
+          rol: invRol,
+          tenant_id: tenant!.id,
+          redirect_to: `${window.location.origin}/dashboard`,
+        },
       })
-      if (error) throw error
+      if (error) {
+        // Extraer el mensaje real del body de la respuesta (Supabase FunctionsHttpError)
+        const body = await (error as any).context?.json?.().catch(() => null)
+        throw new Error(body?.error ?? error.message)
+      }
       if (data?.error) throw new Error(data.error)
       toast.success(`Invitación enviada a ${invEmail}. El usuario recibirá un link para crear su contraseña.`)
       logActividad({ entidad: 'usuario', entidad_nombre: invEmail.split('@')[0], accion: 'crear', valor_nuevo: invRol, pagina: '/usuarios' })

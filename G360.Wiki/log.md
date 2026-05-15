@@ -6,6 +6,78 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-14] update | v1.8.22 DEV — ISS-085/086/090/095/096 batch features
+
+### ISS-085: Número de ticket por sucursal con prefijo
+- Migration 108: `sucursales.codigo` + `ventas.numero_sucursal` + trigger actualizado
+- SucursalesPage: campo "Código ticket" en formulario
+- VentasPage: `formatTicket()` → "S1-0001" cuando hay sucursal, "#N" global
+
+### ISS-086: Cuotas tarjeta de crédito
+- Migration 108: `tenants.cuotas_bancos` JSONB + `ventas.cuotas_info` JSONB
+- ConfigPage: sección "Cuotas por banco" con add/edit bancos y planes de cuotas
+- VentasPage: picker de cuotas al seleccionar "Tarjeta crédito" — banco, cuotas, interés, badge "Sin interés"
+
+### ISS-090: CC como método de pago parcial en ventas
+- Elimina toggle "Despachar a cuenta corriente" — CC es opción en medios de pago
+- `modoCC` derivado de `mediosPago` (no estado). Pago mixto soportado.
+- CC excluida de movimientos de caja; valida cliente y CC habilitada
+
+### ISS-095: OC con CC como método de pago parcial
+- Elimina toggle Pago/CC en OC — CC es un método más en `MEDIOS_OC`
+- Pago mixto: ej 30% Transferencia + 70% Cuenta Corriente
+- Días plazo CC aparecen solo cuando hay CC en medios
+
+### ISS-096: Comprobante de pago en OC
+- Migration 108: `ordenes_compra.comprobante_url` + `comprobante_titulo`
+- GastosPage: botón adjuntar comprobante en expanded OC (Storage: comprobantes-gastos/oc/)
+
+---
+
+## [2026-05-14] update | v1.8.21 DEV — bugfixes batch ISS-081/082/084/087/088/089/091/092/093/094/097/102/103
+
+### Caja
+- ISS-087: ★ visual en caja predeterminada (localStorage pref)
+- ISS-088: sugerir apertura usa monto_real_cierre (si > 0) ?? monto_cierre
+- ISS-089: selector de caja origen en modal "Ingresar a Caja Fuerte" + validación saldo
+
+### Ventas
+- ISS-094: rollback automático de venta CC si falla stock (delete ventas en catch)
+- ISS-081: total redondeado a 2 decimales + display maximumFractionDigits: 2
+- ISS-082: committedAsignado — "Falta asignar" estático hasta blur/enter
+- ISS-091: badge "Stock insuf." en items del carrito (desde lineas_disponibles)
+- ISS-092: draft carrito guarda modoCC; restaura clienteCCEnabled desde DB
+- ISS-093: tag CC en historial cuando es_cuenta_corriente = true
+- ISS-103: selector canal de venta en POS (Presencial default, Instagram, Facebook, WhatsApp, Otros)
+
+### Gastos
+- ISS-084: efectivo requiere selección de caja; saldo validation; Caja Fuerte como opción (egreso_traspaso)
+
+### Envíos
+- ISS-097: fix crítico — useState en IIFE viola Rules of Hooks → usa domForm existente
+
+### Clientes/Proveedores
+- ISS-102: selector sucursal oculto en /clientes y /proveedores; sin applyFilter en query clientes
+
+---
+
+## [2026-05-14] update | v1.8.20 DEV — fix invite-user redirect dinámico
+
+- `invite-user` EF: redirectTo hardcodeado a genesis360.pro → ahora el frontend pasa
+  window.location.origin/dashboard (funciona en localhost, DEV y PROD sin tocar whitelists)
+- UsuariosPage: extrae mensaje real del body del FunctionsHttpError para toast útil
+- GROQ_API_KEY configurada en Supabase PROD secrets ✅
+- Deployado invite-user en DEV y PROD
+
+## [2026-05-14] update | PROD deploy v1.8.19 — PR #110 mergeado, migrations 093-107 aplicadas
+
+- PR #110 mergeado dev → main
+- Migrations 093-107 aplicadas en PROD (jjffnbrdjchquexdfgwq)
+- Edge Functions PROD: invite-user + ai-assistant deployadas
+- VITE_GOOGLE_MAPS_API_KEY configurada en Vercel Production
+- GROQ_API_KEY: pendiente en Supabase PROD secrets
+- Vercel PROD deployment: READY ✅
+
 ## [2026-05-14] update | v1.8.19 — SQL Runner + Envíos Google Maps + shortcuts + aging + Dashboard
 
 ### SQL Runner (ReportesPage)

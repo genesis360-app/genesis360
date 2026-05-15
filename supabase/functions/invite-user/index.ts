@@ -6,15 +6,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const APP_URL = 'https://genesis360.pro'
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { email, rol, tenant_id } = await req.json()
+    const { email, rol, tenant_id, redirect_to } = await req.json()
+    // El frontend envía su propia URL — funciona en localhost, DEV y PROD sin config extra
+    const redirectTo = redirect_to ?? 'https://app.genesis360.pro/dashboard'
     if (!email || !rol || !tenant_id) {
       throw new Error('Faltan parámetros: email, rol, tenant_id')
     }
@@ -57,7 +57,7 @@ serve(async (req) => {
     const { data: invData, error: invError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       email,
       {
-        redirectTo: `${APP_URL}/dashboard`,
+        redirectTo,
         data: { tenant_id, rol },
       }
     )

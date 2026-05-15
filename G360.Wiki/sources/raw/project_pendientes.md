@@ -4,21 +4,22 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.3** ✅ · DEV: **v1.8.19** (pendiente PR → PROD)
+Último release en PROD: **v1.8.19** ✅ · DEV: **v1.8.22** (features batch)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV — v1.8.19 (al cierre de sesión 2026-05-14)
+## Estado actual DEV v1.8.22 / PROD v1.8.19 (cierre sesión 2026-05-14)
 
-- APP_VERSION: `v1.8.19` en `src/config/brand.ts` ✅
-- Migrations DEV: 001–107 ✅ (103–107 aplicadas en DEV)
-- Migrations PROD: 001–092 ✅ (093–107 pendientes — aplicar al deployar)
-- Edge Functions DEV: todas activas
-- Edge Functions PROD: desactualizadas (falta `invite-user`, `cancel-suscripcion`, `ai-assistant`)
-- GROQ_API_KEY: DEV ✅ · PROD ❌
-- VITE_GOOGLE_MAPS_API_KEY: DEV ✅ · Vercel ✅ · PROD ❌ (agregar al deploy)
+- APP_VERSION DEV: `v1.8.20` en `src/config/brand.ts` ✅
+- APP_VERSION PROD: `v1.8.19` ✅
+- Migrations DEV: 001–107 ✅
+- Migrations PROD: 001–107 ✅ (todas aplicadas)
+- Edge Functions DEV: todas activas (`invite-user` v3 — redirect dinámico)
+- Edge Functions PROD: `invite-user` ✅ · `ai-assistant` ✅ · `cancel-suscripcion` ❌ (no existe en repo)
+- GROQ_API_KEY: DEV ✅ · PROD ✅
+- VITE_GOOGLE_MAPS_API_KEY: DEV ✅ · PROD ✅ (Vercel Production — redeploy pendiente para activar)
 
 ---
 
@@ -75,17 +76,47 @@ type: project
 
 ---
 
+## Lo producido en sesiones 2026-05-14 (v1.8.21 + v1.8.22-dev)
+
+### Bugfixes batch — 13 issues resueltos
+- ISS-087: ★ visual en caja predeterminada
+- ISS-088: sugerido apertura caja usa monto_cierre (confiable)
+- ISS-089: selector caja origen en modal Ingresar a Caja Fuerte + validación saldo
+- ISS-094: rollback venta CC cuando falla stock (delete ventas en catch)
+- ISS-097: fix Rules of Hooks en EnviosPage (useState en IIFE → usa domForm)
+- ISS-081: total ventas redondeado a 2 decimales; display correcto
+- ISS-082: "Falta asignar" estático mientras se tipea (committedAsignado + onBlur)
+- ISS-091: badge stock insuficiente en carrito de ventas
+- ISS-092: carrito recuperado restaura modoCC y clienteCCEnabled desde DB
+- ISS-093: tag CC en historial de ventas
+- ISS-103: selector canal de venta en POS (Presencial, Instagram, Facebook, WhatsApp, Otros)
+- ISS-084: gastos efectivo → selector de caja obligatorio + validación saldo + caja fuerte
+- ISS-102: clientes y proveedores globales (sin filtro de sucursal)
+
+### Issues pendientes para próximas sesiones (requieren planificación mayor)
+- ISS-085: Historial ventas por sucursal + reset # ticket por sucursal → requiere migración DB
+- ISS-086: Cuotas tarjeta de crédito → requiere config bancos/tasas en tenant, nueva UI
+- ISS-090: CC como método de pago parcial + eliminar lógica actual → refactor mayor VentasPage
+- ISS-095: OC con CC como método de pago parcial
+- ISS-096: Adjuntar archivos en OC/gastos (Storage Supabase)
+
+---
+
 ## Para la próxima sesión — prioridades
 
-### 1. Deploy a PROD (v1.8.19)
-- [ ] PR `dev → main` con título `v1.8.19 — SQL Runner, Envíos Google Maps, Shortcuts`
-- [ ] Aplicar migrations 093–107 en PROD (`jjffnbrdjchquexdfgwq`)
-- [ ] Agregar `VITE_GOOGLE_MAPS_API_KEY` en Vercel Production
-- [ ] Deploy EF `invite-user`, `cancel-suscripcion`, `ai-assistant` en PROD
-- [ ] Configurar secret `GROQ_API_KEY` en PROD
-- [ ] GitHub release v1.8.19
+### 1. Deploy PROD v1.8.19 — COMPLETADO ✅
+- [x] PR #110 `dev → main` mergeado
+- [x] Migrations 093–107 aplicadas en PROD
+- [x] `VITE_GOOGLE_MAPS_API_KEY` en Vercel Production (redeploy pendiente para activar)
+- [x] EF `invite-user` + `ai-assistant` deployadas en PROD
+- [x] `GROQ_API_KEY` configurada en PROD
+- [x] GitHub release v1.8.19
 
-### 2. Reglas de negocio — relevar e implementar
+### 2. Post-deploy pendientes menores
+- [ ] Redeploy Vercel PROD para activar `VITE_GOOGLE_MAPS_API_KEY` (o esperar próximo deploy)
+- [ ] Probar invite-user desde DEV y PROD con el nuevo redirect dinámico
+
+### 3. Reglas de negocio — relevar e implementar
 - **Pendientes de relevar:** Gastos (completo), RRHH (completo), Ventas (devoluciones/límites), Clientes (deuda configurable)
 - **Pendientes de implementar:** Bóveda (Caja), contraseña maestra cierre caja ajena, ticket cierre PDF, alerta diferencia cierre
 

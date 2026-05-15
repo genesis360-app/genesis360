@@ -122,11 +122,10 @@ export default function ClientesPage() {
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: clientes = [], isLoading } = useQuery({
-    queryKey: ['clientes', tenant?.id, search, sucursalId],
+    queryKey: ['clientes', tenant?.id, search],
     queryFn: async () => {
       let q = supabase.from('clientes').select('*').eq('tenant_id', tenant!.id).order('nombre')
       if (search) q = q.or(`nombre.ilike.%${search}%,dni.ilike.%${search}%`)
-      q = applyFilter(q)
       const { data, error } = await q
       if (error) throw error
       return data ?? []
@@ -352,7 +351,7 @@ export default function ClientesPage() {
         if (error) throw error
         toast.success('Cliente actualizado')
       } else {
-        const { error } = await supabase.from('clientes').insert({ tenant_id: tenant!.id, sucursal_id: sucursalId || null, ...payload })
+        const { error } = await supabase.from('clientes').insert({ tenant_id: tenant!.id, ...payload })
         if (error) throw error
         toast.success('Cliente creado')
       }

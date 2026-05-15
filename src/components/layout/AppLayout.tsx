@@ -352,9 +352,11 @@ export function AppLayout() {
 
             {/* Sucursal — visible en todas las rutas excepto /sucursales y /usuarios */}
             {sucursales.length > 0 && (() => {
-              const RUTAS_SIN_SELECTOR  = ['/sucursales', '/usuarios']
-              const RUTAS_CON_TODAS     = ['/dashboard', '/productos', '/inventario', '/clientes',
-                                            '/facturacion', '/proveedores', '/recursos', '/biblioteca',
+              // ISS-102: clientes y proveedores son globales — ocultar selector de sucursal
+              const RUTAS_SIN_SELECTOR  = ['/sucursales', '/usuarios', '/clientes', '/proveedores']
+              // ISS-102: /clientes y /proveedores son globales — no filtran por sucursal
+              const RUTAS_CON_TODAS     = ['/dashboard', '/productos', '/inventario',
+                                            '/facturacion', '/recursos', '/biblioteca',
                                             '/rrhh', '/historial', '/reportes', '/configuracion']
 
               const enRutaSinSelector  = RUTAS_SIN_SELECTOR.some(r => pathname.startsWith(r))

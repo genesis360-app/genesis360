@@ -123,4 +123,4 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
-*Última actualización: 2026-05-14 — 48 páginas · 8 fuentes en raw/ · 107 migraciones · v1.8.19*
+*Última actualización: 2026-05-14 — 48 páginas · 8 fuentes en raw/ · 107 migraciones · v1.8.20-dev / v1.8.19-prod*

@@ -74,6 +74,17 @@ interface CartItem {
 export default function VentasPage() {
   const { tenant, user } = useAuthStore()
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
+
+  // ISS-085: formatea el número de ticket por sucursal
+  const formatTicket = (v: any) => {
+    if (v?.numero_sucursal && v?.sucursal_id) {
+      const suc = sucursales.find((s: any) => s.id === v.sucursal_id)
+      const codigo = (suc as any)?.codigo
+        ?? `S${(sucursales as any[]).findIndex((s: any) => s.id === v.sucursal_id) + 1}`
+      return `${codigo}-${String(v.numero_sucursal).padStart(4, '0')}`
+    }
+    return `#${v?.numero ?? '?'}`
+  }
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
@@ -88,7 +99,6 @@ export default function VentasPage() {
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [clienteCCEnabled, setClienteCCEnabled] = useState(false)
-  const [modoCC, setModoCC] = useState(false)
   const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
@@ -100,6 +110,14 @@ export default function VentasPage() {
   const [descuentoTotal, setDescuentoTotal] = useState('')
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
   const [notas, setNotas] = useState('')
+  // ISS-082: monto comprometido en medios de pago (actualiza sólo en blur/enter)
+  const [committedAsignado, setCommittedAsignado] = useState(0)
+  // ISS-103: canal de venta en POS
+  const [canalPOS, setCanalPOS] = useState('POS')
+  // ISS-086: cuotas por banco en tarjeta de crédito
+  const [cuotasSeleccion, setCuotasSeleccion] = useState<Record<number, { banco: string; cuotas: number; interes: number; sinInteres: boolean }>>({})
+  const cuotasBancos: { id: string; nombre: string; cuotas: { cant: number; sin_interes: boolean; interes: number }[] }[] =
+    ((tenant as any)?.cuotas_bancos ?? [])
   const [requiereEnvio, setRequiereEnvio] = useState(false)
   const [costoEnvioVenta, setCostoEnvioVenta] = useState('')
   const [envioTipoVenta, setEnvioTipoVenta]   = useState<'monto' | 'km'>('monto')
@@ -316,7 +334,16 @@ export default function VentasPage() {
       const draft = JSON.parse(raw)
       if (draft.cart?.length > 0) {
         setCart(draft.cart.map((item: any) => ({ ...item, lineas_disponibles: [], series_disponibles: [] })))
-        if (draft.clienteId) { setClienteId(draft.clienteId); setClienteNombre(draft.clienteNombre ?? ''); setClienteTelefono(draft.clienteTelefono ?? '') }
+        if (draft.clienteId) {
+          setClienteId(draft.clienteId)
+          setClienteNombre(draft.clienteNombre ?? '')
+          setClienteTelefono(draft.clienteTelefono ?? '')
+          // Restaurar CC habilitado consultando la DB
+          supabase.from('clientes').select('cuenta_corriente_habilitada').eq('id', draft.clienteId).maybeSingle()
+            .then(({ data }) => {
+              if (data?.cuenta_corriente_habilitada) setClienteCCEnabled(true)
+            })
+        }
         if (draft.mediosPago) setMediosPago(draft.mediosPago)
         if (draft.notas) setNotas(draft.notas)
         if (draft.modoVenta) setModoVenta(draft.modoVenta)
@@ -1023,7 +1050,8 @@ export default function VentasPage() {
   const descTotalVal = parseFloat(descuentoTotal) || 0
   const descTotalMonto = descuentoTotalTipo === 'pct' ? subtotal * descTotalVal / 100 : descTotalVal
   const descCombosMulti = combosActivosMulti.reduce((s, c) => s + c.monto, 0)
-  const total = Math.max(0, subtotal - descTotalMonto - descCombosMulti)
+  // Redondear a 2 decimales para evitar discrepancias de display vs validación
+  const total = Math.round(Math.max(0, subtotal - descTotalMonto - descCombosMulti) * 100) / 100
 
   // Auto-calcular costo de envío por KM
   const costoEnvioNum = requiereEnvio ? (parseFloat(costoEnvioVenta) || 0) : 0
@@ -1056,6 +1084,10 @@ export default function VentasPage() {
   const totalAsignado = mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   const totalFaltante = total - totalAsignado
 
+  // ISS-090: CC como método de pago parcial (derivado de mediosPago)
+  const montoCC = mediosPago.filter(m => m.tipo === 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  const modoCC = montoCC > 0
+
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
     for (const item of cart) {
@@ -1075,14 +1107,19 @@ export default function VentasPage() {
       toast.error('Registrá o seleccioná un cliente para continuar.')
       return
     }
-    // Cuenta corriente: requiere cliente, bypasa validación de pago y caja
+    // ISS-090: CC como método de pago parcial
     if (modoCC) {
       if (!clienteId) { toast.error('Seleccioná un cliente para usar cuenta corriente.'); return }
-    } else {
-      // Validar medios de pago (solo si no es CC)
-      const errorPago = validarMediosPago(estado, mediosPago, total)
-      if (errorPago) { toast.error(errorPago); return }
-      if (estado === 'despachada' || estado === 'reservada') {
+      if (!clienteCCEnabled) { toast.error('Este cliente no tiene cuenta corriente habilitada.'); return }
+    }
+    // Validar medios de pago (CC se trata como "cubierto", no va a caja)
+    const mediosSinCC = mediosPago.map(m => m.tipo === 'Cuenta Corriente' ? { tipo: m.tipo, monto: String(total - montoCC) } : m)
+    const errorPago = validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, total)
+    if (errorPago) { toast.error(errorPago); return }
+    if (estado === 'despachada' || estado === 'reservada') {
+      const montoNoCCAsignado = mediosPago.filter(m => m.tipo !== 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+      const necesitaCaja = montoNoCCAsignado > 0 || !modoCC
+      if (necesitaCaja) {
         if (sesionesAbiertas.length === 0) {
           toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
           return
@@ -1093,10 +1130,11 @@ export default function VentasPage() {
         }
       }
     }
-    const vuelto = modoCC ? 0 : calcularVuelto(mediosPago, totalConEnvio)
-    const montoEfectivoCaja = modoCC ? 0 : calcularEfectivoCaja(mediosPago, total)
+    const vuelto = calcularVuelto(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC)
+    const montoEfectivoCaja = calcularEfectivoCaja(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), total - montoCC)
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
+    let ventaIdCreada: string | null = null
     try {
       // Crear venta — si hay preVentaId (QR MP ya generado) se usa ese UUID
       const { data: venta, error: ventaError } = await supabase.from('ventas').insert({
@@ -1109,18 +1147,23 @@ export default function VentasPage() {
         subtotal,
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
         total,
-        medio_pago: modoCC
-          ? JSON.stringify([{ tipo: 'Cuenta Corriente', monto: total }])
-          : serializeMediosPago(mediosPago, total),
-        monto_pagado: modoCC ? 0 : (estado === 'pendiente' ? 0 : Math.min(mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0), total)),
+        // ISS-090: CC como medio de pago parcial
+        medio_pago: serializeMediosPago(mediosPago, total),
+        monto_pagado: estado === 'pendiente' ? 0 : Math.min(Math.max(0, total - montoCC), total),
         es_cuenta_corriente: modoCC,
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
+        origen: canalPOS,
+        // ISS-086: info de cuotas (primer tarjeta crédito encontrada)
+        ...(Object.values(cuotasSeleccion).find(c => c.cuotas > 0)
+          ? { cuotas_info: Object.values(cuotasSeleccion).find(c => c.cuotas > 0) }
+          : {}),
         ...(costoEnvioNum > 0 ? { costo_envio: costoEnvioNum } : {}),
         ...(estado === 'despachada' ? { despachado_at: new Date().toISOString() } : {}),
       }).select().single()
       if (ventaError) throw ventaError
+      ventaIdCreada = venta.id
 
       // Si el QR de MP fue pagado antes de crear la venta, aplicar monto_pagado del log
       if (preVentaId) {
@@ -1289,7 +1332,7 @@ export default function VentasPage() {
       const sesionInformativo = sesionCajaId ?? ((sesionesAbiertas as any[])[0]?.id ?? null)
       if (estado === 'despachada' && sesionInformativo) {
         for (const mp of mediosPago) {
-          if (!mp.tipo || mp.tipo === 'Efectivo' || !mp.tipo.trim()) continue
+          if (!mp.tipo || mp.tipo === 'Efectivo' || mp.tipo === 'Cuenta Corriente' || !mp.tipo.trim()) continue
           const montoMp = parseFloat(mp.monto) || 0
           if (montoMp <= 0.01) continue
           const { error: errInfo } = await supabase.from('caja_movimientos').insert({
@@ -1357,8 +1400,8 @@ export default function VentasPage() {
       }
 
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
-      setClienteCCEnabled(false); setModoCC(false)
-      setMediosPago([{ tipo: '', monto: '' }]); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada')
+      setClienteCCEnabled(false)
+      setMediosPago([{ tipo: '', monto: '' }]); setCommittedAsignado(0); setCuotasSeleccion({}); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada'); setCanalPOS('POS')
       setRequiereEnvio(false)
       setCostoEnvioVenta(''); setEnvioTipoVenta('monto'); setEnvioKmVenta('')
       setPrecioPorKmVenta(''); setEnvioDestinoVenta('')
@@ -1371,6 +1414,12 @@ export default function VentasPage() {
       qc.invalidateQueries({ queryKey: ['dashboard-stats'] })
       setTab('nueva')
     } catch (err: any) {
+      // Si la venta fue creada pero algo falló después (ej: stock insuficiente), eliminarla para evitar
+      // que quede registrada en cuenta corriente sin haberse concretado realmente
+      if (ventaIdCreada) {
+        await supabase.from('ventas').delete().eq('id', ventaIdCreada).then(() => {}, () => {})
+        ventaIdCreada = null
+      }
       toast.error(err.message ?? 'Error al registrar la venta')
     } finally {
       setSaving(false)
@@ -2276,7 +2325,20 @@ export default function VentasPage() {
                     <div key={idx} className="px-4 py-3">
                       <div className="flex items-start gap-3">
                         <div className="flex-1">
-                          <p className="font-medium text-primary">{item.nombre}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-primary">{item.nombre}</p>
+                            {!item.tiene_series && (() => {
+                              const stockDisp = item.lineas_disponibles
+                                ? item.lineas_disponibles.reduce((acc, l) => acc + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0)
+                                : null
+                              if (stockDisp === null || item.cantidad <= stockDisp) return null
+                              return (
+                                <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex-shrink-0">
+                                  Stock insuf. ({stockDisp} disp.)
+                                </span>
+                              )
+                            })()}
+                          </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-gray-400 dark:text-gray-500">{item.sku}</span>
                             {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
@@ -2390,7 +2452,7 @@ export default function VentasPage() {
 
                         {/* Subtotal */}
                         <p className="text-sm font-semibold text-primary w-20 text-right">
-                          ${getItemSubtotal(item).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                          ${getItemSubtotal(item).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </p>
                       </div>
 
@@ -2480,7 +2542,7 @@ export default function VentasPage() {
                 {clienteId ? (
                   <div className="flex items-center gap-2 px-3 py-2.5 border border-blue-300 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-sm">
                     <span className="flex-1 font-medium text-blue-800 dark:text-blue-400">{clienteNombre}</span>
-                    <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch(''); setClienteCCEnabled(false); setModoCC(false) }} title="Quitar cliente" className="text-blue-400 hover:text-blue-700 dark:text-blue-400"><X size={14} /></button>
+                    <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch(''); setClienteCCEnabled(false); setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente')) }} title="Quitar cliente" className="text-blue-400 hover:text-blue-700 dark:text-blue-400"><X size={14} /></button>
                   </div>
                 ) : (
                   <>
@@ -2503,7 +2565,7 @@ export default function VentasPage() {
                               setClienteNombre(c.nombre)
                               setClienteTelefono(c.telefono ?? '')
                               setClienteCCEnabled(c.cuenta_corriente_habilitada ?? false)
-                              setModoCC(false)
+                              setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente'))
                               setClienteSearch('')
                               setClienteDropOpen(false)
                             }}
@@ -2731,7 +2793,7 @@ export default function VentasPage() {
                 )}
                 <div className="flex justify-between font-bold text-primary text-lg border-t border-border-ds pt-2">
                   <span>Total</span>
-                  <span>${totalConEnvio.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  <span>${totalConEnvio.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
                 </div>
                 {/* IVA desglosado por alícuota real */}
                 {total > 0 && (() => {
@@ -2766,14 +2828,20 @@ export default function VentasPage() {
                 <h2 className="font-semibold text-primary flex items-center gap-2"><CreditCard size={16} /> Método de pago</h2>
 
                 {mediosPago.map((mp, idx) => (
-                  <div key={idx} className="flex gap-2 items-center">
+                  <div key={idx}>
+                  <div className="flex gap-2 items-center">
                     <select value={mp.tipo} onChange={e => updateMedioPago(idx, 'tipo', e.target.value)}
                       className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
                       <option value="">Medio de pago...</option>
                       {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                      {/* ISS-090: CC como medio de pago parcial */}
+                      {clienteCCEnabled && clienteId && (
+                        <option value="Cuenta Corriente">💳 Cuenta Corriente</option>
+                      )}
                     </select>
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
                       onChange={e => updateMedioPago(idx, 'monto', e.target.value)}
+                      onBlur={() => setCommittedAsignado(mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0))}
                       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                       placeholder="Monto"
                       className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
@@ -2784,11 +2852,61 @@ export default function VentasPage() {
                         <QrCode size={16} />
                       </button>
                     )}
+                    {/* ISS-086: indicador cuotas si ya seleccionó */}
+                    {mp.tipo === 'Tarjeta crédito' && cuotasSeleccion[idx] && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 font-medium ${cuotasSeleccion[idx].sinInteres ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                        {cuotasSeleccion[idx].cuotas}x
+                      </span>
+                    )}
                     {mediosPago.length > 1 && (
-                      <button onClick={() => removeMedioPago(idx)} title="Quitar medio de pago" className="text-gray-400 dark:text-gray-500 hover:text-red-500 flex-shrink-0">
+                      <button onClick={() => { removeMedioPago(idx); setCuotasSeleccion(p => { const n = { ...p }; delete n[idx]; return n }) }} title="Quitar medio de pago" className="text-gray-400 dark:text-gray-500 hover:text-red-500 flex-shrink-0">
                         <X size={16} />
                       </button>
                     )}
+                  </div>
+                  {/* ISS-086: picker de cuotas cuando es Tarjeta crédito y hay bancos config */}
+                  {mp.tipo === 'Tarjeta crédito' && cuotasBancos.length > 0 && parseFloat(mp.monto) > 0 && (() => {
+                    const sel = cuotasSeleccion[idx]
+                    const banco = cuotasBancos.find(b => b.nombre === sel?.banco) ?? cuotasBancos[0]
+                    const montoCuota = sel && sel.cuotas > 0
+                      ? (parseFloat(mp.monto) * (1 + sel.interes / 100)) / sel.cuotas
+                      : null
+                    return (
+                      <div className="mt-1.5 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 space-y-2">
+                        <div className="flex gap-2 flex-wrap">
+                          <select value={sel?.banco ?? ''} onChange={e => setCuotasSeleccion(p => ({ ...p, [idx]: { ...p[idx], banco: e.target.value, cuotas: 0, interes: 0, sinInteres: false } }))}
+                            className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                            <option value="">Banco...</option>
+                            {cuotasBancos.map(b => <option key={b.id} value={b.nombre}>{b.nombre}</option>)}
+                          </select>
+                          <select value={sel?.cuotas ?? ''} onChange={e => {
+                            const cuota = banco.cuotas.find(c => c.cant === parseInt(e.target.value))
+                            if (!cuota) return
+                            setCuotasSeleccion(p => ({ ...p, [idx]: { ...(p[idx] ?? { banco: banco.nombre }), cuotas: cuota.cant, interes: cuota.interes, sinInteres: cuota.sin_interes } }))
+                          }} className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                            <option value="">Cuotas...</option>
+                            {banco.cuotas.map(c => (
+                              <option key={c.cant} value={c.cant}>
+                                {c.cant}x {c.sin_interes ? '(sin interés)' : `(+${c.interes}%)`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {sel?.cuotas > 0 && montoCuota !== null && (
+                          <div className="flex items-center gap-2 text-xs">
+                            {sel.sinInteres
+                              ? <span className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 px-2 py-0.5 rounded font-medium">Sin interés</span>
+                              : <span className="text-amber-600 dark:text-amber-400">+{sel.interes}% interés</span>
+                            }
+                            <span className="text-gray-500 dark:text-gray-400">
+                              {sel.cuotas} cuotas de ${montoCuota.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                              {sel.interes > 0 && ` = $${(parseFloat(mp.monto) * (1 + sel.interes / 100)).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} total`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                   </div>
                 ))}
 
@@ -2797,18 +2915,20 @@ export default function VentasPage() {
                   <Plus size={12} /> Agregar otro medio
                 </button>
 
-                {cart.length > 0 && totalAsignado > 0 && (() => {
+                {cart.length > 0 && committedAsignado > 0 && (() => {
+                  const displayFaltante = Math.round((total - committedAsignado) * 100) / 100
                   const vueltoUI = calcularVuelto(mediosPago, totalConEnvio)
-                  const esVuelto = vueltoUI > 0.5
+                  const esVuelto = vueltoUI >= 0.5
+                  const fmt = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
                   return (
-                    <p className={`text-xs text-right font-medium ${totalFaltante === 0 ? 'text-green-600 dark:text-green-400' : totalFaltante > 0 ? 'text-orange-500' : esVuelto ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                      {totalFaltante === 0
+                    <p className={`text-xs text-right font-medium ${displayFaltante === 0 ? 'text-green-600 dark:text-green-400' : displayFaltante > 0 ? 'text-orange-500' : esVuelto ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                      {displayFaltante === 0
                         ? '✓ Total cubierto'
-                        : totalFaltante > 0
-                          ? `Falta asignar: $${totalFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+                        : displayFaltante > 0
+                          ? `Falta asignar: $${fmt(displayFaltante)}`
                           : esVuelto
-                            ? `Vuelto: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-                            : `Excede por: $${Math.abs(totalFaltante).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                            ? `Vuelto: $${fmt(Math.abs(displayFaltante))}`
+                            : `Excede por: $${fmt(Math.abs(displayFaltante))}`}
                     </p>
                   )
                 })()}
@@ -2844,27 +2964,37 @@ export default function VentasPage() {
                   )
                 })()}
                 <div className="space-y-2 pt-1">
+                  {/* ISS-103: canal de venta */}
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Canal de venta</label>
+                    <select value={canalPOS} onChange={e => setCanalPOS(e.target.value)}
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                      <option value="POS">🏪 Presencial</option>
+                      <option value="Instagram">📸 Instagram</option>
+                      <option value="Facebook">👤 Facebook</option>
+                      <option value="WhatsApp">💬 WhatsApp</option>
+                      <option value="Otros">📦 Otros</option>
+                    </select>
+                  </div>
                   <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">
                     {([
                       ['reservada', 'Reservar', ShoppingCart],
                       ['despachada', 'Venta directa', Zap],
                       ['pendiente', 'Presupuesto', FileText],
                     ] as const).map(([modo, label, Icon]) => (
-                      <button key={modo} onClick={() => { setModoVenta(modo); setModoCC(false) }}
-                        className={`flex-1 flex items-center justify-center gap-1 py-2 transition-colors ${modoVenta === modo && !modoCC ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                      <button key={modo} onClick={() => setModoVenta(modo)}
+                        className={`flex-1 flex items-center justify-center gap-1 py-2 transition-colors ${modoVenta === modo ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
                         <Icon size={11} />{label}
                       </button>
                     ))}
                   </div>
-                  {/* Botón Cuenta Corriente — visible solo si el cliente tiene CC habilitada */}
-                  {clienteCCEnabled && clienteId && (
-                    <button onClick={() => setModoCC(v => !v)}
-                      className={`w-full flex items-center justify-center gap-2 py-2 rounded-xl border-2 text-sm font-medium transition-colors
-                        ${modoCC ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-emerald-400 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}>
-                      <CreditCard size={14} /> {modoCC ? '✓ Cuenta corriente activa' : 'Despachar a cuenta corriente'}
-                    </button>
+                  {/* ISS-090: CC activa cuando se usa como medio de pago */}
+                  {modoCC && (
+                    <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl px-3 py-2">
+                      <CreditCard size={12} /> <span>Parte de la venta a cuenta corriente del cliente</span>
+                    </div>
                   )}
-                  <button onClick={() => registrarVenta(modoCC ? 'despachada' : modoVenta)} disabled={saving}
+                  <button onClick={() => registrarVenta(modoVenta)} disabled={saving}
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {modoCC ? <CreditCard size={16} /> : modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
                     {saving ? 'Guardando...' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
@@ -2919,7 +3049,7 @@ export default function VentasPage() {
                       onClick={() => setVentaDetalle(v)}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <span className="text-sm font-bold text-primary">#{v.numero}</span>
+                          <span className="text-sm font-bold text-primary">{formatTicket(v)}</span>
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${est.bg} ${est.color}`}>{est.label}</span>
                           {v.estado === 'reservada' && calcularSaldoPendiente(v.total ?? 0, v.monto_pagado ?? 0) > 0.5 && (
                             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400">
@@ -2929,6 +3059,11 @@ export default function VentasPage() {
                           {isPresupuestoVencido(v, (tenant as any)?.presupuesto_validez_dias) && (
                             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
                               Vencido
+                            </span>
+                          )}
+                          {v.es_cuenta_corriente && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                              CC
                             </span>
                           )}
                         </div>

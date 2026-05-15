@@ -53,7 +53,7 @@ function extraerMedioPago(tipo: string, concepto: string): string {
 }
 
 export default function CajaPage() {
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, sucursales } = useAuthStore()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('caja')
@@ -95,10 +95,15 @@ export default function CajaPage() {
 
   // Queries
   const { data: cajas = [] } = useQuery({
-    queryKey: ['cajas', tenant?.id],
+    queryKey: ['cajas', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('cajas').select('*')
+      let q = supabase.from('cajas').select('*')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      // Caja Fuerte siempre visible (tenant-wide); operativas filtradas estrictamente por sucursal
+      if (sucursalId) {
+        q = q.or(`sucursal_id.eq.${sucursalId},es_caja_fuerte.eq.true`)
+      }
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant,
@@ -671,7 +676,9 @@ export default function CajaPage() {
     mutationFn: async () => {
       if (!nuevaCajaNombre.trim()) throw new Error('Ingresá un nombre')
       const { error } = await supabase.from('cajas').insert({
-        tenant_id: tenant!.id, nombre: nuevaCajaNombre.trim()
+        tenant_id: tenant!.id,
+        nombre: nuevaCajaNombre.trim(),
+        sucursal_id: sucursalId || null,
       })
       if (error) throw error
     },
@@ -1539,24 +1546,42 @@ export default function CajaPage() {
             )}
 
             {cajasOperativas.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">No hay cajas creadas</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">
+                {sucursalId ? 'No hay cajas asignadas a esta sucursal. Creá una o asigná una existente desde la vista global.' : 'No hay cajas creadas'}
+              </p>
             ) : (
               <div className="space-y-2">
                 {cajasOperativas.map((c: any) => {
                   const tieneSessionActiva = cajasAbiertas.includes(c.id)
                   return (
-                    <div key={c.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                    <div key={c.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl gap-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
                           <DollarSign size={15} className="text-primary" />
                         </div>
-                        <div>
+                        <div className="flex-1 min-w-0">
                           <span className="font-medium text-gray-800 dark:text-gray-100">{c.nombre}</span>
                           {tieneSessionActiva && (
                             <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-medium">● Abierta</span>
                           )}
                         </div>
                       </div>
+                      {sucursales.length > 1 && (
+                        <select
+                          value={c.sucursal_id ?? ''}
+                          onChange={async (e) => {
+                            const val = e.target.value || null
+                            const { error } = await supabase.from('cajas').update({ sucursal_id: val }).eq('id', c.id)
+                            if (error) { toast.error(error.message); return }
+                            qc.invalidateQueries({ queryKey: ['cajas'] })
+                          }}
+                          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-accent">
+                          <option value="">Sin sucursal</option>
+                          {sucursales.map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.nombre}</option>
+                          ))}
+                        </select>
+                      )}
                       <button
                         title={tieneSessionActiva ? 'No se puede eliminar una caja abierta' : 'Eliminar caja'}
                         disabled={tieneSessionActiva}
@@ -1567,7 +1592,7 @@ export default function CajaPage() {
                           toast.success('Caja eliminada')
                           qc.invalidateQueries({ queryKey: ['cajas'] })
                         }}
-                        className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20">
+                        className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0">
                         <Trash2 size={15} />
                       </button>
                     </div>

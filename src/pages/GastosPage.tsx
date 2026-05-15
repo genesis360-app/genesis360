@@ -2123,27 +2123,82 @@ export default function GastosPage() {
                       )}
                     </div>
 
-                    {/* Ítems expandibles + comprobante */}
+                    {/* ISS-044: Detalle tipo ticket */}
                     {expanded && (
-                      <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 space-y-3">
-                        {/* Ítems */}
-                        <div className="space-y-1">
+                      <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-4 space-y-3">
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 font-mono text-xs space-y-3">
+                          {/* Encabezado ticket */}
+                          <div className="text-center space-y-0.5">
+                            <p className="font-bold text-gray-800 dark:text-gray-100 text-sm">{oc.proveedores?.nombre ?? 'Proveedor'}</p>
+                            <p className="text-gray-500 dark:text-gray-400">OC #{oc.numero} · {new Date(oc.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</p>
+                          </div>
+                          <div className="border-t border-dashed border-gray-300 dark:border-gray-600" />
+
+                          {/* Ítems */}
                           {(oc.orden_compra_items ?? []).length === 0 ? (
-                            <p className="text-xs text-gray-400">Sin ítems cargados</p>
+                            <p className="text-center text-gray-400">Sin ítems</p>
                           ) : (
-                            <>
-                              {(oc.orden_compra_items as any[]).map((it: any, idx: number) => (
-                                <div key={idx} className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                                  <span>{it.productos?.nombre ?? '—'}</span>
-                                  <span className="text-gray-400">{it.cantidad} × ${Number(it.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 0 })} = <strong className="text-gray-700 dark:text-gray-200">${(it.cantidad * it.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></span>
-                                </div>
-                              ))}
-                              <div className="flex justify-between text-xs font-semibold border-t border-gray-100 dark:border-gray-600 pt-1 mt-1">
-                                <span className="text-gray-700 dark:text-gray-200">Total</span>
-                                <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                              </div>
-                            </>
+                            <div className="space-y-1.5">
+                              {(oc.orden_compra_items as any[]).map((it: any, idx: number) => {
+                                const subtotal = Number(it.cantidad ?? 0) * Number(it.precio_unitario ?? 0)
+                                return (
+                                  <div key={idx}>
+                                    <div className="flex justify-between text-gray-700 dark:text-gray-300">
+                                      <span className="truncate flex-1 mr-2">{it.productos?.nombre ?? '—'}</span>
+                                      <span className="flex-shrink-0 font-semibold">${subtotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                                    </div>
+                                    <p className="text-gray-400 dark:text-gray-500">{it.cantidad} × ${Number(it.precio_unitario).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                                  </div>
+                                )
+                              })}
+                            </div>
                           )}
+
+                          <div className="border-t border-dashed border-gray-300 dark:border-gray-600" />
+
+                          {/* Totales */}
+                          {(oc as any).costo_envio > 0 && (
+                            <div className="flex justify-between text-gray-500 dark:text-gray-400">
+                              <span>Envío</span>
+                              <span>${Number((oc as any).costo_envio).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between font-bold text-gray-800 dark:text-gray-100 text-sm">
+                            <span>TOTAL</span>
+                            <span>${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                          </div>
+
+                          <div className="border-t border-dashed border-gray-300 dark:border-gray-600" />
+
+                          {/* Estado de pago */}
+                          <div className="space-y-1 text-gray-600 dark:text-gray-400">
+                            {Number(oc.monto_pagado) > 0 && (
+                              <div className="flex justify-between">
+                                <span>Pagado</span>
+                                <span className="text-green-600 dark:text-green-400">${Number(oc.monto_pagado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                              </div>
+                            )}
+                            {saldo > 0.5 && (
+                              <div className="flex justify-between text-red-500">
+                                <span>Saldo pendiente</span>
+                                <span>${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                              </div>
+                            )}
+                            {oc.estado_pago === 'pagada' && (
+                              <p className="text-center text-green-600 dark:text-green-400 font-bold">✓ PAGADA</p>
+                            )}
+                            {oc.fecha_vencimiento_pago && (
+                              <div className="flex justify-between">
+                                <span>Vence</span>
+                                <span className={oc.fecha_vencimiento_pago < hoy ? 'text-red-500 font-semibold' : ''}>
+                                  {new Date(oc.fecha_vencimiento_pago + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                </span>
+                              </div>
+                            )}
+                            {oc.condiciones_pago && (
+                              <p className="text-gray-400 dark:text-gray-500 text-center italic">{oc.condiciones_pago}</p>
+                            )}
+                          </div>
                         </div>
                         {/* ISS-096: Comprobante de pago */}
                         <div className="border-t border-gray-100 dark:border-gray-700 pt-2">

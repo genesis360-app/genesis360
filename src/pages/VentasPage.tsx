@@ -500,7 +500,9 @@ export default function VentasPage() {
       let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, alicuota_iva, iva_monto, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(ventasLimit)
       if (filterEstado) q = q.eq('estado', filterEstado)
-      q = applyFilter(q)
+      // ISS-106: historial incluye ventas sin sucursal_id (ventas migradas de antes del multi-sucursal)
+      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      else q = applyFilter(q)
       const { data, error } = await q
       if (error) throw error
       return data ?? []
@@ -1113,8 +1115,9 @@ export default function VentasPage() {
       if (!clienteCCEnabled) { toast.error('Este cliente no tiene cuenta corriente habilitada.'); return }
     }
     // Validar medios de pago (CC se trata como "cubierto", no va a caja)
-    const mediosSinCC = mediosPago.map(m => m.tipo === 'Cuenta Corriente' ? { tipo: m.tipo, monto: String(total - montoCC) } : m)
-    const errorPago = validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, total)
+    // ISS-105: validar contra totalConEnvio (incluye costo de envío)
+    const mediosSinCC = mediosPago.map(m => m.tipo === 'Cuenta Corriente' ? { tipo: m.tipo, monto: String(totalConEnvio - montoCC) } : m)
+    const errorPago = validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, totalConEnvio)
     if (errorPago) { toast.error(errorPago); return }
     if (estado === 'despachada' || estado === 'reservada') {
       const montoNoCCAsignado = mediosPago.filter(m => m.tipo !== 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
@@ -1131,7 +1134,8 @@ export default function VentasPage() {
       }
     }
     const vuelto = calcularVuelto(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC)
-    const montoEfectivoCaja = calcularEfectivoCaja(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), total - montoCC)
+    // ISS-105: efectivo en caja se calcula contra totalConEnvio (costo de envío incluido)
+    const montoEfectivoCaja = calcularEfectivoCaja(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC)
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     let ventaIdCreada: string | null = null
@@ -1147,9 +1151,9 @@ export default function VentasPage() {
         subtotal,
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
         total,
-        // ISS-090: CC como medio de pago parcial
-        medio_pago: serializeMediosPago(mediosPago, total),
-        monto_pagado: estado === 'pendiente' ? 0 : Math.min(Math.max(0, total - montoCC), total),
+        // ISS-090: CC como medio de pago parcial; ISS-105: monto_pagado incluye costo envío
+        medio_pago: serializeMediosPago(mediosPago, totalConEnvio),
+        monto_pagado: estado === 'pendiente' ? 0 : Math.min(Math.max(0, totalConEnvio - montoCC), totalConEnvio),
         es_cuenta_corriente: modoCC,
         notas: notas || null,
         usuario_id: user?.id,
@@ -2916,7 +2920,8 @@ export default function VentasPage() {
                 </button>
 
                 {cart.length > 0 && committedAsignado > 0 && (() => {
-                  const displayFaltante = Math.round((total - committedAsignado) * 100) / 100
+                  // ISS-105: faltante calculado contra totalConEnvio
+                  const displayFaltante = Math.round((totalConEnvio - committedAsignado) * 100) / 100
                   const vueltoUI = calcularVuelto(mediosPago, totalConEnvio)
                   const esVuelto = vueltoUI >= 0.5
                   const fmt = (n: number) => n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -3064,6 +3069,12 @@ export default function VentasPage() {
                           {v.es_cuenta_corriente && (
                             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
                               CC
+                            </span>
+                          )}
+                          {/* ISS-106: badge para ventas CC sin items (ghost de error de stock previo) */}
+                          {v.es_cuenta_corriente && v.estado === 'despachada' && (v.venta_items ?? []).length === 0 && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400" title="Venta creada pero fallida — cancelar para eliminar la deuda CC">
+                              ⚠ Error — Cancelar
                             </span>
                           )}
                         </div>

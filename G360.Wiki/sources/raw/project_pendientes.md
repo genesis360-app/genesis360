@@ -4,15 +4,15 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.22** ✅ · DEV: **v1.8.22** (en sync con PROD)
+Último release en PROD: **v1.8.22** ✅ · DEV: **v1.8.23** (fixes post-deploy)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.22 / PROD v1.8.22 (cierre sesión 2026-05-15)
+## Estado actual DEV v1.8.23 / PROD v1.8.22 (cierre sesión 2026-05-15)
 
-- APP_VERSION DEV: `v1.8.22` en `src/config/brand.ts` ✅
+- APP_VERSION DEV: `v1.8.23` en `src/config/brand.ts` ✅
 - APP_VERSION PROD: `v1.8.22` ✅ (PR #111 mergeado)
 - Migrations DEV: 001–108 ✅
 - Migrations PROD: 001–108 ✅ (migration 108 aplicada en PROD)

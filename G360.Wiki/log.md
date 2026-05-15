@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-15] update | v1.8.23 DEV — ISS-100/012/107 fixes
+
+- ISS-100: conteos borrador — continuar, eliminar y actualizar desde historial
+- ISS-012: rebaje masivo FIFO/FEFO corregido — filtro sucursal + ubicacion + preview LPNs + override
+- ISS-107: cancelación de deuda CC por venta (solo DUEÑO/SUPERVISOR)
+
 ## [2026-05-15] update | PROD deploy v1.8.22 — PR #111 mergeado, migration 108 aplicada
 
 - PR #111 `dev → main` mergeado ✅

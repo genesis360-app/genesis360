@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
 import { esDecimal } from '@/lib/ventasValidation'
@@ -96,6 +97,7 @@ let itemKey = 0
 
 export default function ProveedoresPage() {
   const { tenant, user } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const qc = useQueryClient()
   const navigate = useNavigate()
 
@@ -144,7 +146,7 @@ export default function ProveedoresPage() {
   const [ocDetailTab, setOcDetailTab] = useState<'pedido' | 'entregas' | 'diferencias'>('pedido')
 
   const abrirOcDetail = (oc: OrdenCompra) => {
-    abrirOcDetail(oc)
+    setShowOcDetail(oc)
     setOcDetailTab(['recibida', 'recibida_parcial'].includes(oc.estado) ? 'diferencias' : 'pedido')
   }
 
@@ -681,6 +683,7 @@ export default function ProveedoresPage() {
           notas: ocForm.notas.trim() || null,
           tiene_envio: ocForm.tiene_envio,
           costo_envio: ocForm.tiene_envio && ocForm.costo_envio ? parseFloat(ocForm.costo_envio) : null,
+          sucursal_id: sucursalId || null,
           created_by: (await supabase.auth.getUser()).data.user?.id,
         }).select('id').single()
         if (error) throw error

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, CreditCard, Lock, LogOut, Trash2, Upload, CheckCircle, AlertTriangle, Eye, EyeOff } from 'lucide-react'
+import { User, CreditCard, Lock, LogOut, Trash2, Upload, CheckCircle, AlertTriangle, Eye, EyeOff, Pencil } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -19,6 +19,10 @@ export default function MiCuentaPage() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // Profile edit state
+  const [profileForm, setProfileForm] = useState({ nombre: '', email: '' })
+  const [savingProfile, setSavingProfile] = useState(false)
+
   // Password change state
   const [pwForm, setPwForm] = useState({ nueva: '', confirmar: '' })
   const [showPw, setShowPw] = useState(false)
@@ -36,8 +40,12 @@ export default function MiCuentaPage() {
     supabase.auth.getUser().then(({ data }) => {
       const p = data?.user?.app_metadata?.provider ?? 'email'
       setProvider(p)
+      setProfileForm({
+        nombre: user?.nombre_display ?? '',
+        email: data?.user?.email ?? '',
+      })
     })
-  }, [])
+  }, [user?.nombre_display])
 
   const isGoogleUser = provider === 'google'
   const isOwner = user?.rol === 'DUEÑO'
@@ -110,6 +118,40 @@ export default function MiCuentaPage() {
       toast.error(err.message ?? 'Error al cambiar contraseña')
     } finally {
       setSavingPw(false)
+    }
+  }
+
+  // ── Editar perfil ──────────────────────────────────────────────────────────
+  const handleSaveProfile = async () => {
+    if (!user) return
+    const nombreTrim = profileForm.nombre.trim()
+    if (!nombreTrim) { toast.error('El nombre no puede estar vacío'); return }
+    setSavingProfile(true)
+    try {
+      const { data: authData } = await supabase.auth.getUser()
+      const emailActual = authData?.user?.email ?? ''
+      const emailNuevo = profileForm.email.trim().toLowerCase()
+      const cambioNombre = nombreTrim !== user.nombre_display
+      const cambioEmail = emailNuevo !== emailActual && emailNuevo !== ''
+
+      if (cambioNombre) {
+        const { error } = await supabase.from('users').update({ nombre_display: nombreTrim }).eq('id', user.id)
+        if (error) throw error
+      }
+      if (cambioEmail && !isGoogleUser) {
+        const { error } = await supabase.auth.updateUser({ email: emailNuevo })
+        if (error) throw error
+        toast.success('Te enviamos un email de confirmación al nuevo correo')
+      }
+      if (cambioNombre) {
+        await loadUserData(user.id)
+        toast.success('Nombre actualizado')
+      }
+      if (!cambioNombre && !cambioEmail) toast('Sin cambios')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al guardar')
+    } finally {
+      setSavingProfile(false)
     }
   }
 
@@ -216,6 +258,47 @@ export default function MiCuentaPage() {
                 <CheckCircle size={11} className="text-green-500" /> Cuenta Google
               </p>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Datos personales ───────────────────────────────────────────────── */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+          <Pencil size={14} /> Datos personales
+        </h2>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Nombre</label>
+            <input
+              type="text"
+              value={profileForm.nombre}
+              onChange={e => setProfileForm(p => ({ ...p, nombre: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+          </div>
+          {!isGoogleUser && (
+            <div>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Email</label>
+              <input
+                type="email"
+                value={profileForm.email}
+                onChange={e => setProfileForm(p => ({ ...p, email: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Te enviaremos un email de confirmación al nuevo correo.</p>
+            </div>
+          )}
+          {isGoogleUser && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">El email está gestionado por tu cuenta de Google.</p>
+          )}
+          <div className="flex justify-end">
+            <button
+              onClick={handleSaveProfile}
+              disabled={savingProfile}
+              className={`${BTN.primary} ${BTN.sm}`}>
+              {savingProfile ? 'Guardando…' : 'Guardar cambios'}
+            </button>
           </div>
         </div>
       </div>

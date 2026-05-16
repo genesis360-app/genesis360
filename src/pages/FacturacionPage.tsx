@@ -8,6 +8,7 @@ import {
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { generarFacturaPDF, normalizarCondIVA } from '@/lib/facturasPDF'
 import toast from 'react-hot-toast'
@@ -33,6 +34,7 @@ const DISCLAIMER = `Los valores de IVA mostrados son de carácter estimado, basa
 
 export default function FacturacionPage() {
   const { tenant, user } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const { limits } = usePlanLimits()
   const qc = useQueryClient()
 
@@ -116,15 +118,17 @@ export default function FacturacionPage() {
 
   // Ventas sin CAE (borradores para Tab 2)
   const { data: borradoresFact = [], isLoading: loadingBorr } = useQuery({
-    queryKey: ['ventas-sin-cae', tenant?.id],
+    queryKey: ['ventas-sin-cae', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('ventas')
+      let q = supabase.from('ventas')
         .select('id, numero, total, estado, created_at, tipo_comprobante, cae, clientes(nombre,cuit_receptor,condicion_iva_receptor), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre))')
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'despachada')
         .is('cae', null)
         .order('created_at', { ascending: false })
         .limit(50)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'emitir',
@@ -132,15 +136,17 @@ export default function FacturacionPage() {
 
   // Facturas ya emitidas
   const { data: emitidas = [] } = useQuery({
-    queryKey: ['facturas-emitidas', tenant?.id, periodoDesde, periodoHasta],
+    queryKey: ['facturas-emitidas', tenant?.id, periodoDesde, periodoHasta, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('ventas')
+      let q = supabase.from('ventas')
         .select('id, numero, total, cae, vencimiento_cae, tipo_comprobante, numero_comprobante, created_at, clientes(nombre)')
         .eq('tenant_id', tenant!.id)
         .not('cae', 'is', null)
         .gte('created_at', periodoDesde)
         .lte('created_at', periodoHasta + 'T23:59:59')
         .order('created_at', { ascending: false })
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'emitir',
@@ -165,9 +171,9 @@ export default function FacturacionPage() {
 
   // Datos para Libro IVA Compras
   const { data: ivaCompras = [] } = useQuery({
-    queryKey: ['iva-compras', tenant?.id, periodoDesde, periodoHasta],
+    queryKey: ['iva-compras', tenant?.id, periodoDesde, periodoHasta, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('gastos')
+      let q = supabase.from('gastos')
         .select('id, descripcion, monto, iva_monto, tipo_iva, iva_deducible, conciliado_iva, fecha, categoria')
         .eq('tenant_id', tenant!.id)
         .eq('iva_deducible', true)
@@ -175,6 +181,8 @@ export default function FacturacionPage() {
         .gte('fecha', periodoDesde)
         .lte('fecha', periodoHasta)
         .order('fecha', { ascending: false })
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'libros' && libroSub === 'compras',

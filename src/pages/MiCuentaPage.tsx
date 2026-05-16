@@ -161,13 +161,12 @@ export default function MiCuentaPage() {
     if (confirmText !== tenant.nombre) { toast.error(`Escribí exactamente: ${tenant.nombre}`); return }
     setDeleting(true)
     try {
-      // Eliminar registro en public.users → RLS cascade limpiará sesión
-      await supabase.from('users').delete().eq('id', user.id)
-      // Marcar tenant como cancelado
+      // Eliminar registro en public.users primero — si esto falla no seguimos
+      const { error: userDeleteError } = await supabase.from('users').delete().eq('id', user.id)
+      if (userDeleteError) throw userDeleteError
+      // Marcar tenant como cancelado (soft delete)
       await supabase.from('tenants').update({ subscription_status: 'cancelled' }).eq('id', tenant.id)
-      // Eliminar auth user (requiere que la Edge Function o el service role lo haga — hacemos signOut por ahora)
-      await supabase.auth.admin?.deleteUser?.(user.id).catch(() => null)
-      toast.success('Cuenta eliminada')
+      toast.success('Negocio eliminado correctamente')
       await signOut()
       navigate('/login')
     } catch (err: any) {

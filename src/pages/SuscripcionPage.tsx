@@ -12,7 +12,7 @@ import toast from 'react-hot-toast'
 
 
 export default function SuscripcionPage() {
-  const { tenant, user, loadUserData } = useAuthStore()
+  const { tenant, user, loadUserData, signOut } = useAuthStore()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
@@ -144,13 +144,35 @@ export default function SuscripcionPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary via-primary to-accent">
-      {/* Flecha volver */}
-      <div className="px-4 pt-5 max-w-5xl mx-auto">
+      {/* Barra superior */}
+      <div className="px-4 pt-5 max-w-5xl mx-auto flex items-center justify-between">
+        {tenant?.subscription_status === 'cancelled' ? (
+          // Negocio cancelado: no hay a dónde "volver" — ofrecer salidas reales
+          <div className="flex items-center gap-3">
+            <button
+              onClick={async () => {
+                // Eliminar users record para que el próximo login vaya a onboarding
+                if (user?.id) await supabase.from('users').delete().eq('id', user.id)
+                navigate('/onboarding')
+              }}
+              className="flex items-center gap-2 text-blue-300 hover:text-white transition-colors text-sm font-medium"
+            >
+              <ArrowLeft size={16} /> Registrar nuevo negocio
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-2 text-blue-300 hover:text-white transition-colors text-sm font-medium"
+          >
+            <ArrowLeft size={16} /> Volver al dashboard
+          </button>
+        )}
         <button
-          onClick={() => navigate(-1)}
+          onClick={async () => { await signOut(); navigate('/login') }}
           className="flex items-center gap-2 text-blue-300 hover:text-white transition-colors text-sm font-medium"
         >
-          <ArrowLeft size={16} /> Volver
+          <LogOut size={16} /> Cerrar sesión
         </button>
       </div>
 

@@ -21,7 +21,7 @@ interface Props {
 }
 
 export function LpnAccionesModal({ linea, producto, onClose }: Props) {
-  const { tenant, user, sucursales } = useAuthStore()
+  const { tenant, user, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
   const tieneReservas = (linea.cantidad_reservada ?? 0) > 0
   const [tab, setTab] = useState<AccionTab>(tieneReservas ? 'mover' : 'editar')
@@ -64,8 +64,14 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     enabled: !!tenant,
   })
   const { data: ubicaciones = [] } = useQuery({
-    queryKey: ['ubicaciones', tenant?.id],
-    queryFn: async () => { const { data } = await supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
+    queryKey: ['ubicaciones', tenant?.id, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      // Mostrar ubicaciones de la sucursal activa + las globales (sucursal_id IS NULL)
+      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      const { data } = await q
+      return data ?? []
+    },
     enabled: !!tenant,
   })
   const { data: proveedores = [] } = useQuery({

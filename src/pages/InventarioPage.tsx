@@ -5,7 +5,7 @@ import {
   ArrowDown, ArrowUp, Search, Plus, Minus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
-  ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check,
+  ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check, SlidersHorizontal,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -101,10 +101,12 @@ export default function InventarioPage() {
   // ── Inventario tab state ───────────────────────────────────────────────────
   const [invSearch, setInvSearch] = useState('')
   const [filterAlerta, setFilterAlerta] = useState(false)
-  const [filterCat, setFilterCat] = useState('') // '' = todos, '__sin__' = sin categoría, else = id
-  const [filterUbic, setFilterUbic] = useState('') // '' = todos, '__sin__' = sin ubicación, else = id
-  const [filterEstado, setFilterEstado] = useState('') // '' = todos, '__sin__' = sin estado, else = id
-  const [filterProv, setFilterProv] = useState('') // '' = todos, '__sin__' = sin proveedor, else = id
+  const [filterCat, setFilterCat] = useState('')
+  const [filterUbic, setFilterUbic] = useState('')
+  const [filterEstado, setFilterEstado] = useState('')
+  const [filterProv, setFilterProv] = useState('')
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const filterPanelRef = useRef<HTMLDivElement>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [invScannerOpen, setInvScannerOpen] = useState(false)
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
@@ -119,6 +121,17 @@ export default function InventarioPage() {
       setSearchParams({}, { replace: true })
     }
   }, [])
+
+  useEffect(() => {
+    if (!filterPanelOpen) return
+    const handler = (e: MouseEvent) => {
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setFilterPanelOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [filterPanelOpen])
 
   // ── Masivo inline (Agregar Stock) ──────────────────────────────────────────
   type MasivoRow = {
@@ -3026,7 +3039,7 @@ export default function InventarioPage() {
         <>
           {stockCritico > 0 && (
             <div className="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl px-4 py-3 cursor-pointer hover:bg-red-100 dark:hover:bg-red-900/30 transition-all"
-              onClick={() => setFilterAlerta(!filterAlerta)}>
+              onClick={() => setFilterAlerta(v => !v)}>
               <AlertTriangle size={18} className="text-red-500" />
               <p className="text-red-700 dark:text-red-400 text-sm font-medium">
                 {stockCritico} producto{stockCritico !== 1 ? 's' : ''} con stock crítico
@@ -3049,47 +3062,98 @@ export default function InventarioPage() {
             </button>
           </div>
 
-          {/* Filtros avanzados */}
-          <div className="flex flex-wrap gap-2">
-            <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
-              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-              <option value="">Todas las categorías</option>
-              <option value="__sin__">Sin categoría</option>
-              {[...new Map((productos as any[]).filter(p => p.categoria_id).map(p => [p.categoria_id, (p as any).categorias?.nombre ?? p.categoria_id])).entries()].map(([id, nombre]) => (
-                <option key={id} value={id}>{nombre}</option>
-              ))}
-            </select>
-            <select value={filterUbic} onChange={e => setFilterUbic(e.target.value)}
-              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-              <option value="">Todas las ubicaciones</option>
-              <option value="__sin__">Sin ubicación</option>
-              {(ubicaciones as any[]).map((u: any) => (
-                <option key={u.id} value={u.id}>{u.nombre}</option>
-              ))}
-            </select>
-            <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)}
-              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-              <option value="">Todos los estados</option>
-              <option value="__sin__">Sin estado</option>
-              {(estados as any[]).map((e: any) => (
-                <option key={e.id} value={e.id}>{e.nombre}</option>
-              ))}
-            </select>
-            <select value={filterProv} onChange={e => setFilterProv(e.target.value)}
-              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-              <option value="">Todos los proveedores</option>
-              <option value="__sin__">Sin proveedor</option>
-              {(proveedores as any[]).map((pr: any) => (
-                <option key={pr.id} value={pr.id}>{pr.nombre}</option>
-              ))}
-            </select>
-            {(filterCat || filterUbic || filterEstado || filterProv) && (
-              <button onClick={() => { setFilterCat(''); setFilterUbic(''); setFilterEstado(''); setFilterProv('') }}
-                className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors px-2 py-1.5 rounded-lg">
-                × Limpiar filtros
-              </button>
-            )}
-          </div>
+          {/* Filtros — pill button con popover */}
+          {(() => {
+            const activeCount = [filterCat, filterUbic, filterEstado, filterProv].filter(Boolean).length + (filterAlerta ? 1 : 0)
+            return (
+              <div className="relative" ref={filterPanelRef}>
+                <button
+                  onClick={() => setFilterPanelOpen(v => !v)}
+                  className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all
+                    ${filterPanelOpen || activeCount > 0
+                      ? 'border-accent bg-accent/5 text-accent'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}
+                >
+                  <SlidersHorizontal size={14} />
+                  Filtros
+                  {activeCount > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-accent text-white text-[10px] flex items-center justify-center font-bold">
+                      {activeCount}
+                    </span>
+                  )}
+                </button>
+
+                {filterPanelOpen && (
+                  <div className="absolute left-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Filtros</h3>
+                      <button onClick={() => setFilterPanelOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={14} /></button>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Categoría</p>
+                        <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          <option value="">Todas</option>
+                          <option value="__sin__">Sin categoría</option>
+                          {[...new Map((productos as any[]).filter(p => p.categoria_id).map(p => [p.categoria_id, (p as any).categorias?.nombre ?? p.categoria_id])).entries()].map(([id, nombre]) => (
+                            <option key={id} value={id}>{nombre}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Ubicación</p>
+                        <select value={filterUbic} onChange={e => setFilterUbic(e.target.value)}
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          <option value="">Todas</option>
+                          <option value="__sin__">Sin ubicación</option>
+                          {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Estado</p>
+                        <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)}
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          <option value="">Todos</option>
+                          <option value="__sin__">Sin estado</option>
+                          {(estados as any[]).map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Proveedor</p>
+                        <select value={filterProv} onChange={e => setFilterProv(e.target.value)}
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          <option value="">Todos</option>
+                          <option value="__sin__">Sin proveedor</option>
+                          {(proveedores as any[]).map((pr: any) => <option key={pr.id} value={pr.id}>{pr.nombre}</option>)}
+                        </select>
+                      </div>
+
+                      <label className="flex items-center gap-3 cursor-pointer pt-1">
+                        <div onClick={() => setFilterAlerta(v => !v)}
+                          className={`w-9 h-5 rounded-full transition-colors relative ${filterAlerta ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}`}>
+                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${filterAlerta ? 'translate-x-4' : ''}`} />
+                        </div>
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Solo stock crítico</span>
+                      </label>
+                    </div>
+
+                    {activeCount > 0 && (
+                      <button
+                        onClick={() => { setFilterCat(''); setFilterUbic(''); setFilterEstado(''); setFilterProv(''); setFilterAlerta(false) }}
+                        className="w-full text-xs text-red-500 hover:text-red-600 dark:text-red-400 transition-colors pt-1">
+                        × Limpiar todos los filtros
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {(invLoading || lineasLoading) ? (

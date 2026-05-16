@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Link } from 'react-router-dom'
 import { useRecomendaciones } from '@/hooks/useRecomendaciones'
 import MetricasPage from './MetricasPage'
@@ -87,6 +88,7 @@ const SEMAFORO_COLOR: Record<string, string> = {
 
 export default function DashboardPage() {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const { score, recomendaciones } = useRecomendaciones()
   const { limits } = usePlanLimits()
   const [tab, setTab] = useState<'general' | 'metricas' | 'insights' | 'rentabilidad' | 'recomendaciones' | 'graficos'>('general')
@@ -101,7 +103,7 @@ export default function DashboardPage() {
   const { cotizacion } = useCotizacion()
 
   const { data: stats } = useQuery({
-    queryKey: ['dashboard-stats', tenant?.id],
+    queryKey: ['dashboard-stats', tenant?.id, sucursalId],
     queryFn: async () => {
       const hoy = new Date()
       const inicioMes    = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString()
@@ -112,17 +114,22 @@ export default function DashboardPage() {
 
       const fechaReservaVieja = new Date(hoy.getTime() - 3 * 86400000).toISOString()
       const inicioMesStr = inicioMes.split('T')[0]
+
+      // Helper: agrega .eq('sucursal_id') si hay una activa
+      const bySuc = <T extends object>(q: T): T =>
+        sucursalId ? (q as any).eq('sucursal_id', sucursalId) : q
+
       const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes, ventasDeuda, productosInactivos, reservasViejas, gastosMes, ventasMesCosto] = await Promise.all([
         supabase.from('productos').select('id, nombre, sku, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
-        supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
-        supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes),
-        supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt),
-        supabase.from('movimientos_stock').select('producto_id, cantidad').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias),
-        supabase.from('ventas').select('total, monto_pagado').eq('tenant_id', tenant!.id).in('estado', ['pendiente', 'reservada']),
+        bySuc(supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias)),
+        bySuc(supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)),
+        bySuc(supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt)),
+        bySuc(supabase.from('movimientos_stock').select('producto_id, cantidad').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias)),
+        bySuc(supabase.from('ventas').select('total, monto_pagado').eq('tenant_id', tenant!.id).in('estado', ['pendiente', 'reservada'])),
         supabase.from('productos').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('activo', false),
-        supabase.from('ventas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('estado', 'reservada').lt('created_at', fechaReservaVieja),
-        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', inicioMesStr),
+        bySuc(supabase.from('ventas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('estado', 'reservada').lt('created_at', fechaReservaVieja)),
+        bySuc(supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', inicioMesStr)),
         supabase.from('venta_items').select('cantidad, precio_costo_historico').eq('tenant_id', tenant!.id).gte('created_at', inicioMes),
       ])
 
@@ -206,23 +213,26 @@ export default function DashboardPage() {
   })
 
   const { data: movRecientes = [] } = useQuery({
-    queryKey: ['movimientos-recientes', tenant?.id],
+    queryKey: ['movimientos-recientes', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('movimientos_stock').select('*, productos(nombre,sku)')
+      let q = supabase.from('movimientos_stock').select('*, productos(nombre,sku)')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(5)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant,
   })
 
   const { data: topProductos = [] } = useQuery({
-    queryKey: ['dashboard-top-productos', tenant?.id],
+    queryKey: ['dashboard-top-productos', tenant?.id, sucursalId],
     queryFn: async () => {
       const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-      const { data: ventas } = await supabase.from('ventas')
+      let q = supabase.from('ventas')
         .select('venta_items(cantidad, productos(nombre, sku))')
         .eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data: ventas } = await q
       const ranking: Record<string, { nombre: string; cantidad: number }> = {}
       ;(ventas ?? []).forEach((v: any) => {
         ;(v.venta_items ?? []).forEach((item: any) => {
@@ -239,7 +249,7 @@ export default function DashboardPage() {
   // ─── KPIs período (Ingreso Neto / Margen / Burn Rate / IVA) ─────────────────
   const customRange = { desde: customDesde, hasta: customHasta }
   const { data: dashKpis } = useQuery({
-    queryKey: ['dash-kpis', tenant?.id, periodo, customDesde, customHasta],
+    queryKey: ['dash-kpis', tenant?.id, periodo, customDesde, customHasta, sucursalId],
     queryFn: async () => {
       const { desde, hasta } = getFechasDashboard(periodo, customRange)
       const { desde: desdePrev, hasta: hastaPrev } = getFechasAnteriores(periodo, customRange)
@@ -248,19 +258,35 @@ export default function DashboardPage() {
       const desdePrevDate = desdePrev.split('T')[0]
       const hastaPrevDate = hastaPrev.split('T')[0]
 
+      // caja_sesiones: .eq('cajas.sucursal_id') no funciona en Supabase (joined col filter)
+      // → primero obtenemos los caja_ids de la sucursal, luego filtramos por ellos
+      let cajaIds: string[] | null = null
+      if (sucursalId) {
+        const { data: cajasData } = await supabase.from('cajas')
+          .select('id').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId)
+        cajaIds = (cajasData ?? []).map((c: any) => c.id)
+      }
+
+      const buildSesQ = (desde: string, hasta: string) => {
+        let q = supabase.from('caja_sesiones').select('id').eq('tenant_id', tenant!.id)
+          .gte('created_at', desde).lte('created_at', hasta)
+        if (cajaIds) q = q.in('caja_id', cajaIds.length > 0 ? cajaIds : ['__none__'])
+        return q
+      }
+
       const [sessionsRes, sessionsPrevRes, viRes, viPrevRes, gastosRes, gastosPrevRes] = await Promise.all([
-        supabase.from('caja_sesiones').select('id').eq('tenant_id', tenant!.id)
-          .gte('created_at', desde).lte('created_at', hasta),
-        supabase.from('caja_sesiones').select('id').eq('tenant_id', tenant!.id)
-          .gte('created_at', desdePrev).lte('created_at', hastaPrev),
+        buildSesQ(desde, hasta),
+        buildSesQ(desdePrev, hastaPrev),
         supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico, iva_monto')
           .eq('tenant_id', tenant!.id).gte('created_at', desde).lte('created_at', hasta),
         supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico, iva_monto')
           .eq('tenant_id', tenant!.id).gte('created_at', desdePrev).lte('created_at', hastaPrev),
-        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id)
-          .gte('fecha', desdeDate).lte('fecha', hastaDate),
-        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id)
-          .gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate),
+        sucursalId
+          ? supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdeDate).lte('fecha', hastaDate)
+          : supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdeDate).lte('fecha', hastaDate),
+        sucursalId
+          ? supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
+          : supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate),
       ])
 
       // Ingreso Neto desde caja_movimientos
@@ -327,22 +353,23 @@ export default function DashboardPage() {
 
   // ─── Fugas y Movimientos (top 8 por monto) ───────────────────────────────────
   const { data: fugasData = [] } = useQuery({
-    queryKey: ['dash-fugas', tenant?.id, periodo, customDesde, customHasta],
+    queryKey: ['dash-fugas', tenant?.id, periodo, customDesde, customHasta, sucursalId],
     queryFn: async () => {
       const { desde, hasta } = getFechasDashboard(periodo, customRange)
       const desdeDate = desde.split('T')[0]
       const hastaDate = hasta.split('T')[0]
-      const [{ data: gastos }, { data: ventas }] = await Promise.all([
-        supabase.from('gastos').select('id, descripcion, monto, fecha')
-          .eq('tenant_id', tenant!.id)
-          .gte('fecha', desdeDate).lte('fecha', hastaDate)
-          .order('monto', { ascending: false }).limit(5),
-        supabase.from('ventas').select('id, numero, total, cliente_nombre, created_at')
-          .eq('tenant_id', tenant!.id)
-          .in('estado', ['despachada', 'facturada'])
-          .gte('created_at', desde).lte('created_at', hasta)
-          .order('total', { ascending: false }).limit(5),
-      ])
+      let gastosQ = supabase.from('gastos').select('id, descripcion, monto, fecha')
+        .eq('tenant_id', tenant!.id).gte('fecha', desdeDate).lte('fecha', hastaDate)
+        .order('monto', { ascending: false }).limit(5)
+      let ventasQ = supabase.from('ventas').select('id, numero, total, cliente_nombre, created_at')
+        .eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada'])
+        .gte('created_at', desde).lte('created_at', hasta)
+        .order('total', { ascending: false }).limit(5)
+      if (sucursalId) {
+        gastosQ = gastosQ.eq('sucursal_id', sucursalId)
+        ventasQ = ventasQ.eq('sucursal_id', sucursalId)
+      }
+      const [{ data: gastos }, { data: ventas }] = await Promise.all([gastosQ, ventasQ])
       const rows = [
         ...(gastos ?? []).map(g => ({
           id: g.id, tipo: 'gasto' as const,
@@ -366,7 +393,7 @@ export default function DashboardPage() {
 
   // ─── Stock inmovilizado (solo se carga en tab insights) ──────────────────────
   const { data: stockInmov } = useQuery({
-    queryKey: ['stock-inmovilizado', tenant?.id],
+    queryKey: ['stock-inmovilizado', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data: estadosInmov } = await supabase
         .from('estados_inventario').select('id')
@@ -374,11 +401,13 @@ export default function DashboardPage() {
       const eIds = (estadosInmov ?? []).map((e: any) => e.id)
       if (eIds.length === 0) return { unidades: 0, valor: 0, porEstado: [] as {nombre:string;color:string;unidades:number;valor:number}[] }
 
-      const { data: lineas } = await supabase
+      let lineasQ = supabase
         .from('inventario_lineas')
         .select('cantidad, estado_id, productos(precio_costo), estados_inventario!estado_id(nombre, color)')
         .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
         .in('estado_id', eIds)
+      if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
+      const { data: lineas } = await lineasQ
 
       const unidades = (lineas ?? []).reduce((s, l: any) => s + Number(l.cantidad), 0)
       const valor    = (lineas ?? []).reduce((s, l: any) => s + Number(l.cantidad) * Number(l.productos?.precio_costo ?? 0), 0)

@@ -151,8 +151,10 @@ export default function SuscripcionPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={async () => {
-                // Eliminar users record para que el próximo login vaya a onboarding
+                // Eliminar users record de DB
                 if (user?.id) await supabase.from('users').delete().eq('id', user.id)
+                // Limpiar store en memoria para que SubscriptionGuard no siga redirigiendo
+                useAuthStore.setState({ user: null, tenant: null, needsOnboarding: true, loading: false })
                 navigate('/onboarding')
               }}
               className="flex items-center gap-2 text-blue-300 hover:text-white transition-colors text-sm font-medium"

@@ -97,7 +97,7 @@ let itemKey = 0
 
 export default function ProveedoresPage() {
   const { tenant, user } = useAuthStore()
-  const { sucursalId } = useSucursalFilter()
+  const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const navigate = useNavigate()
 
@@ -171,13 +171,14 @@ export default function ProveedoresPage() {
   })
 
   const { data: ordenes = [], isLoading: loadingOC } = useQuery({
-    queryKey: ['ordenes_compra', tenant?.id],
+    queryKey: ['ordenes_compra', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('ordenes_compra')
-        .select('*, proveedores(id, nombre)')
-        .eq('tenant_id', tenant!.id)
-        .order('numero', { ascending: false })
+      const { data } = await applyFilter(
+        supabase.from('ordenes_compra')
+          .select('*, proveedores(id, nombre)')
+          .eq('tenant_id', tenant!.id)
+          .order('numero', { ascending: false })
+      )
       return (data ?? []) as OrdenCompra[]
     },
     enabled: !!tenant && tab === 'ordenes',

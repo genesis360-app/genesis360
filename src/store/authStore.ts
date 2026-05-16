@@ -62,7 +62,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
 		const [{ data: tenantData, error: tenantError }, { data: sucursalesData }, { data: rolCustomData }] = await Promise.all([
 		  supabase.from('tenants').select('*').eq('id', userData.tenant_id).single(),
-		  supabase.from('sucursales').select('*').eq('tenant_id', userData.tenant_id).eq('activo', true).order('nombre'),
+		  supabase.from('sucursales').select('*').eq('tenant_id', userData.tenant_id).eq('activo', true).order('created_at'),
 		  userData.rol_custom_id
 		    ? supabase.from('roles_custom').select('permisos').eq('id', userData.rol_custom_id).eq('activo', true).maybeSingle()
 		    : Promise.resolve({ data: null }),
@@ -70,11 +70,17 @@ export const useAuthStore = create<AuthState>((set) => ({
 
 		console.log('tenantData:', tenantData, 'error:', tenantError)
 
-		// Validar que el sucursal_id guardado sigue siendo válido
+		// Validar/resolver sucursal activa:
+		// '__global__'  → explícitamente eligió "Todas" → null
+		// id válido     → usar ese id
+		// null (nunca eligió) y hay sucursales → auto-seleccionar la más antigua (primera)
+		// id inválido (borrada) → auto-seleccionar la primera disponible
 		const savedRaw = typeof window !== 'undefined' ? localStorage.getItem('sucursal-id') : null
 		const ids = (sucursalesData ?? []).map((s: Sucursal) => s.id)
 		const validSucursalId = savedRaw === '__global__' ? null
-		  : (savedRaw && ids.includes(savedRaw) ? savedRaw : null)
+		  : savedRaw && ids.includes(savedRaw) ? savedRaw
+		  : ids.length > 0 ? ids[0]
+		  : null
 
 		// DUEÑO: siempre global (hardcoded)
 		// SUPERVISOR/SUPER_USUARIO: global por defecto, restringible con puede_ver_todas=false en DB

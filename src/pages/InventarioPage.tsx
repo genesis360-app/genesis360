@@ -283,9 +283,11 @@ export default function InventarioPage() {
   })
 
   const { data: ubicaciones = [] } = useQuery({
-    queryKey: ['ubicaciones', tenant?.id],
+    queryKey: ['ubicaciones', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      let q = supabase.from('ubicaciones').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant,

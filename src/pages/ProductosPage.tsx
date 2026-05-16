@@ -658,8 +658,8 @@ export default function ProductosPage() {
 
   const agregarAOC = useMutation({
     mutationFn: async ({ productoId, proveedorId, cantidad, precio }: { productoId: string; proveedorId: string; cantidad: number; precio: number | null }) => {
-      // Find existing borrador OC for this proveedor
-      const { data: existingOC } = await supabase
+      // Buscar OC borrador del mismo proveedor Y misma sucursal activa
+      let ocQuery = supabase
         .from('ordenes_compra')
         .select('id, numero')
         .eq('tenant_id', tenant!.id)
@@ -667,7 +667,9 @@ export default function ProductosPage() {
         .eq('estado', 'borrador')
         .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle()
+      if (sucursalId) ocQuery = ocQuery.eq('sucursal_id', sucursalId)
+      else ocQuery = ocQuery.is('sucursal_id', null)
+      const { data: existingOC } = await ocQuery.maybeSingle()
 
       let ocId = existingOC?.id ?? null
       let ocNumero = existingOC?.numero ?? null
@@ -675,7 +677,7 @@ export default function ProductosPage() {
       if (!ocId) {
         const { data: newOC, error } = await supabase
           .from('ordenes_compra')
-          .insert({ tenant_id: tenant!.id, proveedor_id: proveedorId, estado: 'borrador', created_by: user!.id })
+          .insert({ tenant_id: tenant!.id, proveedor_id: proveedorId, estado: 'borrador', sucursal_id: sucursalId || null, created_by: user!.id })
           .select('id, numero')
           .single()
         if (error) throw error

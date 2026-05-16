@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-16] update | Wiki — actualización completa v1.8.28-dev (multi-sucursal + defaults)
+
+Páginas actualizadas:
+- `multi-sucursal.md` — sucursal por defecto, backfill 114–117, filtros estrictos, cajas por sucursal
+- `caja.md` — cajas.sucursal_id, filtro CajaPage, Caja Principal en seed
+- `autenticacion-onboarding.md` — defaults al registrar negocio, fix duplicados tenant, Sucursal 1
+- `ventas-pos.md` — filtro historial estricto (eliminado OR IS NULL)
+- `reportes-metricas.md` — Dashboard tab Todo filtro por sucursal
+- `triggers.md` — trg_seed_tenant_defaults (Sucursal 1 + Caja Principal + motivos + estados)
+- `rls-policies.md` — política DELETE en users (migration 113)
+- `migraciones.md` — migrations 111–117
+- `project_pendientes.md` — DEV v1.8.28, migrations 001–117, PROD pendientes 113–117
+
 ## [2026-05-15] update | Wiki — actualización completa v1.8.23 a v1.8.27
 
 Páginas actualizadas:

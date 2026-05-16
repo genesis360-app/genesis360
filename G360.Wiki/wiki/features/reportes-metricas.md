@@ -150,6 +150,23 @@ Formatos: **Excel** (XLSX) · **PDF** (jsPDF + jspdf-autotable)
 
 ---
 
+## Dashboard tab Todo — filtro por sucursal (v1.8.28-dev)
+
+Todas las queries del tab General/Todo incluyen `sucursalId` en el `queryKey` y filtran por sucursal donde la tabla lo soporta:
+
+| Query | Tablas filtradas |
+|-------|-----------------|
+| `dashboard-stats` | ventas, movimientos_stock, gastos |
+| `movimientos-recientes` | movimientos_stock |
+| `top-productos` | ventas |
+| `dash-kpis` | gastos ✅ · caja_sesiones (2-step via cajas) ✅ · venta_items ❌ (sin columna) |
+| `dash-fugas` | ventas, gastos |
+| `stock-inmovilizado` | inventario_lineas |
+
+Las 9 áreas del sub-nav (`DashVentasArea`, etc.) ya usaban `useSucursalFilter` internamente y ahora usan filtro estricto (sin `OR sucursal_id IS NULL`).
+
+---
+
 ## Dashboard General — 9 áreas analíticas (v1.8.9–v1.8.14)
 
 Sub-navegación en la pestaña "General". Cada área tiene filtros, KPIs, gráficos e insights propios:

@@ -127,6 +127,26 @@ No es exactamente un trigger, sino una función cron llamada por `pg_cron`:
 
 ---
 
+## Trigger de seed de defaults al registrar negocio (migrations 112 + 114)
+
+### `trg_seed_tenant_defaults`
+
+```sql
+AFTER INSERT ON tenants
+→ fn_seed_tenant_defaults() SECURITY DEFINER
+```
+
+Crea automáticamente al registrar un tenant nuevo:
+
+1. **Sucursal 1** — primera sucursal del negocio
+2. **Caja Principal** — asignada a Sucursal 1
+3. **11 motivos de movimiento** — ingreso (3) · rebaje (4) · caja (3) · ambos (1), todos `es_sistema=true`
+4. **2 estados de inventario** — Disponible (#22c55e) + Bloqueado (#ef4444)
+
+**Por qué SECURITY DEFINER:** el trigger corre en el contexto del INSERT del tenant, antes de que el usuario exista en `users`. La RLS de las tablas dependientes (`cajas`, `sucursales`, etc.) no puede resolverse sin este flag.
+
+---
+
 ## Trigger de creación automática de Caja Fuerte (migration 110)
 
 ### `trg_crear_caja_fuerte`

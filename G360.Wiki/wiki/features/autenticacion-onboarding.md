@@ -147,6 +147,31 @@ Los tests E2E lo marcan como visto en localStorage antes de correr.
 
 ---
 
+## Defaults al registrar negocio — v1.8.28-dev (migrations 112 + 114)
+
+El trigger `trg_seed_tenant_defaults` (SECURITY DEFINER) crea automáticamente al insertar un tenant:
+
+1. **Sucursal 1** — primera sucursal del negocio
+2. **Caja Principal** — caja operativa asignada a Sucursal 1
+3. **11 motivos de movimiento** (`ingreso`, `rebaje`, `caja`, `ambos`) marcados `es_sistema=true`
+4. **2 estados de inventario** — Disponible (verde) + Bloqueado (rojo)
+
+Los motivos `es_sistema=true` muestran badge "sistema" en ConfigPage y no tienen botones editar/eliminar.
+
+---
+
+## Fix duplicados de tenant en Onboarding (v1.8.28-dev)
+
+**Problema:** si el usuario volvía a `/onboarding` con sesión activa y submitaba el formulario de negocio, se creaba un segundo tenant. El `users` INSERT fallaba con duplicate key, pero el tenant quedaba huérfano.
+
+**Fixes aplicados en `OnboardingPage`:**
+- `useState(() => {})` → `useEffect(() => {}, [])` (era uso incorrecto del hook)
+- Al detectar sesión activa: consulta si ya hay `users` record → si existe, va directo a `/dashboard`
+- Si el `users` INSERT falla: hace rollback del tenant (`DELETE FROM tenants WHERE id = tenantId`)
+- Toast de error muestra el mensaje real de `PostgrestError` (antes siempre mostraba "Error al registrar")
+
+---
+
 ## Fix registro nuevo negocio — v1.8.27 (migration 110)
 
 **Bug:** Al registrar un negocio nuevo con email nuevo, el formulario mostraba "Error al registrar" sin completar el registro.

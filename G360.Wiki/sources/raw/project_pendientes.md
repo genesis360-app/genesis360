@@ -4,18 +4,18 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.27** ✅ · DEV: **v1.8.27** (fix crítico registro)
+Último release en PROD: **v1.8.27** ✅ · DEV: **v1.8.28** (multi-sucursal completo + defaults + fixes)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.27 / PROD v1.8.27 (cierre sesión 2026-05-15)
+## Estado actual DEV v1.8.28 / PROD v1.8.27 (cierre sesión 2026-05-16)
 
-- APP_VERSION DEV: `v1.8.27` en `src/config/brand.ts` ✅
+- APP_VERSION DEV: `v1.8.27` en `src/config/brand.ts` (bump pendiente a v1.8.28)
 - APP_VERSION PROD: `v1.8.27` ✅ (PR #112 mergeado)
-- Migrations DEV: 001–110 ✅
-- Migrations PROD: 001–110 ✅
+- Migrations DEV: 001–117 ✅
+- Migrations PROD: 001–110 ✅ (113–117 pendientes de aplicar en PROD)
 
 ### Estado infra
 - Edge Functions DEV: todas activas (`invite-user` v3 — redirect dinámico)

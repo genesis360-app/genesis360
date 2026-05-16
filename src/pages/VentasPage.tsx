@@ -536,9 +536,7 @@ export default function VentasPage() {
       let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, alicuota_iva, iva_monto, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(ventasLimit)
       if (filterEstado) q = q.eq('estado', filterEstado)
-      // ISS-106: historial incluye ventas sin sucursal_id (ventas migradas de antes del multi-sucursal)
-      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
-      else q = applyFilter(q)
+      q = applyFilter(q)
       const { data, error } = await q
       if (error) throw error
       return data ?? []

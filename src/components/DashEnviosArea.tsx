@@ -42,7 +42,7 @@ export function DashEnviosArea() {
 
   const dashFilter = (q: any) => {
     if (!sucursalId) return q
-    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+    return q.eq('sucursal_id', sucursalId)
   }
 
   const [filterOpen, setFilterOpen] = useState(false)

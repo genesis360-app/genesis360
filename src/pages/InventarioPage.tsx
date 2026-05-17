@@ -31,6 +31,8 @@ type ModalType = 'ingreso' | 'rebaje' | null
 const emptyIngreso = {
   productoSearch: '', cantidad: '', motivo: '', ubicacionId: '',
   estadoId: '', proveedorId: '', nroLote: '', fechaVencimiento: '', lpn: '',
+  // Atributos de variante
+  paisOrigen: '', talle: '', color: '', encaje: '', formato: '', saborAroma: '',
 }
 
 function InfoTip({ text }: { text: string }) {
@@ -923,6 +925,12 @@ export default function InventarioPage() {
           precio_venta_snapshot: (selectedProduct as any).precio_venta || null,
           estructura_id: ingresoEstructuraId || null,
           sucursal_id: sucursalId ?? ingresoSucursalId ?? null,
+          ...((selectedProduct as any).tiene_pais_origen ? { pais_origen: form.paisOrigen || null } : {}),
+          ...((selectedProduct as any).tiene_talle ? { talle: form.talle || null } : {}),
+          ...((selectedProduct as any).tiene_color ? { color: form.color || null } : {}),
+          ...((selectedProduct as any).tiene_encaje ? { encaje: form.encaje || null } : {}),
+          ...((selectedProduct as any).tiene_formato ? { formato: form.formato || null } : {}),
+          ...((selectedProduct as any).tiene_sabor_aroma ? { sabor_aroma: form.saborAroma || null } : {}),
         })
         .select().single()
       if (lineaError) throw lineaError
@@ -2705,6 +2713,60 @@ export default function InventarioPage() {
                           required
                           className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-accent
                             ${!form.fechaVencimiento ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
+                      </div>
+                    )}
+
+                    {/* Atributos de variante */}
+                    {((selectedProduct as any).tiene_pais_origen || (selectedProduct as any).tiene_talle || (selectedProduct as any).tiene_color || (selectedProduct as any).tiene_encaje || (selectedProduct as any).tiene_formato || (selectedProduct as any).tiene_sabor_aroma) && (
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        {(selectedProduct as any).tiene_pais_origen && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">País de Origen</label>
+                            <input type="text" value={form.paisOrigen} onChange={e => setForm(p => ({ ...p, paisOrigen: e.target.value }))}
+                              placeholder="Ej: Argentina"
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                          </div>
+                        )}
+                        {(selectedProduct as any).tiene_talle && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Talle / Talla</label>
+                            <input type="text" value={form.talle} onChange={e => setForm(p => ({ ...p, talle: e.target.value }))}
+                              placeholder="Ej: M, 42, XL"
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                          </div>
+                        )}
+                        {(selectedProduct as any).tiene_color && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
+                            <input type="text" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
+                              placeholder="Ej: Rojo"
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                          </div>
+                        )}
+                        {(selectedProduct as any).tiene_encaje && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Encaje</label>
+                            <input type="text" value={form.encaje} onChange={e => setForm(p => ({ ...p, encaje: e.target.value }))}
+                              placeholder="Ej: Slim fit"
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                          </div>
+                        )}
+                        {(selectedProduct as any).tiene_formato && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Formato</label>
+                            <input type="text" value={form.formato} onChange={e => setForm(p => ({ ...p, formato: e.target.value }))}
+                              placeholder="Ej: 500g, 1L"
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                          </div>
+                        )}
+                        {(selectedProduct as any).tiene_sabor_aroma && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sabor / Aroma</label>
+                            <input type="text" value={form.saborAroma} onChange={e => setForm(p => ({ ...p, saborAroma: e.target.value }))}
+                              placeholder="Ej: Vainilla"
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                          </div>
+                        )}
                       </div>
                     )}
 

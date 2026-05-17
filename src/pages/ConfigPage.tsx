@@ -11,7 +11,7 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'metodos_pago' | 'integraciones' | 'api'
+type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'metodos_pago' | 'integraciones' | 'api' | 'unidades_medida'
 type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
@@ -1407,6 +1407,48 @@ export default function ConfigPage() {
     return `https://auth.mercadolibre.com.ar/authorization?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
   }
 
+  // ── Unidades de medida ────────────────────────────────────────────────────────
+  const [udmNombre, setUdmNombre] = useState('')
+  const [udmSimbolo, setUdmSimbolo] = useState('')
+  const [udmEditId, setUdmEditId] = useState<string | null>(null)
+  const [udmEditNombre, setUdmEditNombre] = useState('')
+  const [udmEditSimbolo, setUdmEditSimbolo] = useState('')
+  const [udmSaving, setUdmSaving] = useState(false)
+
+  const { data: unidadesMedida = [], isLoading: loadingUdm } = useQuery({
+    queryKey: ['unidades_medida', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('unidades_medida').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'unidades_medida',
+  })
+
+  const addUdm = async () => {
+    if (!udmNombre.trim()) return
+    setUdmSaving(true)
+    const { error } = await supabase.from('unidades_medida').insert({ tenant_id: tenant!.id, nombre: udmNombre.trim(), simbolo: udmSimbolo.trim() || null, activo: true })
+    if (error) toast.error(error.message)
+    else { toast.success('Unidad agregada'); setUdmNombre(''); setUdmSimbolo(''); qc.invalidateQueries({ queryKey: ['unidades_medida'] }) }
+    setUdmSaving(false)
+  }
+
+  const updateUdm = async (id: string) => {
+    if (!udmEditNombre.trim()) return
+    setUdmSaving(true)
+    const { error } = await supabase.from('unidades_medida').update({ nombre: udmEditNombre.trim(), simbolo: udmEditSimbolo.trim() || null }).eq('id', id)
+    if (error) toast.error(error.message)
+    else { toast.success('Unidad actualizada'); setUdmEditId(null); qc.invalidateQueries({ queryKey: ['unidades_medida'] }) }
+    setUdmSaving(false)
+  }
+
+  const deleteUdm = async (id: string) => {
+    if (!confirm('¿Desactivar esta unidad de medida?')) return
+    const { error } = await supabase.from('unidades_medida').update({ activo: false }).eq('id', id)
+    if (error) toast.error(error.message)
+    else { toast.success('Unidad desactivada'); qc.invalidateQueries({ queryKey: ['unidades_medida'] }) }
+  }
+
   const tabs = [
     { id: 'negocio' as Tab, label: 'Mi negocio', icon: Building2 },
     { id: 'categorias' as Tab, label: 'Categorías', icon: Tag },
@@ -1415,6 +1457,7 @@ export default function ConfigPage() {
     { id: 'motivos' as Tab, label: 'Motivos', icon: MessageSquare },
     { id: 'combos' as Tab, label: 'Combos', icon: Gift },
     { id: 'metodos_pago' as Tab, label: 'Métodos de pago', icon: CreditCard },
+    { id: 'unidades_medida' as Tab, label: 'Unidades', icon: Ruler },
     { id: 'integraciones' as Tab, label: 'Integraciones', icon: Plug },
     { id: 'api' as Tab, label: 'API', icon: Key },
   ]
@@ -3231,6 +3274,87 @@ export default function ConfigPage() {
 
       {tab === 'api' && (
         <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'DUEÑO' || user?.rol === 'SUPER_USUARIO'} />
+      )}
+
+      {tab === 'unidades_medida' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Ruler size={18} className="text-accent" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Unidades de medida personalizadas</h2>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">Definí unidades propias de tu negocio para usarlas en productos (además de las estándar).</p>
+
+          {/* Agregar */}
+          {canEdit && (
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-2">
+              <div className="flex gap-2">
+                <input type="text" placeholder="Nombre *" value={udmNombre} onChange={e => setUdmNombre(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addUdm()}
+                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                <input type="text" placeholder="Símbolo (ej: pz)" value={udmSimbolo} onChange={e => setUdmSimbolo(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addUdm()}
+                  className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                <button onClick={addUdm} disabled={!udmNombre.trim() || udmSaving}
+                  className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                  <Plus size={15} /> Agregar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {loadingUdm ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+            </div>
+          ) : unidadesMedida.length === 0 ? (
+            <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-8">No hay unidades personalizadas aún</p>
+          ) : (
+            <div className="space-y-2">
+              {(unidadesMedida as any[]).map((u: any) => (
+                <div key={u.id} className="bg-white dark:bg-gray-800 border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
+                  {udmEditId === u.id ? (
+                    <>
+                      <div className="flex-1 flex gap-2">
+                        <input type="text" value={udmEditNombre} onChange={e => setUdmEditNombre(e.target.value)}
+                          className="flex-1 px-3 py-1.5 border border-accent rounded-lg text-sm focus:outline-none" />
+                        <input type="text" value={udmEditSimbolo} onChange={e => setUdmEditSimbolo(e.target.value)}
+                          placeholder="Símbolo"
+                          className="w-28 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none" />
+                      </div>
+                      <button onClick={() => updateUdm(u.id)} disabled={udmSaving}
+                        className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-50 dark:bg-green-900/20 rounded-lg transition-colors">
+                        <Check size={16} />
+                      </button>
+                      <button onClick={() => setUdmEditId(null)}
+                        className="p-1.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                        <X size={16} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{u.nombre}</p>
+                        {u.simbolo && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Símbolo: {u.simbolo}</p>}
+                      </div>
+                      {canEdit && (
+                        <>
+                          <button onClick={() => { setUdmEditId(u.id); setUdmEditNombre(u.nombre); setUdmEditSimbolo(u.simbolo ?? '') }}
+                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                            <Pencil size={15} />
+                          </button>
+                          <button onClick={() => deleteUdm(u.id)}
+                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors">
+                            <Trash2 size={15} />
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
         </div>{/* end content column */}

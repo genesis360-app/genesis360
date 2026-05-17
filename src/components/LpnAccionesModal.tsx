@@ -39,6 +39,13 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     // Tomar solo los primeros 10 chars para evitar desfase de timezone
     fecha_vencimiento: linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : '',
     cantidad: String(linea.cantidad ?? 0),
+    // Atributos de variante
+    pais_origen: linea.pais_origen ?? '',
+    talle: linea.talle ?? '',
+    color: linea.color ?? '',
+    encaje: linea.encaje ?? '',
+    formato: linea.formato ?? '',
+    sabor_aroma: linea.sabor_aroma ?? '',
   })
 
   // Mover stock parcial — default 1 si hay al menos 2 unidades disponibles
@@ -169,6 +176,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           proveedor_id: editForm.proveedor_id || null,
           nro_lote: editForm.nro_lote || null,
           fecha_vencimiento: editForm.fecha_vencimiento || null,
+          ...(producto.tiene_pais_origen ? { pais_origen: editForm.pais_origen || null } : {}),
+          ...(producto.tiene_talle ? { talle: editForm.talle || null } : {}),
+          ...(producto.tiene_color ? { color: editForm.color || null } : {}),
+          ...(producto.tiene_encaje ? { encaje: editForm.encaje || null } : {}),
+          ...(producto.tiene_formato ? { formato: editForm.formato || null } : {}),
+          ...(producto.tiene_sabor_aroma ? { sabor_aroma: editForm.sabor_aroma || null } : {}),
         }).eq('id', linea.id)
         return { esAutorizacion: true }
       }
@@ -184,6 +197,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         proveedor_id: editForm.proveedor_id || null,
         nro_lote: editForm.nro_lote || null,
         fecha_vencimiento: editForm.fecha_vencimiento || null,
+        ...(producto.tiene_pais_origen ? { pais_origen: editForm.pais_origen || null } : {}),
+        ...(producto.tiene_talle ? { talle: editForm.talle || null } : {}),
+        ...(producto.tiene_color ? { color: editForm.color || null } : {}),
+        ...(producto.tiene_encaje ? { encaje: editForm.encaje || null } : {}),
+        ...(producto.tiene_formato ? { formato: editForm.formato || null } : {}),
+        ...(producto.tiene_sabor_aroma ? { sabor_aroma: editForm.sabor_aroma || null } : {}),
         ...(!tieneSeries ? { cantidad: cantNueva } : {}),
       }).eq('id', linea.id)
       if (error) throw error
@@ -559,6 +578,60 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   <input type="date" value={editForm.fecha_vencimiento} onChange={e => setEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
                     className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent
                       ${!editForm.fecha_vencimiento ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
+                </div>
+              )}
+
+              {/* Atributos de variante */}
+              {(producto.tiene_pais_origen || producto.tiene_talle || producto.tiene_color || producto.tiene_encaje || producto.tiene_formato || producto.tiene_sabor_aroma) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {producto.tiene_pais_origen && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">País de Origen</label>
+                      <input type="text" value={editForm.pais_origen} onChange={e => setEditForm(p => ({ ...p, pais_origen: e.target.value }))}
+                        placeholder="Ej: Argentina"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                  )}
+                  {producto.tiene_talle && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Talle / Talla</label>
+                      <input type="text" value={editForm.talle} onChange={e => setEditForm(p => ({ ...p, talle: e.target.value }))}
+                        placeholder="Ej: M, 42, XL"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                  )}
+                  {producto.tiene_color && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Color</label>
+                      <input type="text" value={editForm.color} onChange={e => setEditForm(p => ({ ...p, color: e.target.value }))}
+                        placeholder="Ej: Rojo"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                  )}
+                  {producto.tiene_encaje && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Encaje</label>
+                      <input type="text" value={editForm.encaje} onChange={e => setEditForm(p => ({ ...p, encaje: e.target.value }))}
+                        placeholder="Ej: Slim fit"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                  )}
+                  {producto.tiene_formato && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Formato</label>
+                      <input type="text" value={editForm.formato} onChange={e => setEditForm(p => ({ ...p, formato: e.target.value }))}
+                        placeholder="Ej: 500g, 1L"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                  )}
+                  {producto.tiene_sabor_aroma && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sabor / Aroma</label>
+                      <input type="text" value={editForm.sabor_aroma} onChange={e => setEditForm(p => ({ ...p, sabor_aroma: e.target.value }))}
+                        placeholder="Ej: Vainilla"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                    </div>
+                  )}
                 </div>
               )}
 

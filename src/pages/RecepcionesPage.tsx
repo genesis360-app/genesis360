@@ -34,6 +34,12 @@ type FormItem = {
   tiene_series: boolean
   tiene_lote: boolean
   tiene_vencimiento: boolean
+  tiene_pais_origen: boolean
+  tiene_talle: boolean
+  tiene_color: boolean
+  tiene_encaje: boolean
+  tiene_formato: boolean
+  tiene_sabor_aroma: boolean
   unidad_medida: string
   precio_costo_default: number
   oc_item_id: string
@@ -47,6 +53,13 @@ type FormItem = {
   series_txt: string
   precio_costo: string
   estructura_id: string
+  // Atributos de variante
+  pais_origen: string
+  talle: string
+  color: string
+  encaje: string
+  formato: string
+  sabor_aroma: string
   expanded: boolean
 }
 
@@ -64,10 +77,14 @@ function nuevoItem(overrides: Partial<FormItem> = {}): FormItem {
     _key: crypto.randomUUID(),
     producto_id: '', producto_nombre: '', producto_sku: '',
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false,
+    tiene_pais_origen: false, tiene_talle: false, tiene_color: false,
+    tiene_encaje: false, tiene_formato: false, tiene_sabor_aroma: false,
     unidad_medida: 'unidad', precio_costo_default: 0,
     oc_item_id: '', cantidad_esperada: 0, cantidad_recibida: '1',
     ubicacion_id: '', estado_id: '', nro_lote: '', fecha_vencimiento: '',
-    lpn: '', series_txt: '', precio_costo: '', estructura_id: '', expanded: false,
+    lpn: '', series_txt: '', precio_costo: '', estructura_id: '',
+    pais_origen: '', talle: '', color: '', encaje: '', formato: '', sabor_aroma: '',
+    expanded: false,
     ...overrides,
   }
 }
@@ -180,7 +197,7 @@ export default function RecepcionesPage() {
       if (!prodSearch) return []
       const { data } = await supabase
         .from('productos')
-        .select('id, nombre, sku, tiene_series, tiene_lote, tiene_vencimiento, unidad_medida, precio_costo')
+        .select('id, nombre, sku, tiene_series, tiene_lote, tiene_vencimiento, tiene_pais_origen, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, unidad_medida, precio_costo')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .or(`nombre.ilike.%${prodSearch}%,sku.ilike.%${prodSearch}%`)
@@ -197,7 +214,7 @@ export default function RecepcionesPage() {
     const cargarOC = async () => {
       const { data: oc } = await supabase
         .from('ordenes_compra')
-        .select('proveedor_id, orden_compra_items(id, cantidad, precio_unitario, productos(id, nombre, sku, tiene_series, tiene_lote, tiene_vencimiento, unidad_medida, precio_costo))')
+        .select('proveedor_id, orden_compra_items(id, cantidad, precio_unitario, productos(id, nombre, sku, tiene_series, tiene_lote, tiene_vencimiento, tiene_pais_origen, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, unidad_medida, precio_costo))')
         .eq('id', fOcId)
         .single()
       if (!oc) return
@@ -214,6 +231,12 @@ export default function RecepcionesPage() {
             tiene_series: p.tiene_series,
             tiene_lote: p.tiene_lote,
             tiene_vencimiento: p.tiene_vencimiento,
+            tiene_pais_origen: p.tiene_pais_origen ?? false,
+            tiene_talle: p.tiene_talle ?? false,
+            tiene_color: p.tiene_color ?? false,
+            tiene_encaje: p.tiene_encaje ?? false,
+            tiene_formato: p.tiene_formato ?? false,
+            tiene_sabor_aroma: p.tiene_sabor_aroma ?? false,
             unidad_medida: p.unidad_medida,
             precio_costo_default: p.precio_costo ?? 0,
             precio_costo: String(it.precio_unitario ?? p.precio_costo ?? ''),
@@ -260,6 +283,12 @@ export default function RecepcionesPage() {
       tiene_series: p.tiene_series,
       tiene_lote: p.tiene_lote,
       tiene_vencimiento: p.tiene_vencimiento,
+      tiene_pais_origen: p.tiene_pais_origen ?? false,
+      tiene_talle: p.tiene_talle ?? false,
+      tiene_color: p.tiene_color ?? false,
+      tiene_encaje: p.tiene_encaje ?? false,
+      tiene_formato: p.tiene_formato ?? false,
+      tiene_sabor_aroma: p.tiene_sabor_aroma ?? false,
       unidad_medida: p.unidad_medida,
       precio_costo_default: p.precio_costo ?? 0,
       precio_costo: String(p.precio_costo ?? ''),
@@ -363,6 +392,12 @@ export default function RecepcionesPage() {
               precio_costo_snapshot: it.precio_costo ? Number(it.precio_costo) : (it.precio_costo_default || null),
               sucursal_id: fSucursalId || null,
               estructura_id: it.estructura_id || null,
+              ...(it.tiene_pais_origen ? { pais_origen: it.pais_origen || null } : {}),
+              ...(it.tiene_talle ? { talle: it.talle || null } : {}),
+              ...(it.tiene_color ? { color: it.color || null } : {}),
+              ...(it.tiene_encaje ? { encaje: it.encaje || null } : {}),
+              ...(it.tiene_formato ? { formato: it.formato || null } : {}),
+              ...(it.tiene_sabor_aroma ? { sabor_aroma: it.sabor_aroma || null } : {}),
             })
             .select()
             .single()
@@ -990,6 +1025,54 @@ export default function RecepcionesPage() {
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha vencimiento</label>
                           <input type="date" value={it.fecha_vencimiento} onChange={e => updItem(it._key, { fecha_vencimiento: e.target.value })}
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                        </div>
+                      )}
+                      {it.tiene_pais_origen && (
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">País de Origen</label>
+                          <input type="text" value={it.pais_origen} onChange={e => updItem(it._key, { pais_origen: e.target.value })}
+                            placeholder="Ej: Argentina"
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                        </div>
+                      )}
+                      {it.tiene_talle && (
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Talle / Talla</label>
+                          <input type="text" value={it.talle} onChange={e => updItem(it._key, { talle: e.target.value })}
+                            placeholder="Ej: M, 42"
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                        </div>
+                      )}
+                      {it.tiene_color && (
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Color</label>
+                          <input type="text" value={it.color} onChange={e => updItem(it._key, { color: e.target.value })}
+                            placeholder="Ej: Rojo"
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                        </div>
+                      )}
+                      {it.tiene_encaje && (
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Encaje</label>
+                          <input type="text" value={it.encaje} onChange={e => updItem(it._key, { encaje: e.target.value })}
+                            placeholder="Ej: Slim fit"
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                        </div>
+                      )}
+                      {it.tiene_formato && (
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Formato</label>
+                          <input type="text" value={it.formato} onChange={e => updItem(it._key, { formato: e.target.value })}
+                            placeholder="Ej: 500g"
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                        </div>
+                      )}
+                      {it.tiene_sabor_aroma && (
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Sabor / Aroma</label>
+                          <input type="text" value={it.sabor_aroma} onChange={e => updItem(it._key, { sabor_aroma: e.target.value })}
+                            placeholder="Ej: Vainilla"
                             className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
                         </div>
                       )}

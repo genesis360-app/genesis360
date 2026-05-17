@@ -425,6 +425,7 @@ export default function ProductosPage() {
   // Tab Productos
   const [search, setSearch] = useState('')
   const [filterAlerta, setFilterAlerta] = useState(false)
+  const [showInactivos, setShowInactivos] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
@@ -472,7 +473,6 @@ export default function ProductosPage() {
         .from('productos')
         .select('*, categorias(nombre), proveedores(nombre)')
         .eq('tenant_id', tenant!.id)
-        .eq('activo', true)
         .order('nombre')
       if (search) q = q.or(`nombre.ilike.%${search}%,sku.ilike.%${search}%,codigo_barras.eq.${search}`)
       const { data, error } = await q
@@ -761,6 +761,7 @@ export default function ProductosPage() {
   // ── Helpers UI ─────────────────────────────────────────────────────────────
 
   const filtered = productos.filter(p => {
+    if (!showInactivos && !(p as any).activo) return false
     if (filterAlerta && (p as any).stock_actual > (p as any).stock_minimo) return false
     return true
   })
@@ -1027,13 +1028,22 @@ export default function ProductosPage() {
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <div className="relative flex-1">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
               <input type="text" value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Buscar por nombre, SKU o código..."
                 className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
             </div>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
+              <div className="relative">
+                <input type="checkbox" checked={showInactivos} onChange={e => setShowInactivos(e.target.checked)} className="sr-only" />
+                <div className={`w-8 h-4 rounded-full transition-colors ${showInactivos ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                  <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${showInactivos ? 'translate-x-4' : ''}`} />
+                </div>
+              </div>
+              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Ver inactivos</span>
+            </label>
             <button onClick={() => setScannerOpen(true)}
               className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent transition-colors bg-white dark:bg-gray-800"
               title="Escanear código de barras">
@@ -1078,9 +1088,10 @@ export default function ProductosPage() {
                   const disponible = stockDisponibleMap[p.id] ?? 0
                   const critDisp   = disponible <= (p as any).stock_minimo
                   const expanded   = expandedId === p.id
+                  const inactivo   = !(p as any).activo
 
                   return (
-                    <div key={p.id}>
+                    <div key={p.id} className={inactivo ? 'opacity-60' : ''}>
                       <div
                         className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors
                           ${expanded ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}
@@ -1104,7 +1115,12 @@ export default function ProductosPage() {
                         )}
 
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
+                            {inactivo && (
+                              <span className="flex-shrink-0 px-1.5 py-0.5 text-xs font-semibold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full">Inactivo</span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{(p as any).sku}</p>
                           {(p as any).codigo_barras && (
                             <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{(p as any).codigo_barras}</p>
@@ -1306,14 +1322,22 @@ export default function ProductosPage() {
             className="flex items-center gap-1.5 text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
             <DollarSign size={13} /> Precio
           </button>
-          <button onClick={() => { setBulkModal('activar') }}
-            className="flex items-center gap-1.5 text-xs bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
-            <ToggleRight size={13} /> Reactivar
-          </button>
-          <button onClick={() => { setBulkModal('desactivar') }}
-            className="flex items-center gap-1.5 text-xs bg-red-700 hover:bg-red-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
-            <X size={13} /> Desactivar
-          </button>
+          {(() => {
+            const seleccionados = filtered.filter(p => selectedIds.has(p.id))
+            const activosCount = seleccionados.filter(p => (p as any).activo).length
+            const mayoriaActivos = activosCount >= seleccionados.length / 2
+            return mayoriaActivos ? (
+              <button onClick={() => setBulkModal('desactivar')}
+                className="flex items-center gap-1.5 text-xs bg-red-700 hover:bg-red-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+                <X size={13} /> Desactivar
+              </button>
+            ) : (
+              <button onClick={() => setBulkModal('activar')}
+                className="flex items-center gap-1.5 text-xs bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+                <ToggleRight size={13} /> Reactivar
+              </button>
+            )
+          })()}
           <button onClick={() => setSelectedIds(new Set())}
             title="Limpiar selección"
             className="ml-1 text-gray-400 hover:text-white transition-colors shrink-0">

@@ -40,6 +40,15 @@ export default function ProductoFormPage() {
     stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false,
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '', alicuota_iva: '21',
+    // Nuevos atributos
+    marca: '',
+    shelf_life_dias: '',
+    tiene_pais_origen: false,
+    tiene_talle: false,
+    tiene_color: false,
+    tiene_encaje: false,
+    tiene_formato: false,
+    tiene_sabor_aroma: false,
     // Marketplace
     publicado_marketplace: false, precio_marketplace: '', stock_reservado_marketplace: '0',
     descripcion_marketplace: '',
@@ -108,6 +117,15 @@ export default function ProductoFormPage() {
     queryKey: ['aging_profiles', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('aging_profiles').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  const { data: unidadesCustom = [] } = useQuery({
+    queryKey: ['unidades_medida', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('unidades_medida').select('nombre, simbolo').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },
     enabled: !!tenant,
@@ -191,6 +209,16 @@ export default function ProductoFormPage() {
         aging_profile_id: productoData.aging_profile_id ?? '',
         margen_objetivo: productoData.margen_objetivo != null ? productoData.margen_objetivo.toString() : '',
         alicuota_iva: (productoData.alicuota_iva ?? 21).toString(),
+        // Nuevos atributos
+        marca: productoData.marca ?? '',
+        shelf_life_dias: productoData.shelf_life_dias?.toString() ?? '',
+        tiene_pais_origen: productoData.tiene_pais_origen ?? false,
+        tiene_talle: productoData.tiene_talle ?? false,
+        tiene_color: productoData.tiene_color ?? false,
+        tiene_encaje: productoData.tiene_encaje ?? false,
+        tiene_formato: productoData.tiene_formato ?? false,
+        tiene_sabor_aroma: productoData.tiene_sabor_aroma ?? false,
+        // Marketplace
         publicado_marketplace: productoData.publicado_marketplace ?? false,
         precio_marketplace: productoData.precio_marketplace != null ? productoData.precio_marketplace.toString() : '',
         stock_reservado_marketplace: (productoData.stock_reservado_marketplace ?? 0).toString(),
@@ -301,6 +329,16 @@ export default function ProductoFormPage() {
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
         alicuota_iva: parseFloat(form.alicuota_iva) || 21,
+        // Nuevos atributos
+        marca: form.marca.trim() || null,
+        shelf_life_dias: form.shelf_life_dias ? parseInt(form.shelf_life_dias) : null,
+        tiene_pais_origen: form.tiene_pais_origen,
+        tiene_talle: form.tiene_talle,
+        tiene_color: form.tiene_color,
+        tiene_encaje: form.tiene_encaje,
+        tiene_formato: form.tiene_formato,
+        tiene_sabor_aroma: form.tiene_sabor_aroma,
+        // Marketplace
         publicado_marketplace: form.publicado_marketplace,
         precio_marketplace: form.precio_marketplace !== '' ? parseFloat(form.precio_marketplace) : null,
         stock_reservado_marketplace: parseInt(form.stock_reservado_marketplace) || 0,
@@ -803,11 +841,11 @@ export default function ProductoFormPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stock mínimo</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta cuando el stock baje de este valor</p>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={form.stock_minimo} disabled={!canEdit}
-                    onChange={e => setForm(p => ({ ...p, stock_minimo: e.target.value }))}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Marca</label>
+                  <input type="text" value={form.marca} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, marca: e.target.value }))}
+                    placeholder="Ej: Nike, Arcor, Samsung"
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unidad de medida</label>
@@ -816,7 +854,23 @@ export default function ProductoFormPage() {
                     onChange={e => setForm(p => ({ ...p, unidad_medida: e.target.value }))}
                     className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
                     {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                    {(unidadesCustom as any[]).length > 0 && (
+                      <optgroup label="Personalizadas">
+                        {(unidadesCustom as any[]).map((u: any) => (
+                          <option key={u.nombre} value={u.nombre}>{u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stock mínimo</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta cuando el stock baje de este valor</p>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={form.stock_minimo} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, stock_minimo: e.target.value }))}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
                 </div>
               </div>
               {!isEditing && (
@@ -1008,6 +1062,12 @@ export default function ProductoFormPage() {
                   { key: 'tiene_lote', label: 'Control por lote', desc: 'El stock se agrupa por número de lote' },
                   { key: 'tiene_vencimiento', label: 'Fecha de vencimiento', desc: 'Registra fecha de vencimiento por línea' },
                   { key: 'es_kit', label: 'Es un KIT', desc: 'Se arma a partir de otros SKUs (kitting). Configurá la receta en Inventario → Kits.' },
+                  { key: 'tiene_pais_origen', label: 'País de Origen', desc: 'Registra el país de origen en cada ingreso de inventario' },
+                  { key: 'tiene_talle', label: 'Talle / Talla', desc: 'Registra el talle de cada unidad (ropa, calzado)' },
+                  { key: 'tiene_color', label: 'Color', desc: 'Identifica el color de cada unidad' },
+                  { key: 'tiene_encaje', label: 'Encaje', desc: 'Variante de encaje o ajuste' },
+                  { key: 'tiene_formato', label: 'Formato', desc: 'Formato o presentación del producto' },
+                  { key: 'tiene_sabor_aroma', label: 'Sabor / Aroma', desc: 'Sabor o aroma de cada unidad' },
                 ].map(({ key, label, desc }) => (
                   <label key={key} className="flex items-start gap-3 cursor-pointer">
                     <div className="relative mt-0.5">
@@ -1023,6 +1083,20 @@ export default function ProductoFormPage() {
                     </div>
                   </label>
                 ))}
+                {/* ISS-119: Shelf Life — solo visible cuando tiene_vencimiento */}
+                {form.tiene_vencimiento && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Vida útil (días)
+                      <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal" title="Días desde la fabricación hasta el vencimiento. Usado para calcular alertas de vencimiento próximo.">(días de shelf life)</span>
+                    </label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
+                      value={form.shelf_life_dias}
+                      onChange={e => setForm(p => ({ ...p, shelf_life_dias: e.target.value }))}
+                      placeholder="Ej: 365"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                  </div>
+                )}
               </div>
             )}
           </div>

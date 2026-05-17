@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-17] update | ISS-113/115/119/120/121/122/123/125/126 — atributos producto + UdM + inactivos + variantes (v1.8.29-dev)
+
+Cambios en esta sesión:
+- **ISS-115**: campo `marca` en ProductoFormPage (datos básicos, sin required)
+- **ISS-119**: campo `shelf_life_dias` visible solo si `tiene_vencimiento` está activo
+- **ISS-113/121**: 6 nuevos toggles de variante en Tracking: pais_origen, talle, color, encaje, formato, sabor_aroma
+- **ISS-120**: CRUD de unidades de medida personalizadas en ConfigPage (nuevo tab "Unidades") + optgroup en ProductoFormPage
+- **ISS-122**: ProductosPage sin filtro activo, toggle "Ver inactivos", badge Inactivo + opacity-60
+- **ISS-123**: Bulk bar: botón único toggle Desactivar/Reactivar según mayoría seleccionada
+- **ISS-125**: Campos de variante en LpnAccionesModal (tab Editar) e IngresarPage (modal ingreso)
+- **ISS-126**: Campos de variante en RecepcionesPage (FormItem + insert inventario_lineas)
+- Migrations aplicadas en DEV: 118 (campos producto variantes) + 119 (unidades_medida)
+- DEV: `v1.8.29` | PROD: `v1.8.27`
+
 ## [2026-05-16] update | Wiki — actualización completa v1.8.28-dev (multi-sucursal + defaults)
 
 Páginas actualizadas:

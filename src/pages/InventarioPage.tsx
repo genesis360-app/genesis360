@@ -3083,7 +3083,7 @@ export default function InventarioPage() {
                 </button>
 
                 {filterPanelOpen && (
-                  <div className="absolute left-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 p-5 space-y-4">
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 p-5 space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Filtros</h3>
                       <button onClick={() => setFilterPanelOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={14} /></button>

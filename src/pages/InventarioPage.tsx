@@ -3060,12 +3060,11 @@ export default function InventarioPage() {
               title="Escanear código de barras">
               <Camera size={17} />
             </button>
-          </div>
 
-          {/* Filtros — pill button con popover */}
-          {(() => {
-            const activeCount = [filterCat, filterUbic, filterEstado, filterProv].filter(Boolean).length + (filterAlerta ? 1 : 0)
-            return (
+            {/* Filtros — pill button con popover */}
+            {(() => {
+              const activeCount = [filterCat, filterUbic, filterEstado, filterProv].filter(Boolean).length + (filterAlerta ? 1 : 0)
+              return (
               <div className="relative" ref={filterPanelRef}>
                 <button
                   onClick={() => setFilterPanelOpen(v => !v)}
@@ -3152,8 +3151,9 @@ export default function InventarioPage() {
                   </div>
                 )}
               </div>
-            )
-          })()}
+              )
+            })()}
+          </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {(invLoading || lineasLoading) ? (

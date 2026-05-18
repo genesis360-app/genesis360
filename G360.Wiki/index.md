@@ -17,7 +17,8 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/features/autenticacion-onboarding]] | Google OAuth, roles, trial · fix registro · defaults seed (Sucursal 1 + Caja + motivos + estados) | ✅ |
-| [[wiki/features/inventario-stock]] | LPNs, FIFO/FEFO, stock sucursal, bulk edit · conteos borrador · rebaje masivo fix · shortcuts ESC/ENTER | ✅ |
+| [[wiki/features/productos]] | ProductosPage + ProductoFormPage · 6 cards · marca/UdM/variantes/shelf life · grupos · ubicación por sucursal · inactivos visibles | ✅ |
+| [[wiki/features/inventario-stock]] | LPNs, FIFO/FEFO, stock sucursal, bulk edit · conteos borrador · rebaje masivo fix · shortcuts ESC/ENTER · filtros pill · defaults producto · modales inline | ✅ |
 | [[wiki/features/ventas-pos]] | Carrito, 3 modos, CC parcial, cuotas, ticket sucursal · ISS-105/106 envío + historial sucursal | ✅ |
 | [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja · caja predeterminada ★ · cajas.sucursal_id · Caja Principal en seed | ✅ |
 | [[wiki/features/gastos]] | Variables, fijos, IVA, OC · efectivo en caja · CC en OC · comprobante OC · ISS-044 ticket OC | ✅ |
@@ -31,10 +32,10 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/notificaciones]] | Tabla real, campana, email, diferencia apertura caja — v1.5.0 | ✅ |
 | [[wiki/features/suscripciones-planes]] | Planes Free/Básico/Pro/Enterprise, trial, Mercado Pago | ✅ |
 | [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku fallback | ✅ |
-| [[wiki/features/multi-sucursal]] | Selector, roles, stock · sucursal default · backfill 114–117 · filtros estrictos · cajas por sucursal | ✅ |
+| [[wiki/features/multi-sucursal]] | Selector, roles, stock · sucursal default · backfill 114–117 · filtros estrictos · cajas por sucursal · ubicacion por sucursal (121) | ✅ |
 | [[wiki/features/alertas]] | Stock bajo, LPNs vencidos, reservas viejas, sin categoría, deuda · filtro por sucursal | ✅ |
 | [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos | ✅ |
-| [[wiki/features/reportes-metricas]] | Dashboard 9 áreas, SQL Runner, aging individual · tab Todo filtro por sucursal | ✅ |
+| [[wiki/features/reportes-metricas]] | Dashboard 9 áreas, SQL Runner, aging individual · tab Todo filtro por sucursal · nueva nav (area+sub-tabs) | ✅ |
 | [[wiki/features/grupos-variantes]] | Grupos de variantes (talle, color, etc.) · ProductoGrupoModal · vista agrupada en ProductosPage · migration 120 | ✅ |
 
 ---
@@ -58,7 +59,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | 117 + 086b en DEV (001-117) · PROD 001-110 · descripción completa | ✅ |
+| [[wiki/database/migraciones]] | 121 + 086b en DEV (001-121) · PROD 001-110 · descripción completa | ✅ |
 | [[wiki/database/rls-policies]] | Patrón subquery, funciones helper, Storage, Edge Functions | ✅ |
 | [[wiki/database/triggers]] | Stock, numeración, integraciones, nómina, stock mínimo | ✅ |
 
@@ -125,4 +126,4 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
-*Última actualización: 2026-05-16 — 48 páginas · 8 fuentes en raw/ · 118 migraciones DEV (117 + 086b) · v1.8.27-prod / v1.8.28-dev*
+*Última actualización: 2026-05-18 — 51 páginas · 8 fuentes en raw/ · 122 migraciones DEV (121 + 086b) · v1.8.27-prod / v1.8.31-dev*

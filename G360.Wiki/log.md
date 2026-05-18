@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-18] update | Wiki — actualización completa v1.8.29–v1.8.31
+
+- `productos.md`: página nueva — ProductoFormPage 6 cards, atributos variante, marca, UdM custom, ubicación por sucursal, grupos, inactivos, defaults al ingresar
+- `inventario-stock.md`: filtros pill (v1.8.28), defaults producto (v1.8.30), modales inline results (v1.8.31)
+- `reportes-metricas.md`: Dashboard nueva estructura de navegación — area tabs + sub-tabs + filtro pill (v1.8.31)
+- `multi-sucursal.md`: ubicacion_sucursal (migration 121), filtros OC/Facturación (v1.8.28)
+- `migraciones.md`: migrations 118–121, total DEV 122 archivos
+- `project_pendientes.md`: DEV v1.8.31, migrations 001–121
+- `index.md`: nueva página productos.md, conteos y versiones actualizados
+
 ## [2026-05-17] update | feat: grupos de variantes de producto (migration 120, v1.8.30-dev)
 
 Cambios en esta sesión:

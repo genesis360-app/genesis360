@@ -1,0 +1,249 @@
+---
+title: Productos
+category: features
+tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal]
+sources: [CLAUDE.md]
+updated: 2026-05-18
+---
+
+# Productos
+
+Módulo de catálogo de productos. Global por tenant — mismo catálogo visible en todas las sucursales.
+
+**Páginas:** `src/pages/ProductosPage.tsx` · `src/pages/ProductoFormPage.tsx`  
+**Acceso:** todos los roles con permiso de inventario
+
+---
+
+## ProductosPage
+
+CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones masivas.
+
+### Barra de búsqueda y filtros
+
+- Search por nombre / SKU / código de barras
+- Filtros: Categoría, Proveedor
+- Toggle "Ver inactivos" — muestra productos con `activo = false` (opacity-60 + badge "Inactivo")
+- Toggle "Agrupar variantes" (ícono Layers) — alterna entre vista plana y vista agrupada por grupos
+
+### Vista plana (default)
+
+- Lista todos los productos
+- Badge `• Parte de "X"` bajo el nombre cuando el producto tiene `grupo_id`
+- Productos inactivos: `opacity-60` + badge "Inactivo" (ISS-122)
+
+### Vista agrupada (grupos de variantes)
+
+- Productos sin grupo → sección "Productos individuales" (colapsable)
+- Grupos como secciones expandibles con tabla de variantes: Nombre/SKU | Variante | Precio | Stock
+- Botón "Editar grupo" en cada sección
+
+### Productos inactivos (ISS-122)
+
+- Por defecto solo se muestran productos activos
+- Toggle "Ver inactivos" en barra de búsqueda
+- Productos inactivos: fila con `opacity-60` + badge gris "Inactivo"
+- Acción rápida para reactivar desde la bulk action bar
+
+### Bulk action bar
+
+Al seleccionar uno o más productos, aparece barra de acciones masivas:
+
+| Acción | Detalle |
+|--------|---------|
+| Activar / Desactivar (ISS-123) | Botón único toggle: si la mayoría seleccionada está activa → "Desactivar"; si la mayoría está inactiva → "Activar". Acción aplicada en batch. |
+| Precio | Actualiza precio de venta masivamente |
+| Proveedor | Asigna proveedor a los seleccionados |
+| Precio mayorista | Actualiza precio mayorista |
+
+### Panel lateral "Grupos"
+
+Botón "Grupos" en barra de acciones → panel lateral (drawer):
+- Lista de grupos existentes con nombre y cantidad de variantes
+- Botón "Nuevo grupo" → abre `ProductoGrupoModal`
+- Click en grupo → abre `ProductoGrupoModal` en modo edición
+
+---
+
+## ProductoFormPage — 6 cards reorganizados (v1.8.29-dev)
+
+La página de creación/edición fue reorganizada en 6 cards temáticos. Columna derecha: Imagen + QR (solo al editar).
+
+### Card 1: Identificación
+
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| Nombre | text (required) | — |
+| SKU | text | Auto-generado con `calcularSiguienteSKU()` si está vacío |
+| Código de barras | text | Scan con cámara disponible |
+| Marca | text | Sin required (ISS-115, migration 118) |
+| Descripción | textarea | — |
+
+### Card 2: Clasificación
+
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| Categoría | select | Lista del tenant |
+| Proveedor | select | Lista del tenant |
+| Activo / Inactivo | toggle | Inactivo bloquea ingreso de stock |
+
+### Card 3: Precios
+
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| Precio costo | number | No required; alerta si queda en $0 |
+| Precio venta ARS | number | Incluye IVA |
+| Precio venta USD | number | Opcional |
+| IVA | select | Alícuota aplicable |
+| Margen objetivo | number | % — activa insightMargen en Dashboard |
+| Precios mayoristas | accordion | Tabla de tiers por cantidad (migration 092) |
+
+### Card 4: Stock e inventario
+
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| Stock mínimo | number | Global; override por sucursal (migration 052) |
+| Unidad de medida | select | Predefinidas + `<optgroup>` con UdM personalizadas del tenant (migration 119) |
+| Ubicación predeterminada | select | Ver sección "Ubicación predeterminada por sucursal" |
+| Estado inventario predeterminado | select | Estado a asignar al ingresar stock |
+| Regla inventario | select | FIFO / FEFO / LEFO / LIFO / Manual |
+
+### Card 5: Trazabilidad
+
+| Campo | Tipo | Notas |
+|-------|------|-------|
+| Tiene series | toggle | Habilita tracking serial |
+| Tiene lote | toggle | Habilita campo nro_lote |
+| Tiene vencimiento | toggle | Habilita fecha_vencimiento + shelf_life_dias (migration 118) |
+| Shelf life (días) | number | Visible solo si `tiene_vencimiento = true` |
+| País de origen | toggle | `tiene_pais_origen` (ISS-113, migration 118) |
+| Talle | toggle | `tiene_talle` (ISS-121, migration 118) |
+| Color | toggle | `tiene_color` (ISS-121, migration 118) |
+| Encaje | toggle | `tiene_encaje` (ISS-121, migration 118) |
+| Formato | toggle | `tiene_formato` (ISS-121, migration 118) |
+| Sabor / Aroma | toggle | `tiene_sabor_aroma` (ISS-121, migration 118) |
+| Es kit | toggle | Habilita composición de kit |
+| Aging profile | select | Solo si `tiene_vencimiento` |
+
+**Campos de variante en LPN:**
+Los mismos atributos (pais_origen, talle, color, encaje, formato, sabor_aroma) se capturan al ingresar stock:
+- `LpnAccionesModal` tab Editar
+- `InventarioPage` modal ingreso
+- `RecepcionesPage` FormItem + insert en `inventario_lineas`
+
+### Card 6: Marketplace
+
+Visible solo si el tenant tiene `marketplace_activo = true`.
+
+| Campo | Tipo |
+|-------|------|
+| Publicar | toggle |
+| Precio marketplace | number |
+| Stock reservado | number |
+| Descripción marketplace | textarea |
+
+### Grupos de variantes (card entre Trazabilidad y Marketplace)
+
+- Sin grupo: botón "Vincular a un grupo" → dropdown o "Nuevo grupo"
+- Con grupo: badge "Variante de: nombre", selects/inputs por atributo del grupo, lista de otras variantes con link a editar, botón "Desvincular"
+- Guardado: `grupo_id` + `variante_valores JSONB`
+
+---
+
+## Ubicación predeterminada por sucursal (migration 121 · v1.8.31-dev)
+
+```sql
+producto_ubicacion_sucursal(
+  producto_id UUID,
+  sucursal_id UUID,
+  ubicacion_id UUID,
+  UNIQUE(producto_id, sucursal_id)
+)
+```
+
+**Comportamiento en ProductoFormPage:**
+
+| Contexto | Select muestra | Guarda en |
+|----------|---------------|-----------|
+| Con sucursal activa en header | Ubicaciones de esa sucursal + globales | `producto_ubicacion_sucursal` (upsert) |
+| Sin sucursal activa (vista global) | Todas las ubicaciones | `productos.ubicacion_id` (fallback global) |
+
+**Resolución al ingresar stock:**
+
+1. Busca en `producto_ubicacion_sucursal` por `(producto_id, sucursal_id)` activa
+2. Fallback: `productos.ubicacion_id` global
+3. Operador puede modificar antes de confirmar
+
+**Corrección bug (v1.8.31-dev):** un solo `<select>` por sucursal activa (antes renderizaba dos selects cuando la sucursal variaba durante la sesión de edición).
+
+Patrón idéntico a `producto_stock_minimo_sucursal` (migration 052).
+
+---
+
+## Unidades de medida personalizables (migration 119 · ISS-120)
+
+```sql
+unidades_medida(
+  tenant_id UUID,
+  nombre TEXT,      -- ej: "Docena"
+  simbolo TEXT,     -- ej: "doc"
+  activo BOOLEAN
+)
+RLS: tenant isolation
+```
+
+- CRUD en `ConfigPage` → tab "Unidades"
+- En `ProductoFormPage`: selector UdM con `<optgroup label="Predefinidas">` y `<optgroup label="Personalizadas">`
+- Predefinidas: Unidad, Kg, g, L, ml, m, cm, caja, pack (hardcodeadas en UI)
+
+---
+
+## Defaults del producto al ingresar stock (v1.8.30-dev)
+
+Al seleccionar un producto para ingresar stock (por scan o búsqueda), el formulario se pre-rellena con:
+
+| Campo | Fuente |
+|-------|--------|
+| Ubicación | `producto_ubicacion_sucursal` (sucursal activa) → fallback `productos.ubicacion_id` |
+| Estado | `productos.estado_inventario_predeterminado` |
+| Proveedor | `productos.proveedor_id` |
+
+El operador puede modificar cualquier valor antes de confirmar.
+
+**Aplicado en:**
+- `InventarioPage` — tab Agregar Stock (scan y búsqueda manual)
+- `RecepcionesPage` — formulario manual y desde OC
+
+---
+
+## Nuevos campos (migrations 118–121)
+
+| Campo | Tabla | Descripción |
+|-------|-------|-------------|
+| `marca` | `productos` | Nombre de la marca (TEXT, sin required) |
+| `shelf_life_dias` | `productos` | Vida útil en días (visible si `tiene_vencimiento = true`) |
+| `tiene_pais_origen` | `productos` | Toggle de variante atributo |
+| `tiene_talle` | `productos` | Toggle de variante atributo |
+| `tiene_color` | `productos` | Toggle de variante atributo |
+| `tiene_encaje` | `productos` | Toggle de variante atributo |
+| `tiene_formato` | `productos` | Toggle de variante atributo |
+| `tiene_sabor_aroma` | `productos` | Toggle de variante atributo |
+| `grupo_id` | `productos` | FK a `producto_grupos` (migration 120) |
+| `variante_valores` | `productos` | JSONB con valores de variante del grupo (migration 120) |
+| `pais_origen` | `inventario_lineas` | Valor capturado al ingresar |
+| `talle` | `inventario_lineas` | Valor capturado al ingresar |
+| `color` | `inventario_lineas` | Valor capturado al ingresar |
+| `encaje` | `inventario_lineas` | Valor capturado al ingresar |
+| `formato` | `inventario_lineas` | Valor capturado al ingresar |
+| `sabor_aroma` | `inventario_lineas` | Valor capturado al ingresar |
+
+---
+
+## Links relacionados
+
+- [[wiki/features/grupos-variantes]]
+- [[wiki/features/inventario-stock]]
+- [[wiki/features/wms]]
+- [[wiki/features/multi-sucursal]]
+- [[wiki/database/migraciones]]
+- [[wiki/database/schema-overview]]

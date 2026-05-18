@@ -390,11 +390,49 @@ Con el backfill completo, se eliminó el workaround `OR sucursal_id IS NULL` de:
 
 ---
 
+## Ubicación predeterminada por sucursal (migration 121 · v1.8.31-dev)
+
+```sql
+producto_ubicacion_sucursal(
+  producto_id UUID,
+  sucursal_id UUID,
+  ubicacion_id UUID,
+  UNIQUE(producto_id, sucursal_id)
+)
+```
+
+**Comportamiento en ProductoFormPage:**
+
+| Contexto | Select muestra | Guarda en |
+|----------|---------------|-----------|
+| Con sucursal activa en header | Ubicaciones de esa sucursal + globales | `producto_ubicacion_sucursal` (upsert) |
+| Sin sucursal activa (vista global) | Todas las ubicaciones | `productos.ubicacion_id` (fallback global) |
+
+**Resolución al ingresar stock:**
+1. Busca en `producto_ubicacion_sucursal` por `(producto_id, sucursal_id)` activa
+2. Fallback: `productos.ubicacion_id` global
+
+Patrón idéntico a `producto_stock_minimo_sucursal` (migration 052).
+
+---
+
+## Filtros OC y Facturación por sucursal (v1.8.28-dev)
+
+| Módulo | Cambio |
+|--------|--------|
+| ProveedoresPage tab OC | `applyFilter` aplicado al listado de OCs + `sucursalId` en queryKey |
+| FacturacionPage — ventas sin CAE | Filtro por sucursal activa |
+| FacturacionPage — facturas emitidas | Filtro por sucursal activa |
+| OC desde ProductosPage | Busca borrador OC de la misma sucursal activa + crea OC con `sucursal_id` correcto |
+
+---
+
 ## Links relacionados
 
 - [[wiki/architecture/estado-global]]
 - [[wiki/architecture/multi-tenant-rls]]
 - [[wiki/features/inventario-stock]]
+- [[wiki/features/productos]]
 - [[wiki/features/caja]]
 - [[wiki/support/supabase-db-rescue]]
 - [[wiki/integrations/tienda-nube]]

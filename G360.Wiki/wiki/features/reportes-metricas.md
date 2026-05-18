@@ -215,6 +215,46 @@ Sub-navegación en la pestaña "General". Cada área tiene filtros, KPIs, gráfi
 
 ---
 
+## Dashboard — nueva estructura de navegación (v1.8.31-dev)
+
+La navegación del DashboardPage fue rediseñada con dos filas independientes:
+
+```
+Row 1 — Area tabs (pills):
+[Todo] [Ventas] [Gastos] [Productos] [Inventario] [Clientes]
+[Proveedores] [Facturación] [Envíos] [Marketing]
+
+Row 2 — Sub-tabs (underline) + Filtros (derecha):
+[Insights] [Métricas] [Rentabilidad] [Recomendaciones] [Gráficos]     [🎚 Filtros]
+```
+
+### Area tabs (Row 1)
+
+- Estilo pill/badge
+- Seleccionar un área resetea el sub-tab activo a "overview"
+- Area "Todo" = vista general del negocio
+
+### Sub-tabs (Row 2)
+
+- Estilo underline (igual que antes)
+- Comunes para todas las áreas
+- Filtro pill visible solo en area "Todo" — igual patrón que `DashVentasArea` (período, moneda, IVA)
+
+### Comportamiento por combinación área + sub-tab
+
+| Área | Sub-tab | Contenido |
+|------|---------|-----------|
+| Todo | overview | KPIs, charts, fugas, cobertura (contenido general) |
+| Todo | Insights | Score de salud, recomendaciones expandidas |
+| Todo | Métricas | KPIs por período, margenProductos, gananciaNeta |
+| Todo | Rentabilidad | Margen por producto, precio_venta_neto vs costo |
+| Todo | Recomendaciones | Lista completa de insights con CTA |
+| Todo | Gráficos | Placeholder "Próximamente" |
+| Ventas / Gastos / … | overview | Componente `DashXArea` correspondiente |
+| Ventas / Gastos / … | otros sub-tabs | "Próximamente — Insights de {área} en desarrollo" |
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/inventario-stock]]

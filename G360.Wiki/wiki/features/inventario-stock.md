@@ -320,6 +320,53 @@ Implementado `useModalKeyboard` en todas las secciones:
 
 ---
 
+## Filtros tab Inventario — pill button (v1.8.28-dev)
+
+- Botón píldora "Filtros" con ícono `SlidersHorizontal` + badge con cantidad de filtros activos
+- Popover con: Categoría, Ubicación, Estado, Proveedor + toggle "Solo stock crítico"
+- Click fuera cierra el panel
+- Las ubicaciones del popover ya están filtradas por sucursal activa
+- Filtros filtran el listado de LPNs por sucursal
+
+---
+
+## Defaults del producto al ingresar stock (v1.8.30-dev)
+
+Al seleccionar producto (scan o búsqueda manual), el formulario de ingreso se pre-rellena automáticamente:
+
+| Campo | Fuente |
+|-------|--------|
+| Ubicación | `producto_ubicacion_sucursal` (sucursal activa) → fallback `productos.ubicacion_id` |
+| Estado | `productos.estado_inventario_predeterminado` |
+| Proveedor | `productos.proveedor_id` |
+
+El operador puede modificar cualquier campo antes de confirmar.
+
+---
+
+## Modales ingreso/quita — UX renovada (v1.8.31-dev)
+
+Ambos modales (Agregar Stock y Quitar Stock) fueron refactorizados para eliminar el doble scrollbar y mejorar la UX mobile:
+
+**Estructura del modal:**
+```
+Modal: flex flex-col · max-h-[90vh]
+├── Header fijo:   título + botón X
+├── Search fijo:   input de búsqueda
+├── Body scrollable (único overflow-y-auto):
+│    ├── Sin producto seleccionado: resultados inline (no dropdown absoluto)
+│    └── Con producto seleccionado: chip nombre/SKU/X + formulario completo
+└── Footer fijo:   Cancelar + Confirmar (solo visible cuando hay producto)
+```
+
+**Cambios clave:**
+- Resultados de búsqueda como lista inline dentro del body (no dropdown absoluto sobre el modal)
+- Chip con nombre, SKU y botón X para deseleccionar el producto
+- Footer con botones solo aparece cuando hay un producto seleccionado
+- Un único `overflow-y-auto` en el body — sin doble scrollbar
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/ventas-pos]]
@@ -327,5 +374,6 @@ Implementado `useModalKeyboard` en todas las secciones:
 - [[wiki/features/wms]]
 - [[wiki/features/escaneo-barcode]]
 - [[wiki/features/multi-sucursal]]
+- [[wiki/features/productos]]
 - [[wiki/database/triggers]]
 - [[wiki/database/schema-overview]]

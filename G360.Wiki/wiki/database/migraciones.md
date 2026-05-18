@@ -169,11 +169,12 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 115 | `115_backfill_sucursal_ventas_gastos_envios.sql` | Backfill `sucursal_id` en `ventas`, `gastos`, `envios` → sucursal más antigua del tenant |
 | 116 | `116_backfill_sucursal_resto.sql` | Backfill `sucursal_id` en `recepciones`, `ordenes_compra`, `movimientos_stock` |
 | 117 | `117_backfill_sucursal_completo.sql` | Backfill final: `inventario_lineas`, `inventario_conteos`, `caja_sesiones`, `recursos`, `puntos_venta_afip`, `cajas` (op) |
-| 118 | `118_producto_variantes_atributos.sql` | Campos de variante en `productos`: marca, shelf_life_dias, tiene_talle, tiene_color, etc. |
-| 119 | `119_unidades_medida.sql` | Tabla `unidades_medida` — UdM personalizadas por tenant |
-| 120 | `120_producto_grupos_variantes.sql` | Tabla `producto_grupos` + `productos.grupo_id` + `productos.variante_valores` — grupos de variantes |
+| 118 | `118_productos_atributos_nuevos.sql` | `productos`: marca, shelf_life_dias, tiene_pais_origen, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma · `inventario_lineas`: pais_origen, talle, color, encaje, formato, sabor_aroma |
+| 119 | `119_unidades_medida_custom.sql` | Tabla `unidades_medida` (tenant_id, nombre, simbolo, activo) con RLS |
+| 120 | `120_producto_grupos_variantes.sql` | Tabla `producto_grupos` (nombre, atributos JSONB, precio_base, categoria_id) · `productos`: grupo_id FK + variante_valores JSONB |
+| 121 | `121_producto_ubicacion_sucursal.sql` | Tabla `producto_ubicacion_sucursal` (producto_id, sucursal_id, ubicacion_id) — UNIQUE(producto_id, sucursal_id) |
 
-**Total aplicadas en DEV:** 120 + 086b = 121 archivos · **PROD:** 110 + 086b (pendiente deploy)
+**Total aplicadas en DEV:** 121 + 086b = 122 archivos · **PROD:** 110 + 086b (113–121 pendientes)
 
 ---
 

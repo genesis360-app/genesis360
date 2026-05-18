@@ -244,6 +244,8 @@ export default function RecepcionesPage() {
             cantidad_esperada: it.cantidad,
             cantidad_recibida: String(it.cantidad),
             estructura_id,
+            ubicacion_id: p.ubicacion_id ?? '',
+            estado_id:    p.estado_id    ?? '',
           })
         }))
         setItems(itemsConEstructura)
@@ -293,6 +295,9 @@ export default function RecepcionesPage() {
       precio_costo_default: p.precio_costo ?? 0,
       precio_costo: String(p.precio_costo ?? ''),
       estructura_id,
+      // Defaults del producto — el usuario puede modificarlos antes de confirmar
+      ubicacion_id: p.ubicacion_id ?? '',
+      estado_id:    p.estado_id    ?? '',
     })])
     setProdSearch('')
     setProdFocused(false)

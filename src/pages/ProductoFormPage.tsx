@@ -585,10 +585,6 @@ export default function ProductoFormPage() {
         )}
         {isEditing && canEdit && (
           <div className="flex gap-2">
-            <button type="button" onClick={() => setShowQR(true)}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-accent border border-accent/30 rounded-xl hover:bg-accent/10 transition-all">
-              <QrCode size={15} /> QR
-            </button>
             <button type="button" onClick={handleDuplicate} disabled={saving}
               className="flex items-center gap-2 px-3 py-2 text-sm text-primary border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all disabled:opacity-50">
               <Copy size={15} /> Duplicar

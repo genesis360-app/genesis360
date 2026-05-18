@@ -1569,7 +1569,13 @@ export default function InventarioPage() {
     }
     const prod = prods[0] as unknown as Producto
     setSelectedProduct(prod)
-    setForm(f => ({ ...f, productoSearch: '', ubicacionId: (prod as any).ubicacion_id ?? f.ubicacionId }))
+    setForm(f => ({
+      ...f,
+      productoSearch: '',
+      ubicacionId: (prod as any).ubicacion_id ?? f.ubicacionId,
+      estadoId:    (prod as any).estado_id    ?? f.estadoId,
+      proveedorId: (prod as any).proveedor_id ?? f.proveedorId,
+    }))
   }
 
   // ── Masivo inline helpers ─────────────────────────────────────────────────
@@ -2520,7 +2526,13 @@ export default function InventarioPage() {
                           {productosBusqueda.map(p => (
                             <button key={p.id} onClick={() => {
                               setSelectedProduct(p)
-                              setForm(f => ({ ...f, productoSearch: '', ubicacionId: (p as any).ubicacion_id ?? f.ubicacionId }))
+                              setForm(f => ({
+                                ...f,
+                                productoSearch: '',
+                                ubicacionId: (p as any).ubicacion_id ?? f.ubicacionId,
+                                estadoId:    (p as any).estado_id    ?? f.estadoId,
+                                proveedorId: (p as any).proveedor_id ?? f.proveedorId,
+                              }))
                             }}
                               className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm border-b border-gray-50 last:border-0">
                               <span className="font-medium">{p.nombre}</span>

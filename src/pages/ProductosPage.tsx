@@ -4,7 +4,7 @@ import {
   Plus, Search, Package, AlertTriangle, Camera, ChevronDown, ChevronRight,
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
   CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
-  DollarSign, Percent, Truck, ToggleRight,
+  DollarSign, Percent, Truck, ToggleRight, Boxes,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -17,6 +17,7 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import type { ProductoEstructura } from '@/lib/supabase'
+import ProductoGrupoModal, { type ProductoGrupo } from '@/components/ProductoGrupoModal'
 
 type Tab = 'productos' | 'estructura'
 
@@ -429,6 +430,12 @@ export default function ProductosPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
+
+  // Grupos
+  const [gruposPanel, setGruposPanel] = useState(false)
+  const [grupoModal, setGrupoModal] = useState<{ open: boolean; grupo: ProductoGrupo | null }>({ open: false, grupo: null })
+  const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
 
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -595,6 +602,20 @@ export default function ProductosPage() {
       return data ?? []
     },
     enabled: !!tenant && bulkModal === 'proveedor',
+  })
+
+  const { data: productosGrupos = [] } = useQuery({
+    queryKey: ['producto-grupos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('producto_grupos')
+        .select('*, categorias(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .order('nombre')
+      return (data ?? []) as ProductoGrupo[]
+    },
+    enabled: !!tenant,
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -845,6 +866,11 @@ export default function ProductosPage() {
               <button onClick={() => exportarProductos('csv')}  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">CSV</button>
             </div>
           </div>
+          <button
+            onClick={() => setGruposPanel(true)}
+            className="flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+            <Boxes size={15} /> Grupos
+          </button>
           <Link to="/productos/importar"
             className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all">
             Importar
@@ -1035,6 +1061,16 @@ export default function ProductosPage() {
                 placeholder="Buscar por nombre, SKU o código..."
                 className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
             </div>
+            <button
+              onClick={() => setViewMode(v => v === 'flat' ? 'grouped' : 'flat')}
+              title={viewMode === 'flat' ? 'Agrupar variantes' : 'Vista plana'}
+              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-sm transition-all shrink-0
+                ${viewMode === 'grouped'
+                  ? 'bg-accent text-white border-accent'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:text-accent hover:border-accent'}`}>
+              <Layers size={15} />
+              <span className="hidden sm:inline whitespace-nowrap">Agrupar variantes</span>
+            </button>
             <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
               <div className="relative">
                 <input type="checkbox" checked={showInactivos} onChange={e => setShowInactivos(e.target.checked)} className="sr-only" />
@@ -1051,6 +1087,169 @@ export default function ProductosPage() {
             </button>
           </div>
 
+          {/* ════════ VISTA AGRUPADA ════════ */}
+          {viewMode === 'grouped' && (
+            <div className="space-y-4">
+              {/* Productos sin grupo */}
+              {(() => {
+                const sinGrupo = filtered.filter(p => !(p as any).grupo_id)
+                if (sinGrupo.length === 0) return null
+                return (
+                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedGrupos(prev => {
+                        const n = new Set(prev)
+                        n.has('__sin_grupo__') ? n.delete('__sin_grupo__') : n.add('__sin_grupo__')
+                        return n
+                      })}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Package size={15} className="text-gray-400" />
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Productos individuales</span>
+                        <span className="px-1.5 py-0.5 rounded-full text-xs bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">{sinGrupo.length}</span>
+                      </div>
+                      {expandedGrupos.has('__sin_grupo__') ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                    </button>
+                    {expandedGrupos.has('__sin_grupo__') && (
+                      <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                        {sinGrupo.map(p => {
+                          const disponible = stockDisponibleMap[p.id] ?? 0
+                          const critDisp = disponible <= (p as any).stock_minimo
+                          const inactivo = !(p as any).activo
+                          return (
+                            <div key={p.id} className={`flex items-center gap-3 px-4 py-2.5 ${inactivo ? 'opacity-60' : ''}`}>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.nombre}</p>
+                                <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{(p as any).sku}</p>
+                              </div>
+                              <p className="text-sm text-gray-600 dark:text-gray-300 flex-shrink-0 hidden sm:block">
+                                ${((p as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                              </p>
+                              <span className={`flex-shrink-0 px-2 py-0.5 rounded-lg text-xs font-semibold
+                                ${critDisp ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
+                                {disponible} {(p as any).unidad_medida}
+                              </span>
+                              <Link to={`/productos/${p.id}/editar`} className="text-xs text-accent hover:underline flex-shrink-0">
+                                Editar
+                              </Link>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
+              {/* Grupos */}
+              {productosGrupos.map(grupo => {
+                const variantes = filtered.filter(p => (p as any).grupo_id === grupo.id)
+                const isOpen = expandedGrupos.has(grupo.id)
+                return (
+                  <div key={grupo.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                    <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-700/50">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedGrupos(prev => {
+                          const n = new Set(prev)
+                          n.has(grupo.id) ? n.delete(grupo.id) : n.add(grupo.id)
+                          return n
+                        })}
+                        className="flex-1 flex items-center gap-2 min-w-0 text-left hover:opacity-80 transition-opacity"
+                      >
+                        <Boxes size={15} className="text-accent flex-shrink-0" />
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">{grupo.nombre}</span>
+                        <span className="px-1.5 py-0.5 rounded-full text-xs bg-accent/10 text-accent flex-shrink-0">{variantes.length} variantes</span>
+                        {grupo.precio_base != null && (
+                          <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
+                            Base: ${grupo.precio_base.toLocaleString('es-AR')}
+                          </span>
+                        )}
+                        {isOpen ? <ChevronUp size={14} className="text-gray-400 ml-auto flex-shrink-0" /> : <ChevronDown size={14} className="text-gray-400 ml-auto flex-shrink-0" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGrupoModal({ open: true, grupo })}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-accent transition-colors flex-shrink-0 px-2 py-1 rounded-lg hover:bg-accent/10"
+                      >
+                        <Edit2 size={12} /> Editar grupo
+                      </button>
+                    </div>
+                    {isOpen && (
+                      variantes.length === 0 ? (
+                        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Sin variantes. Generá combinaciones en &quot;Editar grupo&quot;.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-gray-100 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                                <th className="text-left px-4 py-2 font-medium">Nombre / SKU</th>
+                                <th className="text-left px-4 py-2 font-medium hidden sm:table-cell">Variante</th>
+                                <th className="text-right px-4 py-2 font-medium">Precio</th>
+                                <th className="text-right px-4 py-2 font-medium">Stock</th>
+                                <th className="px-4 py-2" />
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                              {variantes.map(v => {
+                                const disponible = stockDisponibleMap[v.id] ?? 0
+                                const critDisp = disponible <= (v as any).stock_minimo
+                                const inactivo = !(v as any).activo
+                                return (
+                                  <tr key={v.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors ${inactivo ? 'opacity-60' : ''}`}>
+                                    <td className="px-4 py-2.5">
+                                      <p className="font-medium text-gray-800 dark:text-gray-100 truncate max-w-[200px]">{v.nombre}</p>
+                                      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{(v as any).sku}</p>
+                                    </td>
+                                    <td className="px-4 py-2.5 hidden sm:table-cell">
+                                      <div className="flex flex-wrap gap-1">
+                                        {(v as any).variante_valores && Object.entries((v as any).variante_valores as Record<string, string>).map(([k, val]) => (
+                                          <span key={k} className="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                                            {k}: {val}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right text-gray-700 dark:text-gray-300">
+                                      ${((v as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right">
+                                      <span className={`px-2 py-0.5 rounded-lg text-xs font-semibold
+                                        ${critDisp ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'}`}>
+                                        {disponible} {(v as any).unidad_medida}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right">
+                                      <Link to={`/productos/${v.id}/editar`} className="text-xs text-accent hover:underline">
+                                        Editar
+                                      </Link>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    )}
+                  </div>
+                )
+              })}
+
+              {productosGrupos.length === 0 && filtered.every(p => !(p as any).grupo_id) && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-12 text-center">
+                  <Boxes size={36} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+                  <p className="text-gray-500 dark:text-gray-400 font-medium">Sin grupos de variantes</p>
+                  <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Creá un grupo en el botón &quot;Grupos&quot; de arriba.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ════════ VISTA PLANA ════════ */}
+          {viewMode === 'flat' && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {isLoading ? (
               <div className="flex items-center justify-center py-16">
@@ -1125,6 +1324,14 @@ export default function ProductosPage() {
                           {(p as any).codigo_barras && (
                             <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{(p as any).codigo_barras}</p>
                           )}
+                          {(p as any).grupo_id && (() => {
+                            const g = productosGrupos.find(gr => gr.id === (p as any).grupo_id)
+                            return g ? (
+                              <p className="text-xs text-accent/70 dark:text-accent/60 mt-0.5">
+                                • Parte de &quot;{g.nombre}&quot;
+                              </p>
+                            ) : null
+                          })()}
                         </div>
 
                         <div className="hidden md:block text-xs text-gray-400 dark:text-gray-500">
@@ -1288,7 +1495,84 @@ export default function ProductosPage() {
               </div>
             )}
           </div>
+          )}
         </>
+      )}
+
+      {/* ── Panel lateral: Grupos ─────────────────────────────────────────────── */}
+      {gruposPanel && (
+        <div className="fixed inset-0 z-40 flex">
+          <div className="flex-1 bg-black/40" onClick={() => setGruposPanel(false)} />
+          <div className="w-full max-w-sm bg-white dark:bg-gray-800 shadow-2xl flex flex-col h-full">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <Boxes size={18} className="text-accent" />
+                <h2 className="text-base font-bold text-primary">Grupos de variantes</h2>
+              </div>
+              <button onClick={() => setGruposPanel(false)} className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {productosGrupos.length === 0 ? (
+                <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                  <Boxes size={36} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">Sin grupos aún. Creá el primero.</p>
+                </div>
+              ) : (
+                productosGrupos.map(g => (
+                  <div key={g.id} className="border border-gray-100 dark:border-gray-700 rounded-xl p-3 hover:border-accent/40 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{g.nombre}</p>
+                        {(g.categorias as any)?.nombre && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500">{(g.categorias as any).nombre}</p>
+                        )}
+                        {g.precio_base != null && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Base: ${g.precio_base.toLocaleString('es-AR')}</p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setGrupoModal({ open: true, grupo: g }); setGruposPanel(false) }}
+                        className="p-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0"
+                        title="Editar grupo"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                    </div>
+                    {g.atributos && g.atributos.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {g.atributos.map((a, i) => (
+                          <span key={i} className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                            {a.nombre} ({a.valores.length})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-100 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => { setGrupoModal({ open: true, grupo: null }); setGruposPanel(false) }}
+                className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm transition-all"
+              >
+                <Plus size={15} /> Nuevo grupo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de grupo ──────────────────────────────────────────────────── */}
+      {grupoModal.open && (
+        <ProductoGrupoModal
+          grupo={grupoModal.grupo}
+          onClose={() => setGrupoModal({ open: false, grupo: null })}
+        />
       )}
 
       {/* ── Barra flotante de acciones bulk ─────────────────────────────────── */}

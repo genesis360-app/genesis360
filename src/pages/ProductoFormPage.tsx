@@ -2,7 +2,7 @@ import imageCompression from 'browser-image-compression'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check, Boxes, ExternalLink } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -13,6 +13,7 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { ProductoQR } from '@/components/ProductoQR'
+import ProductoGrupoModal, { type ProductoGrupo } from '@/components/ProductoGrupoModal'
 import toast from 'react-hot-toast'
 
 const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
@@ -76,6 +77,12 @@ export default function ProductoFormPage() {
   const [usdModoVenta, setUsdModoVenta] = useState(false)
   const [usdInputCosto, setUsdInputCosto] = useState('')
   const [usdInputVenta, setUsdInputVenta] = useState('')
+
+  // Grupos de variantes
+  const [grupoId, setGrupoId] = useState<string | null>(null)
+  const [varianteValores, setVarianteValores] = useState<Record<string, string>>({})
+  const [grupoModalOpen, setGrupoModalOpen] = useState(false)
+  const [grupoSelectorOpen, setGrupoSelectorOpen] = useState(false)
 
   const { data: categorias = [] } = useQuery({
     queryKey: ['categorias', tenant?.id],
@@ -157,6 +164,36 @@ export default function ProductoFormPage() {
     enabled: isEditing && !!tenant,
   })
 
+  const { data: productosGrupos = [] } = useQuery({
+    queryKey: ['producto-grupos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('producto_grupos')
+        .select('*, categorias(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .order('nombre')
+      return (data ?? []) as ProductoGrupo[]
+    },
+    enabled: !!tenant,
+  })
+
+  const grupoActual = productosGrupos.find(g => g.id === grupoId) ?? null
+
+  const { data: variantesDelGrupo = [] } = useQuery({
+    queryKey: ['grupo-variantes', grupoId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('productos')
+        .select('id, nombre, sku, precio_venta, stock_actual, variante_valores, activo')
+        .eq('grupo_id', grupoId!)
+        .eq('activo', true)
+        .order('nombre')
+      return data ?? []
+    },
+    enabled: !!grupoId,
+  })
+
   useEffect(() => {
     if (tiersData.length > 0) {
       setTiersForm(tiersData.map((t: any) => ({
@@ -226,6 +263,8 @@ export default function ProductoFormPage() {
       })
       if (productoData.publicado_marketplace) setShowMarketplace(true)
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
+      if (productoData.grupo_id) setGrupoId(productoData.grupo_id)
+      if (productoData.variante_valores) setVarianteValores(productoData.variante_valores as Record<string, string>)
       setLoaded(true)
     }
   }, [productoData])
@@ -343,6 +382,9 @@ export default function ProductoFormPage() {
         precio_marketplace: form.precio_marketplace !== '' ? parseFloat(form.precio_marketplace) : null,
         stock_reservado_marketplace: parseInt(form.stock_reservado_marketplace) || 0,
         descripcion_marketplace: form.descripcion_marketplace.trim() || null,
+        // Grupos de variantes
+        grupo_id: grupoId || null,
+        variante_valores: grupoId && Object.keys(varianteValores).length > 0 ? varianteValores : null,
       }
       let productoId: string = id ?? ''
       if (isEditing) {
@@ -1252,6 +1294,194 @@ export default function ProductoFormPage() {
               </div>
             )}
 
+            {/* Card — Grupo de variantes */}
+            {canEdit && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                  <Boxes size={16} className="text-accent" />
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">Grupo de variantes</span>
+                  {grupoId && (
+                    <span className="ml-auto px-2 py-0.5 text-xs font-medium bg-accent/10 text-accent rounded-full">Vinculado</span>
+                  )}
+                </div>
+
+                <div className="px-5 py-4 space-y-4">
+                  {!grupoId ? (
+                    /* Sin grupo: selector */
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Vinculá este producto a un grupo para gestionarlo junto con sus variantes (talle, color, etc.).
+                      </p>
+                      {grupoSelectorOpen ? (
+                        <div className="space-y-2">
+                          {productosGrupos.length === 0 ? (
+                            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-3">
+                              Sin grupos creados.{' '}
+                              <button type="button" onClick={() => setGrupoModalOpen(true)} className="text-accent hover:underline">
+                                Crear uno
+                              </button>
+                            </p>
+                          ) : (
+                            <div className="space-y-1 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-xl p-1">
+                              {productosGrupos.map(g => (
+                                <button
+                                  key={g.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setGrupoId(g.id)
+                                    // Pre-cargar atributos como claves vacías
+                                    if (g.atributos) {
+                                      const vv: Record<string, string> = {}
+                                      g.atributos.forEach(a => { vv[a.nombre] = '' })
+                                      setVarianteValores(vv)
+                                    }
+                                    setGrupoSelectorOpen(false)
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+                                >
+                                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{g.nombre}</p>
+                                  {g.atributos && g.atributos.length > 0 && (
+                                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                                      {g.atributos.map(a => a.nombre).join(', ')}
+                                    </p>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setGrupoSelectorOpen(false)}
+                              className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setGrupoModalOpen(true); setGrupoSelectorOpen(false) }}
+                              className="flex-1 border border-accent text-accent py-2 rounded-xl text-sm hover:bg-accent/10 transition-colors"
+                            >
+                              <Plus size={13} className="inline mr-1" />Nuevo grupo
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setGrupoSelectorOpen(true)}
+                          className="w-full flex items-center justify-center gap-2 border border-dashed border-accent/40 text-accent py-2.5 rounded-xl text-sm hover:bg-accent/5 transition-colors"
+                        >
+                          <Boxes size={15} /> Vincular a un grupo
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    /* Con grupo: mostrar datos */
+                    <div className="space-y-4">
+                      {/* Badge del grupo */}
+                      <div className="flex items-center gap-3 p-3 bg-accent/5 dark:bg-accent/10 rounded-xl border border-accent/20">
+                        <Boxes size={16} className="text-accent flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                            Variante de: &quot;{grupoActual?.nombre ?? '…'}&quot;
+                          </p>
+                          {(grupoActual?.categorias as any)?.nombre && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500">{(grupoActual?.categorias as any).nombre}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setGrupoModalOpen(true)}
+                          className="text-xs text-accent hover:underline flex-shrink-0"
+                        >
+                          Ver grupo
+                        </button>
+                      </div>
+
+                      {/* Atributos de este variante */}
+                      {grupoActual?.atributos && grupoActual.atributos.length > 0 && (
+                        <div className="space-y-3">
+                          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Valores de esta variante</p>
+                          {grupoActual.atributos.map(attr => (
+                            <div key={attr.nombre} className="flex items-center gap-3">
+                              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-24 flex-shrink-0">
+                                {attr.nombre}:
+                              </label>
+                              {attr.valores.length > 0 ? (
+                                <select
+                                  value={varianteValores[attr.nombre] ?? ''}
+                                  onChange={e => setVarianteValores(prev => ({ ...prev, [attr.nombre]: e.target.value }))}
+                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent"
+                                >
+                                  <option value="">— Seleccionar —</option>
+                                  {attr.valores.map(v => (
+                                    <option key={v} value={v}>{v}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={varianteValores[attr.nombre] ?? ''}
+                                  onChange={e => setVarianteValores(prev => ({ ...prev, [attr.nombre]: e.target.value }))}
+                                  placeholder={`Valor de ${attr.nombre}`}
+                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent"
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Valores actuales como badges */}
+                      {Object.keys(varianteValores).filter(k => varianteValores[k]).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {Object.entries(varianteValores).filter(([, v]) => v).map(([k, v]) => (
+                            <span key={k} className="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                              {k}: {v}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Ver todas las variantes del grupo */}
+                      {variantesDelGrupo.length > 0 && (
+                        <div>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">
+                            {variantesDelGrupo.length} variante{variantesDelGrupo.length !== 1 ? 's' : ''} en el grupo:
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {(variantesDelGrupo as any[]).slice(0, 5).map(v => (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => navigate(`/productos/${v.id}/editar`)}
+                                className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-accent transition-colors"
+                              >
+                                {v.sku} <ExternalLink size={10} />
+                              </button>
+                            ))}
+                            {variantesDelGrupo.length > 5 && (
+                              <span className="text-xs text-gray-400 dark:text-gray-500 px-2 py-0.5">+{variantesDelGrupo.length - 5} más</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Desvincular */}
+                      <button
+                        type="button"
+                        onClick={() => { setGrupoId(null); setVarianteValores({}) }}
+                        className="text-xs text-red-500 hover:text-red-600 hover:underline transition-colors"
+                      >
+                        Desvincular del grupo
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Card 6 — Marketplace */}
             {canEdit && tenant?.marketplace_activo && (
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -1419,6 +1649,13 @@ export default function ProductoFormPage() {
           title="Escanear código de barras"
           onDetected={code => { setForm(p => ({ ...p, codigo_barras: code })); setBarcodeScannerOpen(false) }}
           onClose={() => setBarcodeScannerOpen(false)}
+        />
+      )}
+
+      {grupoModalOpen && (
+        <ProductoGrupoModal
+          grupo={grupoActual}
+          onClose={() => setGrupoModalOpen(false)}
         />
       )}
     </div>

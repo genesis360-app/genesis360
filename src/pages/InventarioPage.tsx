@@ -2489,22 +2489,77 @@ export default function InventarioPage() {
           {/* Modal INGRESO */}
           {modal === 'ingreso' && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
-                <div className="flex items-center justify-between mb-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+
+                {/* Header fijo */}
+                <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
                   <h2 className="text-lg font-bold text-primary flex items-center gap-2">
                     <ArrowDown size={20} className="text-green-600 dark:text-green-400" /> Ingreso de stock
                   </h2>
                   <button onClick={closeModal} className="text-gray-400 dark:text-gray-500 hover:text-gray-600"><X size={20} /></button>
                 </div>
 
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Producto</label>
-                  {selectedProduct ? (
-                    <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-accent/30 rounded-xl px-4 py-3">
-                      <div>
-                        <p className="font-medium text-gray-800 dark:text-gray-100">{selectedProduct.nombre}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          SKU: {selectedProduct.sku} | {effSucursalIngreso
+                {/* Search fijo */}
+                {!selectedProduct && (
+                  <div className="px-6 pt-4 flex-shrink-0">
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                      <input type="text" value={form.productoSearch}
+                        onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                        placeholder="Buscar por nombre, SKU o código..."
+                        className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                      <button type="button" onClick={() => setMovScannerOpen(true)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent transition-colors"
+                        title="Escanear código de barras">
+                        <Camera size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cuerpo scrollable */}
+                <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-4 pt-3">
+
+                  {/* ESTADO A: sin producto — resultados inline */}
+                  {!selectedProduct && productosBusqueda.length > 0 && (
+                    <div className="space-y-1">
+                      {productosBusqueda.map(p => (
+                        <button key={p.id} onClick={async () => {
+                          setSelectedProduct(p)
+                          const ubicDefault = await resolverUbicacionDefault(p.id, (p as any).ubicacion_id)
+                          setForm(f => ({
+                            ...f,
+                            productoSearch: '',
+                            ubicacionId: ubicDefault,
+                            estadoId:    (p as any).estado_id    ?? f.estadoId,
+                            proveedorId: (p as any).proveedor_id ?? f.proveedorId,
+                          }))
+                        }}
+                          className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 border border-gray-100 dark:border-gray-700 transition-colors">
+                          <span className="font-medium text-sm">{p.nombre}</span>
+                          <span className="text-gray-400 dark:text-gray-500 ml-2 text-xs">{p.sku}</span>
+                          {(p as any).tiene_series && <span className="ml-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1 rounded">series</span>}
+                          {(p as any).tiene_lote && <span className="ml-2 text-xs bg-orange-100 text-orange-600 px-1 rounded">lote</span>}
+                          {(p as any).tiene_vencimiento && <span className="ml-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1 rounded">vto.</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ESTADO A vacío */}
+                  {!selectedProduct && productosBusqueda.length === 0 && form.productoSearch.length === 0 && (
+                    <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-8">Buscá un producto para ingresar stock</p>
+                  )}
+
+                  {selectedProduct && (
+                  <>
+                    {/* Chip del producto */}
+                    <div className="flex items-center gap-3 bg-accent/5 border border-accent/20 rounded-xl px-4 py-3">
+                      <Package size={16} className="text-accent flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-primary truncate">{selectedProduct.nombre}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
+                          {selectedProduct.sku} | {effSucursalIngreso
                             ? <>Stock en sucursal: <span className="font-semibold text-primary">{stockEnSucursal ?? '…'}</span></>
                             : <>Stock total: {(selectedProduct as any).stock_actual}</>}
                         </p>
@@ -2514,50 +2569,11 @@ export default function InventarioPage() {
                           {(selectedProduct as any).tiene_vencimiento && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">Vencimiento</span>}
                         </div>
                       </div>
-                      <button onClick={() => setSelectedProduct(null)} className="text-gray-400 dark:text-gray-500 text-xs">Cambiar</button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-                      <input type="text" value={form.productoSearch}
-                        onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
-                        onFocus={() => setSearchFocused(true)}
-                        onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-                        placeholder="Buscar por nombre o SKU..."
-                        className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
-                      <button type="button" onClick={() => setMovScannerOpen(true)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent transition-colors"
-                        title="Escanear código de barras">
-                        <Camera size={16} />
+                      <button onClick={() => { setSelectedProduct(null); setForm(emptyIngreso) }}
+                        className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0">
+                        <X size={15} />
                       </button>
-                      {productosBusqueda.length > 0 && searchFocused && (
-                        <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
-                          {productosBusqueda.map(p => (
-                            <button key={p.id} onClick={async () => {
-                              setSelectedProduct(p)
-                              const ubicDefault = await resolverUbicacionDefault(p.id, (p as any).ubicacion_id)
-                              setForm(f => ({
-                                ...f,
-                                productoSearch: '',
-                                ubicacionId: ubicDefault,
-                                estadoId:    (p as any).estado_id    ?? f.estadoId,
-                                proveedorId: (p as any).proveedor_id ?? f.proveedorId,
-                              }))
-                            }}
-                              className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm border-b border-gray-50 last:border-0">
-                              <span className="font-medium">{p.nombre}</span>
-                              <span className="text-gray-400 dark:text-gray-500 ml-2 text-xs">{p.sku}</span>
-                              {(p as any).tiene_series && <span className="ml-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1 rounded">series</span>}
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  )}
-                </div>
-
-                {selectedProduct && (
-                  <>
                     {/* Selector de sucursal — solo para Dueño/SUPER en vista global "todas" */}
                     {!sucursalId && puedeVerTodas && sucursales.length > 0 && (
                       <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3">
@@ -2823,15 +2839,19 @@ export default function InventarioPage() {
                     </div>
                   </>
                 )}
-
-                <div className="flex gap-3">
-                  <button onClick={closeModal} className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl">Cancelar</button>
-                  <button onClick={() => ingresoMutation.mutate()}
-                    disabled={!selectedProduct || ingresoMutation.isPending}
-                    className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
-                    {ingresoMutation.isPending ? 'Guardando...' : 'Confirmar ingreso'}
-                  </button>
                 </div>
+
+                {/* Footer fijo */}
+                {selectedProduct && (
+                  <div className="flex gap-3 px-6 pb-6 pt-4 border-t border-gray-100 dark:border-gray-800 flex-shrink-0">
+                    <button onClick={closeModal} className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl">Cancelar</button>
+                    <button onClick={() => ingresoMutation.mutate()}
+                      disabled={ingresoMutation.isPending}
+                      className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
+                      {ingresoMutation.isPending ? 'Guardando...' : 'Confirmar ingreso'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2839,22 +2859,67 @@ export default function InventarioPage() {
           {/* Modal REBAJE */}
           {modal === 'rebaje' && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
-                <div className="flex items-center justify-between mb-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+
+                {/* Header fijo */}
+                <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
                   <h2 className="text-lg font-bold text-primary flex items-center gap-2">
                     <ArrowUp size={20} /> Rebaje de stock
                   </h2>
                   <button onClick={closeModal} className="text-gray-400 dark:text-gray-500 hover:text-gray-600"><X size={20} /></button>
                 </div>
 
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Producto</label>
-                  {selectedProduct ? (
-                    <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 border border-accent/30 rounded-xl px-4 py-3">
-                      <div>
-                        <p className="font-medium text-gray-800 dark:text-gray-100">{selectedProduct.nombre}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {sucursalId
+                {/* Search fijo */}
+                {!selectedProduct && (
+                  <div className="px-6 pt-4 flex-shrink-0">
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                      <input type="text" value={form.productoSearch}
+                        onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
+                        placeholder="Buscar por nombre, SKU o código..."
+                        className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                      <button type="button" onClick={() => setMovScannerOpen(true)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent transition-colors"
+                        title="Escanear código de barras">
+                        <Camera size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cuerpo scrollable */}
+                <div className="flex-1 overflow-y-auto px-6 pb-6 space-y-4 pt-3">
+
+                  {/* ESTADO A: sin producto — resultados inline */}
+                  {!selectedProduct && productosBusqueda.length > 0 && (
+                    <div className="space-y-1">
+                      {productosBusqueda.map(p => (
+                        <button key={p.id} onClick={() => { setSelectedProduct(p); setForm(f => ({ ...f, productoSearch: '' })) }}
+                          className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 border border-gray-100 dark:border-gray-700 transition-colors">
+                          <span className="font-medium text-sm">{p.nombre}</span>
+                          <span className="text-gray-400 dark:text-gray-500 ml-2 text-xs">{p.sku}</span>
+                          {(p as any).tiene_series && <span className="ml-2 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1 rounded">series</span>}
+                          {(p as any).tiene_lote && <span className="ml-2 text-xs bg-orange-100 text-orange-600 px-1 rounded">lote</span>}
+                          {(p as any).tiene_vencimiento && <span className="ml-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1 rounded">vto.</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ESTADO A vacío */}
+                  {!selectedProduct && productosBusqueda.length === 0 && form.productoSearch.length === 0 && (
+                    <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-8">Buscá un producto para rebajar stock</p>
+                  )}
+
+                  {selectedProduct && (
+                  <>
+                    {/* Chip del producto */}
+                    <div className="flex items-center gap-3 bg-accent/5 border border-accent/20 rounded-xl px-4 py-3">
+                      <Package size={16} className="text-accent flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-primary truncate">{selectedProduct.nombre}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
+                          {selectedProduct.sku} | {sucursalId
                             ? <>Stock en sucursal: <span className="font-semibold text-primary">{stockEnSucursal ?? '…'}</span></>
                             : <>Stock total: {(selectedProduct as any).stock_actual}</>}
                         </p>
@@ -2864,39 +2929,11 @@ export default function InventarioPage() {
                           {(selectedProduct as any).tiene_vencimiento && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">Vencimiento</span>}
                         </div>
                       </div>
-                      <button onClick={() => { setSelectedProduct(null); setRebajeLinea(null) }} className="text-gray-400 dark:text-gray-500 text-xs">Cambiar</button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-                      <input type="text" value={form.productoSearch}
-                        onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
-                        onFocus={() => setSearchFocused(true)}
-                        onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-                        placeholder="Buscar por nombre o SKU..."
-                        className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
-                      <button type="button" onClick={() => setMovScannerOpen(true)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent transition-colors"
-                        title="Escanear código de barras">
-                        <Camera size={16} />
+                      <button onClick={() => { setSelectedProduct(null); setRebajeLinea(null); setForm(emptyIngreso) }}
+                        className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0">
+                        <X size={15} />
                       </button>
-                      {productosBusqueda.length > 0 && searchFocused && (
-                        <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
-                          {productosBusqueda.map(p => (
-                            <button key={p.id} onClick={() => { setSelectedProduct(p); setForm(f => ({ ...f, productoSearch: '' })) }}
-                              className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm border-b border-gray-50 last:border-0">
-                              <span className="font-medium">{p.nombre}</span>
-                              <span className="text-gray-400 dark:text-gray-500 ml-2 text-xs">{p.sku}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  )}
-                </div>
-
-                {selectedProduct && (
-                  <>
                     <div className="mb-4">
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center">
@@ -3093,15 +3130,19 @@ export default function InventarioPage() {
                     )}
                   </>
                 )}
-
-                <div className="flex gap-3">
-                  <button onClick={closeModal} className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl">Cancelar</button>
-                  <button onClick={() => rebajeMutation.mutate()}
-                    disabled={!selectedProduct || !rebajeLinea || rebajeMutation.isPending}
-                    className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
-                    {rebajeMutation.isPending ? 'Guardando...' : 'Confirmar rebaje'}
-                  </button>
                 </div>
+
+                {/* Footer fijo */}
+                {selectedProduct && (
+                  <div className="flex gap-3 px-6 pb-6 pt-4 border-t border-gray-100 dark:border-gray-800 flex-shrink-0">
+                    <button onClick={closeModal} className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl">Cancelar</button>
+                    <button onClick={() => rebajeMutation.mutate()}
+                      disabled={!rebajeLinea || rebajeMutation.isPending}
+                      className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
+                      {rebajeMutation.isPending ? 'Guardando...' : 'Confirmar rebaje'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

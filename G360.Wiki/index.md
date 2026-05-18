@@ -8,7 +8,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 | Página                                | Descripción                                          | Estado |
 | ------------------------------------- | ---------------------------------------------------- | ------ |
-| [[wiki/overview/genesis360-overview]] | Visión general v1.8.27-prod, stack, módulos, estado actual | ✅      |
+| [[wiki/overview/genesis360-overview]] | Visión general v1.8.27-prod / v1.8.31-dev, stack, módulos, estado actual | ✅      |
 
 ---
 
@@ -138,4 +138,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-18 — 51 páginas + 3 manuales · 8 fuentes en raw/ · 122 migraciones DEV (121 + 086b) · v1.8.27-prod / v1.8.31-dev*
+*Última actualización: 2026-05-18 — 51 páginas + 3 manuales · 8 fuentes en raw/ · 122 migraciones DEV (121 + 086b) · v1.8.31-dev / v1.8.27-prod*

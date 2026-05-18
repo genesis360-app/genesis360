@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-18] update | v1.8.31 — bump versión + manuales de uso
+
+- APP_VERSION bumpeada a v1.8.31 en brand.ts
+- wiki/manuales/ — 3 manuales HTML nuevos (hogar, ferretería, tienda ropa)
+- index.md — sección "Manuales" agregada
+
 ## [2026-05-18] update | Wiki — actualización completa v1.8.29–v1.8.31
 
 - `productos.md`: página nueva — ProductoFormPage 6 cards, atributos variante, marca, UdM custom, ubicación por sucursal, grupos, inactivos, defaults al ingresar

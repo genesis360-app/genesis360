@@ -12,7 +12,7 @@ type: project
 
 ## Estado actual DEV v1.8.31 / PROD v1.8.27 (cierre sesión 2026-05-18)
 
-- APP_VERSION DEV: `v1.8.27` en `src/config/brand.ts` (bump pendiente a v1.8.31)
+- APP_VERSION DEV: `v1.8.31` en `src/config/brand.ts` ✅
 - APP_VERSION PROD: `v1.8.27` ✅ (PR #112 mergeado)
 - Migrations DEV: 001–121 ✅
 - Migrations PROD: 001–110 ✅ (113–121 pendientes de aplicar en PROD)

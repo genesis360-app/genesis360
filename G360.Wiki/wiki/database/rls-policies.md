@@ -136,6 +136,27 @@ END $$;
 
 ---
 
+## Política DELETE en tabla users (migration 113)
+
+La tabla `users` no tenía política DELETE — RLS bloqueaba silenciosamente todo `DELETE` (0 filas, sin error). Esto impedía "Salir del negocio" y "Eliminar cuenta".
+
+```sql
+-- El usuario puede eliminar su propio registro
+CREATE POLICY users_delete_self ON users
+  FOR DELETE USING (id = auth.uid());
+
+-- DUEÑO/ADMIN puede eliminar usuarios de su tenant
+CREATE POLICY users_delete_owner ON users
+  FOR DELETE USING (
+    tenant_id = get_user_tenant_id()
+    AND get_user_role() = ANY (ARRAY['DUEÑO', 'ADMIN'])
+  );
+```
+
+> [!WARNING] Sin política DELETE explícita, PostgreSQL con RLS deniega silenciosamente. Siempre verificar que el resultado del DELETE fue > 0 filas.
+
+---
+
 ## Links relacionados
 
 - [[wiki/architecture/multi-tenant-rls]]

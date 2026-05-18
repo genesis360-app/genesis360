@@ -197,6 +197,17 @@ Botón CreditCard por proveedor → modal con:
 
 ---
 
+## Mejoras v1.8.23–v1.8.26
+
+### ISS-107 — Cancelar deuda CC por venta (v1.8.23)
+- **Acceso:** DUEÑO y SUPERVISOR únicamente
+- En la ficha del cliente → tab Cuenta Corriente → por cada venta con saldo pendiente: botón "Cancelar deuda"
+- Registra `monto_pagado = total` sin generar movimiento en caja (es una condonación)
+- El saldo de la cuenta corriente se actualiza inmediatamente
+- Útil para casos de gestión de incobrables o acuerdos comerciales
+
+---
+
 ## Mejoras v1.8.21
 
 ### ISS-102 — Clientes y proveedores globales entre sucursales

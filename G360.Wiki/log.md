@@ -6,6 +6,79 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-18] update | v1.8.31 — bump versión + manuales de uso
+
+- APP_VERSION bumpeada a v1.8.31 en brand.ts
+- wiki/manuales/ — 3 manuales HTML nuevos (hogar, ferretería, tienda ropa)
+- index.md — sección "Manuales" agregada
+
+## [2026-05-18] update | Wiki — actualización completa v1.8.29–v1.8.31
+
+- `productos.md`: página nueva — ProductoFormPage 6 cards, atributos variante, marca, UdM custom, ubicación por sucursal, grupos, inactivos, defaults al ingresar
+- `inventario-stock.md`: filtros pill (v1.8.28), defaults producto (v1.8.30), modales inline results (v1.8.31)
+- `reportes-metricas.md`: Dashboard nueva estructura de navegación — area tabs + sub-tabs + filtro pill (v1.8.31)
+- `multi-sucursal.md`: ubicacion_sucursal (migration 121), filtros OC/Facturación (v1.8.28)
+- `migraciones.md`: migrations 118–121, total DEV 122 archivos
+- `project_pendientes.md`: DEV v1.8.31, migrations 001–121
+- `index.md`: nueva página productos.md, conteos y versiones actualizados
+
+## [2026-05-17] update | feat: grupos de variantes de producto (migration 120, v1.8.30-dev)
+
+Cambios en esta sesión:
+- **ProductoGrupoModal**: CRUD completo de grupos con atributos tipo tag-input (Enter/coma), producto cartesiano de combinaciones, generación de variantes automática, lista de variantes existentes con links.
+- **ProductosPage**: botón "Grupos" (panel lateral), toggle "Agrupar variantes" (viewMode flat/grouped), vista agrupada con secciones colapsables por grupo + tabla de variantes con badges, badge de grupo en vista flat.
+- **ProductoFormPage**: card "Grupo de variantes" — selector de grupo, inputs por atributo (select o text), badges de valores actuales, desvincular, guardado de grupo_id + variante_valores.
+- Migration 120: tabla `producto_grupos` + columnas `grupo_id`/`variante_valores` en `productos`.
+- DEV: `v1.8.30` | PROD: `v1.8.27`
+
+## [2026-05-17] update | ISS-113/115/119/120/121/122/123/125/126 — atributos producto + UdM + inactivos + variantes (v1.8.29-dev)
+
+Cambios en esta sesión:
+- **ISS-115**: campo `marca` en ProductoFormPage (datos básicos, sin required)
+- **ISS-119**: campo `shelf_life_dias` visible solo si `tiene_vencimiento` está activo
+- **ISS-113/121**: 6 nuevos toggles de variante en Tracking: pais_origen, talle, color, encaje, formato, sabor_aroma
+- **ISS-120**: CRUD de unidades de medida personalizadas en ConfigPage (nuevo tab "Unidades") + optgroup en ProductoFormPage
+- **ISS-122**: ProductosPage sin filtro activo, toggle "Ver inactivos", badge Inactivo + opacity-60
+- **ISS-123**: Bulk bar: botón único toggle Desactivar/Reactivar según mayoría seleccionada
+- **ISS-125**: Campos de variante en LpnAccionesModal (tab Editar) e IngresarPage (modal ingreso)
+- **ISS-126**: Campos de variante en RecepcionesPage (FormItem + insert inventario_lineas)
+- Migrations aplicadas en DEV: 118 (campos producto variantes) + 119 (unidades_medida)
+- DEV: `v1.8.29` | PROD: `v1.8.27`
+
+## [2026-05-16] update | Wiki — actualización completa v1.8.28-dev (multi-sucursal + defaults)
+
+Páginas actualizadas:
+- `multi-sucursal.md` — sucursal por defecto, backfill 114–117, filtros estrictos, cajas por sucursal
+- `caja.md` — cajas.sucursal_id, filtro CajaPage, Caja Principal en seed
+- `autenticacion-onboarding.md` — defaults al registrar negocio, fix duplicados tenant, Sucursal 1
+- `ventas-pos.md` — filtro historial estricto (eliminado OR IS NULL)
+- `reportes-metricas.md` — Dashboard tab Todo filtro por sucursal
+- `triggers.md` — trg_seed_tenant_defaults (Sucursal 1 + Caja Principal + motivos + estados)
+- `rls-policies.md` — política DELETE en users (migration 113)
+- `migraciones.md` — migrations 111–117
+- `project_pendientes.md` — DEV v1.8.28, migrations 001–117, PROD pendientes 113–117
+
+## [2026-05-15] update | Wiki — actualización completa v1.8.23 a v1.8.27
+
+Páginas actualizadas:
+- `inventario-stock.md` — conteos borrador (ISS-100), rebaje masivo FIFO fix (ISS-012), shortcuts ESC/ENTER
+- `ventas-pos.md` — ISS-105 costo envío en validación, ISS-106 historial OR(sucursal/null) + badge CC ghost
+- `clientes-proveedores.md` — ISS-107 cancelar deuda CC (DUEÑO/SUPERVISOR)
+- `gastos.md` — ISS-044 OC expanded como ticket/recibo
+- `autenticacion-onboarding.md` — roles renombrados (DUEÑO/SUPER_USUARIO), fix registro v1.8.27
+- `reportes-metricas.md` — Dashboard 9 áreas, SQL Runner (migration 105), aging individual (migration 106)
+- `triggers.md` — trg_crear_caja_fuerte SECURITY DEFINER + explicación RLS
+- `migraciones.md` — migrations 109 y 110
+- `roadmap-apis.md` — MODO payments framework (ISS-072, migration 109)
+- `overview.md` — versión v1.8.27, 110 migraciones
+- `index.md` — descripciones actualizadas, pie de página
+
+## [2026-05-15] update | PROD deploy v1.8.27 — fix registro nuevo negocio
+
+- Fix crítico: `fn_crear_caja_fuerte` SECURITY DEFINER — trigger bloqueaba RLS al registrar tenant nuevo
+- Migration 109 (modo_credentials) y 110 (fix fn) aplicadas en PROD ✅
+- PR #112 mergeado a main · GitHub release v1.8.27 ✅
+
 ## [2026-05-15] update | v1.8.26 DEV — ISS-072/044 + ISS-100/012/107 + ISS-105/106
 
 - ISS-100: conteos borrador funcionales (continuar, eliminar, actualizar)

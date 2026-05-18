@@ -78,6 +78,8 @@ export default function UsuariosPage() {
   const [saving, setSaving] = useState(false)
   const [filterRol, setFilterRol] = useState<UserRole | 'TODOS'>('TODOS')
   const [showPermisos, setShowPermisos] = useState(false)
+  const [editingNombreId, setEditingNombreId] = useState<string | null>(null)
+  const [editingNombreValue, setEditingNombreValue] = useState('')
 
   // Roles custom state
   const [showRolesSection, setShowRolesSection] = useState(false)
@@ -148,6 +150,16 @@ export default function UsuariosPage() {
     isOpen: showInvitar,
     onClose: () => setShowInvitar(false),
     onConfirm: () => { if (!saving) handleInvitar({ preventDefault: () => {} } as React.FormEvent) },
+  })
+
+  const updateNombre = useMutation({
+    mutationFn: async ({ userId, nombre }: { userId: string; nombre: string }) => {
+      const { error } = await supabase.from('users').update({ nombre_display: nombre }).eq('id', userId)
+      if (error) throw error
+      logActividad({ entidad: 'usuario', entidad_id: userId, entidad_nombre: nombre, accion: 'editar', campo: 'nombre_display', valor_nuevo: nombre, pagina: '/usuarios' })
+    },
+    onSuccess: () => { toast.success('Nombre actualizado'); qc.invalidateQueries({ queryKey: ['usuarios'] }); setEditingNombreId(null) },
+    onError: () => toast.error('Error al actualizar nombre'),
   })
 
   const updateRol = useMutation({
@@ -418,15 +430,47 @@ export default function UsuariosPage() {
               const rolCfg = ROLES[u.rol as UserRole] ?? ROLES.CAJERO
               const esMiUsuario = u.id === user?.id
               return (
-                <div key={u.id} className={`px-4 py-4 flex items-center gap-4 ${!u.activo ? 'opacity-50' : ''}`}>
+                <div key={u.id} className={`group px-4 py-4 flex items-center gap-4 ${!u.activo ? 'opacity-50' : ''}`}>
                   <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
                     <User size={18} className="text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{u.nombre_display ?? u.id.slice(0, 8)}</p>
-                      {esMiUsuario && <span className="text-xs text-gray-400 dark:text-gray-400">(vos)</span>}
-                      {!u.activo && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">Inactivo</span>}
+                      {canManage && editingNombreId === u.id ? (
+                        <>
+                          <input
+                            autoFocus
+                            value={editingNombreValue}
+                            onChange={e => setEditingNombreValue(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') updateNombre.mutate({ userId: u.id, nombre: editingNombreValue.trim() })
+                              if (e.key === 'Escape') setEditingNombreId(null)
+                            }}
+                            className="text-sm font-medium px-2 py-0.5 border border-accent rounded-lg focus:outline-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 w-40"
+                          />
+                          <button onClick={() => updateNombre.mutate({ userId: u.id, nombre: editingNombreValue.trim() })}
+                            className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
+                            <Check size={13} />
+                          </button>
+                          <button onClick={() => setEditingNombreId(null)}
+                            className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                            <XIcon size={13} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{u.nombre_display ?? u.id.slice(0, 8)}</p>
+                          {canManage && u.activo && (
+                            <button
+                              onClick={() => { setEditingNombreId(u.id); setEditingNombreValue(u.nombre_display ?? '') }}
+                              className="p-0.5 text-gray-300 dark:text-gray-600 hover:text-accent rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Edit size={12} />
+                            </button>
+                          )}
+                          {esMiUsuario && <span className="text-xs text-gray-400 dark:text-gray-400">(vos)</span>}
+                          {!u.activo && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">Inactivo</span>}
+                        </>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rolCfg.color}`}>

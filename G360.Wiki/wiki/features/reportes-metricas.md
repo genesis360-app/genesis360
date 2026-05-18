@@ -150,6 +150,111 @@ Formatos: **Excel** (XLSX) · **PDF** (jsPDF + jspdf-autotable)
 
 ---
 
+## Dashboard tab Todo — filtro por sucursal (v1.8.28-dev)
+
+Todas las queries del tab General/Todo incluyen `sucursalId` en el `queryKey` y filtran por sucursal donde la tabla lo soporta:
+
+| Query | Tablas filtradas |
+|-------|-----------------|
+| `dashboard-stats` | ventas, movimientos_stock, gastos |
+| `movimientos-recientes` | movimientos_stock |
+| `top-productos` | ventas |
+| `dash-kpis` | gastos ✅ · caja_sesiones (2-step via cajas) ✅ · venta_items ❌ (sin columna) |
+| `dash-fugas` | ventas, gastos |
+| `stock-inmovilizado` | inventario_lineas |
+
+Las 9 áreas del sub-nav (`DashVentasArea`, etc.) ya usaban `useSucursalFilter` internamente y ahora usan filtro estricto (sin `OR sucursal_id IS NULL`).
+
+---
+
+## Dashboard General — 9 áreas analíticas (v1.8.9–v1.8.14)
+
+Sub-navegación en la pestaña "General". Cada área tiene filtros, KPIs, gráficos e insights propios:
+
+| Área | Componente | Contenido destacado |
+|------|-----------|-------------------|
+| Ventas | `DashVentasArea` | Funnel 3 etapas, heatmap días×horas, pie canales |
+| Gastos | `DashGastosArea` | Burn rate, rigidez del gasto, barras mensuales, top 5 destinos |
+| Productos | `DashProductosArea` | Scatter cuadrante mágico, Pareto 80/20, tijera de precios |
+| Inventario | `DashInventarioArea` | Gauge "Salud del depósito", aging capital, treemap combos |
+| Clientes | `DashClientesArea` | RFM, cohort retención, origen, aging CC |
+| Proveedores | `DashProveedoresArea` | Donut proveedores, aging OC, evolución gastos |
+| Facturación | `DashFacturacionArea` | IVA, alícuotas, topes monotributo (legales/estimativos) |
+| Envíos | `DashEnviosArea` | Funnel, courier, scatter subsidio/ganancia |
+| Marketing | `DashMarketingArea` | POAS real, evolución, donut canal, radar campañas |
+
+**Tab "Gráficos":** placeholder "Próximamente".
+
+> [!WARNING] Recharts v3: `Treemap content={<Comp/>}` crashea. Usar divs custom o función render.
+
+---
+
+## SQL Runner en ReportesPage — v1.8.19 (migration 105)
+
+**Acceso:** DUEÑO y SUPER_USUARIO únicamente (con plan Básico+)
+
+**Función DB:** `tenant_sql_query(TEXT)` — SECURITY INVOKER, solo `SELECT`/`WITH`, 500 filas, timeout 10s.
+
+**UI:**
+- Editor monospace con syntax mínimo
+- Atajo `Ctrl+Enter` para ejecutar
+- Tabla dinámica con columnas auto-detectadas
+- Export a Excel y PDF
+- Solo consultas de lectura — el backend valida y rechaza cualquier escritura
+
+---
+
+## Aging profiles — procesar individualmente — v1.8.19 (migration 106)
+
+**Función DB:** `process_aging_profile_single(p_profile_id UUID)` — misma lógica que el proceso general pero filtrado a un perfil.
+
+**UI en ConfigPage → tab Progresión de Estados:**
+- Botón "Procesar" por perfil de aging
+- Spinner independiente por perfil (`processingAgingId` por ID)
+- Útil para re-procesar un perfil específico sin correr todos
+
+---
+
+## Dashboard — nueva estructura de navegación (v1.8.31-dev)
+
+La navegación del DashboardPage fue rediseñada con dos filas independientes:
+
+```
+Row 1 — Area tabs (pills):
+[Todo] [Ventas] [Gastos] [Productos] [Inventario] [Clientes]
+[Proveedores] [Facturación] [Envíos] [Marketing]
+
+Row 2 — Sub-tabs (underline) + Filtros (derecha):
+[Insights] [Métricas] [Rentabilidad] [Recomendaciones] [Gráficos]     [🎚 Filtros]
+```
+
+### Area tabs (Row 1)
+
+- Estilo pill/badge
+- Seleccionar un área resetea el sub-tab activo a "overview"
+- Area "Todo" = vista general del negocio
+
+### Sub-tabs (Row 2)
+
+- Estilo underline (igual que antes)
+- Comunes para todas las áreas
+- Filtro pill visible solo en area "Todo" — igual patrón que `DashVentasArea` (período, moneda, IVA)
+
+### Comportamiento por combinación área + sub-tab
+
+| Área | Sub-tab | Contenido |
+|------|---------|-----------|
+| Todo | overview | KPIs, charts, fugas, cobertura (contenido general) |
+| Todo | Insights | Score de salud, recomendaciones expandidas |
+| Todo | Métricas | KPIs por período, margenProductos, gananciaNeta |
+| Todo | Rentabilidad | Margen por producto, precio_venta_neto vs costo |
+| Todo | Recomendaciones | Lista completa de insights con CTA |
+| Todo | Gráficos | Placeholder "Próximamente" |
+| Ventas / Gastos / … | overview | Componente `DashXArea` correspondiente |
+| Ventas / Gastos / … | otros sub-tabs | "Próximamente — Insights de {área} en desarrollo" |
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/inventario-stock]]

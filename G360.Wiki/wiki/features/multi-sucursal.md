@@ -325,10 +325,114 @@ Cambio masivo de atributos en múltiples LPNs desde InventarioPage:
 
 ---
 
+## Sucursal por defecto al crear negocio (migration 114 · v1.8.28-dev)
+
+### Seed automático
+El trigger `trg_seed_tenant_defaults` (SECURITY DEFINER en `tenants`) crea al registrar un negocio nuevo:
+- **Sucursal 1** — sucursal inicial del negocio
+- **Caja Principal** — asignada a Sucursal 1
+- 11 motivos de movimiento + 2 estados de inventario
+
+### authStore — auto-selección de sucursal
+`loadUserData` resuelve `sucursalId` con esta prioridad:
+1. `'__global__'` en localStorage → null (vista global explícita)
+2. UUID válido en localStorage → usa ese UUID
+3. **Sin preferencia guardada (null) o UUID inválido** → auto-selecciona la primera sucursal (ordenada por `created_at` ASC)
+
+Esto garantiza que todo lo que crea un usuario nuevo va a Sucursal 1 automáticamente.
+
+---
+
+## Backfill sucursal_id — limpieza completa (migrations 114–117)
+
+Todos los registros operativos sin `sucursal_id` fueron asignados a la sucursal más antigua del tenant.
+
+| Tabla | Migration | NULL intencional preservado |
+|-------|-----------|----------------------------|
+| `cajas` (operativas) | 114 | Caja Fuerte → NULL (tenant-wide) |
+| `ventas` | 115 | — |
+| `gastos` | 115 | — |
+| `envios` | 115 | — |
+| `recepciones` | 116 | — |
+| `ordenes_compra` | 116 | — |
+| `movimientos_stock` | 116 | — |
+| `inventario_lineas` | 117 | — |
+| `inventario_conteos` | 117 | — |
+| `caja_sesiones` | 117 | Sesiones de Caja Fuerte → NULL |
+| `recursos` | 117 | — |
+| `puntos_venta_afip` | 117 | — |
+
+**NULL intencional preservado (no backfillado):**
+- `clientes`, `proveedores` → globales por diseño (ISS-102, compartidos entre sucursales)
+- `users.sucursal_id` → roles globales (DUEÑO, SUPERVISOR) tienen NULL
+- `ubicaciones`, `combos` → pueden ser globales (NULL = disponible a todas las sucursales)
+
+---
+
+## Filtros estrictos — eliminación del workaround OR IS NULL (v1.8.28-dev)
+
+Con el backfill completo, se eliminó el workaround `OR sucursal_id IS NULL` de:
+- `VentasPage` — historial de ventas
+- `DashVentasArea`, `DashGastosArea`, `DashProductosArea`, `DashInventarioArea`, `DashClientesArea`, `DashProveedoresArea`, `DashFacturacionArea`, `DashEnviosArea`, `DashMarketingArea`
+
+> [!NOTE] `ConfigPage` ubicaciones y combos conservan `OR sucursal_id IS NULL` — diseño intencional: pueden ser globales.
+
+---
+
+## cajas.sucursal_id (migration 111)
+
+- `cajas.sucursal_id UUID` FK a `sucursales` (nullable)
+- **Caja Fuerte/Bóveda:** siempre `sucursal_id = NULL` (compartida a nivel tenant)
+- **Cajas operativas:** asignadas a su sucursal
+- **CajaPage query:** cuando hay sucursal activa → `.or('sucursal_id.eq.X,es_caja_fuerte.eq.true')`
+- **Tab Configuración:** selector de sucursal por caja (visible con ≥2 sucursales) para reasignar cajas existentes
+- **Crear caja:** recibe `sucursal_id` de la sucursal activa en el header
+
+---
+
+## Ubicación predeterminada por sucursal (migration 121 · v1.8.31-dev)
+
+```sql
+producto_ubicacion_sucursal(
+  producto_id UUID,
+  sucursal_id UUID,
+  ubicacion_id UUID,
+  UNIQUE(producto_id, sucursal_id)
+)
+```
+
+**Comportamiento en ProductoFormPage:**
+
+| Contexto | Select muestra | Guarda en |
+|----------|---------------|-----------|
+| Con sucursal activa en header | Ubicaciones de esa sucursal + globales | `producto_ubicacion_sucursal` (upsert) |
+| Sin sucursal activa (vista global) | Todas las ubicaciones | `productos.ubicacion_id` (fallback global) |
+
+**Resolución al ingresar stock:**
+1. Busca en `producto_ubicacion_sucursal` por `(producto_id, sucursal_id)` activa
+2. Fallback: `productos.ubicacion_id` global
+
+Patrón idéntico a `producto_stock_minimo_sucursal` (migration 052).
+
+---
+
+## Filtros OC y Facturación por sucursal (v1.8.28-dev)
+
+| Módulo | Cambio |
+|--------|--------|
+| ProveedoresPage tab OC | `applyFilter` aplicado al listado de OCs + `sucursalId` en queryKey |
+| FacturacionPage — ventas sin CAE | Filtro por sucursal activa |
+| FacturacionPage — facturas emitidas | Filtro por sucursal activa |
+| OC desde ProductosPage | Busca borrador OC de la misma sucursal activa + crea OC con `sucursal_id` correcto |
+
+---
+
 ## Links relacionados
 
 - [[wiki/architecture/estado-global]]
 - [[wiki/architecture/multi-tenant-rls]]
 - [[wiki/features/inventario-stock]]
+- [[wiki/features/productos]]
+- [[wiki/features/caja]]
 - [[wiki/support/supabase-db-rescue]]
 - [[wiki/integrations/tienda-nube]]

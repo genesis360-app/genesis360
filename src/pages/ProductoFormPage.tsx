@@ -2,10 +2,11 @@ import imageCompression from 'browser-image-compression'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check, Boxes, ExternalLink } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useCotizacion } from '@/hooks/useCotizacion'
@@ -13,6 +14,7 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { ProductoQR } from '@/components/ProductoQR'
+import ProductoGrupoModal, { type ProductoGrupo } from '@/components/ProductoGrupoModal'
 import toast from 'react-hot-toast'
 
 const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
@@ -29,6 +31,7 @@ export default function ProductoFormPage() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { tenant, user, sucursales } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const { limits } = usePlanLimits()
   const { cotizacion: cotizacionNum } = useCotizacion()
   const [showLimitModal, setShowLimitModal] = useState(false)
@@ -40,6 +43,15 @@ export default function ProductoFormPage() {
     stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false,
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '', alicuota_iva: '21',
+    // Nuevos atributos
+    marca: '',
+    shelf_life_dias: '',
+    tiene_pais_origen: false,
+    tiene_talle: false,
+    tiene_color: false,
+    tiene_encaje: false,
+    tiene_formato: false,
+    tiene_sabor_aroma: false,
     // Marketplace
     publicado_marketplace: false, precio_marketplace: '', stock_reservado_marketplace: '0',
     descripcion_marketplace: '',
@@ -68,6 +80,12 @@ export default function ProductoFormPage() {
   const [usdInputCosto, setUsdInputCosto] = useState('')
   const [usdInputVenta, setUsdInputVenta] = useState('')
 
+  // Grupos de variantes
+  const [grupoId, setGrupoId] = useState<string | null>(null)
+  const [varianteValores, setVarianteValores] = useState<Record<string, string>>({})
+  const [grupoModalOpen, setGrupoModalOpen] = useState(false)
+  const [grupoSelectorOpen, setGrupoSelectorOpen] = useState(false)
+
   const { data: categorias = [] } = useQuery({
     queryKey: ['categorias', tenant?.id],
     queryFn: async () => {
@@ -95,6 +113,20 @@ export default function ProductoFormPage() {
     enabled: !!tenant,
   })
 
+  // Ubicación predeterminada para la sucursal activa en el header
+  const [ubicSucursalActiva, setUbicSucursalActiva] = useState('')
+  useQuery({
+    queryKey: ['producto-ubicacion-sucursal', id, sucursalId],
+    queryFn: async () => {
+      if (!sucursalId) return null
+      const { data } = await supabase.from('producto_ubicacion_sucursal')
+        .select('ubicacion_id').eq('producto_id', id!).eq('sucursal_id', sucursalId).maybeSingle()
+      setUbicSucursalActiva((data as any)?.ubicacion_id ?? '')
+      return data
+    },
+    enabled: !!id && !!sucursalId,
+  })
+
   const { data: estados = [] } = useQuery({
     queryKey: ['estados_inventario', tenant?.id],
     queryFn: async () => {
@@ -108,6 +140,15 @@ export default function ProductoFormPage() {
     queryKey: ['aging_profiles', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('aging_profiles').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  const { data: unidadesCustom = [] } = useQuery({
+    queryKey: ['unidades_medida', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('unidades_medida').select('nombre, simbolo').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },
     enabled: !!tenant,
@@ -137,6 +178,36 @@ export default function ProductoFormPage() {
       return data ?? []
     },
     enabled: isEditing && !!tenant,
+  })
+
+  const { data: productosGrupos = [] } = useQuery({
+    queryKey: ['producto-grupos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('producto_grupos')
+        .select('*, categorias(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .order('nombre')
+      return (data ?? []) as ProductoGrupo[]
+    },
+    enabled: !!tenant,
+  })
+
+  const grupoActual = productosGrupos.find(g => g.id === grupoId) ?? null
+
+  const { data: variantesDelGrupo = [] } = useQuery({
+    queryKey: ['grupo-variantes', grupoId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('productos')
+        .select('id, nombre, sku, precio_venta, stock_actual, variante_valores, activo')
+        .eq('grupo_id', grupoId!)
+        .eq('activo', true)
+        .order('nombre')
+      return data ?? []
+    },
+    enabled: !!grupoId,
   })
 
   useEffect(() => {
@@ -191,6 +262,16 @@ export default function ProductoFormPage() {
         aging_profile_id: productoData.aging_profile_id ?? '',
         margen_objetivo: productoData.margen_objetivo != null ? productoData.margen_objetivo.toString() : '',
         alicuota_iva: (productoData.alicuota_iva ?? 21).toString(),
+        // Nuevos atributos
+        marca: productoData.marca ?? '',
+        shelf_life_dias: productoData.shelf_life_dias?.toString() ?? '',
+        tiene_pais_origen: productoData.tiene_pais_origen ?? false,
+        tiene_talle: productoData.tiene_talle ?? false,
+        tiene_color: productoData.tiene_color ?? false,
+        tiene_encaje: productoData.tiene_encaje ?? false,
+        tiene_formato: productoData.tiene_formato ?? false,
+        tiene_sabor_aroma: productoData.tiene_sabor_aroma ?? false,
+        // Marketplace
         publicado_marketplace: productoData.publicado_marketplace ?? false,
         precio_marketplace: productoData.precio_marketplace != null ? productoData.precio_marketplace.toString() : '',
         stock_reservado_marketplace: (productoData.stock_reservado_marketplace ?? 0).toString(),
@@ -198,6 +279,8 @@ export default function ProductoFormPage() {
       })
       if (productoData.publicado_marketplace) setShowMarketplace(true)
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
+      if (productoData.grupo_id) setGrupoId(productoData.grupo_id)
+      if (productoData.variante_valores) setVarianteValores(productoData.variante_valores as Record<string, string>)
       setLoaded(true)
     }
   }, [productoData])
@@ -301,10 +384,23 @@ export default function ProductoFormPage() {
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
         alicuota_iva: parseFloat(form.alicuota_iva) || 21,
+        // Nuevos atributos
+        marca: form.marca.trim() || null,
+        shelf_life_dias: form.shelf_life_dias ? parseInt(form.shelf_life_dias) : null,
+        tiene_pais_origen: form.tiene_pais_origen,
+        tiene_talle: form.tiene_talle,
+        tiene_color: form.tiene_color,
+        tiene_encaje: form.tiene_encaje,
+        tiene_formato: form.tiene_formato,
+        tiene_sabor_aroma: form.tiene_sabor_aroma,
+        // Marketplace
         publicado_marketplace: form.publicado_marketplace,
         precio_marketplace: form.precio_marketplace !== '' ? parseFloat(form.precio_marketplace) : null,
         stock_reservado_marketplace: parseInt(form.stock_reservado_marketplace) || 0,
         descripcion_marketplace: form.descripcion_marketplace.trim() || null,
+        // Grupos de variantes
+        grupo_id: grupoId || null,
+        variante_valores: grupoId && Object.keys(varianteValores).length > 0 ? varianteValores : null,
       }
       let productoId: string = id ?? ''
       if (isEditing) {
@@ -318,6 +414,20 @@ export default function ProductoFormPage() {
         productoId = newProd.id
         toast.success('Producto creado')
         logActividad({ entidad: 'producto', entidad_nombre: form.nombre, accion: 'crear', pagina: '/productos' })
+      }
+
+      // Guardar ubicación predeterminada para la sucursal activa
+      if (productoId && sucursalId) {
+        if (ubicSucursalActiva) {
+          await supabase.from('producto_ubicacion_sucursal').upsert({
+            tenant_id: tenant!.id, producto_id: productoId,
+            sucursal_id: sucursalId, ubicacion_id: ubicSucursalActiva,
+          }, { onConflict: 'producto_id,sucursal_id' })
+        } else {
+          // Si quedó vacío, borrar el registro para esta sucursal
+          await supabase.from('producto_ubicacion_sucursal')
+            .delete().eq('producto_id', productoId).eq('sucursal_id', sucursalId)
+        }
       }
 
       // Sincronizar tiers de precio mayorista
@@ -503,7 +613,7 @@ export default function ProductoFormPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       {showLimitModal && limits && (
         <PlanLimitModal tipo="producto" limits={limits} onClose={() => setShowLimitModal(false)} />
       )}
@@ -547,10 +657,6 @@ export default function ProductoFormPage() {
         )}
         {isEditing && canEdit && (
           <div className="flex gap-2">
-            <button type="button" onClick={() => setShowQR(true)}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-accent border border-accent/30 rounded-xl hover:bg-accent/10 transition-all">
-              <QrCode size={15} /> QR
-            </button>
             <button type="button" onClick={handleDuplicate} disabled={saving}
               className="flex items-center gap-2 px-3 py-2 text-sm text-primary border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all disabled:opacity-50">
               <Copy size={15} /> Duplicar
@@ -574,12 +680,16 @@ export default function ProductoFormPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="grid lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* ── Columna principal ── */}
           <div className="lg:col-span-2 space-y-5">
 
-            {/* Datos básicos */}
+            {/* Card 1 — Identificación */}
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Datos básicos</h2>
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Identificación</h2>
+
+              {/* Nombre */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre <span className="text-red-500">*</span></label>
                 <input type="text" value={form.nombre} disabled={!canEdit}
@@ -587,6 +697,8 @@ export default function ProductoFormPage() {
                   placeholder="Ej: Tornillo hexagonal 1/4"
                   className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:bg-gray-50 dark:bg-gray-700" />
               </div>
+
+              {/* SKU | Código de barras */}
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SKU <span className="text-gray-400 text-xs font-normal">(autogenera si vacío)</span></label>
@@ -613,6 +725,17 @@ export default function ProductoFormPage() {
                     className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
                 </div>
               </div>
+
+              {/* Marca */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Marca</label>
+                <input type="text" value={form.marca} disabled={!canEdit}
+                  onChange={e => setForm(p => ({ ...p, marca: e.target.value }))}
+                  placeholder="Ej: Hellmans"
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+              </div>
+
+              {/* Descripción */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción</label>
                 <textarea value={form.descripcion} disabled={!canEdit} rows={2}
@@ -620,7 +743,14 @@ export default function ProductoFormPage() {
                   placeholder="Descripción opcional..."
                   className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none disabled:bg-gray-50 dark:bg-gray-700" />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+            </div>
+
+            {/* Card 2 — Clasificación */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Clasificación</h2>
+
+              {/* Categoría | Proveedor */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
                   <select value={form.categoria_id} disabled={!canEdit}
@@ -639,22 +769,28 @@ export default function ProductoFormPage() {
                     {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ubicación</label>
-                  <select value={form.ubicacion_id} disabled={!canEdit}
-                    onChange={e => setForm(p => ({ ...p, ubicacion_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
-                    <option value="">Sin ubicación</option>
-                    {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                  </select>
-                </div>
               </div>
+
+              {/* Separador */}
+              <hr className="border-gray-100 dark:border-gray-700" />
+
+              {/* Toggle Activo / Inactivo */}
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div className="relative">
+                  <input type="checkbox" checked={form.activo}
+                    onChange={e => setForm(p => ({ ...p, activo: e.target.checked }))} className="sr-only" />
+                  <div className={`w-11 h-6 rounded-full transition-colors ${form.activo ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.activo ? 'translate-x-5' : ''}`} />
+                  </div>
+                </div>
+                <span className="text-sm text-gray-700 dark:text-gray-300">Activo / Inactivo</span>
+              </label>
             </div>
 
-            {/* Precios y stock */}
+            {/* Card 3 — Precios */}
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Precios y stock</h2>
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Precios</h2>
                 {cotizacionNum > 0 ? (
                   <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1 rounded-lg">
                     <DollarSign size={12} className="text-blue-400" />
@@ -666,6 +802,8 @@ export default function ProductoFormPage() {
                   <span className="text-xs text-gray-400 dark:text-gray-500">Sin cotización USD (configurar en el menú lateral)</span>
                 )}
               </div>
+
+              {/* Precios costo + venta con toggles ARS/USD */}
               {(() => {
                 const cotizNum = cotizacionNum
                 const toggleCosto = () => {
@@ -751,6 +889,7 @@ export default function ProductoFormPage() {
                   </div>
                 )
               })()}
+
               {margen !== null && (
                 <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
                   ${parseFloat(margen) >= 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
@@ -775,19 +914,9 @@ export default function ProductoFormPage() {
                   💡 Precio sugerido con {form.margen_objetivo}% de margen{parseFloat(form.alicuota_iva) > 0 ? ` + IVA ${form.alicuota_iva}%` : ''}: <span className="font-semibold">${precioSugerido.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </p>
               )}
+
+              {/* Alícuota IVA | Margen objetivo % */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Margen objetivo</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta en Métricas si el margen cae debajo</p>
-                  <div className="relative">
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.1" disabled={!canEdit}
-                      value={form.margen_objetivo}
-                      onChange={e => setForm(p => ({ ...p, margen_objetivo: e.target.value }))}
-                      className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700"
-                      placeholder="Ej: 30" />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">%</span>
-                  </div>
-                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alícuota IVA</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">IVA incluido en el precio de venta</p>
@@ -800,33 +929,21 @@ export default function ProductoFormPage() {
                     <option value="27">27% (servicios)</option>
                   </select>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stock mínimo</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta cuando el stock baje de este valor</p>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={form.stock_minimo} disabled={!canEdit}
-                    onChange={e => setForm(p => ({ ...p, stock_minimo: e.target.value }))}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unidad de medida</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cómo se mide este producto</p>
-                  <select value={form.unidad_medida} disabled={!canEdit}
-                    onChange={e => setForm(p => ({ ...p, unidad_medida: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
-                    {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Margen objetivo %</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta en Métricas si el margen cae debajo</p>
+                  <div className="relative">
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.1" disabled={!canEdit}
+                      value={form.margen_objetivo}
+                      onChange={e => setForm(p => ({ ...p, margen_objetivo: e.target.value }))}
+                      className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700"
+                      placeholder="Ej: 30" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">%</span>
+                  </div>
                 </div>
               </div>
-              {!isEditing && (
-                <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700 dark:text-blue-400">
-                  <span>💡</span>
-                  <span>Para ingresar stock, usá <strong>Movimientos → Ingreso</strong> una vez creado el producto.</span>
-                </div>
-              )}
-              {/* Stock mínimo por sucursal — solo cuando hay sucursales configuradas y editando */}
-              {/* Precios mayoristas */}
+
+              {/* Accordion Precios mayoristas */}
               {canEdit && (
                 <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
                   <button type="button" onClick={() => setShowMayorista(v => !v)}
@@ -888,7 +1005,110 @@ export default function ProductoFormPage() {
                   )}
                 </div>
               )}
+            </div>
 
+            {/* Card 4 — Stock e inventario */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Stock e inventario</h2>
+
+              {/* Stock mínimo | Unidad de medida */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Stock mínimo</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta cuando el stock baje de este valor</p>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={form.stock_minimo} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, stock_minimo: e.target.value }))}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unidad de medida</label>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cómo se mide este producto</p>
+                  <select value={form.unidad_medida} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, unidad_medida: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                    {(unidadesCustom as any[]).length > 0 && (
+                      <optgroup label="Personalizadas">
+                        {(unidadesCustom as any[]).map((u: any) => (
+                          <option key={u.nombre} value={u.nombre}>{u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Ubicación predeterminada | Estado de inventario predeterminado */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Ubicación predeterminada
+                    {sucursalId && sucursales.length > 1 && (
+                      <span className="ml-1.5 text-xs font-normal text-accent">
+                        · {(sucursales as any[]).find(s => s.id === sucursalId)?.nombre}
+                      </span>
+                    )}
+                  </label>
+                  {sucursalId ? (
+                    // Con sucursal activa: muestra ubicaciones de esa sucursal + globales
+                    <select
+                      disabled={!canEdit}
+                      value={ubicSucursalActiva}
+                      onChange={e => setUbicSucursalActiva(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                      <option value="">Sin ubicación</option>
+                      {(ubicaciones as any[])
+                        .filter((u: any) => u.sucursal_id === sucursalId || u.sucursal_id === null)
+                        .map((u: any) => (
+                          <option key={u.id} value={u.id}>{u.nombre}</option>
+                        ))}
+                    </select>
+                  ) : (
+                    // Sin sucursal activa (vista global): selector global/fallback
+                    <select value={form.ubicacion_id} disabled={!canEdit}
+                      onChange={e => setForm(p => ({ ...p, ubicacion_id: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                      <option value="">Sin ubicación</option>
+                      {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estado de inventario predeterminado</label>
+                  <select value={form.estado_id} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, estado_id: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    <option value="">Sin estado</option>
+                    {(estados as any[]).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Regla de inventario */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Regla de inventario
+                  <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal text-xs">(vacío = usar la regla del negocio)</span>
+                </label>
+                <select value={form.regla_inventario}
+                  onChange={e => setForm(p => ({ ...p, regla_inventario: e.target.value }))}
+                  disabled={!canEdit}
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                  <option value="">— Usar regla del negocio —</option>
+                  {REGLAS_INVENTARIO.map(r => (
+                    <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
+                  ))}
+                </select>
+              </div>
+
+              {!isEditing && (
+                <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700 dark:text-blue-400">
+                  <span>💡</span>
+                  <span>Para ingresar stock, usá <strong>Movimientos → Ingreso</strong> una vez creado el producto.</span>
+                </div>
+              )}
+
+              {/* Stock mínimo por sucursal */}
               {isEditing && sucursales.length > 0 && (
                 <div className="border border-gray-100 dark:border-gray-700 rounded-xl p-4 space-y-3">
                   <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Stock mínimo por sucursal</h3>
@@ -916,10 +1136,504 @@ export default function ProductoFormPage() {
                 </div>
               )}
             </div>
+
+            {/* Card 5 — Trazabilidad */}
+            {canEdit && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+                <div>
+                  <h2 className="font-semibold text-gray-700 dark:text-gray-300">Trazabilidad</h2>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Activá los atributos que aplican a este producto</p>
+                </div>
+
+                {/* Subsección Tracking */}
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tracking</p>
+
+                  {/* tiene_series */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <div className="relative mt-0.5">
+                      <input type="checkbox" checked={form.tiene_series}
+                        onChange={e => setForm(p => ({ ...p, tiene_series: e.target.checked }))} className="sr-only" />
+                      <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_series ? 'bg-accent' : 'bg-gray-300'}`}>
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_series ? 'translate-x-5' : ''}`} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Control por número de serie</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">Cada unidad tiene su propio N° de serie</p>
+                    </div>
+                  </label>
+
+                  {/* tiene_lote */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <div className="relative mt-0.5">
+                      <input type="checkbox" checked={form.tiene_lote}
+                        onChange={e => setForm(p => ({ ...p, tiene_lote: e.target.checked }))} className="sr-only" />
+                      <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_lote ? 'bg-accent' : 'bg-gray-300'}`}>
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_lote ? 'translate-x-5' : ''}`} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Control por lote</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">El stock se agrupa por número de lote</p>
+                    </div>
+                  </label>
+
+                  {/* tiene_vencimiento + inline shelf_life_dias + aging_profile_id */}
+                  <div>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="relative mt-0.5">
+                        <input type="checkbox" checked={form.tiene_vencimiento}
+                          onChange={e => setForm(p => ({ ...p, tiene_vencimiento: e.target.checked }))} className="sr-only" />
+                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_vencimiento ? 'bg-accent' : 'bg-gray-300'}`}>
+                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_vencimiento ? 'translate-x-5' : ''}`} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Fecha de vencimiento</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Registra fecha de vencimiento por línea</p>
+                      </div>
+                    </label>
+                    {form.tiene_vencimiento && (
+                      <div className="mt-3 ml-13 pl-13 space-y-3" style={{ marginLeft: '52px' }}>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Vida útil (días)
+                            <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal" title="Días desde la fabricación hasta el vencimiento. Usado para calcular alertas de vencimiento próximo.">(días de shelf life)</span>
+                          </label>
+                          <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
+                            value={form.shelf_life_dias}
+                            onChange={e => setForm(p => ({ ...p, shelf_life_dias: e.target.value }))}
+                            placeholder="Ej: 365"
+                            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                        </div>
+                        {agingProfiles.length > 0 && (
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                              Aging Profile
+                              <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal">(requiere fecha de vencimiento activa)</span>
+                            </label>
+                            <select value={form.aging_profile_id}
+                              onChange={e => setForm(p => ({ ...p, aging_profile_id: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                              <option value="">— Sin aging profile —</option>
+                              {(agingProfiles as any[]).map((ap: any) => (
+                                <option key={ap.id} value={ap.id}>{ap.nombre}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* tiene_pais_origen */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <div className="relative mt-0.5">
+                      <input type="checkbox" checked={form.tiene_pais_origen}
+                        onChange={e => setForm(p => ({ ...p, tiene_pais_origen: e.target.checked }))} className="sr-only" />
+                      <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_pais_origen ? 'bg-accent' : 'bg-gray-300'}`}>
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_pais_origen ? 'translate-x-5' : ''}`} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">País de origen</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">Registra el país de origen en cada ingreso de inventario</p>
+                    </div>
+                  </label>
+
+                  {/* es_kit */}
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <div className="relative mt-0.5">
+                      <input type="checkbox" checked={form.es_kit}
+                        onChange={e => setForm(p => ({ ...p, es_kit: e.target.checked }))} className="sr-only" />
+                      <div className={`w-10 h-5 rounded-full transition-colors ${form.es_kit ? 'bg-accent' : 'bg-gray-300'}`}>
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.es_kit ? 'translate-x-5' : ''}`} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Es un KIT</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">Se arma a partir de otros SKUs (kitting). Configurá la receta en Inventario → Kits.</p>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Separador visual */}
+                <hr className="border-gray-100 dark:border-gray-700" />
+
+                {/* Subsección Atributos de variante */}
+                {canEdit && (
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Atributos de variante</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Para ropa, alimentos, etc.</p>
+                    </div>
+
+                    {/* tiene_talle */}
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="relative mt-0.5">
+                        <input type="checkbox" checked={form.tiene_talle}
+                          onChange={e => setForm(p => ({ ...p, tiene_talle: e.target.checked }))} className="sr-only" />
+                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_talle ? 'bg-accent' : 'bg-gray-300'}`}>
+                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_talle ? 'translate-x-5' : ''}`} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Talle / Talla</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Registra el talle de cada unidad (ropa, calzado)</p>
+                      </div>
+                    </label>
+
+                    {/* tiene_color */}
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="relative mt-0.5">
+                        <input type="checkbox" checked={form.tiene_color}
+                          onChange={e => setForm(p => ({ ...p, tiene_color: e.target.checked }))} className="sr-only" />
+                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_color ? 'bg-accent' : 'bg-gray-300'}`}>
+                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_color ? 'translate-x-5' : ''}`} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Color</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Identifica el color de cada unidad</p>
+                      </div>
+                    </label>
+
+                    {/* tiene_encaje */}
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="relative mt-0.5">
+                        <input type="checkbox" checked={form.tiene_encaje}
+                          onChange={e => setForm(p => ({ ...p, tiene_encaje: e.target.checked }))} className="sr-only" />
+                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_encaje ? 'bg-accent' : 'bg-gray-300'}`}>
+                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_encaje ? 'translate-x-5' : ''}`} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Encaje</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Variante de encaje o ajuste</p>
+                      </div>
+                    </label>
+
+                    {/* tiene_formato */}
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="relative mt-0.5">
+                        <input type="checkbox" checked={form.tiene_formato}
+                          onChange={e => setForm(p => ({ ...p, tiene_formato: e.target.checked }))} className="sr-only" />
+                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_formato ? 'bg-accent' : 'bg-gray-300'}`}>
+                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_formato ? 'translate-x-5' : ''}`} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Formato</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Formato o presentación del producto</p>
+                      </div>
+                    </label>
+
+                    {/* tiene_sabor_aroma */}
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="relative mt-0.5">
+                        <input type="checkbox" checked={form.tiene_sabor_aroma}
+                          onChange={e => setForm(p => ({ ...p, tiene_sabor_aroma: e.target.checked }))} className="sr-only" />
+                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_sabor_aroma ? 'bg-accent' : 'bg-gray-300'}`}>
+                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_sabor_aroma ? 'translate-x-5' : ''}`} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Sabor / Aroma</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Sabor o aroma de cada unidad</p>
+                      </div>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Card — Grupo de variantes */}
+            {canEdit && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                  <Boxes size={16} className="text-accent" />
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">Grupo de variantes</span>
+                  {grupoId && (
+                    <span className="ml-auto px-2 py-0.5 text-xs font-medium bg-accent/10 text-accent rounded-full">Vinculado</span>
+                  )}
+                </div>
+
+                <div className="px-5 py-4 space-y-4">
+                  {!grupoId ? (
+                    /* Sin grupo: selector */
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Vinculá este producto a un grupo para gestionarlo junto con sus variantes (talle, color, etc.).
+                      </p>
+                      {grupoSelectorOpen ? (
+                        <div className="space-y-2">
+                          {productosGrupos.length === 0 ? (
+                            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-3">
+                              Sin grupos creados.{' '}
+                              <button type="button" onClick={() => setGrupoModalOpen(true)} className="text-accent hover:underline">
+                                Crear uno
+                              </button>
+                            </p>
+                          ) : (
+                            <div className="space-y-1 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-xl p-1">
+                              {productosGrupos.map(g => (
+                                <button
+                                  key={g.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setGrupoId(g.id)
+                                    // Pre-cargar atributos como claves vacías
+                                    if (g.atributos) {
+                                      const vv: Record<string, string> = {}
+                                      g.atributos.forEach(a => { vv[a.nombre] = '' })
+                                      setVarianteValores(vv)
+                                    }
+                                    setGrupoSelectorOpen(false)
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
+                                >
+                                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{g.nombre}</p>
+                                  {g.atributos && g.atributos.length > 0 && (
+                                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                                      {g.atributos.map(a => a.nombre).join(', ')}
+                                    </p>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setGrupoSelectorOpen(false)}
+                              className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setGrupoModalOpen(true); setGrupoSelectorOpen(false) }}
+                              className="flex-1 border border-accent text-accent py-2 rounded-xl text-sm hover:bg-accent/10 transition-colors"
+                            >
+                              <Plus size={13} className="inline mr-1" />Nuevo grupo
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setGrupoSelectorOpen(true)}
+                          className="w-full flex items-center justify-center gap-2 border border-dashed border-accent/40 text-accent py-2.5 rounded-xl text-sm hover:bg-accent/5 transition-colors"
+                        >
+                          <Boxes size={15} /> Vincular a un grupo
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    /* Con grupo: mostrar datos */
+                    <div className="space-y-4">
+                      {/* Badge del grupo */}
+                      <div className="flex items-center gap-3 p-3 bg-accent/5 dark:bg-accent/10 rounded-xl border border-accent/20">
+                        <Boxes size={16} className="text-accent flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                            Variante de: &quot;{grupoActual?.nombre ?? '…'}&quot;
+                          </p>
+                          {(grupoActual?.categorias as any)?.nombre && (
+                            <p className="text-xs text-gray-400 dark:text-gray-500">{(grupoActual?.categorias as any).nombre}</p>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setGrupoModalOpen(true)}
+                          className="text-xs text-accent hover:underline flex-shrink-0"
+                        >
+                          Ver grupo
+                        </button>
+                      </div>
+
+                      {/* Atributos de este variante */}
+                      {grupoActual?.atributos && grupoActual.atributos.length > 0 && (
+                        <div className="space-y-3">
+                          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Valores de esta variante</p>
+                          {grupoActual.atributos.map(attr => (
+                            <div key={attr.nombre} className="flex items-center gap-3">
+                              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-24 flex-shrink-0">
+                                {attr.nombre}:
+                              </label>
+                              {attr.valores.length > 0 ? (
+                                <select
+                                  value={varianteValores[attr.nombre] ?? ''}
+                                  onChange={e => setVarianteValores(prev => ({ ...prev, [attr.nombre]: e.target.value }))}
+                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent"
+                                >
+                                  <option value="">— Seleccionar —</option>
+                                  {attr.valores.map(v => (
+                                    <option key={v} value={v}>{v}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={varianteValores[attr.nombre] ?? ''}
+                                  onChange={e => setVarianteValores(prev => ({ ...prev, [attr.nombre]: e.target.value }))}
+                                  placeholder={`Valor de ${attr.nombre}`}
+                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent"
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Valores actuales como badges */}
+                      {Object.keys(varianteValores).filter(k => varianteValores[k]).length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {Object.entries(varianteValores).filter(([, v]) => v).map(([k, v]) => (
+                            <span key={k} className="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                              {k}: {v}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Ver todas las variantes del grupo */}
+                      {variantesDelGrupo.length > 0 && (
+                        <div>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">
+                            {variantesDelGrupo.length} variante{variantesDelGrupo.length !== 1 ? 's' : ''} en el grupo:
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {(variantesDelGrupo as any[]).slice(0, 5).map(v => (
+                              <button
+                                key={v.id}
+                                type="button"
+                                onClick={() => navigate(`/productos/${v.id}/editar`)}
+                                className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-accent transition-colors"
+                              >
+                                {v.sku} <ExternalLink size={10} />
+                              </button>
+                            ))}
+                            {variantesDelGrupo.length > 5 && (
+                              <span className="text-xs text-gray-400 dark:text-gray-500 px-2 py-0.5">+{variantesDelGrupo.length - 5} más</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Desvincular */}
+                      <button
+                        type="button"
+                        onClick={() => { setGrupoId(null); setVarianteValores({}) }}
+                        className="text-xs text-red-500 hover:text-red-600 hover:underline transition-colors"
+                      >
+                        Desvincular del grupo
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Card 6 — Marketplace */}
+            {canEdit && tenant?.marketplace_activo && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowMarketplace(v => !v)}
+                  className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag size={16} className="text-violet-500" />
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">Marketplace</span>
+                    {form.publicado_marketplace && (
+                      <span className="ml-1 px-2 py-0.5 text-xs font-medium bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 rounded-full">Publicado</span>
+                    )}
+                  </div>
+                  {showMarketplace ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                </button>
+
+                {showMarketplace && (
+                  <div className="px-5 pb-5 space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
+                    {/* Toggle publicar */}
+                    <label className="flex items-center justify-between cursor-pointer">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Publicar en marketplace</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Visible para compradores del marketplace externo</p>
+                      </div>
+                      <div className="relative ml-4 flex-shrink-0">
+                        <input type="checkbox" checked={form.publicado_marketplace}
+                          onChange={e => setForm(p => ({ ...p, publicado_marketplace: e.target.checked }))} className="sr-only" />
+                        <div className={`w-11 h-6 rounded-full transition-colors ${form.publicado_marketplace ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                          <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.publicado_marketplace ? 'translate-x-5' : ''}`} />
+                        </div>
+                      </div>
+                    </label>
+
+                    {form.publicado_marketplace && (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Precio marketplace
+                              <span className="ml-1 text-xs text-gray-400 font-normal">(vacío = usar precio de venta)</span>
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm font-medium">$</span>
+                              <input
+                                type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
+                                value={form.precio_marketplace}
+                                onChange={e => setForm(p => ({ ...p, precio_marketplace: e.target.value }))}
+                                placeholder={form.precio_venta || '0.00'}
+                                className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Stock reservado
+                              <span className="ml-1 text-xs text-gray-400 font-normal">(destinado al marketplace)</span>
+                            </label>
+                            <input
+                              type="number" onWheel={e => e.currentTarget.blur()} min="0"
+                              value={form.stock_reservado_marketplace}
+                              onChange={e => setForm(p => ({ ...p, stock_reservado_marketplace: e.target.value }))}
+                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400"
+                            />
+                            {form.stock_reservado_marketplace !== '0' && form.stock_reservado_marketplace !== '' && (
+                              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                                Stock disponible en marketplace: {Math.max(0, parseInt(form.stock_actual || '0') - parseInt(form.stock_reservado_marketplace || '0'))} u.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Descripción pública
+                            <span className="ml-1 text-xs text-gray-400 font-normal">(opcional — si está vacía se usa la descripción interna)</span>
+                          </label>
+                          <textarea
+                            value={form.descripcion_marketplace}
+                            onChange={e => setForm(p => ({ ...p, descripcion_marketplace: e.target.value }))}
+                            rows={3}
+                            placeholder="Descripción orientada al comprador externo..."
+                            className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400 resize-none"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Columna imagen + estado */}
-          <div className="space-y-5">
+          {/* ── Columna derecha ── */}
+          <div className="lg:col-span-1 space-y-5">
+
+            {/* Card Imagen */}
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">Imagen</h2>
               <div className="aspect-square rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-700 relative">
@@ -951,175 +1665,15 @@ export default function ProductoFormPage() {
               <p className="text-xs text-gray-400 dark:text-gray-500 text-center">JPG, PNG o WEBP. Máx 2MB</p>
             </div>
 
+            {/* Botón QR — solo si editando */}
             {isEditing && canEdit && (
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3">Estado</h2>
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <div className="relative">
-                    <input type="checkbox" checked={form.activo}
-                      onChange={e => setForm(p => ({ ...p, activo: e.target.checked }))} className="sr-only" />
-                    <div className={`w-11 h-6 rounded-full transition-colors ${form.activo ? 'bg-green-50 dark:bg-green-900/200' : 'bg-gray-300'}`}>
-                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.activo ? 'translate-x-5' : ''}`} />
-                    </div>
-                  </div>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{form.activo ? 'Activo' : 'Inactivo'}</span>
-                </label>
-              </div>
-            )}
-
-            {/* Atributos de tracking */}
-            {canEdit && (
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Tracking de inventario</h2>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Activá los atributos que aplican a este producto</p>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                    Regla de inventario
-                    <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal">(vacío = usar la regla del negocio)</span>
-                  </label>
-                  <select value={form.regla_inventario}
-                    onChange={e => setForm(p => ({ ...p, regla_inventario: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
-                    <option value="">— Usar regla del negocio —</option>
-                    {REGLAS_INVENTARIO.map(r => (
-                      <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
-                    ))}
-                  </select>
-                </div>
-                {agingProfiles.length > 0 && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                      Aging Profile
-                      <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal">(requiere fecha de vencimiento activa)</span>
-                    </label>
-                    <select value={form.aging_profile_id}
-                      onChange={e => setForm(p => ({ ...p, aging_profile_id: e.target.value }))}
-                      disabled={!form.tiene_vencimiento}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:bg-gray-50 dark:bg-gray-700">
-                      <option value="">— Sin aging profile —</option>
-                      {(agingProfiles as any[]).map((ap: any) => (
-                        <option key={ap.id} value={ap.id}>{ap.nombre}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {[
-                  { key: 'tiene_series', label: 'Control por número de serie', desc: 'Cada unidad tiene su propio N° de serie' },
-                  { key: 'tiene_lote', label: 'Control por lote', desc: 'El stock se agrupa por número de lote' },
-                  { key: 'tiene_vencimiento', label: 'Fecha de vencimiento', desc: 'Registra fecha de vencimiento por línea' },
-                  { key: 'es_kit', label: 'Es un KIT', desc: 'Se arma a partir de otros SKUs (kitting). Configurá la receta en Inventario → Kits.' },
-                ].map(({ key, label, desc }) => (
-                  <label key={key} className="flex items-start gap-3 cursor-pointer">
-                    <div className="relative mt-0.5">
-                      <input type="checkbox" checked={(form as any)[key]}
-                        onChange={e => setForm(p => ({ ...p, [key]: e.target.checked }))} className="sr-only" />
-                      <div className={`w-10 h-5 rounded-full transition-colors ${(form as any)[key] ? 'bg-accent' : 'bg-gray-300'}`}>
-                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${(form as any)[key] ? 'translate-x-5' : ''}`} />
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500">{desc}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
+              <button type="button" onClick={() => setShowQR(true)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm text-accent border border-accent/30 rounded-xl hover:bg-accent/10 transition-all bg-white dark:bg-gray-800">
+                <QrCode size={16} /> Ver QR del producto
+              </button>
             )}
           </div>
         </div>
-
-        {/* Marketplace — solo visible si tenant.marketplace_activo */}
-        {canEdit && tenant?.marketplace_activo && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowMarketplace(v => !v)}
-              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <ShoppingBag size={16} className="text-violet-500" />
-                <span className="font-semibold text-gray-700 dark:text-gray-300">Marketplace</span>
-                {form.publicado_marketplace && (
-                  <span className="ml-1 px-2 py-0.5 text-xs font-medium bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 rounded-full">Publicado</span>
-                )}
-              </div>
-              {showMarketplace ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
-            </button>
-
-            {showMarketplace && (
-              <div className="px-5 pb-5 space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
-                {/* Toggle publicar */}
-                <label className="flex items-center justify-between cursor-pointer">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Publicar en marketplace</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">Visible para compradores del marketplace externo</p>
-                  </div>
-                  <div className="relative ml-4 flex-shrink-0">
-                    <input type="checkbox" checked={form.publicado_marketplace}
-                      onChange={e => setForm(p => ({ ...p, publicado_marketplace: e.target.checked }))} className="sr-only" />
-                    <div className={`w-11 h-6 rounded-full transition-colors ${form.publicado_marketplace ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.publicado_marketplace ? 'translate-x-5' : ''}`} />
-                    </div>
-                  </div>
-                </label>
-
-                {form.publicado_marketplace && (
-                  <>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Precio marketplace
-                          <span className="ml-1 text-xs text-gray-400 font-normal">(vacío = usar precio de venta)</span>
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm font-medium">$</span>
-                          <input
-                            type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
-                            value={form.precio_marketplace}
-                            onChange={e => setForm(p => ({ ...p, precio_marketplace: e.target.value }))}
-                            placeholder={form.precio_venta || '0.00'}
-                            className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400"
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Stock reservado
-                          <span className="ml-1 text-xs text-gray-400 font-normal">(destinado al marketplace)</span>
-                        </label>
-                        <input
-                          type="number" onWheel={e => e.currentTarget.blur()} min="0"
-                          value={form.stock_reservado_marketplace}
-                          onChange={e => setForm(p => ({ ...p, stock_reservado_marketplace: e.target.value }))}
-                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400"
-                        />
-                        {form.stock_reservado_marketplace !== '0' && form.stock_reservado_marketplace !== '' && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                            Stock disponible en marketplace: {Math.max(0, parseInt(form.stock_actual || '0') - parseInt(form.stock_reservado_marketplace || '0'))} u.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Descripción pública
-                        <span className="ml-1 text-xs text-gray-400 font-normal">(opcional — si está vacía se usa la descripción interna)</span>
-                      </label>
-                      <textarea
-                        value={form.descripcion_marketplace}
-                        onChange={e => setForm(p => ({ ...p, descripcion_marketplace: e.target.value }))}
-                        rows={3}
-                        placeholder="Descripción orientada al comprador externo..."
-                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-violet-400 resize-none"
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
 
         {canEdit && (
           <div className="flex gap-3 justify-end">
@@ -1149,6 +1703,13 @@ export default function ProductoFormPage() {
           title="Escanear código de barras"
           onDetected={code => { setForm(p => ({ ...p, codigo_barras: code })); setBarcodeScannerOpen(false) }}
           onClose={() => setBarcodeScannerOpen(false)}
+        />
+      )}
+
+      {grupoModalOpen && (
+        <ProductoGrupoModal
+          grupo={grupoActual}
+          onClose={() => setGrupoModalOpen(false)}
         />
       )}
     </div>

@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Package, AlertTriangle, ArrowDown, TrendingUp, TrendingDown,
   ShoppingCart, DollarSign, CheckCircle, Zap, ChevronRight, Clock, BarChart2,
   ChevronDown, ChevronUp, Truck, Hourglass, Lock,
-  Wallet, Flame, Calculator, Activity,
+  Wallet, Flame, Calculator, Activity, SlidersHorizontal, X,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Link } from 'react-router-dom'
 import { useRecomendaciones } from '@/hooks/useRecomendaciones'
 import MetricasPage from './MetricasPage'
@@ -16,7 +17,7 @@ import RecomendacionesPage from './RecomendacionesPage'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { useCotizacion } from '@/hooks/useCotizacion'
-import { FilterBar, getFechasDashboard, getFechasAnteriores, labelPeriodo } from '@/components/FilterBar'
+import { getFechasDashboard, getFechasAnteriores, labelPeriodo } from '@/components/FilterBar'
 import type { PeriodoDash, Moneda, IVAMode } from '@/components/FilterBar'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
@@ -85,12 +86,26 @@ const SEMAFORO_COLOR: Record<string, string> = {
   neutral: 'bg-gray-300',
 }
 
+type AreaId = 'todo' | 'ventas' | 'gastos' | 'productos' | 'inventario' | 'clientes' | 'proveedores' | 'facturacion' | 'envios' | 'marketing'
+type SubTabId = 'overview' | 'insights' | 'metricas' | 'rentabilidad' | 'recomendaciones' | 'graficos'
+
+const AREA_LABELS: Record<AreaId, string> = {
+  todo: 'Todo', ventas: 'Ventas', gastos: 'Gastos', productos: 'Productos',
+  inventario: 'Inventario', clientes: 'Clientes', proveedores: 'Proveedores',
+  facturacion: 'Facturación', envios: 'Envíos', marketing: 'Marketing',
+}
+
+const PERIODO_LABELS_DASH: Record<PeriodoDash, string> = {
+  hoy: 'Hoy', '7d': '7D', mes: 'Mes', trimestre: 'Trim.', año: 'Año', custom: 'Custom',
+}
+
 export default function DashboardPage() {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
   const { score, recomendaciones } = useRecomendaciones()
   const { limits } = usePlanLimits()
-  const [tab, setTab] = useState<'general' | 'metricas' | 'insights' | 'rentabilidad' | 'recomendaciones' | 'graficos'>('general')
-  const [area, setArea] = useState<'todo' | 'ventas' | 'gastos' | 'productos' | 'inventario' | 'clientes' | 'proveedores' | 'facturacion' | 'envios' | 'marketing'>('todo')
+  const [area, setArea] = useState<AreaId>('todo')
+  const [subTab, setSubTab] = useState<SubTabId>('overview')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
   const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
@@ -98,10 +113,48 @@ export default function DashboardPage() {
   const [iva, setIva] = useState<IVAMode>('incluido')
   const [customDesde, setCustomDesde] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
   const [customHasta, setCustomHasta] = useState(() => new Date().toISOString())
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
   const { cotizacion } = useCotizacion()
 
+  // Cerrar popover al hacer clic fuera
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setFilterOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Resetear subTab al cambiar de área
+  const handleSetArea = (a: AreaId) => {
+    setArea(a)
+    setSubTab('overview')
+  }
+
+  // Count filtros activos (para badge)
+  const activeFilters = useMemo(() => {
+    let n = 0
+    if (periodo !== 'mes') n++
+    if (moneda !== 'ARS') n++
+    if (iva !== 'incluido') n++
+    return n
+  }, [periodo, moneda, iva])
+
+  // Texto summary del filtro activo
+  const filterSummary = useMemo(() => {
+    const p = PERIODO_LABELS_DASH[periodo]
+    const m = moneda === 'USD' ? 'USD' : 'ARS'
+    const i = iva === 'excluido' ? 's/IVA' : 'c/IVA'
+    return `${p} · ${m} · ${i}`
+  }, [periodo, moneda, iva])
+
+  const hoy = new Date().toISOString().split('T')[0]
+
   const { data: stats } = useQuery({
-    queryKey: ['dashboard-stats', tenant?.id],
+    queryKey: ['dashboard-stats', tenant?.id, sucursalId],
     queryFn: async () => {
       const hoy = new Date()
       const inicioMes    = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString()
@@ -112,17 +165,22 @@ export default function DashboardPage() {
 
       const fechaReservaVieja = new Date(hoy.getTime() - 3 * 86400000).toISOString()
       const inicioMesStr = inicioMes.split('T')[0]
+
+      // Helper: agrega .eq('sucursal_id') si hay una activa
+      const bySuc = <T extends object>(q: T): T =>
+        sucursalId ? (q as any).eq('sucursal_id', sucursalId) : q
+
       const [productos, alertas, movimientos, ventasMes, ventasMesAnt, rebajesRecientes, ventasDeuda, productosInactivos, reservasViejas, gastosMes, ventasMesCosto] = await Promise.all([
         supabase.from('productos').select('id, nombre, sku, stock_actual, stock_minimo, precio_costo').eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('alertas').select('id').eq('tenant_id', tenant!.id).eq('resuelta', false),
-        supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias),
-        supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes),
-        supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt),
-        supabase.from('movimientos_stock').select('producto_id, cantidad').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias),
-        supabase.from('ventas').select('total, monto_pagado').eq('tenant_id', tenant!.id).in('estado', ['pendiente', 'reservada']),
+        bySuc(supabase.from('movimientos_stock').select('tipo, cantidad, productos(precio_costo)').eq('tenant_id', tenant!.id).gte('created_at', hace7dias)),
+        bySuc(supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)),
+        bySuc(supabase.from('ventas').select('total').eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMesAnt).lte('created_at', finMesAnt)),
+        bySuc(supabase.from('movimientos_stock').select('producto_id, cantidad').eq('tenant_id', tenant!.id).eq('tipo', 'rebaje').gte('created_at', hace30dias)),
+        bySuc(supabase.from('ventas').select('total, monto_pagado').eq('tenant_id', tenant!.id).in('estado', ['pendiente', 'reservada'])),
         supabase.from('productos').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('activo', false),
-        supabase.from('ventas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('estado', 'reservada').lt('created_at', fechaReservaVieja),
-        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', inicioMesStr),
+        bySuc(supabase.from('ventas').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant!.id).eq('estado', 'reservada').lt('created_at', fechaReservaVieja)),
+        bySuc(supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', inicioMesStr)),
         supabase.from('venta_items').select('cantidad, precio_costo_historico').eq('tenant_id', tenant!.id).gte('created_at', inicioMes),
       ])
 
@@ -206,23 +264,26 @@ export default function DashboardPage() {
   })
 
   const { data: movRecientes = [] } = useQuery({
-    queryKey: ['movimientos-recientes', tenant?.id],
+    queryKey: ['movimientos-recientes', tenant?.id, sucursalId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('movimientos_stock').select('*, productos(nombre,sku)')
+      let q = supabase.from('movimientos_stock').select('*, productos(nombre,sku)')
         .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(5)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant,
   })
 
   const { data: topProductos = [] } = useQuery({
-    queryKey: ['dashboard-top-productos', tenant?.id],
+    queryKey: ['dashboard-top-productos', tenant?.id, sucursalId],
     queryFn: async () => {
       const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-      const { data: ventas } = await supabase.from('ventas')
+      let q = supabase.from('ventas')
         .select('venta_items(cantidad, productos(nombre, sku))')
         .eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data: ventas } = await q
       const ranking: Record<string, { nombre: string; cantidad: number }> = {}
       ;(ventas ?? []).forEach((v: any) => {
         ;(v.venta_items ?? []).forEach((item: any) => {
@@ -239,7 +300,7 @@ export default function DashboardPage() {
   // ─── KPIs período (Ingreso Neto / Margen / Burn Rate / IVA) ─────────────────
   const customRange = { desde: customDesde, hasta: customHasta }
   const { data: dashKpis } = useQuery({
-    queryKey: ['dash-kpis', tenant?.id, periodo, customDesde, customHasta],
+    queryKey: ['dash-kpis', tenant?.id, periodo, customDesde, customHasta, sucursalId],
     queryFn: async () => {
       const { desde, hasta } = getFechasDashboard(periodo, customRange)
       const { desde: desdePrev, hasta: hastaPrev } = getFechasAnteriores(periodo, customRange)
@@ -248,19 +309,35 @@ export default function DashboardPage() {
       const desdePrevDate = desdePrev.split('T')[0]
       const hastaPrevDate = hastaPrev.split('T')[0]
 
+      // caja_sesiones: .eq('cajas.sucursal_id') no funciona en Supabase (joined col filter)
+      // → primero obtenemos los caja_ids de la sucursal, luego filtramos por ellos
+      let cajaIds: string[] | null = null
+      if (sucursalId) {
+        const { data: cajasData } = await supabase.from('cajas')
+          .select('id').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId)
+        cajaIds = (cajasData ?? []).map((c: any) => c.id)
+      }
+
+      const buildSesQ = (desde: string, hasta: string) => {
+        let q = supabase.from('caja_sesiones').select('id').eq('tenant_id', tenant!.id)
+          .gte('created_at', desde).lte('created_at', hasta)
+        if (cajaIds) q = q.in('caja_id', cajaIds.length > 0 ? cajaIds : ['__none__'])
+        return q
+      }
+
       const [sessionsRes, sessionsPrevRes, viRes, viPrevRes, gastosRes, gastosPrevRes] = await Promise.all([
-        supabase.from('caja_sesiones').select('id').eq('tenant_id', tenant!.id)
-          .gte('created_at', desde).lte('created_at', hasta),
-        supabase.from('caja_sesiones').select('id').eq('tenant_id', tenant!.id)
-          .gte('created_at', desdePrev).lte('created_at', hastaPrev),
+        buildSesQ(desde, hasta),
+        buildSesQ(desdePrev, hastaPrev),
         supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico, iva_monto')
           .eq('tenant_id', tenant!.id).gte('created_at', desde).lte('created_at', hasta),
         supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico, iva_monto')
           .eq('tenant_id', tenant!.id).gte('created_at', desdePrev).lte('created_at', hastaPrev),
-        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id)
-          .gte('fecha', desdeDate).lte('fecha', hastaDate),
-        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id)
-          .gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate),
+        sucursalId
+          ? supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdeDate).lte('fecha', hastaDate)
+          : supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdeDate).lte('fecha', hastaDate),
+        sucursalId
+          ? supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
+          : supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate),
       ])
 
       // Ingreso Neto desde caja_movimientos
@@ -327,22 +404,23 @@ export default function DashboardPage() {
 
   // ─── Fugas y Movimientos (top 8 por monto) ───────────────────────────────────
   const { data: fugasData = [] } = useQuery({
-    queryKey: ['dash-fugas', tenant?.id, periodo, customDesde, customHasta],
+    queryKey: ['dash-fugas', tenant?.id, periodo, customDesde, customHasta, sucursalId],
     queryFn: async () => {
       const { desde, hasta } = getFechasDashboard(periodo, customRange)
       const desdeDate = desde.split('T')[0]
       const hastaDate = hasta.split('T')[0]
-      const [{ data: gastos }, { data: ventas }] = await Promise.all([
-        supabase.from('gastos').select('id, descripcion, monto, fecha')
-          .eq('tenant_id', tenant!.id)
-          .gte('fecha', desdeDate).lte('fecha', hastaDate)
-          .order('monto', { ascending: false }).limit(5),
-        supabase.from('ventas').select('id, numero, total, cliente_nombre, created_at')
-          .eq('tenant_id', tenant!.id)
-          .in('estado', ['despachada', 'facturada'])
-          .gte('created_at', desde).lte('created_at', hasta)
-          .order('total', { ascending: false }).limit(5),
-      ])
+      let gastosQ = supabase.from('gastos').select('id, descripcion, monto, fecha')
+        .eq('tenant_id', tenant!.id).gte('fecha', desdeDate).lte('fecha', hastaDate)
+        .order('monto', { ascending: false }).limit(5)
+      let ventasQ = supabase.from('ventas').select('id, numero, total, cliente_nombre, created_at')
+        .eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada'])
+        .gte('created_at', desde).lte('created_at', hasta)
+        .order('total', { ascending: false }).limit(5)
+      if (sucursalId) {
+        gastosQ = gastosQ.eq('sucursal_id', sucursalId)
+        ventasQ = ventasQ.eq('sucursal_id', sucursalId)
+      }
+      const [{ data: gastos }, { data: ventas }] = await Promise.all([gastosQ, ventasQ])
       const rows = [
         ...(gastos ?? []).map(g => ({
           id: g.id, tipo: 'gasto' as const,
@@ -364,9 +442,9 @@ export default function DashboardPage() {
     enabled: !!tenant,
   })
 
-  // ─── Stock inmovilizado (solo se carga en tab insights) ──────────────────────
+  // ─── Stock inmovilizado (solo se carga en subTab insights del área todo) ─────
   const { data: stockInmov } = useQuery({
-    queryKey: ['stock-inmovilizado', tenant?.id],
+    queryKey: ['stock-inmovilizado', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data: estadosInmov } = await supabase
         .from('estados_inventario').select('id')
@@ -374,11 +452,13 @@ export default function DashboardPage() {
       const eIds = (estadosInmov ?? []).map((e: any) => e.id)
       if (eIds.length === 0) return { unidades: 0, valor: 0, porEstado: [] as {nombre:string;color:string;unidades:number;valor:number}[] }
 
-      const { data: lineas } = await supabase
+      let lineasQ = supabase
         .from('inventario_lineas')
         .select('cantidad, estado_id, productos(precio_costo), estados_inventario!estado_id(nombre, color)')
         .eq('tenant_id', tenant!.id).eq('activo', true).gt('cantidad', 0)
         .in('estado_id', eIds)
+      if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
+      const { data: lineas } = await lineasQ
 
       const unidades = (lineas ?? []).reduce((s, l: any) => s + Number(l.cantidad), 0)
       const valor    = (lineas ?? []).reduce((s, l: any) => s + Number(l.cantidad) * Number(l.productos?.precio_costo ?? 0), 0)
@@ -392,7 +472,7 @@ export default function DashboardPage() {
       }
       return { unidades, valor, porEstado: Object.values(map).sort((a, b) => b.unidades - a.unidades) }
     },
-    enabled: !!tenant && tab === 'insights',
+    enabled: !!tenant && area === 'todo' && subTab === 'insights',
   })
 
   // ─── Insights ────────────────────────────────────────────────────────────────
@@ -472,242 +552,6 @@ export default function DashboardPage() {
     ? (stats.totalVentasMes - stats.totalVentasMesAnt) / stats.totalVentasMesAnt * 100
     : null
 
-  const tabButtons = (active: typeof tab) => (
-    <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl flex-wrap">
-      {([
-        { id: 'general'         as const, label: 'General' },
-        { id: 'insights'        as const, label: 'Insights' },
-        { id: 'metricas'        as const, label: 'Métricas',        lock: limits && !limits.puede_metricas },
-        { id: 'rentabilidad'    as const, label: 'Rentabilidad' },
-        { id: 'recomendaciones' as const, label: 'Recomendaciones' },
-        { id: 'graficos'        as const, label: 'Gráficos' },
-      ]).map(({ id, label, lock }) => (
-        <button key={id} onClick={() => setTab(id)}
-          className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5
-            ${active === id
-              ? 'bg-white dark:bg-gray-800 text-primary shadow-sm dark:shadow-gray-900'
-              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-          {lock && <Lock size={12} className="text-gray-400" />}
-          {label}
-        </button>
-      ))}
-    </div>
-  )
-
-  if (tab === 'insights') {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
-          </div>
-          {tabButtons('insights')}
-        </div>
-
-        {/* Score de salud */}
-        {score && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
-            <div className="flex items-center gap-5">
-              <div className="relative w-20 h-20 flex-shrink-0">
-                <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                  <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="12" />
-                  <circle cx="50" cy="50" r="40" fill="none" strokeWidth="12"
-                    stroke={score.total >= 70 ? '#22c55e' : score.total >= 40 ? '#f59e0b' : '#ef4444'}
-                    strokeDasharray={`${2 * Math.PI * 40}`}
-                    strokeDashoffset={`${2 * Math.PI * 40 * (1 - score.total / 100)}`}
-                    strokeLinecap="round" />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xl font-bold text-gray-800 dark:text-gray-100">{score.total}</span>
-                </div>
-              </div>
-              <div className="flex-1">
-                <p className="font-semibold text-gray-800 dark:text-gray-100 text-lg">Score de salud del negocio</p>
-                <p className={`text-sm font-medium mt-0.5 ${score.total >= 70 ? 'text-green-600 dark:text-green-400' : score.total >= 40 ? 'text-amber-500 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>
-                  {score.total >= 70 ? 'Negocio saludable' : score.total >= 40 ? 'Puede mejorar' : 'Necesita atención'}
-                </p>
-                <div className="mt-3 grid grid-cols-5 gap-2">
-                  {([
-                    { label: 'Rotación',      val: score.rotacion,     max: 20 },
-                    { label: 'Rentabilidad',  val: score.rentabilidad, max: 25 },
-                    { label: 'Reservas',      val: score.reservas,     max: 20 },
-                    { label: 'Crecimiento',   val: score.crecimiento,  max: 20 },
-                    { label: 'Datos',         val: score.datos,        max: 15 },
-                  ]).map(d => (
-                    <div key={d.label} className="text-center">
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{d.label}</p>
-                      <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-accent rounded-full" style={{ width: `${(d.val / d.max) * 100}%` }} />
-                      </div>
-                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mt-1">{d.val}/{d.max}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* KPI stock inmovilizado */}
-        {stockInmov && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
-                <Package size={15} className="text-orange-600 dark:text-orange-400" />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Stock inmovilizado</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Unidades en estados no disponibles para la venta</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4 text-center">
-                <p className="text-2xl font-bold text-orange-700 dark:text-orange-400">
-                  {stockInmov.unidades.toLocaleString('es-AR')}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">unidades</p>
-              </div>
-              <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4 text-center">
-                <p className="text-2xl font-bold text-orange-700 dark:text-orange-400">
-                  ${stockInmov.valor.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">valor a costo</p>
-              </div>
-            </div>
-            {stockInmov.porEstado.length > 0 && (
-              <div className="space-y-2">
-                {stockInmov.porEstado.map(e => (
-                  <div key={e.nombre} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
-                      <span className="text-gray-600 dark:text-gray-300">{e.nombre}</span>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                      <span>{e.unidades.toLocaleString('es-AR')} ud.</span>
-                      <span className="font-medium">${e.valor.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {stockInmov.unidades === 0 && (
-              <p className="text-sm text-green-600 dark:text-green-400 text-center">✓ Sin stock inmovilizado</p>
-            )}
-          </div>
-        )}
-
-        {/* Lista completa de recomendaciones */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
-            <Zap size={16} className="text-accent" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">
-              {recomendaciones.length} insight{recomendaciones.length !== 1 ? 's' : ''} detectado{recomendaciones.length !== 1 ? 's' : ''}
-            </h2>
-          </div>
-          <div className="space-y-3">
-            {recomendaciones.map(r => {
-              const style = INSIGHT_STYLES[r.tipo]
-              const Icon  = INSIGHT_ICONS[r.tipo]
-              return (
-                <div key={r.id}
-                  className={`rounded-xl border-l-4 ${style.border} ${style.bg} p-4 shadow-sm dark:shadow-gray-900`}>
-                  <div className="flex items-start gap-3">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${style.iconBg}`}>
-                      <Icon size={17} className={style.iconColor} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{r.titulo}</p>
-                      <p className={`text-xs font-medium mt-0.5 ${style.iconColor}`}>{r.impacto}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">{r.descripcion}</p>
-                      <div className="mt-2.5">
-                        {r.link === '/metricas' ? (
-                          <button onClick={() => setTab('metricas')}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary transition-colors">
-                            {r.accion} <ChevronRight size={12} />
-                          </button>
-                        ) : (
-                          <Link to={r.link}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary transition-colors">
-                            {r.accion} <ChevronRight size={12} />
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (tab === 'graficos') {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <h1 className="text-2xl font-bold text-primary">{tenant?.nombre ?? 'Dashboard'}</h1>
-          {tabButtons('graficos')}
-        </div>
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
-          <BarChart2 size={40} className="mb-3 opacity-30" />
-          <p className="font-medium text-gray-500 dark:text-gray-400">Gráficos avanzados</p>
-          <p className="text-sm mt-1 text-center max-w-xs">Esta sección está en desarrollo. Próximamente encontrarás todos los gráficos del negocio en un solo lugar.</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (tab === 'metricas') {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
-          </div>
-          {tabButtons('metricas')}
-        </div>
-        {limits && !limits.puede_metricas
-          ? <UpgradePrompt feature="metricas" />
-          : <MetricasPage hideHeader />
-        }
-      </div>
-    )
-  }
-
-  if (tab === 'rentabilidad') {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
-          </div>
-          {tabButtons('rentabilidad')}
-        </div>
-        <RentabilidadPage hideHeader />
-      </div>
-    )
-  }
-
-  if (tab === 'recomendaciones') {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{tenant?.nombre}</p>
-          </div>
-          {tabButtons('recomendaciones')}
-        </div>
-        <RecomendacionesPage hideHeader />
-      </div>
-    )
-  }
-
   // ─── Helpers de formato ──────────────────────────────────────────────────────
   const conv   = moneda === 'USD' && cotizacion > 0 ? cotizacion : 1
   const sym    = moneda === 'USD' ? 'U$D ' : '$'
@@ -728,73 +572,341 @@ export default function DashboardPage() {
     return { label, color } as const
   }
 
+  // ─── Sub-tabs disponibles ────────────────────────────────────────────────────
+  const subTabs: { id: SubTabId; label: string; lock?: boolean }[] = [
+    { id: 'insights',        label: 'Insights' },
+    { id: 'metricas',        label: 'Métricas', lock: !!(limits && !limits.puede_metricas) },
+    { id: 'rentabilidad',    label: 'Rentabilidad' },
+    { id: 'recomendaciones', label: 'Recomendaciones' },
+    { id: 'graficos',        label: 'Gráficos' },
+  ]
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* ── Row 1 — Header + Area tabs ─────────────────────────────────────────── */}
+      <div className="space-y-3">
         <h1 className="text-2xl font-bold text-primary">{tenant?.nombre ?? 'Dashboard'}</h1>
-        {tabButtons('general')}
+
+        {/* Area chips — horizontal scroll en móvil */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {(Object.entries(AREA_LABELS) as [AreaId, string][]).map(([id, label]) => (
+            <button key={id} onClick={() => handleSetArea(id)}
+              className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-all border
+                ${area === id
+                  ? 'bg-accent text-white border-accent shadow-sm'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Sub-navegación de área */}
-      <div className="flex gap-1.5 flex-wrap">
-        {([
-          { id: 'todo'        as const, label: 'Todo' },
-          { id: 'ventas'      as const, label: 'Ventas' },
-          { id: 'gastos'      as const, label: 'Gastos' },
-          { id: 'productos'   as const, label: 'Productos' },
-          { id: 'inventario'  as const, label: 'Inventario' },
-          { id: 'clientes'    as const, label: 'Clientes' },
-          { id: 'proveedores' as const, label: 'Proveedores' },
-          { id: 'facturacion' as const, label: 'Facturación' },
-          { id: 'envios'      as const, label: 'Envíos' },
-          { id: 'marketing'   as const, label: 'Marketing' },
-        ]).map(({ id, label }) => (
-          <button key={id} onClick={() => setArea(id)}
-            className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-all border
-              ${area === id
-                ? 'bg-accent text-white border-accent shadow-sm'
-                : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
-            {label}
-          </button>
-        ))}
+      {/* ── Row 2 — Sub-tabs + filtro ──────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-4">
+
+        {/* Sub-tabs — estilo underline para diferenciarse de los area chips */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+          {subTabs.map(({ id, label, lock }) => (
+            <button key={id} onClick={() => setSubTab(id)}
+              className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all border-b-2
+                ${subTab === id
+                  ? 'text-accent border-accent'
+                  : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-300'}`}>
+              {lock && <Lock size={12} className="text-gray-400" />}
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Filtro pill — solo en área 'todo' */}
+        {area === 'todo' && (
+          <div className="flex items-center gap-2 flex-shrink-0" ref={filterRef}>
+            {/* Summary text */}
+            <p className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block whitespace-nowrap">
+              {filterSummary}
+            </p>
+
+            {/* Pill button */}
+            <div className="relative">
+              <button
+                onClick={() => setFilterOpen(v => !v)}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all
+                  ${filterOpen || activeFilters > 0
+                    ? 'border-accent bg-accent/5 text-accent'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}
+              >
+                <SlidersHorizontal size={14} />
+                Filtros
+                {activeFilters > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-accent text-white text-[10px] flex items-center justify-center font-bold">
+                    {activeFilters}
+                  </span>
+                )}
+              </button>
+
+              {filterOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 p-5 space-y-5">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Filtros</h3>
+                    <button onClick={() => setFilterOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  {/* Período */}
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Período</p>
+                    <div className="flex flex-wrap gap-1">
+                      {(['hoy', '7d', 'mes', 'trimestre', 'año', 'custom'] as PeriodoDash[]).map(p => (
+                        <button key={p} onClick={() => setPeriodo(p)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors
+                            ${periodo === p ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+                          {PERIODO_LABELS_DASH[p]}
+                        </button>
+                      ))}
+                    </div>
+                    {periodo === 'custom' && (
+                      <div className="flex items-center gap-2 mt-2 text-xs">
+                        <input type="date" max={hoy} value={customDesde.split('T')[0]}
+                          onChange={e => setCustomDesde(new Date(e.target.value + 'T00:00:00').toISOString())}
+                          className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent" />
+                        <span className="text-gray-400">→</span>
+                        <input type="date" max={hoy} value={customHasta.split('T')[0]}
+                          onChange={e => setCustomHasta(new Date(e.target.value + 'T23:59:59').toISOString())}
+                          className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Moneda + IVA */}
+                  <div className="flex gap-3">
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Moneda</p>
+                      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
+                        {(['ARS', 'USD'] as Moneda[]).map(m => (
+                          <button key={m} onClick={() => setMoneda(m)}
+                            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${moneda === m ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Importe</p>
+                      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
+                        {[{ key: 'incluido' as IVAMode, label: 'c/IVA' }, { key: 'excluido' as IVAMode, label: 's/IVA' }].map(opt => (
+                          <button key={opt.key} onClick={() => setIva(opt.key)}
+                            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${iva === opt.key ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {area === 'ventas'      && <AreaErrorBoundary label="Ventas"><DashVentasArea /></AreaErrorBoundary>}
-      {area === 'gastos'      && <AreaErrorBoundary label="Gastos"><DashGastosArea /></AreaErrorBoundary>}
-      {area === 'productos'   && <AreaErrorBoundary label="Productos"><DashProductosArea /></AreaErrorBoundary>}
-      {area === 'inventario'  && <AreaErrorBoundary label="Inventario"><DashInventarioArea /></AreaErrorBoundary>}
-      {area === 'clientes'    && <AreaErrorBoundary label="Clientes"><DashClientesArea /></AreaErrorBoundary>}
-      {area === 'proveedores' && <AreaErrorBoundary label="Proveedores"><DashProveedoresArea /></AreaErrorBoundary>}
-      {area === 'facturacion' && <AreaErrorBoundary label="Facturación"><DashFacturacionArea /></AreaErrorBoundary>}
-      {area === 'envios'      && <AreaErrorBoundary label="Envíos"><DashEnviosArea /></AreaErrorBoundary>}
-      {area === 'marketing'   && <AreaErrorBoundary label="Marketing"><DashMarketingArea /></AreaErrorBoundary>}
+      {/* ── Contenido según area + subTab ──────────────────────────────────────── */}
 
-      {/* ── Área: TODO + otras (mantienen contenido existente) ────────────────── */}
-      {area !== 'ventas' && area !== 'gastos' && area !== 'productos' && area !== 'inventario'
-        && area !== 'clientes' && area !== 'proveedores' && area !== 'facturacion'
-        && area !== 'envios' && area !== 'marketing' && area !== 'todo' && (
-        <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
-          <BarChart2 size={36} className="mb-3 opacity-30" />
-          <p className="font-medium text-gray-500 dark:text-gray-400">
-            Vista {(area as string).charAt(0).toUpperCase() + (area as string).slice(1)}
+      {/* Areas específicas — solo en subTab overview */}
+      {area === 'ventas'      && subTab === 'overview' && <AreaErrorBoundary label="Ventas"><DashVentasArea /></AreaErrorBoundary>}
+      {area === 'gastos'      && subTab === 'overview' && <AreaErrorBoundary label="Gastos"><DashGastosArea /></AreaErrorBoundary>}
+      {area === 'productos'   && subTab === 'overview' && <AreaErrorBoundary label="Productos"><DashProductosArea /></AreaErrorBoundary>}
+      {area === 'inventario'  && subTab === 'overview' && <AreaErrorBoundary label="Inventario"><DashInventarioArea /></AreaErrorBoundary>}
+      {area === 'clientes'    && subTab === 'overview' && <AreaErrorBoundary label="Clientes"><DashClientesArea /></AreaErrorBoundary>}
+      {area === 'proveedores' && subTab === 'overview' && <AreaErrorBoundary label="Proveedores"><DashProveedoresArea /></AreaErrorBoundary>}
+      {area === 'facturacion' && subTab === 'overview' && <AreaErrorBoundary label="Facturación"><DashFacturacionArea /></AreaErrorBoundary>}
+      {area === 'envios'      && subTab === 'overview' && <AreaErrorBoundary label="Envíos"><DashEnviosArea /></AreaErrorBoundary>}
+      {area === 'marketing'   && subTab === 'overview' && <AreaErrorBoundary label="Marketing"><DashMarketingArea /></AreaErrorBoundary>}
+
+      {/* Areas específicas — subTab distinto de overview → placeholder */}
+      {area !== 'todo' && subTab !== 'overview' && (
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+          <BarChart2 size={40} className="mb-3 opacity-30" />
+          <p className="font-medium text-gray-500 dark:text-gray-400">Próximamente</p>
+          <p className="text-sm mt-1 text-center max-w-xs">
+            Insights de {AREA_LABELS[area]} en desarrollo
           </p>
-          <p className="text-sm mt-1">Próximamente — en desarrollo</p>
         </div>
       )}
 
-      {/* ── Área: TODO — contenido existente ─────────────────────────────────── */}
-      {area === 'todo' && (<>
+      {/* ── Área TODO — sub-tabs ──────────────────────────────────────────────── */}
 
-      {/* FilterBar */}
-      <FilterBar
-        periodo={periodo} setPeriodo={setPeriodo}
-        moneda={moneda} setMoneda={setMoneda}
-        iva={iva} setIva={setIva}
-        customDesde={customDesde} customHasta={customHasta}
-        onCustomChange={(d, h) => { setCustomDesde(d); setCustomHasta(h) }}
-      />
+      {/* metricas */}
+      {area === 'todo' && subTab === 'metricas' && (
+        limits && !limits.puede_metricas
+          ? <UpgradePrompt feature="metricas" />
+          : <MetricasPage hideHeader />
+      )}
+
+      {/* rentabilidad */}
+      {area === 'todo' && subTab === 'rentabilidad' && (
+        <RentabilidadPage hideHeader />
+      )}
+
+      {/* recomendaciones */}
+      {area === 'todo' && subTab === 'recomendaciones' && (
+        <RecomendacionesPage hideHeader />
+      )}
+
+      {/* graficos */}
+      {area === 'todo' && subTab === 'graficos' && (
+        <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
+          <BarChart2 size={40} className="mb-3 opacity-30" />
+          <p className="font-medium text-gray-500 dark:text-gray-400">Gráficos avanzados</p>
+          <p className="text-sm mt-1 text-center max-w-xs">Esta sección está en desarrollo. Próximamente encontrarás todos los gráficos del negocio en un solo lugar.</p>
+        </div>
+      )}
+
+      {/* insights */}
+      {area === 'todo' && subTab === 'insights' && (
+        <div className="space-y-6">
+
+          {/* Score de salud */}
+          {score && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
+              <div className="flex items-center gap-5">
+                <div className="relative w-20 h-20 flex-shrink-0">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="12" />
+                    <circle cx="50" cy="50" r="40" fill="none" strokeWidth="12"
+                      stroke={score.total >= 70 ? '#22c55e' : score.total >= 40 ? '#f59e0b' : '#ef4444'}
+                      strokeDasharray={`${2 * Math.PI * 40}`}
+                      strokeDashoffset={`${2 * Math.PI * 40 * (1 - score.total / 100)}`}
+                      strokeLinecap="round" />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-xl font-bold text-gray-800 dark:text-gray-100">{score.total}</span>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800 dark:text-gray-100 text-lg">Score de salud del negocio</p>
+                  <p className={`text-sm font-medium mt-0.5 ${score.total >= 70 ? 'text-green-600 dark:text-green-400' : score.total >= 40 ? 'text-amber-500 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>
+                    {score.total >= 70 ? 'Negocio saludable' : score.total >= 40 ? 'Puede mejorar' : 'Necesita atención'}
+                  </p>
+                  <div className="mt-3 grid grid-cols-5 gap-2">
+                    {([
+                      { label: 'Rotación',      val: score.rotacion,     max: 20 },
+                      { label: 'Rentabilidad',  val: score.rentabilidad, max: 25 },
+                      { label: 'Reservas',      val: score.reservas,     max: 20 },
+                      { label: 'Crecimiento',   val: score.crecimiento,  max: 20 },
+                      { label: 'Datos',         val: score.datos,        max: 15 },
+                    ]).map(d => (
+                      <div key={d.label} className="text-center">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">{d.label}</p>
+                        <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-accent rounded-full" style={{ width: `${(d.val / d.max) * 100}%` }} />
+                        </div>
+                        <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mt-1">{d.val}/{d.max}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* KPI stock inmovilizado */}
+          {stockInmov && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex items-center justify-center">
+                  <Package size={15} className="text-orange-600 dark:text-orange-400" />
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Stock inmovilizado</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Unidades en estados no disponibles para la venta</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4 text-center">
+                  <p className="text-2xl font-bold text-orange-700 dark:text-orange-400">
+                    {stockInmov.unidades.toLocaleString('es-AR')}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">unidades</p>
+                </div>
+                <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4 text-center">
+                  <p className="text-2xl font-bold text-orange-700 dark:text-orange-400">
+                    ${stockInmov.valor.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">valor a costo</p>
+                </div>
+              </div>
+              {stockInmov.porEstado.length > 0 && (
+                <div className="space-y-2">
+                  {stockInmov.porEstado.map(e => (
+                    <div key={e.nombre} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
+                        <span className="text-gray-600 dark:text-gray-300">{e.nombre}</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                        <span>{e.unidades.toLocaleString('es-AR')} ud.</span>
+                        <span className="font-medium">${e.valor.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {stockInmov.unidades === 0 && (
+                <p className="text-sm text-green-600 dark:text-green-400 text-center">✓ Sin stock inmovilizado</p>
+              )}
+            </div>
+          )}
+
+          {/* Lista completa de recomendaciones */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Zap size={16} className="text-accent" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">
+                {recomendaciones.length} insight{recomendaciones.length !== 1 ? 's' : ''} detectado{recomendaciones.length !== 1 ? 's' : ''}
+              </h2>
+            </div>
+            <div className="space-y-3">
+              {recomendaciones.map(r => {
+                const style = INSIGHT_STYLES[r.tipo]
+                const Icon  = INSIGHT_ICONS[r.tipo]
+                return (
+                  <div key={r.id}
+                    className={`rounded-xl border-l-4 ${style.border} ${style.bg} p-4 shadow-sm dark:shadow-gray-900`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${style.iconBg}`}>
+                        <Icon size={17} className={style.iconColor} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">{r.titulo}</p>
+                        <p className={`text-xs font-medium mt-0.5 ${style.iconColor}`}>{r.impacto}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed">{r.descripcion}</p>
+                        <div className="mt-2.5">
+                          {r.link === '/metricas' ? (
+                            <button onClick={() => setSubTab('metricas')}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary transition-colors">
+                              {r.accion} <ChevronRight size={12} />
+                            </button>
+                          ) : (
+                            <Link to={r.link}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary transition-colors">
+                              {r.accion} <ChevronRight size={12} />
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Área TODO + subTab overview — contenido principal ────────────────── */}
+      {area === 'todo' && subTab === 'overview' && (<>
 
       {/* ── 4 KPI Cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -822,7 +934,7 @@ export default function DashboardPage() {
           })()}
           sub={dashKpis?.margenContrib == null ? 'Sin datos de costo' : `${fmtARS(ajustarIva(dashKpis.totalVentas - dashKpis.totalCosto))} ganancia bruta`}
           icon={<div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"><TrendingUp size={20} /></div>}
-          onClick={() => setTab('rentabilidad')}
+          onClick={() => setSubTab('rentabilidad')}
         />
 
         {/* Burn Rate Diario */}
@@ -877,7 +989,7 @@ export default function DashboardPage() {
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">Insights automáticos</h2>
               <span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{recomendaciones.length}</span>
             </div>
-            <button onClick={() => setTab('insights')} className="text-xs text-accent hover:underline">Ver todos →</button>
+            <button onClick={() => setSubTab('insights')} className="text-xs text-accent hover:underline">Ver todos →</button>
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             {recomendaciones.slice(0, 4).map(r => {
@@ -892,7 +1004,7 @@ export default function DashboardPage() {
                   description={r.impacto}
                   action={{
                     label: r.accion,
-                    onClick: () => r.link === '/metricas' ? setTab('metricas') : window.location.href = r.link,
+                    onClick: () => r.link === '/metricas' ? setSubTab('metricas') : window.location.href = r.link,
                   }}
                 />
               )
@@ -945,9 +1057,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Secciones existentes (sin movimiento, proyección, crítico, etc.) ── */}
-
-      {/* Productos sin movimiento — expandable */}
+      {/* ── Productos sin movimiento — expandable ────────────────────────────── */}
       {(stats?.cantStockMuerto ?? 0) > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 overflow-hidden">
           <button
@@ -981,7 +1091,7 @@ export default function DashboardPage() {
               {(stats?.prodsInactivos?.length ?? 0) > 10 && (
                 <div className="px-5 py-2 text-xs text-gray-400 dark:text-gray-400 text-center">
                   +{(stats?.prodsInactivos?.length ?? 0) - 10} más —{' '}
-                  <button onClick={() => setTab('metricas')} className="text-accent hover:underline">Ver en Métricas</button>
+                  <button onClick={() => setSubTab('metricas')} className="text-accent hover:underline">Ver en Métricas</button>
                 </div>
               )}
             </div>
@@ -1020,7 +1130,6 @@ export default function DashboardPage() {
 
           {/* Recomendaciones urgentes (2 primeras) */}
           {recomendaciones.slice(0, 2).map(r => {
-            const urgente = r.tipo === 'danger' || r.tipo === 'warning'
             return (
               <Link
                 key={r.id}
@@ -1073,7 +1182,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 {insight.link === '/metricas' ? (
-                  <button onClick={() => setTab('metricas')}
+                  <button onClick={() => setSubTab('metricas')}
                     className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary whitespace-nowrap flex-shrink-0 transition-colors">
                     {insight.accion} <ChevronRight size={13} />
                   </button>
@@ -1194,7 +1303,7 @@ export default function DashboardPage() {
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
               <ShoppingCart size={16} className="text-accent" /> Top productos este mes
             </h2>
-            <button onClick={() => setTab('metricas')} className="text-xs text-accent hover:underline">Ver más →</button>
+            <button onClick={() => setSubTab('metricas')} className="text-xs text-accent hover:underline">Ver más →</button>
           </div>
           {topProductos.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-400 py-4 text-center">Sin ventas este mes</p>
@@ -1243,7 +1352,7 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
-      </>)}  {/* end area === 'todo' */}
+      </>)}  {/* end area === 'todo' && subTab === 'overview' */}
     </div>
   )
 }

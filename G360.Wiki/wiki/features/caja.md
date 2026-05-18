@@ -220,3 +220,28 @@ La EF `monitoring-check` alerta cuando hay **cajas abiertas > 16 horas** (umbral
 - Valida saldo disponible en la caja de origen
 - Sin caja seleccionada = ingreso externo (sin límite)
 - Query `sesionesAbiertasAll` habilitada también cuando `showDepositoFuerte = true`
+
+---
+
+## Cajas por sucursal (migration 111 · v1.8.28-dev)
+
+### Schema
+- `cajas.sucursal_id UUID` FK a `sucursales` (nullable)
+- **Caja Fuerte/Bóveda:** `sucursal_id = NULL` siempre (compartida a nivel tenant)
+- **Cajas operativas:** cada una asignada a su sucursal
+
+### Filtro en CajaPage
+```typescript
+// Con sucursal activa: muestra cajas de la sucursal + Caja Fuerte siempre
+if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},es_caja_fuerte.eq.true`)
+// sucursalId en queryKey → refetch automático al cambiar sucursal
+```
+
+### Tab Configuración
+- Selector de sucursal por caja (visible con ≥2 sucursales) — permite reasignar cajas existentes
+- Al crear caja nueva: recibe `sucursal_id` de la sucursal activa en el header
+- Empty state descriptivo cuando no hay cajas en la sucursal seleccionada
+
+### Al registrar negocio nuevo
+El seed automático (migration 114) crea la **Caja Principal** asignada a **Sucursal 1** desde el primer momento.
+

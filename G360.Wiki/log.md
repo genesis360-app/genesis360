@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-18] update | fix: 6 issues — Recursos, Dashboard Gastos, Inventario, Ventas (v1.8.32-dev)
+
+- ISS-110: migration 122 — `ventas_origen_check` extendida con Instagram/Facebook/WhatsApp/Otros
+- ISS-111: migration 102 (`es_recurrente`/frecuencia/proximo_vencimiento) faltaba en DEV, aplicada
+- ISS-112: checkbox "Registrar como gasto" en modal recurso activo (activado por default, desactivable)
+- ISS-114: botón Agregar en tab Ubicaciones abre modal "Asignar ubicación" correcto (no el de crear recurso)
+- ISS-129: pctFijos en DashGastosArea corregido (fijos/total_combinado); link → `/gastos?tab=fijos`; GastosPage lee `?tab=` de URL
+- ISS-131: query `productosBusqueda` incluye `estado_id` y `proveedor_id` para respetar defaults del producto
+
 ## [2026-05-18] update | PROD deploy v1.8.31 — PR #113, migrations 111–121 aplicadas
 
 - PR #113 `dev → main` mergeado ✅

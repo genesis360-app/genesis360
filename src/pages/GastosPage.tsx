@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from 'react'
+import { useRef, useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
@@ -11,6 +11,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
+import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 
 const CATEGORIAS_GASTO = [
@@ -103,7 +104,14 @@ export default function GastosPage() {
   const esSoloFijos = !['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<'gastos' | 'historial' | 'fijos' | 'oc' | 'recursos'>('gastos')
+  const [searchParams] = useSearchParams()
+  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'recursos'] as const
+  type TabGastos = typeof tabValidos[number]
+  const tabFromUrl = searchParams.get('tab') as TabGastos | null
+  const [tab, setTab] = useState<TabGastos>(tabValidos.includes(tabFromUrl as TabGastos) ? (tabFromUrl as TabGastos) : 'gastos')
+  useEffect(() => {
+    if (tabFromUrl && tabValidos.includes(tabFromUrl as TabGastos)) setTab(tabFromUrl as TabGastos)
+  }, [tabFromUrl])
 
   // Cuotas state (para gastos con tarjeta de crédito)
   const [esCuota, setEsCuota] = useState(false)

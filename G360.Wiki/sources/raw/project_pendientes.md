@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.27** ✅ · DEV: **v1.8.31** (productos + variantes + dashboard + modales)
+Último release en PROD: **v1.8.31** ✅ · DEV: **v1.8.31**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -13,9 +13,9 @@ type: project
 ## Estado actual DEV v1.8.31 / PROD v1.8.27 (cierre sesión 2026-05-18)
 
 - APP_VERSION DEV: `v1.8.31` en `src/config/brand.ts` ✅
-- APP_VERSION PROD: `v1.8.27` ✅ (PR #112 mergeado)
+- APP_VERSION PROD: `v1.8.31` ✅ (PR #113 mergeado)
 - Migrations DEV: 001–121 ✅
-- Migrations PROD: 001–110 ✅ (113–121 pendientes de aplicar en PROD)
+- Migrations PROD: 001–121 ✅
 
 ### Estado infra
 - Edge Functions DEV: todas activas (`invite-user` v3 — redirect dinámico)

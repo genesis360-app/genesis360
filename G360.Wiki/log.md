@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-18] update | PROD deploy v1.8.31 — PR #113, migrations 111–121 aplicadas
+
+- PR #113 `dev → main` mergeado ✅
+- Migrations 111–121 + fix_motivos_tipo_constraint aplicadas en PROD ✅
+- GitHub release v1.8.31 como latest ✅
+- PROD y DEV en paridad completa: v1.8.31 / migrations 001–121
+
 ## [2026-05-18] update | v1.8.31 — bump versión + manuales de uso
 
 - APP_VERSION bumpeada a v1.8.31 en brand.ts

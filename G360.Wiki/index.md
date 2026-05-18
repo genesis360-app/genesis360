@@ -35,6 +35,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/alertas]] | Stock bajo, LPNs vencidos, reservas viejas, sin categoría, deuda · filtro por sucursal | ✅ |
 | [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos | ✅ |
 | [[wiki/features/reportes-metricas]] | Dashboard 9 áreas, SQL Runner, aging individual · tab Todo filtro por sucursal | ✅ |
+| [[wiki/features/grupos-variantes]] | Grupos de variantes (talle, color, etc.) · ProductoGrupoModal · vista agrupada en ProductosPage · migration 120 | ✅ |
 
 ---
 

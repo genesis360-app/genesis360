@@ -169,8 +169,11 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 115 | `115_backfill_sucursal_ventas_gastos_envios.sql` | Backfill `sucursal_id` en `ventas`, `gastos`, `envios` → sucursal más antigua del tenant |
 | 116 | `116_backfill_sucursal_resto.sql` | Backfill `sucursal_id` en `recepciones`, `ordenes_compra`, `movimientos_stock` |
 | 117 | `117_backfill_sucursal_completo.sql` | Backfill final: `inventario_lineas`, `inventario_conteos`, `caja_sesiones`, `recursos`, `puntos_venta_afip`, `cajas` (op) |
+| 118 | `118_producto_variantes_atributos.sql` | Campos de variante en `productos`: marca, shelf_life_dias, tiene_talle, tiene_color, etc. |
+| 119 | `119_unidades_medida.sql` | Tabla `unidades_medida` — UdM personalizadas por tenant |
+| 120 | `120_producto_grupos_variantes.sql` | Tabla `producto_grupos` + `productos.grupo_id` + `productos.variante_valores` — grupos de variantes |
 
-**Total aplicadas en DEV:** 117 + 086b = 118 archivos · **PROD:** 110 + 086b (pendiente deploy)
+**Total aplicadas en DEV:** 120 + 086b = 121 archivos · **PROD:** 110 + 086b (pendiente deploy)
 
 ---
 

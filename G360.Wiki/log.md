@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-17] update | feat: grupos de variantes de producto (migration 120, v1.8.30-dev)
+
+Cambios en esta sesión:
+- **ProductoGrupoModal**: CRUD completo de grupos con atributos tipo tag-input (Enter/coma), producto cartesiano de combinaciones, generación de variantes automática, lista de variantes existentes con links.
+- **ProductosPage**: botón "Grupos" (panel lateral), toggle "Agrupar variantes" (viewMode flat/grouped), vista agrupada con secciones colapsables por grupo + tabla de variantes con badges, badge de grupo en vista flat.
+- **ProductoFormPage**: card "Grupo de variantes" — selector de grupo, inputs por atributo (select o text), badges de valores actuales, desvincular, guardado de grupo_id + variante_valores.
+- Migration 120: tabla `producto_grupos` + columnas `grupo_id`/`variante_valores` en `productos`.
+- DEV: `v1.8.30` | PROD: `v1.8.27`
+
 ## [2026-05-17] update | ISS-113/115/119/120/121/122/123/125/126 — atributos producto + UdM + inactivos + variantes (v1.8.29-dev)
 
 Cambios en esta sesión:

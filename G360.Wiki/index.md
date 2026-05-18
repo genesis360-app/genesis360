@@ -103,6 +103,18 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
+## Manuales de uso (por tipo de negocio)
+
+Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features relevantes. Abrir en navegador → Ctrl+P → Guardar como PDF.
+
+| Archivo | Negocio | Contenido destacado |
+|---------|---------|-------------------|
+| [[wiki/manuales/manual-hogar-genesis360]] | 🏠 Familia García — hogar | Despensa, gastos fijos, lista del súper como OC, vencimientos, dashboard financiero |
+| [[wiki/manuales/manual-ferreteria-genesis360]] | 🔩 Ferretería Don Beto | SKUs complejos, venta por metro/kg, series en herramientas, CC a constructoras, multi-sucursal |
+| [[wiki/manuales/manual-tienda-ropa-genesis360]] | 👗 Tienda Camila — moda + e-comm | Variantes talle × color, sync MeLi + TiendaNube, multichannel POS, envíos, devoluciones |
+
+---
+
 ## Support
 
 | Página | Descripción | Estado |
@@ -126,4 +138,4 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 ---
 
-*Última actualización: 2026-05-18 — 51 páginas · 8 fuentes en raw/ · 122 migraciones DEV (121 + 086b) · v1.8.27-prod / v1.8.31-dev*
+*Última actualización: 2026-05-18 — 51 páginas + 3 manuales · 8 fuentes en raw/ · 122 migraciones DEV (121 + 086b) · v1.8.27-prod / v1.8.31-dev*

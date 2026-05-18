@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Manual: Ferretería Don Beto con Genesis360</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #1a1a2e;
+    background: #fff;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 40px 48px;
+  }
+
+  /* ── Portada ────────────────────────────────────────────── */
+  .cover {
+    text-align: center;
+    padding: 80px 0 60px;
+    border-bottom: 3px solid #f59e0b;
+    margin-bottom: 48px;
+    page-break-after: always;
+  }
+  .cover .logo {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #f59e0b;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+  .cover h1 {
+    font-size: 32px;
+    font-weight: 800;
+    color: #0D0D0D;
+    line-height: 1.2;
+    margin-bottom: 16px;
+  }
+  .cover .subtitle {
+    font-size: 16px;
+    color: #6b7280;
+    margin-bottom: 40px;
+  }
+  .cover .biz-card {
+    display: inline-block;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: 16px;
+    padding: 20px 40px;
+    font-size: 13px;
+    color: #92400e;
+    line-height: 2.2;
+  }
+  .cover .biz-card strong { color: #b45309; }
+  .cover .version { margin-top: 48px; font-size: 11px; color: #9ca3af; }
+
+  /* ── Tipografía ─────────────────────────────────────────── */
+  h1 { font-size: 24px; font-weight: 800; color: #0D0D0D; margin: 40px 0 16px; }
+  h2 { font-size: 17px; font-weight: 700; color: #0D0D0D; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #f59e0b; }
+  h3 { font-size: 14px; font-weight: 600; color: #374151; margin: 20px 0 8px; }
+  p  { margin-bottom: 10px; color: #374151; }
+
+  /* ── Secciones / Partes ─────────────────────────────────── */
+  .part-header {
+    background: linear-gradient(135deg, #1c1917 0%, #292524 100%);
+    color: #fff;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 40px 0 24px;
+    page-break-before: always;
+  }
+  .part-header:first-of-type { page-break-before: avoid; }
+  .part-header .part-number {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #f59e0b;
+    margin-bottom: 4px;
+  }
+  .part-header h2 {
+    font-size: 18px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0; padding: 0; border: none;
+  }
+
+  /* ── Paso ───────────────────────────────────────────────── */
+  .step {
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .step .step-number {
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: #b45309; margin-bottom: 4px;
+  }
+  .step h3 { margin: 0 0 8px; font-size: 14px; color: #111; }
+
+  /* ── Tablas ─────────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 12.5px; }
+  th { background: #f59e0b; color: #fff; padding: 8px 12px; text-align: left; font-weight: 600; }
+  th:first-child { border-radius: 6px 0 0 6px; }
+  th:last-child  { border-radius: 0 6px 6px 0; }
+  td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  tr:nth-child(even) td { background: #fffbeb; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── Code blocks ────────────────────────────────────────── */
+  pre {
+    background: #1c1917;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 11.5px;
+    line-height: 1.8;
+    margin: 12px 0;
+  }
+  code {
+    background: #fffbeb;
+    color: #b45309;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 11.5px;
+  }
+
+  /* ── Callouts ───────────────────────────────────────────── */
+  .tip {
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 12.5px;
+    color: #92400e;
+  }
+  .info {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-left: 4px solid #0284c7;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 12.5px;
+    color: #0c4a6e;
+  }
+  .success {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-left: 4px solid #16a34a;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 12.5px;
+    color: #14532d;
+  }
+  .alert {
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    border-left: 4px solid #ef4444;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 12.5px;
+    color: #991b1b;
+  }
+
+  /* ── Listas ─────────────────────────────────────────────── */
+  ul, ol { padding-left: 20px; margin: 8px 0 12px; }
+  li { margin-bottom: 4px; color: #374151; }
+  li strong { color: #111; }
+
+  /* ── Grid resumen ───────────────────────────────────────── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .summary-card {
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .summary-card h4 {
+    font-size: 12px;
+    font-weight: 700;
+    color: #b45309;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .summary-card ul { margin: 0; padding-left: 16px; }
+  .summary-card li { font-size: 12px; color: #374151; margin-bottom: 3px; }
+
+  /* ── Rol badge ──────────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-owner  { background: #fef3c7; color: #92400e; }
+  .badge-super  { background: #dbeafe; color: #1e40af; }
+  .badge-cajero { background: #dcfce7; color: #166534; }
+  .badge-dep    { background: #f3e8ff; color: #6b21a8; }
+
+  /* ── Footer ─────────────────────────────────────────────── */
+  .footer {
+    text-align: center;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 11px;
+    color: #9ca3af;
+  }
+
+  @media print {
+    body { padding: 20px 32px; font-size: 12px; }
+    .part-header { page-break-before: always; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .cover { page-break-after: always; }
+    pre, table, .step { page-break-inside: avoid; }
+    @page { margin: 20mm 15mm; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ PORTADA ══════════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="logo">Genesis360</div>
+  <h1>Ferretería Don Beto<br/>con Genesis360</h1>
+  <p class="subtitle">Manual paso a paso para gestionar el stock, las ventas,<br/>los proveedores y las finanzas de tu ferretería</p>
+  <div class="biz-card">
+    <strong>Ferretería Don Beto</strong><br/>
+    Roberto "Beto" Sánchez — Dueño<br/>
+    Mariela — Cajera / Vendedora<br/>
+    Lucas — Depósito<br/>
+    Sucursal Palermo · Sucursal Caballito
+  </div>
+  <p class="version">Mayo 2026 · Genesis360 v1.8</p>
+</div>
+
+<!-- ══ INTRO ═════════════════════════════════════════════════════════════════ -->
+<h2>Por qué Genesis360 es ideal para una ferretería</h2>
+<p>Una ferretería tiene uno de los inventarios más complejos del retail: miles de SKUs (tornillos, caños, pinturas, herramientas eléctricas, llaves de paso...), múltiples proveedores, clientes mayoristas con cuenta corriente, precios que cambian seguido y stock que circula entre el salón y el depósito. Genesis360 fue diseñado exactamente para esto.</p>
+
+<table>
+  <thead><tr><th>Genesis360</th><th>En Ferretería Don Beto</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Negocio / Tenant</strong></td><td>Ferretería Don Beto SRL</td></tr>
+    <tr><td><strong>Sucursal</strong></td><td>Local Palermo · Local Caballito · Depósito central</td></tr>
+    <tr><td><strong>Producto / SKU</strong></td><td>Tornillo 4×40, Cerradura Yale 60mm, Pintaflor blanco 4L...</td></tr>
+    <tr><td><strong>Inventario / LPN</strong></td><td>Stock físico por ubicación: góndola, depósito, vitrina</td></tr>
+    <tr><td><strong>Proveedor</strong></td><td>Ferretería mayorista, importador, Sinteplast, Stanley...</td></tr>
+    <tr><td><strong>Orden de Compra</strong></td><td>Pedido a proveedor cuando baja el stock</td></tr>
+    <tr><td><strong>Recepción</strong></td><td>Recibir la mercadería del camión del proveedor</td></tr>
+    <tr><td><strong>Ventas / POS</strong></td><td>Despacho en mostrador: contado, tarjeta o cuenta corriente</td></tr>
+    <tr><td><strong>Cuenta Corriente</strong></td><td>Crédito para clientes contratistas / constructoras</td></tr>
+    <tr><td><strong>Caja</strong></td><td>Apertura diaria, movimientos en efectivo, cierre</td></tr>
+    <tr><td><strong>Gastos</strong></td><td>Alquiler, servicios, sueldos, fletes, impuestos</td></tr>
+    <tr><td><strong>Alertas</strong></td><td>Stock mínimo en tornillos, herramienta con serie, vencimiento de pintura</td></tr>
+    <tr><td><strong>Dashboard</strong></td><td>Ventas del día, margen, productos más vendidos, deuda de clientes</td></tr>
+  </tbody>
+</table>
+
+<!-- ══ PARTE 1 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 1</div>
+  <h2>Configuración inicial — antes de arrancar</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 1</div>
+  <h3>Crear el negocio y las sucursales</h3>
+  <pre>Nombre del negocio: Ferretería Don Beto SRL
+Tipo de comercio:   Ferretería / Productos de construcción
+País:               Argentina</pre>
+  <p>Al registrarse se crea automáticamente <strong>Sucursal 1</strong>. Renombrala a "Local Palermo" y luego creá las demás en Configuración → Sucursales:</p>
+  <ul>
+    <li><strong>Local Palermo</strong> — ventas al público, salón principal</li>
+    <li><strong>Local Caballito</strong> — segunda sucursal</li>
+    <li><strong>Depósito Central</strong> — stock sin salón de ventas</li>
+  </ul>
+  <div class="info">📍 Cada sucursal tiene su propio inventario, su propia caja y sus propios usuarios. Un empleado del Local Palermo solo ve el stock y las ventas de su sucursal.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 2</div>
+  <h3>Roles de usuario (Configuración → Usuarios)</h3>
+  <table>
+    <thead><tr><th>Usuario</th><th>Rol</th><th>Qué puede hacer</th></tr></thead>
+    <tbody>
+      <tr><td>Roberto (Beto)</td><td><span class="badge badge-owner">DUEÑO</span></td><td>Todo — ve ambas sucursales, precios de costo, finanzas</td></tr>
+      <tr><td>Mariela</td><td><span class="badge badge-cajero">CAJERO</span></td><td>Ventas, caja, clientes — solo su sucursal asignada</td></tr>
+      <tr><td>Lucas</td><td><span class="badge badge-dep">DEPÓSITO</span></td><td>Inventario, recepciones — cambios de cantidad requieren aprobación</td></tr>
+      <tr><td>Contador externo</td><td><span class="badge badge-super">CONTADOR</span></td><td>Dashboard, gastos, reportes — sin acceso a operaciones</td></tr>
+    </tbody>
+  </table>
+  <div class="tip">💡 Lucas en el rol DEPOSITO puede ingresar y mover stock pero si quiere <strong>ajustar</strong> una cantidad, el cambio queda pendiente de aprobación de Beto. Protección contra errores o irregularidades.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 3</div>
+  <h3>Categorías de productos (Configuración → Categorías)</h3>
+  <pre>🔩  Tornillería y fijaciones
+🚿  Plomería y sanitarios
+⚡  Electricidad e iluminación
+🪟  Aberturas y herrajes
+🎨  Pinturas y revestimientos
+🔨  Herramientas manuales
+🔌  Herramientas eléctricas
+🧱  Construcción y cemento
+🔐  Cerraduras y seguridad
+🧴  Adhesivos y selladores
+📦  Consumibles y varios</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 4</div>
+  <h3>Ubicaciones físicas (Configuración → Ubicaciones)</h3>
+  <pre>── Local Palermo ─────────────────────────
+  G-01  Góndola 1 — tornillería
+  G-02  Góndola 2 — plomería
+  G-03  Góndola 3 — electricidad
+  G-04  Góndola 4 — pinturas
+  VIT   Vitrina — herramientas eléctricas (alta rotación)
+  MOST  Mostrador — productos de consulta frecuente
+
+── Depósito Central ──────────────────────
+  DEP-A  Depósito Estante A (cajas cerradas)
+  DEP-B  Depósito Estante B
+  DEP-C  Depósito Estante C (bultos pesados)
+  TRANS  En tránsito (recibido, sin ubicar)</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 5</div>
+  <h3>Estados de inventario (Configuración → Estados)</h3>
+  <table>
+    <thead><tr><th>Estado</th><th>Color</th><th>Uso</th></tr></thead>
+    <tbody>
+      <tr><td>Disponible</td><td>🟢 Verde</td><td>En góndola, listo para vender</td></tr>
+      <tr><td>En depósito</td><td>🔵 Azul</td><td>Stock en depósito, aún no en góndola</td></tr>
+      <tr><td>Reservado</td><td>🟣 Violeta</td><td>Apartado para un cliente o pedido especial</td></tr>
+      <tr><td>Dañado</td><td>🔴 Rojo</td><td>No apto para venta, en proceso de reclamo al proveedor</td></tr>
+      <tr><td>Muestra</td><td>🟠 Naranja</td><td>Exposición — no disponible para venta</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 6</div>
+  <h3>Unidades de medida personalizadas (Configuración → Unidades)</h3>
+  <p>La ferretería usa unidades que no están en la lista estándar:</p>
+  <pre>metro     → para caños, cables, mangueras (venta por metro)
+kg        → para cemento, arena, yeso (venta a granel)
+litro     → pinturas a granel
+par       → bisagras, llaves de puerta
+caja      → tornillos en caja × 100
+rollo     → cinta, alambre
+bolsa     → cemento, cal, arena (30/40/50 kg)
+juego     → sets de herramientas</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 7</div>
+  <h3>Motivos de movimiento personalizados</h3>
+  <p><strong>Ingresos:</strong> Compra a proveedor · Reposición desde depósito · Devolución de cliente · Mercadería en consignación</p>
+  <p><strong>Rebajes:</strong> Venta mostrador · Rotura / daño · Muestra a cliente · Merma / faltante · Robo (confirmado)</p>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 8</div>
+  <h3>Principales proveedores (Módulo Prov./Servicios)</h3>
+  <pre>Ferretería Mayorista del Centro  — herrajes, tornillería (plazo 30 días)
+Pinturas Sinteplast              — pinturas y revestimientos (plazo 60 días)
+Stanley Distribuidora            — herramientas eléctricas (contado)
+Importadora TecnoHerr            — herramientas eléctricas importadas
+Caños y Conexiones SA            — plomería (plazo 30 días)
+Electricidad Total               — materiales eléctricos (plazo 45 días)
+Ferretería Palermo Mayorista     — varios, compras urgentes
+Distribuidora Lock               — cerraduras y seguridad</pre>
+  <div class="info">💳 Para los proveedores con plazo de pago: habilitá la <strong>Cuenta Corriente del proveedor</strong> en su ficha. Así el sistema trackea cuánto debés a cada proveedor y cuándo vence.</div>
+</div>
+
+<!-- ══ PARTE 2 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 2</div>
+  <h2>Carga de productos — el catálogo de la ferretería</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 9</div>
+  <h3>Crear los productos (Módulo Productos → Nuevo producto)</h3>
+  <p>Una ferretería puede tener 5.000+ SKUs. Empezá con los 200-300 de mayor rotación. Ejemplos representativos:</p>
+
+  <p><strong>Tornillo autoperforante 4×40 (caja × 100)</strong></p>
+  <pre>Nombre:           Tornillo autoperforante 4×40 c/100
+SKU:              TOR-4040-C100
+Categoría:        Tornillería y fijaciones
+Proveedor:        Ferretería Mayorista del Centro
+Unidad de medida: caja
+Precio costo:     $1.800 / caja
+Precio venta:     $2.900 / caja
+Alícuota IVA:     21%
+Stock mínimo:     10 cajas (alerta al llegar a 10)
+Ubicación:        G-01 — Góndola 1 tornillería</pre>
+
+  <p><strong>Taladro Percutor Bosch 650W — con número de serie</strong></p>
+  <pre>Nombre:           Taladro Percutor Bosch GSB650 650W
+SKU:              HE-BOSCH-GSB650
+Categoría:        Herramientas eléctricas
+Proveedor:        Stanley Distribuidora
+Unidad de medida: unidad
+Precio costo:     $48.000
+Precio venta:     $89.900
+Control por número de serie: ✅ SÍ  ← cada unidad tiene su serie
+Stock mínimo:     2 unidades
+Ubicación:        VIT — Vitrina</pre>
+
+  <p><strong>Caño PVC 110mm × 3m</strong></p>
+  <pre>Nombre:           Caño PVC 110mm × 3 metros
+SKU:              PLO-PVC-110-3M
+Categoría:        Plomería y sanitarios
+Unidad de medida: metro  ← vendido por metro, no por unidad
+Precio costo:     $850 / metro
+Precio venta:     $1.400 / metro
+Stock mínimo:     30 metros
+Ubicación:        DEP-C — Depósito bultos pesados</pre>
+
+  <p><strong>Pintaflor Blanco 4L</strong></p>
+  <pre>Nombre:           Pintaflor Interior Blanco 4L
+SKU:              PIN-FLOR-B-4L
+Categoría:        Pinturas y revestimientos
+Proveedor:        Pinturas Sinteplast
+Tiene vencimiento: ✅ SÍ
+Vida útil (días): 730 (2 años)
+Precio costo:     $3.200
+Precio venta:     $5.800
+Alícuota IVA:     10.5%   ← pinturas tienen alícuota reducida
+Stock mínimo:     5 unidades
+Ubicación:        G-04 — Góndola pinturas</pre>
+
+  <div class="tip">💡 <strong>Importación masiva:</strong> Si ya tenés el catálogo en Excel, usá <strong>Productos → Importar</strong> para cargar cientos de SKUs de una vez. El sistema mapea las columnas y crea todo automáticamente.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 10</div>
+  <h3>Grupos de variantes — un solo producto padre para múltiples versiones</h3>
+  <p>Muchos productos de ferretería vienen en múltiples formatos. En vez de crear un SKU separado para cada uno, creás un <strong>Grupo de Variantes</strong>:</p>
+
+  <p><strong>Ejemplo: Pintaflor Interior Blanco</strong></p>
+  <pre>Grupo padre: Pintaflor Interior Blanco
+Atributos:   Formato (1L, 4L, 20L)
+
+Variantes generadas automáticamente:
+  SKU: PIN-FLOR-B-1L  → Pintaflor Interior Blanco 1L  $1.800
+  SKU: PIN-FLOR-B-4L  → Pintaflor Interior Blanco 4L  $5.800
+  SKU: PIN-FLOR-B-20L → Pintaflor Interior Blanco 20L $22.000</pre>
+
+  <p><strong>Ejemplo: Cerradura Yale 60mm</strong></p>
+  <pre>Grupo padre: Cerradura Yale Estándar
+Atributos:   Medida (60mm, 70mm, 80mm), Color (dorado, plateado)
+
+Genera 6 variantes: cada combinación medida × color tiene su propio SKU, stock y precio.</pre>
+
+  <div class="tip">💡 Accedés a los grupos desde <strong>Productos → botón "Grupos"</strong>. El generador de combinaciones crea todos los SKUs con un solo click.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 11</div>
+  <h3>Precios mayoristas por volumen (en cada producto)</h3>
+  <p>Muchos clientes de ferretería compran por volumen — constructoras, contratistas. Configurás tiers de precio directamente en el producto:</p>
+  <pre>Tornillo autoperforante 4×40 — Precios mayoristas:
+  Compra 1–9 cajas:   $2.900 / caja  (precio mostrador)
+  Compra 10–49 cajas: $2.500 / caja  (−14%)
+  Compra 50+ cajas:   $2.200 / caja  (−24%)
+
+Pintaflor Blanco 4L — Precios mayoristas:
+  Compra 1–4 unidades:  $5.800
+  Compra 5–19 unidades: $5.200
+  Compra 20+ unidades:  $4.800</pre>
+  <p>En el POS, el sistema aplica el precio correcto automáticamente según la cantidad en el carrito.</p>
+</div>
+
+<!-- ══ PARTE 3 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 3</div>
+  <h2>Inventario — stock físico de la ferretería</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 12</div>
+  <h3>Cargar el stock inicial (Módulo Inventario → Agregar Stock)</h3>
+  <p>Lucas (depósito) hace el inventario físico en dos días. La ferretería tiene stock en la góndola y en el depósito — los registra en la ubicación correcta desde el inicio:</p>
+
+  <pre>Producto: Tornillo autoperforante 4×40
+  → Ubicación G-01: 45 cajas (en góndola)
+  → Ubicación DEP-A: 80 cajas (en depósito, reserva)
+
+Producto: Pintaflor Blanco 4L
+  → Ubicación G-04: 8 unidades
+  → Vencimiento: 03/2027
+
+Producto: Taladro Percutor Bosch GSB650
+  → Vitrina: 3 unidades
+  → Series ingresadas: #BOS4521-01, #BOS4521-02, #BOS4521-03</pre>
+
+  <div class="info">🔑 <strong>Control por número de serie:</strong> Cada taladro, amoladora o herramienta eléctrica de alto valor tiene su propio número de serie. Genesis360 rastrea qué serie está en stock, cuál se vendió y a qué cliente — fundamental para garantías y reclamos.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 13</div>
+  <h3>Reposición desde depósito al salón</h3>
+  <p>Cuando una góndola se vacía, Lucas mueve stock del depósito al salón:</p>
+  <p><strong>Módulo Inventario → LPN → tab Mover</strong></p>
+  <ul>
+    <li>Selecciona el LPN de tornillos 4×40 en DEP-A (80 cajas)</li>
+    <li>Cantidad a mover: 30 cajas</li>
+    <li>Destino: G-01 Góndola 1</li>
+    <li>Confirmar → el stock se redistribuye entre ubicaciones</li>
+  </ul>
+  <div class="tip">💡 <strong>Traslado entre sucursales:</strong> Si Caballito se queda sin stock de un producto y Palermo tiene excedente, el traslado se registra de la misma forma — el sistema lo mueve entre sucursales con el historial completo.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 14</div>
+  <h3>Conteo de inventario mensual</h3>
+  <p>El primer lunes de cada mes, Lucas hace el inventario físico de una sección:</p>
+  <p><strong>Módulo Inventario → tab Conteos → Nuevo conteo</strong></p>
+  <ul>
+    <li>Tipo: Por ubicación → selecciona G-01 (Góndola tornillería)</li>
+    <li>El sistema muestra lo que debería haber vs lo que Lucas cuenta físicamente</li>
+    <li>Si hay diferencias: las marca, agrega notas ("faltante sin explicación")</li>
+    <li>Al finalizar: genera los ajustes automáticamente</li>
+    <li>Como es DEPOSITO, el ajuste queda pendiente de aprobación de Beto</li>
+  </ul>
+  <div class="alert">⚠️ Si el conteo muestra diferencias importantes (−$50.000 en valor), Beto recibe la alerta y puede investigar antes de aprobar el ajuste.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 15</div>
+  <h3>KITs — armar combos de productos</h3>
+  <p>La ferretería vende "kits de instalación" que combinan varios productos:</p>
+  <pre>Kit Instalación Canilla
+  Componentes:
+    × 1  Canilla monocomando (SKU: PLO-CAN-MONO)
+    × 1  Cinta teflón 20m    (SKU: PLO-TEF-20M)
+    × 2  Teflon fittings     (SKU: PLO-FIT-1/2)
+    × 1  Llave inglesa 10"   (SKU: HM-LLA-ING10)
+
+  Precio del kit: $28.000 (vs $31.500 por separado — 11% de descuento)</pre>
+  <p>Al vender el kit, el sistema descuenta automáticamente cada componente del inventario con FIFO.</p>
+</div>
+
+<!-- ══ PARTE 4 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 4</div>
+  <h2>Compras a proveedores — pedidos y recepciones</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 16</div>
+  <h3>Generar un pedido a proveedor (Módulo Prov./Servicios → OC)</h3>
+  <p>El lunes, Beto revisa las alertas de stock mínimo y genera el pedido semanal:</p>
+
+  <p><strong>Opción A — Desde las alertas:</strong><br/>
+  Dashboard → Alertas → ve los 12 productos en stock crítico → los agrega a la OC del proveedor correspondiente.</p>
+
+  <p><strong>Opción B — Desde Productos:</strong><br/>
+  Encuentra un producto → botón 🛒 (carrito) → elige proveedor + cantidad → se agrega a la OC en borrador de ese proveedor.</p>
+
+  <p><strong>OC completa para Ferretería Mayorista del Centro:</strong></p>
+  <pre>Proveedor:      Ferretería Mayorista del Centro
+Fecha esperada: jueves 23/01/2026
+
+Ítems:
+  Tornillo 4×40 c/100 × 200 cajas    $1.800 c/u  = $360.000
+  Tornillo 6×60 c/50  × 80 cajas     $2.100 c/u  = $168.000
+  Tuerca 1/4 c/100    × 50 cajas     $950 c/u    = $47.500
+  Remaches 4.8×10 c/250 × 30 cajas   $1.200 c/u  = $36.000
+  ──────────────────────────────────────────────────────────
+  TOTAL OC:                                        $611.500
+
+Método de pago: 50% transferencia + 50% CC 30 días</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 17</div>
+  <h3>Recibir la mercadería (Módulo Recepciones)</h3>
+  <p>El jueves llega el camión. Lucas recibe la mercadería y la registra:</p>
+  <p><strong>Módulo Recepciones → Nueva recepción → vinculada a la OC del mayorista</strong></p>
+  <p>El sistema pre-carga todos los ítems de la OC. Lucas va caja por caja:</p>
+  <ul>
+    <li>Tornillo 4×40: OC pedía 200, llegaron 200 ✅</li>
+    <li>Tornillo 6×60: OC pedía 80, llegaron 72 ⚠️ (faltaron 8 cajas → se anota la diferencia)</li>
+    <li>Remaches: OC pedía 30, llegaron 35 (mandaron de más → se registra la diferencia)</li>
+  </ul>
+  <div class="success">✅ Al confirmar la recepción:<br/>
+    → Stock actualizado en inventario (con ubicación por default de cada producto)<br/>
+    → Gasto creado automáticamente por el monto real recibido<br/>
+    → Las diferencias quedan documentadas para el reclamo al proveedor</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 18</div>
+  <h3>Pagar al proveedor (Módulo Gastos → tab OC)</h3>
+  <p>La OC del mayorista está en estado "pendiente de pago". Beto paga en dos partes según lo acordado:</p>
+  <pre>Hoy (transferencia 50%):
+  Monto: $305.750
+  Medio: Transferencia bancaria
+  → Registra el pago parcial → OC queda en "pago parcial"
+
+En 30 días (CC):
+  Monto: $305.750
+  Medio: Cuenta Corriente (plazo acordado)
+  → OC queda en "pagada" completa</pre>
+  <div class="tip">💡 El sistema te avisa cuando vencen los pagos a proveedores. Si se acerca el vencimiento y no pagaste, aparece en las alertas en rojo.</div>
+</div>
+
+<!-- ══ PARTE 5 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 5</div>
+  <h2>Ventas en el mostrador — el POS de la ferretería</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 19</div>
+  <h3>Venta típica en mostrador (Módulo Ventas)</h3>
+  <p>Son las 10am. Mariela atiende a un cliente que quiere instalar una canilla:</p>
+
+  <div class="flow-example" style="background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin:12px 0;">
+    <p><strong>1.</strong> Mariela abre el POS → la caja ya está abierta desde las 9am</p>
+    <p><strong>2.</strong> Busca "canilla" → selecciona Canilla monocomando $18.500</p>
+    <p><strong>3.</strong> Agrega Cinta teflón → $850</p>
+    <p><strong>4.</strong> El cliente pregunta si hay descuento. Mariela aplica 5% de descuento manual → total $18.384</p>
+    <p><strong>5.</strong> Medio de pago: Tarjeta débito $18.384</p>
+    <p><strong>6.</strong> Confirmar → stock descontado automáticamente → ticket impreso</p>
+  </div>
+
+  <p><strong>Venta con número de serie:</strong></p>
+  <p>El cliente lleva un taladro Bosch. Al confirmar la venta, el sistema pide que Mariela seleccione qué número de serie está vendiendo (#BOS4521-01). Queda registrado qué cliente llevó qué unidad específica — útil para garantías.</p>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 20</div>
+  <h3>Venta a cuenta corriente — clientes constructoras</h3>
+  <p>La Constructora Edificar SA compra materiales por $450.000 y paga a 45 días:</p>
+
+  <pre>Cliente:        Constructora Edificar SA (con CC habilitada)
+Límite CC:      $2.000.000
+Plazo pago:     45 días
+
+Carrito:
+  Cemento Portland 50kg × 80 bolsas  $4.800 c/u = $384.000
+  Cal hidratada 25kg × 30 bolsas     $2.200 c/u = $66.000
+  TOTAL: $450.000
+
+Pago: Cuenta Corriente → monto_pagado = $0
+      La deuda queda en la ficha del cliente</pre>
+
+  <div class="info">📋 En <strong>Clientes → Constructora Edificar SA → tab Cuenta Corriente</strong> se ve el historial de compras, los pagos recibidos, el saldo pendiente y las fechas de vencimiento.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 21</div>
+  <h3>Cobrar una cuenta corriente</h3>
+  <p>La constructora viene a pagar parte de su deuda:</p>
+  <p><strong>Módulo Clientes → Constructora Edificar → tab CC → Registrar pago</strong></p>
+  <pre>Monto: $300.000
+Medio: Transferencia bancaria
+
+→ El sistema distribuye el pago FIFO sobre las ventas más antiguas
+→ Actualiza el saldo de CC automáticamente
+→ Genera el comprobante de pago</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 22</div>
+  <h3>Presupuestos para obras</h3>
+  <p>Un cliente quiere saber cuánto cuesta poner piso en 80m²:</p>
+  <ul>
+    <li>En el POS, modo <strong>"Presupuesto"</strong></li>
+    <li>Cargás los materiales con las cantidades estimadas</li>
+    <li>El sistema muestra el total con IVA</li>
+    <li>Se imprime o envía por WhatsApp</li>
+    <li>Si el cliente acepta, el presupuesto se convierte en venta con un click</li>
+    <li>Los presupuestos vencen a los 30 días (configurable) — el sistema avisa para actualizarlos</li>
+  </ul>
+</div>
+
+<!-- ══ PARTE 6 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 6</div>
+  <h2>Caja diaria — apertura, movimientos y cierre</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 23</div>
+  <h3>Apertura y cierre diario de caja (Módulo Caja)</h3>
+  <p><strong>A las 9:00am — Mariela abre la caja:</strong></p>
+  <pre>Caja Principal — Local Palermo
+Monto de apertura: $15.000 (el efectivo del fondo de caja)</pre>
+
+  <p><strong>Durante el día, la caja registra automáticamente:</strong></p>
+  <ul>
+    <li>Ventas en efectivo → ingreso</li>
+    <li>Pagos de CC recibidos en efectivo → ingreso</li>
+    <li>Compras en efectivo a proveedores pequeños → egreso</li>
+    <li>Gastos varios en efectivo → egreso</li>
+  </ul>
+
+  <p><strong>A las 19:00 — Mariela cierra la caja:</strong></p>
+  <pre>Sistema dice:   $87.350  (lo que debería haber)
+Mariela cuenta: $86.800  (lo que hay físicamente)
+Diferencia:     −$550    (se anota el motivo, puede ser vuelto mal dado)</pre>
+
+  <div class="tip">💡 <strong>Caja Fuerte / Bóveda:</strong> Al final del día, Mariela "envía" el excedente de efectivo a la Bóveda. Queda solo el fondo de $15.000 para el día siguiente. Beto puede ver el saldo de la Bóveda sin estar físicamente en el local.</div>
+</div>
+
+<!-- ══ PARTE 7 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 7</div>
+  <h2>Gastos operativos del negocio</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 24</div>
+  <h3>Gastos fijos mensuales (Módulo Gastos → Gastos fijos)</h3>
+  <table>
+    <thead><tr><th>Gasto</th><th>Sucursal</th><th>Frecuencia</th><th>Monto aprox.</th></tr></thead>
+    <tbody>
+      <tr><td>Alquiler Local Palermo</td><td>Palermo</td><td>Mensual</td><td>$380.000</td></tr>
+      <tr><td>Alquiler Local Caballito</td><td>Caballito</td><td>Mensual</td><td>$290.000</td></tr>
+      <tr><td>Alquiler Depósito</td><td>Depósito</td><td>Mensual</td><td>$180.000</td></tr>
+      <tr><td>Luz (Edenor) Palermo</td><td>Palermo</td><td>Mensual</td><td>$42.000</td></tr>
+      <tr><td>Luz (Edenor) Caballito</td><td>Caballito</td><td>Mensual</td><td>$35.000</td></tr>
+      <tr><td>Internet/teléfono</td><td>Global</td><td>Mensual</td><td>$8.500</td></tr>
+      <tr><td>Seguro comercio</td><td>Global</td><td>Mensual</td><td>$28.000</td></tr>
+      <tr><td>Abono alarma</td><td>Global</td><td>Mensual</td><td>$12.000</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 25</div>
+  <h3>Gastos variables</h3>
+  <pre>Flete de proveedor:
+  Descripción: Flete Mayorista del Centro
+  Monto: $8.500
+  Categoría: Logística
+  Adjuntar: foto del remito
+
+Materiales de embalaje:
+  Descripción: Bolsas y cinta de embalar
+  Monto: $3.200
+  Categoría: Consumibles
+
+Reparación: cámara de seguridad rota
+  Descripción: Reparación cámara CCTV
+  Monto: $25.000
+  Categoría: Mantenimiento
+  Comprobante: factura del técnico (PDF adjunto)</pre>
+</div>
+
+<!-- ══ PARTE 8 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 8</div>
+  <h2>Alertas automáticas — el sistema trabaja de fondo</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 26</div>
+  <h3>Alertas típicas de una ferretería</h3>
+  <pre>🔴 STOCK CRÍTICO — 8 productos
+   • Tornillo 4×40 c/100 — 6 cajas (mínimo: 10)
+   • Pintaflor Blanco 4L — 3 unidades (mínimo: 5)
+   • Cerradura Yale 60mm dorada — 1 unidad (mínimo: 3)
+   • Cinta teflón 20m — 8 unidades (mínimo: 20)
+   ...
+
+⚠️ PRÓXIMOS A VENCER (pinturas)
+   • Pintaflor Interior Rojo 4L × 3 — vence en 18 días
+   • Membrana asfáltica × 2 — vence en 35 días
+
+📋 VENCIMIENTOS DE PAGO A PROVEEDORES
+   • Pinturas Sinteplast — $180.000 — vence en 3 días
+   • Mayorista del Centro (CC 30d) — $305.750 — vence en 8 días
+
+💳 DEUDA DE CLIENTES VENCIDA
+   • Constructora Edificar SA — $450.000 — vencida hace 5 días
+   • Ariel Mazzoni (particular) — $38.000 — vencida hace 12 días</pre>
+</div>
+
+<!-- ══ PARTE 9 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 9</div>
+  <h2>Dashboard — entender el negocio de un vistazo</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 27</div>
+  <h3>Lo que Beto mira cada mañana (5 minutos)</h3>
+
+  <p><strong>Dashboard → tab Todo:</strong></p>
+  <pre>Hoy — Viernes 17/01/2026
+
+💰 Ventas del mes:        $1.847.300
+📈 Margen del mes:         38.4%
+🔥 Burn rate diario:       $32.100
+📊 Posición IVA del mes:   $68.420 a favor
+
+Top 5 productos del mes:
+  1. Cemento Portland 50kg  (280 bolsas)
+  2. Pintaflor Blanco 4L    (127 unidades)
+  3. Tornillo 4×40 c/100    (89 cajas)
+  4. Taladro Bosch GSB650   (8 unidades)
+  5. Cable conductor 2.5mm  (430 metros)
+
+Deuda pendiente de clientes: $2.380.000
+Deuda vencida:                  $488.000 ← hay que cobrar</pre>
+
+  <p><strong>Dashboard → tab Ventas → Heatmap de ventas:</strong></p>
+  <p>Muestra en qué días y horarios vendés más. En la ferretería, el pico es los sábados de mañana (constructores que trabajan el fin de semana) y los lunes (inicio de obra). Mariela puede pedir refuerzo esos días.</p>
+
+  <p><strong>Dashboard → tab Inventario → Capital en stock:</strong></p>
+  <pre>Capital total inmovilizado en mercadería:
+  Pinturas:           $1.284.000
+  Herramientas:       $980.000
+  Tornillería:        $445.000
+  Plomería:           $720.000
+  Electricidad:       $390.000
+  ─────────────────────────────
+  TOTAL EN STOCK:     $3.819.000
+
+Stock sin movimiento en 30 días: 47 productos ($284.000)
+→ "Capital dormido" — candidatos a oferta o liquidación</pre>
+</div>
+
+<!-- ══ PARTE 10 ════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 10</div>
+  <h2>Rutina operativa — cómo funciona cada día</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 28</div>
+  <h3>El día a día de la ferretería</h3>
+  <table>
+    <thead><tr><th>Momento</th><th>Quién</th><th>Acción en Genesis360</th><th>Tiempo</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>9:00am</strong></td>
+        <td>Mariela</td>
+        <td>Abrir caja → revisar alertas de stock → ver pedidos pendientes del día</td>
+        <td>5 min</td>
+      </tr>
+      <tr>
+        <td><strong>Durante la mañana</strong></td>
+        <td>Mariela</td>
+        <td>Vender desde el POS → escáner de barras para cada artículo → el stock baja solo</td>
+        <td>Continuo</td>
+      </tr>
+      <tr>
+        <td><strong>Al llegar mercadería</strong></td>
+        <td>Lucas</td>
+        <td>Crear recepción vinculada a la OC → registrar todo ítem por ítem → stock se actualiza</td>
+        <td>20-40 min</td>
+      </tr>
+      <tr>
+        <td><strong>Al mediodía</strong></td>
+        <td>Beto</td>
+        <td>Mirar Dashboard 5 minutos: ventas de la mañana, alertas críticas, deuda de clientes</td>
+        <td>5 min</td>
+      </tr>
+      <tr>
+        <td><strong>Cuando llaman de construcción</strong></td>
+        <td>Mariela / Beto</td>
+        <td>Hacer presupuesto en el POS → imprimir / enviar por WhatsApp</td>
+        <td>10 min</td>
+      </tr>
+      <tr>
+        <td><strong>Lunes — pedido semanal</strong></td>
+        <td>Beto</td>
+        <td>Ver alertas stock crítico → crear OC por proveedor → enviar el pedido</td>
+        <td>30 min</td>
+      </tr>
+      <tr>
+        <td><strong>19:00</strong></td>
+        <td>Mariela</td>
+        <td>Cerrar caja → contar efectivo → enviar excedente a Bóveda → ticket de cierre</td>
+        <td>10 min</td>
+      </tr>
+      <tr>
+        <td><strong>Fin de mes</strong></td>
+        <td>Beto + Contador</td>
+        <td>Dashboard total del mes → Reportes Excel → Libro IVA → Gastos deducibles</td>
+        <td>1 hora</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══ RESUMEN FINAL ═════════════════════════════════════════════════════════ -->
+<h2>Resumen del flujo completo</h2>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <h4>📦 Compra a proveedor</h4>
+    <ul>
+      <li>Alerta de stock mínimo → OC</li>
+      <li>Recepción al llegar el camión</li>
+      <li>Stock actualizado por ubicación</li>
+      <li>Gasto registrado automáticamente</li>
+      <li>Diferencias documentadas para reclamo</li>
+    </ul>
+  </div>
+  <div class="summary-card">
+    <h4>🛒 Venta en mostrador</h4>
+    <ul>
+      <li>POS con escáner de barras</li>
+      <li>Precios mayoristas automáticos</li>
+      <li>Contado / tarjeta / cuenta corriente</li>
+      <li>Serie de herramientas registrada</li>
+      <li>Presupuestos con validez</li>
+    </ul>
+  </div>
+  <div class="summary-card">
+    <h4>💳 Clientes CC</h4>
+    <ul>
+      <li>Límite de crédito por cliente</li>
+      <li>Deuda visible en tiempo real</li>
+      <li>Alerta de deuda vencida</li>
+      <li>Cobros parciales con FIFO</li>
+      <li>WhatsApp de recordatorio</li>
+    </ul>
+  </div>
+  <div class="summary-card">
+    <h4>📊 Control del negocio</h4>
+    <ul>
+      <li>Margen por producto y categoría</li>
+      <li>Stock dormido → candidatos a oferta</li>
+      <li>Capital inmovilizado valorizado</li>
+      <li>Deuda a proveedores con vencimiento</li>
+      <li>Libro IVA ventas y compras</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Ventajas específicas para ferretería</h2>
+<div class="success">
+  <ul style="margin:0;padding-left:16px;">
+    <li><strong>Miles de SKUs:</strong> importación masiva desde Excel, búsqueda por código de barras, SKU o nombre</li>
+    <li><strong>Trazabilidad total:</strong> número de serie para herramientas eléctricas — sabés qué cliente llevó qué unidad</li>
+    <li><strong>Venta por metro/litro/kg:</strong> unidades de medida personalizadas para productos que no van por unidad</li>
+    <li><strong>Precios mayoristas:</strong> descuentos automáticos por volumen sin intervención del empleado</li>
+    <li><strong>Multi-sucursal:</strong> stock, caja y empleados separados por local — Beto ve todo, Mariela solo su local</li>
+    <li><strong>Pinturas con vencimiento:</strong> alerta automática de stock próximo a vencer para liquidar antes de que pierda valor</li>
+    <li><strong>Grupos de variantes:</strong> un solo producto padre para la misma cerradura en 3 medidas y 2 colores</li>
+    <li><strong>Control de caja diario:</strong> apertura, cierre, diferencias, Bóveda — sin tener que estar físicamente presente</li>
+  </ul>
+</div>
+
+<div class="alert" style="margin-top:24px;">
+  <strong>Limitaciones actuales:</strong>
+  <ul style="margin:4px 0 0;padding-left:16px;">
+    <li>No integra con balanza para venta por peso en tiempo real (próximamente)</li>
+    <li>No sincroniza precios con listas de proveedores automáticamente — se actualizan manualmente</li>
+    <li>No tiene módulo de remitos de entrega a domicilio (se gestiona desde Envíos)</li>
+  </ul>
+</div>
+
+<div class="footer">
+  Genesis360 · El cerebro del negocio físico · genesis360.pro<br/>
+  Este manual fue generado en mayo 2026 · v1.8
+</div>
+
+</body>
+</html>

@@ -1489,6 +1489,14 @@ export default function InventarioPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // Resuelve la ubicación predeterminada: primero busca por sucursal activa, luego fallback del producto
+  const resolverUbicacionDefault = async (productoId: string, fallback: string | null): Promise<string> => {
+    if (!sucursalId) return fallback ?? ''
+    const { data } = await supabase.from('producto_ubicacion_sucursal')
+      .select('ubicacion_id').eq('producto_id', productoId).eq('sucursal_id', sucursalId).maybeSingle()
+    return (data as any)?.ubicacion_id ?? fallback ?? ''
+  }
+
   const closeModal = () => {
     setModal(null); setSelectedProduct(null)
     setForm(emptyIngreso); setSeries([''])
@@ -1569,10 +1577,11 @@ export default function InventarioPage() {
     }
     const prod = prods[0] as unknown as Producto
     setSelectedProduct(prod)
+    const ubicDefault = await resolverUbicacionDefault(prod.id, (prod as any).ubicacion_id)
     setForm(f => ({
       ...f,
       productoSearch: '',
-      ubicacionId: (prod as any).ubicacion_id ?? f.ubicacionId,
+      ubicacionId: ubicDefault,
       estadoId:    (prod as any).estado_id    ?? f.estadoId,
       proveedorId: (prod as any).proveedor_id ?? f.proveedorId,
     }))
@@ -2524,12 +2533,13 @@ export default function InventarioPage() {
                       {productosBusqueda.length > 0 && searchFocused && (
                         <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 max-h-40 overflow-y-auto">
                           {productosBusqueda.map(p => (
-                            <button key={p.id} onClick={() => {
+                            <button key={p.id} onClick={async () => {
                               setSelectedProduct(p)
+                              const ubicDefault = await resolverUbicacionDefault(p.id, (p as any).ubicacion_id)
                               setForm(f => ({
                                 ...f,
                                 productoSearch: '',
-                                ubicacionId: (p as any).ubicacion_id ?? f.ubicacionId,
+                                ubicacionId: ubicDefault,
                                 estadoId:    (p as any).estado_id    ?? f.estadoId,
                                 proveedorId: (p as any).proveedor_id ?? f.proveedorId,
                               }))

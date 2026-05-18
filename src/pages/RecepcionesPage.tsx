@@ -224,6 +224,13 @@ export default function RecepcionesPage() {
         const itemsConEstructura = await Promise.all(ocItems.map(async (it: any) => {
           const p = it.productos
           const estructura_id = await cargarEstructuras(p.id)
+          // Resolver ubicación predeterminada por sucursal
+          let ubicacionDefault = p.ubicacion_id ?? ''
+          if (sucursalId) {
+            const { data: ubSuc } = await supabase.from('producto_ubicacion_sucursal')
+              .select('ubicacion_id').eq('producto_id', p.id).eq('sucursal_id', sucursalId).maybeSingle()
+            if ((ubSuc as any)?.ubicacion_id) ubicacionDefault = (ubSuc as any).ubicacion_id
+          }
           return nuevoItem({
             producto_id: p.id,
             producto_nombre: p.nombre,
@@ -244,8 +251,8 @@ export default function RecepcionesPage() {
             cantidad_esperada: it.cantidad,
             cantidad_recibida: String(it.cantidad),
             estructura_id,
-            ubicacion_id: p.ubicacion_id ?? '',
-            estado_id:    p.estado_id    ?? '',
+            ubicacion_id: ubicacionDefault,
+            estado_id:    p.estado_id ?? '',
           })
         }))
         setItems(itemsConEstructura)
@@ -278,6 +285,13 @@ export default function RecepcionesPage() {
       return
     }
     const estructura_id = await cargarEstructuras(p.id)
+    // Resolver ubicación predeterminada: sucursal activa primero, luego fallback del producto
+    let ubicacionDefault = p.ubicacion_id ?? ''
+    if (sucursalId) {
+      const { data: ubSuc } = await supabase.from('producto_ubicacion_sucursal')
+        .select('ubicacion_id').eq('producto_id', p.id).eq('sucursal_id', sucursalId).maybeSingle()
+      if ((ubSuc as any)?.ubicacion_id) ubicacionDefault = (ubSuc as any).ubicacion_id
+    }
     setItems(prev => [...prev, nuevoItem({
       producto_id: p.id,
       producto_nombre: p.nombre,
@@ -296,8 +310,8 @@ export default function RecepcionesPage() {
       precio_costo: String(p.precio_costo ?? ''),
       estructura_id,
       // Defaults del producto — el usuario puede modificarlos antes de confirmar
-      ubicacion_id: p.ubicacion_id ?? '',
-      estado_id:    p.estado_id    ?? '',
+      ubicacion_id: ubicacionDefault,
+      estado_id:    p.estado_id ?? '',
     })])
     setProdSearch('')
     setProdFocused(false)

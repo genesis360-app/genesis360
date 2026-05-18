@@ -111,6 +111,21 @@ export default function ProductoFormPage() {
     enabled: !!tenant,
   })
 
+  // Ubicaciones predeterminadas por sucursal — solo cuando hay 2+ sucursales y se está editando
+  const [ubicPorSucursal, setUbicPorSucursal] = useState<Record<string, string>>({})
+  useQuery({
+    queryKey: ['producto-ubicacion-sucursal', id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_ubicacion_sucursal')
+        .select('sucursal_id, ubicacion_id').eq('producto_id', id!)
+      const map: Record<string, string> = {}
+      ;(data ?? []).forEach((r: any) => { if (r.ubicacion_id) map[r.sucursal_id] = r.ubicacion_id })
+      setUbicPorSucursal(map)
+      return map
+    },
+    enabled: !!id && sucursales.length > 1,
+  })
+
   const { data: estados = [] } = useQuery({
     queryKey: ['estados_inventario', tenant?.id],
     queryFn: async () => {
@@ -398,6 +413,26 @@ export default function ProductoFormPage() {
         productoId = newProd.id
         toast.success('Producto creado')
         logActividad({ entidad: 'producto', entidad_nombre: form.nombre, accion: 'crear', pagina: '/productos' })
+      }
+
+      // Sincronizar ubicaciones predeterminadas por sucursal (solo multi-sucursal)
+      if (productoId && sucursales.length > 1) {
+        const rows = Object.entries(ubicPorSucursal)
+          .filter(([, ubicId]) => !!ubicId)
+          .map(([sucId, ubicId]) => ({
+            tenant_id: tenant!.id, producto_id: productoId,
+            sucursal_id: sucId, ubicacion_id: ubicId,
+          }))
+        // Borrar los que quedaron vacíos y hacer upsert de los con valor
+        const sucConValor = Object.entries(ubicPorSucursal).filter(([, v]) => !v).map(([k]) => k)
+        if (sucConValor.length > 0) {
+          await supabase.from('producto_ubicacion_sucursal')
+            .delete().eq('producto_id', productoId).in('sucursal_id', sucConValor)
+        }
+        if (rows.length > 0) {
+          await supabase.from('producto_ubicacion_sucursal')
+            .upsert(rows, { onConflict: 'producto_id,sucursal_id' })
+        }
       }
 
       // Sincronizar tiers de precio mayorista
@@ -1011,13 +1046,56 @@ export default function ProductoFormPage() {
               {/* Ubicación predeterminada | Estado de inventario predeterminado */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ubicación predeterminada</label>
-                  <select value={form.ubicacion_id} disabled={!canEdit}
-                    onChange={e => setForm(p => ({ ...p, ubicacion_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
-                    <option value="">Sin ubicación</option>
-                    {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                  </select>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Ubicación predeterminada
+                    {sucursales.length > 1 && (
+                      <span className="ml-1.5 text-xs font-normal text-gray-400 dark:text-gray-500">por sucursal</span>
+                    )}
+                  </label>
+                  {sucursales.length <= 1 ? (
+                    // Mono-sucursal: select simple (comportamiento original)
+                    <select value={form.ubicacion_id} disabled={!canEdit}
+                      onChange={e => setForm(p => ({ ...p, ubicacion_id: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                      <option value="">Sin ubicación</option>
+                      {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                  ) : (
+                    // Multi-sucursal: mini-tabla por sucursal + fallback global
+                    <div className="space-y-2">
+                      {(sucursales as any[]).map(suc => {
+                        const ubicsSuc = (ubicaciones as any[]).filter(
+                          u => u.sucursal_id === suc.id || u.sucursal_id === null
+                        )
+                        return (
+                          <div key={suc.id} className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 dark:text-gray-400 w-24 shrink-0 truncate" title={suc.nombre}>{suc.nombre}</span>
+                            <select
+                              disabled={!canEdit}
+                              value={ubicPorSucursal[suc.id] ?? ''}
+                              onChange={e => setUbicPorSucursal(p => ({ ...p, [suc.id]: e.target.value }))}
+                              className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                              <option value="">Sin ubicación</option>
+                              {ubicsSuc.map((u: any) => (
+                                <option key={u.id} value={u.id}>{u.nombre}{u.sucursal_id === null ? ' (global)' : ''}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )
+                      })}
+                      <div className="flex items-center gap-2 border-t border-gray-100 dark:border-gray-700 pt-2">
+                        <span className="text-xs text-gray-400 dark:text-gray-500 w-24 shrink-0">Global (fallback)</span>
+                        <select value={form.ubicacion_id} disabled={!canEdit}
+                          onChange={e => setForm(p => ({ ...p, ubicacion_id: e.target.value }))}
+                          className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                          <option value="">Sin ubicación</option>
+                          {(ubicaciones as any[]).filter((u: any) => u.sucursal_id === null).map((u: any) => (
+                            <option key={u.id} value={u.id}>{u.nombre}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estado de inventario predeterminado</label>

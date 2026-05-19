@@ -38,6 +38,7 @@ const FORM_EMPTY = {
   frecuencia_valor: '1',
   frecuencia_unidad: 'semana' as 'dia' | 'semana' | 'mes' | 'año',
   proximo_vencimiento: '',
+  crear_gasto: true,
 }
 
 const hoy = new Date().toISOString().split('T')[0]
@@ -79,6 +80,11 @@ export default function RecursosPage() {
   const [editId, setEditId]     = useState<string | null>(null)
   const [form, setForm]         = useState({ ...FORM_EMPTY })
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+
+  // Modal asignar ubicación (tab Ubicaciones → botón Agregar)
+  const [showUbicModal, setShowUbicModal] = useState(false)
+  const [ubicModalRecursoId, setUbicModalRecursoId] = useState('')
+  const [ubicModalValor, setUbicModalValor] = useState('')
 
   // Inline edit de ubicación en tab Ubicaciones
   const [editUbic, setEditUbic] = useState<{ id: string; valor: string } | null>(null)
@@ -183,7 +189,7 @@ export default function RecursosPage() {
           .from('recursos').insert(payload).select('id').single()
         if (error) throw error
 
-        if (!esPendiente && payload.valor) {
+        if (!esPendiente && payload.valor && form.crear_gasto) {
           await supabase.from('gastos').insert({
             tenant_id:   tenant!.id,
             recurso_id:  nuevoRecurso.id,
@@ -195,7 +201,7 @@ export default function RecursosPage() {
             usuario_id:  user?.id,
             notas:       payload.descripcion ?? null,
           })
-          toast('Gasto pendiente creado en Gastos → Recursos', { icon: '💼' })
+          toast('Gasto creado en Gastos → Recursos', { icon: '💼' })
         }
       }
       logActividad({ entidad: 'recurso', entidad_id: editId ?? '', accion: editId ? 'editar' : 'crear', entidad_nombre: payload.nombre })
@@ -260,6 +266,7 @@ export default function RecursosPage() {
       frecuencia_valor:    r.frecuencia_valor != null ? String(r.frecuencia_valor) : '1',
       frecuencia_unidad:   r.frecuencia_unidad ?? 'semana',
       proximo_vencimiento: r.proximo_vencimiento ?? '',
+      crear_gasto:         true,
     })
     setShowModal(true)
   }
@@ -370,9 +377,17 @@ export default function RecursosPage() {
             <p className="text-xs text-muted">Patrimonio e inventario del negocio (no para vender)</p>
           </div>
         </div>
-        <button onClick={() => abrirNuevo(tab === 'adquirir' ? 'pendiente_adquisicion' : 'activo')}
+        <button onClick={() => {
+          if (tab === 'ubicaciones') {
+            setUbicModalRecursoId('')
+            setUbicModalValor('')
+            setShowUbicModal(true)
+          } else {
+            abrirNuevo(tab === 'adquirir' ? 'pendiente_adquisicion' : 'activo')
+          }
+        }}
           className={`${BTN.primary} ${BTN.md} flex items-center gap-2`}>
-          <Plus className="w-4 h-4" /> Agregar
+          <Plus className="w-4 h-4" /> {tab === 'ubicaciones' ? 'Asignar ubicación' : 'Agregar'}
         </button>
       </div>
 
@@ -546,6 +561,67 @@ export default function RecursosPage() {
         </div>
       )}
 
+      {/* Modal asignar ubicación (tab Ubicaciones → Agregar) */}
+      {showUbicModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-surface rounded-xl w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between p-4 border-b border-border-ds">
+              <h2 className="font-semibold text-primary flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-accent" /> Asignar ubicación
+              </h2>
+              <button onClick={() => setShowUbicModal(false)} className="text-muted hover:text-primary">✕</button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted mb-1 block">Recurso *</label>
+                <select value={ubicModalRecursoId} onChange={e => setUbicModalRecursoId(e.target.value)}
+                  className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary">
+                  <option value="">Seleccioná un recurso...</option>
+                  {recursosConUbicacion
+                    .sort((a, b) => {
+                      const aVacio = !a.ubicacion
+                      const bVacio = !b.ubicacion
+                      return aVacio === bVacio ? a.nombre.localeCompare(b.nombre) : aVacio ? -1 : 1
+                    })
+                    .map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.nombre}{r.ubicacion ? ` (actual: ${r.ubicacion})` : ' — sin ubicación'}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted mb-1 block">Ubicación *</label>
+                <input
+                  value={ubicModalValor}
+                  onChange={e => setUbicModalValor(e.target.value)}
+                  placeholder="ej. Depósito, Oficina, Sala de reuniones..."
+                  className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && ubicModalRecursoId && ubicModalValor.trim()) {
+                      actualizarUbicacion.mutate({ id: ubicModalRecursoId, ubicacion: ubicModalValor })
+                      setShowUbicModal(false)
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 p-4 border-t border-border-ds">
+              <button onClick={() => setShowUbicModal(false)} className={`${BTN.secondary} ${BTN.sm}`}>Cancelar</button>
+              <button
+                onClick={() => {
+                  actualizarUbicacion.mutate({ id: ubicModalRecursoId, ubicacion: ubicModalValor })
+                  setShowUbicModal(false)
+                }}
+                disabled={!ubicModalRecursoId || !ubicModalValor.trim() || actualizarUbicacion.isPending}
+                className={`${BTN.primary} ${BTN.sm}`}>
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal crear/editar */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -679,6 +755,19 @@ export default function RecursosPage() {
                   rows={2} className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary resize-none"
                   placeholder="Observaciones..." />
               </div>
+
+              {/* Checkbox crear gasto — solo para nuevos recursos activos/reparación con valor */}
+              {!editId && form.estado !== 'pendiente_adquisicion' && form.valor && (
+                <label className="flex items-center gap-2 cursor-pointer select-none p-3 rounded-xl border border-border-ds hover:bg-page transition-colors">
+                  <input type="checkbox" checked={form.crear_gasto}
+                    onChange={e => setForm(f => ({ ...f, crear_gasto: e.target.checked }))}
+                    className="w-4 h-4 accent-accent rounded" />
+                  <div>
+                    <span className="text-sm font-medium text-primary">Registrar como gasto</span>
+                    <p className="text-xs text-muted">Crea un gasto en Gastos → Recursos por el valor de compra. Desactivá si el recurso fue adquirido antes, fue donado o no querés registrarlo como egreso.</p>
+                  </div>
+                </label>
+              )}
             </div>
             <div className="flex justify-end gap-2 p-4 border-t border-border-ds">
               <button onClick={cerrarModal} className={`${BTN.secondary} ${BTN.sm}`}>Cancelar</button>

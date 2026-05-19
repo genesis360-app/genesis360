@@ -263,7 +263,7 @@ export default function InventarioPage() {
     queryKey: ['productos-busqueda', tenant?.id, form.productoSearch],
     queryFn: async () => {
       let q = supabase.from('productos')
-        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
+        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo, estado_id, proveedor_id')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(5)
       if (form.productoSearch.length > 0)
         q = q.or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%,codigo_barras.eq.${form.productoSearch}`)

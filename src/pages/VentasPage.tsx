@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -237,6 +237,40 @@ export default function VentasPage() {
     setModoConectado(conectado)
     return conectado
   }
+
+  // ISS-072: Polling MODO — detecta pago mientras el QR está visible
+  const [modoPagoRecibido, setModoPagoRecibido] = useState(false)
+  useEffect(() => {
+    if (!modoModal) { setModoPagoRecibido(false); return }
+    const ventaId = preVentaId
+    if (!ventaId) return
+    const interval = setInterval(async () => {
+      // Caso 1: venta existe → id_pago_externo seteado
+      const { data: ventaData } = await supabase
+        .from('ventas')
+        .select('id_pago_externo, monto_pagado')
+        .eq('id', ventaId)
+        .maybeSingle()
+      if (ventaData?.id_pago_externo) {
+        setModoPagoRecibido(true)
+        clearInterval(interval)
+        return
+      }
+      // Caso 2: pre-venta → buscar en log
+      const { data: logData } = await supabase
+        .from('ventas_externas_logs')
+        .select('id')
+        .eq('tenant_id', tenant!.id)
+        .eq('integracion', 'MODO')
+        .eq('webhook_external_id', modoModal.paymentId)
+        .maybeSingle()
+      if (logData) {
+        setModoPagoRecibido(true)
+        clearInterval(interval)
+      }
+    }, 4000)
+    return () => clearInterval(interval)
+  }, [modoModal, preVentaId])
 
   // Polling: mientras el modal QR está abierto, consulta cada 4s si llegó el pago.
   // Chequea tanto la venta (reservas) como ventas_externas_logs (ventas directas con pre-UUID).
@@ -1138,6 +1172,25 @@ export default function VentasPage() {
         toast.error(`Cantidad inválida para "${item.nombre}". Corregila antes de guardar.`); return
       }
     }
+    // Validar descuento máximo por rol
+    const maxCajero     = (tenant as any)?.descuento_max_cajero_pct
+    const maxSupervisor = (tenant as any)?.descuento_max_supervisor_pct
+    const rol = user?.rol
+    const esRolLimitado = rol === 'CAJERO' || rol === 'SUPERVISOR'
+    if (esRolLimitado && (maxCajero != null || maxSupervisor != null)) {
+      const limite = rol === 'CAJERO' ? maxCajero : maxSupervisor
+      if (limite != null) {
+        const itemConExceso = cart.find(item => {
+          if (item.descuento_tipo !== 'pct') return false
+          return item.descuento > limite
+        })
+        if (itemConExceso) {
+          toast.error(`Descuento del ${itemConExceso.descuento}% supera el límite permitido para ${rol} (${limite}%). Solicitá autorización a un supervisor.`)
+          return
+        }
+      }
+    }
+
     // Cliente obligatorio para pendiente y reservada
     if ((estado === 'pendiente' || estado === 'reservada') && !clienteId) {
       toast.error('Registrá o seleccioná un cliente para continuar.')
@@ -2477,15 +2530,32 @@ export default function VentasPage() {
                         </div>
 
                         {/* Descuento con toggle % / $ */}
-                        <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden w-28">
-                          <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={item.descuento}
-                            onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
-                            className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none" placeholder="0" />
-                          <button onClick={() => updateItem(idx, 'descuento_tipo', item.descuento_tipo === 'pct' ? 'monto' : 'pct')}
-                            title="Cambiar tipo de descuento (% o $)"
-                            className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors">
-                            {item.descuento_tipo === 'pct' ? '%' : '$'}
-                          </button>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <div className={`flex items-center border rounded-lg overflow-hidden w-28 ${
+                            (() => {
+                              const rolItem = user?.rol
+                              const limiteItem = rolItem === 'CAJERO' ? (tenant as any)?.descuento_max_cajero_pct : rolItem === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
+                              return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
+                                ? 'border-red-400 dark:border-red-500'
+                                : 'border-gray-200 dark:border-gray-700'
+                            })()
+                          }`}>
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={item.descuento}
+                              onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
+                              className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none" placeholder="0" />
+                            <button onClick={() => updateItem(idx, 'descuento_tipo', item.descuento_tipo === 'pct' ? 'monto' : 'pct')}
+                              title="Cambiar tipo de descuento (% o $)"
+                              className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors">
+                              {item.descuento_tipo === 'pct' ? '%' : '$'}
+                            </button>
+                          </div>
+                          {(() => {
+                            const rolItem = user?.rol
+                            const limiteItem = rolItem === 'CAJERO' ? (tenant as any)?.descuento_max_cajero_pct : rolItem === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
+                            return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
+                              ? <span className="text-[10px] text-red-500 dark:text-red-400">máx {limiteItem}%</span>
+                              : null
+                          })()}
                         </div>
 
                         {/* Subtotal */}
@@ -4256,29 +4326,56 @@ export default function VentasPage() {
               <h3 className="font-semibold text-primary text-base flex items-center gap-2">
                 <QrCode size={16} className="text-purple-500" /> Cobrar con MODO
               </h3>
-              <button onClick={() => setModoModal(null)} className="text-gray-400 hover:text-gray-600 p-1"><X size={18} /></button>
+              <button onClick={() => { setModoModal(null); setModoPagoRecibido(false) }} className="text-gray-400 hover:text-gray-600 p-1"><X size={18} /></button>
             </div>
-            <div className="flex flex-col items-center gap-3">
-              <img src={modoModal.qrDataUrl} alt="QR MODO" className="w-48 h-48 rounded-xl" />
-              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                Escaneá con cualquier app bancaria (MODO, Banco, Billetera)
-              </p>
-              <a href={modoModal.deepLink} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-xs text-purple-600 hover:underline">
-                <ExternalLink size={12} /> Abrir link de pago
-              </a>
-              <button onClick={() => { navigator.clipboard.writeText(modoModal.deepLink); toast.success('Link copiado') }}
-                className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 transition-colors">
-                <Copy size={12} /> Copiar link
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
-              El pago se confirmará automáticamente vía webhook cuando el cliente pague.
-            </p>
-            <button onClick={() => setModoModal(null)}
-              className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
-              Cerrar
-            </button>
+
+            {modoPagoRecibido ? (
+              <div className="flex flex-col items-center gap-3 py-4">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                  <CheckCircle2 size={32} className="text-green-600 dark:text-green-400" />
+                </div>
+                <p className="font-semibold text-green-700 dark:text-green-400 text-center">¡Pago recibido!</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                  El pago MODO fue confirmado. Podés continuar con la venta.
+                </p>
+                <button onClick={() => { setModoModal(null); setModoPagoRecibido(false) }}
+                  className="w-full bg-accent hover:bg-accent/90 text-white font-medium py-2.5 rounded-xl text-sm transition-colors">
+                  Continuar
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col items-center gap-3">
+                  <div className="relative">
+                    <img src={modoModal.qrDataUrl} alt="QR MODO" className="w-48 h-48 rounded-xl" />
+                    <div className="absolute inset-0 flex items-end justify-center pb-1">
+                      <span className="text-[9px] bg-white/90 dark:bg-gray-800/90 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-medium">MODO · Interoperable</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                    Escaneá con cualquier app bancaria argentina — MODO, Banco, Billetera digital
+                  </p>
+                  <div className="flex gap-2">
+                    <a href={modoModal.deepLink} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-purple-600 hover:underline border border-purple-200 dark:border-purple-800 rounded-lg px-3 py-1.5 transition-colors hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                      <ExternalLink size={12} /> Abrir en app
+                    </a>
+                    <button onClick={() => { navigator.clipboard.writeText(modoModal.deepLink); toast.success('Link copiado') }}
+                      className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <Copy size={12} /> Copiar link
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 justify-center">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  Esperando confirmación del pago...
+                </div>
+                <button onClick={() => { setModoModal(null); setModoPagoRecibido(false) }}
+                  className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  Cerrar
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

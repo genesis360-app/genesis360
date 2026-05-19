@@ -244,9 +244,14 @@ export function DashGastosArea() {
       const ratioGastosVentas = totalVentas > 0 ? (totalGastos / totalVentas) * 100 : null
 
       // ── KPI 4: Fijos vs Variables ─────────────────────────────────────────
+      // fijosMensual = suma de gastos_fijos configurados (presupuesto fijo mensual)
+      // totalGastos = gastos variables reales del período
+      // La rigidez se calcula como fijos / (fijos + variables) para que ambos
+      // tengan el mismo denominador y el % sea coherente.
       const fijosMensual = (gastosFijos ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
-      const pctFijos = totalGastos > 0
-        ? Math.min(100, Math.round((fijosMensual / totalGastos) * 100))
+      const totalCombinado = fijosMensual + totalGastos
+      const pctFijos = totalCombinado > 0
+        ? Math.round((fijosMensual / totalCombinado) * 100)
         : 0
       const pctVariable = 100 - pctFijos
 
@@ -420,13 +425,13 @@ export function DashGastosArea() {
       })
     }
 
-    // Gastos fijos altos (si los fijos > 60% del total)
+    // Gastos fijos altos (si los fijos > 60% del total combinado)
     if (gData.pctFijos >= 65) {
       list.push({
         tipo: 'info',
-        titulo: `El ${gData.pctFijos}% de tus gastos son fijos`,
+        titulo: `El ${gData.pctFijos}% de tu estructura de gastos son fijos`,
         impacto: `Tu negocio tiene alta rigidez: ${fmt(gData.fijosMensual)} en gastos recurrentes que se pagan vendas o no.`,
-        accion: 'Ver gastos fijos', link: '/gastos',
+        accion: 'Ver gastos fijos', link: '/gastos?tab=fijos',
       })
     }
 

@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo } from 'react'
+import { useRef, useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
@@ -11,6 +11,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
+import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 
 const CATEGORIAS_GASTO = [
@@ -34,7 +35,7 @@ const TASAS_IVA = [
   { value: 'sin_iva',label: 'Sin IVA' },
 ]
 
-const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
+const MEDIOS_PAGO_DEFAULT = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
 
 interface MedioPagoItem { tipo: string; monto: string }
 
@@ -103,7 +104,14 @@ export default function GastosPage() {
   const esSoloFijos = !['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<'gastos' | 'historial' | 'fijos' | 'oc' | 'recursos'>('gastos')
+  const [searchParams] = useSearchParams()
+  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'recursos'] as const
+  type TabGastos = typeof tabValidos[number]
+  const tabFromUrl = searchParams.get('tab') as TabGastos | null
+  const [tab, setTab] = useState<TabGastos>(tabValidos.includes(tabFromUrl as TabGastos) ? (tabFromUrl as TabGastos) : 'gastos')
+  useEffect(() => {
+    if (tabFromUrl && tabValidos.includes(tabFromUrl as TabGastos)) setTab(tabFromUrl as TabGastos)
+  }, [tabFromUrl])
 
   // Cuotas state (para gastos con tarjeta de crédito)
   const [esCuota, setEsCuota] = useState(false)
@@ -121,6 +129,8 @@ export default function GastosPage() {
   const [usarPrefixCategoria, setUsarPrefixCategoria] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
+  // Medio de pago original al abrir el modal de edición (para detectar si se agrega pago por primera vez)
+  const [originalMedioPago, setOriginalMedioPago] = useState<string | null>(null)
   const [filtroCategoria, setFiltroCategoria] = useState('')
 
   // ── Historial — state ────────────────────────────────────────────────────
@@ -143,6 +153,7 @@ export default function GastosPage() {
     fecha: new Date().toISOString().split('T')[0], notas: '',
   })
   const [mediosPagoGenerar, setMediosPagoGenerar] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
+  const [cajaGenerarFijoId, setCajaGenerarFijoId] = useState<string | null>(null)
   const [generandoFijo, setGenerandoFijo] = useState(false)
   const [generarFile, setGenerarFile] = useState<File | null>(null)
   const [generarTipoComp, setGenerarTipoComp] = useState('')
@@ -163,6 +174,8 @@ export default function GastosPage() {
   const [ocPagoCondiciones, setOcPagoCondiciones]   = useState('')
   const [ocGuardando, setOcGuardando]               = useState(false)
   const [ocExpandedId, setOcExpandedId]             = useState<string | null>(null)
+  const [ocDescuento, setOcDescuento]               = useState('0')
+  const [ocCajaSeleccionadaId, setOcCajaSeleccionadaId] = useState<string | null>(null)
   // ISS-096: comprobante de pago en OC
   const [ocSubiendoFile, setOcSubiendoFile]         = useState(false)
 
@@ -184,7 +197,7 @@ export default function GastosPage() {
   }
 
   // ISS-095: CC como método de pago parcial en OC
-  const MEDIOS_OC = ['Efectivo','Transferencia','Tarjeta de débito','Cheque','Cuenta Corriente','Otro']
+  // MEDIOS_OC se construye dinámicamente desde metodosPagoDB (ver query más abajo)
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: sesionesAbiertas = [] } = useQuery({
@@ -202,11 +215,21 @@ export default function GastosPage() {
   const sesionesOperativas = (sesionesAbiertas as any[]).filter(s => !s.cajas?.es_caja_fuerte)
   const efectivoEnMedios = mediosPago.some(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0)
   const montoEfectivo = mediosPago.filter(m => m.tipo === 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  // Para mostrar el selector de caja en JSX (mediosValidos completo se calcula en guardar())
+  const hayMediosValidos = mediosPago.some(m => m.tipo && parseFloat(m.monto) > 0)
 
-  // ID real de la sesión a usar (resuelve '__fuerte__' al ID real)
+  // Sesión propia del usuario (prioridad sobre otras sesiones abiertas)
+  const sesionPropia = sesionesOperativas.find((s: any) => s.usuario_id === user?.id) ?? null
+
+  // ID real de la sesión a usar — prioridad: selección explícita > sesión propia > única disponible
   const sesionCajaId = cajaSeleccionadaId === '__fuerte__'
     ? (sesionFuerte?.id ?? null)
-    : cajaSeleccionadaId ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0].id : null)
+    : cajaSeleccionadaId
+      ?? sesionPropia?.id
+      ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0].id : null)
+
+  // Sesión default a mostrar en la UI (lo que se usará si el usuario no selecciona nada)
+  const sesionDefault = sesionesOperativas.find((s: any) => s.id === sesionCajaId) ?? null
 
   // Gastos últimos 30 días (tab gastos)
   const fechaDesde30 = useMemo(() => {
@@ -286,6 +309,23 @@ export default function GastosPage() {
     },
     enabled: !!tenant && tab === 'oc',
   })
+
+  // ISS-133: métodos de pago desde Config (tabla metodos_pago)
+  const { data: metodosPagoDB = [] } = useQuery({
+    queryKey: ['metodos_pago', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('metodos_pago')
+        .select('nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('orden').order('nombre')
+      return data?.map((m: any) => m.nombre) ?? []
+    },
+    enabled: !!tenant,
+  })
+  // fallback a defaults si no cargó aún
+  const MEDIOS_PAGO = metodosPagoDB.length > 0 ? metodosPagoDB : MEDIOS_PAGO_DEFAULT
+  // Para OC: mismos métodos + Cuenta Corriente siempre disponible
+  const MEDIOS_OC_DB = metodosPagoDB.length > 0
+    ? [...metodosPagoDB.filter((m: string) => m !== 'Cuenta Corriente'), 'Cuenta Corriente']
+    : ['Efectivo', 'Transferencia', 'Tarjeta de débito', 'Cheque', 'Cuenta Corriente', 'Otro']
 
   // ── Tab Recursos — gastos vinculados a recursos ───────────────────────────
   const { data: gastosRecursos = [], refetch: refetchGastosRecursos } = useQuery({
@@ -419,9 +459,12 @@ export default function GastosPage() {
     setOcGuardando(true)
     try {
       const total = calcMontoTotalOC(ocSeleccionada)
-      const saldo = total - Number(ocSeleccionada.monto_pagado ?? 0)
+      const descuentoNum = parseFloat(ocDescuento) || 0
+      const saldo = total - Number(ocSeleccionada.monto_pagado ?? 0) - Number(ocSeleccionada.monto_descuento ?? 0) - descuentoNum
 
-      const sesionId = (cajasAbiertasOC as any[])[0]?.id ?? null
+      // Usar la caja seleccionada en el modal, o la primera disponible si hay solo una
+      const sesionId = ocCajaSeleccionadaId
+        ?? ((cajasAbiertasOC as any[]).length === 1 ? (cajasAbiertasOC as any[])[0]?.id : null)
 
       // ISS-095: CC como medio de pago parcial — unificar flujo
       const mediosValidos = ocMediosPago
@@ -429,6 +472,9 @@ export default function GastosPage() {
         .filter(m => !isNaN(m.monto) && m.monto > 0)
 
       if (!mediosValidos.length) { toast.error('Ingresá al menos un monto válido'); setOcGuardando(false); return }
+      if ((cajasAbiertasOC as any[]).length > 1 && !ocCajaSeleccionadaId && mediosValidos.some(m => m.tipo !== 'Cuenta Corriente')) {
+        toast.error('Seleccioná la caja en la que se registrará el movimiento'); setOcGuardando(false); return
+      }
 
       const montoCC = mediosValidos.filter(m => m.tipo === 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
       const montoNoCc = mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
@@ -440,7 +486,8 @@ export default function GastosPage() {
       }
 
       const nuevoMontoPagado = Number(ocSeleccionada.monto_pagado ?? 0) + montoNoCc
-      const nuevoEstadoPago = (nuevoMontoPagado + montoCC) >= total - 0.5
+      const nuevoDescuento   = Number(ocSeleccionada.monto_descuento ?? 0) + descuentoNum
+      const nuevoEstadoPago = (nuevoMontoPagado + montoCC + nuevoDescuento) >= total - 0.5
         ? (montoCC > 0 && montoNoCc === 0 ? 'cuenta_corriente' : 'pagada')
         : 'pago_parcial'
 
@@ -455,6 +502,7 @@ export default function GastosPage() {
       await supabase.from('ordenes_compra').update({
         estado_pago: nuevoEstadoPago,
         monto_pagado: nuevoMontoPagado,
+        monto_descuento: nuevoDescuento,
         monto_total: total,
         ...(montoCC > 0 ? { fecha_vencimiento_pago: fechaVenc, dias_plazo_pago: diasPlazo, condiciones_pago: ocPagoCondiciones || null } : {}),
       }).eq('id', ocSeleccionada.id)
@@ -479,21 +527,32 @@ export default function GastosPage() {
         })
       }
 
-      // Caja: egreso por cada medio Efectivo (no CC)
-      for (const m of mediosValidos.filter(m => m.tipo === 'Efectivo')) {
-        if (!sesionId) { toast(`⚠ Sin caja abierta — egreso de $${m.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no registrado en caja`, { icon: '⚠' }); continue }
-        await supabase.from('caja_movimientos').insert({
-          tenant_id: tenant!.id, sesion_id: sesionId, tipo: 'egreso',
+      // ISS-136: Caja — egreso (efectivo) y egreso_informativo (no efectivo, sin CC)
+      const concepto = `Pago OC #${ocSeleccionada.numero} — ${ocSeleccionada.proveedores?.nombre}`
+      for (const m of mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente')) {
+        const esEfectivo = m.tipo === 'Efectivo'
+        if (!sesionId) {
+          if (esEfectivo) toast(`⚠ Sin caja abierta — egreso de $${m.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no registrado en caja`, { icon: '⚠' })
+          continue
+        }
+        const { error: cajErr } = await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id, sesion_id: sesionId,
+          tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
           monto: m.monto,
-          concepto: `Pago OC #${ocSeleccionada.numero} — ${ocSeleccionada.proveedores?.nombre}`,
-          created_by: user!.id,
+          concepto: esEfectivo ? concepto : `[${m.tipo}] ${concepto}`,
+          usuario_id: user?.id,
         })
+        if (cajErr) console.error('caja_movimientos OC insert:', cajErr.message)
       }
 
       toast.success('Pago registrado')
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas'] })
       setOcModalId(null)
       setOcMediosPago([{ tipo: 'Transferencia', monto: '' }])
       setOcPagoCondiciones('')
+      setOcDescuento('0')
+      setOcCajaSeleccionadaId(null)
       qc.invalidateQueries({ queryKey: ['oc-gastos', tenant?.id] })
       qc.invalidateQueries({ queryKey: ['proveedor-cc', ocSeleccionada.proveedor_id] })
     } catch (e: any) {
@@ -550,6 +609,9 @@ export default function GastosPage() {
     return [{ tipo: raw, monto: '' }]
   }
 
+  // Derivados que dependen de parseMediosPago — definidos después de ella
+  const originalTeniaPago = parseMediosPago(originalMedioPago).some(m => m.tipo && parseFloat(m.monto) > 0)
+
   const abrirNuevo = () => {
     setEditandoId(null); setForm(FORM_VACIO)
     setMediosPago([{ tipo: '', monto: '' }])
@@ -567,6 +629,7 @@ export default function GastosPage() {
       categoria: g.categoria ?? '', fecha: g.fecha, notas: g.notas ?? '',
     })
     setMediosPago(parseMediosPago(g.medio_pago))
+    setOriginalMedioPago(g.medio_pago ?? null)  // guarda el pago original para detectar cambios
     setComprobanteFile(null); setComprobanteExistente(g.comprobante_url ?? null)
     setComprobanteNombre(g.comprobante_titulo ?? '')
     setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
@@ -575,6 +638,7 @@ export default function GastosPage() {
   const cerrarModal = () => {
     setModalAbierto(false); setEditandoId(null); setForm(FORM_VACIO)
     setMediosPago([{ tipo: '', monto: '' }])
+    setOriginalMedioPago(null)
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
     setCajaSeleccionadaId(null)
@@ -700,6 +764,28 @@ export default function GastosPage() {
         if (error) throw error
         toast.success('Gasto actualizado')
         logActividad({ entidad: 'gasto', entidad_id: editandoId, entidad_nombre: form.descripcion.trim(), accion: 'editar', pagina: '/gastos' })
+
+        // ISS-136: Si el gasto no tenía medio de pago y ahora se le agrega, registrar en caja
+        const originalTeniaPago = parseMediosPago(originalMedioPago).some(m => m.tipo && parseFloat(m.monto) > 0)
+        if (!originalTeniaPago && mediosValidos.length > 0) {
+          const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
+          if (sesionUsar) {
+            const concepto = `Gasto: ${form.descripcion.trim()}`
+            for (const mp of mediosValidos) {
+              const montoMp = parseFloat(mp.monto)
+              const esEfectivo = mp.tipo === 'Efectivo'
+              const tipo = esEfectivo ? 'egreso' : 'egreso_informativo'
+              supabase.from('caja_movimientos').insert({
+                tenant_id: tenant!.id, sesion_id: sesionUsar,
+                tipo,
+                concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
+                monto: montoMp, usuario_id: user?.id,
+              }).then(({ error: cajErr }) => { if (cajErr) console.error('caja edit gasto:', cajErr.message) })
+            }
+            qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
+            qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+          }
+        }
       } else {
         const { data: inserted, error } = await supabase.from('gastos').insert(payload).select('id').single()
         if (error) throw error
@@ -717,12 +803,12 @@ export default function GastosPage() {
             const esEfectivo = mp.tipo === 'Efectivo'
             // Caja fuerte: egreso_traspaso (visible en historial de caja fuerte)
             const tipo = esFuerte && esEfectivo ? 'egreso_traspaso' : esEfectivo ? 'egreso' : 'egreso_informativo'
-            void supabase.from('caja_movimientos').insert({
+            supabase.from('caja_movimientos').insert({
               tenant_id: tenant!.id, sesion_id: sesionUsar,
               tipo,
               concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
               monto: montoMp, usuario_id: user?.id,
-            })
+            }).then(({ error }) => { if (error) console.error('caja_movimientos gasto:', error.message) })
           }
           qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
         }
@@ -775,14 +861,42 @@ export default function GastosPage() {
 
   // ── Eliminar gasto ────────────────────────────────────────────────────────
   const eliminar = async (id: string) => {
-    if (!confirm('¿Eliminar este gasto?')) return
     const g = ([...gastos, ...historialGastos] as any[]).find(x => x.id === id)
+    const teniaPago = parseMediosPago(g?.medio_pago).some(m => m.tipo && parseFloat(String(m.monto)) > 0)
+    const confirmMsg = teniaPago
+      ? '¿Eliminar este gasto? Se creará un movimiento de corrección en caja para revertir el egreso registrado.'
+      : '¿Eliminar este gasto?'
+    if (!confirm(confirmMsg)) return
     if (g?.comprobante_url) void supabase.storage.from('comprobantes-gastos').remove([g.comprobante_url])
     const { error } = await supabase.from('gastos').delete().eq('id', id)
     if (error) { toast.error('Error al eliminar'); return }
+
+    // ISS-136: Si tenía pago registrado en caja, crear reversión
+    if (teniaPago) {
+      const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
+      if (sesionUsar) {
+        const medios = parseMediosPago(g.medio_pago)
+        for (const mp of medios.filter(m => m.tipo && parseFloat(String(m.monto)) > 0)) {
+          const montoMp = parseFloat(String(mp.monto))
+          const esEfectivo = mp.tipo === 'Efectivo'
+          supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id, sesion_id: sesionUsar,
+            tipo: esEfectivo ? 'ingreso' : 'ingreso_informativo',
+            monto: montoMp,
+            concepto: esEfectivo
+              ? `[Corrección] Gasto eliminado: ${g.descripcion}`
+              : `[${mp.tipo}][Corrección] Gasto eliminado: ${g.descripcion}`,
+            usuario_id: user?.id,
+          }).then(({ error: cajErr }) => { if (cajErr) console.error('caja reversión gasto:', cajErr.message) })
+        }
+        qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+        qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
+      }
+    }
+
     qc.invalidateQueries({ queryKey: ['gastos'] })
     qc.invalidateQueries({ queryKey: ['gastos-historial'] })
-    toast.success('Gasto eliminado')
+    toast.success(teniaPago ? 'Gasto eliminado · Corrección registrada en caja' : 'Gasto eliminado')
     logActividad({ entidad: 'gasto', entidad_id: id, entidad_nombre: g?.descripcion, accion: 'eliminar', pagina: '/gastos' })
   }
 
@@ -843,6 +957,7 @@ export default function GastosPage() {
     setModalGenerarFijo(f)
     setFormGenerar({ fecha: new Date().toISOString().split('T')[0], notas: '' })
     setMediosPagoGenerar(f.medio_pago ? [{ tipo: f.medio_pago, monto: String(f.monto) }] : [{ tipo: '', monto: String(f.monto) }])
+    setCajaGenerarFijoId(null)
     setGenerarFile(null); setGenerarTipoComp(''); setGenerarCompNombre(''); setGenerarUsaPrefix(false)
   }
   const confirmarGenerarFijo = async () => {
@@ -880,17 +995,22 @@ export default function GastosPage() {
         const { error: upErr } = await supabase.storage.from('comprobantes-gastos').upload(path, generarFile, { upsert: true })
         if (!upErr) await supabase.from('gastos').update({ comprobante_url: path }).eq('id', inserted.id)
       }
-      // Registrar en caja
-      const sesionUsar = sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null
-      if (sesionUsar && mediosValGen.length > 0) {
+      // Registrar en caja — prioriza: selección explícita > sesión propia > única disponible
+      const sesionUsarFijo = cajaGenerarFijoId
+        ?? sesionPropia?.id
+        ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0].id : null)
+      if (sesionUsarFijo && mediosValGen.length > 0) {
         for (const mp of mediosValGen) {
-          void supabase.from('caja_movimientos').insert({
-            tenant_id: tenant!.id, sesion_id: sesionUsar,
-            tipo: mp.tipo === 'Efectivo' ? 'egreso' : 'egreso_informativo',
-            concepto: mp.tipo === 'Efectivo' ? `Gasto: ${f.descripcion}` : `[${mp.tipo}] Gasto: ${f.descripcion}`,
+          const esEfectivo = mp.tipo === 'Efectivo'
+          supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id, sesion_id: sesionUsarFijo,
+            tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
+            concepto: esEfectivo ? `Gasto: ${f.descripcion}` : `[${mp.tipo}] Gasto: ${f.descripcion}`,
             monto: parseFloat(mp.monto), usuario_id: user?.id,
-          })
+          }).then(({ error: cajErr }) => { if (cajErr) console.error('caja fijo:', cajErr.message) })
         }
+        qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+        qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
       }
       qc.invalidateQueries({ queryKey: ['gastos'] })
       qc.invalidateQueries({ queryKey: ['gastos-historial'] })
@@ -1161,6 +1281,9 @@ export default function GastosPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
                             <p className="font-medium text-gray-800 dark:text-gray-100">{g.descripcion}</p>
+                            {!g.medio_pago && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium flex-shrink-0">Borrador</span>
+                            )}
                             {g.comprobante_url && (
                               <button onClick={() => verComprobante(g.comprobante_url)} title={g.comprobante_titulo ?? 'Ver comprobante'} className="text-blue-400 hover:text-blue-600">
                                 <Paperclip size={13} />
@@ -1299,6 +1422,9 @@ export default function GastosPage() {
                           <p className="font-medium text-gray-800 dark:text-gray-100 text-sm truncate">{g.descripcion}</p>
                           {g.categoria && (
                             <span className="inline-block px-1.5 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded font-medium flex-shrink-0">{g.categoria}</span>
+                          )}
+                          {!g.medio_pago && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium flex-shrink-0">Borrador</span>
                           )}
                           {g.comprobante_url && <Paperclip size={12} className="text-blue-400 flex-shrink-0" />}
                         </div>
@@ -1569,12 +1695,21 @@ export default function GastosPage() {
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
+              {/* Aviso cuando el gasto ya fue registrado en caja */}
+              {editandoId && originalTeniaPago && (
+                <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2">
+                  <span>🔒</span>
+                  <span>Monto y medio de pago bloqueados — ya fue registrado en caja. Podés editar descripción, categoría, fecha, notas y comprobante.</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto total ($) *</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={form.monto}
                   onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
+                  disabled={!!(editandoId && originalTeniaPago)}
                   placeholder="0" min="0" step="0.01"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
               </div>
 
               {/* Información fiscal */}
@@ -1602,7 +1737,7 @@ export default function GastosPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Medios de pago</label>
-                  {mediosPago.length < MEDIOS_PAGO.length && (
+                  {!originalTeniaPago && mediosPago.length < MEDIOS_PAGO.length && (
                     <button type="button" onClick={() => setMediosPago(p => [...p, { tipo: '', monto: '' }])}
                       className="text-xs text-accent hover:underline flex items-center gap-1">
                       <Plus size={12} /> Agregar método
@@ -1610,29 +1745,30 @@ export default function GastosPage() {
                   )}
                 </div>
                 {mediosPago.map((mp, idx) => {
+                  const bloqueado = !!(editandoId && originalTeniaPago)
                   const montoTotal = parseFloat(form.monto.replace(',', '.')) || 0
                   const asignado = mediosPago.reduce((s, m, i) => i !== idx ? s + (parseFloat(m.monto) || 0) : s, 0)
                   const restante = Math.max(0, montoTotal - asignado)
                   return (
                     <div key={idx} className="flex gap-2 items-center">
                       <div className="relative flex-1">
-                        <select value={mp.tipo}
+                        <select value={mp.tipo} disabled={bloqueado}
                           onChange={e => setMediosPago(p => p.map((m, i) => i === idx ? { ...m, tipo: e.target.value } : m))}
-                          className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                          className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">
                           <option value="">Elegir…</option>
                           {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                         <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       </div>
                       <div className="relative w-28">
-                        <input type="number" onWheel={e => e.currentTarget.blur()}
+                        <input type="number" onWheel={e => e.currentTarget.blur()} disabled={bloqueado}
                           value={mp.monto}
                           onChange={e => setMediosPago(p => p.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m))}
                           placeholder={restante > 0 ? String(restante.toFixed(0)) : '0'}
                           min="0" step="0.01"
-                          className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
                       </div>
-                      {mediosPago.length > 1 && (
+                      {!bloqueado && mediosPago.length > 1 && (
                         <button type="button" onClick={() => setMediosPago(p => p.filter((_, i) => i !== idx))}
                           className="text-gray-400 hover:text-red-500 flex-shrink-0"><X size={14} /></button>
                       )}
@@ -1765,26 +1901,28 @@ export default function GastosPage() {
               </div>
             </div>
 
-            {/* ISS-084: Selector de caja — siempre visible cuando hay efectivo */}
-            {!editandoId && (
+            {/* ISS-084 + ISS-136: Selector de caja — en nuevo gasto o al agregar pago a gasto existente */}
+            {(!editandoId || (!originalTeniaPago && hayMediosValidos)) && (
               <div className="px-5 pb-3">
                 {sesionesOperativas.length === 0 && !sesionFuerte ? (
                   <div className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2.5">
                     <span>⚠️</span><span>No hay caja abierta. Debés abrir una caja antes de registrar gastos.</span>
                   </div>
-                ) : efectivoEnMedios || sesionesOperativas.length > 1 ? (
+                ) : mediosPago.some(m => m.tipo && parseFloat(m.monto) > 0) || sesionesOperativas.length > 1 ? (
                   <div>
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                       {efectivoEnMedios ? 'Efectivo sale de:' : 'Registrar en caja:'}
                     </label>
-                    <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
+                    <select
+                      value={cajaSeleccionadaId ?? sesionDefault?.id ?? ''}
+                      onChange={e => setCajaSeleccionadaId(e.target.value || null)}
                       className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-                      <option value="">{sesionesOperativas.length > 1 ? '— Seleccioná una caja —' : '— Seleccioná origen del efectivo —'}</option>
+                      <option value="">— Seleccioná una caja —</option>
                       {sesionesOperativas.map((s: any) => {
                         const esPropia = s.usuario_id === user?.id
                         return (
                           <option key={s.id} value={s.id}>
-                            {s.cajas?.nombre ?? 'Caja'}{esPropia ? ' (mía)' : ` — de ${s.abrio?.nombre_display ?? 'otro usuario'}`}
+                            {s.cajas?.nombre ?? 'Caja'}{esPropia ? ' ★ (mía)' : ` — de ${s.abrio?.nombre_display ?? 'otro usuario'}`}
                           </option>
                         )
                       })}
@@ -1793,15 +1931,22 @@ export default function GastosPage() {
                       )}
                     </select>
                   </div>
-                ) : sesionesOperativas.length === 1 ? (
+                ) : sesionDefault ? (
+                  // Hay sesión default (propia del usuario o única disponible) — mostrar info
                   <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-3 py-2.5">
                     <span>✓</span>
                     <span>
-                      {sesionesOperativas[0].cajas?.nombre ?? 'Caja'}
-                      {sesionesOperativas[0].usuario_id !== user?.id && (
-                        <span className="text-amber-600 dark:text-amber-400"> · Caja de {sesionesOperativas[0].abrio?.nombre_display ?? 'otro usuario'}</span>
+                      {sesionDefault.cajas?.nombre ?? 'Caja'}
+                      {sesionDefault.usuario_id !== user?.id && (
+                        <span className="text-amber-600 dark:text-amber-400"> · Caja de {sesionDefault.abrio?.nombre_display ?? 'otro usuario'}</span>
                       )}
                     </span>
+                    {sesionesOperativas.length > 1 && (
+                      <button onClick={() => setCajaSeleccionadaId('')}
+                        className="ml-auto text-accent hover:underline text-[10px]">
+                        cambiar
+                      </button>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -2020,6 +2165,41 @@ export default function GastosPage() {
               </div>
             </div>
 
+            {/* Selector de caja — igual que en gastos variables */}
+            {mediosPagoGenerar.some(m => m.tipo && parseFloat(m.monto) > 0) && (
+              <div className="px-5 pb-3">
+                {sesionesOperativas.length === 0 ? (
+                  <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2">
+                    <span>⚠️</span><span>No hay caja abierta. El movimiento no se registrará en caja.</span>
+                  </div>
+                ) : (() => {
+                  const sesionFijoDefault = sesionesOperativas.find((s: any) => s.id === (cajaGenerarFijoId ?? sesionPropia?.id))
+                    ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0] : null)
+                  return sesionesOperativas.length > 1 ? (
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar en caja</label>
+                      <select
+                        value={cajaGenerarFijoId ?? sesionPropia?.id ?? ''}
+                        onChange={e => setCajaGenerarFijoId(e.target.value || null)}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        <option value="">— Seleccioná una caja —</option>
+                        {sesionesOperativas.map((s: any) => (
+                          <option key={s.id} value={s.id}>
+                            {s.cajas?.nombre ?? 'Caja'}{s.usuario_id === user?.id ? ' ★ (mía)' : ` — de ${s.abrio?.nombre_display ?? 'otro usuario'}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : sesionFijoDefault ? (
+                    <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-3 py-2">
+                      <span>✓</span>
+                      <span>{sesionFijoDefault.cajas?.nombre ?? 'Caja'}{sesionFijoDefault.usuario_id === user?.id ? ' ★' : ''}</span>
+                    </div>
+                  ) : null
+                })()}
+              </div>
+            )}
+
             <div className="px-5 pb-5 flex gap-3">
               <button onClick={() => setModalGenerarFijo(null)}
                 className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
@@ -2116,7 +2296,7 @@ export default function GastosPage() {
                         </div>
                       </div>
                       {oc.estado_pago !== 'pagada' && (
-                        <button onClick={() => { setOcModalId(oc.id); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones('') }}
+                        <button onClick={() => { setOcModalId(oc.id); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones(''); setOcDescuento('0'); setOcCajaSeleccionadaId(null) }}
                           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/90 transition-all">
                           <DollarSign size={12} /> Pagar / CC
                         </button>
@@ -2247,7 +2427,19 @@ export default function GastosPage() {
                   <div className="bg-gray-50 dark:bg-gray-700 rounded-xl px-4 py-3 text-sm space-y-1">
                     <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total OC</span><span className="font-semibold">${calcMontoTotalOC(ocSeleccionada).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
                     {Number(ocSeleccionada.monto_pagado) > 0 && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Ya pagado</span><span className="text-green-600">${Number(ocSeleccionada.monto_pagado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>}
-                    <div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-600 pt-1 mt-1"><span>Saldo pendiente</span><span className="text-red-500">${(calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
+                    {Number(ocSeleccionada.monto_descuento ?? 0) > 0 && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Descuento previo</span><span className="text-blue-500">-${Number(ocSeleccionada.monto_descuento).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>}
+                    {parseFloat(ocDescuento) > 0 && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Descuento nuevo</span><span className="text-blue-500">-${parseFloat(ocDescuento).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>}
+                    <div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-600 pt-1 mt-1"><span>Saldo pendiente</span><span className="text-red-500">${Math.max(0, calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0) - Number(ocSeleccionada.monto_descuento ?? 0) - (parseFloat(ocDescuento) || 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
+                  </div>
+
+                  {/* ISS-132: descuento del proveedor */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Descuento del proveedor ($)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={ocDescuento}
+                      onChange={e => setOcDescuento(e.target.value)}
+                      placeholder="0"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">El descuento reduce el saldo sin requerir pago.</p>
                   </div>
 
                   {/* ISS-095: Medios de pago unificados (CC como método parcial) */}
@@ -2260,7 +2452,7 @@ export default function GastosPage() {
                             <select value={m.tipo}
                               onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, tipo: e.target.value } : x))}
                               className="flex-1 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-                              {MEDIOS_OC.map(t => <option key={t}>{t}</option>)}
+                              {MEDIOS_OC_DB.map(t => <option key={t}>{t}</option>)}
                             </select>
                             <input type="number" onWheel={e => e.currentTarget.blur()}
                               value={m.monto} onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
@@ -2307,7 +2499,32 @@ export default function GastosPage() {
                               <span className={totalMedios > saldo + 0.5 ? 'text-red-500' : 'text-accent'}>${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                             </div>
                           )}
-                          {ocMediosPago.some(m => m.tipo === 'Efectivo') && (cajasAbiertasOC as any[]).length === 0 && (
+                          {/* Selector de caja para el movimiento */}
+                  {(cajasAbiertasOC as any[]).length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Registrar movimiento en caja</label>
+                      {(cajasAbiertasOC as any[]).length === 1 ? (
+                        <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-3 py-2">
+                          <span>✓</span>
+                          <span>{(cajasAbiertasOC as any[])[0]?.cajas?.nombre ?? 'Caja'}</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={ocCajaSeleccionadaId ?? ''}
+                          onChange={e => setOcCajaSeleccionadaId(e.target.value || null)}
+                          className="w-full px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                          <option value="">— Seleccioná una caja —</option>
+                          {(cajasAbiertasOC as any[]).map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
+                          ))}
+                        </select>
+                      )}
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                        El efectivo reduce el saldo. Otros métodos aparecen como "No efectivo" sin afectar el saldo.
+                      </p>
+                    </div>
+                  )}
+                  {ocMediosPago.some(m => m.tipo === 'Efectivo') && (cajasAbiertasOC as any[]).length === 0 && (
                             <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso en efectivo no se registrará en caja.</p>
                           )}
                         </>

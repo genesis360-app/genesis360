@@ -6,6 +6,69 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-19] update | PROD deploy v1.8.37 — migrations 122-126, EFs MODO, ISS-136 completo
+
+- PR #114 `dev → main` mergeado ✅
+- Migrations 122-126 aplicadas en PROD ✅
+- EFs `modo-webhook` y `modo-crear-pago` deployadas en PROD ✅
+- GitHub release v1.8.37 como latest ✅
+
+## [2026-05-19] update | fix: ISS-104/132/133/136/138 — Gastos y Caja (v1.8.36-dev)
+
+- Migration 126: `monto_descuento` en `ordenes_compra`
+- ISS-132: campo descuento en modal pago de OC (reduce saldo, se acumula en `monto_descuento`)
+- ISS-133: métodos de pago en GastosPage se cargan desde tabla `metodos_pago` en vez de hardcodeados; OC agrega Cuenta Corriente automáticamente
+- ISS-138: badge "Borrador" en gastos sin `medio_pago` (tabla y historial)
+- ISS-136: OC registra `egreso_informativo` en caja para todos los medios no-efectivo; gastos form muestra selector de caja con cualquier medio de pago (no solo efectivo)
+- ISS-104: selector de caja en CajaPage — eliminado select box, solo píldoras con botón ★ de predeterminar integrado por caja
+
+## [2026-05-19] update | feat: MODO integración completa — webhook + polling + deploy (v1.8.35-dev)
+
+- EF `modo-webhook` creada: recibe notificaciones de pago MODO, actualiza `ventas.id_pago_externo` e implementa idempotencia con `ventas_externas_logs`
+- EF `modo-crear-pago` deployada en DEV (ya existía en repo, no estaba activa)
+- VentasPage: polling cada 4s sobre `ventas.id_pago_externo` mientras el QR MODO está visible
+- VentasPage: modal QR rediseñado — estado "Esperando..." con dot animado y estado "¡Pago recibido!" con checkmark al detectar confirmación
+- Tests ejecutados: webhook 200 ✅, idempotencia ✅, venta actualizada ✅, JWT inválido 401 en crear-pago ✅
+- Pendiente: verificar endpoints reales de MODO sandbox cuando lleguen las credenciales de merchant
+
+## [2026-05-19] update | feat: ConfigPage Fases 2-3-4 — config extendida (v1.8.34-dev)
+
+- Migrations 123-125: `tenants` (email_legal, precio_redondeo, cliente_*, descuento_max_*, clave_maestra, boveda_umbral_caja), `sucursales` (codigo_postal, email, horario_apertura/cierre, punto_venta_afip), `metodos_pago` (comision_pct, config)
+- Mi negocio: email legal, redondeo de precios, config de sucursales (CP/email/horario/PV AFIP) por sucursal
+- Ventas/Métodos: comisión % por método de pago (badge naranja display, editable inline)
+- Ventas/Operativa: cliente obligatorio en POS, datos mínimos, consumidor final, creación inline
+- Ventas/Descuentos: descuento máximo cajero/supervisor (% configurable)
+- Caja: contraseña maestra para cierre de caja ajena + umbral bóveda
+- VentasPage: validación descuento máximo por rol al confirmar venta + badge rojo si excede límite
+
+## [2026-05-19] update | refactor: ConfigPage Fase 1 — nueva estructura de módulos (v1.8.33-dev)
+
+- 11 tabs nuevas en lugar de 10 tabs planas: Negocio / Ventas / Caja / Clientes / Inventario / Envíos / Facturación / RRHH / Alertas / Notificaciones / Conectividad
+- Sidebar con separadores de grupos (Negocio / Sistema) y badge "pronto" en placeholders
+- Ventas absorbe: Métodos de pago (sub-tab), Combos y descuentos (sub-tab), Operativa (sub-tab)
+- Inventario absorbe: Reglas de stock (sub-tab nuevo), Categorías, Ubicaciones, Estados, Motivos, Unidades de medida
+- Conectividad absorbe: Integraciones, API
+- Envíos: costo por km + plantilla WhatsApp (movidos de Mi negocio)
+- Facturación: todo el bloque AFIP (movido de Mi negocio)
+- Mi negocio queda con: nombre, tipo, timeout sesión, plan actual, marketplace
+- Placeholders con "Próximamente": Caja, Clientes, RRHH, Alertas, Notificaciones
+
+## [2026-05-18] update | fix: 6 issues — Recursos, Dashboard Gastos, Inventario, Ventas (v1.8.32-dev)
+
+- ISS-110: migration 122 — `ventas_origen_check` extendida con Instagram/Facebook/WhatsApp/Otros
+- ISS-111: migration 102 (`es_recurrente`/frecuencia/proximo_vencimiento) faltaba en DEV, aplicada
+- ISS-112: checkbox "Registrar como gasto" en modal recurso activo (activado por default, desactivable)
+- ISS-114: botón Agregar en tab Ubicaciones abre modal "Asignar ubicación" correcto (no el de crear recurso)
+- ISS-129: pctFijos en DashGastosArea corregido (fijos/total_combinado); link → `/gastos?tab=fijos`; GastosPage lee `?tab=` de URL
+- ISS-131: query `productosBusqueda` incluye `estado_id` y `proveedor_id` para respetar defaults del producto
+
+## [2026-05-18] update | PROD deploy v1.8.31 — PR #113, migrations 111–121 aplicadas
+
+- PR #113 `dev → main` mergeado ✅
+- Migrations 111–121 + fix_motivos_tipo_constraint aplicadas en PROD ✅
+- GitHub release v1.8.31 como latest ✅
+- PROD y DEV en paridad completa: v1.8.31 / migrations 001–121
+
 ## [2026-05-18] update | v1.8.31 — bump versión + manuales de uso
 
 - APP_VERSION bumpeada a v1.8.31 en brand.ts

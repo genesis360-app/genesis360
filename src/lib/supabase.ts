@@ -39,6 +39,19 @@ export interface Tenant {
   marketplace_webhook_url?: string
   session_timeout_minutes?: number | null
   permite_over_receipt?: boolean
+  // Fase 2 — identidad y moneda
+  email_legal?: string | null
+  precio_redondeo?: 'none' | '10' | '50' | '100' | '500' | '1000'
+  // Fase 3 — cliente en POS
+  cliente_obligatorio?: 'siempre' | 'reservas' | 'nunca'
+  cliente_datos_minimos?: 'nombre' | 'nombre_dni' | 'nombre_dni_email' | 'todos'
+  cliente_consumidor_final?: boolean
+  cliente_creacion_inline?: boolean
+  // Fase 4 — descuentos y caja
+  descuento_max_cajero_pct?: number | null
+  descuento_max_supervisor_pct?: number | null
+  clave_maestra?: string | null
+  boveda_umbral_caja?: number | null
   created_at: string
 }
 
@@ -64,6 +77,14 @@ export interface Sucursal {
   direccion?: string
   telefono?: string
   activo: boolean
+  // Migration 124
+  codigo_postal?: string | null
+  email?: string | null
+  horario_apertura?: string | null
+  horario_cierre?: string | null
+  punto_venta_afip?: number | null
+  // Migration 107
+  costo_km_envio?: number
   created_at: string
 }
 

@@ -1201,10 +1201,14 @@ export default function VentasPage() {
       if (!clienteId) { toast.error('Seleccioná un cliente para usar cuenta corriente.'); return }
       if (!clienteCCEnabled) { toast.error('Este cliente no tiene cuenta corriente habilitada.'); return }
     }
-    // Validar medios de pago (CC se trata como "cubierto", no va a caja)
+    // Validar medios de pago (CC se excluye; los demás deben cubrir totalSinCC)
     // ISS-105: validar contra totalConEnvio (incluye costo de envío)
-    const mediosSinCC = mediosPago.map(m => m.tipo === 'Cuenta Corriente' ? { tipo: m.tipo, monto: String(totalConEnvio - montoCC) } : m)
-    const errorPago = validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, totalConEnvio)
+    const mediosSinCC = mediosPago.filter(m => m.tipo !== 'Cuenta Corriente')
+    const totalSinCC = Math.max(0, totalConEnvio - montoCC)
+    // Full CC (montoCC cubre todo): no hay otros medios que validar
+    const errorPago = modoCC && totalSinCC < 0.5
+      ? null
+      : validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, modoCC ? totalSinCC : totalConEnvio)
     if (errorPago) { toast.error(errorPago); return }
     if (estado === 'despachada' || estado === 'reservada') {
       const montoNoCCAsignado = mediosPago.filter(m => m.tipo !== 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
@@ -3111,7 +3115,7 @@ export default function VentasPage() {
                       <CreditCard size={12} /> <span>Parte de la venta a cuenta corriente del cliente</span>
                     </div>
                   )}
-                  <button onClick={() => registrarVenta(modoVenta)} disabled={saving}
+                  <button onClick={() => registrarVenta(modoCC ? 'despachada' : modoVenta)} disabled={saving}
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {modoCC ? <CreditCard size={16} /> : modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
                     {saving ? 'Guardando...' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}

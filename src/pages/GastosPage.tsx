@@ -153,6 +153,7 @@ export default function GastosPage() {
     fecha: new Date().toISOString().split('T')[0], notas: '',
   })
   const [mediosPagoGenerar, setMediosPagoGenerar] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
+  const [cajaGenerarFijoId, setCajaGenerarFijoId] = useState<string | null>(null)
   const [generandoFijo, setGenerandoFijo] = useState(false)
   const [generarFile, setGenerarFile] = useState<File | null>(null)
   const [generarTipoComp, setGenerarTipoComp] = useState('')
@@ -956,6 +957,7 @@ export default function GastosPage() {
     setModalGenerarFijo(f)
     setFormGenerar({ fecha: new Date().toISOString().split('T')[0], notas: '' })
     setMediosPagoGenerar(f.medio_pago ? [{ tipo: f.medio_pago, monto: String(f.monto) }] : [{ tipo: '', monto: String(f.monto) }])
+    setCajaGenerarFijoId(null)
     setGenerarFile(null); setGenerarTipoComp(''); setGenerarCompNombre(''); setGenerarUsaPrefix(false)
   }
   const confirmarGenerarFijo = async () => {
@@ -993,17 +995,22 @@ export default function GastosPage() {
         const { error: upErr } = await supabase.storage.from('comprobantes-gastos').upload(path, generarFile, { upsert: true })
         if (!upErr) await supabase.from('gastos').update({ comprobante_url: path }).eq('id', inserted.id)
       }
-      // Registrar en caja
-      const sesionUsar = sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null
-      if (sesionUsar && mediosValGen.length > 0) {
+      // Registrar en caja — prioriza: selección explícita > sesión propia > única disponible
+      const sesionUsarFijo = cajaGenerarFijoId
+        ?? sesionPropia?.id
+        ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0].id : null)
+      if (sesionUsarFijo && mediosValGen.length > 0) {
         for (const mp of mediosValGen) {
-          void supabase.from('caja_movimientos').insert({
-            tenant_id: tenant!.id, sesion_id: sesionUsar,
-            tipo: mp.tipo === 'Efectivo' ? 'egreso' : 'egreso_informativo',
-            concepto: mp.tipo === 'Efectivo' ? `Gasto: ${f.descripcion}` : `[${mp.tipo}] Gasto: ${f.descripcion}`,
+          const esEfectivo = mp.tipo === 'Efectivo'
+          supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id, sesion_id: sesionUsarFijo,
+            tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
+            concepto: esEfectivo ? `Gasto: ${f.descripcion}` : `[${mp.tipo}] Gasto: ${f.descripcion}`,
             monto: parseFloat(mp.monto), usuario_id: user?.id,
-          })
+          }).then(({ error: cajErr }) => { if (cajErr) console.error('caja fijo:', cajErr.message) })
         }
+        qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+        qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
       }
       qc.invalidateQueries({ queryKey: ['gastos'] })
       qc.invalidateQueries({ queryKey: ['gastos-historial'] })
@@ -2157,6 +2164,41 @@ export default function GastosPage() {
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
             </div>
+
+            {/* Selector de caja — igual que en gastos variables */}
+            {mediosPagoGenerar.some(m => m.tipo && parseFloat(m.monto) > 0) && (
+              <div className="px-5 pb-3">
+                {sesionesOperativas.length === 0 ? (
+                  <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2">
+                    <span>⚠️</span><span>No hay caja abierta. El movimiento no se registrará en caja.</span>
+                  </div>
+                ) : (() => {
+                  const sesionFijoDefault = sesionesOperativas.find((s: any) => s.id === (cajaGenerarFijoId ?? sesionPropia?.id))
+                    ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0] : null)
+                  return sesionesOperativas.length > 1 ? (
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar en caja</label>
+                      <select
+                        value={cajaGenerarFijoId ?? sesionPropia?.id ?? ''}
+                        onChange={e => setCajaGenerarFijoId(e.target.value || null)}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        <option value="">— Seleccioná una caja —</option>
+                        {sesionesOperativas.map((s: any) => (
+                          <option key={s.id} value={s.id}>
+                            {s.cajas?.nombre ?? 'Caja'}{s.usuario_id === user?.id ? ' ★ (mía)' : ` — de ${s.abrio?.nombre_display ?? 'otro usuario'}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : sesionFijoDefault ? (
+                    <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-3 py-2">
+                      <span>✓</span>
+                      <span>{sesionFijoDefault.cajas?.nombre ?? 'Caja'}{sesionFijoDefault.usuario_id === user?.id ? ' ★' : ''}</span>
+                    </div>
+                  ) : null
+                })()}
+              </div>
+            )}
 
             <div className="px-5 pb-5 flex gap-3">
               <button onClick={() => setModalGenerarFijo(null)}

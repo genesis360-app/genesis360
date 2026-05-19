@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-19] update | feat: MODO integración completa — webhook + polling + deploy (v1.8.35-dev)
+
+- EF `modo-webhook` creada: recibe notificaciones de pago MODO, actualiza `ventas.id_pago_externo` e implementa idempotencia con `ventas_externas_logs`
+- EF `modo-crear-pago` deployada en DEV (ya existía en repo, no estaba activa)
+- VentasPage: polling cada 4s sobre `ventas.id_pago_externo` mientras el QR MODO está visible
+- VentasPage: modal QR rediseñado — estado "Esperando..." con dot animado y estado "¡Pago recibido!" con checkmark al detectar confirmación
+- Tests ejecutados: webhook 200 ✅, idempotencia ✅, venta actualizada ✅, JWT inválido 401 en crear-pago ✅
+- Pendiente: verificar endpoints reales de MODO sandbox cuando lleguen las credenciales de merchant
+
 ## [2026-05-19] update | feat: ConfigPage Fases 2-3-4 — config extendida (v1.8.34-dev)
 
 - Migrations 123-125: `tenants` (email_legal, precio_redondeo, cliente_*, descuento_max_*, clave_maestra, boveda_umbral_caja), `sucursales` (codigo_postal, email, horario_apertura/cierre, punto_venta_afip), `metodos_pago` (comision_pct, config)

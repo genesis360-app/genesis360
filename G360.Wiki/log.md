@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-19] update | refactor: ConfigPage Fase 1 — nueva estructura de módulos (v1.8.33-dev)
+
+- 11 tabs nuevas en lugar de 10 tabs planas: Negocio / Ventas / Caja / Clientes / Inventario / Envíos / Facturación / RRHH / Alertas / Notificaciones / Conectividad
+- Sidebar con separadores de grupos (Negocio / Sistema) y badge "pronto" en placeholders
+- Ventas absorbe: Métodos de pago (sub-tab), Combos y descuentos (sub-tab), Operativa (sub-tab)
+- Inventario absorbe: Reglas de stock (sub-tab nuevo), Categorías, Ubicaciones, Estados, Motivos, Unidades de medida
+- Conectividad absorbe: Integraciones, API
+- Envíos: costo por km + plantilla WhatsApp (movidos de Mi negocio)
+- Facturación: todo el bloque AFIP (movido de Mi negocio)
+- Mi negocio queda con: nombre, tipo, timeout sesión, plan actual, marketplace
+- Placeholders con "Próximamente": Caja, Clientes, RRHH, Alertas, Notificaciones
+
 ## [2026-05-18] update | fix: 6 issues — Recursos, Dashboard Gastos, Inventario, Ventas (v1.8.32-dev)
 
 - ISS-110: migration 122 — `ventas_origen_check` extendida con Instagram/Facebook/WhatsApp/Otros

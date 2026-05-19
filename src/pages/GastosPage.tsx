@@ -129,6 +129,8 @@ export default function GastosPage() {
   const [usarPrefixCategoria, setUsarPrefixCategoria] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
+  // Medio de pago original al abrir el modal de edición (para detectar si se agrega pago por primera vez)
+  const [originalMedioPago, setOriginalMedioPago] = useState<string | null>(null)
   const [filtroCategoria, setFiltroCategoria] = useState('')
 
   // ── Historial — state ────────────────────────────────────────────────────
@@ -212,6 +214,8 @@ export default function GastosPage() {
   const sesionesOperativas = (sesionesAbiertas as any[]).filter(s => !s.cajas?.es_caja_fuerte)
   const efectivoEnMedios = mediosPago.some(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0)
   const montoEfectivo = mediosPago.filter(m => m.tipo === 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+  // Para mostrar el selector de caja en JSX (mediosValidos completo se calcula en guardar())
+  const hayMediosValidos = mediosPago.some(m => m.tipo && parseFloat(m.monto) > 0)
 
   // Sesión propia del usuario (prioridad sobre otras sesiones abiertas)
   const sesionPropia = sesionesOperativas.find((s: any) => s.usuario_id === user?.id) ?? null
@@ -604,6 +608,9 @@ export default function GastosPage() {
     return [{ tipo: raw, monto: '' }]
   }
 
+  // Derivados que dependen de parseMediosPago — definidos después de ella
+  const originalTeniaPago = parseMediosPago(originalMedioPago).some(m => m.tipo && parseFloat(m.monto) > 0)
+
   const abrirNuevo = () => {
     setEditandoId(null); setForm(FORM_VACIO)
     setMediosPago([{ tipo: '', monto: '' }])
@@ -621,6 +628,7 @@ export default function GastosPage() {
       categoria: g.categoria ?? '', fecha: g.fecha, notas: g.notas ?? '',
     })
     setMediosPago(parseMediosPago(g.medio_pago))
+    setOriginalMedioPago(g.medio_pago ?? null)  // guarda el pago original para detectar cambios
     setComprobanteFile(null); setComprobanteExistente(g.comprobante_url ?? null)
     setComprobanteNombre(g.comprobante_titulo ?? '')
     setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
@@ -629,6 +637,7 @@ export default function GastosPage() {
   const cerrarModal = () => {
     setModalAbierto(false); setEditandoId(null); setForm(FORM_VACIO)
     setMediosPago([{ tipo: '', monto: '' }])
+    setOriginalMedioPago(null)
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
     setCajaSeleccionadaId(null)
@@ -754,6 +763,28 @@ export default function GastosPage() {
         if (error) throw error
         toast.success('Gasto actualizado')
         logActividad({ entidad: 'gasto', entidad_id: editandoId, entidad_nombre: form.descripcion.trim(), accion: 'editar', pagina: '/gastos' })
+
+        // ISS-136: Si el gasto no tenía medio de pago y ahora se le agrega, registrar en caja
+        const originalTeniaPago = parseMediosPago(originalMedioPago).some(m => m.tipo && parseFloat(m.monto) > 0)
+        if (!originalTeniaPago && mediosValidos.length > 0) {
+          const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
+          if (sesionUsar) {
+            const concepto = `Gasto: ${form.descripcion.trim()}`
+            for (const mp of mediosValidos) {
+              const montoMp = parseFloat(mp.monto)
+              const esEfectivo = mp.tipo === 'Efectivo'
+              const tipo = esEfectivo ? 'egreso' : 'egreso_informativo'
+              supabase.from('caja_movimientos').insert({
+                tenant_id: tenant!.id, sesion_id: sesionUsar,
+                tipo,
+                concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
+                monto: montoMp, usuario_id: user?.id,
+              }).then(({ error: cajErr }) => { if (cajErr) console.error('caja edit gasto:', cajErr.message) })
+            }
+            qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
+            qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+          }
+        }
       } else {
         const { data: inserted, error } = await supabase.from('gastos').insert(payload).select('id').single()
         if (error) throw error
@@ -1825,8 +1856,8 @@ export default function GastosPage() {
               </div>
             </div>
 
-            {/* ISS-084 + ISS-136: Selector de caja — visible con cualquier medio de pago */}
-            {!editandoId && (
+            {/* ISS-084 + ISS-136: Selector de caja — en nuevo gasto o al agregar pago a gasto existente */}
+            {(!editandoId || (!originalTeniaPago && hayMediosValidos)) && (
               <div className="px-5 pb-3">
                 {sesionesOperativas.length === 0 && !sesionFuerte ? (
                   <div className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2.5">

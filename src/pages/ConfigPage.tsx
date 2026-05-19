@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock } from 'lucide-react'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -11,7 +11,10 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'combos' | 'metodos_pago' | 'integraciones' | 'api' | 'unidades_medida'
+type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
+type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
+type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades'
+type ConSubTab = 'integraciones' | 'api'
 type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
 
@@ -377,8 +380,12 @@ function MarketplaceSection() {
 export default function ConfigPage() {
   const searchParams = new URLSearchParams(window.location.search)
   const initialTab = searchParams.get('tab') as Tab | null
-  const [tab, setTab] = useState<Tab>(initialTab ?? 'negocio')
+  const VALID_TABS: Tab[] = ['negocio','ventas','caja','clientes','inventario','envios','facturacion','rrhh','alertas','notificaciones','conectividad']
+  const [tab, setTab] = useState<Tab>(VALID_TABS.includes(initialTab as Tab) ? initialTab as Tab : 'negocio')
   const [estadosSubTab, setEstadosSubTab] = useState<EstadosSubTab>('estados')
+  const [ventasSubTab, setVentasSubTab] = useState<VentasSubTab>('metodos')
+  const [invSubTab, setInvSubTab] = useState<InvSubTab>('reglas')
+  const [conSubTab, setConSubTab] = useState<ConSubTab>('integraciones')
   const { tenant, user, setTenant, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
   const canEdit = user?.rol === 'DUEÑO'
@@ -723,7 +730,7 @@ export default function ConfigPage() {
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },
-    enabled: !!tenant && tab === 'combos',
+    enabled: !!tenant && tab === 'ventas',
   })
 
   const { data: combos = [], isLoading: loadingCombos } = useQuery({
@@ -737,7 +744,7 @@ export default function ConfigPage() {
       const { data } = await q
       return data ?? []
     },
-    enabled: !!tenant && tab === 'combos',
+    enabled: !!tenant && tab === 'ventas',
   })
 
   const addCombo = async () => {
@@ -800,7 +807,7 @@ export default function ConfigPage() {
       if (error) throw error
       return (data ?? []) as Grupo[]
     },
-    enabled: !!tenant && tab === 'estados' && estadosSubTab === 'grupos',
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'estados' && estadosSubTab === 'grupos',
   })
 
   const resetGrupoForm = () => {
@@ -951,7 +958,7 @@ export default function ConfigPage() {
         .select('*').eq('tenant_id', tenant!.id).maybeSingle()
       return data as TenantCertificate | null
     },
-    enabled: !!tenant && tab === 'negocio',
+    enabled: !!tenant && tab === 'facturacion',
   })
 
   const { data: puntosVentaAfip = [], refetch: refetchPV } = useQuery({
@@ -961,7 +968,7 @@ export default function ConfigPage() {
         .select('*').eq('tenant_id', tenant!.id).order('numero')
       return data ?? []
     },
-    enabled: !!tenant && tab === 'negocio',
+    enabled: !!tenant && tab === 'facturacion',
   })
 
   const handleSaveCert = async () => {
@@ -1021,7 +1028,7 @@ export default function ConfigPage() {
       }
       return data
     },
-    enabled: !!tenant && tab === 'metodos_pago',
+    enabled: !!tenant && tab === 'ventas',
   })
 
   const addMetodoPago = useMutation({
@@ -1077,7 +1084,7 @@ export default function ConfigPage() {
         .eq('tenant_id', tenant!.id)
       return data ?? []
     },
-    enabled: !!tenant && tab === 'integraciones',
+    enabled: !!tenant && tab === 'conectividad',
   })
 
   const { data: mpCreds = [], isLoading: mpLoading } = useQuery({
@@ -1089,7 +1096,7 @@ export default function ConfigPage() {
         .eq('tenant_id', tenant!.id)
       return data ?? []
     },
-    enabled: !!tenant && tab === 'integraciones',
+    enabled: !!tenant && tab === 'conectividad',
   })
 
   // ─── TN product mapping ──────────────────────────────────────────────────
@@ -1211,7 +1218,7 @@ export default function ConfigPage() {
         .eq('tenant_id', tenant!.id)
       return data ?? []
     },
-    enabled: !!tenant && tab === 'integraciones',
+    enabled: !!tenant && tab === 'conectividad',
   })
 
   const { data: productosMap = [] } = useQuery({
@@ -1225,7 +1232,7 @@ export default function ConfigPage() {
         .order('nombre')
       return data ?? []
     },
-    enabled: !!tenant && tab === 'integraciones',
+    enabled: !!tenant && tab === 'conectividad',
   })
 
   const upsertTnMap = useMutation({
@@ -1299,7 +1306,7 @@ export default function ConfigPage() {
         .eq('tenant_id', tenant!.id)
       return data ?? []
     },
-    enabled: !!tenant && tab === 'integraciones',
+    enabled: !!tenant && tab === 'conectividad',
   })
 
   const { data: meliMap = [] } = useQuery({
@@ -1310,7 +1317,7 @@ export default function ConfigPage() {
         .eq('tenant_id', tenant!.id)
       return data ?? []
     },
-    enabled: !!tenant && tab === 'integraciones',
+    enabled: !!tenant && tab === 'conectividad',
   })
 
   const [meliMapExpanded, setMeliMapExpanded] = useState(false)
@@ -1325,7 +1332,7 @@ export default function ConfigPage() {
         .eq('tenant_id', tenant!.id).maybeSingle()
       return data
     },
-    enabled: !!tenant && tab === 'integraciones',
+    enabled: !!tenant && tab === 'conectividad',
   })
   const [modoForm, setModoForm] = useState({ merchant_id: '', api_key: '', ambiente: 'test' as 'test' | 'prod' })
   const [savingModo, setSavingModo] = useState(false)
@@ -1421,7 +1428,7 @@ export default function ConfigPage() {
       const { data } = await supabase.from('unidades_medida').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },
-    enabled: !!tenant && tab === 'unidades_medida',
+    enabled: !!tenant && tab === 'inventario',
   })
 
   const addUdm = async () => {
@@ -1449,18 +1456,59 @@ export default function ConfigPage() {
     else { toast.success('Unidad desactivada'); qc.invalidateQueries({ queryKey: ['unidades_medida'] }) }
   }
 
-  const tabs = [
-    { id: 'negocio' as Tab, label: 'Mi negocio', icon: Building2 },
-    { id: 'categorias' as Tab, label: 'Categorías', icon: Tag },
-    { id: 'ubicaciones' as Tab, label: 'Ubicaciones', icon: MapPin },
-    { id: 'estados' as Tab, label: 'Estados', icon: CircleDot },
-    { id: 'motivos' as Tab, label: 'Motivos', icon: MessageSquare },
-    { id: 'combos' as Tab, label: 'Combos', icon: Gift },
-    { id: 'metodos_pago' as Tab, label: 'Métodos de pago', icon: CreditCard },
-    { id: 'unidades_medida' as Tab, label: 'Unidades', icon: Ruler },
-    { id: 'integraciones' as Tab, label: 'Integraciones', icon: Plug },
-    { id: 'api' as Tab, label: 'API', icon: Key },
+  const tabGroups: { label: string; items: { id: Tab; label: string; icon: any; placeholder?: boolean }[] }[] = [
+    {
+      label: 'Negocio',
+      items: [
+        { id: 'negocio',        label: 'Mi negocio',     icon: Building2 },
+        { id: 'ventas',         label: 'Ventas',          icon: ShoppingCart },
+        { id: 'caja',           label: 'Caja',            icon: Wallet },
+        { id: 'clientes',       label: 'Clientes',        icon: Users },
+        { id: 'inventario',     label: 'Inventario',      icon: Package },
+        { id: 'envios',         label: 'Envíos',          icon: Truck },
+        { id: 'facturacion',    label: 'Facturación',     icon: Receipt },
+        { id: 'rrhh',           label: 'RRHH',            icon: UserCog, placeholder: true },
+      ],
+    },
+    {
+      label: 'Sistema',
+      items: [
+        { id: 'alertas',        label: 'Alertas',         icon: Bell,      placeholder: true },
+        { id: 'notificaciones', label: 'Notificaciones',  icon: Bell,      placeholder: true },
+        { id: 'conectividad',   label: 'Conectividad',    icon: Plug },
+      ],
+    },
   ]
+  const allTabs = tabGroups.flatMap(g => g.items)
+
+  const PlaceholderTab = ({ icon: Icon, title, desc }: { icon: any; title: string; desc: string }) => (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-12 text-center space-y-4">
+      <div className="w-14 h-14 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto">
+        <Icon size={24} className="text-gray-400 dark:text-gray-500" />
+      </div>
+      <div>
+        <p className="font-semibold text-gray-700 dark:text-gray-300">{title}</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-sm mx-auto">{desc}</p>
+      </div>
+      <span className="inline-block text-xs bg-accent/10 text-accent px-3 py-1 rounded-full font-medium">Próximamente</span>
+    </div>
+  )
+
+  const subTabNav = <T extends string>(
+    items: { id: T; label: string; icon: any }[],
+    active: T,
+    setActive: (v: T) => void
+  ) => (
+    <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+      {items.map(({ id, label, icon: Icon }) => (
+        <button key={id} onClick={() => setActive(id)}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all whitespace-nowrap
+            ${active === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+          <Icon size={14} />{label}
+        </button>
+      ))}
+    </div>
+  )
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
@@ -1477,13 +1525,22 @@ export default function ConfigPage() {
 
       <div className="flex gap-6 items-start">
         {/* Sidebar nav — desktop only */}
-        <nav className="hidden lg:flex flex-col w-44 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl p-2 shadow-sm border border-gray-100 sticky top-4">
-          {tabs.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => setTab(id)}
-              className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left
-                ${tab === id ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200'}`}>
-              <Icon size={15} className="flex-shrink-0" />{label}
-            </button>
+        <nav className="hidden lg:flex flex-col w-48 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl p-2 shadow-sm border border-gray-100 dark:border-gray-700 sticky top-4">
+          {tabGroups.map((group, gi) => (
+            <div key={group.label}>
+              {gi > 0 && <div className="border-t border-gray-100 dark:border-gray-700 my-1.5" />}
+              <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider px-3 pt-1.5 pb-1">{group.label}</p>
+              {group.items.map(({ id, label, icon: Icon, placeholder }) => (
+                <button key={id} onClick={() => setTab(id)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left
+                    ${tab === id ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200'}
+                    ${placeholder ? 'opacity-60' : ''}`}>
+                  <Icon size={15} className="flex-shrink-0" />
+                  <span className="flex-1">{label}</span>
+                  {placeholder && <span className="text-[9px] bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-400 dark:text-gray-500">pronto</span>}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -1491,17 +1548,18 @@ export default function ConfigPage() {
         <div className="flex-1 min-w-0 space-y-4">
           {/* Horizontal tabs — mobile only */}
           <div className="lg:hidden flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl overflow-x-auto">
-            {tabs.map(({ id, label, icon: Icon }) => (
+            {allTabs.map(({ id, icon: Icon }) => (
               <button key={id} onClick={() => setTab(id)}
-                className={`flex-shrink-0 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-sm font-medium transition-all
-                  ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
-                <Icon size={15} /><span className="hidden sm:inline">{label}</span>
+                className={`flex-shrink-0 flex items-center justify-center p-2.5 rounded-lg transition-all
+                  ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
+                <Icon size={16} />
               </button>
             ))}
           </div>
 
+      {/* ── MI NEGOCIO ──────────────────────────────────────────────────────── */}
       {tab === 'negocio' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
           <h2 className="font-semibold text-gray-700 dark:text-gray-300">Datos del negocio</h2>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre</label>
@@ -1528,17 +1586,6 @@ export default function ConfigPage() {
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Regla de inventario</label>
-            <select value={bizRegla} disabled={!canEdit}
-              onChange={e => setBizRegla(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
-              {REGLAS_INVENTARIO.map(r => (
-                <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Define cómo se selecciona el stock al rebajar. Se puede sobreescribir por producto.</p>
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cierre de sesión por inactividad</label>
             <select value={bizTimeout} disabled={!canEdit}
               onChange={e => setBizTimeout(e.target.value)}
@@ -1552,28 +1599,8 @@ export default function ConfigPage() {
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si el usuario no tiene actividad por este tiempo, la sesión se cierra automáticamente.</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Validez de presupuesto (días)</label>
-            <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365" value={bizPresupuestoValidez} disabled={!canEdit}
-              onChange={e => setBizPresupuestoValidez(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Un presupuesto creado hoy expirará en esta cantidad de días. Se muestra en el ticket de presupuesto.</p>
-          </div>
-          <div className="flex items-center justify-between py-1">
-            <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Permitir over-receipt</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Al recibir mercadería, permite ingresar más cantidad de la pedida en la OC. Genera alerta de excedente.</p>
-            </div>
-            <button type="button" disabled={!canEdit} onClick={() => setBizOverReceipt(p => !p)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none
-                ${bizOverReceipt ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}
-                ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
-              <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform
-                ${bizOverReceipt ? 'translate-x-5' : 'translate-x-0'}`} />
-            </button>
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plan actual</label>
-            <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl text-sm">
+            <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl text-sm">
               <span className="font-medium text-primary capitalize">{tenant?.subscription_status}</span>
               {tenant?.subscription_status === 'trial' && (
                 <span className="text-gray-500 dark:text-gray-400 ml-2">— vence {new Date(tenant.trial_ends_at).toLocaleDateString('es-AR')}</span>
@@ -1591,39 +1618,21 @@ export default function ConfigPage() {
         </div>
       )}
 
-      {tab === 'negocio' && (
-        <MarketplaceSection />
-      )}
+      {tab === 'negocio' && <MarketplaceSection />}
 
-      {/* ── WhatsApp — Coordinar entregas ──────────────────────────────────── */}
-      {tab === 'negocio' && canEdit && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">💬</span>
-            <span className="font-semibold text-gray-700 dark:text-gray-300">WhatsApp — Coordinar entregas</span>
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            Plantilla para el botón "Coordinar por WhatsApp" en el módulo de Envíos.
-            Variables disponibles: <span className="font-mono text-accent">{'{{Nombre_Cliente}}'}</span> <span className="font-mono text-accent">{'{{Nombre_Negocio}}'}</span> <span className="font-mono text-accent">{'{{Numero_Orden}}'}</span> <span className="font-mono text-accent">{'{{Tracking}}'}</span> <span className="font-mono text-accent">{'{{Courier}}'}</span> <span className="font-mono text-accent">{'{{Fecha_Entrega}}'}</span>
-          </p>
-          <textarea value={bizWAPlantilla} onChange={e => setBizWAPlantilla(e.target.value)}
-            rows={6} placeholder={`Hola {{Nombre_Cliente}}! 🎉 Somos {{Nombre_Negocio}}.\n\nTu pedido #{{Numero_Orden}} está listo para ser enviado. 📦\n\n🚚 Courier: {{Courier}}\n📍 Tracking: {{Tracking}}\n📅 Fecha estimada: {{Fecha_Entrega}}\n\n¿Hay alguien para recibirlo? ¡Gracias!`}
-            className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-y bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono" />
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            Si no configurás una plantilla, se usa el texto por defecto. El número se normaliza automáticamente al formato de Argentina (54 9 + área sin 0 + número sin 15).
-          </p>
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">$ por km (envío propio)</label>
-            <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCostoKm}
-              onChange={e => setBizCostoKm(e.target.value)} placeholder="Ej: 150" min="0" step="0.01"
-              className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-            <p className="text-xs text-gray-400 dark:text-gray-500">Para calcular el costo de delivery propio en el módulo de Envíos.</p>
-          </div>
-        </div>
+      {/* ── VENTAS ───────────────────────────────────────────────────────────── */}
+      {tab === 'ventas' && subTabNav(
+        [
+          { id: 'metodos' as VentasSubTab, label: 'Métodos de pago', icon: CreditCard },
+          { id: 'descuentos' as VentasSubTab, label: 'Descuentos y combos', icon: Gift },
+          { id: 'operativa' as VentasSubTab, label: 'Operativa', icon: Timer },
+        ],
+        ventasSubTab,
+        setVentasSubTab
       )}
 
       {/* ── Facturación Electrónica ─────────────────────────────────────────── */}
-      {tab === 'negocio' && canEdit && (
+      {tab === 'facturacion' && canEdit && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -1704,7 +1713,7 @@ export default function ConfigPage() {
       )}
 
       {/* ── Puntos de venta AFIP ─────────────────────────────────────────────── */}
-      {tab === 'negocio' && canEdit && (
+      {tab === 'facturacion' && canEdit && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <button className="w-full flex items-center gap-3 px-5 py-4 text-left"
             onClick={() => setPvCollapsed(v => !v)}>
@@ -1767,7 +1776,7 @@ export default function ConfigPage() {
         </div>
       )}
 
-      {tab === 'negocio' && (
+      {tab === 'facturacion' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100">
           {/* Header colapsable */}
           <button
@@ -1884,7 +1893,65 @@ export default function ConfigPage() {
         </div>
       )}
 
-      {tab === 'categorias' && (
+      {tab === 'inventario' && (
+        <div className="space-y-4">
+          {/* sub-tab nav */}
+          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+            {([
+              { id: 'reglas' as InvSubTab, label: 'Reglas de stock', icon: Timer },
+              { id: 'categorias' as InvSubTab, label: 'Categorías', icon: Tag },
+              { id: 'ubicaciones' as InvSubTab, label: 'Ubicaciones', icon: MapPin },
+              { id: 'estados' as InvSubTab, label: 'Estados', icon: CircleDot },
+              { id: 'motivos' as InvSubTab, label: 'Motivos', icon: MessageSquare },
+              { id: 'unidades' as InvSubTab, label: 'Unidades', icon: Ruler },
+            ] as const).map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={() => setInvSubTab(id)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all whitespace-nowrap
+                  ${invSubTab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                <Icon size={14} />{label}
+              </button>
+            ))}
+          </div>
+
+          {invSubTab === 'reglas' && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Reglas de gestión de stock</h2>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Regla de inventario</label>
+                <select value={bizRegla} disabled={!canEdit}
+                  onChange={e => setBizRegla(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                  {REGLAS_INVENTARIO.map(r => (
+                    <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Define cómo se selecciona el stock al rebajar. Se puede sobreescribir por producto.</p>
+              </div>
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Permitir over-receipt</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Al recibir mercadería, permite ingresar más cantidad de la pedida en la OC. Genera alerta de excedente.</p>
+                </div>
+                <button type="button" disabled={!canEdit} onClick={() => setBizOverReceipt(p => !p)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none
+                    ${bizOverReceipt ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}
+                    ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform
+                    ${bizOverReceipt ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+              {canEdit && (
+                <div className="flex justify-end">
+                  <button onClick={handleSaveBiz} disabled={savingBiz}
+                    className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                    {savingBiz ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {invSubTab === 'categorias' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
             <Tag size={18} className="text-accent" />
@@ -1893,9 +1960,9 @@ export default function ConfigPage() {
           </div>
           <ListaABM items={categorias} loading={loadingCat} withDescription onAdd={addCategoria} onUpdate={updateCategoria} onDelete={deleteCategoria} />
         </div>
-      )}
+          )}
 
-      {tab === 'ubicaciones' && (
+          {invSubTab === 'ubicaciones' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-1">
             <MapPin size={18} className="text-accent" />
@@ -2071,9 +2138,9 @@ export default function ConfigPage() {
             </div>
           )}
         </div>
-      )}
+          )}
 
-      {tab === 'estados' && (
+          {invSubTab === 'estados' && (
         <div className="space-y-4">
           {/* Sub-tab navigation */}
           <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
@@ -2440,9 +2507,9 @@ export default function ConfigPage() {
             </div>
           )}
         </div>
-      )}
+          )}
 
-      {tab === 'motivos' && (
+          {invSubTab === 'motivos' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-1">
             <MessageSquare size={18} className="text-accent" />
@@ -2452,9 +2519,139 @@ export default function ConfigPage() {
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Motivos predefinidos que aparecen al registrar ingresos y rebajes de stock.</p>
           <MotivosList motivos={motivos} loading={loadingMotivos} onAdd={addMotivo} onUpdate={updateMotivo} onDelete={deleteMotivo} />
         </div>
+          )}
+
+          {invSubTab === 'unidades' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Ruler size={18} className="text-accent" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Unidades de medida personalizadas</h2>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">Definí unidades propias de tu negocio para usarlas en productos (además de las estándar).</p>
+
+          {/* Agregar */}
+          {canEdit && (
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-2">
+              <div className="flex gap-2">
+                <input type="text" placeholder="Nombre *" value={udmNombre} onChange={e => setUdmNombre(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addUdm()}
+                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                <input type="text" placeholder="Símbolo (ej: pz)" value={udmSimbolo} onChange={e => setUdmSimbolo(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addUdm()}
+                  className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                <button onClick={addUdm} disabled={!udmNombre.trim() || udmSaving}
+                  className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                  <Plus size={15} /> Agregar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {loadingUdm ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+            </div>
+          ) : unidadesMedida.length === 0 ? (
+            <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-8">No hay unidades personalizadas aún</p>
+          ) : (
+            <div className="space-y-2">
+              {(unidadesMedida as any[]).map((u: any) => (
+                <div key={u.id} className="bg-white dark:bg-gray-800 border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
+                  {udmEditId === u.id ? (
+                    <>
+                      <div className="flex-1 flex gap-2">
+                        <input type="text" value={udmEditNombre} onChange={e => setUdmEditNombre(e.target.value)}
+                          className="flex-1 px-3 py-1.5 border border-accent rounded-lg text-sm focus:outline-none" />
+                        <input type="text" value={udmEditSimbolo} onChange={e => setUdmEditSimbolo(e.target.value)}
+                          placeholder="Símbolo"
+                          className="w-28 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none" />
+                      </div>
+                      <button onClick={() => updateUdm(u.id)} disabled={udmSaving}
+                        className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-50 dark:bg-green-900/20 rounded-lg transition-colors">
+                        <Check size={16} />
+                      </button>
+                      <button onClick={() => setUdmEditId(null)}
+                        className="p-1.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                        <X size={16} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{u.nombre}</p>
+                        {u.simbolo && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Símbolo: {u.simbolo}</p>}
+                      </div>
+                      {canEdit && (
+                        <>
+                          <button onClick={() => { setUdmEditId(u.id); setUdmEditNombre(u.nombre); setUdmEditSimbolo(u.simbolo ?? '') }}
+                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                            <Pencil size={15} />
+                          </button>
+                          <button onClick={() => deleteUdm(u.id)}
+                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors">
+                            <Trash2 size={15} />
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+          )}
+
+        </div>
       )}
 
-      {tab === 'combos' && (
+      {/* ── ENVÍOS ──────────────────────────────────────────────────────────── */}
+      {tab === 'envios' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Navigation size={18} className="text-accent" /> Configuración de envíos
+            </h2>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">$ por km (envío propio)</label>
+              <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCostoKm}
+                onChange={e => setBizCostoKm(e.target.value)} placeholder="Ej: 150" min="0" step="0.01" disabled={!canEdit}
+                className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              <p className="text-xs text-gray-400 dark:text-gray-500">Para calcular el costo de delivery propio en el módulo de Envíos.</p>
+            </div>
+            {canEdit && (
+              <div className="flex justify-end">
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+          {canEdit && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+              <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                <span className="text-lg">💬</span> Plantilla WhatsApp — Coordinar entregas
+              </h3>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Plantilla para el botón "Coordinar por WhatsApp" en el módulo de Envíos. Variables: <span className="font-mono text-accent">{'{{Nombre_Cliente}}'}</span> <span className="font-mono text-accent">{'{{Nombre_Negocio}}'}</span> <span className="font-mono text-accent">{'{{Numero_Orden}}'}</span> <span className="font-mono text-accent">{'{{Tracking}}'}</span> <span className="font-mono text-accent">{'{{Courier}}'}</span> <span className="font-mono text-accent">{'{{Fecha_Entrega}}'}</span>
+              </p>
+              <textarea value={bizWAPlantilla} onChange={e => setBizWAPlantilla(e.target.value)}
+                rows={5} placeholder={`Hola {{Nombre_Cliente}}! Somos {{Nombre_Negocio}}.\n\nTu pedido #{{Numero_Orden}} está en camino.\n🚚 Courier: {{Courier}}\n📅 Fecha: {{Fecha_Entrega}}`}
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-y bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono" />
+              <div className="flex justify-end">
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+          {/* Descuentos y combos */}
+          {tab === 'ventas' && ventasSubTab === 'descuentos' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
           <div className="flex items-center gap-2">
             <Gift size={18} className="text-accent" />
@@ -2572,7 +2769,7 @@ export default function ConfigPage() {
           )}
         </div>
       )}
-      {tab === 'metodos_pago' && (
+      {tab === 'ventas' && ventasSubTab === 'metodos' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
           <div className="flex items-center gap-2 mb-1">
             <CreditCard size={18} className="text-accent" />
@@ -2734,7 +2931,44 @@ export default function ConfigPage() {
         </div>
       )}
 
-      {tab === 'integraciones' && (
+          {/* Operativa sub-tab */}
+          {tab === 'ventas' && ventasSubTab === 'operativa' && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Operativa de ventas</h2>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Validez de presupuesto (días)</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365" value={bizPresupuestoValidez} disabled={!canEdit}
+                  onChange={e => setBizPresupuestoValidez(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Un presupuesto creado hoy expirará en esta cantidad de días. Se muestra en el ticket de presupuesto.</p>
+              </div>
+              {canEdit && (
+                <div className="flex justify-end">
+                  <button onClick={handleSaveBiz} disabled={savingBiz}
+                    className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                    {savingBiz ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+      {tab === 'conectividad' && (
+        <div className="space-y-4">
+          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
+            {([
+              { id: 'integraciones' as ConSubTab, label: 'Integraciones', icon: Plug },
+              { id: 'api' as ConSubTab, label: 'API', icon: Key },
+            ] as const).map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={() => setConSubTab(id)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all
+                  ${conSubTab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+                <Icon size={14} />{label}
+              </button>
+            ))}
+          </div>
+
+          {conSubTab === 'integraciones' && (
         <div className="space-y-6">
           <div className="flex items-center gap-2">
             <Plug size={18} className="text-accent" />
@@ -3270,92 +3504,19 @@ export default function ConfigPage() {
           )}
         </div>
         </div>
-      )}
-
-      {tab === 'api' && (
-        <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'DUEÑO' || user?.rol === 'SUPER_USUARIO'} />
-      )}
-
-      {tab === 'unidades_medida' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
-          <div className="flex items-center gap-2 mb-1">
-            <Ruler size={18} className="text-accent" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Unidades de medida personalizadas</h2>
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500">Definí unidades propias de tu negocio para usarlas en productos (además de las estándar).</p>
-
-          {/* Agregar */}
-          {canEdit && (
-            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-2">
-              <div className="flex gap-2">
-                <input type="text" placeholder="Nombre *" value={udmNombre} onChange={e => setUdmNombre(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addUdm()}
-                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
-                <input type="text" placeholder="Símbolo (ej: pz)" value={udmSimbolo} onChange={e => setUdmSimbolo(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addUdm()}
-                  className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
-                <button onClick={addUdm} disabled={!udmNombre.trim() || udmSaving}
-                  className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
-                  <Plus size={15} /> Agregar
-                </button>
-              </div>
-            </div>
           )}
 
-          {loadingUdm ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-            </div>
-          ) : unidadesMedida.length === 0 ? (
-            <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-8">No hay unidades personalizadas aún</p>
-          ) : (
-            <div className="space-y-2">
-              {(unidadesMedida as any[]).map((u: any) => (
-                <div key={u.id} className="bg-white dark:bg-gray-800 border border-gray-100 rounded-xl px-4 py-3 flex items-center gap-3">
-                  {udmEditId === u.id ? (
-                    <>
-                      <div className="flex-1 flex gap-2">
-                        <input type="text" value={udmEditNombre} onChange={e => setUdmEditNombre(e.target.value)}
-                          className="flex-1 px-3 py-1.5 border border-accent rounded-lg text-sm focus:outline-none" />
-                        <input type="text" value={udmEditSimbolo} onChange={e => setUdmEditSimbolo(e.target.value)}
-                          placeholder="Símbolo"
-                          className="w-28 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none" />
-                      </div>
-                      <button onClick={() => updateUdm(u.id)} disabled={udmSaving}
-                        className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-50 dark:bg-green-900/20 rounded-lg transition-colors">
-                        <Check size={16} />
-                      </button>
-                      <button onClick={() => setUdmEditId(null)}
-                        className="p-1.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                        <X size={16} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{u.nombre}</p>
-                        {u.simbolo && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Símbolo: {u.simbolo}</p>}
-                      </div>
-                      {canEdit && (
-                        <>
-                          <button onClick={() => { setUdmEditId(u.id); setUdmEditNombre(u.nombre); setUdmEditSimbolo(u.simbolo ?? '') }}
-                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
-                            <Pencil size={15} />
-                          </button>
-                          <button onClick={() => deleteUdm(u.id)}
-                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors">
-                            <Trash2 size={15} />
-                          </button>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
+          {conSubTab === 'api' && (
+            <ApiTab tenantId={tenant?.id ?? ''} isOwner={user?.rol === 'DUEÑO' || user?.rol === 'SUPER_USUARIO'} />
           )}
         </div>
       )}
+
+          {tab === 'caja' && <PlaceholderTab icon={Wallet} title="Configuración de Caja" desc="Parámetros de apertura/cierre, tolerancia de diferencia, bóveda y contraseña maestra." />}
+          {tab === 'clientes' && <PlaceholderTab icon={Users} title="Configuración de Clientes" desc="Cuenta corriente, segmentación, límites de crédito y políticas de cobranza." />}
+          {tab === 'rrhh' && <PlaceholderTab icon={UserCog} title="Configuración de RRHH" desc="Turnos, horarios, liquidación y gestión de personal." />}
+          {tab === 'alertas' && <PlaceholderTab icon={Bell} title="Configuración de Alertas" desc="Define qué eventos generan alertas y para qué roles." />}
+          {tab === 'notificaciones' && <PlaceholderTab icon={Bell} title="Configuración de Notificaciones" desc="Canales de notificación (in-app, email, WhatsApp) por tipo de evento." />}
 
         </div>{/* end content column */}
       </div>{/* end flex gap-6 */}

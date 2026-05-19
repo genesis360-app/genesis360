@@ -172,6 +172,7 @@ export default function GastosPage() {
   const [ocGuardando, setOcGuardando]               = useState(false)
   const [ocExpandedId, setOcExpandedId]             = useState<string | null>(null)
   const [ocDescuento, setOcDescuento]               = useState('0')
+  const [ocCajaSeleccionadaId, setOcCajaSeleccionadaId] = useState<string | null>(null)
   // ISS-096: comprobante de pago en OC
   const [ocSubiendoFile, setOcSubiendoFile]         = useState(false)
 
@@ -448,7 +449,9 @@ export default function GastosPage() {
       const descuentoNum = parseFloat(ocDescuento) || 0
       const saldo = total - Number(ocSeleccionada.monto_pagado ?? 0) - Number(ocSeleccionada.monto_descuento ?? 0) - descuentoNum
 
-      const sesionId = (cajasAbiertasOC as any[])[0]?.id ?? null
+      // Usar la caja seleccionada en el modal, o la primera disponible si hay solo una
+      const sesionId = ocCajaSeleccionadaId
+        ?? ((cajasAbiertasOC as any[]).length === 1 ? (cajasAbiertasOC as any[])[0]?.id : null)
 
       // ISS-095: CC como medio de pago parcial — unificar flujo
       const mediosValidos = ocMediosPago
@@ -456,6 +459,9 @@ export default function GastosPage() {
         .filter(m => !isNaN(m.monto) && m.monto > 0)
 
       if (!mediosValidos.length) { toast.error('Ingresá al menos un monto válido'); setOcGuardando(false); return }
+      if ((cajasAbiertasOC as any[]).length > 1 && !ocCajaSeleccionadaId && mediosValidos.some(m => m.tipo !== 'Cuenta Corriente')) {
+        toast.error('Seleccioná la caja en la que se registrará el movimiento'); setOcGuardando(false); return
+      }
 
       const montoCC = mediosValidos.filter(m => m.tipo === 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
       const montoNoCc = mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
@@ -516,20 +522,24 @@ export default function GastosPage() {
           if (esEfectivo) toast(`⚠ Sin caja abierta — egreso de $${m.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no registrado en caja`, { icon: '⚠' })
           continue
         }
-        await supabase.from('caja_movimientos').insert({
+        const { error: cajErr } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: sesionId,
           tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
           monto: m.monto,
           concepto: esEfectivo ? concepto : `[${m.tipo}] ${concepto}`,
-          created_by: user!.id,
+          usuario_id: user?.id,
         })
+        if (cajErr) console.error('caja_movimientos OC insert:', cajErr.message)
       }
 
       toast.success('Pago registrado')
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas'] })
       setOcModalId(null)
       setOcMediosPago([{ tipo: 'Transferencia', monto: '' }])
       setOcPagoCondiciones('')
       setOcDescuento('0')
+      setOcCajaSeleccionadaId(null)
       qc.invalidateQueries({ queryKey: ['oc-gastos', tenant?.id] })
       qc.invalidateQueries({ queryKey: ['proveedor-cc', ocSeleccionada.proveedor_id] })
     } catch (e: any) {
@@ -753,12 +763,12 @@ export default function GastosPage() {
             const esEfectivo = mp.tipo === 'Efectivo'
             // Caja fuerte: egreso_traspaso (visible en historial de caja fuerte)
             const tipo = esFuerte && esEfectivo ? 'egreso_traspaso' : esEfectivo ? 'egreso' : 'egreso_informativo'
-            void supabase.from('caja_movimientos').insert({
+            supabase.from('caja_movimientos').insert({
               tenant_id: tenant!.id, sesion_id: sesionUsar,
               tipo,
               concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
               monto: montoMp, usuario_id: user?.id,
-            })
+            }).then(({ error }) => { if (error) console.error('caja_movimientos gasto:', error.message) })
           }
           qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
         }
@@ -2158,7 +2168,7 @@ export default function GastosPage() {
                         </div>
                       </div>
                       {oc.estado_pago !== 'pagada' && (
-                        <button onClick={() => { setOcModalId(oc.id); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones(''); setOcDescuento('0') }}
+                        <button onClick={() => { setOcModalId(oc.id); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones(''); setOcDescuento('0'); setOcCajaSeleccionadaId(null) }}
                           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/90 transition-all">
                           <DollarSign size={12} /> Pagar / CC
                         </button>
@@ -2361,7 +2371,32 @@ export default function GastosPage() {
                               <span className={totalMedios > saldo + 0.5 ? 'text-red-500' : 'text-accent'}>${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                             </div>
                           )}
-                          {ocMediosPago.some(m => m.tipo === 'Efectivo') && (cajasAbiertasOC as any[]).length === 0 && (
+                          {/* Selector de caja para el movimiento */}
+                  {(cajasAbiertasOC as any[]).length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Registrar movimiento en caja</label>
+                      {(cajasAbiertasOC as any[]).length === 1 ? (
+                        <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-3 py-2">
+                          <span>✓</span>
+                          <span>{(cajasAbiertasOC as any[])[0]?.cajas?.nombre ?? 'Caja'}</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={ocCajaSeleccionadaId ?? ''}
+                          onChange={e => setOcCajaSeleccionadaId(e.target.value || null)}
+                          className="w-full px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                          <option value="">— Seleccioná una caja —</option>
+                          {(cajasAbiertasOC as any[]).map((s: any) => (
+                            <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
+                          ))}
+                        </select>
+                      )}
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                        El efectivo reduce el saldo. Otros métodos aparecen como "No efectivo" sin afectar el saldo.
+                      </p>
+                    </div>
+                  )}
+                  {ocMediosPago.some(m => m.tipo === 'Efectivo') && (cajasAbiertasOC as any[]).length === 0 && (
                             <p className="text-xs text-amber-600 dark:text-amber-400">⚠ No hay caja abierta. El egreso en efectivo no se registrará en caja.</p>
                           )}
                         </>

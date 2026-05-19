@@ -213,10 +213,18 @@ export default function GastosPage() {
   const efectivoEnMedios = mediosPago.some(m => m.tipo === 'Efectivo' && parseFloat(m.monto) > 0)
   const montoEfectivo = mediosPago.filter(m => m.tipo === 'Efectivo').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
 
-  // ID real de la sesión a usar (resuelve '__fuerte__' al ID real)
+  // Sesión propia del usuario (prioridad sobre otras sesiones abiertas)
+  const sesionPropia = sesionesOperativas.find((s: any) => s.usuario_id === user?.id) ?? null
+
+  // ID real de la sesión a usar — prioridad: selección explícita > sesión propia > única disponible
   const sesionCajaId = cajaSeleccionadaId === '__fuerte__'
     ? (sesionFuerte?.id ?? null)
-    : cajaSeleccionadaId ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0].id : null)
+    : cajaSeleccionadaId
+      ?? sesionPropia?.id
+      ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0].id : null)
+
+  // Sesión default a mostrar en la UI (lo que se usará si el usuario no selecciona nada)
+  const sesionDefault = sesionesOperativas.find((s: any) => s.id === sesionCajaId) ?? null
 
   // Gastos últimos 30 días (tab gastos)
   const fechaDesde30 = useMemo(() => {
@@ -1829,14 +1837,16 @@ export default function GastosPage() {
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                       {efectivoEnMedios ? 'Efectivo sale de:' : 'Registrar en caja:'}
                     </label>
-                    <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
+                    <select
+                      value={cajaSeleccionadaId ?? sesionDefault?.id ?? ''}
+                      onChange={e => setCajaSeleccionadaId(e.target.value || null)}
                       className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-                      <option value="">{sesionesOperativas.length > 1 ? '— Seleccioná una caja —' : '— Seleccioná origen del efectivo —'}</option>
+                      <option value="">— Seleccioná una caja —</option>
                       {sesionesOperativas.map((s: any) => {
                         const esPropia = s.usuario_id === user?.id
                         return (
                           <option key={s.id} value={s.id}>
-                            {s.cajas?.nombre ?? 'Caja'}{esPropia ? ' (mía)' : ` — de ${s.abrio?.nombre_display ?? 'otro usuario'}`}
+                            {s.cajas?.nombre ?? 'Caja'}{esPropia ? ' ★ (mía)' : ` — de ${s.abrio?.nombre_display ?? 'otro usuario'}`}
                           </option>
                         )
                       })}
@@ -1845,15 +1855,22 @@ export default function GastosPage() {
                       )}
                     </select>
                   </div>
-                ) : sesionesOperativas.length === 1 ? (
+                ) : sesionDefault ? (
+                  // Hay sesión default (propia del usuario o única disponible) — mostrar info
                   <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-3 py-2.5">
                     <span>✓</span>
                     <span>
-                      {sesionesOperativas[0].cajas?.nombre ?? 'Caja'}
-                      {sesionesOperativas[0].usuario_id !== user?.id && (
-                        <span className="text-amber-600 dark:text-amber-400"> · Caja de {sesionesOperativas[0].abrio?.nombre_display ?? 'otro usuario'}</span>
+                      {sesionDefault.cajas?.nombre ?? 'Caja'}
+                      {sesionDefault.usuario_id !== user?.id && (
+                        <span className="text-amber-600 dark:text-amber-400"> · Caja de {sesionDefault.abrio?.nombre_display ?? 'otro usuario'}</span>
                       )}
                     </span>
+                    {sesionesOperativas.length > 1 && (
+                      <button onClick={() => setCajaSeleccionadaId('')}
+                        className="ml-auto text-accent hover:underline text-[10px]">
+                        cambiar
+                      </button>
+                    )}
                   </div>
                 ) : null}
               </div>

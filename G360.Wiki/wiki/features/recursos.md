@@ -3,7 +3,7 @@ title: Recursos
 category: features
 tags: [recursos, patrimonio, ubicaciones, recurrentes, gastos]
 sources: [CLAUDE.md]
-updated: 2026-05-13
+updated: 2026-05-19
 ---
 
 # Recursos
@@ -132,6 +132,23 @@ proximo_vencimiento = hoy + frecuencia_valor × unidad
 | Valor patrimonial | Suma de `valor` de activos + en reparación |
 | En reparación | Count |
 | Por adquirir | Count + presupuesto estimado |
+
+---
+
+## Fixes v1.8.32 (ISS-111/112/114)
+
+### ISS-111 — Columnas de recurrencia faltaban en DEV
+- Migration 102 (`es_recurrente`, `frecuencia_valor`, `frecuencia_unidad`, `proximo_vencimiento`) no estaba aplicada en DEV
+- Fix: migration aplicada + schema cache de PostgREST recargado
+
+### ISS-112 — Checkbox "Registrar como gasto"
+- Al agregar un recurso activo con valor de compra, aparece checkbox **"Registrar como gasto"** (activado por default)
+- Desactivarlo permite cargar el recurso como patrimonio sin generar egreso en Gastos → Recursos
+- Caso de uso: recursos viejos, donados, prestados, etc.
+
+### ISS-114 — Botón Agregar en tab Ubicaciones
+- Antes: abría el modal de crear recurso
+- Ahora: abre modal **"Asignar ubicación"** con selector de recurso (sin ubicación priorizado) + campo de ubicación
 
 ---
 

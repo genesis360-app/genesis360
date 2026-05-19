@@ -6,7 +6,7 @@ sources: []
 updated: 2026-04-30
 ---
 
-# Edge Functions (26 funciones Deno)
+# Edge Functions (28 funciones Deno)
 
 Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican validando el JWT de Supabase en cada request.
 
@@ -31,7 +31,26 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | `tn-webhook` | Procesa webhooks de Tienda Nube (stock sync) |
 | `marketplace-webhook` | Webhook del marketplace interno |
 | `generate-types` | Genera TypeScript types desde el schema de Supabase |
-| *(~11 más)* | Monitoreo, aging de stock, workers, etc. |
+| `modo-crear-pago` | Genera payment intent en MODO — QR + deep link para cobros interoperables (DEV+PROD) |
+| `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD) |
+| *(~9 más)* | Monitoreo, aging de stock, workers, etc. |
+
+### EFs activas DEV+PROD
+
+| EF | auth | Descripción |
+|---|---|---|
+| `invite-user` | JWT-less | Invita usuario |
+| `ai-assistant` | JWT-less | Groq/Llama 3.1 — chat + bug report |
+| `cancel-suscripcion` | JWT | PATCH preapproval MP |
+| `emitir-factura` | JWT | AFIP factura electrónica |
+| `crear-suscripcion` | JWT-less | MP preapproval |
+| `mp-webhook` | JWT-less | Webhooks MP suscripciones |
+| `data-api` | JWT | API pull externa (API keys) |
+| `tn-stock-worker` | JWT-less | Sync stock TiendaNube |
+| `meli-stock-worker` | JWT-less | Sync stock MercadoLibre |
+| `mp-crear-link-pago` | JWT | Link de pago MP para ventas |
+| `modo-crear-pago` | JWT-less | Genera payment intent MODO |
+| `modo-webhook` | JWT-less | Confirmaciones de pago MODO |
 
 ---
 

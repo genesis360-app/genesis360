@@ -330,15 +330,17 @@ Implementado `useModalKeyboard` en todas las secciones:
 
 ---
 
-## Defaults del producto al ingresar stock (v1.8.30-dev)
+## Defaults del producto al ingresar stock (v1.8.30 + ISS-131 · v1.8.32)
 
 Al seleccionar producto (scan o búsqueda manual), el formulario de ingreso se pre-rellena automáticamente:
 
 | Campo | Fuente |
 |-------|--------|
 | Ubicación | `producto_ubicacion_sucursal` (sucursal activa) → fallback `productos.ubicacion_id` |
-| Estado | `productos.estado_inventario_predeterminado` |
+| Estado | `productos.estado_id` |
 | Proveedor | `productos.proveedor_id` |
+
+**ISS-131 (v1.8.32):** La query `productosBusqueda` ahora incluye `estado_id` y `proveedor_id` en el SELECT. Antes no los seleccionaba, por lo que los defaults llegaban siempre vacíos.
 
 El operador puede modificar cualquier campo antes de confirmar.
 

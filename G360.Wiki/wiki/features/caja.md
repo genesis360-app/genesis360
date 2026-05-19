@@ -3,7 +3,7 @@ title: Módulo Caja
 category: features
 tags: [caja, efectivo, movimientos, sesion, arqueo, traspasos]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-04-30
+updated: 2026-05-19
 ---
 
 # Módulo Caja
@@ -123,11 +123,24 @@ Cada movimiento en la vista detalle de sesión muestra:
 
 ---
 
-## Caja y Gastos
+## Caja y Gastos (ISS-136 · v1.8.37)
 
-- Gasto nuevo en efectivo → `egreso` automático en `caja_movimientos` (fire-and-forget)
-- Gasto con otro medio → `egreso_informativo`
-- Bloquea nuevo gasto en efectivo si no hay sesión de caja abierta
+Los gastos aparecen en los movimientos de caja igual que las ventas:
+
+| Flujo | Movimiento | Tipo |
+|---|---|---|
+| Gasto en Efectivo | `egreso` | Descuenta saldo real |
+| Gasto en Transferencia/Tarjeta/etc. | `egreso_informativo` | "No efectivo", no descuenta |
+| Gasto en Efectivo eliminado | `ingreso` "[Corrección]..." | Revierte el egreso |
+
+**Cuándo se registra en caja:**
+- Al crear un gasto nuevo con medio de pago
+- Al **editar un gasto borrador** para agregarle el medio de pago (antes solo lo hacía en el INSERT)
+- Al usar **Gastos Fijos → Generar** con cualquier medio de pago
+
+**Prioridad de sesión:** sesión propia del usuario > única disponible > primera disponible (evita enviar a la caja de otro usuario cuando hay múltiples cajas abiertas)
+
+**Selector de caja en el formulario:** muestra la caja que recibirá el movimiento con badge ★ (tu caja). Si hay múltiples cajas, permite cambiar con dropdown.
 
 ---
 
@@ -244,4 +257,26 @@ if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},es_caja_fuerte.eq.true`)
 
 ### Al registrar negocio nuevo
 El seed automático (migration 114) crea la **Caja Principal** asignada a **Sucursal 1** desde el primer momento.
+
+---
+
+## Selector de cajas simplificado (ISS-104 · v1.8.36)
+
+Cuando hay múltiples cajas operativas, el selector cambió de:
+- **Antes:** select box + fila de píldoras (duplicado)
+- **Ahora:** solo la fila de **píldoras** con botón **★** integrado en cada una para predeterminar
+
+Comportamiento del ★:
+- ★ en amarillo = ya es la predeterminada
+- Click en ★ de otra caja = la predetermina para el usuario
+
+---
+
+## Configuración de Caja en Config (v1.8.37)
+
+Desde **Configuración → Caja** (nueva tab):
+- **Contraseña maestra**: requerida para cerrar la caja de otro usuario (DUEÑO/SUPERVISOR)
+  - Se guarda en `tenants.clave_maestra`
+- **Umbral bóveda**: monto máximo en caja antes de alertar para transferir excedente a bóveda
+  - Se guarda en `tenants.boveda_umbral_caja`
 

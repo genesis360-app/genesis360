@@ -10,7 +10,7 @@ updated: 2026-04-30
 
 **Genesis360** es un SaaS de gestión de inventario (WMS) para pequeños comercios físicos de Argentina. Tagline: *"El cerebro del negocio físico"*. La propuesta central no es solo mostrar datos, sino **recomendar acciones**.
 
-**Versión actual:** v1.8.27 en PROD · v1.8.31 en DEV (al 2026-05-18)
+**Versión actual:** v1.8.37 en PROD · v1.8.37 en DEV (al 2026-05-19)
 
 ---
 
@@ -98,8 +98,8 @@ Supabase
 
 | Métrica | Valor |
 |---------|-------|
-| Versión PROD | v1.8.27 · DEV v1.8.31 |
-| Migraciones DB | 121 + 086b (DEV) · 110 + 086b (PROD) |
+| Versión PROD | v1.8.37 · DEV v1.8.37 |
+| Migraciones DB | 126 + 086b (DEV y PROD) |
 | Edge Functions | ~26 |
 | Unit tests | 154+ (Vitest) |
 | Archivos TS/TSX | ~100 |

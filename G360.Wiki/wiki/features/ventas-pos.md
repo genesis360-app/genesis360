@@ -263,6 +263,18 @@ calcularLpnFuentes(lineas, cant)
 - Guarda en `ventas.origen`
 - Se resetea a "POS" al completar la venta
 
+### ISS-110 — Canales de venta en constraint DB (v1.8.32 · migration 122)
+- La constraint `ventas_origen_check` fue extendida para incluir: `Instagram`, `Facebook`, `WhatsApp`, `Otros`
+- Antes solo aceptaba: `POS`, `MELI`, `TiendaNube`, `Shopify`, `WooCommerce`, `MP`
+- Fix: creaba ventas en esos canales pero fallaba al guardar en DB
+
+### Descuento máximo por rol en POS (v1.8.34)
+- En **Configuración → Ventas → Descuentos**: campo `descuento_max_cajero_pct` y `descuento_max_supervisor_pct`
+- Al completar una venta en el POS:
+  - Si el rol tiene límite configurado y un ítem supera ese %, el campo se marca en rojo con "máx X%"
+  - Al intentar confirmar: bloquea con toast "Descuento del X% supera el límite permitido"
+- El DUEÑO nunca tiene límite
+
 ### ISS-085 — Número de ticket por sucursal (migration 108)
 - `sucursales.codigo TEXT`: código corto configurable (ej: "S1", "CC", "N")
 - `ventas.numero_sucursal INTEGER`: contador secuencial reiniciado por sucursal

@@ -34,9 +34,10 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku fallback | ✅ |
 | [[wiki/features/multi-sucursal]] | Selector, roles, stock · sucursal default · backfill 114–117 · filtros estrictos · cajas por sucursal · ubicacion por sucursal (121) | ✅ |
 | [[wiki/features/alertas]] | Stock bajo, LPNs vencidos, reservas viejas, sin categoría, deuda · filtro por sucursal | ✅ |
-| [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos | ✅ |
+| [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos · ISS-111/112/114 fixes | ✅ |
 | [[wiki/features/reportes-metricas]] | Dashboard 9 áreas, SQL Runner, aging individual · tab Todo filtro por sucursal · nueva nav (area+sub-tabs) | ✅ |
 | [[wiki/features/grupos-variantes]] | Grupos de variantes (talle, color, etc.) · ProductoGrupoModal · vista agrupada en ProductosPage · migration 120 | ✅ |
+| [[wiki/features/configuracion]] | ConfigPage v2 — 11 tabs temáticas, Fases 1-4: métodos de pago desde DB, config sucursales, comisión, descuento máx, caja, cliente POS | ✅ |
 
 ---
 
@@ -75,7 +76,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/facturacion-afip]] | ← Ver features/facturacion-afip (cubre integración AFIP) | ✅ |
 | [[wiki/features/envios]] | ← WhatsApp documentado en features/envios | ✅ |
 | [[wiki/integrations/resend-email]] | send-email EF, tipos, FROM, monitoring diario | ✅ |
-| [[wiki/integrations/roadmap-apis]] | MODO framework (migration 109, v1.8.26), TiendaNube, MercadoLibre, roadmap completo | ✅ |
+| [[wiki/integrations/roadmap-apis]] | MODO integración completa (modo-crear-pago + modo-webhook DEV+PROD, v1.8.35), TiendaNube, MercadoLibre | ✅ |
 
 ---
 
@@ -138,4 +139,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-18 — 51 páginas + 3 manuales · 8 fuentes en raw/ · 122 migraciones DEV (121 + 086b) · v1.8.31-dev / v1.8.27-prod*
+*Última actualización: 2026-05-19 — 52 páginas + 3 manuales · 8 fuentes en raw/ · 127 migraciones DEV+PROD (126 + 086b) · v1.8.37 DEV+PROD*

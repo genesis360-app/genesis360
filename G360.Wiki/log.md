@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-19] update | fix: ISS-104/132/133/136/138 — Gastos y Caja (v1.8.36-dev)
+
+- Migration 126: `monto_descuento` en `ordenes_compra`
+- ISS-132: campo descuento en modal pago de OC (reduce saldo, se acumula en `monto_descuento`)
+- ISS-133: métodos de pago en GastosPage se cargan desde tabla `metodos_pago` en vez de hardcodeados; OC agrega Cuenta Corriente automáticamente
+- ISS-138: badge "Borrador" en gastos sin `medio_pago` (tabla y historial)
+- ISS-136: OC registra `egreso_informativo` en caja para todos los medios no-efectivo; gastos form muestra selector de caja con cualquier medio de pago (no solo efectivo)
+- ISS-104: selector de caja en CajaPage — eliminado select box, solo píldoras con botón ★ de predeterminar integrado por caja
+
 ## [2026-05-19] update | feat: MODO integración completa — webhook + polling + deploy (v1.8.35-dev)
 
 - EF `modo-webhook` creada: recibe notificaciones de pago MODO, actualiza `ventas.id_pago_externo` e implementa idempotencia con `ventas_externas_logs`

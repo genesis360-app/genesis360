@@ -860,14 +860,42 @@ export default function GastosPage() {
 
   // ── Eliminar gasto ────────────────────────────────────────────────────────
   const eliminar = async (id: string) => {
-    if (!confirm('¿Eliminar este gasto?')) return
     const g = ([...gastos, ...historialGastos] as any[]).find(x => x.id === id)
+    const teniaPago = parseMediosPago(g?.medio_pago).some(m => m.tipo && parseFloat(String(m.monto)) > 0)
+    const confirmMsg = teniaPago
+      ? '¿Eliminar este gasto? Se creará un movimiento de corrección en caja para revertir el egreso registrado.'
+      : '¿Eliminar este gasto?'
+    if (!confirm(confirmMsg)) return
     if (g?.comprobante_url) void supabase.storage.from('comprobantes-gastos').remove([g.comprobante_url])
     const { error } = await supabase.from('gastos').delete().eq('id', id)
     if (error) { toast.error('Error al eliminar'); return }
+
+    // ISS-136: Si tenía pago registrado en caja, crear reversión
+    if (teniaPago) {
+      const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
+      if (sesionUsar) {
+        const medios = parseMediosPago(g.medio_pago)
+        for (const mp of medios.filter(m => m.tipo && parseFloat(String(m.monto)) > 0)) {
+          const montoMp = parseFloat(String(mp.monto))
+          const esEfectivo = mp.tipo === 'Efectivo'
+          supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id, sesion_id: sesionUsar,
+            tipo: esEfectivo ? 'ingreso' : 'ingreso_informativo',
+            monto: montoMp,
+            concepto: esEfectivo
+              ? `[Corrección] Gasto eliminado: ${g.descripcion}`
+              : `[${mp.tipo}][Corrección] Gasto eliminado: ${g.descripcion}`,
+            usuario_id: user?.id,
+          }).then(({ error: cajErr }) => { if (cajErr) console.error('caja reversión gasto:', cajErr.message) })
+        }
+        qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+        qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
+      }
+    }
+
     qc.invalidateQueries({ queryKey: ['gastos'] })
     qc.invalidateQueries({ queryKey: ['gastos-historial'] })
-    toast.success('Gasto eliminado')
+    toast.success(teniaPago ? 'Gasto eliminado · Corrección registrada en caja' : 'Gasto eliminado')
     logActividad({ entidad: 'gasto', entidad_id: id, entidad_nombre: g?.descripcion, accion: 'eliminar', pagina: '/gastos' })
   }
 
@@ -1660,12 +1688,21 @@ export default function GastosPage() {
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
+              {/* Aviso cuando el gasto ya fue registrado en caja */}
+              {editandoId && originalTeniaPago && (
+                <div className="flex items-center gap-2 text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2">
+                  <span>🔒</span>
+                  <span>Monto y medio de pago bloqueados — ya fue registrado en caja. Podés editar descripción, categoría, fecha, notas y comprobante.</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto total ($) *</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={form.monto}
                   onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
+                  disabled={!!(editandoId && originalTeniaPago)}
                   placeholder="0" min="0" step="0.01"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
               </div>
 
               {/* Información fiscal */}
@@ -1693,7 +1730,7 @@ export default function GastosPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Medios de pago</label>
-                  {mediosPago.length < MEDIOS_PAGO.length && (
+                  {!originalTeniaPago && mediosPago.length < MEDIOS_PAGO.length && (
                     <button type="button" onClick={() => setMediosPago(p => [...p, { tipo: '', monto: '' }])}
                       className="text-xs text-accent hover:underline flex items-center gap-1">
                       <Plus size={12} /> Agregar método
@@ -1701,29 +1738,30 @@ export default function GastosPage() {
                   )}
                 </div>
                 {mediosPago.map((mp, idx) => {
+                  const bloqueado = !!(editandoId && originalTeniaPago)
                   const montoTotal = parseFloat(form.monto.replace(',', '.')) || 0
                   const asignado = mediosPago.reduce((s, m, i) => i !== idx ? s + (parseFloat(m.monto) || 0) : s, 0)
                   const restante = Math.max(0, montoTotal - asignado)
                   return (
                     <div key={idx} className="flex gap-2 items-center">
                       <div className="relative flex-1">
-                        <select value={mp.tipo}
+                        <select value={mp.tipo} disabled={bloqueado}
                           onChange={e => setMediosPago(p => p.map((m, i) => i === idx ? { ...m, tipo: e.target.value } : m))}
-                          className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                          className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">
                           <option value="">Elegir…</option>
                           {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                         <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       </div>
                       <div className="relative w-28">
-                        <input type="number" onWheel={e => e.currentTarget.blur()}
+                        <input type="number" onWheel={e => e.currentTarget.blur()} disabled={bloqueado}
                           value={mp.monto}
                           onChange={e => setMediosPago(p => p.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m))}
                           placeholder={restante > 0 ? String(restante.toFixed(0)) : '0'}
                           min="0" step="0.01"
-                          className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
                       </div>
-                      {mediosPago.length > 1 && (
+                      {!bloqueado && mediosPago.length > 1 && (
                         <button type="button" onClick={() => setMediosPago(p => p.filter((_, i) => i !== idx))}
                           className="text-gray-400 hover:text-red-500 flex-shrink-0"><X size={14} /></button>
                       )}

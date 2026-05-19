@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-19] update | PROD deploy v1.8.37 — migrations 122-126, EFs MODO, ISS-136 completo
+
+- PR #114 `dev → main` mergeado ✅
+- Migrations 122-126 aplicadas en PROD ✅
+- EFs `modo-webhook` y `modo-crear-pago` deployadas en PROD ✅
+- GitHub release v1.8.37 como latest ✅
+
 ## [2026-05-19] update | fix: ISS-104/132/133/136/138 — Gastos y Caja (v1.8.36-dev)
 
 - Migration 126: `monto_descuento` en `ordenes_compra`

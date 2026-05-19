@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.31** ✅ · DEV: **v1.8.33**
+Último release en PROD: **v1.8.31** ✅ · DEV: **v1.8.34**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -12,7 +12,7 @@ type: project
 
 ## Estado actual DEV v1.8.32 / PROD v1.8.31 (cierre sesión 2026-05-18)
 
-- APP_VERSION DEV: `v1.8.33` en `src/config/brand.ts` ✅
+- APP_VERSION DEV: `v1.8.34` en `src/config/brand.ts` ✅
 - APP_VERSION PROD: `v1.8.31` ✅ (PR #113 mergeado)
 - Migrations DEV: 001–122 ✅
 - Migrations PROD: 001–121 ✅ (122 pendiente al próximo deploy a PROD)

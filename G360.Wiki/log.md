@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-19] update | feat: ConfigPage Fases 2-3-4 — config extendida (v1.8.34-dev)
+
+- Migrations 123-125: `tenants` (email_legal, precio_redondeo, cliente_*, descuento_max_*, clave_maestra, boveda_umbral_caja), `sucursales` (codigo_postal, email, horario_apertura/cierre, punto_venta_afip), `metodos_pago` (comision_pct, config)
+- Mi negocio: email legal, redondeo de precios, config de sucursales (CP/email/horario/PV AFIP) por sucursal
+- Ventas/Métodos: comisión % por método de pago (badge naranja display, editable inline)
+- Ventas/Operativa: cliente obligatorio en POS, datos mínimos, consumidor final, creación inline
+- Ventas/Descuentos: descuento máximo cajero/supervisor (% configurable)
+- Caja: contraseña maestra para cierre de caja ajena + umbral bóveda
+- VentasPage: validación descuento máximo por rol al confirmar venta + badge rojo si excede límite
+
 ## [2026-05-19] update | refactor: ConfigPage Fase 1 — nueva estructura de módulos (v1.8.33-dev)
 
 - 11 tabs nuevas en lugar de 10 tabs planas: Negocio / Ventas / Caja / Clientes / Inventario / Envíos / Facturación / RRHH / Alertas / Notificaciones / Conectividad

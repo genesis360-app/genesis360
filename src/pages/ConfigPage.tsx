@@ -435,6 +435,56 @@ export default function ConfigPage() {
   // Envíos
   const [bizCostoKm, setBizCostoKm] = useState<string>(String((tenant as any)?.costo_envio_por_km ?? ''))
 
+  // Fase 2 — identidad
+  const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
+  const [bizPrecioRedondeo,  setBizPrecioRedondeo]  = useState<string>(tenant?.precio_redondeo ?? 'none')
+
+  // Fase 3 — cliente en POS
+  const [bizClienteObligatorio,     setBizClienteObligatorio]     = useState<string>(tenant?.cliente_obligatorio ?? 'nunca')
+  const [bizClienteDatosMinimos,    setBizClienteDatosMinimos]    = useState<string>(tenant?.cliente_datos_minimos ?? 'nombre')
+  const [bizClienteConsumidorFinal, setBizClienteConsumidorFinal] = useState<boolean>(tenant?.cliente_consumidor_final ?? true)
+  const [bizClienteCreacionInline,  setBizClienteCreacionInline]  = useState<boolean>(tenant?.cliente_creacion_inline ?? true)
+
+  // Fase 4 — descuentos y caja
+  const [bizDescuentoMaxCajero,     setBizDescuentoMaxCajero]     = useState<string>(tenant?.descuento_max_cajero_pct != null ? String(tenant.descuento_max_cajero_pct) : '')
+  const [bizDescuentoMaxSupervisor, setBizDescuentoMaxSupervisor] = useState<string>(tenant?.descuento_max_supervisor_pct != null ? String(tenant.descuento_max_supervisor_pct) : '')
+  const [bizClaveMaestra,           setBizClaveMaestra]           = useState<string>('')
+  const [showClaveMaestra,          setShowClaveMaestra]          = useState(false)
+  const [bizBovedaUmbral,           setBizBovedaUmbral]           = useState<string>(tenant?.boveda_umbral_caja != null ? String(tenant.boveda_umbral_caja) : '')
+
+  // Sucursales — config extendida (CP, email, horario, PV AFIP)
+  const [sucursalesConfig, setSucursalesConfig] = useState<Record<string, {
+    codigo_postal: string; email: string; horario_apertura: string; horario_cierre: string; punto_venta_afip: string
+  }>>({})
+  const [savingSucursal, setSavingSucursal] = useState<string | null>(null)
+
+  const getSucursalConfig = (id: string) => sucursalesConfig[id] ?? {
+    codigo_postal: (sucursales as any[]).find((s: any) => s.id === id)?.codigo_postal ?? '',
+    email:         (sucursales as any[]).find((s: any) => s.id === id)?.email ?? '',
+    horario_apertura: (sucursales as any[]).find((s: any) => s.id === id)?.horario_apertura ?? '',
+    horario_cierre:   (sucursales as any[]).find((s: any) => s.id === id)?.horario_cierre ?? '',
+    punto_venta_afip: (sucursales as any[]).find((s: any) => s.id === id)?.punto_venta_afip != null
+      ? String((sucursales as any[]).find((s: any) => s.id === id)?.punto_venta_afip)
+      : '',
+  }
+  const setSucursalField = (id: string, field: string, value: string) =>
+    setSucursalesConfig(prev => ({ ...prev, [id]: { ...getSucursalConfig(id), [field]: value } }))
+
+  const saveSucursalConfig = async (id: string) => {
+    const cfg = getSucursalConfig(id)
+    setSavingSucursal(id)
+    const { error } = await supabase.from('sucursales').update({
+      codigo_postal:    cfg.codigo_postal.trim() || null,
+      email:            cfg.email.trim() || null,
+      horario_apertura: cfg.horario_apertura || null,
+      horario_cierre:   cfg.horario_cierre || null,
+      punto_venta_afip: cfg.punto_venta_afip ? parseInt(cfg.punto_venta_afip) : null,
+    }).eq('id', id)
+    if (error) toast.error(error.message)
+    else toast.success('Sucursal actualizada')
+    setSavingSucursal(null)
+  }
+
   // Puntos de venta AFIP
   const [pvCollapsed,   setPvCollapsed]   = useState(true)
   const [pvForm,        setPvForm]        = useState({ numero: '', nombre: '' })
@@ -459,8 +509,21 @@ export default function ConfigPage() {
       razon_social_fiscal: bizRazonSocial.trim() || null,
       domicilio_fiscal: bizDomicilioFiscal.trim() || null,
       umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
+      // Fase 2
+      email_legal:           bizEmailLegal.trim() || null,
+      precio_redondeo:       bizPrecioRedondeo,
+      // Fase 3 — cliente en POS
+      cliente_obligatorio:      bizClienteObligatorio,
+      cliente_datos_minimos:    bizClienteDatosMinimos,
+      cliente_consumidor_final: bizClienteConsumidorFinal,
+      cliente_creacion_inline:  bizClienteCreacionInline,
+      // Fase 4 — descuentos y caja
+      descuento_max_cajero_pct:     bizDescuentoMaxCajero     ? parseFloat(bizDescuentoMaxCajero)     : null,
+      descuento_max_supervisor_pct: bizDescuentoMaxSupervisor ? parseFloat(bizDescuentoMaxSupervisor) : null,
+      boveda_umbral_caja:           bizBovedaUmbral           ? parseFloat(bizBovedaUmbral)           : null,
     }
     if (bizAfipToken.trim()) updatePayload.afipsdk_token = bizAfipToken.trim()
+    if (bizClaveMaestra.trim()) updatePayload.clave_maestra = bizClaveMaestra.trim()
     const { data, error } = await supabase.from('tenants')
       .update(updatePayload)
       .eq('id', tenant!.id).select().single()
@@ -990,7 +1053,7 @@ export default function ConfigPage() {
   // ── Métodos de pago ─────────────────────────────────────────────────────────
   const [nuevoMetodo, setNuevoMetodo] = useState({ nombre: '', color: '#22c55e' })
   const [editMetodoId, setEditMetodoId] = useState<string | null>(null)
-  const [editMetodoData, setEditMetodoData] = useState({ nombre: '', color: '' })
+  const [editMetodoData, setEditMetodoData] = useState({ nombre: '', color: '', comision_pct: '' })
 
   // ISS-086: Cuotas por banco
   type BancoCuota = { id: string; nombre: string; cuotas: { cant: number; sin_interes: boolean; interes: number }[] }
@@ -1048,7 +1111,9 @@ export default function ConfigPage() {
   const updateMetodoPago = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('metodos_pago').update({
-        nombre: editMetodoData.nombre.trim(), color: editMetodoData.color,
+        nombre: editMetodoData.nombre.trim(),
+        color: editMetodoData.color,
+        comision_pct: editMetodoData.comision_pct ? parseFloat(editMetodoData.comision_pct) : 0,
       }).eq('id', id).eq('tenant_id', tenant!.id)
       if (error) throw error
     },
@@ -1599,6 +1664,28 @@ export default function ConfigPage() {
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si el usuario no tiene actividad por este tiempo, la sesión se cierra automáticamente.</p>
           </div>
           <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email legal / facturación</label>
+            <input type="email" value={bizEmailLegal} disabled={!canEdit}
+              onChange={e => setBizEmailLegal(e.target.value)}
+              placeholder="ej. admin@minegocio.com"
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Para notificaciones fiscales y envío de facturas.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Redondeo de precios de venta</label>
+            <select value={bizPrecioRedondeo} disabled={!canEdit}
+              onChange={e => setBizPrecioRedondeo(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+              <option value="none">Sin redondeo</option>
+              <option value="10">Redondear a $10</option>
+              <option value="50">Redondear a $50</option>
+              <option value="100">Redondear a $100</option>
+              <option value="500">Redondear a $500</option>
+              <option value="1000">Redondear a $1.000</option>
+            </select>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Al calcular precios de venta, redondear al múltiplo más cercano. No afecta precios ya guardados.</p>
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plan actual</label>
             <div className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl text-sm">
               <span className="font-medium text-primary capitalize">{tenant?.subscription_status}</span>
@@ -1619,6 +1706,70 @@ export default function ConfigPage() {
       )}
 
       {tab === 'negocio' && <MarketplaceSection />}
+
+      {/* Sucursales — config extendida */}
+      {tab === 'negocio' && sucursales.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+            <Building2 size={16} className="text-accent" />
+            <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Configuración por sucursal</span>
+            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{sucursales.length} sucursal{sucursales.length !== 1 ? 'es' : ''}</span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+            {(sucursales as any[]).filter((s: any) => s.activo).map((s: any) => {
+              const cfg = getSucursalConfig(s.id)
+              return (
+                <div key={s.id} className="px-5 py-4 space-y-3">
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{s.nombre}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Código postal</label>
+                      <input type="text" value={cfg.codigo_postal} disabled={!canEdit}
+                        onChange={e => setSucursalField(s.id, 'codigo_postal', e.target.value)}
+                        placeholder="ej. B1875"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Email de la sucursal</label>
+                      <input type="email" value={cfg.email} disabled={!canEdit}
+                        onChange={e => setSucursalField(s.id, 'email', e.target.value)}
+                        placeholder="ej. sucursal@minegocio.com"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horario apertura</label>
+                      <input type="time" value={cfg.horario_apertura} disabled={!canEdit}
+                        onChange={e => setSucursalField(s.id, 'horario_apertura', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horario cierre</label>
+                      <input type="time" value={cfg.horario_cierre} disabled={!canEdit}
+                        onChange={e => setSucursalField(s.id, 'horario_cierre', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Punto de venta AFIP</label>
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={cfg.punto_venta_afip} disabled={!canEdit}
+                        onChange={e => setSucursalField(s.id, 'punto_venta_afip', e.target.value)}
+                        placeholder="ej. 1"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
+                    </div>
+                  </div>
+                  {canEdit && (
+                    <div className="flex justify-end">
+                      <button onClick={() => saveSucursalConfig(s.id)} disabled={savingSucursal === s.id}
+                        className="px-4 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-60">
+                        {savingSucursal === s.id ? 'Guardando...' : 'Guardar sucursal'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── VENTAS ───────────────────────────────────────────────────────────── */}
       {tab === 'ventas' && subTabNav(
@@ -2794,6 +2945,14 @@ export default function ConfigPage() {
                       <input type="text" value={editMetodoData.nombre}
                         onChange={e => setEditMetodoData(p => ({ ...p, nombre: e.target.value }))}
                         className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="50" step="0.1"
+                          value={editMetodoData.comision_pct}
+                          onChange={e => setEditMetodoData(p => ({ ...p, comision_pct: e.target.value }))}
+                          placeholder="0"
+                          className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-center focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                        <span className="text-xs text-gray-400 dark:text-gray-500">%</span>
+                      </div>
                       <button onClick={() => updateMetodoPago.mutate(m.id)} disabled={updateMetodoPago.isPending}
                         className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors">
                         <Check size={15} />
@@ -2807,13 +2966,18 @@ export default function ConfigPage() {
                     <>
                       <div className="w-4 h-4 rounded-full flex-shrink-0 border border-gray-200 dark:border-gray-600" style={{ backgroundColor: m.color }} />
                       <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-100">{m.nombre}</span>
+                      {(m.comision_pct > 0) && (
+                        <span className="text-xs px-1.5 py-0.5 bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 rounded font-mono" title="Comisión de la plataforma">
+                          {m.comision_pct}%
+                        </span>
+                      )}
                       {m.es_sistema && <span className="text-xs text-gray-400 dark:text-gray-500 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">sistema</span>}
                       <button onClick={() => toggleMetodoPago.mutate({ id: m.id, activo: !m.activo })}
                         title={m.activo ? 'Deshabilitar' : 'Habilitar'}
                         className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${m.activo ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
                         {m.activo ? 'Activo' : 'Inactivo'}
                       </button>
-                      <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color }) }}
+                      <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color, comision_pct: m.comision_pct ? String(m.comision_pct) : '' }) }}
                         className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
                         <Pencil size={14} />
                       </button>
@@ -2933,23 +3097,130 @@ export default function ConfigPage() {
 
           {/* Operativa sub-tab */}
           {tab === 'ventas' && ventasSubTab === 'operativa' && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Operativa de ventas</h2>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Validez de presupuesto (días)</label>
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365" value={bizPresupuestoValidez} disabled={!canEdit}
-                  onChange={e => setBizPresupuestoValidez(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Un presupuesto creado hoy expirará en esta cantidad de días. Se muestra en el ticket de presupuesto.</p>
+            <div className="space-y-4">
+              {/* Presupuesto */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Documentos</h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Validez de presupuesto (días)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365" value={bizPresupuestoValidez} disabled={!canEdit}
+                    onChange={e => setBizPresupuestoValidez(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Un presupuesto creado hoy expirará en esta cantidad de días. Se muestra en el ticket de presupuesto.</p>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
               </div>
-              {canEdit && (
-                <div className="flex justify-end">
-                  <button onClick={handleSaveBiz} disabled={savingBiz}
-                    className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                    {savingBiz ? 'Guardando...' : 'Guardar'}
+
+              {/* Cliente en POS */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Cliente en el punto de venta</h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Cuándo se requiere seleccionar cliente?</label>
+                  <select value={bizClienteObligatorio} disabled={!canEdit}
+                    onChange={e => setBizClienteObligatorio(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    <option value="nunca">Nunca (siempre opcional)</option>
+                    <option value="reservas">Solo en reservas</option>
+                    <option value="siempre">Siempre obligatorio</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Datos mínimos requeridos</label>
+                  <select value={bizClienteDatosMinimos} disabled={!canEdit}
+                    onChange={e => setBizClienteDatosMinimos(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    <option value="nombre">Solo nombre</option>
+                    <option value="nombre_dni">Nombre + DNI</option>
+                    <option value="nombre_dni_email">Nombre + DNI + Email</option>
+                    <option value="todos">Todos los datos</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Permitir "Consumidor Final"</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Habilita vender sin identificar al cliente (genérico).</p>
+                  </div>
+                  <button type="button" disabled={!canEdit} onClick={() => setBizClienteConsumidorFinal(v => !v)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${bizClienteConsumidorFinal ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${bizClienteConsumidorFinal ? 'translate-x-5' : 'translate-x-0'}`} />
                   </button>
                 </div>
-              )}
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Crear cliente inline desde el POS</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Permite agregar un cliente nuevo directamente desde la pantalla de venta.</p>
+                  </div>
+                  <button type="button" disabled={!canEdit} onClick={() => setBizClienteCreacionInline(v => !v)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${bizClienteCreacionInline ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${bizClienteCreacionInline ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Descuentos sub-tab — descuento máx cajero/supervisor */}
+          {tab === 'ventas' && ventasSubTab === 'descuentos' && (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Límites de descuento por rol</h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Define el máximo porcentaje de descuento que cada rol puede aplicar en una venta sin requerir autorización.
+                  Si el descuento supera el límite, el POS solicitará aprobación de un supervisor/dueño.
+                  Dejá el campo vacío para no poner límite.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descuento máximo — CAJERO (%)</label>
+                    <div className="flex items-center gap-2">
+                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
+                        value={bizDescuentoMaxCajero} disabled={!canEdit}
+                        onChange={e => setBizDescuentoMaxCajero(e.target.value)}
+                        placeholder="Sin límite"
+                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                      <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Aplica al rol CAJERO. Superar este % requiere autorización.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descuento máximo — SUPERVISOR (%)</label>
+                    <div className="flex items-center gap-2">
+                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
+                        value={bizDescuentoMaxSupervisor} disabled={!canEdit}
+                        onChange={e => setBizDescuentoMaxSupervisor(e.target.value)}
+                        placeholder="Sin límite"
+                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                      <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Aplica al rol SUPERVISOR. El DUEÑO nunca tiene límite.</p>
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar límites'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Combos (existente) — se muestra debajo */}
             </div>
           )}
 
@@ -3512,7 +3783,77 @@ export default function ConfigPage() {
         </div>
       )}
 
-          {tab === 'caja' && <PlaceholderTab icon={Wallet} title="Configuración de Caja" desc="Parámetros de apertura/cierre, tolerancia de diferencia, bóveda y contraseña maestra." />}
+          {/* ── CAJA ──────────────────────────────────────────────────────────── */}
+          {tab === 'caja' && (
+            <div className="space-y-4">
+              {/* Contraseña maestra */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <Clock size={16} className="text-accent" /> Seguridad de Caja
+                </h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Contraseña maestra
+                    {(tenant as any)?.clave_maestra && <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-normal">✓ Configurada</span>}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showClaveMaestra ? 'text' : 'password'}
+                      value={bizClaveMaestra}
+                      onChange={e => setBizClaveMaestra(e.target.value)}
+                      disabled={!canEdit}
+                      placeholder={(tenant as any)?.clave_maestra ? '••••••••' : 'Nueva contraseña maestra'}
+                      className="w-full px-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700"
+                    />
+                    <button type="button" onClick={() => setShowClaveMaestra(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <Eye size={15} />
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Permite que un DUEÑO o SUPERVISOR cierre la caja de otro usuario. Si está vacío, el cierre ajeno no requiere contraseña.
+                  </p>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Bóveda */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <Wallet size={16} className="text-accent" /> Bóveda
+                </h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto máximo en caja ($)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="100"
+                    value={bizBovedaUmbral} disabled={!canEdit}
+                    onChange={e => setBizBovedaUmbral(e.target.value)}
+                    placeholder="Sin límite"
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Cuando el saldo en caja supera este monto, el sistema alerta para transferir el excedente a la bóveda. Dejá vacío para no poner umbral.
+                  </p>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Pendientes */}
+              <PlaceholderTab icon={Clock} title="Más configuraciones de Caja" desc="Tolerancia de diferencia, arqueo parcial y cierre automático — próximamente." />
+            </div>
+          )}
           {tab === 'clientes' && <PlaceholderTab icon={Users} title="Configuración de Clientes" desc="Cuenta corriente, segmentación, límites de crédito y políticas de cobranza." />}
           {tab === 'rrhh' && <PlaceholderTab icon={UserCog} title="Configuración de RRHH" desc="Turnos, horarios, liquidación y gestión de personal." />}
           {tab === 'alertas' && <PlaceholderTab icon={Bell} title="Configuración de Alertas" desc="Define qué eventos generan alertas y para qué roles." />}

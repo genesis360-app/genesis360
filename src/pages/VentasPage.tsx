@@ -1138,6 +1138,25 @@ export default function VentasPage() {
         toast.error(`Cantidad inválida para "${item.nombre}". Corregila antes de guardar.`); return
       }
     }
+    // Validar descuento máximo por rol
+    const maxCajero     = (tenant as any)?.descuento_max_cajero_pct
+    const maxSupervisor = (tenant as any)?.descuento_max_supervisor_pct
+    const rol = user?.rol
+    const esRolLimitado = rol === 'CAJERO' || rol === 'SUPERVISOR'
+    if (esRolLimitado && (maxCajero != null || maxSupervisor != null)) {
+      const limite = rol === 'CAJERO' ? maxCajero : maxSupervisor
+      if (limite != null) {
+        const itemConExceso = cart.find(item => {
+          if (item.descuento_tipo !== 'pct') return false
+          return item.descuento > limite
+        })
+        if (itemConExceso) {
+          toast.error(`Descuento del ${itemConExceso.descuento}% supera el límite permitido para ${rol} (${limite}%). Solicitá autorización a un supervisor.`)
+          return
+        }
+      }
+    }
+
     // Cliente obligatorio para pendiente y reservada
     if ((estado === 'pendiente' || estado === 'reservada') && !clienteId) {
       toast.error('Registrá o seleccioná un cliente para continuar.')
@@ -2477,15 +2496,32 @@ export default function VentasPage() {
                         </div>
 
                         {/* Descuento con toggle % / $ */}
-                        <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden w-28">
-                          <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={item.descuento}
-                            onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
-                            className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none" placeholder="0" />
-                          <button onClick={() => updateItem(idx, 'descuento_tipo', item.descuento_tipo === 'pct' ? 'monto' : 'pct')}
-                            title="Cambiar tipo de descuento (% o $)"
-                            className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors">
-                            {item.descuento_tipo === 'pct' ? '%' : '$'}
-                          </button>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <div className={`flex items-center border rounded-lg overflow-hidden w-28 ${
+                            (() => {
+                              const rolItem = user?.rol
+                              const limiteItem = rolItem === 'CAJERO' ? (tenant as any)?.descuento_max_cajero_pct : rolItem === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
+                              return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
+                                ? 'border-red-400 dark:border-red-500'
+                                : 'border-gray-200 dark:border-gray-700'
+                            })()
+                          }`}>
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={item.descuento}
+                              onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
+                              className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none" placeholder="0" />
+                            <button onClick={() => updateItem(idx, 'descuento_tipo', item.descuento_tipo === 'pct' ? 'monto' : 'pct')}
+                              title="Cambiar tipo de descuento (% o $)"
+                              className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors">
+                              {item.descuento_tipo === 'pct' ? '%' : '$'}
+                            </button>
+                          </div>
+                          {(() => {
+                            const rolItem = user?.rol
+                            const limiteItem = rolItem === 'CAJERO' ? (tenant as any)?.descuento_max_cajero_pct : rolItem === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
+                            return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
+                              ? <span className="text-[10px] text-red-500 dark:text-red-400">máx {limiteItem}%</span>
+                              : null
+                          })()}
                         </div>
 
                         {/* Subtotal */}

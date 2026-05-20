@@ -104,7 +104,7 @@ export function DashProductosArea() {
 
   const dashFilter = (q: any) => {
     if (!sucursalId) return q
-    return q.eq('sucursal_id', sucursalId)
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
   }
 
   // Filtros locales

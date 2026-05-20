@@ -1377,6 +1377,7 @@ export default function VentasPage() {
               tenant_id: tenant!.id, producto_id: item.producto_id, tipo: 'rebaje', cantidad: cant,
               stock_antes: stockAntes, stock_despues: stockDespues,
               motivo: `Venta #${venta.numero}`, usuario_id: user?.id, venta_id: venta.id,
+              sucursal_id: sucursalId || null,
             })
             if (stockDespues <= (prodData.stock_minimo ?? 0))
               stockAlertas.push({ nombre: prodData.nombre, sku: prodData.sku ?? '', stock_actual: stockDespues, stock_minimo: prodData.stock_minimo ?? 0 })

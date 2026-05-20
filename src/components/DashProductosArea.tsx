@@ -7,7 +7,7 @@ import {
 } from 'recharts'
 import {
   SlidersHorizontal, X, Package, TrendingUp, TrendingDown, Zap,
-  AlertTriangle, CheckCircle, Clock, BarChart2, Star, Target,
+  AlertTriangle, CheckCircle, Clock, BarChart2, Star, Target, MapPin,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -100,7 +100,8 @@ function TijeraTooltip({ active, payload, label, fmt }: any) {
 
 export function DashProductosArea() {
   const { tenant } = useAuthStore()
-  const { sucursalId } = useSucursalFilter()
+  const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
+  const sucursalNombre = sucursalId ? (sucursales as any[]).find((s: any) => s.id === sucursalId)?.nombre : null
 
   const dashFilter = (q: any) => {
     if (!sucursalId) return q
@@ -505,6 +506,22 @@ export function DashProductosArea() {
   // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
+
+      {/* ── Aviso sucursal activa ─────────────────────────────────────────────── */}
+      {sucursalId && sucursalNombre && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-sm">
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+            <MapPin size={14} />
+            <span>Filtrando por <span className="font-semibold">{sucursalNombre}</span> — los datos de otras sucursales no se muestran.</span>
+          </div>
+          {puedeVerTodas && (
+            <button onClick={() => setSucursal(null)}
+              className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline whitespace-nowrap">
+              Ver todo
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Barra de filtros ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">

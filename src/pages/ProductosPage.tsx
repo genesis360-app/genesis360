@@ -4,7 +4,7 @@ import {
   Plus, Search, Package, AlertTriangle, Camera, ChevronDown, ChevronRight,
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
   CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
-  DollarSign, Percent, Truck, ToggleRight, Boxes,
+  DollarSign, Percent, Truck, ToggleRight, Boxes, Loader2, CheckCircle,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -413,6 +413,18 @@ function EstrCard({
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
+type TicketScanItem = {
+  _key: string
+  barcode: string | null
+  nombre_scan: string
+  precio_unitario: number
+  match: { id: string; nombre: string; sku: string; precio_costo: number } | null
+  accion: 'none' | 'actualizar_precio' | 'crear' | 'skip'
+  nombre_editable: string
+  precio_costo_editable: string
+  precio_venta_nuevo: string
+}
+
 export default function ProductosPage() {
   const { tenant, user } = useAuthStore()
   const navigate = useNavigate()
@@ -460,6 +472,14 @@ export default function ProductosPage() {
   const [estrDropdown, setEstrDropdown] = useState(false)
   const [estrModal, setEstrModal] = useState<{ open: boolean; editando: ProductoEstructura | null }>({ open: false, editando: null })
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Scan ticket
+  const [showScanTicket, setShowScanTicket] = useState(false)
+  const [scanTicketStep, setScanTicketStep] = useState<'upload' | 'scanning' | 'results'>('upload')
+  const [scanTicketItems, setScanTicketItems] = useState<TicketScanItem[]>([])
+  const [scanTicketPreview, setScanTicketPreview] = useState<string | null>(null)
+  const [applyingScan, setApplyingScan] = useState(false)
+  const scanTicketRef = useRef<HTMLInputElement>(null)
 
   // Cerrar dropdown al hacer click fuera
   useEffect(() => {
@@ -808,6 +828,101 @@ export default function ProductosPage() {
   const allSelected = filtered.length > 0 && selectedIds.size === filtered.length
   const someSelected = selectedIds.size > 0 && selectedIds.size < filtered.length
 
+  // ── Scan ticket ─────────────────────────────────────────────────────────────
+
+  const fileToBase64Scan = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve((reader.result as string).split(',')[1])
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+
+  const procesarTicketProductos = async (file: File) => {
+    setScanTicketPreview(URL.createObjectURL(file))
+    setScanTicketStep('scanning')
+    try {
+      const base64 = await fileToBase64Scan(file)
+      const { data, error } = await supabase.functions.invoke('scan-ticket', {
+        body: { image: base64, media_type: file.type || 'image/jpeg' },
+      })
+      if (error) throw new Error(error.message)
+      const rawItems: Array<{ barcode: string | null; nombre: string; cantidad: number; precio_unitario: number }> = data?.items ?? []
+      if (rawItems.length === 0) { toast.error('No se detectaron productos en el ticket'); setScanTicketStep('upload'); return }
+
+      const matched = await Promise.all(rawItems.map(async (item) => {
+        let prod: any = null
+        if (item.barcode) {
+          const { data: d } = await supabase.from('productos')
+            .select('id, nombre, sku, precio_costo')
+            .eq('tenant_id', tenant!.id).eq('activo', true).eq('sku', item.barcode).maybeSingle()
+          prod = d
+        }
+        if (!prod) {
+          const palabras = item.nombre.split(/\s+/).slice(0, 2).join(' ')
+          const { data: d } = await supabase.from('productos')
+            .select('id, nombre, sku, precio_costo')
+            .eq('tenant_id', tenant!.id).eq('activo', true).ilike('nombre', `%${palabras}%`).limit(1).maybeSingle()
+          prod = d
+        }
+        const precioDif = prod && Math.abs((prod.precio_costo ?? 0) - item.precio_unitario) > 0.5
+        const accion: TicketScanItem['accion'] = !prod ? 'crear' : precioDif ? 'actualizar_precio' : 'none'
+        return {
+          _key: crypto.randomUUID(),
+          barcode: item.barcode,
+          nombre_scan: item.nombre,
+          precio_unitario: item.precio_unitario,
+          match: prod ? { id: prod.id, nombre: prod.nombre, sku: prod.sku, precio_costo: prod.precio_costo ?? 0 } : null,
+          accion,
+          nombre_editable: item.nombre,
+          precio_costo_editable: String(item.precio_unitario),
+          precio_venta_nuevo: '',
+        } as TicketScanItem
+      }))
+      setScanTicketItems(matched)
+      setScanTicketStep('results')
+    } catch (e: any) {
+      toast.error('Error al procesar el ticket: ' + (e.message ?? 'Error desconocido'))
+      setScanTicketStep('upload')
+    }
+  }
+
+  const aplicarCambiosScan = async () => {
+    setApplyingScan(true)
+    try {
+      const aActualizar = scanTicketItems.filter(i => i.accion === 'actualizar_precio')
+      const aCrear = scanTicketItems.filter(i => i.accion === 'crear')
+      await Promise.all(aActualizar.map(i =>
+        supabase.from('productos').update({ precio_costo: parseFloat(i.precio_costo_editable) || i.precio_unitario }).eq('id', i.match!.id)
+      ))
+      if (aCrear.length > 0) {
+        const { error } = await supabase.from('productos').insert(aCrear.map(i => ({
+          tenant_id: tenant!.id,
+          nombre: i.nombre_editable,
+          precio_costo: parseFloat(i.precio_costo_editable) || 0,
+          precio_venta: parseFloat(i.precio_venta_nuevo) || 0,
+          stock_minimo: 0,
+          unidad_medida: 'unidad',
+          activo: true,
+        })))
+        if (error) throw new Error(error.message)
+      }
+      qc.invalidateQueries({ queryKey: ['productos', tenant?.id] })
+      setShowScanTicket(false)
+      setScanTicketItems([])
+      setScanTicketStep('upload')
+      setScanTicketPreview(null)
+      const partes = []
+      if (aActualizar.length) partes.push(`${aActualizar.length} precio${aActualizar.length !== 1 ? 's' : ''} actualizado${aActualizar.length !== 1 ? 's' : ''}`)
+      if (aCrear.length) partes.push(`${aCrear.length} producto${aCrear.length !== 1 ? 's' : ''} creado${aCrear.length !== 1 ? 's' : ''}`)
+      toast.success(partes.join(' · '))
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al aplicar cambios')
+    } finally {
+      setApplyingScan(false)
+    }
+  }
+
   const exportarProductos = (format: 'json' | 'csv') => {
     const rows = filtered.map(p => ({
       id: p.id, nombre: p.nombre, sku: p.sku,
@@ -875,6 +990,10 @@ export default function ProductosPage() {
             className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all">
             Importar
           </Link>
+          <button onClick={() => { setScanTicketStep('upload'); setScanTicketItems([]); setScanTicketPreview(null); setShowScanTicket(true) }}
+            className="flex items-center gap-2 border border-accent/40 text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/5 transition-all">
+            <Camera size={15} /> Escanear ticket
+          </button>
           <button
             onClick={() => {
               if (limits && !limits.puede_crear_producto) setShowLimitModal(true)
@@ -885,6 +1004,8 @@ export default function ProductosPage() {
           </button>
         </div>
       </div>
+      <input ref={scanTicketRef} type="file" accept="image/*" capture="environment" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) procesarTicketProductos(f); e.target.value = '' }} />
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-fit">
@@ -1866,6 +1987,162 @@ export default function ProductosPage() {
                   {agregarAOC.isPending ? 'Agregando...' : 'Agregar a OC'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal scan ticket ─────────────────────────────────────────────── */}
+      {showScanTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <Camera size={18} className="text-accent" />
+                <h2 className="font-semibold text-primary">Escanear ticket — validar catálogo</h2>
+              </div>
+              <button onClick={() => { setShowScanTicket(false); setScanTicketItems([]); setScanTicketStep('upload') }}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {scanTicketStep === 'upload' && (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted">Fotografiá un ticket de supermercado. Genesis360 va a comparar los productos contra tu catálogo y te va a avisar si hay precios distintos o productos nuevos.</p>
+                  <div onClick={() => scanTicketRef.current?.click()}
+                    className="flex flex-col items-center justify-center gap-3 h-48 border-2 border-dashed border-gray-200 dark:border-gray-600 rounded-2xl cursor-pointer hover:border-accent hover:bg-accent/5 transition-all">
+                    <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                      <Camera size={22} className="text-accent" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-primary">Tocá para seleccionar imagen</p>
+                      <p className="text-xs text-muted mt-0.5">Foto del ticket o galería</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {scanTicketStep === 'scanning' && (
+                <div className="space-y-4">
+                  {scanTicketPreview && <img src={scanTicketPreview} alt="Ticket" className="w-full max-h-48 object-contain rounded-xl border border-gray-200 dark:border-gray-700" />}
+                  <div className="flex flex-col items-center gap-3 py-6">
+                    <Loader2 size={32} className="text-accent animate-spin" />
+                    <p className="text-sm font-medium text-primary">Analizando ticket y comparando con tu catálogo...</p>
+                  </div>
+                </div>
+              )}
+
+              {scanTicketStep === 'results' && scanTicketItems.length > 0 && (() => {
+                const sinCambios = scanTicketItems.filter(i => i.accion === 'none').length
+                const aActualizar = scanTicketItems.filter(i => i.accion === 'actualizar_precio').length
+                const aCrear = scanTicketItems.filter(i => i.accion === 'crear').length
+                return (
+                  <div className="space-y-4">
+                    {scanTicketPreview && <img src={scanTicketPreview} alt="Ticket" className="w-full max-h-28 object-contain rounded-xl border border-gray-200 dark:border-gray-700" />}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {sinCambios > 0 && <span className="text-xs px-2.5 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full font-medium">✓ {sinCambios} sin cambios</span>}
+                      {aActualizar > 0 && <span className="text-xs px-2.5 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full font-medium">⚠ {aActualizar} precio{aActualizar !== 1 ? 's' : ''} diferente{aActualizar !== 1 ? 's' : ''}</span>}
+                      {aCrear > 0 && <span className="text-xs px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full font-medium">+ {aCrear} nuevo{aCrear !== 1 ? 's' : ''} en ticket</span>}
+                    </div>
+                    <div className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 dark:bg-gray-700/50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-500 w-6"></th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-500">Producto</th>
+                            <th className="px-3 py-2 text-right font-semibold text-gray-500 w-28">Costo (ticket)</th>
+                            <th className="px-3 py-2 text-right font-semibold text-gray-500 w-28">P. venta (nuevo)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                          {scanTicketItems.map(item => (
+                            <tr key={item._key} className={item.accion === 'skip' ? 'opacity-40' : ''}>
+                              <td className="px-3 py-2.5">
+                                {item.accion === 'none' && <CheckCircle size={14} className="text-green-500" />}
+                                {item.accion === 'actualizar_precio' && <AlertTriangle size={14} className="text-amber-500" />}
+                                {item.accion === 'crear' && <Plus size={14} className="text-blue-500" />}
+                                {item.accion === 'skip' && <X size={14} className="text-gray-300" />}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                {item.accion === 'crear' ? (
+                                  <input value={item.nombre_editable}
+                                    onChange={e => setScanTicketItems(prev => prev.map(i => i._key === item._key ? { ...i, nombre_editable: e.target.value } : i))}
+                                    className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-0.5 bg-transparent focus:outline-none focus:border-accent text-primary" />
+                                ) : (
+                                  <div>
+                                    <p className="font-medium text-primary leading-tight">{item.match?.nombre ?? item.nombre_scan}</p>
+                                    {item.accion === 'actualizar_precio' && (
+                                      <p className="text-amber-500 dark:text-amber-400 leading-tight">
+                                        BD: ${(item.match!.precio_costo).toLocaleString('es-AR', { maximumFractionDigits: 0 })} → Ticket: ${item.precio_unitario.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                      </p>
+                                    )}
+                                    {item.accion === 'none' && <p className="text-muted leading-tight">Precio sin cambios</p>}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2.5 text-right">
+                                <input type="number" min="0" step="0.01" value={item.precio_costo_editable}
+                                  onChange={e => setScanTicketItems(prev => prev.map(i => i._key === item._key ? { ...i, precio_costo_editable: e.target.value } : i))}
+                                  disabled={item.accion === 'none' || item.accion === 'skip'}
+                                  className="w-24 text-right border border-gray-200 dark:border-gray-600 rounded-lg px-1 py-0.5 bg-transparent focus:outline-none focus:border-accent disabled:opacity-50" />
+                              </td>
+                              <td className="px-3 py-2.5 text-right flex items-center justify-end gap-1">
+                                {item.accion === 'crear' && (
+                                  <input type="number" min="0" step="0.01" value={item.precio_venta_nuevo}
+                                    onChange={e => setScanTicketItems(prev => prev.map(i => i._key === item._key ? { ...i, precio_venta_nuevo: e.target.value } : i))}
+                                    placeholder="Precio venta"
+                                    className="w-24 text-right border border-gray-200 dark:border-gray-600 rounded-lg px-1 py-0.5 bg-transparent focus:outline-none focus:border-accent" />
+                                )}
+                                {(item.accion === 'actualizar_precio' || item.accion === 'crear' || item.accion === 'skip') && (
+                                  <button
+                                    onClick={() => setScanTicketItems(prev => prev.map(i => i._key === item._key
+                                      ? { ...i, accion: i.accion === 'skip' ? (i.match ? 'actualizar_precio' : 'crear') : 'skip' }
+                                      : i))}
+                                    className="ml-1 text-gray-400 hover:text-red-400 transition-colors" title={item.accion === 'skip' ? 'Incluir' : 'Omitir'}>
+                                    <X size={12} />
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-700">
+              <button onClick={() => { setShowScanTicket(false); setScanTicketItems([]); setScanTicketStep('upload') }}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Cancelar
+              </button>
+              {scanTicketStep === 'results' && (() => {
+                const activos = scanTicketItems.filter(i => i.accion === 'actualizar_precio' || i.accion === 'crear')
+                const hayCambios = activos.length > 0
+                const labelParts = [
+                  scanTicketItems.filter(i => i.accion === 'actualizar_precio').length > 0
+                    && `Actualizar ${scanTicketItems.filter(i => i.accion === 'actualizar_precio').length} precio${scanTicketItems.filter(i => i.accion === 'actualizar_precio').length !== 1 ? 's' : ''}`,
+                  scanTicketItems.filter(i => i.accion === 'crear').length > 0
+                    && `Crear ${scanTicketItems.filter(i => i.accion === 'crear').length} producto${scanTicketItems.filter(i => i.accion === 'crear').length !== 1 ? 's' : ''}`,
+                ].filter(Boolean)
+                return (
+                  <button onClick={aplicarCambiosScan} disabled={!hayCambios || applyingScan}
+                    className="flex items-center gap-2 px-5 py-2 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent/90 disabled:opacity-50 transition-colors">
+                    {applyingScan ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle size={15} />}
+                    {hayCambios ? labelParts.join(' · ') : 'Sin cambios a aplicar'}
+                  </button>
+                )
+              })()}
+              {scanTicketStep === 'upload' && (
+                <button onClick={() => scanTicketRef.current?.click()}
+                  className="flex items-center gap-2 px-5 py-2 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent/90 transition-colors">
+                  <Camera size={15} /> Seleccionar imagen
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -856,6 +856,7 @@ export default function ProductosPage() {
         body: { image: base64, media_type: 'image/jpeg' },
       })
       if (error) throw new Error(error.message)
+      if (data?.error) throw new Error(data.error)
       const rawItems: Array<{ barcode: string | null; nombre: string; cantidad: number; precio_unitario: number }> = data?.items ?? []
       if (rawItems.length === 0) { toast.error('No se detectaron productos en el ticket'); setScanTicketStep('upload'); return }
 

@@ -87,8 +87,9 @@ Si no podés leer el ticket, respondé: {"items": []}`,
     })
   } catch (err: any) {
     console.error('scan-ticket error:', err.message)
-    return new Response(JSON.stringify({ error: err.message, items: [] }), {
-      status: 500,
+    // Retornar 200 con error en body para que el frontend muestre el mensaje real
+    return new Response(JSON.stringify({ error: err.message ?? 'Error desconocido', items: [] }), {
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }

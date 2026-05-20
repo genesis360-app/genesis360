@@ -23,7 +23,8 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | `emitir-factura` | Emisión de facturas electrónicas vía AFIP |
 | `birthday-notifications` | Envía alertas de cumpleaños de empleados |
 | `send-email` | Email transaccional genérico (usa Resend) |
-| `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) |
+| `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) + Open Food Facts |
+| `scan-ticket` | Foto de ticket de supermercado → lista de productos `[{barcode, nombre, cantidad, precio_unitario}]` (Claude Sonnet 4.6 vision). Usado en RecepcionesPage y ProductosPage. Retorna siempre HTTP 200 con `{ items: [] }` o `{ error: '...' }` |
 | `meli-oauth-callback` | Callback OAuth para conectar cuenta Mercado Libre |
 | `meli-webhook` | Procesa webhooks de Mercado Libre (cambios de stock) |
 | `meli-search-items` | Busca productos en Mercado Libre |

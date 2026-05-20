@@ -13,6 +13,23 @@ updated: 2026-05-07
 
 ---
 
+## v1.8.38 — Scan ticket IA + fixes Dashboard + ISS-090 CC (DEV ✅)
+
+**Estado:** en DEV · pendiente deploy a PROD
+
+### Nuevas features
+- **Scan ticket** (Claude Sonnet 4.6 vision): EF `scan-ticket` analiza foto de ticket de supermercado
+  - **RecepcionesPage**: escanear ticket → matcheo contra catálogo → carga automática al formulario de recepción con precio_costo del ticket
+  - **ProductosPage**: escanear ticket → validar catálogo → actualizar precio_costo o crear productos nuevos con SKU auto-generado
+
+### Fixes críticos
+- **Dashboard Productos/Inventario — KPIs en $0**: columna `categoria` migrada a FK `categoria_id` → queries usaban columna inexistente → 400 → data=null → todo en 0
+- **Dashboard rotación/runway = 0**: `movimientos_stock` de ventas creados sin `sucursal_id` → filtro estricto los excluía → rotación 0
+- **Banner sucursal en Dashboard**: aviso cuando hay sucursal seleccionada (el selector no aparece en /dashboard) + botón "Ver todo"
+- **ISS-090 CC validación**: validar correctamente pagos mixtos CC+efectivo, CC+tarjeta, y 100% CC
+
+---
+
 ## v1.8.37 — Gastos/Caja/Config/MODO/ISS-136 (PROD ✅)
 
 **PR #114** — mergeado a `main` ✅  

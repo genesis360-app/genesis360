@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-20] update | v1.8.38-dev — scan ticket IA, fixes Dashboard, ISS-090 CC
+
+### Nuevas features
+- **scan-ticket** EF nueva (Claude Sonnet 4.6 vision): analiza foto de ticket de supermercado y extrae lista de productos con barcode, nombre, cantidad y precio_unitario
+- **RecepcionesPage**: botón "Escanear ticket" → foto → matcheo contra DB → tabla editable → carga automática al formulario de recepción
+- **ProductosPage**: botón "Escanear ticket" → foto → validación de catálogo: ✓ sin cambios / ⚠ precio diferente / + nuevo → actualiza precio_costo o crea producto
+
+### Bugs críticos resueltos
+- **Dashboard Productos/Inventario — todo en $0**: columna `categoria` fue migrada a FK `categoria_id` pero las queries del dashboard nunca se actualizaron → 400 de PostgREST → `data=null` → KPIs en 0. Fix: usar `categorias(nombre)` en el join
+- **Dashboard rotación/runway = 0**: VentasPage no incluía `sucursal_id` al insertar en `movimientos_stock` → rebajes sin sucursal → filtro estricto los excluía. Fix: agrega `sucursal_id` al insert + filtro inclusivo `OR NULL` en Dash
+- **ISS-090 — CC validación**: `validarMediosPago` con CC roto → full CC fallaba con "Ingresá un método de pago", CC+tarjeta fallaba. Fix: filter (no map) + validar resto contra `totalSinCC`
+
+### UX
+- Banner amber en tabs Inventario y Productos del Dashboard cuando hay sucursal seleccionada en el header (el selector no es visible en /dashboard). Botón "Ver todo" para DUEÑO/roles con puedeVerTodas
+- APP_VERSION bumpeada a v1.8.38
+
 ## [2026-05-19] update | PROD deploy v1.8.37 — migrations 122-126, EFs MODO, ISS-136 completo
 
 - PR #114 `dev → main` mergeado ✅

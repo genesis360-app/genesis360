@@ -4,22 +4,23 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.37** ✅ · DEV: **v1.8.37**
+Último release en PROD: **v1.8.37** ✅ · DEV: **v1.8.38**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.32 / PROD v1.8.31 (cierre sesión 2026-05-18)
+## Estado actual DEV v1.8.38 / PROD v1.8.37 (cierre sesión 2026-05-20)
 
-- APP_VERSION DEV: `v1.8.37` en `src/config/brand.ts` ✅
+- APP_VERSION DEV: `v1.8.38` en `src/config/brand.ts` ✅
 - APP_VERSION PROD: `v1.8.37` ✅ (PR #114 mergeado)
 - Migrations DEV: 001–126 ✅
 - Migrations PROD: 001–126 ✅
 
 ### Estado infra
-- Edge Functions DEV: todas activas (`invite-user` v3 — redirect dinámico)
+- Edge Functions DEV: todas activas · `scan-ticket` v3 (Claude Sonnet 4.6 vision) deployada
 - Edge Functions PROD: `invite-user` ✅ · `ai-assistant` ✅ · `cancel-suscripcion` ❌ (no existe en repo)
+- ANTHROPIC_API_KEY: DEV ✅ (con créditos cargados) · PROD ✅
 - GROQ_API_KEY: DEV ✅ · PROD ✅
 - VITE_GOOGLE_MAPS_API_KEY: DEV ✅ · PROD ✅
 
@@ -96,11 +97,16 @@ type: project
 - ISS-102: clientes y proveedores globales (sin filtro de sucursal)
 
 ### Issues pendientes para próximas sesiones (requieren planificación mayor)
-- ISS-085: Historial ventas por sucursal + reset # ticket por sucursal → requiere migración DB
-- ISS-086: Cuotas tarjeta de crédito → requiere config bancos/tasas en tenant, nueva UI
-- ISS-090: CC como método de pago parcial + eliminar lógica actual → refactor mayor VentasPage
-- ISS-095: OC con CC como método de pago parcial
-- ISS-096: Adjuntar archivos en OC/gastos (Storage Supabase)
+- ~~ISS-085: Historial ventas por sucursal + reset # ticket por sucursal~~ ✅ migration 108
+- ~~ISS-086: Cuotas tarjeta de crédito~~ ✅ migration 108 + ConfigPage + VentasPage picker
+- ~~ISS-090: CC como método de pago parcial~~ ✅ fix validación 2026-05-20 (commit 7e12f35e)
+- ~~ISS-095: OC con CC como método de pago parcial~~ ✅ GastosPage modal de pago OC
+- ~~ISS-096: Adjuntar archivos en OC/gastos~~ ✅ migration 108 + Storage comprobantes-gastos
+
+### Nuevas features pendientes de deploy a PROD
+- **scan-ticket**: EF deployada en DEV, pendiente deploy a PROD + configurar ANTHROPIC_API_KEY en PROD
+- **ProductosPage scan**: pendiente deploy a PROD con v1.8.38
+- **Dashboard fixes** (categoria FK, sucursal filter, banner): pendiente deploy a PROD
 
 ---
 

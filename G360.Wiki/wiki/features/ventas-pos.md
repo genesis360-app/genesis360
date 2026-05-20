@@ -135,12 +135,25 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 
 ---
 
-## Cuenta corriente (v1.4.0 · migration 083)
+## Cuenta corriente (v1.4.0 · migration 083 · fix ISS-090 v1.8.38)
 
-- Botón "Despachar a cuenta corriente" visible solo si cliente tiene CC habilitada
-- Bypasa validación de pago/caja
-- Inserta con `monto_pagado=0`, `es_cuenta_corriente=true`
-- La deuda queda registrada en la ficha del cliente
+"Cuenta Corriente" es un medio de pago más dentro del array `mediosPago[]`, combinable con efectivo, MP, etc.
+
+### Modelo de datos
+- `es_cuenta_corriente: true` → venta aparece en tab CC de ClientesPage
+- `monto_pagado` = monto cubierto por medios NO-CC (lo que va a caja)
+- Deuda del cliente = `total - monto_pagado`
+
+### Comportamiento (v1.8.38)
+- Opción "💳 Cuenta Corriente" visible en el select de medios solo si el cliente tiene CC habilitada
+- `modoCC = montoCC > 0` (derivado, no toggle)
+- Al confirmar con CC: siempre despacha (`estado = 'despachada'`) → la deuda queda visible en ClientesPage
+- Validación correcta: filtra CC del array, valida el resto contra `totalConEnvio - montoCC`
+- Full CC (100% CC): skipea validación de otros medios (no requiere caja abierta)
+
+### Fix ISS-090 (bug histórico)
+- Anterior: usaba `.map()` que generaba un array incorrecto → full CC fallaba con "Ingresá un método de pago"; CC + tarjeta/MP fallaba con "El monto excede el total"; solo CC + efectivo funcionaba por accidente
+- Corregido 2026-05-20: `.filter()` + `totalSinCC = total - montoCC`
 
 ---
 

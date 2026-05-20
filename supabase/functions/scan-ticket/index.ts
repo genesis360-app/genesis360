@@ -25,7 +25,7 @@ serve(async (req) => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-6',
         max_tokens: 1024,
         messages: [{
           role: 'user',
@@ -56,8 +56,9 @@ Si no podés leer el ticket, respondé: {"items": []}`,
     })
 
     if (!claudeRes.ok) {
-      const err = await claudeRes.json()
-      throw new Error(err.error?.message ?? 'Error en Claude API')
+      const errBody = await claudeRes.text()
+      console.error('Claude API error:', claudeRes.status, errBody)
+      throw new Error(`Claude API ${claudeRes.status}: ${errBody.slice(0, 200)}`)
     }
 
     const claudeData = await claudeRes.json()

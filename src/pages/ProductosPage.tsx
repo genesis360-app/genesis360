@@ -830,21 +830,30 @@ export default function ProductosPage() {
 
   // ── Scan ticket ─────────────────────────────────────────────────────────────
 
-  const fileToBase64Scan = (file: File): Promise<string> =>
+  const comprimirImagenScan = (file: File, maxWidth = 1200, quality = 0.82): Promise<string> =>
     new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve((reader.result as string).split(',')[1])
-      reader.onerror = reject
-      reader.readAsDataURL(file)
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const scale = Math.min(1, maxWidth / img.width)
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1])
+      }
+      img.onerror = reject
+      img.src = url
     })
 
   const procesarTicketProductos = async (file: File) => {
     setScanTicketPreview(URL.createObjectURL(file))
     setScanTicketStep('scanning')
     try {
-      const base64 = await fileToBase64Scan(file)
+      const base64 = await comprimirImagenScan(file)
       const { data, error } = await supabase.functions.invoke('scan-ticket', {
-        body: { image: base64, media_type: file.type || 'image/jpeg' },
+        body: { image: base64, media_type: 'image/jpeg' },
       })
       if (error) throw new Error(error.message)
       const rawItems: Array<{ barcode: string | null; nombre: string; cantidad: number; precio_unitario: number }> = data?.items ?? []

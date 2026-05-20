@@ -177,7 +177,7 @@ export function DashInventarioArea() {
     queryFn: async () => {
       // 1. Todos los productos activos
       const { data: productos = [] } = await supabase.from('productos')
-        .select('id, nombre, sku, categoria, precio_costo, precio_venta, stock_actual, stock_minimo, es_kit')
+        .select('id, nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo, es_kit')
         .eq('tenant_id', tenant!.id).eq('activo', true)
 
       // 2. Inventario_lineas activas con ubicacion + estado

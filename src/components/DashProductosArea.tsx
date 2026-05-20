@@ -161,9 +161,8 @@ export function DashProductosArea() {
         const CHUNK = 200
         for (let i = 0; i < ventaIds.length; i += CHUNK) {
           let q = supabase.from('venta_items')
-            .select('producto_id, cantidad, precio_unitario, precio_costo_historico, venta_id, productos(nombre, sku, categoria, precio_costo, precio_venta, stock_actual, stock_minimo)')
+            .select('producto_id, cantidad, precio_unitario, precio_costo_historico, venta_id, productos(nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo)')
             .in('venta_id', ventaIds.slice(i, i + CHUNK))
-          if (categoriaFiltro) q = q.eq('productos.categoria', categoriaFiltro)
           const { data } = await q
           itemsData = itemsData.concat(data ?? [])
         }
@@ -171,9 +170,8 @@ export function DashProductosArea() {
 
       // 3. Todos los productos activos (para capital dormido)
       let qProds = supabase.from('productos')
-        .select('id, nombre, sku, categoria, precio_costo, precio_venta, stock_actual, stock_minimo, activo')
+        .select('id, nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo, activo')
         .eq('tenant_id', tenant!.id).eq('activo', true)
-      if (categoriaFiltro) qProds = qProds.eq('categoria', categoriaFiltro)
       const { data: todosProductos = [] } = await qProds
 
       // 4. Productos con ventas en los últimos 90 días (para dormancy)
@@ -248,7 +246,7 @@ export function DashProductosArea() {
 
         if (!prodMap[pid]) prodMap[pid] = {
           nombre: prod.nombre ?? 'Sin nombre', sku: prod.sku ?? '',
-          categoria: prod.categoria ?? 'Sin categoría',
+          categoria: (prod as any).categorias?.nombre ?? 'Sin categoría',
           total_cantidad: 0, total_ingresos: 0,
           sum_margen_pon: 0, sum_cantidad_margen: 0,
           precio_costo_actual: prod.precio_costo ?? 0,
@@ -377,7 +375,7 @@ export function DashProductosArea() {
         .sort((a: any, b: any) => (b.precio_costo * b.stock_actual) - (a.precio_costo * a.stock_actual))[0] ?? null
 
       // ── Categorías disponibles ────────────────────────────────────────────
-      const cats = [...new Set((todosProductos ?? []).map((p: any) => p.categoria).filter(Boolean))]
+      const cats = [...new Set((todosProductos ?? []).map((p: any) => (p as any).categorias?.nombre).filter(Boolean))]
 
       // ── Producto con mayor caída de margen ────────────────────────────────
       // Comparo precio_costo_actual vs precio_venta_actual con lo histórico

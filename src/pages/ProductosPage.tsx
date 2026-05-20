@@ -906,9 +906,13 @@ export default function ProductosPage() {
         supabase.from('productos').update({ precio_costo: parseFloat(i.precio_costo_editable) || i.precio_unitario }).eq('id', i.match!.id)
       ))
       if (aCrear.length > 0) {
-        const { error } = await supabase.from('productos').insert(aCrear.map(i => ({
+        const ts = Date.now().toString().slice(-5)
+        const { error } = await supabase.from('productos').insert(aCrear.map((i, idx) => ({
           tenant_id: tenant!.id,
           nombre: i.nombre_editable,
+          sku: i.barcode
+            ? i.barcode.slice(0, 20)
+            : i.nombre_editable.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + '-' + ts + idx,
           precio_costo: parseFloat(i.precio_costo_editable) || 0,
           precio_venta: parseFloat(i.precio_venta_nuevo) || 0,
           stock_minimo: 0,

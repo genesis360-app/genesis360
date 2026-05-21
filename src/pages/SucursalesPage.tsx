@@ -11,9 +11,17 @@ interface SucursalForm {
   telefono: string
   costo_km_envio: string
   codigo: string
+  codigo_postal: string
+  email: string
+  horario_apertura: string
+  horario_cierre: string
+  punto_venta_afip: string
 }
 
-const EMPTY: SucursalForm = { nombre: '', direccion: '', telefono: '', costo_km_envio: '', codigo: '' }
+const EMPTY: SucursalForm = {
+  nombre: '', direccion: '', telefono: '', costo_km_envio: '', codigo: '',
+  codigo_postal: '', email: '', horario_apertura: '', horario_cierre: '', punto_venta_afip: '',
+}
 
 const COURIERS_DEFAULT = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 'FedEx', 'Otro']
 
@@ -58,6 +66,11 @@ export default function SucursalesPage() {
       telefono: s.telefono ?? '',
       costo_km_envio: s.costo_km_envio != null ? String(s.costo_km_envio) : '',
       codigo: s.codigo ?? '',
+      codigo_postal: s.codigo_postal ?? '',
+      email: s.email ?? '',
+      horario_apertura: s.horario_apertura ?? '',
+      horario_cierre: s.horario_cierre ?? '',
+      punto_venta_afip: s.punto_venta_afip != null ? String(s.punto_venta_afip) : '',
     })
     setModal(true)
   }
@@ -72,6 +85,11 @@ export default function SucursalesPage() {
         telefono: form.telefono.trim() || null,
         costo_km_envio: form.costo_km_envio ? parseFloat(form.costo_km_envio) : 0,
         codigo: form.codigo.trim().toUpperCase() || null,
+        codigo_postal: form.codigo_postal.trim() || null,
+        email: form.email.trim() || null,
+        horario_apertura: form.horario_apertura || null,
+        horario_cierre: form.horario_cierre || null,
+        punto_venta_afip: form.punto_venta_afip ? parseInt(form.punto_venta_afip) : null,
       }
       if (editId) {
         const { error } = await supabase.from('sucursales').update(payload).eq('id', editId)
@@ -318,6 +336,42 @@ export default function SucursalesPage() {
                 <p className="text-xs text-gray-400 mt-1">Dejá vacío para usar el valor global de Config → Envíos. Si completás este campo, tiene prioridad.</p>
               </div>
             </div>
+
+              {/* Configuración adicional */}
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-3">
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Configuración adicional</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código postal</label>
+                    <input value={form.codigo_postal} onChange={e => setForm(f => ({ ...f, codigo_postal: e.target.value }))}
+                      placeholder="ej. B1875"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                    <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder="ej. sucursal@negocio.com"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Apertura</label>
+                    <input type="time" value={form.horario_apertura} onChange={e => setForm(f => ({ ...f, horario_apertura: e.target.value }))}
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cierre</label>
+                    <input type="time" value={form.horario_cierre} onChange={e => setForm(f => ({ ...f, horario_cierre: e.target.value }))}
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Punto de venta AFIP</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={form.punto_venta_afip}
+                      onChange={e => setForm(f => ({ ...f, punto_venta_afip: e.target.value }))}
+                      placeholder="ej. 1"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                </div>
+              </div>
 
             <div className="flex gap-2 pt-2">
               <button onClick={() => setModal(false)}

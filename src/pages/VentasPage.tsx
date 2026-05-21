@@ -74,7 +74,7 @@ interface CartItem {
 }
 
 export default function VentasPage() {
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
 
   // ISS-085: formatea el número de ticket por sucursal
@@ -555,7 +555,7 @@ export default function VentasPage() {
         }))
         .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0)
     },
-    enabled: !!tenant,
+    enabled: !!tenant && authInitialized,
   })
 
   const { data: clientesBusqueda = [] } = useQuery({

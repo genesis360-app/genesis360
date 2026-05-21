@@ -13,32 +13,62 @@ interface Props {
   savedAddresses?: string[]
 }
 
-// placeId = google place_id O "lat,lon" para resultados de Nominatim
-type Suggestion = { label: string; value: string; placeId?: string }
+type Sugg = { label: string; value: string; placeId: string }
 
-// Nominatim con addressdetails=1 → dirección limpia + coordenadas exactas
-async function nominatimSearch(query: string): Promise<Suggestion[]> {
-  if (query.length < 2) return []
+// Nominatim con addressdetails=1 → dirección limpia + coordenadas
+async function searchNominatim(q: string): Promise<Sugg[]> {
   try {
-    const url = `https://nominatim.openstreetmap.org/search?` +
-      new URLSearchParams({ q: query, format: 'jsonv2', limit: '6',
-        countrycodes: 'ar', 'accept-language': 'es', addressdetails: '1' })
-    const res = await fetch(url, { headers: { 'User-Agent': 'Genesis360App/1.0' } })
+    const params = new URLSearchParams({
+      q, format: 'jsonv2', limit: '6', countrycodes: 'ar',
+      'accept-language': 'es', addressdetails: '1',
+    })
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?${params}`,
+      { headers: { 'User-Agent': 'Genesis360App/1.0' } }
+    )
     const data: any[] = await res.json()
     return data.map(d => {
-      const addr = d.address ?? {}
-      const parts: string[] = []
-      const calle = addr.road ?? addr.pedestrian ?? addr.street ?? ''
-      const numero = addr.house_number ?? ''
-      if (calle) parts.push(numero ? `${calle} ${numero}` : calle)
-      const localidad = addr.suburb ?? addr.city_district ?? addr.town ?? addr.city ?? addr.municipality ?? ''
-      if (localidad) parts.push(localidad)
-      const provincia = addr.state ?? ''
-      if (provincia && provincia !== localidad) parts.push(provincia)
-      const label = parts.length > 0 ? parts.join(', ') : (d.display_name as string).replace(/, Argentina$/, '')
+      const a = d.address ?? {}
+      const calle  = a.road ?? a.pedestrian ?? a.street ?? ''
+      const num    = a.house_number ?? ''
+      const local  = a.suburb ?? a.city_district ?? a.town ?? a.city ?? a.municipality ?? ''
+      const prov   = a.state ?? ''
+      const parts  = [
+        calle ? (num ? `${calle} ${num}` : calle) : '',
+        local,
+        prov !== local ? prov : '',
+      ].filter(Boolean)
+      const label = parts.join(', ') || d.display_name.replace(/, Argentina$/, '')
       return { label, value: label, placeId: `${d.lat},${d.lon}` }
     })
   } catch { return [] }
+}
+
+// Google Places AutocompleteService — maneja API clásica (callback) y nueva (Promise)
+async function searchGoogle(svc: any, q: string): Promise<Sugg[]> {
+  return new Promise(resolve => {
+    // Safety: si en 2s no responde nada, devolver vacío
+    const timer = setTimeout(() => resolve([]), 2000)
+    const done  = (items: Sugg[]) => { clearTimeout(timer); resolve(items) }
+    const map   = (preds: any[]) => preds.map(p => ({
+      label: p.description, value: p.description, placeId: p.place_id ?? '',
+    }))
+    try {
+      const result = svc.getPlacePredictions(
+        { input: q, componentRestrictions: { country: 'ar' } },
+        (preds: any[], status: string) => {   // callback (API clásica)
+          if (preds?.length && status === 'OK') done(map(preds))
+          else done([])
+        }
+      )
+      // API nueva (v:weekly) devuelve Promise además del callback
+      if (result?.then) {
+        result
+          .then((r: any) => { if (r?.predictions?.length) done(map(r.predictions)) })
+          .catch(() => {})
+      }
+    } catch { done([]) }
+  })
 }
 
 export function AddressAutocompleteInput({
@@ -48,95 +78,53 @@ export function AddressAutocompleteInput({
   disabled = false,
   savedAddresses = [],
 }: Props) {
-  const searchTimer    = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const mapsServiceRef = useRef<any>(null)   // google.maps.places.AutocompleteService
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const svcRef   = useRef<any>(null)     // AutocompleteService de Google
 
-  const [mapsLoading, setMapsLoading] = useState(false)
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
-  const [loading,     setLoading]     = useState(false)
-  const [showDrop,    setShowDrop]    = useState(false)
+  const [suggs,   setSuggs]   = useState<Sugg[]>([])
+  const [loading, setLoading] = useState(false)
+  const [open,    setOpen]    = useState(false)
 
-  // ── Inicializar AutocompleteService una sola vez ────────────────────────────
+  // Inicializar AutocompleteService una sola vez
   useEffect(() => {
-    if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY || mapsServiceRef.current) return
-    setMapsLoading(true)
+    if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) return
     getGoogleMapsLoader()
       .then(() => importLibrary('places'))
-      .then((places: any) => {
-        try { mapsServiceRef.current = new places.AutocompleteService() }
-        catch { /* usar Nominatim */ }
-      })
-      .catch(() => { /* usar Nominatim */ })
-      .finally(() => setMapsLoading(false))
+      .then((places: any) => { svcRef.current = new places.AutocompleteService() })
+      .catch(() => { /* sin Google, usa Nominatim */ })
   }, [])
 
-  // ── Buscar sugerencias cuando el usuario escribe ────────────────────────────
-  useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current)
-    if (!value || value.length < 2) { setSuggestions([]); return }
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
 
+  // El tipeo actualiza el padre inmediatamente; la búsqueda ocurre en background
+  const handleChange = (raw: string) => {
+    onChange(raw)                          // actualiza el input en React al instante
+    if (timerRef.current) clearTimeout(timerRef.current)
+    if (raw.length < 2) { setSuggs([]); setLoading(false); return }
     setLoading(true)
-    searchTimer.current = setTimeout(async () => {
-      try {
-        // Intentar Google Places AutocompleteService
-        // La API v:weekly puede ser callback-based O Promise-based según la versión
-        if (mapsServiceRef.current) {
-          const svc = mapsServiceRef.current
-          const googleResults = await new Promise<Suggestion[]>((resolve) => {
-            // Safety net: si ni el callback ni la Promise responden en 2s → Nominatim
-            const fallbackTimer = setTimeout(() => resolve([]), 2000)
-            const done = (preds: any[]) => { clearTimeout(fallbackTimer); resolve(preds) }
-
-            const toPredictions = (preds: any[]) =>
-              preds.map((p: any) => ({ label: p.description, value: p.description, placeId: p.place_id }))
-
-            try {
-              // Callback-based (API clásica)
-              const maybePromise = svc.getPlacePredictions(
-                { input: value, componentRestrictions: { country: 'ar' } },
-                (preds: any[], status: string) => {
-                  if (preds && preds.length > 0 && status === 'OK') done(toPredictions(preds))
-                  else done([])
-                }
-              )
-              // Si devuelve Promise (API nueva v:weekly)
-              if (maybePromise && typeof maybePromise.then === 'function') {
-                maybePromise
-                  .then((r: any) => done(toPredictions(r?.predictions ?? [])))
-                  .catch(() => done([]))
-              }
-            } catch { done([]) }
-          })
-
-          if (googleResults.length > 0) {
-            setSuggestions(googleResults)
-            setLoading(false)
-            return
-          }
-        }
-      } catch { /* caer a Nominatim */ }
-
-      // Fallback Nominatim
-      const nominatim = await nominatimSearch(value)
-      setSuggestions(nominatim)
+    timerRef.current = setTimeout(async () => {
+      let results: Sugg[] = []
+      if (svcRef.current) {
+        results = await searchGoogle(svcRef.current, raw)
+      }
+      if (results.length === 0) {
+        results = await searchNominatim(raw)
+      }
+      setSuggs(results)
       setLoading(false)
     }, 300)
-  }, [value])
+  }
 
-  useEffect(() => () => {
-    if (searchTimer.current) clearTimeout(searchTimer.current)
-  }, [])
-
-  const filteredSaved = savedAddresses.filter(a =>
-    a.toLowerCase().includes(value.toLowerCase()) && a !== value
+  const filteredSaved = savedAddresses.filter(
+    a => a.toLowerCase().includes(value.toLowerCase()) && a !== value
   )
-  const showDropdown = showDrop && (filteredSaved.length > 0 || suggestions.length > 0)
+  const showDrop = open && (filteredSaved.length > 0 || suggs.length > 0)
 
-  const selectAddress = (addr: string, placeId = '') => {
-    onChange(addr)
-    onPlaceSelected?.(addr, placeId)
-    setSuggestions([])
-    setShowDrop(false)
+  const pick = (label: string, placeId = '') => {
+    onChange(label)
+    onPlaceSelected?.(label, placeId)
+    setSuggs([])
+    setOpen(false)
   }
 
   return (
@@ -145,57 +133,47 @@ export function AddressAutocompleteInput({
         <MapPin size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" />
         <input
           value={value}
-          onChange={e => onChange(e.target.value)}
-          onFocus={() => setShowDrop(true)}
-          onBlur={() => setTimeout(() => setShowDrop(false), 200)}
+          onChange={e => handleChange(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 200)}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
           className={`w-full pl-8 pr-8 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         />
-        {(mapsLoading || loading) && (
-          <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />
-        )}
+        {loading && <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />}
       </div>
 
-      {showDropdown && (
+      {showDrop && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto">
+
           {filteredSaved.length > 0 && (
             <>
-              <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 px-3 pt-2 pb-1 uppercase tracking-wide">
-                Guardadas del cliente
-              </p>
-              {filteredSaved.map((addr, i) => (
-                <button key={`s${i}`}
-                  onMouseDown={e => { e.preventDefault(); selectAddress(addr) }}
+              <p className="text-[10px] font-semibold text-gray-400 px-3 pt-2 pb-1 uppercase tracking-wide">Guardadas del cliente</p>
+              {filteredSaved.map((a, i) => (
+                <button key={`s${i}`} onMouseDown={e => { e.preventDefault(); pick(a) }}
                   className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent/5 transition-colors">
-                  <MapPin size={12} className="text-accent flex-shrink-0" />
-                  <span className="truncate text-gray-700 dark:text-gray-300">{addr}</span>
+                  <MapPin size={12} className="text-accent shrink-0" />
+                  <span className="truncate text-gray-700 dark:text-gray-300">{a}</span>
                 </button>
               ))}
-              {suggestions.length > 0 && <div className="border-t border-gray-100 dark:border-gray-700" />}
+              {suggs.length > 0 && <div className="border-t border-gray-100 dark:border-gray-700" />}
             </>
           )}
-          {suggestions.length > 0 && (
+
+          {suggs.length > 0 && (
             <>
-              <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 px-3 pt-2 pb-1 uppercase tracking-wide">
-                Sugerencias
-              </p>
-              {suggestions.map((s, i) => (
-                <button key={`g${i}`}
-                  onMouseDown={e => { e.preventDefault(); selectAddress(s.value, s.placeId ?? '') }}
+              <p className="text-[10px] font-semibold text-gray-400 px-3 pt-2 pb-1 uppercase tracking-wide">Sugerencias</p>
+              {suggs.map((s, i) => (
+                <button key={`g${i}`} onMouseDown={e => { e.preventDefault(); pick(s.value, s.placeId) }}
                   className="w-full text-left flex items-start gap-2 px-3 py-2 text-sm hover:bg-accent/5 transition-colors">
-                  <MapPin size={12} className="text-accent flex-shrink-0 mt-0.5" />
+                  <MapPin size={12} className="text-accent shrink-0 mt-0.5" />
                   <span className="text-gray-700 dark:text-gray-300 leading-snug line-clamp-2">{s.label}</span>
                 </button>
               ))}
             </>
           )}
         </div>
-      )}
-
-      {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
-        <p className="text-[10px] text-amber-500 mt-1">⚠ Ingresá la dirección manualmente</p>
       )}
     </div>
   )

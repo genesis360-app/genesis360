@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MapPin, Loader2, AlertTriangle } from 'lucide-react'
+import { MapPin, Loader2 } from 'lucide-react'
 import { getGoogleMapsLoader } from '@/hooks/useGoogleMaps'
 import { importLibrary } from '@googlemaps/js-api-loader'
 
@@ -28,7 +28,7 @@ function destroyAutocomplete(autocompleteRef: React.MutableRefObject<any>, input
 
 // Nominatim (OpenStreetMap) — fallback gratuito sin API key
 async function buscarNominatim(query: string): Promise<{ label: string; value: string }[]> {
-  if (query.length < 3) return []
+  if (query.length < 2) return []
   try {
     const url = `https://nominatim.openstreetmap.org/search?` +
       new URLSearchParams({ q: query, format: 'jsonv2', limit: '6',
@@ -135,13 +135,13 @@ export function AddressAutocompleteInput({
   useEffect(() => {
     if (!mapsError) return
     if (nominatimTimer.current) clearTimeout(nominatimTimer.current)
-    if (value.length < 3) { setNominatimRes([]); return }
+    if (value.length < 2) { setNominatimRes([]); return }
     setLoadingNom(true)
     nominatimTimer.current = setTimeout(async () => {
       const results = await buscarNominatim(value)
       setNominatimRes(results)
       setLoadingNom(false)
-    }, 450)
+    }, 300)
   }, [value, mapsError])
 
   // Dropdown: direcciones guardadas del cliente (filtradas por lo que se escribió)
@@ -215,14 +215,9 @@ export function AddressAutocompleteInput({
         </div>
       )}
 
-      {mapsError && (
-        <p className="text-[10px] text-amber-500 mt-1 flex items-center gap-1">
-          <AlertTriangle size={10} /> Usando sugerencias de OpenStreetMap (Google Maps no disponible)
-        </p>
-      )}
       {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && !mapsError && (
         <p className="text-[10px] text-amber-500 mt-1">
-          ⚠ Google Maps no configurado — ingresá la dirección manualmente
+          ⚠ Ingresá la dirección manualmente
         </p>
       )}
     </div>

@@ -13,6 +13,8 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
+import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
@@ -124,6 +126,8 @@ export default function VentasPage() {
   const [envioKmVenta, setEnvioKmVenta]       = useState('')
   const [precioPorKmVenta, setPrecioPorKmVenta] = useState('')
   const [envioDestinoVenta, setEnvioDestinoVenta] = useState('')
+  const [envioOrigenVenta, setEnvioOrigenVenta] = useState('')
+  const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
@@ -352,6 +356,23 @@ export default function VentasPage() {
       if (!isNaN(calc) && calc > 0) setCostoEnvioVenta(calc.toFixed(2))
     }
   }, [envioKmVenta, precioPorKmVenta, envioTipoVenta])
+
+  // ISS-162/163: pre-llenar origen (sucursal) y $/km (Config) al activar envío
+  useEffect(() => {
+    if (!requiereEnvio) return
+    const suc = (sucursales as any[]).find(s => s.id === sucursalId)
+    if (suc?.direccion) setEnvioOrigenVenta(suc.direccion)
+    if (suc?.costo_km_envio) { setPrecioPorKmVenta(String(suc.costo_km_envio)); setEnvioTipoVenta('km') }
+  }, [requiereEnvio])
+
+  // ISS-162: calcular distancia automáticamente cuando se selecciona una dirección (onPlaceSelected)
+  const autoCalcularDistancia = async (origen: string, destino: string) => {
+    if (!origen || !destino || envioTipoVenta !== 'km') return
+    setCalculandoDistancia(true)
+    const km = await calcularDistanciaKm(origen, destino)
+    if (km !== null) setEnvioKmVenta(String(km))
+    setCalculandoDistancia(false)
+  }
 
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
@@ -1500,7 +1521,7 @@ export default function VentasPage() {
       setMediosPago([{ tipo: '', monto: '' }]); setCommittedAsignado(0); setCuotasSeleccion({}); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada'); setCanalPOS('POS')
       setRequiereEnvio(false)
       setCostoEnvioVenta(''); setEnvioTipoVenta('monto'); setEnvioKmVenta('')
-      setPrecioPorKmVenta(''); setEnvioDestinoVenta('')
+      setPrecioPorKmVenta(''); setEnvioDestinoVenta(''); setEnvioOrigenVenta('')
       setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
@@ -2826,30 +2847,36 @@ export default function VentasPage() {
                         </div>
                       )}
 
-                      {/* Destino */}
+                      {/* ISS-163: Origen editable (pre-llenado con sucursal) */}
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Dirección de origen (sucursal)</label>
+                        <AddressAutocompleteInput
+                          value={envioOrigenVenta}
+                          onChange={setEnvioOrigenVenta}
+                          onPlaceSelected={addr => { setEnvioOrigenVenta(addr); autoCalcularDistancia(addr, envioDestinoVenta) }}
+                          placeholder="Dirección de la sucursal..."
+                        />
+                      </div>
+
+                      {/* ISS-164: Destino con autocompletado Google Places */}
                       <div>
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Dirección de entrega</label>
-                        <div className="flex gap-1.5">
-                          <input type="text"
-                            value={envioDestinoVenta} onChange={e => setEnvioDestinoVenta(e.target.value)}
-                            placeholder="Calle, número, ciudad"
-                            className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                          {envioDestinoVenta && (() => {
-                            const origen = sucursales.find(s => s.id === sucursalId)?.direccion ?? ''
-                            const url = `https://www.google.com/maps/dir/${encodeURIComponent(origen)}/${encodeURIComponent(envioDestinoVenta)}`
-                            return (
-                              <a href={url} target="_blank" rel="noopener noreferrer"
-                                className="flex-shrink-0 px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors"
-                                title="Ver ruta en Google Maps">
-                                🗺
-                              </a>
-                            )
-                          })()}
-                        </div>
-                        {envioDestinoVenta && envioTipoVenta === 'km' && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                            Calculá los km abriendo la ruta en Maps y cargalos arriba.
-                          </p>
+                        <AddressAutocompleteInput
+                          value={envioDestinoVenta}
+                          onChange={setEnvioDestinoVenta}
+                          onPlaceSelected={addr => { setEnvioDestinoVenta(addr); autoCalcularDistancia(envioOrigenVenta, addr) }}
+                          placeholder="Calle, número, ciudad..."
+                        />
+                        {calculandoDistancia && (
+                          <p className="text-xs text-accent mt-1 animate-pulse">Calculando distancia...</p>
+                        )}
+                        {/* ISS-163: Google Maps usa envioOrigenVenta como origen */}
+                        {envioOrigenVenta && envioDestinoVenta && (
+                          <a href={`https://www.google.com/maps/dir/${encodeURIComponent(envioOrigenVenta)}/${encodeURIComponent(envioDestinoVenta)}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-accent mt-1 transition-colors">
+                            🗺 Ver ruta en Google Maps
+                          </a>
                         )}
                       </div>
                     </div>

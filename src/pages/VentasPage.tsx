@@ -365,6 +365,10 @@ export default function VentasPage() {
     if (suc?.direccion) setEnvioOrigenVenta(suc.direccion)
     const kmRate = suc?.costo_km_envio || (tenant as any)?.costo_envio_por_km
     if (kmRate) { setPrecioPorKmVenta(String(kmRate)); setEnvioTipoVenta('km') }
+    // Pre-llenar destino con domicilio principal del cliente (si no hay uno ya)
+    if (!envioDestinoVenta && domiciliosFormateadosVenta.length > 0) {
+      setEnvioDestinoVenta(domiciliosFormateadosVenta[0])
+    }
   }, [requiereEnvio])
 
   // ISS-162: calcular distancia automáticamente cuando se selecciona una dirección (onPlaceSelected)
@@ -565,6 +569,22 @@ export default function VentasPage() {
     },
     enabled: !!tenant && clienteDropOpen,
   })
+
+  // Domicilios del cliente seleccionado — para autocompletar dirección de envío
+  const { data: domiciliosClienteVenta = [] } = useQuery({
+    queryKey: ['domicilios-cliente-venta', clienteId],
+    queryFn: async () => {
+      const { data } = await supabase.from('cliente_domicilios')
+        .select('calle, numero, piso_depto, ciudad, provincia, codigo_postal')
+        .eq('cliente_id', clienteId!)
+        .order('es_principal', { ascending: false }).order('created_at')
+      return data ?? []
+    },
+    enabled: !!clienteId,
+  })
+  const domiciliosFormateadosVenta = (domiciliosClienteVenta as any[]).map(d =>
+    [d.calle, d.numero, d.piso_depto, d.ciudad, d.provincia, d.codigo_postal].filter(Boolean).join(', ')
+  )
 
   const { data: categoriasHistorial = [] } = useQuery({
     queryKey: ['categorias-historial', tenant?.id],
@@ -2860,13 +2880,19 @@ export default function VentasPage() {
                         />
                       </div>
 
-                      {/* ISS-164: Destino con autocompletado Google Places */}
+                      {/* ISS-164: Destino con autocompletado Google Places + domicilios del cliente */}
                       <div>
-                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Dirección de entrega</label>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          Dirección de entrega
+                          {domiciliosFormateadosVenta.length > 0 && (
+                            <span className="ml-1 text-accent">({domiciliosFormateadosVenta.length} guardada{domiciliosFormateadosVenta.length > 1 ? 's' : ''})</span>
+                          )}
+                        </label>
                         <AddressAutocompleteInput
                           value={envioDestinoVenta}
                           onChange={setEnvioDestinoVenta}
                           onPlaceSelected={addr => { setEnvioDestinoVenta(addr); autoCalcularDistancia(envioOrigenVenta, addr) }}
+                          savedAddresses={domiciliosFormateadosVenta}
                           placeholder="Calle, número, ciudad..."
                         />
                         {calculandoDistancia && (

@@ -13,20 +13,32 @@ interface Props {
   savedAddresses?: string[]
 }
 
+// placeId = "lat,lon" para resultados geocodificados (usable en URLs de Maps)
 type Suggestion = { label: string; value: string; placeId?: string }
 
-// Nominatim — fallback gratuito, no toca el DOM
+// Nominatim con addressdetails=1 → dirección limpia + coordenadas exactas
 async function nominatimSearch(query: string): Promise<Suggestion[]> {
   if (query.length < 2) return []
   try {
     const url = `https://nominatim.openstreetmap.org/search?` +
       new URLSearchParams({ q: query, format: 'jsonv2', limit: '6',
-        countrycodes: 'ar', 'accept-language': 'es', addressdetails: '0' })
+        countrycodes: 'ar', 'accept-language': 'es', addressdetails: '1' })
     const res = await fetch(url, { headers: { 'User-Agent': 'Genesis360App/1.0' } })
     const data: any[] = await res.json()
     return data.map(d => {
-      const label = (d.display_name as string).replace(/, Argentina$/, '')
-      return { label, value: d.display_name }
+      const addr = d.address ?? {}
+      // Construir dirección legible: "Calle Número, Localidad, Provincia"
+      const parts: string[] = []
+      const calle = addr.road ?? addr.pedestrian ?? addr.street ?? ''
+      const numero = addr.house_number ?? ''
+      if (calle) parts.push(numero ? `${calle} ${numero}` : calle)
+      const localidad = addr.suburb ?? addr.city_district ?? addr.town ?? addr.city ?? addr.municipality ?? ''
+      if (localidad) parts.push(localidad)
+      const provincia = addr.state ?? ''
+      if (provincia && provincia !== localidad) parts.push(provincia)
+      const label = parts.length > 0 ? parts.join(', ') : (d.display_name as string).replace(/, Argentina$/, '')
+      const coords = `${d.lat},${d.lon}`
+      return { label, value: label, placeId: coords }
     })
   } catch { return [] }
 }

@@ -127,6 +127,7 @@ export default function VentasPage() {
   const [precioPorKmVenta, setPrecioPorKmVenta] = useState('')
   const [envioDestinoVenta, setEnvioDestinoVenta] = useState('')
   const [envioOrigenVenta, setEnvioOrigenVenta] = useState('')
+  const [envioDestinoCoords, setEnvioDestinoCoords] = useState('')   // "lat,lon" cuando viene de geocoder
   const [envioFechaVenta, setEnvioFechaVenta] = useState('')
   const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -2890,17 +2891,23 @@ export default function VentasPage() {
                         </label>
                         <AddressAutocompleteInput
                           value={envioDestinoVenta}
-                          onChange={setEnvioDestinoVenta}
-                          onPlaceSelected={addr => { setEnvioDestinoVenta(addr); autoCalcularDistancia(envioOrigenVenta, addr) }}
+                          onChange={v => { setEnvioDestinoVenta(v); setEnvioDestinoCoords('') }}
+                          onPlaceSelected={(addr, placeId) => {
+                            setEnvioDestinoVenta(addr)
+                            // placeId = "lat,lon" (geocoder) o place_id de Google
+                            const isCoords = /^-?\d+\.?\d*,-?\d+\.?\d*$/.test(placeId)
+                            setEnvioDestinoCoords(isCoords ? placeId : '')
+                            autoCalcularDistancia(envioOrigenVenta, isCoords ? placeId : addr)
+                          }}
                           savedAddresses={domiciliosFormateadosVenta}
                           placeholder="Calle, número, ciudad..."
                         />
                         {calculandoDistancia && (
                           <p className="text-xs text-accent mt-1 animate-pulse">Calculando distancia...</p>
                         )}
-                        {/* ISS-163: Google Maps usa envioOrigenVenta como origen */}
+                        {/* Link Maps: usa coordenadas exactas cuando disponibles (Nominatim/geocoder) */}
                         {envioOrigenVenta && envioDestinoVenta && (
-                          <a href={`https://www.google.com/maps/dir/${encodeURIComponent(envioOrigenVenta)}/${encodeURIComponent(envioDestinoVenta)}`}
+                          <a href={`https://www.google.com/maps/dir/${encodeURIComponent(envioOrigenVenta)}/${envioDestinoCoords || encodeURIComponent(envioDestinoVenta)}`}
                             target="_blank" rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-accent mt-1 transition-colors">
                             🗺 Ver ruta en Google Maps

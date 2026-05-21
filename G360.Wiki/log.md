@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-21] update | v1.8.39-dev — autocomplete direcciones con Nominatim fallback
+
+### AddressAutocompleteInput — autocomplete robusto
+- **Google Places (primario)**: funciona cuando Maps JS API está habilitada
+- **Nominatim/OpenStreetMap (fallback)**: activa automáticamente cuando Maps falla (`gm_authFailure` o `ApiNotActivatedMapError`)
+  - Busca desde 3 chars, debounce 450ms, límite 6 resultados, solo Argentina
+  - No requiere API key, libre de uso
+  - Verificado: "Av Triunvirato 2066 CABA" → retorna "Avenida Triunvirato, Villa Urquiza, Buenos Aires..."
+- **Singleton `mapsErrorDetected`**: evita reintentos de Maps en la misma sesión
+- **`gm_authFailure`**: hookeado para detectar error de key/dominio además del error de API
+
+### VentasPage — autocompletar dirección con domicilios del cliente
+- Query `domicilios-cliente-venta` carga `cliente_domicilios` cuando hay `clienteId`
+- Al activar toggle envío: pre-llena destino con domicilio principal del cliente
+- Dropdown al enfocar: muestra direcciones guardadas + sugerencias Nominatim unificadas
+
 ## [2026-05-21] update | v1.8.39-dev — POD + en_bodega + fix crítico envíos + corrección totales (testing completo ✅)
 
 ### Flujos verificados via DB (5 flujos end-to-end)

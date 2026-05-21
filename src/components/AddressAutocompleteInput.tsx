@@ -13,7 +13,7 @@ interface Props {
   savedAddresses?: string[]
 }
 
-// placeId = "lat,lon" para resultados geocodificados (usable en URLs de Maps)
+// placeId = google place_id O "lat,lon" para resultados de Nominatim
 type Suggestion = { label: string; value: string; placeId?: string }
 
 // Nominatim con addressdetails=1 → dirección limpia + coordenadas exactas
@@ -27,7 +27,6 @@ async function nominatimSearch(query: string): Promise<Suggestion[]> {
     const data: any[] = await res.json()
     return data.map(d => {
       const addr = d.address ?? {}
-      // Construir dirección legible: "Calle Número, Localidad, Provincia"
       const parts: string[] = []
       const calle = addr.road ?? addr.pedestrian ?? addr.street ?? ''
       const numero = addr.house_number ?? ''
@@ -37,8 +36,7 @@ async function nominatimSearch(query: string): Promise<Suggestion[]> {
       const provincia = addr.state ?? ''
       if (provincia && provincia !== localidad) parts.push(provincia)
       const label = parts.length > 0 ? parts.join(', ') : (d.display_name as string).replace(/, Argentina$/, '')
-      const coords = `${d.lat},${d.lon}`
-      return { label, value: label, placeId: coords }
+      return { label, value: label, placeId: `${d.lat},${d.lon}` }
     })
   } catch { return [] }
 }
@@ -50,41 +48,27 @@ export function AddressAutocompleteInput({
   disabled = false,
   savedAddresses = [],
 }: Props) {
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchTimer    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mapsServiceRef = useRef<any>(null)   // google.maps.places.AutocompleteService
 
-  // mapsService: referencia al AutocompleteService (NO widget — no toca el input)
-  const mapsServiceRef = useRef<any>(null)
-  const [mapsReady,   setMapsReady]   = useState(false)
   const [mapsLoading, setMapsLoading] = useState(false)
-
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading,     setLoading]     = useState(false)
   const [showDrop,    setShowDrop]    = useState(false)
 
-  // ── Cargar Maps JS API (solo el loader — sin widgets) ──────────────────────
+  // ── Inicializar AutocompleteService una sola vez ────────────────────────────
   useEffect(() => {
-    if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) return
-    // Capturar gm_authFailure (key inválida / dominio no autorizado)
-    const prev = (window as any).gm_authFailure
-    ;(window as any).gm_authFailure = () => {
-      setMapsReady(false); mapsServiceRef.current = null; prev?.()
-    }
+    if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY || mapsServiceRef.current) return
     setMapsLoading(true)
     getGoogleMapsLoader()
-      .then(() => setMapsReady(true))
-      .catch(() => { /* sin Maps → usa Nominatim */ })
+      .then(() => importLibrary('places'))
+      .then((places: any) => {
+        try { mapsServiceRef.current = new places.AutocompleteService() }
+        catch { /* usar Nominatim */ }
+      })
+      .catch(() => { /* usar Nominatim */ })
       .finally(() => setMapsLoading(false))
-    return () => { (window as any).gm_authFailure = prev }
   }, [])
-
-  // ── Inicializar AutocompleteService (programático, sin widget) ──────────────
-  useEffect(() => {
-    if (!mapsReady || mapsServiceRef.current) return
-    importLibrary('places').then((places: any) => {
-      try { mapsServiceRef.current = new places.AutocompleteService() }
-      catch { mapsServiceRef.current = null }
-    }).catch(() => { mapsServiceRef.current = null })
-  }, [mapsReady])
 
   // ── Buscar sugerencias cuando el usuario escribe ────────────────────────────
   useEffect(() => {
@@ -93,47 +77,48 @@ export function AddressAutocompleteInput({
 
     setLoading(true)
     searchTimer.current = setTimeout(async () => {
-      // Intentar Google AutocompleteService primero
-      if (mapsServiceRef.current) {
-        const svc = mapsServiceRef.current
-        const PlacesStatus = (window as any).google?.maps?.places?.PlacesServiceStatus
-        try {
-          const predictions = await new Promise<Suggestion[]>((resolve) => {
-            svc.getPlacePredictions({
-              input: value,
-              types: ['address'],
-              componentRestrictions: { country: 'ar' },
-            }, (preds: any[], status: string) => {
-              if (!preds || status !== (PlacesStatus?.OK ?? 'OK')) {
-                resolve([])
-              } else {
-                resolve(preds.map((p: any) => ({
-                  label: p.description,
-                  value: p.description,
-                  placeId: p.place_id,
-                })))
+      try {
+        // Intentar Google Places AutocompleteService
+        if (mapsServiceRef.current) {
+          const svc = mapsServiceRef.current
+          const googleResults = await new Promise<Suggestion[]>((resolve) => {
+            svc.getPlacePredictions(
+              { input: value, componentRestrictions: { country: 'ar' } },
+              (preds: any[], status: string) => {
+                if (preds && preds.length > 0 && status === 'OK') {
+                  resolve(preds.map((p: any) => ({
+                    label: p.description,
+                    value: p.description,
+                    placeId: p.place_id,
+                  })))
+                } else {
+                  resolve([])
+                }
               }
-            })
+            )
           })
-          if (predictions.length > 0) { setSuggestions(predictions); setLoading(false); return }
-        } catch { mapsServiceRef.current = null }
-      }
-      // Fallback: Nominatim
-      const results = await nominatimSearch(value)
-      setSuggestions(results)
+          if (googleResults.length > 0) {
+            setSuggestions(googleResults)
+            setLoading(false)
+            return
+          }
+        }
+      } catch { /* caer a Nominatim */ }
+
+      // Fallback Nominatim
+      const nominatim = await nominatimSearch(value)
+      setSuggestions(nominatim)
       setLoading(false)
     }, 300)
-  }, [value, mapsReady])
+  }, [value])
 
   useEffect(() => () => {
     if (searchTimer.current) clearTimeout(searchTimer.current)
   }, [])
 
-  // ── Direcciones guardadas del cliente ───────────────────────────────────────
   const filteredSaved = savedAddresses.filter(a =>
     a.toLowerCase().includes(value.toLowerCase()) && a !== value
   )
-
   const showDropdown = showDrop && (filteredSaved.length > 0 || suggestions.length > 0)
 
   const selectAddress = (addr: string, placeId = '') => {
@@ -164,7 +149,6 @@ export function AddressAutocompleteInput({
 
       {showDropdown && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto">
-          {/* Guardadas del cliente */}
           {filteredSaved.length > 0 && (
             <>
               <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 px-3 pt-2 pb-1 uppercase tracking-wide">
@@ -181,8 +165,6 @@ export function AddressAutocompleteInput({
               {suggestions.length > 0 && <div className="border-t border-gray-100 dark:border-gray-700" />}
             </>
           )}
-
-          {/* Sugerencias (Google o Nominatim) */}
           {suggestions.length > 0 && (
             <>
               <p className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 px-3 pt-2 pb-1 uppercase tracking-wide">

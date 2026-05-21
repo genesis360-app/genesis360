@@ -79,24 +79,35 @@ export function AddressAutocompleteInput({
     searchTimer.current = setTimeout(async () => {
       try {
         // Intentar Google Places AutocompleteService
+        // La API v:weekly puede ser callback-based O Promise-based según la versión
         if (mapsServiceRef.current) {
           const svc = mapsServiceRef.current
           const googleResults = await new Promise<Suggestion[]>((resolve) => {
-            svc.getPlacePredictions(
-              { input: value, componentRestrictions: { country: 'ar' } },
-              (preds: any[], status: string) => {
-                if (preds && preds.length > 0 && status === 'OK') {
-                  resolve(preds.map((p: any) => ({
-                    label: p.description,
-                    value: p.description,
-                    placeId: p.place_id,
-                  })))
-                } else {
-                  resolve([])
+            // Safety net: si ni el callback ni la Promise responden en 2s → Nominatim
+            const fallbackTimer = setTimeout(() => resolve([]), 2000)
+            const done = (preds: any[]) => { clearTimeout(fallbackTimer); resolve(preds) }
+
+            const toPredictions = (preds: any[]) =>
+              preds.map((p: any) => ({ label: p.description, value: p.description, placeId: p.place_id }))
+
+            try {
+              // Callback-based (API clásica)
+              const maybePromise = svc.getPlacePredictions(
+                { input: value, componentRestrictions: { country: 'ar' } },
+                (preds: any[], status: string) => {
+                  if (preds && preds.length > 0 && status === 'OK') done(toPredictions(preds))
+                  else done([])
                 }
+              )
+              // Si devuelve Promise (API nueva v:weekly)
+              if (maybePromise && typeof maybePromise.then === 'function') {
+                maybePromise
+                  .then((r: any) => done(toPredictions(r?.predictions ?? [])))
+                  .catch(() => done([]))
               }
-            )
+            } catch { done([]) }
           })
+
           if (googleResults.length > 0) {
             setSuggestions(googleResults)
             setLoading(false)

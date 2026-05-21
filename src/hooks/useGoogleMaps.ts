@@ -16,23 +16,54 @@ export function getGoogleMapsLoader(): Promise<void> {
   return loadPromise
 }
 
-/** Calcula la distancia en km entre dos direcciones usando Distance Matrix API */
+// Parsea "lat,lon" a objeto LatLng si corresponde, si no devuelve el string original
+function parseDestino(s: string): any {
+  const m = s.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/)
+  if (m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) }
+  return s
+}
+
+function parseDistancia(response: any): number | null {
+  const element = response?.rows?.[0]?.elements?.[0]
+  if (!element || element.status !== 'OK') return null
+  return Math.round((element.distance.value / 1000) * 10) / 10
+}
+
+/** Calcula la distancia en km entre dos puntos/direcciones usando Distance Matrix API.
+ *  Acepta texto libre ("Av. Corrientes 1515") o coordenadas ("lat,lon") como destino.
+ *  Maneja tanto la API clásica (callback) como la nueva (Promise) de Maps v:weekly.
+ */
 export async function calcularDistanciaKm(origen: string, destino: string): Promise<number | null> {
+  if (!origen || !destino) return null
   try {
     await getGoogleMapsLoader()
-    // importar DistanceMatrixService
     const { DistanceMatrixService } = await importLibrary('routes') as any
-    return new Promise(resolve => {
-      const service = new DistanceMatrixService()
-      service.getDistanceMatrix(
-        { origins: [origen], destinations: [destino], travelMode: 'DRIVING' },
-        (response: any, status: any) => {
-          if (status !== 'OK' || !response) { resolve(null); return }
-          const element = response.rows[0]?.elements[0]
-          if (element?.status !== 'OK') { resolve(null); return }
-          resolve(Math.round((element.distance.value / 1000) * 10) / 10)
+    const service = new DistanceMatrixService()
+    const request = {
+      origins:      [parseDestino(origen)],
+      destinations: [parseDestino(destino)],
+      travelMode:   'DRIVING',
+    }
+    return await new Promise<number | null>(resolve => {
+      // Safety: si en 8s no responde, devolver null
+      const timer = setTimeout(() => resolve(null), 8000)
+      const done  = (val: number | null) => { clearTimeout(timer); resolve(val) }
+
+      try {
+        const result = service.getDistanceMatrix(
+          request,
+          (response: any, status: string) => {   // callback — API clásica
+            if (status === 'OK') done(parseDistancia(response))
+            else done(null)
+          }
+        )
+        // API nueva (v:weekly) devuelve Promise además del callback
+        if (result?.then) {
+          result
+            .then((r: any) => done(parseDistancia(r)))
+            .catch(() => done(null))
         }
-      )
+      } catch { done(null) }
     })
   } catch {
     return null

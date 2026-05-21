@@ -6,6 +6,32 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-21] update | v1.8.39-dev — POD + en_bodega + fix crítico envíos + corrección totales
+
+### Migration 127 — POD y estado en_bodega
+- `envios`: 4 nuevas columnas: `pod_url`, `pod_fecha`, `pod_receptor`, `pod_notas`
+- CHECK constraint ampliado: `en_bodega` como nuevo estado entre `en_camino` y `entregado`
+- Flujo de estados: pendiente → despachado → en_camino → **en_bodega** → entregado
+
+### Fix crítico — BUG envíos auto-creados desde VentasPage
+- `cliente_id` no existe en tabla `envios` → INSERT fallaba silenciosamente (sin registro de envío)
+- Fix: eliminado `cliente_id` del INSERT; agregado `canal: canalPOS` y `fecha_entrega_acordada`
+- Nuevo campo en form de VentasPage: "Fecha de entrega acordada" al activar toggle envío
+
+### EnviosPage — POD completo
+- Modal POD standalone: abre al hacer clic en "Registrar POD" desde panel expandido
+- Al confirmar POD: guarda pod_fecha/pod_receptor/pod_notas/pod_url + cambia estado a `entregado`
+- Display POD en panel expandido: muestra fecha, receptor, observaciones y link comprobante
+- Sección POD en modal de edición de envío (cuando se edita uno existente)
+- `en_bodega`: badge violeta + icono Warehouse; botón "Registrar entrega (POD)" desde ese estado
+
+### Corrección de totales en ventas con envío
+- Historial lista: muestra `total + costo_envio` (total real que pagó el cliente)
+- Detalle de venta: línea separada "Envío" + total correcto incluyendo envío
+- Ticket (modal post-venta): muestra "Envío" en breakdown + total correcto
+- Saldo modal (reserva→despachada): calcula saldo correctamente incluyendo `costo_envio`
+- Modal presupuesto→reservada: total correcto con envío para seña
+
 ## [2026-05-20] update | v1.8.38-dev — envíos en VentasPage + consolidación SucursalesPage
 
 ### ISS-162/163/164 — Envíos en VentasPage

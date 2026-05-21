@@ -4,17 +4,17 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.37** ✅ · DEV: **v1.8.38**
+Último release en PROD: **v1.8.37** ✅ · DEV: **v1.8.39**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.38 / PROD v1.8.37 (cierre sesión 2026-05-20)
+## Estado actual DEV v1.8.39 / PROD v1.8.37 (cierre sesión 2026-05-21)
 
-- APP_VERSION DEV: `v1.8.38` en `src/config/brand.ts` ✅
+- APP_VERSION DEV: `v1.8.39` en `src/config/brand.ts` ✅ (pendiente bump)
 - APP_VERSION PROD: `v1.8.37` ✅ (PR #114 mergeado)
-- Migrations DEV: 001–126 ✅
+- Migrations DEV: 001–127 ✅
 - Migrations PROD: 001–126 ✅
 
 ### Estado infra
@@ -103,13 +103,16 @@ type: project
 - ~~ISS-095: OC con CC como método de pago parcial~~ ✅ GastosPage modal de pago OC
 - ~~ISS-096: Adjuntar archivos en OC/gastos~~ ✅ migration 108 + Storage comprobantes-gastos
 
-### Pendientes de deploy a PROD (en DEV como v1.8.38)
+### Pendientes de deploy a PROD (en DEV como v1.8.39)
 - **scan-ticket EF**: deployada en DEV, pendiente deploy a PROD + configurar ANTHROPIC_API_KEY en PROD
-- **ISS-162/163/164**: envíos en VentasPage con autocompletado + cálculo automático
-- **Jerarquía $/km**: fallback global → sucursal en EnviosPage y VentasPage
-- **Consolidación SucursalesPage**: campos CP/email/horario/PV AFIP movidos desde Config
-- **Dashboard fixes**: categoria FK, filtro inclusivo, banner sucursal
-- **ISS-090 CC fix**: validación medios de pago CC parcial
+- **ISS-162/163/164**: envíos en VentasPage con autocompletado + cálculo automático ✅
+- **POD + en_bodega**: migration 127 aplicada en DEV ✅
+- **Fix crítico envíos**: `cliente_id` bug resuelto, fecha_entrega_acordada agregada ✅
+- **Corrección totales con envío**: historial, ticket, saldo modal ✅
+- **Jerarquía $/km**: fallback global → sucursal ✅
+- **Consolidación SucursalesPage**: campos movidos desde Config ✅
+- **Dashboard fixes**: categoria FK, filtro inclusivo, banner sucursal ✅
+- **ISS-090 CC fix**: validación medios de pago CC parcial ✅
 
 ---
 

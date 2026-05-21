@@ -13,6 +13,27 @@ updated: 2026-05-07
 
 ---
 
+## v1.8.39 — POD + en_bodega + fix crítico envíos + corrección totales (DEV ✅)
+
+**Estado:** en DEV · pendiente deploy a PROD  
+**Fecha:** 2026-05-21
+
+### Fixes críticos
+- **BUG envíos auto-creados**: `cliente_id` inexistente en tabla causaba que el INSERT fallara → ningún envío se creaba al hacer una venta con envío. Fix: campo eliminado.
+- **Saldo modal con envío**: `ventaDetalle.total` no incluía `costo_envio` → saldo incorrecto al completar reservas o presupuestos con envío. Fix: usa `total + costo_envio`.
+- **Totales en historial**: lista, detalle y ticket ahora muestran `total + costo_envio` (total real pagado).
+
+### Nuevas features
+- **Estado `en_bodega`**: nuevo estado entre `en_camino` y `entregado` (paquete en depósito del courier). Badge violeta + icono Warehouse.
+- **POD (Proof of Delivery)**: campos `pod_fecha`, `pod_receptor`, `pod_notas`, `pod_url` en tabla `envios`. Modal POD standalone + sección en modal de edición.
+- **Fecha de entrega acordada en VentasPage**: nuevo campo en el panel de envío del POS, se guarda en el envío auto-creado.
+- **Canal correcto en envío auto-creado**: usa `canalPOS` de la venta (Instagram, Facebook, WhatsApp, etc.) en lugar de hardcodear 'POS'.
+
+### Migration
+- 127: `envios` — POD fields + CHECK `en_bodega`
+
+---
+
 ## v1.8.38 — Scan ticket IA + fixes Dashboard + ISS-090 CC (DEV ✅)
 
 **Estado:** en DEV · pendiente deploy a PROD

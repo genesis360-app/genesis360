@@ -5,7 +5,7 @@ import {
   Package2, Plus, ChevronRight, Search, X, Printer,
   ExternalLink, MapPin, Truck, Clock, CheckCircle, RotateCcw,
   AlertTriangle, Send, Scale, Ruler, ChevronDown, Pencil, Trash2,
-  FileText, RefreshCw, Navigation, Loader2,
+  FileText, RefreshCw, Navigation, Loader2, Warehouse, ClipboardCheck, Upload, User as UserIcon,
 } from 'lucide-react'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
@@ -19,7 +19,7 @@ import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
-type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'entregado' | 'devolucion' | 'cancelado'
+type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'en_bodega' | 'entregado' | 'devolucion' | 'cancelado'
 type TabEnvio = 'envios'
 
 const COURIERS = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 'Otro']
@@ -37,6 +37,7 @@ const ESTADO_CFG: Record<EstadoEnvio, { label: string; color: string; icon: Reac
   pendiente:  { label: 'Pendiente despacho', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',   icon: <Clock size={12} /> },
   despachado: { label: 'Despachado',         color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',       icon: <Send size={12} /> },
   en_camino:  { label: 'En camino',          color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300',icon: <Truck size={12} /> },
+  en_bodega:  { label: 'En bodega',          color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',icon: <Warehouse size={12} /> },
   entregado:  { label: 'Entregado',          color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',   icon: <CheckCircle size={12} /> },
   devolucion: { label: 'En devolución',      color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300',icon: <RotateCcw size={12} /> },
   cancelado:  { label: 'Cancelado',          color: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',           icon: <X size={12} /> },
@@ -45,7 +46,8 @@ const ESTADO_CFG: Record<EstadoEnvio, { label: string; color: string; icon: Reac
 const ESTADO_SIGUIENTE: Partial<Record<EstadoEnvio, EstadoEnvio>> = {
   pendiente:  'despachado',
   despachado: 'en_camino',
-  en_camino:  'entregado',
+  en_camino:  'en_bodega',
+  en_bodega:  'entregado',
 }
 
 function formatFecha(d: string) {
@@ -62,6 +64,8 @@ interface FormEnvio {
   peso_kg: string; largo_cm: string; ancho_cm: string; alto_cm: string
   costo_cotizado: string; fecha_entrega_acordada: string
   hora_entrega_acordada: string; zona_entrega: string; notas: string
+  // POD — Prueba de entrega
+  pod_fecha: string; pod_receptor: string; pod_notas: string; pod_url: string
 }
 const FORM_VACIO: FormEnvio = {
   venta_id: '', cliente_nombre: '',
@@ -70,6 +74,7 @@ const FORM_VACIO: FormEnvio = {
   peso_kg: '', largo_cm: '', ancho_cm: '', alto_cm: '',
   costo_cotizado: '', fecha_entrega_acordada: '', hora_entrega_acordada: '',
   zona_entrega: '', notas: '',
+  pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '',
 }
 
 export default function EnviosPage() {
@@ -101,6 +106,11 @@ export default function EnviosPage() {
   // Selección de domicilio al crear envío
   const [ventaSearch, setVentaSearch]       = useState('')
   const [ventaSeleccionada, setVentaSeleccionada] = useState<any | null>(null)
+
+  // POD modal — registrar prueba de entrega desde la fila expandida
+  const [podModalId, setPodModalId]   = useState<string | null>(null)
+  const [podForm, setPodForm]         = useState({ pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '' })
+  const [savingPod, setSavingPod]     = useState(false)
 
   // Edición inline de domicilios
   const [editandoDomId, setEditandoDomId] = useState<string | null>(null)
@@ -258,6 +268,10 @@ export default function EnviosPage() {
         hora_entrega_acordada: form.hora_entrega_acordada || null,
         zona_entrega: form.zona_entrega.trim() || null,
         notas: form.notas.trim() || null,
+        pod_fecha: form.pod_fecha || null,
+        pod_receptor: form.pod_receptor.trim() || null,
+        pod_notas: form.pod_notas.trim() || null,
+        pod_url: form.pod_url.trim() || null,
         created_by: user?.id,
       }
       if (editId) {
@@ -323,6 +337,30 @@ export default function EnviosPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  // ── POD — guardar prueba de entrega ──────────────────────────────────────────
+  const savePod = async () => {
+    if (!podModalId) return
+    setSavingPod(true)
+    try {
+      const { error } = await supabase.from('envios').update({
+        pod_fecha:    podForm.pod_fecha || null,
+        pod_receptor: podForm.pod_receptor.trim() || null,
+        pod_notas:    podForm.pod_notas.trim() || null,
+        pod_url:      podForm.pod_url.trim() || null,
+        estado:       'entregado',
+      }).eq('id', podModalId)
+      if (error) throw error
+      toast.success('Prueba de entrega registrada')
+      qc.invalidateQueries({ queryKey: ['envios'] })
+      setPodModalId(null)
+      setPodForm({ pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '' })
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al guardar POD')
+    } finally {
+      setSavingPod(false)
+    }
+  }
 
   // ── WhatsApp ─────────────────────────────────────────────────────────────────
   const abrirWhatsApp = (envio: any) => {
@@ -421,7 +459,6 @@ export default function EnviosPage() {
     setShowModal(true)
   }
   const abrirEdicion = (e: any) => {
-    if (e.estado === 'entregado') { toast('Este envío ya fue entregado y no puede editarse.', { icon: '🔒' }); return }
     setEditId(e.id)
     setForm({
       venta_id: e.venta_id ?? '', cliente_nombre: e.ventas?.clientes?.nombre ?? '',
@@ -437,6 +474,8 @@ export default function EnviosPage() {
       fecha_entrega_acordada: e.fecha_entrega_acordada ?? '',
       hora_entrega_acordada: e.hora_entrega_acordada ?? '',
       zona_entrega: e.zona_entrega ?? '', notas: e.notas ?? '',
+      pod_fecha: e.pod_fecha ?? '', pod_receptor: e.pod_receptor ?? '',
+      pod_notas: e.pod_notas ?? '', pod_url: e.pod_url ?? '',
     })
     setShowModal(true)
   }
@@ -707,6 +746,26 @@ export default function EnviosPage() {
                                   </p>
                                 )}
 
+                                {/* POD display — si ya tiene prueba de entrega */}
+                                {(e.pod_fecha || e.pod_receptor || e.pod_notas) && (
+                                  <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                                    <p className="text-xs font-semibold text-green-600 dark:text-green-400 flex items-center gap-1 mb-1.5">
+                                      <ClipboardCheck size={12} /> Prueba de entrega (POD)
+                                    </p>
+                                    <div className="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-gray-300">
+                                      {e.pod_fecha && <span className="flex items-center gap-1"><Clock size={11} />{formatFecha(e.pod_fecha)}</span>}
+                                      {e.pod_receptor && <span className="flex items-center gap-1"><UserIcon size={11} />Recibió: {e.pod_receptor}</span>}
+                                      {e.pod_notas && <span className="text-gray-500 dark:text-gray-400">{e.pod_notas}</span>}
+                                      {e.pod_url && (
+                                        <a href={e.pod_url} target="_blank" rel="noreferrer"
+                                          className="flex items-center gap-1 text-accent hover:underline">
+                                          <Upload size={11} /> Ver comprobante
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Acciones */}
                                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-600 flex-wrap">
                                   <button onClick={() => abrirWhatsApp(e)}
@@ -732,12 +791,32 @@ export default function EnviosPage() {
                                       <ExternalLink size={13} /> Ver venta
                                     </button>
                                   )}
+                                  {/* Registrar POD — disponible a partir de en_camino */}
+                                  {(e.estado === 'en_camino' || e.estado === 'en_bodega' || e.estado === 'entregado') && (
+                                    <button onClick={() => {
+                                      setPodModalId(e.id)
+                                      setPodForm({ pod_fecha: e.pod_fecha ?? '', pod_receptor: e.pod_receptor ?? '', pod_notas: e.pod_notas ?? '', pod_url: e.pod_url ?? '' })
+                                    }}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-green-300 dark:border-green-700 rounded-lg text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">
+                                      <ClipboardCheck size={13} /> {e.pod_fecha ? 'Actualizar POD' : 'Registrar POD'}
+                                    </button>
+                                  )}
                                   {/* Avanzar estado */}
-                                  {ESTADO_SIGUIENTE[e.estado as EstadoEnvio] && (
+                                  {ESTADO_SIGUIENTE[e.estado as EstadoEnvio] && e.estado !== 'en_bodega' && (
                                     <button
                                       onClick={() => actualizarEstado.mutate({ id: e.id, estado: ESTADO_SIGUIENTE[e.estado as EstadoEnvio]! })}
                                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors">
                                       <RefreshCw size={13} /> Marcar como {ESTADO_CFG[ESTADO_SIGUIENTE[e.estado as EstadoEnvio]!].label}
+                                    </button>
+                                  )}
+                                  {/* En bodega: avanzar a Entregado */}
+                                  {e.estado === 'en_bodega' && (
+                                    <button onClick={() => {
+                                      setPodModalId(e.id)
+                                      setPodForm({ pod_fecha: new Date().toISOString().split('T')[0], pod_receptor: '', pod_notas: '', pod_url: '' })
+                                    }}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                                      <ClipboardCheck size={13} /> Registrar entrega (POD)
                                     </button>
                                   )}
                                   {e.estado !== 'cancelado' && e.estado !== 'entregado' && (
@@ -1078,6 +1157,40 @@ export default function EnviosPage() {
                   placeholder="Instrucciones especiales, referencias adicionales…" rows={2}
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
+
+              {/* POD — Prueba de entrega (solo en edición) */}
+              {editId && (
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-1.5">
+                    <ClipboardCheck size={15} className="text-green-500" /> Prueba de entrega (POD)
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha real de entrega</label>
+                      <input type="date" value={form.pod_fecha} onChange={e => setForm(f => ({ ...f, pod_fecha: e.target.value }))}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Nombre de quien recibió</label>
+                      <input type="text" value={form.pod_receptor} onChange={e => setForm(f => ({ ...f, pod_receptor: e.target.value }))}
+                        placeholder="Ej: Juan García"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">URL comprobante / foto</label>
+                      <input type="text" value={form.pod_url} onChange={e => setForm(f => ({ ...f, pod_url: e.target.value }))}
+                        placeholder="https://... (link a foto o documento firmado)"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Observaciones de entrega</label>
+                      <textarea value={form.pod_notas} onChange={e => setForm(f => ({ ...f, pod_notas: e.target.value }))}
+                        placeholder="Notas adicionales sobre la entrega…" rows={2}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="px-5 pb-5 flex gap-3 flex-shrink-0">
@@ -1088,6 +1201,66 @@ export default function EnviosPage() {
               <button onClick={() => saveEnvio.mutate()} disabled={saveEnvio.isPending}
                 className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
                 {saveEnvio.isPending ? 'Guardando…' : editId ? 'Guardar cambios' : 'Crear envío'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ══ MODAL: REGISTRAR POD ══ */}
+      {podModalId && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <ClipboardCheck size={18} className="text-green-500" /> Prueba de entrega (POD)
+              </h2>
+              <button onClick={() => setPodModalId(null)}
+                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Completá los datos de entrega. Al guardar, el estado del envío se actualizará a <strong>Entregado</strong>.
+              </p>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha real de entrega</label>
+                <input type="date" value={podForm.pod_fecha} onChange={e => setPodForm(f => ({ ...f, pod_fecha: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <UserIcon size={13} className="inline mr-1" />Nombre de quien recibió
+                </label>
+                <input type="text" value={podForm.pod_receptor} onChange={e => setPodForm(f => ({ ...f, pod_receptor: e.target.value }))}
+                  placeholder="Ej: Juan García"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">URL comprobante / foto</label>
+                <input type="text" value={podForm.pod_url} onChange={e => setPodForm(f => ({ ...f, pod_url: e.target.value }))}
+                  placeholder="https://... (link a foto, firma digital, etc.)"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Observaciones</label>
+                <textarea value={podForm.pod_notas} onChange={e => setPodForm(f => ({ ...f, pod_notas: e.target.value }))}
+                  placeholder="Condición del paquete, horario real de entrega, etc." rows={2}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+            </div>
+
+            <div className="px-5 pb-5 flex gap-3">
+              <button onClick={() => setPodModalId(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
+                Cancelar
+              </button>
+              <button onClick={savePod} disabled={savingPod}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
+                {savingPod ? 'Guardando…' : 'Confirmar entrega'}
               </button>
             </div>
           </div>

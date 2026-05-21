@@ -127,6 +127,7 @@ export default function VentasPage() {
   const [precioPorKmVenta, setPrecioPorKmVenta] = useState('')
   const [envioDestinoVenta, setEnvioDestinoVenta] = useState('')
   const [envioOrigenVenta, setEnvioOrigenVenta] = useState('')
+  const [envioFechaVenta, setEnvioFechaVenta] = useState('')
   const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
@@ -1506,12 +1507,12 @@ export default function VentasPage() {
           tenant_id: tenant!.id,
           venta_id: venta.id,
           estado: 'pendiente',
-          cliente_id: clienteId || null,
-          canal: 'POS',
+          canal: canalPOS || 'POS',
           created_by: user!.id,
           sucursal_id: sucursalId || null,
           destino_descripcion: envioDestinoVenta || null,
           costo_cotizado: costoEnvioNum > 0 ? costoEnvioNum : null,
+          fecha_entrega_acordada: envioFechaVenta || null,
         })
         qc.invalidateQueries({ queryKey: ['envios'] })
         toast('Envío creado en estado pendiente', { icon: '📦' })
@@ -2880,6 +2881,13 @@ export default function VentasPage() {
                           </a>
                         )}
                       </div>
+
+                      {/* Fecha de entrega acordada con el cliente */}
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega acordada</label>
+                        <input type="date" value={envioFechaVenta} onChange={e => setEnvioFechaVenta(e.target.value)}
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3223,7 +3231,7 @@ export default function VentasPage() {
                             </span>
                           )}
                         </div>
-                        <span className="font-bold text-primary">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        <span className="font-bold text-primary">${((v.total ?? 0) + (v.costo_envio ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-400 dark:text-gray-500">
                         <span>{v.cliente_nombre ?? 'Sin cliente'} {v.medio_pago ? `· ${formatMedioPago(v.medio_pago)}` : ''}</span>
@@ -3320,15 +3328,21 @@ export default function VentasPage() {
                   <span>−${(ventaDetalle.subtotal * ventaDetalle.descuento_total / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
               )}
-              {(ventaDetalle.costo_envio_logistica ?? 0) > 0 && (
+              {(ventaDetalle.costo_envio ?? 0) > 0 && (
                 <div className="flex justify-between text-muted">
                   <span>Envío</span>
+                  <span>${(ventaDetalle.costo_envio ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                </div>
+              )}
+              {(ventaDetalle.costo_envio_logistica ?? 0) > 0 && (
+                <div className="flex justify-between text-muted">
+                  <span>Envío logística</span>
                   <span>${(ventaDetalle.costo_envio_logistica ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-primary text-base">
                 <span>Total</span>
-                <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                <span>${((ventaDetalle.total ?? 0) + (ventaDetalle.costo_envio ?? 0) + (ventaDetalle.costo_envio_logistica ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
               {(() => {
                 // Desglose IVA por tasa desde los items reales
@@ -3521,7 +3535,7 @@ export default function VentasPage() {
                     if (!(ventaDetalle.monto_pagado > 0)) {
                       setSaldoModal({
                         ventaId: ventaDetalle.id,
-                        total: ventaDetalle.total,
+                        total: (ventaDetalle.total ?? 0) + (ventaDetalle.costo_envio ?? 0),
                         montoPagado: 0,
                         mediosPago: [{ tipo: '', monto: '' }],
                         targetEstado: 'reservada',
@@ -3541,11 +3555,12 @@ export default function VentasPage() {
                 const vencido = ventaDetalle.estado === 'pendiente' && isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias)
                 return (
                   <button onClick={() => {
-                    const saldo = calcularSaldoPendiente(ventaDetalle.total ?? 0, ventaDetalle.monto_pagado ?? 0)
+                    const totalConShipping = (ventaDetalle.total ?? 0) + (ventaDetalle.costo_envio ?? 0)
+                    const saldo = calcularSaldoPendiente(totalConShipping, ventaDetalle.monto_pagado ?? 0)
                     if (saldo > 0.5) {
                       setSaldoModal({
                         ventaId: ventaDetalle.id,
-                        total: ventaDetalle.total,
+                        total: totalConShipping,
                         montoPagado: ventaDetalle.monto_pagado ?? 0,
                         mediosPago: [{ tipo: '', monto: saldo.toFixed(2) }],
                       })
@@ -3915,15 +3930,21 @@ export default function VentasPage() {
                       </div>
                     )
                   })()}
-                  {(ticketVenta.costo_envio_logistica ?? 0) > 0 && (
+                  {(ticketVenta.costo_envio ?? 0) > 0 && (
                     <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
                       <span>Envío</span>
+                      <span>${(ticketVenta.costo_envio ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  )}
+                  {(ticketVenta.costo_envio_logistica ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                      <span>Envío logística</span>
                       <span>${(ticketVenta.costo_envio_logistica ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-bold text-primary text-base">
                     <span>TOTAL</span>
-                    <span>${ticketVenta.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    <span>${((ticketVenta.total ?? 0) + (ticketVenta.costo_envio ?? 0) + (ticketVenta.costo_envio_logistica ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                   {ticketVenta.medio_pago && (() => {
                     let pagos: { tipo: string; monto: number }[] = []

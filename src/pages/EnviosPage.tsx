@@ -212,7 +212,7 @@ export default function EnviosPage() {
       const km = await calcularDistanciaKm(origen, destino)
       if (km !== null) {
         setDistanciaKm(km)
-        const costoKm = sucursalActiva?.costo_km_envio ?? 0
+        const costoKm = sucursalActiva?.costo_km_envio || (tenant as any)?.costo_envio_por_km || 0
         if (costoKm > 0) {
           setForm(f => ({ ...f, costo_cotizado: (km * costoKm).toFixed(2) }))
         }
@@ -942,12 +942,12 @@ export default function EnviosPage() {
                         <div className="flex-1 text-sm">
                           <span className="font-semibold text-primary">{distanciaKm} km</span>
                           <span className="text-gray-400 mx-1">×</span>
-                          <span className="text-gray-600 dark:text-gray-400">${Number(sucursalActiva?.costo_km_envio ?? 0).toLocaleString('es-AR')}/km</span>
+                          <span className="text-gray-600 dark:text-gray-400">${Number(sucursalActiva?.costo_km_envio || (tenant as any)?.costo_envio_por_km || 0).toLocaleString('es-AR')}/km</span>
                           <span className="text-gray-400 mx-1">=</span>
-                          <span className="font-semibold text-accent">${(distanciaKm * (sucursalActiva?.costo_km_envio ?? 0)).toLocaleString('es-AR', { minimumFractionDigits: 0 })}</span>
+                          <span className="font-semibold text-accent">${(distanciaKm * (sucursalActiva?.costo_km_envio || (tenant as any)?.costo_envio_por_km || 0)).toLocaleString('es-AR', { minimumFractionDigits: 0 })}</span>
                         </div>
-                        {!sucursalActiva?.costo_km_envio && (
-                          <span className="text-xs text-amber-500">Configurá el costo/km en Sucursales</span>
+                        {!sucursalActiva?.costo_km_envio && !(tenant as any)?.costo_envio_por_km && (
+                          <span className="text-xs text-amber-500">Configurá el costo/km en Config → Envíos</span>
                         )}
                       </>
                     ) : (

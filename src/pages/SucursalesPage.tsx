@@ -302,7 +302,7 @@ export default function SucursalesPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   <Navigation size={13} className="inline mr-1" />
-                  Costo por km (envío propio) <span className="text-xs text-gray-400 font-normal">— varía por sucursal</span>
+                  Costo por km (envío propio) <span className="text-xs text-gray-400 font-normal">— sobreescribe el global de Config</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-500">$</span>
@@ -315,7 +315,7 @@ export default function SucursalesPage() {
                     className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
                   <span className="text-xs text-gray-400">/ km</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Se usa para calcular el costo automáticamente al crear un envío propio.</p>
+                <p className="text-xs text-gray-400 mt-1">Dejá vacío para usar el valor global de Config → Envíos. Si completás este campo, tiene prioridad.</p>
               </div>
             </div>
 

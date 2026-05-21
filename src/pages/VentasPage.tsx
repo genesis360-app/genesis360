@@ -362,7 +362,8 @@ export default function VentasPage() {
     if (!requiereEnvio) return
     const suc = (sucursales as any[]).find(s => s.id === sucursalId)
     if (suc?.direccion) setEnvioOrigenVenta(suc.direccion)
-    if (suc?.costo_km_envio) { setPrecioPorKmVenta(String(suc.costo_km_envio)); setEnvioTipoVenta('km') }
+    const kmRate = suc?.costo_km_envio || (tenant as any)?.costo_envio_por_km
+    if (kmRate) { setPrecioPorKmVenta(String(kmRate)); setEnvioTipoVenta('km') }
   }, [requiereEnvio])
 
   // ISS-162: calcular distancia automáticamente cuando se selecciona una dirección (onPlaceSelected)

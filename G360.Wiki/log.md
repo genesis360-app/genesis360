@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-20] update | v1.8.38-dev — envíos en VentasPage + consolidación SucursalesPage
+
+### ISS-162/163/164 — Envíos en VentasPage
+- ISS-164: campo "Dirección de entrega" reemplazado por `AddressAutocompleteInput` → Google Places autocomplete mientras se escribe
+- ISS-163: nuevo campo editable "Dirección de origen (sucursal)" también con autocomplete; pre-llenado con `sucursal.direccion` al activar el toggle. URL de Google Maps ahora usa este campo como origen (antes quedaba vacío cuando sucursalId=null)
+- ISS-162: al activar envío, pre-llena `$/km` desde `sucursal.costo_km_envio` y activa modo "Por KM"; `onPlaceSelected` dispara `calcularDistanciaKm()` → setea km → calcula costo automáticamente
+
+### Jerarquía global/sucursal para $/km
+- `sucursal.costo_km_envio` (prioridad) → `tenant.costo_envio_por_km` (fallback global)
+- Afecta EnviosPage, VentasPage; labels actualizados en ConfigPage y SucursalesPage
+
+### Consolidación config por sucursal → SucursalesPage
+- Movido desde Config/Mi negocio a SucursalesPage (modal de edición):
+  `codigo_postal`, `email`, `horario_apertura`, `horario_cierre`, `punto_venta_afip`
+- Eliminado bloque "Configuración por sucursal" y todo el estado de ConfigPage
+- Config/Mi negocio queda con configuración puramente a nivel tenant
+
 ## [2026-05-20] update | v1.8.38-dev — scan ticket IA, fixes Dashboard, ISS-090 CC
 
 ### Nuevas features

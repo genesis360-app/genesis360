@@ -103,10 +103,13 @@ type: project
 - ~~ISS-095: OC con CC como método de pago parcial~~ ✅ GastosPage modal de pago OC
 - ~~ISS-096: Adjuntar archivos en OC/gastos~~ ✅ migration 108 + Storage comprobantes-gastos
 
-### Nuevas features pendientes de deploy a PROD
-- **scan-ticket**: EF deployada en DEV, pendiente deploy a PROD + configurar ANTHROPIC_API_KEY en PROD
-- **ProductosPage scan**: pendiente deploy a PROD con v1.8.38
-- **Dashboard fixes** (categoria FK, sucursal filter, banner): pendiente deploy a PROD
+### Pendientes de deploy a PROD (en DEV como v1.8.38)
+- **scan-ticket EF**: deployada en DEV, pendiente deploy a PROD + configurar ANTHROPIC_API_KEY en PROD
+- **ISS-162/163/164**: envíos en VentasPage con autocompletado + cálculo automático
+- **Jerarquía $/km**: fallback global → sucursal en EnviosPage y VentasPage
+- **Consolidación SucursalesPage**: campos CP/email/horario/PV AFIP movidos desde Config
+- **Dashboard fixes**: categoria FK, filtro inclusivo, banner sucursal
+- **ISS-090 CC fix**: validación medios de pago CC parcial
 
 ---
 

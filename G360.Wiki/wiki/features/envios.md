@@ -3,7 +3,7 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-14
+updated: 2026-05-20
 ---
 
 # Módulo Envíos
@@ -49,10 +49,15 @@ Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.
 
 ## Configuración de tarifas (migration 107)
 
-### En SucursalesPage:
-- Campo `costo_km_envio` ($ por km, varía por sucursal)
+### En SucursalesPage (modal de edición):
+- Campo `costo_km_envio` ($ por km específico de la sucursal — sobreescribe el global)
 - Panel expandible "Couriers" → edición inline de precios por courier
 - Guarda en tabla `courier_tarifas(tenant_id, sucursal_id, courier, precio)`
+
+### En Config → Envíos:
+- Campo `tenants.costo_envio_por_km` — valor global para todas las sucursales
+- **Jerarquía**: `sucursal.costo_km_envio` tiene prioridad; si está vacío, se usa el global
+- Útil para negocios donde todas las sucursales tienen el mismo precio por km
 
 ### Google Maps (env var requerida)
 ```

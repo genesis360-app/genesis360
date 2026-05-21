@@ -3,7 +3,7 @@ title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales]
 sources: [CLAUDE.md]
-updated: 2026-05-19
+updated: 2026-05-20
 ---
 
 # Módulo Configuración
@@ -40,7 +40,11 @@ La ConfigPage fue reorganizada de 10 tabs planas a **11 tabs temáticas** con se
 
 ---
 
-## Mi negocio (v1.8.34)
+## Mi negocio (v1.8.34 · consolidado v1.8.38)
+
+Configuración a nivel tenant — aplica a todo el negocio independientemente de la sucursal.
+
+> [!NOTE] Los campos por sucursal (CP, email, horario, PV AFIP) fueron movidos al formulario de edición de **SucursalesPage** en v1.8.38. Config → Mi negocio ya no tiene sección "por sucursal".
 
 | Campo | DB | Descripción |
 |-------|-----|-------------|
@@ -49,17 +53,6 @@ La ConfigPage fue reorganizada de 10 tabs planas a **11 tabs temáticas** con se
 | Email legal | `tenants.email_legal` | Para notificaciones fiscales |
 | Redondeo de precios | `tenants.precio_redondeo` | none / $10 / $50 / $100 / $500 / $1.000 |
 | Timeout de sesión | `tenants.session_timeout_minutes` | Cierre automático por inactividad |
-
-### Sucursales (por sucursal)
-Sección expandible por sucursal con guardado independiente:
-
-| Campo | DB |
-|-------|-----|
-| Código postal | `sucursales.codigo_postal` |
-| Email de la sucursal | `sucursales.email` |
-| Horario apertura | `sucursales.horario_apertura TIME` |
-| Horario cierre | `sucursales.horario_cierre TIME` |
-| Punto de venta AFIP | `sucursales.punto_venta_afip INTEGER` |
 
 ### Marketplace
 Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_webhook_url`)

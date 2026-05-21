@@ -295,6 +295,22 @@ calcularLpnFuentes(lineas, cant)
 - Display en historial: `S1-0001` (sucursal) o `#N` (global sin sucursal)
 - El código se configura en SucursalesPage → formulario de edición
 
+### ISS-162/163/164 — Envío desde POS con autocompletado y cálculo automático (v1.8.38)
+
+**ISS-164 — Autocompletado de dirección de entrega**
+- El campo "Dirección de entrega" usa `AddressAutocompleteInput` (Google Places Autocomplete)
+- Mientras el usuario escribe, aparecen sugerencias de Google Maps (ej: "Av. Tri" → "Av. Triunvirato")
+
+**ISS-163 — Origen correcto en Google Maps**
+- Nuevo campo editable "Dirección de origen (sucursal)" con Google Places Autocomplete
+- Pre-llenado automáticamente con `sucursal.direccion` al activar el toggle de envío
+- El link "Ver ruta en Google Maps" usa este campo como origen (antes quedaba vacío cuando `sucursalId = null`)
+
+**ISS-162 — Cálculo automático de costo de envío**
+- Al activar el toggle: pre-llena `$/km` desde `sucursal.costo_km_envio` (o `tenant.costo_envio_por_km` si la sucursal no tiene valor propio) y activa modo "Por KM"
+- Al seleccionar una dirección desde el autocomplete (`onPlaceSelected`): llama `calcularDistanciaKm()` (Distance Matrix API) → setea los km → el effect calcula costo automáticamente
+- **Jerarquía $/km**: `sucursal.costo_km_envio` (prioridad) → `tenant.costo_envio_por_km` (fallback global de Config → Envíos)
+
 ### ISS-105 — Costo de envío en validación de medios de pago (v1.8.24)
 - `totalConEnvio = total + costo_envio` — la validación de medios usa este total
 - `monto_pagado` incluye el costo de envío si el cliente lo abona en el mismo acto

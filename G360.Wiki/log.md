@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-21] update | v1.8.39-dev — POD + en_bodega + fix crítico envíos + corrección totales (testing completo ✅)
+
+### Flujos verificados via DB (5 flujos end-to-end)
+1. **Venta directa** #78 — POS, Efectivo $4200, sin envío → Caja OK
+2. **Venta con envío** #79 — WhatsApp, Transferencia $7650 (6150+1500 envío), Av. Triunvirato 2066 → Envío #4 pendiente/despachado/en_camino/en_bodega/entregado con POD ✅
+3. **Reserva → despachada** #80 — Instagram, Seña $1000 efectivo + saldo $4550 débito, envío #5 pendiente ✅
+4. **Presupuesto → despachada** #81 — POS, $5000 efectivo + $3400 tarjeta crédito, multi-pago ✅
+5. **POD completo** — todos los estados (pendiente→despachado→en_camino→en_bodega→entregado), pod_fecha/receptor/notas/url ✅
+
+### Consistencia verificada
+- `monto_pagado == total + costo_envio` en 4/4 ventas test: OK
+- Caja: ingreso, ingreso_informativo, ingreso_reserva registrados por tipo de medio de pago: OK
+- Dashboard canales: POS/WhatsApp/Instagram con totales reales incluyendo envío: OK
+- Envíos: 1 pendiente + 4 entregados (2 con POD); canal hereda de la venta: OK
+
 ## [2026-05-21] update | v1.8.39-dev — POD + en_bodega + fix crítico envíos + corrección totales
 
 ### Migration 127 — POD y estado en_bodega

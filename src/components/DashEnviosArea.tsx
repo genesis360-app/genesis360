@@ -12,8 +12,8 @@ import { InsightCard } from '@/components/InsightCard'
 
 const COURIER_COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444','#6B7280']
 const ESTADO_COLORS: Record<string, string> = {
-  entregado: '#22C55E', en_camino: '#7B00FF', despachado: '#06B6D4',
-  pendiente: '#9CA3AF', devolucion: '#EF4444', cancelado: '#6B7280',
+  entregado: '#22C55E', en_camino: '#7B00FF', en_bodega: '#A855F7',
+  despachado: '#06B6D4', pendiente: '#9CA3AF', devolucion: '#EF4444', cancelado: '#6B7280',
 }
 
 function fmt(v: number) { return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` }
@@ -61,7 +61,7 @@ export function DashEnviosArea() {
     queryFn: async () => {
       // 1. Todos los envíos del mes
       let qEnvios = supabase.from('envios')
-        .select('id, numero, estado, courier, costo_cotizado, venta_id, created_at')
+        .select('id, numero, estado, courier, costo_cotizado, venta_id, created_at, pod_fecha')
         .eq('tenant_id', tenant!.id)
         .gte('created_at', inicioMes)
         .order('created_at', { ascending: false })
@@ -130,15 +130,27 @@ export function DashEnviosArea() {
       // No direct fecha_entrega_real - use proxy days from created to "now" for pending
       const tiempoMedioHs: number | null = null // would need delivery timestamp field
 
-      // ── KPI 6: En Tránsito ────────────────────────────────────────────────
-      const enTransito = (envios ?? []).filter((e: any) => ['en_camino','despachado'].includes(e.estado)).length
+      // ── KPI 6: En Tránsito (incluye en_bodega = paquete en depósito del courier) ──
+      const enTransito = (envios ?? []).filter((e: any) => ['despachado','en_camino','en_bodega'].includes(e.estado)).length
+      const cancelados  = (envios ?? []).filter((e: any) => e.estado === 'cancelado').length
+      const enBodega    = (envios ?? []).filter((e: any) => e.estado === 'en_bodega').length
 
-      // ── Funnel Pipeline ───────────────────────────────────────────────────
+      // ── KPI 5: Velocidad real desde pod_fecha ─────────────────────────────
+      const entregadosConPOD = entregadosArr.filter((e: any) => e.pod_fecha)
+      const tiempoMedioDias = entregadosConPOD.length > 0
+        ? entregadosConPOD.reduce((sum: number, e: any) => {
+            const dias = (new Date(e.pod_fecha).getTime() - new Date(e.created_at).getTime()) / 86400000
+            return sum + Math.max(0, dias)
+          }, 0) / entregadosConPOD.length
+        : null
+
+      // ── Funnel Pipeline (incluye en_bodega) ───────────────────────────────
       const funnelData = [
-        { label: 'Para armar', count: (envios ?? []).filter((e: any) => e.estado === 'pendiente').length, color: '#9CA3AF' },
-        { label: 'Despachado', count: (envios ?? []).filter((e: any) => e.estado === 'despachado').length, color: '#06B6D4' },
-        { label: 'En camino', count: (envios ?? []).filter((e: any) => e.estado === 'en_camino').length, color: '#7B00FF' },
-        { label: 'Entregado', count: entregados, color: '#22C55E' },
+        { label: 'Para armar',  count: (envios ?? []).filter((e: any) => e.estado === 'pendiente').length,  color: '#9CA3AF' },
+        { label: 'Despachado',  count: (envios ?? []).filter((e: any) => e.estado === 'despachado').length,  color: '#06B6D4' },
+        { label: 'En camino',   count: (envios ?? []).filter((e: any) => e.estado === 'en_camino').length,   color: '#7B00FF' },
+        { label: 'En bodega',   count: enBodega,                                                              color: '#A855F7' },
+        { label: 'Entregado',   count: entregados,                                                            color: '#22C55E' },
       ]
       const maxFunnel = Math.max(...funnelData.map(f => f.count), 1)
 
@@ -170,16 +182,16 @@ export function DashEnviosArea() {
         return { numero: e.numero, gananciaNeta: Math.round(gananciaNeta), costoEnvio: Math.round(subsidio), deficit: subsidio > gananciaNeta }
       }).filter(Boolean)
 
-      // ── Envíos sin update en +72h ─────────────────────────────────────────
+      // ── Envíos sin update en +72h (ahora incluye en_bodega) ──────────────
       const hace72h = new Date(Date.now() - 72 * 3600000).toISOString()
       const sinUpdate72h = (envios ?? []).filter((e: any) =>
-        ['en_camino','despachado'].includes(e.estado) && e.created_at < hace72h
+        ['despachado','en_camino','en_bodega'].includes(e.estado) && e.created_at < hace72h
       ).length
 
       return {
         totalEnvios, costoMedio, subsidioTotal, otif, tasaDev, enTransito,
         funnelData, maxFunnel, courierData, scatterData,
-        entregados, devueltos, sinUpdate72h,
+        entregados, devueltos, sinUpdate72h, cancelados, enBodega, tiempoMedioDias,
       }
     },
     enabled: !!tenant,
@@ -196,7 +208,8 @@ export function DashEnviosArea() {
     }
     if (eData.tasaDev !== null && eData.tasaDev > 5) list.push({ tipo: 'danger', titulo: `Tasa de devoluciones del ${eData.tasaDev.toFixed(1)}%`, impacto: `${eData.devueltos} envíos regresaron. Revisá embalaje y fiabilidad del courier.`, accion: 'Ver envíos', link: '/envios' })
     if (eData.otif !== null && eData.otif >= 95) list.push({ tipo: 'success', titulo: `OTIF del ${eData.otif.toFixed(1)}% — Excelente tasa de entrega`, impacto: `${eData.entregados} de ${eData.totalEnvios} envíos entregados exitosamente este mes.`, accion: 'Ver envíos', link: '/envios' })
-    if (eData.enTransito > 20) list.push({ tipo: 'info', titulo: `${eData.enTransito} paquetes actualmente en la calle`, impacto: 'Alto volumen en tránsito. Asegurate de tener capacidad para gestionar posibles reclamos.', accion: 'Ver envíos', link: '/envios' })
+    if (eData.enTransito > 20) list.push({ tipo: 'info', titulo: `${eData.enTransito} paquetes actualmente en tránsito`, impacto: 'Alto volumen en tránsito. Asegurate de tener capacidad para gestionar posibles reclamos.', accion: 'Ver envíos', link: '/envios' })
+    if ((eData.cancelados ?? 0) > 0) list.push({ tipo: 'warning', titulo: `${eData.cancelados} envío${eData.cancelados!==1?'s':''} cancelado${eData.cancelados!==1?'s':''} este mes`, impacto: 'Revisá los motivos de cancelación para reducir pérdidas operativas.', accion: 'Ver envíos', link: '/envios' })
     return list.slice(0, 4)
   }, [eData, fmt])
 
@@ -250,15 +263,24 @@ export function DashEnviosArea() {
         </div>
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"><Clock size={20} /></div></div>
-          <p className="text-sm font-medium text-muted">Velocidad (Tiempo Medio)</p>
-          <p className="text-2xl font-semibold text-primary mt-1 tabular-nums">—</p>
-          <p className="text-xs text-muted mt-1.5">Disponible cuando se integre tracking en tiempo real.</p>
+          <p className="text-sm font-medium text-muted">Tiempo Medio de Entrega</p>
+          <p className="text-2xl font-semibold text-primary mt-1 tabular-nums">
+            {isLoading ? '—' : eData?.tiempoMedioDias != null ? `${eData.tiempoMedioDias.toFixed(1)} días` : '—'}
+          </p>
+          <p className="text-xs text-muted mt-1.5">
+            {eData?.tiempoMedioDias != null
+              ? `Promedio desde el despacho hasta entrega confirmada (${(eData as any).entregados} envíos con POD).`
+              : 'Se calcula cuando los envíos tienen fecha de entrega registrada (POD).'}
+          </p>
         </div>
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent"><Package size={20} /></div></div>
           <p className="text-sm font-medium text-muted">Volumen en Tránsito</p>
           <p className="text-2xl font-semibold text-primary mt-1 tabular-nums">{isLoading ? '—' : eData?.enTransito ?? 0}</p>
-          <p className="text-xs text-muted mt-1.5">Paquetes actualmente en camino o despachados.</p>
+          <p className="text-xs text-muted mt-1.5">
+            Despachados + en camino + en bodega.
+            {(eData?.enBodega ?? 0) > 0 && <span className="text-purple-500 ml-1">({eData!.enBodega} en bodega courier)</span>}
+          </p>
         </div>
       </div>
 

@@ -403,6 +403,34 @@ export default function VentasPage() {
     if (km !== null) setEnvioKmVenta(String(km))
   }, [envioOrigenCoords])
 
+  // Auto-geocodificar destino y calcular distancia cuando el texto cambia (tipeo manual o selección)
+  // Cubre el caso donde el usuario no selecciona del dropdown sino que tipea la dirección
+  const geocodTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!requiereEnvio || envioTipoVenta !== 'km' || !envioOrigenCoords) return
+    if (envioDestinoCoords) {
+      // Ya tenemos coords del destino → Haversine directo
+      const km = haversineKmCoordsStatic(envioOrigenCoords, envioDestinoCoords)
+      if (km !== null) setEnvioKmVenta(String(km))
+      return
+    }
+    if (!envioDestinoVenta || envioDestinoVenta.length < 5) return
+    if (geocodTimerRef.current) clearTimeout(geocodTimerRef.current)
+    geocodTimerRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q: envioDestinoVenta, format: 'jsonv2', limit: '1', countrycodes: 'ar' })
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { 'User-Agent': 'Genesis360App/1.0' } })
+        const data = await res.json()
+        if (data?.[0]) {
+          const dc = `${data[0].lat},${data[0].lon}`
+          setEnvioDestinoCoords(dc)
+          const km = haversineKmCoordsStatic(envioOrigenCoords, dc)
+          if (km !== null) setEnvioKmVenta(String(km))
+        }
+      } catch { /* silencioso */ }
+    }, 1200)
+  }, [envioDestinoVenta, envioOrigenCoords, envioDestinoCoords, envioTipoVenta, requiereEnvio])
+
   const haversineKmCoords = haversineKmCoordsStatic
 
   // ISS-162: calcular distancia cuando se selecciona una dirección

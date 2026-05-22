@@ -390,18 +390,28 @@ export default function VentasPage() {
     }
     const kmRate = suc?.costo_km_envio || (tenant as any)?.costo_envio_por_km
     if (kmRate) { setPrecioPorKmVenta(String(kmRate)); setEnvioTipoVenta('km') }
-    // Pre-llenar destino con domicilio principal del cliente (si no hay uno ya)
-    if (!envioDestinoVenta && domiciliosFormateadosVenta.length > 0) {
-      setEnvioDestinoVenta(domiciliosFormateadosVenta[0])
+    // Pre-llenar destino con domicilio principal del cliente + geocodificar en paralelo
+    const destPrefill = !envioDestinoVenta && domiciliosFormateadosVenta.length > 0
+      ? domiciliosFormateadosVenta[0] : envioDestinoVenta
+    if (!envioDestinoVenta && destPrefill) setEnvioDestinoVenta(destPrefill)
+    if (destPrefill && !envioDestinoCoords) {
+      // Geocodificar destino en paralelo con el origen para tener ambas coords listas
+      setTimeout(() => {  // pequeño delay para no saturar Nominatim con 2 requests simultáneos
+        fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destPrefill)}&format=jsonv2&limit=1&countrycodes=ar`,
+          { headers: { 'User-Agent': 'Genesis360App/1.0' } })
+          .then(r => r.json())
+          .then((d: any[]) => { if (d?.[0]) setEnvioDestinoCoords(`${d[0].lat},${d[0].lon}`) })
+          .catch(() => {})
+      }, 600)
     }
   }, [requiereEnvio])
 
-  // Auto-recalcular si el destino ya está cuando llegan las coords del origen
+  // Calcular cuando ambos coords están disponibles (se dispara ante cualquier cambio de coords o modo)
   useEffect(() => {
     if (!envioOrigenCoords || !envioDestinoCoords || envioTipoVenta !== 'km') return
     const km = haversineKmCoordsStatic(envioOrigenCoords, envioDestinoCoords)
     if (km !== null) setEnvioKmVenta(String(km))
-  }, [envioOrigenCoords])
+  }, [envioOrigenCoords, envioDestinoCoords, envioTipoVenta])
 
   // Auto-geocodificar destino y calcular distancia cuando el texto cambia (tipeo manual o selección)
   // Cubre el caso donde el usuario no selecciona del dropdown sino que tipea la dirección

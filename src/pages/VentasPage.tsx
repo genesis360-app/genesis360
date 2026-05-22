@@ -142,8 +142,10 @@ export default function VentasPage() {
   const [precioPorKmVenta, setPrecioPorKmVenta] = useState('')
   const [envioDestinoVenta, setEnvioDestinoVenta] = useState('')
   const [envioOrigenVenta, setEnvioOrigenVenta] = useState('')
-  const [envioDestinoCoords, setEnvioDestinoCoords] = useState('')   // "lat,lon" cuando viene de geocoder
-  const [envioOrigenCoords,  setEnvioOrigenCoords]  = useState('')   // "lat,lon" del origen geocodificado
+  const [envioDestinoCoords, setEnvioDestinoCoords] = useState('')
+  const [envioOrigenCoords,  setEnvioOrigenCoords]  = useState('')
+  const [envioOrigenGeoError, setEnvioOrigenGeoError] = useState(false)    // origen no geocodificable
+  const [envioDestinoGeoError, setEnvioDestinoGeoError] = useState(false)  // destino no geocodificable
   const [envioFechaVenta, setEnvioFechaVenta] = useState('')
   const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -382,11 +384,15 @@ export default function VentasPage() {
     if (suc?.direccion) {
       setEnvioOrigenVenta(suc.direccion)
       // Geocodificar el origen UNA SOLA VEZ para tener coords disponibles
+      setEnvioOrigenGeoError(false)
       fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(suc.direccion)}&format=jsonv2&limit=1&countrycodes=ar`,
         { headers: { 'User-Agent': 'Genesis360App/1.0' } })
         .then(r => r.json())
-        .then((d: any[]) => { if (d?.[0]) setEnvioOrigenCoords(`${d[0].lat},${d[0].lon}`) })
-        .catch(() => {})
+        .then((d: any[]) => {
+          if (d?.[0]) { setEnvioOrigenCoords(`${d[0].lat},${d[0].lon}`); setEnvioOrigenGeoError(false) }
+          else setEnvioOrigenGeoError(true)
+        })
+        .catch(() => setEnvioOrigenGeoError(true))
     }
     const kmRate = suc?.costo_km_envio || (tenant as any)?.costo_envio_por_km
     if (kmRate) { setPrecioPorKmVenta(String(kmRate)); setEnvioTipoVenta('km') }
@@ -395,13 +401,16 @@ export default function VentasPage() {
       ? domiciliosFormateadosVenta[0] : envioDestinoVenta
     if (!envioDestinoVenta && destPrefill) setEnvioDestinoVenta(destPrefill)
     if (destPrefill && !envioDestinoCoords) {
-      // Geocodificar destino en paralelo con el origen para tener ambas coords listas
-      setTimeout(() => {  // pequeño delay para no saturar Nominatim con 2 requests simultáneos
+      setEnvioDestinoGeoError(false)
+      setTimeout(() => {
         fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destPrefill)}&format=jsonv2&limit=1&countrycodes=ar`,
           { headers: { 'User-Agent': 'Genesis360App/1.0' } })
           .then(r => r.json())
-          .then((d: any[]) => { if (d?.[0]) setEnvioDestinoCoords(`${d[0].lat},${d[0].lon}`) })
-          .catch(() => {})
+          .then((d: any[]) => {
+            if (d?.[0]) { setEnvioDestinoCoords(`${d[0].lat},${d[0].lon}`); setEnvioDestinoGeoError(false) }
+            else setEnvioDestinoGeoError(true)
+          })
+          .catch(() => setEnvioDestinoGeoError(true))
       }, 600)
     }
   }, [requiereEnvio])
@@ -426,6 +435,7 @@ export default function VentasPage() {
     }
     if (!envioDestinoVenta || envioDestinoVenta.length < 5) return
     if (geocodTimerRef.current) clearTimeout(geocodTimerRef.current)
+    setEnvioDestinoGeoError(false)
     geocodTimerRef.current = setTimeout(async () => {
       try {
         const params = new URLSearchParams({ q: envioDestinoVenta, format: 'jsonv2', limit: '1', countrycodes: 'ar' })
@@ -433,11 +443,11 @@ export default function VentasPage() {
         const data = await res.json()
         if (data?.[0]) {
           const dc = `${data[0].lat},${data[0].lon}`
-          setEnvioDestinoCoords(dc)
+          setEnvioDestinoCoords(dc); setEnvioDestinoGeoError(false)
           const km = haversineKmCoordsStatic(envioOrigenCoords, dc)
           if (km !== null) setEnvioKmVenta(String(km))
-        }
-      } catch { /* silencioso */ }
+        } else { setEnvioDestinoGeoError(true) }
+      } catch { setEnvioDestinoGeoError(true) }
     }, 1200)
   }, [envioDestinoVenta, envioOrigenCoords, envioDestinoCoords, envioTipoVenta, requiereEnvio])
 
@@ -2934,7 +2944,7 @@ export default function VentasPage() {
                               <input type="number" min="0" step="0.1" onWheel={e => e.currentTarget.blur()}
                                 value={envioKmVenta} onChange={e => setEnvioKmVenta(e.target.value)}
                                 placeholder="0"
-                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                                className={`w-full border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 ${envioOrigenGeoError ? 'border-red-300 dark:border-red-600' : 'border-gray-200 dark:border-gray-600'}`} />
                             </div>
                             <div>
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">$/km</label>
@@ -2972,6 +2982,13 @@ export default function VentasPage() {
                           }}
                           placeholder="Dirección de la sucursal..."
                         />
+                        {envioOrigenGeoError && (
+                          <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                            ⚠ No se encontró esta dirección — verificá que sea correcta en{' '}
+                            <a href="/sucursales" className="underline font-medium">Sucursales</a>{' '}
+                            o ingresá una nueva arriba.
+                          </p>
+                        )}
                       </div>
 
                       {/* ISS-164: Destino con autocompletado Google Places + domicilios del cliente */}
@@ -3002,6 +3019,11 @@ export default function VentasPage() {
                         />
                         {calculandoDistancia && (
                           <p className="text-xs text-accent mt-1 animate-pulse">Calculando distancia...</p>
+                        )}
+                        {envioDestinoGeoError && !calculandoDistancia && (
+                          <p className="text-xs text-red-500 mt-1">
+                            ⚠ No se encontró esta dirección — intentá escribirla más completa (ej: "Av. Corrientes 1515, CABA").
+                          </p>
                         )}
                         {/* Link Maps: usa coordenadas exactas cuando disponibles (Nominatim/geocoder) */}
                         {envioOrigenVenta && envioDestinoVenta && (

@@ -73,6 +73,21 @@ interface CartItem {
   series_disponibles: any[]
 }
 
+// Haversine × 1.35 — módulo-level para usar en useEffect sin dependency issues
+function haversineKmCoordsStatic(c1: string, c2: string): number | null {
+  const m1 = c1.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/)
+  const m2 = c2.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/)
+  if (!m1 || !m2) return null
+  const [lat1, lon1] = [parseFloat(m1[1]), parseFloat(m1[2])]
+  const [lat2, lon2] = [parseFloat(m2[1]), parseFloat(m2[2])]
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.35 * 10) / 10
+}
+
 export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
@@ -381,21 +396,14 @@ export default function VentasPage() {
     }
   }, [requiereEnvio])
 
-  // Haversine × 1.35 — distancia estimada por carretera desde dos pares de coords "lat,lon"
-  const haversineKmCoords = (c1: string, c2: string): number | null => {
-    const m1 = c1.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/)
-    const m2 = c2.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/)
-    if (!m1 || !m2) return null
-    const [lat1, lon1] = [parseFloat(m1[1]), parseFloat(m1[2])]
-    const [lat2, lon2] = [parseFloat(m2[1]), parseFloat(m2[2])]
-    const R = 6371
-    const dLat = (lat2 - lat1) * Math.PI / 180
-    const dLon = (lon2 - lon1) * Math.PI / 180
-    const a = Math.sin(dLat / 2) ** 2
-      + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
-    const lineal = R * 2 * Math.asin(Math.sqrt(a))
-    return Math.round(lineal * 1.35 * 10) / 10
-  }
+  // Auto-recalcular si el destino ya está cuando llegan las coords del origen
+  useEffect(() => {
+    if (!envioOrigenCoords || !envioDestinoCoords || envioTipoVenta !== 'km') return
+    const km = haversineKmCoordsStatic(envioOrigenCoords, envioDestinoCoords)
+    if (km !== null) setEnvioKmVenta(String(km))
+  }, [envioOrigenCoords])
+
+  const haversineKmCoords = haversineKmCoordsStatic
 
   // ISS-162: calcular distancia cuando se selecciona una dirección
   // Prioridad: Haversine (coords disponibles, instantáneo) → Maps API (fallback)

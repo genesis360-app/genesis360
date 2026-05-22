@@ -128,6 +128,7 @@ export default function VentasPage() {
   const [envioDestinoVenta, setEnvioDestinoVenta] = useState('')
   const [envioOrigenVenta, setEnvioOrigenVenta] = useState('')
   const [envioDestinoCoords, setEnvioDestinoCoords] = useState('')   // "lat,lon" cuando viene de geocoder
+  const [envioOrigenCoords,  setEnvioOrigenCoords]  = useState('')   // "lat,lon" del origen geocodificado
   const [envioFechaVenta, setEnvioFechaVenta] = useState('')
   const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -363,7 +364,15 @@ export default function VentasPage() {
   useEffect(() => {
     if (!requiereEnvio) return
     const suc = (sucursales as any[]).find(s => s.id === sucursalId)
-    if (suc?.direccion) setEnvioOrigenVenta(suc.direccion)
+    if (suc?.direccion) {
+      setEnvioOrigenVenta(suc.direccion)
+      // Geocodificar el origen UNA SOLA VEZ para tener coords disponibles
+      fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(suc.direccion)}&format=jsonv2&limit=1&countrycodes=ar`,
+        { headers: { 'User-Agent': 'Genesis360App/1.0' } })
+        .then(r => r.json())
+        .then((d: any[]) => { if (d?.[0]) setEnvioOrigenCoords(`${d[0].lat},${d[0].lon}`) })
+        .catch(() => {})
+    }
     const kmRate = suc?.costo_km_envio || (tenant as any)?.costo_envio_por_km
     if (kmRate) { setPrecioPorKmVenta(String(kmRate)); setEnvioTipoVenta('km') }
     // Pre-llenar destino con domicilio principal del cliente (si no hay uno ya)
@@ -372,9 +381,34 @@ export default function VentasPage() {
     }
   }, [requiereEnvio])
 
-  // ISS-162: calcular distancia automáticamente cuando se selecciona una dirección (onPlaceSelected)
+  // Haversine × 1.35 — distancia estimada por carretera desde dos pares de coords "lat,lon"
+  const haversineKmCoords = (c1: string, c2: string): number | null => {
+    const m1 = c1.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/)
+    const m2 = c2.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/)
+    if (!m1 || !m2) return null
+    const [lat1, lon1] = [parseFloat(m1[1]), parseFloat(m1[2])]
+    const [lat2, lon2] = [parseFloat(m2[1]), parseFloat(m2[2])]
+    const R = 6371
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+    const lineal = R * 2 * Math.asin(Math.sqrt(a))
+    return Math.round(lineal * 1.35 * 10) / 10
+  }
+
+  // ISS-162: calcular distancia cuando se selecciona una dirección
+  // Prioridad: Haversine (coords disponibles, instantáneo) → Maps API (fallback)
   const autoCalcularDistancia = async (origen: string, destino: string) => {
     if (!origen || !destino || envioTipoVenta !== 'km') return
+    // Si tenemos coords de origen Y destino → Haversine instantáneo
+    const destCoordsStr = envioDestinoCoords
+    const origenCoordsStr = envioOrigenCoords
+    if (origenCoordsStr && destCoordsStr) {
+      const km = haversineKmCoords(origenCoordsStr, destCoordsStr)
+      if (km !== null) { setEnvioKmVenta(String(km)); return }
+    }
+    // Fallback: Maps API (puede tardar o fallar)
     setCalculandoDistancia(true)
     const km = await calcularDistanciaKm(origen, destino)
     if (km !== null) setEnvioKmVenta(String(km))
@@ -2894,9 +2928,14 @@ export default function VentasPage() {
                           onChange={v => { setEnvioDestinoVenta(v); setEnvioDestinoCoords('') }}
                           onPlaceSelected={(addr, placeId) => {
                             setEnvioDestinoVenta(addr)
-                            // placeId = "lat,lon" (geocoder) o place_id de Google
                             const isCoords = /^-?\d+\.?\d*,-?\d+\.?\d*$/.test(placeId)
-                            setEnvioDestinoCoords(isCoords ? placeId : '')
+                            const destCoords = isCoords ? placeId : ''
+                            setEnvioDestinoCoords(destCoords)
+                            // Haversine inmediato si tenemos coords de ambos puntos
+                            if (destCoords && envioOrigenCoords && envioTipoVenta === 'km') {
+                              const km = haversineKmCoords(envioOrigenCoords, destCoords)
+                              if (km !== null) { setEnvioKmVenta(String(km)); return }
+                            }
                             autoCalcularDistancia(envioOrigenVenta, isCoords ? placeId : addr)
                           }}
                           savedAddresses={domiciliosFormateadosVenta}

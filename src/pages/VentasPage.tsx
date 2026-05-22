@@ -2910,7 +2910,20 @@ export default function VentasPage() {
                         <AddressAutocompleteInput
                           value={envioOrigenVenta}
                           onChange={setEnvioOrigenVenta}
-                          onPlaceSelected={addr => { setEnvioOrigenVenta(addr); autoCalcularDistancia(addr, envioDestinoVenta) }}
+                          onPlaceSelected={(addr, placeId) => {
+                            setEnvioOrigenVenta(addr)
+                            const isC = /^-?\d+\.?\d*,-?\d+\.?\d*$/.test(placeId)
+                            if (isC) {
+                              setEnvioOrigenCoords(placeId)
+                            } else {
+                              fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=jsonv2&limit=1&countrycodes=ar`,
+                                { headers: { 'User-Agent': 'Genesis360App/1.0' } })
+                                .then(r => r.json()).then((d: any[]) => {
+                                  if (d?.[0]) setEnvioOrigenCoords(`${d[0].lat},${d[0].lon}`)
+                                }).catch(() => {})
+                            }
+                            autoCalcularDistancia(addr, envioDestinoVenta)
+                          }}
                           placeholder="Dirección de la sucursal..."
                         />
                       </div>

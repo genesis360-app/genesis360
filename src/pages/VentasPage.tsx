@@ -511,7 +511,7 @@ export default function VentasPage() {
 
   // Pre-guardado del carrito en localStorage
   const cartDraftKey = tenant?.id ? `carrito_draft_${tenant.id}` : null
-  // Restaurar primero (antes del efecto de guardar) — orden de declaración importa
+  // Restaurar carrito + re-fetch inmediato de lineas_disponibles
   const restoredRef = useRef(false)
   useEffect(() => {
     if (!cartDraftKey || restoredRef.current) return
@@ -521,16 +521,43 @@ export default function VentasPage() {
     try {
       const draft = JSON.parse(raw)
       if (draft.cart?.length > 0) {
-        setCart(draft.cart.map((item: any) => ({ ...item, lineas_disponibles: [], series_disponibles: [] })))
+        const itemsRestaurados = draft.cart.map((item: any) => ({ ...item, lineas_disponibles: [], series_disponibles: [] }))
+        setCart(itemsRestaurados)
+
+        // Re-fetch inmediato de lineas_disponibles — dentro del mismo effect para
+        // evitar la race condition con el effect separado que llega antes que el cart
+        const hoy = new Date().toISOString().split('T')[0]
+        const itemsSinSeries = itemsRestaurados.filter((i: any) => !i.tiene_series)
+        if (itemsSinSeries.length > 0) {
+          Promise.all(itemsSinSeries.map(async (item: any) => {
+            let q = supabase.from('inventario_lineas')
+              .select('id, lpn, cantidad, cantidad_reservada, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
+              .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
+            if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+            const { data } = await q
+            const lineasDisp = (data ?? [])
+              .filter((l: any) => (l.ubicaciones as any)?.disponible_surtido !== false)
+              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= hoy)
+              .map((l: any) => ({
+                id: l.id, lpn: l.lpn ?? null,
+                cantidad: l.cantidad, cantidad_reservada: l.cantidad_reservada ?? 0,
+                ubicacion: (l.ubicaciones as any)?.nombre ?? null,
+              }))
+            return { producto_id: item.producto_id, lineasDisp }
+          })).then(updates => {
+            setCart(prev => prev.map(item => {
+              const u = updates.find((x: any) => x.producto_id === item.producto_id)
+              return u ? { ...item, lineas_disponibles: u.lineasDisp } : item
+            }))
+          }).catch(() => {})
+        }
+
         if (draft.clienteId) {
           setClienteId(draft.clienteId)
           setClienteNombre(draft.clienteNombre ?? '')
           setClienteTelefono(draft.clienteTelefono ?? '')
-          // Restaurar CC habilitado consultando la DB
           supabase.from('clientes').select('cuenta_corriente_habilitada').eq('id', draft.clienteId).maybeSingle()
-            .then(({ data }) => {
-              if (data?.cuenta_corriente_habilitada) setClienteCCEnabled(true)
-            })
+            .then(({ data }) => { if (data?.cuenta_corriente_habilitada) setClienteCCEnabled(true) })
         }
         if (draft.mediosPago) setMediosPago(draft.mediosPago)
         if (draft.notas) setNotas(draft.notas)
@@ -540,7 +567,7 @@ export default function VentasPage() {
         toast('🛒 Se recuperó tu carrito anterior', { duration: 4000 })
       }
     } catch { localStorage.removeItem(cartDraftKey) }
-  }, [cartDraftKey])
+  }, [cartDraftKey])  // eslint-disable-line react-hooks/exhaustive-deps
   // Guardar solo cuando hay contenido (nunca borrar aquí — el delete va en sale completion)
   useEffect(() => {
     if (!cartDraftKey || !restoredRef.current) return
@@ -556,39 +583,6 @@ export default function VentasPage() {
     localStorage.setItem(cartDraftKey, JSON.stringify(draft))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart, clienteId, clienteNombre, clienteTelefono, mediosPago, notas, modoVenta, descuentoTotal, descuentoTotalTipo])
-
-  // Re-fetch lineas_disponibles para ítems restaurados del carrito (siempre vacían al restaurar)
-  useEffect(() => {
-    if (!authInitialized || !tenant || cart.length === 0) return
-    const itemsSinLineas = cart.filter(i => !i.tiene_series && (!i.lineas_disponibles || i.lineas_disponibles.length === 0))
-    if (itemsSinLineas.length === 0) return
-    const hoy = new Date().toISOString().split('T')[0]
-    Promise.all(itemsSinLineas.map(async item => {
-      let q = supabase.from('inventario_lineas')
-        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
-        .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
-      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
-      const { data } = await q
-      const lineasDisp = (data ?? [])
-        .filter((l: any) => (l.ubicaciones as any)?.disponible_surtido !== false)
-        .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= hoy)
-        .map((l: any) => ({
-          id: l.id, lpn: l.lpn ?? null,
-          cantidad: l.cantidad, cantidad_reservada: l.cantidad_reservada ?? 0,
-          ubicacion: (l.ubicaciones as any)?.nombre ?? null,
-        }))
-      return { producto_id: item.producto_id, lineasDisp }
-    })).then(updates => {
-      setCart(prev => prev.map(item => {
-        const u = updates.find(x => x.producto_id === item.producto_id)
-        if (u && (!item.lineas_disponibles || item.lineas_disponibles.length === 0)) {
-          return { ...item, lineas_disponibles: u.lineasDisp }
-        }
-        return item
-      }))
-    }).catch(() => {/* silencioso */})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authInitialized, tenant?.id, sucursalId])
 
   // Foco en buscador de productos
   const [searchFocused, setSearchFocused] = useState(false)

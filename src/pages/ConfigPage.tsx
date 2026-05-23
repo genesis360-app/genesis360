@@ -452,38 +452,6 @@ export default function ConfigPage() {
   const [showClaveMaestra,          setShowClaveMaestra]          = useState(false)
   const [bizBovedaUmbral,           setBizBovedaUmbral]           = useState<string>(tenant?.boveda_umbral_caja != null ? String(tenant.boveda_umbral_caja) : '')
 
-  // Sucursales — config extendida (CP, email, horario, PV AFIP)
-  const [sucursalesConfig, setSucursalesConfig] = useState<Record<string, {
-    codigo_postal: string; email: string; horario_apertura: string; horario_cierre: string; punto_venta_afip: string
-  }>>({})
-  const [savingSucursal, setSavingSucursal] = useState<string | null>(null)
-
-  const getSucursalConfig = (id: string) => sucursalesConfig[id] ?? {
-    codigo_postal: (sucursales as any[]).find((s: any) => s.id === id)?.codigo_postal ?? '',
-    email:         (sucursales as any[]).find((s: any) => s.id === id)?.email ?? '',
-    horario_apertura: (sucursales as any[]).find((s: any) => s.id === id)?.horario_apertura ?? '',
-    horario_cierre:   (sucursales as any[]).find((s: any) => s.id === id)?.horario_cierre ?? '',
-    punto_venta_afip: (sucursales as any[]).find((s: any) => s.id === id)?.punto_venta_afip != null
-      ? String((sucursales as any[]).find((s: any) => s.id === id)?.punto_venta_afip)
-      : '',
-  }
-  const setSucursalField = (id: string, field: string, value: string) =>
-    setSucursalesConfig(prev => ({ ...prev, [id]: { ...getSucursalConfig(id), [field]: value } }))
-
-  const saveSucursalConfig = async (id: string) => {
-    const cfg = getSucursalConfig(id)
-    setSavingSucursal(id)
-    const { error } = await supabase.from('sucursales').update({
-      codigo_postal:    cfg.codigo_postal.trim() || null,
-      email:            cfg.email.trim() || null,
-      horario_apertura: cfg.horario_apertura || null,
-      horario_cierre:   cfg.horario_cierre || null,
-      punto_venta_afip: cfg.punto_venta_afip ? parseInt(cfg.punto_venta_afip) : null,
-    }).eq('id', id)
-    if (error) toast.error(error.message)
-    else toast.success('Sucursal actualizada')
-    setSavingSucursal(null)
-  }
 
   // Puntos de venta AFIP
   const [pvCollapsed,   setPvCollapsed]   = useState(true)
@@ -1707,69 +1675,6 @@ export default function ConfigPage() {
 
       {tab === 'negocio' && <MarketplaceSection />}
 
-      {/* Sucursales — config extendida */}
-      {tab === 'negocio' && sucursales.length > 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-            <Building2 size={16} className="text-accent" />
-            <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Configuración por sucursal</span>
-            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{sucursales.length} sucursal{sucursales.length !== 1 ? 'es' : ''}</span>
-          </div>
-          <div className="divide-y divide-gray-100 dark:divide-gray-700">
-            {(sucursales as any[]).filter((s: any) => s.activo).map((s: any) => {
-              const cfg = getSucursalConfig(s.id)
-              return (
-                <div key={s.id} className="px-5 py-4 space-y-3">
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{s.nombre}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Código postal</label>
-                      <input type="text" value={cfg.codigo_postal} disabled={!canEdit}
-                        onChange={e => setSucursalField(s.id, 'codigo_postal', e.target.value)}
-                        placeholder="ej. B1875"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Email de la sucursal</label>
-                      <input type="email" value={cfg.email} disabled={!canEdit}
-                        onChange={e => setSucursalField(s.id, 'email', e.target.value)}
-                        placeholder="ej. sucursal@minegocio.com"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horario apertura</label>
-                      <input type="time" value={cfg.horario_apertura} disabled={!canEdit}
-                        onChange={e => setSucursalField(s.id, 'horario_apertura', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horario cierre</label>
-                      <input type="time" value={cfg.horario_cierre} disabled={!canEdit}
-                        onChange={e => setSucursalField(s.id, 'horario_cierre', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Punto de venta AFIP</label>
-                      <input type="number" onWheel={e => e.currentTarget.blur()} value={cfg.punto_venta_afip} disabled={!canEdit}
-                        onChange={e => setSucursalField(s.id, 'punto_venta_afip', e.target.value)}
-                        placeholder="ej. 1"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 dark:text-white" />
-                    </div>
-                  </div>
-                  {canEdit && (
-                    <div className="flex justify-end">
-                      <button onClick={() => saveSucursalConfig(s.id)} disabled={savingSucursal === s.id}
-                        className="px-4 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-60">
-                        {savingSucursal === s.id ? 'Guardando...' : 'Guardar sucursal'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {/* ── VENTAS ───────────────────────────────────────────────────────────── */}
       {tab === 'ventas' && subTabNav(
@@ -2764,11 +2669,11 @@ export default function ConfigPage() {
               <Navigation size={18} className="text-accent" /> Configuración de envíos
             </h2>
             <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">$ por km (envío propio)</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">$ por km — valor global (todas las sucursales)</label>
               <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCostoKm}
                 onChange={e => setBizCostoKm(e.target.value)} placeholder="Ej: 150" min="0" step="0.01" disabled={!canEdit}
                 className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
-              <p className="text-xs text-gray-400 dark:text-gray-500">Para calcular el costo de delivery propio en el módulo de Envíos.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Default global. Si una sucursal tiene su propio $/km en Sucursales, ese valor predomina.</p>
             </div>
             {canEdit && (
               <div className="flex justify-end">

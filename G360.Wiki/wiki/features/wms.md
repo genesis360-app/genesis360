@@ -150,6 +150,22 @@ recepcion_items(recepcion_id, producto_id, oc_item_id nullable,
 
 **UI:** `RecepcionesPage.tsx` (`/recepciones`)
 
+### Escaneo de ticket en RecepcionesPage (v1.8.38)
+
+Botón **"📷 Escanear ticket"** en la sección "Productos a recibir" del formulario de recepción.
+
+1. Usuario selecciona foto del ticket de supermercado (comprimida a JPEG 1200px en el browser)
+2. EF `scan-ticket` (Claude Sonnet 4.6 vision) extrae `[{barcode, nombre, cantidad, precio_unitario}]`
+3. Modal muestra tabla con matching contra DB:
+   - ✅ Encontrado en catálogo (por SKU/barcode exacto o nombre fuzzy 2 palabras)
+   - ❌ No encontrado — no se carga al formulario
+4. Cantidad y precio unitario editables
+5. "Cargar N productos al formulario" → pre-popula `FormItem[]` con el `precio_costo` del ticket
+
+El `precio_costo` del ticket se usa como `precio_costo_snapshot` en `inventario_lineas`.
+
+Ver detalle técnico: [[wiki/features/escaneo-barcode]]
+
 ---
 
 ## Conteo de inventario (migration 050, v0.83.0) ✅

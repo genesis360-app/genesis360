@@ -13,6 +13,81 @@ updated: 2026-05-07
 
 ---
 
+## v1.8.39 — POD + en_bodega + fix crítico envíos + corrección totales (DEV ✅)
+
+**Estado:** en DEV · pendiente deploy a PROD  
+**Fecha:** 2026-05-21
+
+### Fixes críticos
+- **BUG envíos auto-creados**: `cliente_id` inexistente en tabla causaba que el INSERT fallara → ningún envío se creaba al hacer una venta con envío. Fix: campo eliminado.
+- **Saldo modal con envío**: `ventaDetalle.total` no incluía `costo_envio` → saldo incorrecto al completar reservas o presupuestos con envío. Fix: usa `total + costo_envio`.
+- **Totales en historial**: lista, detalle y ticket ahora muestran `total + costo_envio` (total real pagado).
+
+### Nuevas features
+- **Estado `en_bodega`**: nuevo estado entre `en_camino` y `entregado` (paquete en depósito del courier). Badge violeta + icono Warehouse.
+- **POD (Proof of Delivery)**: campos `pod_fecha`, `pod_receptor`, `pod_notas`, `pod_url` en tabla `envios`. Modal POD standalone + sección en modal de edición.
+- **Fecha de entrega acordada en VentasPage**: nuevo campo en el panel de envío del POS, se guarda en el envío auto-creado.
+- **Canal correcto en envío auto-creado**: usa `canalPOS` de la venta (Instagram, Facebook, WhatsApp, etc.) en lugar de hardcodear 'POS'.
+
+### Migration
+- 127: `envios` — POD fields + CHECK `en_bodega`
+
+---
+
+## v1.8.38 — Scan ticket IA + fixes Dashboard + ISS-090 CC (DEV ✅)
+
+**Estado:** en DEV · pendiente deploy a PROD
+
+### Nuevas features
+- **Scan ticket** (Claude Sonnet 4.6 vision): EF `scan-ticket` analiza foto de ticket de supermercado
+  - **RecepcionesPage**: escanear ticket → matcheo contra catálogo → carga automática al formulario de recepción con precio_costo del ticket
+  - **ProductosPage**: escanear ticket → validar catálogo → actualizar precio_costo o crear productos nuevos con SKU auto-generado
+
+### Fixes críticos
+- **Dashboard Productos/Inventario — KPIs en $0**: columna `categoria` migrada a FK `categoria_id` → queries usaban columna inexistente → 400 → data=null → todo en 0
+- **Dashboard rotación/runway = 0**: `movimientos_stock` de ventas creados sin `sucursal_id` → filtro estricto los excluía → rotación 0
+- **Banner sucursal en Dashboard**: aviso cuando hay sucursal seleccionada (el selector no aparece en /dashboard) + botón "Ver todo"
+- **ISS-090 CC validación**: validar correctamente pagos mixtos CC+efectivo, CC+tarjeta, y 100% CC
+
+---
+
+## v1.8.37 — Gastos/Caja/Config/MODO/ISS-136 (PROD ✅)
+
+**PR #114** — mergeado a `main` ✅  
+**Release:** https://github.com/genesis360-app/genesis360/releases/tag/v1.8.37  
+**Migrations 122–126** aplicadas en DEV y PROD ✅
+
+### ISS-136 — Gastos en Caja (fix definitivo)
+- Gastos variables, Gastos Fijos (Generar) y pagos OC registran en caja correctamente
+- Efectivo → `egreso` (descuenta saldo) · Otros → `egreso_informativo` (informativo)
+- Editar gasto borrador para agregarle pago también registra en caja
+- Bloqueo de monto/pago al editar si ya fue a caja
+- Reversión automática al eliminar gasto con pago (movimiento inverso)
+- Prioriza sesión propia del usuario (evita enviar a caja de otro)
+
+### ISS-110 — Canales de venta
+- `ventas_origen_check` extendida con Instagram, Facebook, WhatsApp, Otros (migration 122)
+
+### MODO — Integración completa
+- `modo-crear-pago` y `modo-webhook` deployadas en DEV y PROD
+- QR interoperable + polling de confirmación + modal redesigned
+
+### ConfigPage — Fases 1-4
+- 11 tabs temáticas con grupos (Negocio/Sistema)
+- Mi negocio: email legal, redondeo de precios, config por sucursal
+- Ventas: comisión % por método, cliente en POS, descuento máx cajero/supervisor
+- Caja: contraseña maestra, umbral bóveda
+- Métodos de pago desde DB (ISS-133), badge "Borrador" (ISS-138), descuento en OC (ISS-132)
+
+---
+
+## v1.8.31 — Variantes, multi-sucursal completo, Dashboard renovado (PROD ✅)
+
+**PR #113** — mergeado a `main` ✅  
+**Migrations 111–121** aplicadas ✅
+
+---
+
 ## v1.8.27 — Fix crítico registro nuevo negocio (PROD ✅)
 
 **PR #112** — mergeado a `main` ✅  

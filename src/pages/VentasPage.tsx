@@ -13,6 +13,8 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
+import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
 
@@ -71,17 +73,32 @@ interface CartItem {
   series_disponibles: any[]
 }
 
+// Haversine × 1.35 — módulo-level para usar en useEffect sin dependency issues
+function haversineKmCoordsStatic(c1: string, c2: string): number | null {
+  const m1 = c1.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/)
+  const m2 = c2.match(/^(-?\d+\.?\d*),(-?\d+\.?\d*)$/)
+  if (!m1 || !m2) return null
+  const [lat1, lon1] = [parseFloat(m1[1]), parseFloat(m1[2])]
+  const [lat2, lon2] = [parseFloat(m2[1]), parseFloat(m2[2])]
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
+  return Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.35 * 10) / 10
+}
+
 export default function VentasPage() {
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
 
   // ISS-085: formatea el número de ticket por sucursal
+  // Solo usa formato CODIGO-NNNN si la sucursal tiene un código explícitamente configurado
   const formatTicket = (v: any) => {
     if (v?.numero_sucursal && v?.sucursal_id) {
       const suc = sucursales.find((s: any) => s.id === v.sucursal_id)
-      const codigo = (suc as any)?.codigo
-        ?? `S${(sucursales as any[]).findIndex((s: any) => s.id === v.sucursal_id) + 1}`
-      return `${codigo}-${String(v.numero_sucursal).padStart(4, '0')}`
+      const codigo = (suc as any)?.codigo   // null/undefined si no configurado
+      if (codigo) return `${codigo}-${String(v.numero_sucursal).padStart(4, '0')}`
     }
     return `#${v?.numero ?? '?'}`
   }
@@ -124,6 +141,13 @@ export default function VentasPage() {
   const [envioKmVenta, setEnvioKmVenta]       = useState('')
   const [precioPorKmVenta, setPrecioPorKmVenta] = useState('')
   const [envioDestinoVenta, setEnvioDestinoVenta] = useState('')
+  const [envioOrigenVenta, setEnvioOrigenVenta] = useState('')
+  const [envioDestinoCoords, setEnvioDestinoCoords] = useState('')
+  const [envioOrigenCoords,  setEnvioOrigenCoords]  = useState('')
+  const [envioOrigenGeoError, setEnvioOrigenGeoError] = useState(false)    // origen no geocodificable
+  const [envioDestinoGeoError, setEnvioDestinoGeoError] = useState(false)  // destino no geocodificable
+  const [envioFechaVenta, setEnvioFechaVenta] = useState('')
+  const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
@@ -353,6 +377,121 @@ export default function VentasPage() {
     }
   }, [envioKmVenta, precioPorKmVenta, envioTipoVenta])
 
+  // ISS-162/163: pre-llenar origen (sucursal) y $/km (Config) al activar envío
+  useEffect(() => {
+    if (!requiereEnvio) return
+    const suc = (sucursales as any[]).find(s => s.id === sucursalId)
+    if (suc?.direccion) {
+      setEnvioOrigenVenta(suc.direccion)
+      // Geocodificar el origen UNA SOLA VEZ para tener coords disponibles
+      setEnvioOrigenGeoError(false)
+      fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(suc.direccion)}&format=jsonv2&limit=1&countrycodes=ar`,
+        { headers: { 'User-Agent': 'Genesis360App/1.0' } })
+        .then(r => r.json())
+        .then((d: any[]) => {
+          if (d?.[0]) { setEnvioOrigenCoords(`${d[0].lat},${d[0].lon}`); setEnvioOrigenGeoError(false) }
+          else setEnvioOrigenGeoError(true)
+        })
+        .catch(() => setEnvioOrigenGeoError(true))
+    }
+    const kmRate = suc?.costo_km_envio || (tenant as any)?.costo_envio_por_km
+    if (kmRate) { setPrecioPorKmVenta(String(kmRate)); setEnvioTipoVenta('km') }
+    // Pre-llenar destino con domicilio principal del cliente + geocodificar en paralelo
+    const destPrefill = !envioDestinoVenta && domiciliosFormateadosVenta.length > 0
+      ? domiciliosFormateadosVenta[0] : envioDestinoVenta
+    if (!envioDestinoVenta && destPrefill) setEnvioDestinoVenta(destPrefill)
+    if (destPrefill && !envioDestinoCoords) {
+      setEnvioDestinoGeoError(false)
+      setTimeout(() => {
+        fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destPrefill)}&format=jsonv2&limit=1&countrycodes=ar`,
+          { headers: { 'User-Agent': 'Genesis360App/1.0' } })
+          .then(r => r.json())
+          .then((d: any[]) => {
+            if (d?.[0]) { setEnvioDestinoCoords(`${d[0].lat},${d[0].lon}`); setEnvioDestinoGeoError(false) }
+            else setEnvioDestinoGeoError(true)
+          })
+          .catch(() => setEnvioDestinoGeoError(true))
+      }, 600)
+    }
+  }, [requiereEnvio])
+
+  // Calcular cuando ambos coords están disponibles (se dispara ante cualquier cambio de coords o modo)
+  useEffect(() => {
+    if (!envioOrigenCoords || !envioDestinoCoords || envioTipoVenta !== 'km') return
+    const km = haversineKmCoordsStatic(envioOrigenCoords, envioDestinoCoords)
+    if (km !== null) setEnvioKmVenta(String(km))
+  }, [envioOrigenCoords, envioDestinoCoords, envioTipoVenta])
+
+  // Auto-geocodificar destino y calcular distancia cuando el texto cambia (tipeo manual o selección)
+  // Cubre el caso donde el usuario no selecciona del dropdown sino que tipea la dirección
+  const geocodTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!requiereEnvio || envioTipoVenta !== 'km' || !envioOrigenCoords) return
+    if (envioDestinoCoords) {
+      // Ya tenemos coords del destino → Haversine directo
+      const km = haversineKmCoordsStatic(envioOrigenCoords, envioDestinoCoords)
+      if (km !== null) setEnvioKmVenta(String(km))
+      return
+    }
+    if (!envioDestinoVenta || envioDestinoVenta.length < 5) return
+    if (geocodTimerRef.current) clearTimeout(geocodTimerRef.current)
+    setEnvioDestinoGeoError(false)
+    geocodTimerRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q: envioDestinoVenta, format: 'jsonv2', limit: '1', countrycodes: 'ar' })
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { 'User-Agent': 'Genesis360App/1.0' } })
+        const data = await res.json()
+        if (data?.[0]) {
+          const dc = `${data[0].lat},${data[0].lon}`
+          setEnvioDestinoCoords(dc); setEnvioDestinoGeoError(false)
+          const km = haversineKmCoordsStatic(envioOrigenCoords, dc)
+          if (km !== null) setEnvioKmVenta(String(km))
+        } else { setEnvioDestinoGeoError(true) }
+      } catch { setEnvioDestinoGeoError(true) }
+    }, 1200)
+  }, [envioDestinoVenta, envioOrigenCoords, envioDestinoCoords, envioTipoVenta, requiereEnvio])
+
+  const haversineKmCoords = haversineKmCoordsStatic
+
+  // ISS-162: calcular distancia cuando se selecciona una dirección
+  // Prioridad: Haversine (coords disponibles, instantáneo) → Maps API (fallback)
+  const autoCalcularDistancia = async (origen: string, destino: string) => {
+    if (!origen || !destino || envioTipoVenta !== 'km') return
+    // Si tenemos coords de origen Y destino → Haversine instantáneo
+    const destCoordsStr = envioDestinoCoords
+    const origenCoordsStr = envioOrigenCoords
+    if (origenCoordsStr && destCoordsStr) {
+      const km = haversineKmCoords(origenCoordsStr, destCoordsStr)
+      if (km !== null) { setEnvioKmVenta(String(km)); return }
+    }
+    // Fallback: Maps API (puede tardar o fallar)
+    setCalculandoDistancia(true)
+    const km = await calcularDistanciaKm(origen, destino)
+    if (km !== null) setEnvioKmVenta(String(km))
+    setCalculandoDistancia(false)
+  }
+
+  // Limpiar carrito cuando el DUEÑO cambia de sucursal (evita vender inventario de otra sucursal)
+  const prevSucursalRef = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (prevSucursalRef.current === undefined) {
+      prevSucursalRef.current = sucursalId   // primera carga — solo registrar, no limpiar
+      return
+    }
+    if (prevSucursalRef.current === sucursalId) return
+    prevSucursalRef.current = sucursalId
+    if (cart.length > 0) {
+      setCart([])
+      setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteCCEnabled(false)
+      setMediosPago([{ tipo: '', monto: '' }]); setNotas(''); setDescuentoTotal(''); setRequiereEnvio(false)
+      if (cartDraftKey) localStorage.removeItem(cartDraftKey)
+      toast('Sucursal cambiada — el carrito fue borrado para evitar vender stock de otra sucursal.', {
+        icon: '🏪', duration: 5000,
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sucursalId])
+
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
   const [seriesBusqueda, setSeriesBusqueda] = useState('')
@@ -393,7 +532,7 @@ export default function VentasPage() {
 
   // Pre-guardado del carrito en localStorage
   const cartDraftKey = tenant?.id ? `carrito_draft_${tenant.id}` : null
-  // Restaurar primero (antes del efecto de guardar) — orden de declaración importa
+  // Restaurar carrito + re-fetch inmediato de lineas_disponibles
   const restoredRef = useRef(false)
   useEffect(() => {
     if (!cartDraftKey || restoredRef.current) return
@@ -403,16 +542,43 @@ export default function VentasPage() {
     try {
       const draft = JSON.parse(raw)
       if (draft.cart?.length > 0) {
-        setCart(draft.cart.map((item: any) => ({ ...item, lineas_disponibles: [], series_disponibles: [] })))
+        const itemsRestaurados = draft.cart.map((item: any) => ({ ...item, lineas_disponibles: [], series_disponibles: [] }))
+        setCart(itemsRestaurados)
+
+        // Re-fetch inmediato de lineas_disponibles — dentro del mismo effect para
+        // evitar la race condition con el effect separado que llega antes que el cart
+        const hoy = new Date().toISOString().split('T')[0]
+        const itemsSinSeries = itemsRestaurados.filter((i: any) => !i.tiene_series)
+        if (itemsSinSeries.length > 0) {
+          Promise.all(itemsSinSeries.map(async (item: any) => {
+            let q = supabase.from('inventario_lineas')
+              .select('id, lpn, cantidad, cantidad_reservada, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
+              .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
+            if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+            const { data } = await q
+            const lineasDisp = (data ?? [])
+              .filter((l: any) => (l.ubicaciones as any)?.disponible_surtido !== false)
+              .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= hoy)
+              .map((l: any) => ({
+                id: l.id, lpn: l.lpn ?? null,
+                cantidad: l.cantidad, cantidad_reservada: l.cantidad_reservada ?? 0,
+                ubicacion: (l.ubicaciones as any)?.nombre ?? null,
+              }))
+            return { producto_id: item.producto_id, lineasDisp }
+          })).then(updates => {
+            setCart(prev => prev.map(item => {
+              const u = updates.find((x: any) => x.producto_id === item.producto_id)
+              return u ? { ...item, lineas_disponibles: u.lineasDisp } : item
+            }))
+          }).catch(() => {})
+        }
+
         if (draft.clienteId) {
           setClienteId(draft.clienteId)
           setClienteNombre(draft.clienteNombre ?? '')
           setClienteTelefono(draft.clienteTelefono ?? '')
-          // Restaurar CC habilitado consultando la DB
           supabase.from('clientes').select('cuenta_corriente_habilitada').eq('id', draft.clienteId).maybeSingle()
-            .then(({ data }) => {
-              if (data?.cuenta_corriente_habilitada) setClienteCCEnabled(true)
-            })
+            .then(({ data }) => { if (data?.cuenta_corriente_habilitada) setClienteCCEnabled(true) })
         }
         if (draft.mediosPago) setMediosPago(draft.mediosPago)
         if (draft.notas) setNotas(draft.notas)
@@ -422,7 +588,7 @@ export default function VentasPage() {
         toast('🛒 Se recuperó tu carrito anterior', { duration: 4000 })
       }
     } catch { localStorage.removeItem(cartDraftKey) }
-  }, [cartDraftKey])
+  }, [cartDraftKey])  // eslint-disable-line react-hooks/exhaustive-deps
   // Guardar solo cuando hay contenido (nunca borrar aquí — el delete va en sale completion)
   useEffect(() => {
     if (!cartDraftKey || !restoredRef.current) return
@@ -528,7 +694,7 @@ export default function VentasPage() {
         }))
         .filter((p: any) => estadosFiltro.length === 0 || (stockMap[p.id] ?? 0) > 0)
     },
-    enabled: !!tenant,
+    enabled: !!tenant && authInitialized,
   })
 
   const { data: clientesBusqueda = [] } = useQuery({
@@ -542,6 +708,22 @@ export default function VentasPage() {
     },
     enabled: !!tenant && clienteDropOpen,
   })
+
+  // Domicilios del cliente seleccionado — para autocompletar dirección de envío
+  const { data: domiciliosClienteVenta = [] } = useQuery({
+    queryKey: ['domicilios-cliente-venta', clienteId],
+    queryFn: async () => {
+      const { data } = await supabase.from('cliente_domicilios')
+        .select('calle, numero, piso_depto, ciudad, provincia, codigo_postal')
+        .eq('cliente_id', clienteId!)
+        .order('es_principal', { ascending: false }).order('created_at')
+      return data ?? []
+    },
+    enabled: !!clienteId,
+  })
+  const domiciliosFormateadosVenta = (domiciliosClienteVenta as any[]).map(d =>
+    [d.calle, d.numero, d.piso_depto, d.ciudad, d.provincia, d.codigo_postal].filter(Boolean).join(', ')
+  )
 
   const { data: categoriasHistorial = [] } = useQuery({
     queryKey: ['categorias-historial', tenant?.id],
@@ -1201,11 +1383,20 @@ export default function VentasPage() {
       if (!clienteId) { toast.error('Seleccioná un cliente para usar cuenta corriente.'); return }
       if (!clienteCCEnabled) { toast.error('Este cliente no tiene cuenta corriente habilitada.'); return }
     }
-    // Validar medios de pago (CC se trata como "cubierto", no va a caja)
+    // Validar medios de pago (CC se excluye; los demás deben cubrir totalSinCC)
     // ISS-105: validar contra totalConEnvio (incluye costo de envío)
-    const mediosSinCC = mediosPago.map(m => m.tipo === 'Cuenta Corriente' ? { tipo: m.tipo, monto: String(totalConEnvio - montoCC) } : m)
-    const errorPago = validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, totalConEnvio)
+    const mediosSinCC = mediosPago.filter(m => m.tipo !== 'Cuenta Corriente')
+    const totalSinCC = Math.max(0, totalConEnvio - montoCC)
+    // Full CC (montoCC cubre todo): no hay otros medios que validar
+    const errorPago = modoCC && totalSinCC < 0.5
+      ? null
+      : validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, modoCC ? totalSinCC : totalConEnvio)
     if (errorPago) { toast.error(errorPago); return }
+    // Validar que hay sucursal seleccionada cuando hay varias sucursales
+    if (sucursales.length > 1 && !sucursalId) {
+      toast.error('Seleccioná una sucursal antes de registrar la venta. El stock se descuenta por sucursal.')
+      return
+    }
     if (estado === 'despachada' || estado === 'reservada') {
       const montoNoCCAsignado = mediosPago.filter(m => m.tipo !== 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
       const necesitaCaja = montoNoCCAsignado > 0 || !modoCC
@@ -1323,15 +1514,18 @@ export default function VentasPage() {
 
         if (!item.tiene_series && (estado === 'reservada' || estado === 'despachada')) {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
-          const { data: lineasRaw } = await supabase.from('inventario_lineas')
+          let lineasQ = supabase.from('inventario_lineas')
             .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
             .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+          // Filtrar ESTRICTAMENTE por sucursal activa para no tocar stock de otra sucursal
+          if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
+          const { data: lineasRaw } = await lineasQ
           const lineas = (lineasRaw ?? [])
             .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
             .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoy)
             .sort(sortLineas)
           const stockDisp = lineas.reduce((sum: number, l: any) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0)
-          if (stockDisp < cant) throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
+          if (stockDisp < cant) throw new Error(`Stock insuficiente para "${item.nombre}" en esta sucursal. Disponible: ${stockDisp}, pedido: ${cant}`)
 
           let restante = cant
           for (const linea of lineas) {
@@ -1373,6 +1567,7 @@ export default function VentasPage() {
               tenant_id: tenant!.id, producto_id: item.producto_id, tipo: 'rebaje', cantidad: cant,
               stock_antes: stockAntes, stock_despues: stockDespues,
               motivo: `Venta #${venta.numero}`, usuario_id: user?.id, venta_id: venta.id,
+              sucursal_id: sucursalId || null,
             })
             if (stockDespues <= (prodData.stock_minimo ?? 0))
               stockAlertas.push({ nombre: prodData.nombre, sku: prodData.sku ?? '', stock_actual: stockDespues, stock_minimo: prodData.stock_minimo ?? 0 })
@@ -1479,12 +1674,12 @@ export default function VentasPage() {
           tenant_id: tenant!.id,
           venta_id: venta.id,
           estado: 'pendiente',
-          cliente_id: clienteId || null,
-          canal: 'POS',
+          canal: canalPOS || 'POS',
           created_by: user!.id,
           sucursal_id: sucursalId || null,
           destino_descripcion: envioDestinoVenta || null,
           costo_cotizado: costoEnvioNum > 0 ? costoEnvioNum : null,
+          fecha_entrega_acordada: envioFechaVenta || null,
         })
         qc.invalidateQueries({ queryKey: ['envios'] })
         toast('Envío creado en estado pendiente', { icon: '📦' })
@@ -1495,7 +1690,7 @@ export default function VentasPage() {
       setMediosPago([{ tipo: '', monto: '' }]); setCommittedAsignado(0); setCuotasSeleccion({}); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada'); setCanalPOS('POS')
       setRequiereEnvio(false)
       setCostoEnvioVenta(''); setEnvioTipoVenta('monto'); setEnvioKmVenta('')
-      setPrecioPorKmVenta(''); setEnvioDestinoVenta('')
+      setPrecioPorKmVenta(''); setEnvioDestinoVenta(''); setEnvioOrigenVenta('')
       setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
@@ -2031,9 +2226,13 @@ export default function VentasPage() {
           } else {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
-            const { data: lineasRaw } = await supabase.from('inventario_lineas')
+            let complQ = supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+            // Usar la sucursal de la venta original para no tocar lineas de otra sucursal
+            const ventaSucursal = (ventaDetalle as any)?.sucursal_id
+            if (ventaSucursal) complQ = complQ.eq('sucursal_id', ventaSucursal)
+            const { data: lineasRaw } = await complQ
             const _hoyStr2 = new Date().toISOString().split('T')[0]
             const lineas = (lineasRaw ?? [])
               .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
@@ -2805,7 +3004,7 @@ export default function VentasPage() {
                               <input type="number" min="0" step="0.1" onWheel={e => e.currentTarget.blur()}
                                 value={envioKmVenta} onChange={e => setEnvioKmVenta(e.target.value)}
                                 placeholder="0"
-                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                                className={`w-full border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 ${envioOrigenGeoError ? 'border-red-300 dark:border-red-600' : 'border-gray-200 dark:border-gray-600'}`} />
                             </div>
                             <div>
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">$/km</label>
@@ -2821,31 +3020,86 @@ export default function VentasPage() {
                         </div>
                       )}
 
-                      {/* Destino */}
+                      {/* ISS-163: Origen editable (pre-llenado con sucursal) */}
                       <div>
-                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Dirección de entrega</label>
-                        <div className="flex gap-1.5">
-                          <input type="text"
-                            value={envioDestinoVenta} onChange={e => setEnvioDestinoVenta(e.target.value)}
-                            placeholder="Calle, número, ciudad"
-                            className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                          {envioDestinoVenta && (() => {
-                            const origen = sucursales.find(s => s.id === sucursalId)?.direccion ?? ''
-                            const url = `https://www.google.com/maps/dir/${encodeURIComponent(origen)}/${encodeURIComponent(envioDestinoVenta)}`
-                            return (
-                              <a href={url} target="_blank" rel="noopener noreferrer"
-                                className="flex-shrink-0 px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors"
-                                title="Ver ruta en Google Maps">
-                                🗺
-                              </a>
-                            )
-                          })()}
-                        </div>
-                        {envioDestinoVenta && envioTipoVenta === 'km' && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                            Calculá los km abriendo la ruta en Maps y cargalos arriba.
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Dirección de origen (sucursal)</label>
+                        <AddressAutocompleteInput
+                          value={envioOrigenVenta}
+                          onChange={setEnvioOrigenVenta}
+                          onPlaceSelected={(addr, placeId) => {
+                            setEnvioOrigenVenta(addr)
+                            const isC = /^-?\d+\.?\d*,-?\d+\.?\d*$/.test(placeId)
+                            if (isC) {
+                              setEnvioOrigenCoords(placeId)
+                            } else {
+                              fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=jsonv2&limit=1&countrycodes=ar`,
+                                { headers: { 'User-Agent': 'Genesis360App/1.0' } })
+                                .then(r => r.json()).then((d: any[]) => {
+                                  if (d?.[0]) setEnvioOrigenCoords(`${d[0].lat},${d[0].lon}`)
+                                }).catch(() => {})
+                            }
+                            autoCalcularDistancia(addr, envioDestinoVenta)
+                          }}
+                          placeholder="Dirección de la sucursal..."
+                        />
+                        {envioOrigenGeoError && (
+                          <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                            ⚠ No se encontró esta dirección — verificá que sea correcta en{' '}
+                            <a href="/sucursales" className="underline font-medium">Sucursales</a>{' '}
+                            o ingresá una nueva arriba.
                           </p>
                         )}
+                      </div>
+
+                      {/* ISS-164: Destino con autocompletado Google Places + domicilios del cliente */}
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          Dirección de entrega
+                          {domiciliosFormateadosVenta.length > 0 && (
+                            <span className="ml-1 text-accent">({domiciliosFormateadosVenta.length} guardada{domiciliosFormateadosVenta.length > 1 ? 's' : ''})</span>
+                          )}
+                        </label>
+                        <AddressAutocompleteInput
+                          value={envioDestinoVenta}
+                          onChange={v => { setEnvioDestinoVenta(v); setEnvioDestinoCoords('') }}
+                          onPlaceSelected={(addr, placeId) => {
+                            setEnvioDestinoVenta(addr)
+                            const isCoords = /^-?\d+\.?\d*,-?\d+\.?\d*$/.test(placeId)
+                            const destCoords = isCoords ? placeId : ''
+                            setEnvioDestinoCoords(destCoords)
+                            // Haversine inmediato si tenemos coords de ambos puntos
+                            if (destCoords && envioOrigenCoords && envioTipoVenta === 'km') {
+                              const km = haversineKmCoords(envioOrigenCoords, destCoords)
+                              if (km !== null) { setEnvioKmVenta(String(km)); return }
+                            }
+                            autoCalcularDistancia(envioOrigenVenta, isCoords ? placeId : addr)
+                          }}
+                          savedAddresses={domiciliosFormateadosVenta}
+                          placeholder="Calle, número, ciudad..."
+                        />
+                        {calculandoDistancia && (
+                          <p className="text-xs text-accent mt-1 animate-pulse">Calculando distancia...</p>
+                        )}
+                        {envioDestinoGeoError && !calculandoDistancia && (
+                          <p className="text-xs text-red-500 mt-1">
+                            ⚠ No se encontró esta dirección — intentá escribirla más completa (ej: "Av. Corrientes 1515, CABA").
+                          </p>
+                        )}
+                        {/* Link Maps: usa coordenadas exactas cuando disponibles (Nominatim/geocoder) */}
+                        {envioOrigenVenta && envioDestinoVenta && (
+                          <a href={`https://www.google.com/maps/dir/${encodeURIComponent(envioOrigenVenta)}/${envioDestinoCoords || encodeURIComponent(envioDestinoVenta)}`}
+                            target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-accent mt-1 transition-colors">
+                            🗺 Ver ruta en Google Maps
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Fecha de entrega acordada con el cliente */}
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega acordada</label>
+                        <input type="date" value={envioFechaVenta} onChange={e => setEnvioFechaVenta(e.target.value)}
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       </div>
                     </div>
                   )}
@@ -3111,7 +3365,7 @@ export default function VentasPage() {
                       <CreditCard size={12} /> <span>Parte de la venta a cuenta corriente del cliente</span>
                     </div>
                   )}
-                  <button onClick={() => registrarVenta(modoVenta)} disabled={saving}
+                  <button onClick={() => registrarVenta(modoCC ? 'despachada' : modoVenta)} disabled={saving}
                     className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                     {modoCC ? <CreditCard size={16} /> : modoVenta === 'reservada' ? <ShoppingCart size={16} /> : modoVenta === 'despachada' ? <Zap size={16} /> : <FileText size={16} />}
                     {saving ? 'Guardando...' : modoCC ? 'Despachar (cuenta corriente)' : modoVenta === 'reservada' ? 'Reservar stock' : modoVenta === 'despachada' ? 'Venta directa' : 'Guardar presupuesto'}
@@ -3190,7 +3444,7 @@ export default function VentasPage() {
                             </span>
                           )}
                         </div>
-                        <span className="font-bold text-primary">${v.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        <span className="font-bold text-primary">${((v.total ?? 0) + (v.costo_envio ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
                       <div className="flex items-center justify-between mt-1 text-xs text-gray-400 dark:text-gray-500">
                         <span>{v.cliente_nombre ?? 'Sin cliente'} {v.medio_pago ? `· ${formatMedioPago(v.medio_pago)}` : ''}</span>
@@ -3287,15 +3541,21 @@ export default function VentasPage() {
                   <span>−${(ventaDetalle.subtotal * ventaDetalle.descuento_total / 100).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
               )}
-              {(ventaDetalle.costo_envio_logistica ?? 0) > 0 && (
+              {(ventaDetalle.costo_envio ?? 0) > 0 && (
                 <div className="flex justify-between text-muted">
                   <span>Envío</span>
+                  <span>${(ventaDetalle.costo_envio ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                </div>
+              )}
+              {(ventaDetalle.costo_envio_logistica ?? 0) > 0 && (
+                <div className="flex justify-between text-muted">
+                  <span>Envío logística</span>
                   <span>${(ventaDetalle.costo_envio_logistica ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-primary text-base">
                 <span>Total</span>
-                <span>${ventaDetalle.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                <span>${((ventaDetalle.total ?? 0) + (ventaDetalle.costo_envio ?? 0) + (ventaDetalle.costo_envio_logistica ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
               </div>
               {(() => {
                 // Desglose IVA por tasa desde los items reales
@@ -3488,7 +3748,7 @@ export default function VentasPage() {
                     if (!(ventaDetalle.monto_pagado > 0)) {
                       setSaldoModal({
                         ventaId: ventaDetalle.id,
-                        total: ventaDetalle.total,
+                        total: (ventaDetalle.total ?? 0) + (ventaDetalle.costo_envio ?? 0),
                         montoPagado: 0,
                         mediosPago: [{ tipo: '', monto: '' }],
                         targetEstado: 'reservada',
@@ -3508,11 +3768,12 @@ export default function VentasPage() {
                 const vencido = ventaDetalle.estado === 'pendiente' && isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias)
                 return (
                   <button onClick={() => {
-                    const saldo = calcularSaldoPendiente(ventaDetalle.total ?? 0, ventaDetalle.monto_pagado ?? 0)
+                    const totalConShipping = (ventaDetalle.total ?? 0) + (ventaDetalle.costo_envio ?? 0)
+                    const saldo = calcularSaldoPendiente(totalConShipping, ventaDetalle.monto_pagado ?? 0)
                     if (saldo > 0.5) {
                       setSaldoModal({
                         ventaId: ventaDetalle.id,
-                        total: ventaDetalle.total,
+                        total: totalConShipping,
                         montoPagado: ventaDetalle.monto_pagado ?? 0,
                         mediosPago: [{ tipo: '', monto: saldo.toFixed(2) }],
                       })
@@ -3882,15 +4143,21 @@ export default function VentasPage() {
                       </div>
                     )
                   })()}
-                  {(ticketVenta.costo_envio_logistica ?? 0) > 0 && (
+                  {(ticketVenta.costo_envio ?? 0) > 0 && (
                     <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
                       <span>Envío</span>
+                      <span>${(ticketVenta.costo_envio ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    </div>
+                  )}
+                  {(ticketVenta.costo_envio_logistica ?? 0) > 0 && (
+                    <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                      <span>Envío logística</span>
                       <span>${(ticketVenta.costo_envio_logistica ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-bold text-primary text-base">
                     <span>TOTAL</span>
-                    <span>${ticketVenta.total?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                    <span>${((ticketVenta.total ?? 0) + (ticketVenta.costo_envio ?? 0) + (ticketVenta.costo_envio_logistica ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                   {ticketVenta.medio_pago && (() => {
                     let pagos: { tipo: string; monto: number }[] = []

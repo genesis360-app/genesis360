@@ -1,9 +1,9 @@
 ---
 title: Productos
 category: features
-tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal]
+tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
 sources: [CLAUDE.md]
-updated: 2026-05-18
+updated: 2026-05-20
 ---
 
 # Productos
@@ -239,11 +239,32 @@ El operador puede modificar cualquier valor antes de confirmar.
 
 ---
 
+## Escaneo de ticket de compra (v1.8.38)
+
+Botón **"Escanear ticket"** en el toolbar del listado de productos (junto a "Nuevo producto").
+
+Permite fotografiar un ticket de supermercado y comparar los productos detectados contra el catálogo:
+
+| Estado | Ícono | Descripción | Acción disponible |
+|--------|-------|-------------|-------------------|
+| Encontrado, precio igual | ✅ verde | Sin cambios necesarios | — |
+| Encontrado, precio diferente | ⚠️ amber | Muestra "BD: $X → Ticket: $Y" | Actualizar `precio_costo` (toggle) |
+| No en catálogo | ➕ azul | Nuevo producto detectado | Crear (con precio venta editable) |
+| Omitido | ✗ gris | Excluido manualmente | Reactivar con X |
+
+**Al crear:** SKU = barcode del ticket si existe, o `NOMBRE-{timestamp}{idx}` si no.  
+**Proceso:** imagen comprimida a JPEG 1200px → EF `scan-ticket` (Claude Sonnet 4.6) → matcheo DB → tabla editable → "Aplicar cambios".
+
+Ver detalle técnico: [[wiki/features/escaneo-barcode]]
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/grupos-variantes]]
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/wms]]
 - [[wiki/features/multi-sucursal]]
+- [[wiki/features/escaneo-barcode]]
 - [[wiki/database/migraciones]]
 - [[wiki/database/schema-overview]]

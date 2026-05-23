@@ -6,7 +6,7 @@ sources: []
 updated: 2026-04-30
 ---
 
-# Edge Functions (26 funciones Deno)
+# Edge Functions (28 funciones Deno)
 
 Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican validando el JWT de Supabase en cada request.
 
@@ -23,7 +23,8 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | `emitir-factura` | Emisión de facturas electrónicas vía AFIP |
 | `birthday-notifications` | Envía alertas de cumpleaños de empleados |
 | `send-email` | Email transaccional genérico (usa Resend) |
-| `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) |
+| `scan-product` | Imagen → detección de barcode con IA (Claude Haiku) + Open Food Facts |
+| `scan-ticket` | Foto de ticket de supermercado → lista de productos `[{barcode, nombre, cantidad, precio_unitario}]` (Claude Sonnet 4.6 vision). Usado en RecepcionesPage y ProductosPage. Retorna siempre HTTP 200 con `{ items: [] }` o `{ error: '...' }` |
 | `meli-oauth-callback` | Callback OAuth para conectar cuenta Mercado Libre |
 | `meli-webhook` | Procesa webhooks de Mercado Libre (cambios de stock) |
 | `meli-search-items` | Busca productos en Mercado Libre |
@@ -31,7 +32,26 @@ Todas las Edge Functions corren en Deno/TypeScript en Supabase. Se autentican va
 | `tn-webhook` | Procesa webhooks de Tienda Nube (stock sync) |
 | `marketplace-webhook` | Webhook del marketplace interno |
 | `generate-types` | Genera TypeScript types desde el schema de Supabase |
-| *(~11 más)* | Monitoreo, aging de stock, workers, etc. |
+| `modo-crear-pago` | Genera payment intent en MODO — QR + deep link para cobros interoperables (DEV+PROD) |
+| `modo-webhook` | Recibe confirmaciones de pago MODO — idempotente via `ventas_externas_logs` (DEV+PROD) |
+| *(~9 más)* | Monitoreo, aging de stock, workers, etc. |
+
+### EFs activas DEV+PROD
+
+| EF | auth | Descripción |
+|---|---|---|
+| `invite-user` | JWT-less | Invita usuario |
+| `ai-assistant` | JWT-less | Groq/Llama 3.1 — chat + bug report |
+| `cancel-suscripcion` | JWT | PATCH preapproval MP |
+| `emitir-factura` | JWT | AFIP factura electrónica |
+| `crear-suscripcion` | JWT-less | MP preapproval |
+| `mp-webhook` | JWT-less | Webhooks MP suscripciones |
+| `data-api` | JWT | API pull externa (API keys) |
+| `tn-stock-worker` | JWT-less | Sync stock TiendaNube |
+| `meli-stock-worker` | JWT-less | Sync stock MercadoLibre |
+| `mp-crear-link-pago` | JWT | Link de pago MP para ventas |
+| `modo-crear-pago` | JWT-less | Genera payment intent MODO |
+| `modo-webhook` | JWT-less | Confirmaciones de pago MODO |
 
 ---
 

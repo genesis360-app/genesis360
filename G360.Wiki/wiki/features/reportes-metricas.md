@@ -3,7 +3,7 @@ title: Reportes y Métricas
 category: features
 tags: [reportes, metricas, kpi, dashboard, excel, pdf, insights]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-05-20
 ---
 
 # Reportes y Métricas
@@ -163,7 +163,23 @@ Todas las queries del tab General/Todo incluyen `sucursalId` en el `queryKey` y 
 | `dash-fugas` | ventas, gastos |
 | `stock-inmovilizado` | inventario_lineas |
 
-Las 9 áreas del sub-nav (`DashVentasArea`, etc.) ya usaban `useSucursalFilter` internamente y ahora usan filtro estricto (sin `OR sucursal_id IS NULL`).
+Las 9 áreas del sub-nav (`DashVentasArea`, etc.) usan `useSucursalFilter` internamente.
+
+### Filtro de sucursal en áreas Inventario y Productos (v1.8.38)
+
+**Bug histórico resuelto:** VentasPage no incluía `sucursal_id` al insertar en `movimientos_stock` → rebajes de ventas quedaban con `sucursal_id = NULL` → filtro estricto los excluía → rotación/runway mostraban 0.
+
+**Comportamiento actual:**
+- `dashFilter` usa `.or('sucursal_id.eq.X,sucursal_id.is.null')` (filtro inclusivo) para cubrir registros anteriores al fix
+- VentasPage y LpnAccionesModal ahora incluyen `sucursal_id` en todos los inserts de `movimientos_stock`
+
+**Banner de aviso (v1.8.38):** cuando el usuario tiene una sucursal seleccionada en el header (el selector no es visible en /dashboard), aparece un chip amber explicando que los datos están filtrados. El DUEÑO ve botón "Ver todo" para limpiar el filtro.
+
+### Bug categoria FK resuelto (v1.8.38)
+
+La columna `categoria TEXT` en `productos` fue migrada a `categoria_id UUID FK` → `categorias(nombre)`. Los componentes `DashProductosArea` y `DashInventarioArea` seguían seleccionando `categoria` → 400 de PostgREST → `data = null` → **todos los KPIs en $0**.
+
+Fix: queries usan `categorias(nombre)` en el join embedded. El filtro por categoría en DashProductosArea fue eliminado ya que `.eq('joined_table.col', val)` no funciona en PostgREST (gotcha conocido).
 
 ---
 

@@ -129,6 +129,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       stock_despues: stockDespues ?? stockAntes,
       motivo,
       usuario_id: user?.id,
+      sucursal_id: sucursalId || null,
     })
   }
 

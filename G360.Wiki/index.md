@@ -17,26 +17,27 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/features/autenticacion-onboarding]] | Google OAuth, roles, trial · fix registro · defaults seed (Sucursal 1 + Caja + motivos + estados) | ✅ |
-| [[wiki/features/productos]] | ProductosPage + ProductoFormPage · 6 cards · marca/UdM/variantes/shelf life · grupos · ubicación por sucursal · inactivos visibles | ✅ |
+| [[wiki/features/productos]] | ProductosPage + ProductoFormPage · scan ticket IA (v1.8.38) · 6 cards · marca/UdM/variantes/shelf life · grupos · ubicación por sucursal · inactivos visibles | ✅ |
 | [[wiki/features/inventario-stock]] | LPNs, FIFO/FEFO, stock sucursal, bulk edit · conteos borrador · rebaje masivo fix · shortcuts ESC/ENTER · filtros pill · defaults producto · modales inline | ✅ |
-| [[wiki/features/ventas-pos]] | Carrito, 3 modos, CC parcial, cuotas, ticket sucursal · ISS-105/106 envío + historial sucursal | ✅ |
+| [[wiki/features/ventas-pos]] | Carrito, 3 modos, CC parcial (fix ISS-090), cuotas, ticket sucursal · ISS-162/163/164 envío autocompletado + cálculo km automático | ✅ |
 | [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja · caja predeterminada ★ · cajas.sucursal_id · Caja Principal en seed | ✅ |
 | [[wiki/features/gastos]] | Variables, fijos, IVA, OC · efectivo en caja · CC en OC · comprobante OC · ISS-044 ticket OC | ✅ |
 | [[wiki/features/devoluciones]] | Stock serializado/no-serializado, NC, caja | ✅ |
 | [[wiki/features/clientes-proveedores]] | CRM, CC, OC, domicilios · globales entre sucursales · cancelar deuda CC (ISS-107) | ✅ |
 | [[wiki/features/facturacion-afip]] | AFIP WSFE, tipos A/B/C, AfipSDK, FacturacionPage 4 tabs | ✅ DEV |
 | [[wiki/features/rrhh]] | 5 fases: empleados, nómina, vacaciones, asistencia, supervisor | ✅ |
-| [[wiki/features/wms]] | Estructuras, ubicaciones, KITs, kitting, conteos, recepciones | ✅ |
+| [[wiki/features/wms]] | Estructuras, ubicaciones, KITs, kitting, conteos, recepciones · scan ticket en RecepcionesPage (v1.8.38) | ✅ |
 | [[wiki/features/marketplace]] | API pública, webhook saliente, publicación por producto | ✅ |
-| [[wiki/features/envios]] | Propio (Google Maps + KM auto) · Courier (tarifas config) · canal auto · sin cotizador | ✅ |
+| [[wiki/features/envios]] | Propio (Google Maps + KM auto) · jerarquía $/km global/sucursal · Courier (tarifas config) · canal auto | ✅ |
 | [[wiki/features/notificaciones]] | Tabla real, campana, email, diferencia apertura caja — v1.5.0 | ✅ |
 | [[wiki/features/suscripciones-planes]] | Planes Free/Básico/Pro/Enterprise, trial, Mercado Pago | ✅ |
-| [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku fallback | ✅ |
-| [[wiki/features/multi-sucursal]] | Selector, roles, stock · sucursal default · backfill 114–117 · filtros estrictos · cajas por sucursal · ubicacion por sucursal (121) | ✅ |
+| [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku (scan-product) + scan-ticket IA (v1.8.38): ticket supermercado → recepciones + productos | ✅ |
+| [[wiki/features/multi-sucursal]] | Selector, roles, stock · SucursalesPage consolidada v1.8.38 (todos los campos en un modal) · backfill 114–117 · filtros estrictos · cajas por sucursal | ✅ |
 | [[wiki/features/alertas]] | Stock bajo, LPNs vencidos, reservas viejas, sin categoría, deuda · filtro por sucursal | ✅ |
-| [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos | ✅ |
-| [[wiki/features/reportes-metricas]] | Dashboard 9 áreas, SQL Runner, aging individual · tab Todo filtro por sucursal · nueva nav (area+sub-tabs) | ✅ |
+| [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos · ISS-111/112/114 fixes | ✅ |
+| [[wiki/features/reportes-metricas]] | Dashboard 9 áreas, SQL Runner, aging individual · fix categoria FK (KPIs en 0) · filtro sucursal inclusivo + banner · nueva nav (area+sub-tabs) | ✅ |
 | [[wiki/features/grupos-variantes]] | Grupos de variantes (talle, color, etc.) · ProductoGrupoModal · vista agrupada en ProductosPage · migration 120 | ✅ |
+| [[wiki/features/configuracion]] | ConfigPage v2 — 11 tabs temáticas · Mi negocio solo nivel tenant (v1.8.38, campos por sucursal movidos a SucursalesPage) · métodos de pago, comisión, descuento máx, caja, cliente POS | ✅ |
 
 ---
 
@@ -48,7 +49,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/architecture/backend-supabase]] | PostgreSQL, Auth, RLS, Storage, Edge Functions, proyectos | ✅ |
 | [[wiki/architecture/multi-tenant-rls]] | Modelo multi-tenant, RLS, roles, onboarding | ✅ |
 | [[wiki/architecture/estado-global]] | authStore Zustand, usePlanLimits, useSucursalFilter, hooks | ✅ |
-| [[wiki/architecture/edge-functions]] | 26 funciones Deno, lista y propósito de cada una | ✅ |
+| [[wiki/architecture/edge-functions]] | 27+ funciones Deno · scan-ticket (v1.8.38) · lista y propósito de cada una | ✅ |
 | [[wiki/architecture/pwa-config]] | Service Worker, manifest, WASM, SPA routing Vercel | ✅ |
 | [[wiki/architecture/escalabilidad]] | Costos infra, capacidad escala, cola jobs, Sentry, cloud vs DC | ✅ |
 
@@ -75,7 +76,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/facturacion-afip]] | ← Ver features/facturacion-afip (cubre integración AFIP) | ✅ |
 | [[wiki/features/envios]] | ← WhatsApp documentado en features/envios | ✅ |
 | [[wiki/integrations/resend-email]] | send-email EF, tipos, FROM, monitoring diario | ✅ |
-| [[wiki/integrations/roadmap-apis]] | MODO framework (migration 109, v1.8.26), TiendaNube, MercadoLibre, roadmap completo | ✅ |
+| [[wiki/integrations/roadmap-apis]] | MODO integración completa (modo-crear-pago + modo-webhook DEV+PROD, v1.8.35), TiendaNube, MercadoLibre | ✅ |
 
 ---
 
@@ -138,4 +139,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-18 — 51 páginas + 3 manuales · 8 fuentes en raw/ · 122 migraciones DEV (121 + 086b) · v1.8.31-dev / v1.8.27-prod*
+*Última actualización: 2026-05-19 — 52 páginas + 3 manuales · 8 fuentes en raw/ · 127 migraciones DEV+PROD (126 + 086b) · v1.8.37 DEV+PROD*

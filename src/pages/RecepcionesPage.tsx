@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, ArrowLeft, Trash2, Search, CheckCircle, XCircle, ChevronDown, ChevronRight, Warehouse, AlertTriangle, GitBranch, RotateCcw, X } from 'lucide-react'
+import { Plus, ArrowLeft, Trash2, Search, CheckCircle, XCircle, ChevronDown, ChevronRight, Warehouse, AlertTriangle, GitBranch, RotateCcw, X, Camera, Upload, Loader2 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
@@ -63,6 +63,19 @@ type FormItem = {
   expanded: boolean
 }
 
+type ScanItem = {
+  _key: string
+  barcode: string | null
+  nombre_scan: string
+  cantidad: number
+  precio_unitario: number
+  match: {
+    id: string; nombre: string; sku: string; precio_costo: number
+    tiene_series: boolean; tiene_lote: boolean; tiene_vencimiento: boolean
+    unidad_medida: string
+  } | null
+}
+
 const ESTADO_RECEPCION_LABEL: Record<string, string> = {
   borrador: 'Borrador', confirmada: 'Confirmada', cancelada: 'Cancelada',
 }
@@ -116,6 +129,13 @@ export default function RecepcionesPage() {
   const [expandedRec, setExpandedRec] = useState<string | null>(null)
   const [estructurasMap, setEstructurasMap] = useState<Record<string, ProductoEstructura[]>>({})
   const [resultadoModal, setResultadoModal] = useState<ResultadoRecepcion | null>(null)
+
+  // ── Scan ticket ─────────────────────────────────────────────────────────────
+  const [showScanModal, setShowScanModal] = useState(false)
+  const [scanStep, setScanStep] = useState<'upload' | 'scanning' | 'results'>('upload')
+  const [scanItems, setScanItems] = useState<ScanItem[]>([])
+  const [scanPreviewUrl, setScanPreviewUrl] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Sincronizar sucursal activa al abrir el formulario
   useEffect(() => {
@@ -608,6 +628,97 @@ export default function RecepcionesPage() {
     onError: (e: any) => toast.error(e.message ?? 'Error al registrar reembolso'),
   })
 
+  // ── Funciones de scan ────────────────────────────────────────────────────────
+
+  const comprimirImagen = (file: File, maxWidth = 1200, quality = 0.82): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const scale = Math.min(1, maxWidth / img.width)
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1])
+      }
+      img.onerror = reject
+      img.src = url
+    })
+
+  const procesarTicket = async (file: File) => {
+    setScanPreviewUrl(URL.createObjectURL(file))
+    setScanStep('scanning')
+    try {
+      const base64 = await comprimirImagen(file)
+      const { data, error } = await supabase.functions.invoke('scan-ticket', {
+        body: { image: base64, media_type: 'image/jpeg' },
+      })
+      if (error) throw new Error(error.message)
+      if (data?.error) throw new Error(data.error)
+      const rawItems: Array<{ barcode: string | null; nombre: string; cantidad: number; precio_unitario: number }> = data?.items ?? []
+      if (rawItems.length === 0) { toast.error('No se detectaron productos en el ticket'); setScanStep('upload'); return }
+
+      // Buscar cada item en la DB en paralelo
+      const matched = await Promise.all(rawItems.map(async (item) => {
+        let prod: any = null
+        // 1. Por barcode (SKU exacto)
+        if (item.barcode) {
+          const { data: d } = await supabase.from('productos')
+            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, unidad_medida')
+            .eq('tenant_id', tenant!.id).eq('activo', true).eq('sku', item.barcode).maybeSingle()
+          prod = d
+        }
+        // 2. Por nombre (primeras 2 palabras)
+        if (!prod) {
+          const palabras = item.nombre.split(/\s+/).slice(0, 2).join(' ')
+          const { data: d } = await supabase.from('productos')
+            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, unidad_medida')
+            .eq('tenant_id', tenant!.id).eq('activo', true).ilike('nombre', `%${palabras}%`).limit(1).maybeSingle()
+          prod = d
+        }
+        return {
+          _key: crypto.randomUUID(),
+          barcode: item.barcode,
+          nombre_scan: item.nombre,
+          cantidad: item.cantidad,
+          precio_unitario: item.precio_unitario,
+          match: prod ? { id: prod.id, nombre: prod.nombre, sku: prod.sku, precio_costo: prod.precio_costo ?? 0, tiene_series: prod.tiene_series ?? false, tiene_lote: prod.tiene_lote ?? false, tiene_vencimiento: prod.tiene_vencimiento ?? false, unidad_medida: prod.unidad_medida ?? 'unidad' } : null,
+        } as ScanItem
+      }))
+      setScanItems(matched)
+      setScanStep('results')
+    } catch (e: any) {
+      toast.error('Error al procesar el ticket: ' + (e.message ?? 'Error desconocido'))
+      setScanStep('upload')
+    }
+  }
+
+  const cargarScanAlFormulario = () => {
+    const encontrados = scanItems.filter(i => i.match)
+    if (encontrados.length === 0) { toast.error('No hay productos encontrados para cargar'); return }
+    const nuevos = encontrados.map(i => nuevoItem({
+      producto_id: i.match!.id,
+      producto_nombre: i.match!.nombre,
+      producto_sku: i.match!.sku,
+      tiene_series: i.match!.tiene_series,
+      tiene_lote: i.match!.tiene_lote,
+      tiene_vencimiento: i.match!.tiene_vencimiento,
+      unidad_medida: i.match!.unidad_medida,
+      precio_costo_default: i.match!.precio_costo,
+      cantidad_recibida: String(i.cantidad),
+      precio_costo: i.precio_unitario > 0 ? String(i.precio_unitario) : String(i.match!.precio_costo),
+      expanded: false,
+    }))
+    setItems(prev => [...prev, ...nuevos])
+    setShowScanModal(false)
+    setScanItems([])
+    setScanStep('upload')
+    setScanPreviewUrl(null)
+    toast.success(`${encontrados.length} producto${encontrados.length !== 1 ? 's' : ''} cargado${encontrados.length !== 1 ? 's' : ''} al formulario`)
+  }
+
   const cancelarRecepcion = async (id: string) => {
     if (!confirm('¿Cancelar esta recepción?')) return
     await supabase.from('recepciones').update({ estado: 'cancelada' }).eq('id', id)
@@ -921,10 +1032,18 @@ export default function RecepcionesPage() {
       </div>
 
       {/* Items */}
+      <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) procesarTicket(f); e.target.value = '' }} />
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-primary uppercase tracking-wide">Productos a recibir</h2>
-          <span className="text-xs text-muted">{items.length} ítem(s)</span>
+          <div className="flex items-center gap-3">
+            <button onClick={() => { setScanStep('upload'); setScanItems([]); setScanPreviewUrl(null); setShowScanModal(true) }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent border border-accent/40 rounded-lg hover:bg-accent/5 transition-colors">
+              <Camera size={13} /> Escanear ticket
+            </button>
+            <span className="text-xs text-muted">{items.length} ítem(s)</span>
+          </div>
         </div>
 
         {/* Buscador */}
@@ -1119,6 +1238,152 @@ export default function RecepcionesPage() {
           </div>
         )}
       </div>
+
+      {/* ── Modal scan ticket ────────────────────────────────────────────────── */}
+      {showScanModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <Camera size={18} className="text-accent" />
+                <h2 className="font-semibold text-primary">Escanear ticket de compra</h2>
+              </div>
+              <button onClick={() => { setShowScanModal(false); setScanStep('upload'); setScanItems([]) }}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+
+              {/* Step: upload */}
+              {scanStep === 'upload' && (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted">Fotografiá o subí el ticket del supermercado. Genesis360 va a detectar los productos, cantidades y precios automáticamente.</p>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center justify-center gap-3 h-48 border-2 border-dashed border-gray-200 dark:border-gray-600 rounded-2xl cursor-pointer hover:border-accent hover:bg-accent/5 transition-all">
+                    <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                      <Upload size={22} className="text-accent" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-primary">Tocá para seleccionar imagen</p>
+                      <p className="text-xs text-muted mt-0.5">O usá la cámara directamente</p>
+                    </div>
+                  </div>
+                  <button onClick={() => fileInputRef.current?.click()}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-accent text-white rounded-xl text-sm font-medium hover:bg-accent/90 transition-colors">
+                    <Camera size={15} /> Tomar foto / seleccionar imagen
+                  </button>
+                </div>
+              )}
+
+              {/* Step: scanning */}
+              {scanStep === 'scanning' && (
+                <div className="space-y-4">
+                  {scanPreviewUrl && (
+                    <img src={scanPreviewUrl} alt="Ticket" className="w-full max-h-48 object-contain rounded-xl border border-gray-200 dark:border-gray-700" />
+                  )}
+                  <div className="flex flex-col items-center gap-3 py-6">
+                    <Loader2 size={32} className="text-accent animate-spin" />
+                    <p className="text-sm font-medium text-primary">Analizando ticket...</p>
+                    <p className="text-xs text-muted">Claude está detectando los productos y precios</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Step: results */}
+              {scanStep === 'results' && scanItems.length > 0 && (() => {
+                const encontrados = scanItems.filter(i => i.match).length
+                const noEncontrados = scanItems.length - encontrados
+                return (
+                  <div className="space-y-4">
+                    {scanPreviewUrl && (
+                      <img src={scanPreviewUrl} alt="Ticket" className="w-full max-h-32 object-contain rounded-xl border border-gray-200 dark:border-gray-700" />
+                    )}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-xs px-2.5 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full font-medium">
+                        {encontrados} encontrado{encontrados !== 1 ? 's' : ''}
+                      </span>
+                      {noEncontrados > 0 && (
+                        <span className="text-xs px-2.5 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full font-medium">
+                          {noEncontrados} no encontrado{noEncontrados !== 1 ? 's' : ''} — no se cargarán
+                        </span>
+                      )}
+                    </div>
+                    <div className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 dark:bg-gray-700/50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400 w-6"></th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-500 dark:text-gray-400">Producto</th>
+                            <th className="px-3 py-2 text-center font-semibold text-gray-500 dark:text-gray-400 w-16">Cant.</th>
+                            <th className="px-3 py-2 text-right font-semibold text-gray-500 dark:text-gray-400 w-24">Precio unit.</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                          {scanItems.map(item => (
+                            <tr key={item._key} className={item.match ? '' : 'opacity-50'}>
+                              <td className="px-3 py-2.5">
+                                {item.match
+                                  ? <CheckCircle size={14} className="text-green-500" />
+                                  : <XCircle size={14} className="text-gray-300 dark:text-gray-600" />}
+                              </td>
+                              <td className="px-3 py-2.5">
+                                <p className="font-medium text-primary leading-tight">{item.match?.nombre ?? item.nombre_scan}</p>
+                                {item.match && item.nombre_scan.toLowerCase() !== item.match.nombre.toLowerCase() && (
+                                  <p className="text-gray-400 dark:text-gray-500 leading-tight">del ticket: {item.nombre_scan}</p>
+                                )}
+                                {!item.match && <p className="text-amber-500 dark:text-amber-400 leading-tight">No está en tu catálogo</p>}
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                <input type="number" min="1" value={item.cantidad}
+                                  onChange={e => setScanItems(prev => prev.map(i => i._key === item._key ? { ...i, cantidad: Math.max(1, parseInt(e.target.value) || 1) } : i))}
+                                  className="w-14 text-center border border-gray-200 dark:border-gray-600 rounded-lg px-1 py-0.5 bg-transparent focus:outline-none focus:border-accent" />
+                              </td>
+                              <td className="px-3 py-2.5 text-right">
+                                <input type="number" min="0" step="0.01" value={item.precio_unitario}
+                                  onChange={e => setScanItems(prev => prev.map(i => i._key === item._key ? { ...i, precio_unitario: parseFloat(e.target.value) || 0 } : i))}
+                                  className="w-24 text-right border border-gray-200 dark:border-gray-600 rounded-lg px-1 py-0.5 bg-transparent focus:outline-none focus:border-accent" />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {noEncontrados > 0 && (
+                      <p className="text-xs text-muted">Los productos no encontrados no se agregan. Creálos en el módulo Productos y volvé a escanear.</p>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-700">
+              <button onClick={() => { setShowScanModal(false); setScanStep('upload'); setScanItems([]) }}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Cancelar
+              </button>
+              {scanStep === 'results' && (
+                <button onClick={cargarScanAlFormulario} disabled={scanItems.filter(i => i.match).length === 0}
+                  className="flex items-center gap-2 px-5 py-2 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent/90 disabled:opacity-50 transition-colors">
+                  <CheckCircle size={15} />
+                  Cargar {scanItems.filter(i => i.match).length} producto{scanItems.filter(i => i.match).length !== 1 ? 's' : ''} al formulario
+                </button>
+              )}
+              {scanStep === 'upload' && (
+                <button onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 px-5 py-2 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent/90 transition-colors">
+                  <Camera size={15} /> Seleccionar imagen
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Acciones */}
       <div className="flex gap-3 justify-end pb-6">

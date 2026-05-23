@@ -6,6 +6,120 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-23] update | v1.8.40-dev — ISS-166/167/168/169 + fixes carrito/numeración/autocomplete
+
+### ISS-166 — Botón cámara en modal POD
+- Input file con `capture="environment"` para tomar foto con la cámara del dispositivo
+- Upload a bucket `etiquetas-envios/pod/{id}/` con URL firmada 365 días como `pod_url`
+
+### ISS-167 — QR codes en remito PDF
+- QR número de venta + QR número de envío en esquina superior derecha
+- Tabla incluye SKU, LPN y Ubicación de almacén
+
+### ISS-168 — LPN y ubicación de mercadería en Envíos
+- Panel expandido muestra LPN en badge + ubicación por producto de la venta
+
+### ISS-169 — Pestaña Pagos Courier
+- Tab con badge de pendientes · selección múltiple · marcar como pagados
+- Migration 128: `costo_pagado + fecha_pago_courier + medio_pago_courier`
+
+### Fixes sesión (2026-05-21 → 2026-05-23)
+- Número venta coherente Ventas↔Envíos (prefijo sucursal opcional, fallback `#global`)
+- Carrito restaurado: re-fetch lineas dentro del mismo effect (elimina race condition)
+- Autocomplete: `AutocompleteSuggestion` API (misma que Google Maps) + `AutocompleteService` legacy
+- Distancia: Haversine con coords pre-geocodificadas · alertas si dirección mala
+- DashEnviosArea: `en_bodega` en funnel, tiempo medio desde POD, insight cancelados
+
+## [2026-05-21] update | v1.8.39-dev — autocomplete direcciones con Nominatim fallback
+
+### AddressAutocompleteInput — autocomplete robusto
+- **Google Places (primario)**: funciona cuando Maps JS API está habilitada
+- **Nominatim/OpenStreetMap (fallback)**: activa automáticamente cuando Maps falla (`gm_authFailure` o `ApiNotActivatedMapError`)
+  - Busca desde 3 chars, debounce 450ms, límite 6 resultados, solo Argentina
+  - No requiere API key, libre de uso
+  - Verificado: "Av Triunvirato 2066 CABA" → retorna "Avenida Triunvirato, Villa Urquiza, Buenos Aires..."
+- **Singleton `mapsErrorDetected`**: evita reintentos de Maps en la misma sesión
+- **`gm_authFailure`**: hookeado para detectar error de key/dominio además del error de API
+
+### VentasPage — autocompletar dirección con domicilios del cliente
+- Query `domicilios-cliente-venta` carga `cliente_domicilios` cuando hay `clienteId`
+- Al activar toggle envío: pre-llena destino con domicilio principal del cliente
+- Dropdown al enfocar: muestra direcciones guardadas + sugerencias Nominatim unificadas
+
+## [2026-05-21] update | v1.8.39-dev — POD + en_bodega + fix crítico envíos + corrección totales (testing completo ✅)
+
+### Flujos verificados via DB (5 flujos end-to-end)
+1. **Venta directa** #78 — POS, Efectivo $4200, sin envío → Caja OK
+2. **Venta con envío** #79 — WhatsApp, Transferencia $7650 (6150+1500 envío), Av. Triunvirato 2066 → Envío #4 pendiente/despachado/en_camino/en_bodega/entregado con POD ✅
+3. **Reserva → despachada** #80 — Instagram, Seña $1000 efectivo + saldo $4550 débito, envío #5 pendiente ✅
+4. **Presupuesto → despachada** #81 — POS, $5000 efectivo + $3400 tarjeta crédito, multi-pago ✅
+5. **POD completo** — todos los estados (pendiente→despachado→en_camino→en_bodega→entregado), pod_fecha/receptor/notas/url ✅
+
+### Consistencia verificada
+- `monto_pagado == total + costo_envio` en 4/4 ventas test: OK
+- Caja: ingreso, ingreso_informativo, ingreso_reserva registrados por tipo de medio de pago: OK
+- Dashboard canales: POS/WhatsApp/Instagram con totales reales incluyendo envío: OK
+- Envíos: 1 pendiente + 4 entregados (2 con POD); canal hereda de la venta: OK
+
+## [2026-05-21] update | v1.8.39-dev — POD + en_bodega + fix crítico envíos + corrección totales
+
+### Migration 127 — POD y estado en_bodega
+- `envios`: 4 nuevas columnas: `pod_url`, `pod_fecha`, `pod_receptor`, `pod_notas`
+- CHECK constraint ampliado: `en_bodega` como nuevo estado entre `en_camino` y `entregado`
+- Flujo de estados: pendiente → despachado → en_camino → **en_bodega** → entregado
+
+### Fix crítico — BUG envíos auto-creados desde VentasPage
+- `cliente_id` no existe en tabla `envios` → INSERT fallaba silenciosamente (sin registro de envío)
+- Fix: eliminado `cliente_id` del INSERT; agregado `canal: canalPOS` y `fecha_entrega_acordada`
+- Nuevo campo en form de VentasPage: "Fecha de entrega acordada" al activar toggle envío
+
+### EnviosPage — POD completo
+- Modal POD standalone: abre al hacer clic en "Registrar POD" desde panel expandido
+- Al confirmar POD: guarda pod_fecha/pod_receptor/pod_notas/pod_url + cambia estado a `entregado`
+- Display POD en panel expandido: muestra fecha, receptor, observaciones y link comprobante
+- Sección POD en modal de edición de envío (cuando se edita uno existente)
+- `en_bodega`: badge violeta + icono Warehouse; botón "Registrar entrega (POD)" desde ese estado
+
+### Corrección de totales en ventas con envío
+- Historial lista: muestra `total + costo_envio` (total real que pagó el cliente)
+- Detalle de venta: línea separada "Envío" + total correcto incluyendo envío
+- Ticket (modal post-venta): muestra "Envío" en breakdown + total correcto
+- Saldo modal (reserva→despachada): calcula saldo correctamente incluyendo `costo_envio`
+- Modal presupuesto→reservada: total correcto con envío para seña
+
+## [2026-05-20] update | v1.8.38-dev — envíos en VentasPage + consolidación SucursalesPage
+
+### ISS-162/163/164 — Envíos en VentasPage
+- ISS-164: campo "Dirección de entrega" reemplazado por `AddressAutocompleteInput` → Google Places autocomplete mientras se escribe
+- ISS-163: nuevo campo editable "Dirección de origen (sucursal)" también con autocomplete; pre-llenado con `sucursal.direccion` al activar el toggle. URL de Google Maps ahora usa este campo como origen (antes quedaba vacío cuando sucursalId=null)
+- ISS-162: al activar envío, pre-llena `$/km` desde `sucursal.costo_km_envio` y activa modo "Por KM"; `onPlaceSelected` dispara `calcularDistanciaKm()` → setea km → calcula costo automáticamente
+
+### Jerarquía global/sucursal para $/km
+- `sucursal.costo_km_envio` (prioridad) → `tenant.costo_envio_por_km` (fallback global)
+- Afecta EnviosPage, VentasPage; labels actualizados en ConfigPage y SucursalesPage
+
+### Consolidación config por sucursal → SucursalesPage
+- Movido desde Config/Mi negocio a SucursalesPage (modal de edición):
+  `codigo_postal`, `email`, `horario_apertura`, `horario_cierre`, `punto_venta_afip`
+- Eliminado bloque "Configuración por sucursal" y todo el estado de ConfigPage
+- Config/Mi negocio queda con configuración puramente a nivel tenant
+
+## [2026-05-20] update | v1.8.38-dev — scan ticket IA, fixes Dashboard, ISS-090 CC
+
+### Nuevas features
+- **scan-ticket** EF nueva (Claude Sonnet 4.6 vision): analiza foto de ticket de supermercado y extrae lista de productos con barcode, nombre, cantidad y precio_unitario
+- **RecepcionesPage**: botón "Escanear ticket" → foto → matcheo contra DB → tabla editable → carga automática al formulario de recepción
+- **ProductosPage**: botón "Escanear ticket" → foto → validación de catálogo: ✓ sin cambios / ⚠ precio diferente / + nuevo → actualiza precio_costo o crea producto
+
+### Bugs críticos resueltos
+- **Dashboard Productos/Inventario — todo en $0**: columna `categoria` fue migrada a FK `categoria_id` pero las queries del dashboard nunca se actualizaron → 400 de PostgREST → `data=null` → KPIs en 0. Fix: usar `categorias(nombre)` en el join
+- **Dashboard rotación/runway = 0**: VentasPage no incluía `sucursal_id` al insertar en `movimientos_stock` → rebajes sin sucursal → filtro estricto los excluía. Fix: agrega `sucursal_id` al insert + filtro inclusivo `OR NULL` en Dash
+- **ISS-090 — CC validación**: `validarMediosPago` con CC roto → full CC fallaba con "Ingresá un método de pago", CC+tarjeta fallaba. Fix: filter (no map) + validar resto contra `totalSinCC`
+
+### UX
+- Banner amber en tabs Inventario y Productos del Dashboard cuando hay sucursal seleccionada en el header (el selector no es visible en /dashboard). Botón "Ver todo" para DUEÑO/roles con puedeVerTodas
+- APP_VERSION bumpeada a v1.8.38
+
 ## [2026-05-19] update | PROD deploy v1.8.37 — migrations 122-126, EFs MODO, ISS-136 completo
 
 - PR #114 `dev → main` mergeado ✅

@@ -118,12 +118,29 @@ applyFilter(query)
 
 ---
 
-## SucursalesPage
+## SucursalesPage (v1.8.38 — consolidada)
 
 - Ruta: `/sucursales`
 - Acceso: OWNER-only (`ownerOnly: true`)
-- CRUD completo de sucursales
+- CRUD completo de sucursales con todos los campos en un solo modal de edición
 - Tras mutación llama `loadUserData()` para sincronizar el selector del header
+
+### Campos del formulario de edición
+
+| Campo | DB | Notas |
+|-------|-----|-------|
+| Nombre | `sucursales.nombre` | Obligatorio |
+| Dirección | `sucursales.direccion` | Obligatoria para calcular distancias de envío |
+| Teléfono | `sucursales.telefono` | |
+| Costo por km | `sucursales.costo_km_envio` | Sobreescribe el global de Config → Envíos |
+| Código ticket | `sucursales.codigo` | Prefijo del # de venta (ej: "S1" → "S1-0001") |
+| Código postal | `sucursales.codigo_postal` | |
+| Email | `sucursales.email` | Email de la sucursal |
+| Horario apertura | `sucursales.horario_apertura TIME` | |
+| Horario cierre | `sucursales.horario_cierre TIME` | |
+| Punto de venta AFIP | `sucursales.punto_venta_afip INTEGER` | Para facturación electrónica |
+
+Panel expandible "Couriers": edición inline de tarifas por courier (tabla `courier_tarifas`).
 
 ---
 

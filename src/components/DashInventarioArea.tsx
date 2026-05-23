@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import {
   SlidersHorizontal, X, Package, Wrench, Zap, Clock,
-  AlertTriangle, CheckCircle, BarChart2, Layers, TrendingUp,
+  AlertTriangle, CheckCircle, BarChart2, Layers, TrendingUp, MapPin,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -143,11 +143,12 @@ function CombosBloqueadosChart({ data, fmt }: { data: { name: string; kits_bloqu
 
 export function DashInventarioArea() {
   const { tenant } = useAuthStore()
-  const { sucursalId } = useSucursalFilter()
+  const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
+  const sucursalNombre = sucursalId ? (sucursales as any[]).find((s: any) => s.id === sucursalId)?.nombre : null
 
   const dashFilter = (q: any) => {
     if (!sucursalId) return q
-    return q.eq('sucursal_id', sucursalId)
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
   }
 
   const [vista, setVista] = useState<Vista>('todo')
@@ -176,7 +177,7 @@ export function DashInventarioArea() {
     queryFn: async () => {
       // 1. Todos los productos activos
       const { data: productos = [] } = await supabase.from('productos')
-        .select('id, nombre, sku, categoria, precio_costo, precio_venta, stock_actual, stock_minimo, es_kit')
+        .select('id, nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo, es_kit')
         .eq('tenant_id', tenant!.id).eq('activo', true)
 
       // 2. Inventario_lineas activas con ubicacion + estado
@@ -443,6 +444,22 @@ export function DashInventarioArea() {
   // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
+
+      {/* ── Aviso sucursal activa ─────────────────────────────────────────────── */}
+      {sucursalId && sucursalNombre && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-sm">
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+            <MapPin size={14} />
+            <span>Filtrando por <span className="font-semibold">{sucursalNombre}</span> — los datos de otras sucursales no se muestran.</span>
+          </div>
+          {puedeVerTodas && (
+            <button onClick={() => setSucursal(null)}
+              className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline whitespace-nowrap">
+              Ver todo
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Toggle Vista + Filtros ────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">

@@ -7,7 +7,7 @@ import {
 } from 'recharts'
 import {
   SlidersHorizontal, X, Package, TrendingUp, TrendingDown, Zap,
-  AlertTriangle, CheckCircle, Clock, BarChart2, Star, Target,
+  AlertTriangle, CheckCircle, Clock, BarChart2, Star, Target, MapPin,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -100,11 +100,12 @@ function TijeraTooltip({ active, payload, label, fmt }: any) {
 
 export function DashProductosArea() {
   const { tenant } = useAuthStore()
-  const { sucursalId } = useSucursalFilter()
+  const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
+  const sucursalNombre = sucursalId ? (sucursales as any[]).find((s: any) => s.id === sucursalId)?.nombre : null
 
   const dashFilter = (q: any) => {
     if (!sucursalId) return q
-    return q.eq('sucursal_id', sucursalId)
+    return q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
   }
 
   // Filtros locales
@@ -160,9 +161,8 @@ export function DashProductosArea() {
         const CHUNK = 200
         for (let i = 0; i < ventaIds.length; i += CHUNK) {
           let q = supabase.from('venta_items')
-            .select('producto_id, cantidad, precio_unitario, precio_costo_historico, venta_id, productos(nombre, sku, categoria, precio_costo, precio_venta, stock_actual, stock_minimo)')
+            .select('producto_id, cantidad, precio_unitario, precio_costo_historico, venta_id, productos(nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo)')
             .in('venta_id', ventaIds.slice(i, i + CHUNK))
-          if (categoriaFiltro) q = q.eq('productos.categoria', categoriaFiltro)
           const { data } = await q
           itemsData = itemsData.concat(data ?? [])
         }
@@ -170,9 +170,8 @@ export function DashProductosArea() {
 
       // 3. Todos los productos activos (para capital dormido)
       let qProds = supabase.from('productos')
-        .select('id, nombre, sku, categoria, precio_costo, precio_venta, stock_actual, stock_minimo, activo')
+        .select('id, nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo, activo')
         .eq('tenant_id', tenant!.id).eq('activo', true)
-      if (categoriaFiltro) qProds = qProds.eq('categoria', categoriaFiltro)
       const { data: todosProductos = [] } = await qProds
 
       // 4. Productos con ventas en los últimos 90 días (para dormancy)
@@ -247,7 +246,7 @@ export function DashProductosArea() {
 
         if (!prodMap[pid]) prodMap[pid] = {
           nombre: prod.nombre ?? 'Sin nombre', sku: prod.sku ?? '',
-          categoria: prod.categoria ?? 'Sin categoría',
+          categoria: (prod as any).categorias?.nombre ?? 'Sin categoría',
           total_cantidad: 0, total_ingresos: 0,
           sum_margen_pon: 0, sum_cantidad_margen: 0,
           precio_costo_actual: prod.precio_costo ?? 0,
@@ -376,7 +375,7 @@ export function DashProductosArea() {
         .sort((a: any, b: any) => (b.precio_costo * b.stock_actual) - (a.precio_costo * a.stock_actual))[0] ?? null
 
       // ── Categorías disponibles ────────────────────────────────────────────
-      const cats = [...new Set((todosProductos ?? []).map((p: any) => p.categoria).filter(Boolean))]
+      const cats = [...new Set((todosProductos ?? []).map((p: any) => (p as any).categorias?.nombre).filter(Boolean))]
 
       // ── Producto con mayor caída de margen ────────────────────────────────
       // Comparo precio_costo_actual vs precio_venta_actual con lo histórico
@@ -505,6 +504,22 @@ export function DashProductosArea() {
   // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
+
+      {/* ── Aviso sucursal activa ─────────────────────────────────────────────── */}
+      {sucursalId && sucursalNombre && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-sm">
+          <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+            <MapPin size={14} />
+            <span>Filtrando por <span className="font-semibold">{sucursalNombre}</span> — los datos de otras sucursales no se muestran.</span>
+          </div>
+          {puedeVerTodas && (
+            <button onClick={() => setSucursal(null)}
+              className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline whitespace-nowrap">
+              Ver todo
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Barra de filtros ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">

@@ -135,12 +135,25 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 
 ---
 
-## Cuenta corriente (v1.4.0 · migration 083)
+## Cuenta corriente (v1.4.0 · migration 083 · fix ISS-090 v1.8.38)
 
-- Botón "Despachar a cuenta corriente" visible solo si cliente tiene CC habilitada
-- Bypasa validación de pago/caja
-- Inserta con `monto_pagado=0`, `es_cuenta_corriente=true`
-- La deuda queda registrada en la ficha del cliente
+"Cuenta Corriente" es un medio de pago más dentro del array `mediosPago[]`, combinable con efectivo, MP, etc.
+
+### Modelo de datos
+- `es_cuenta_corriente: true` → venta aparece en tab CC de ClientesPage
+- `monto_pagado` = monto cubierto por medios NO-CC (lo que va a caja)
+- Deuda del cliente = `total - monto_pagado`
+
+### Comportamiento (v1.8.38)
+- Opción "💳 Cuenta Corriente" visible en el select de medios solo si el cliente tiene CC habilitada
+- `modoCC = montoCC > 0` (derivado, no toggle)
+- Al confirmar con CC: siempre despacha (`estado = 'despachada'`) → la deuda queda visible en ClientesPage
+- Validación correcta: filtra CC del array, valida el resto contra `totalConEnvio - montoCC`
+- Full CC (100% CC): skipea validación de otros medios (no requiere caja abierta)
+
+### Fix ISS-090 (bug histórico)
+- Anterior: usaba `.map()` que generaba un array incorrecto → full CC fallaba con "Ingresá un método de pago"; CC + tarjeta/MP fallaba con "El monto excede el total"; solo CC + efectivo funcionaba por accidente
+- Corregido 2026-05-20: `.filter()` + `totalSinCC = total - montoCC`
 
 ---
 
@@ -263,12 +276,40 @@ calcularLpnFuentes(lineas, cant)
 - Guarda en `ventas.origen`
 - Se resetea a "POS" al completar la venta
 
+### ISS-110 — Canales de venta en constraint DB (v1.8.32 · migration 122)
+- La constraint `ventas_origen_check` fue extendida para incluir: `Instagram`, `Facebook`, `WhatsApp`, `Otros`
+- Antes solo aceptaba: `POS`, `MELI`, `TiendaNube`, `Shopify`, `WooCommerce`, `MP`
+- Fix: creaba ventas en esos canales pero fallaba al guardar en DB
+
+### Descuento máximo por rol en POS (v1.8.34)
+- En **Configuración → Ventas → Descuentos**: campo `descuento_max_cajero_pct` y `descuento_max_supervisor_pct`
+- Al completar una venta en el POS:
+  - Si el rol tiene límite configurado y un ítem supera ese %, el campo se marca en rojo con "máx X%"
+  - Al intentar confirmar: bloquea con toast "Descuento del X% supera el límite permitido"
+- El DUEÑO nunca tiene límite
+
 ### ISS-085 — Número de ticket por sucursal (migration 108)
 - `sucursales.codigo TEXT`: código corto configurable (ej: "S1", "CC", "N")
 - `ventas.numero_sucursal INTEGER`: contador secuencial reiniciado por sucursal
 - Trigger `gen_venta_numero()` actualizado para asignar ambos campos
 - Display en historial: `S1-0001` (sucursal) o `#N` (global sin sucursal)
 - El código se configura en SucursalesPage → formulario de edición
+
+### ISS-162/163/164 — Envío desde POS con autocompletado y cálculo automático (v1.8.38)
+
+**ISS-164 — Autocompletado de dirección de entrega**
+- El campo "Dirección de entrega" usa `AddressAutocompleteInput` (Google Places Autocomplete)
+- Mientras el usuario escribe, aparecen sugerencias de Google Maps (ej: "Av. Tri" → "Av. Triunvirato")
+
+**ISS-163 — Origen correcto en Google Maps**
+- Nuevo campo editable "Dirección de origen (sucursal)" con Google Places Autocomplete
+- Pre-llenado automáticamente con `sucursal.direccion` al activar el toggle de envío
+- El link "Ver ruta en Google Maps" usa este campo como origen (antes quedaba vacío cuando `sucursalId = null`)
+
+**ISS-162 — Cálculo automático de costo de envío**
+- Al activar el toggle: pre-llena `$/km` desde `sucursal.costo_km_envio` (o `tenant.costo_envio_por_km` si la sucursal no tiene valor propio) y activa modo "Por KM"
+- Al seleccionar una dirección desde el autocomplete (`onPlaceSelected`): llama `calcularDistanciaKm()` (Distance Matrix API) → setea los km → el effect calcula costo automáticamente
+- **Jerarquía $/km**: `sucursal.costo_km_envio` (prioridad) → `tenant.costo_envio_por_km` (fallback global de Config → Envíos)
 
 ### ISS-105 — Costo de envío en validación de medios de pago (v1.8.24)
 - `totalConEnvio = total + costo_envio` — la validación de medios usa este total

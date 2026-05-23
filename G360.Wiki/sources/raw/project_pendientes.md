@@ -4,18 +4,77 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.40** ✅ · DEV: **v1.8.40**
+Último release en PROD: **v1.8.40** ✅ · DEV: **v1.8.41**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.40 / PROD v1.8.40 (cierre sesión 2026-05-23)
+## Estado actual DEV v1.8.41 / PROD v1.8.40 (cierre sesión 2026-05-23)
 
-- APP_VERSION DEV: `v1.8.40` en `src/config/brand.ts` ✅
-- APP_VERSION PROD: `v1.8.40` ✅ (PR #115 mergeado)
+- APP_VERSION DEV: `v1.8.41` en `src/config/brand.ts` ✅
+- APP_VERSION PROD: `v1.8.40` ✅ (PR #115 mergeado, release latest)
 - Migrations DEV: 001–129 ✅
-- Migrations PROD: 001–129 ✅
+- Migrations PROD: 001–129 ✅ (al día)
+
+### Pendiente de deploy a PROD (en DEV como v1.8.41)
+- Selector courier propio/tercero en VentasPage (al activar Incluir envío)
+- Fix: link transportista usa `VITE_APP_URL` para apuntar a PROD desde dev preview
+
+---
+
+## Lo producido en sesión 2026-05-21 → 2026-05-23 (v1.8.39 → v1.8.41)
+
+### Módulo Envíos — features completas (v1.8.40 — PROD ✅)
+- **ISS-165 — Página transportista pública**: `/transporte/:token` mobile-first sin login. El driver actualiza estado (en_camino, en_bodega, entregado, devolución) y carga POD (fecha, receptor, observaciones, foto) directo desde el celular. Migration 129 + 3 funciones SECURITY DEFINER públicas (`get_envio_by_token`, `get_envio_items_by_token`, `update_envio_by_token`).
+- **ISS-166 — Cámara POD**: botón con `<input capture="environment">` que abre cámara trasera del celular o explorador en desktop. Sube foto a bucket `etiquetas-envios/pod/{envioId}/` con URL firmada 365 días.
+- **ISS-167 — QR codes en remito PDF**: QR del número de envío arriba a la derecha y QR del número de venta al lado del bloque DESTINATARIO. Tabla incluye SKU, LPN y Ubicación. Layout con líneas separadoras grises.
+- **ISS-168 — LPN y ubicación en panel expandido**: query de `venta_items` incluye `inventario_lineas(lpn, ubicaciones(nombre))`. Por cada producto muestra badge violeta con LPN y ubicación del depósito.
+- **ISS-169 — Pestaña Pagos Courier**: tab con badge naranja de cantidad pendiente. Selección múltiple con checkbox + Seleccionar todo. Medio de pago, fecha, total dinámico. Migration 128: `costo_pagado + fecha_pago_courier + medio_pago_courier`.
+- **ISS-171 — Bloqueo si costo no pagado**: `verificarPagoAntes()` antes de avanzar estado. Si `costo_cotizado > 0 AND costo_pagado = false` → toast bloqueante con redirect a Pagos Courier.
+
+### Otros fixes Envíos (v1.8.39 — PROD ✅)
+- **POD completo**: pod_url, pod_fecha, pod_receptor, pod_notas en envíos. Modal POD standalone + sección en modal edición + display en panel expandido. Migration 127.
+- **Estado `en_bodega`**: nuevo entre `en_camino` y `entregado` (paquete en depósito del courier). Badge violeta + icono Warehouse. CHECK constraint ampliado.
+- **BUG CRÍTICO resuelto**: `cliente_id` inexistente en envíos → INSERT silenciosamente fallaba al hacer venta con envío. Fix: eliminado del INSERT.
+- Número venta coherente Ventas ↔ Envíos: `formatVentaNum()` igual que `formatTicket()`. Prefijo solo si sucursal tiene `codigo` configurado, fallback `#numero`.
+- DashEnviosArea: agrega `en_bodega` al funnel, calcula tiempo medio real desde `pod_fecha`, insight de cancelados.
+
+### Fixes integridad inventario en Ventas
+- Cambio de sucursal con carrito activo limpia automáticamente el carrito + draft localStorage. Toast explicativo.
+- Query de lineas en `registrarVenta` filtra estrictamente por `sucursal_id` (antes podía descontar de otra sucursal).
+- Validación: bloquea venta si hay >1 sucursal y ninguna seleccionada.
+- Carrito restaurado: re-fetch de `lineas_disponibles` dentro del mismo `useEffect` (sin race condition con effect separado).
+- `productosBusqueda` query usa `enabled: authInitialized` para esperar Supabase session.
+
+### Autocomplete direcciones (reescritura completa)
+- `AutocompleteSuggestion.fetchAutocompleteSuggestions()` (nueva Places API, misma que Google Maps internamente, Promise-only).
+- Fallback automático a `AutocompleteService` legacy (callback-only) si Suggestion no disponible.
+- Fallback final a Nominatim con `addressdetails=1` para labels limpios y coords.
+- Min 2 caracteres, debounce 300ms.
+- Bug del input congelado: resuelto reemplazando widget de Google por servicio programático que no toca el DOM.
+
+### Cálculo de distancia (reescritura)
+- `calcularDistanciaKm()`: intenta `google.maps.DistanceMatrixService` (callback + Promise dual), fallback a Haversine con geocodificación Nominatim.
+- En VentasPage: pre-geocodifica origen al activar toggle envío → cálculo Haversine **instantáneo** al seleccionar destino (sin API calls adicionales).
+- Alertas claras si origen/destino no geocodifica con link a Sucursales para corregir.
+
+### Otros fixes UX
+- Stock 0 al restaurar carrito: resuelto definitivamente (re-fetch inline).
+- Número ticket: sin prefijo configurado muestra `#175` (antes mostraba `S1-0175` por fallback hardcodeado).
+- Botón "Compartir transportista" usa `VITE_APP_URL` para que el link apunte siempre a PROD.
+
+### Migrations aplicadas en PROD
+- 127: `envios` — POD fields + estado `en_bodega`
+- 128: `envios` — costo_pagado + fecha_pago_courier + medio_pago_courier
+- 129: `envios.token_transportista` + 3 funciones SECURITY DEFINER públicas
+
+### Bug pendiente — ya identificado (NO requiere acción inmediata)
+- Ruta `/transporte/:token` solo está en PROD desde v1.8.40. Si el usuario genera link desde dev preview, el link apunta a PROD que ya tiene la ruta (fix con `VITE_APP_URL` en v1.8.41).
+
+---
+
+## Lo producido en sesión 2026-05-21 → 2026-05-23 — más detalle
 
 ### Estado infra
 - Edge Functions DEV: todas activas · `scan-ticket` v3 (Claude Sonnet 4.6 vision) deployada
@@ -118,24 +177,31 @@ type: project
 
 ## Para la próxima sesión — prioridades
 
-### 1. Deploy PROD v1.8.19 — COMPLETADO ✅
-- [x] PR #110 `dev → main` mergeado
-- [x] Migrations 093–107 aplicadas en PROD
-- [x] `VITE_GOOGLE_MAPS_API_KEY` en Vercel Production (redeploy pendiente para activar)
-- [x] EF `invite-user` + `ai-assistant` deployadas en PROD
-- [x] `GROQ_API_KEY` configurada en PROD
-- [x] GitHub release v1.8.19
+### 1. Deploy PROD v1.8.40 — COMPLETADO ✅
+- [x] PR #115 `dev → main` mergeado
+- [x] Migrations 127–129 aplicadas en PROD
+- [x] GitHub release v1.8.40 como latest
+- [x] App version PROD = v1.8.40
 
-### 2. Post-deploy pendientes menores
-- [ ] Redeploy Vercel PROD para activar `VITE_GOOGLE_MAPS_API_KEY` (o esperar próximo deploy)
-- [ ] Probar invite-user desde DEV y PROD con el nuevo redirect dinámico
+### 2. Verificación post-deploy en PROD
+- [ ] Verificar página transportista `/transporte/:token` funciona en `app.genesis360.pro` (sin login)
+- [ ] Probar generación de link "Compartir transportista" desde Envíos en PROD
+- [ ] Verificar QR codes en remito PDF (envío arriba derecha, venta junto a DESTINATARIO)
+- [ ] Probar marcar pagos courier desde nueva pestaña
 
-### 3. Reglas de negocio — relevar e implementar
+### 3. Pendiente deploy a PROD (DEV v1.8.41)
+- [ ] PR `dev → main` con título `v1.8.41 — Selector courier en VentasPage`
+- [ ] GitHub release v1.8.41
+
+### 4. Reglas de negocio — relevar e implementar
 - **Pendientes de relevar:** Gastos (completo), RRHH (completo), Ventas (devoluciones/límites), Clientes (deuda configurable)
 - **Pendientes de implementar:** Bóveda (Caja), contraseña maestra cierre caja ajena, ticket cierre PDF, alerta diferencia cierre
 
-### 3. Envíos — pendientes
-- Probar Google Maps en DEV con la key recién configurada
+### 5. Envíos — mejoras posibles próximas sesiones
+- Cron para limpiar tokens transportista expirados (>30 días, envíos entregados)
+- Soporte para múltiples fotos POD (no solo una URL)
+- Reportes de pagos courier (acumulado por mes/courier)
+- Tracking integrations: APIs de OCA/Andreani para auto-actualizar estado
 - Verificar cálculo de distancia sucursal → cliente funciona end-to-end
 
 ---

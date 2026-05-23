@@ -1,9 +1,9 @@
 ---
 title: Ventas / POS
 category: features
-tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente]
+tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal]
 sources: [CLAUDE.md, reglas_negocio.md]
-updated: 2026-04-30
+updated: 2026-05-23
 ---
 
 # Ventas / POS
@@ -331,3 +331,64 @@ calcularLpnFuentes(lineas, cant)
 - `ventas.cuotas_info JSONB`: info de cuotas guardada en la venta
 - **ConfigPage → tab Métodos de pago**: nueva sección "Cuotas por banco" — agregar bancos, planes de cuotas (N cuotas, interés %, sin interés)
 - **VentasPage**: al seleccionar "Tarjeta crédito" con monto > 0, aparece picker de banco + cuotas con display monto/cuota, total con interés, badge verde "Sin interés"
+
+---
+
+## Mejoras v1.8.39–v1.8.41 (2026-05-21 → 2026-05-23)
+
+### Bug crítico envíos auto-creados (v1.8.39)
+- VentasPage insertaba `cliente_id` en `envios` (columna inexistente) → INSERT fallaba silenciosamente
+- Toda venta con envío durante meses NO generaba registro en módulo Envíos
+- Fix: campo eliminado del INSERT, agregado `canal` desde `canalPOS` + `fecha_entrega_acordada`
+
+### Fecha de entrega acordada en envío (v1.8.39)
+- Nuevo campo en el panel de envío del POS al activar el toggle "Incluir envío"
+- Se guarda como `envios.fecha_entrega_acordada` en el envío auto-creado
+
+### Pre-llenado destino con domicilios del cliente (v1.8.39)
+- Al activar el toggle envío, si el cliente tiene domicilios guardados → pre-rellena con el principal
+- Dropdown con todos los domicilios guardados al hacer focus en el campo
+
+### Saldo modal incluye costo_envio (v1.8.39)
+- Al completar una reserva/presupuesto con envío, el saldo a cobrar incluye `costo_envio`
+- Display de total en historial, ticket, detalle: muestra `total + costo_envio` (total real pagado)
+
+### Selector courier propio/tercero (v1.8.41, pendiente PROD)
+- Al activar "Incluir envío" aparecen 2 botones: **🚗 Envío propio** | **📦 Courier / 3ro**
+- Si tercero: select de courier (OCA / Correo Argentino / Andreani / DHL Express / Otro) + campo de servicio
+- El envío auto-creado lleva `courier = 'Envío propio'` o el courier seleccionado + `servicio`
+
+### Fixes integridad multi-sucursal (v1.8.40, ISS-críticos)
+- **Cambio de sucursal limpia el carrito automáticamente**: `useEffect` con `prevSucursalRef` detecta cambio (no inicial) y resetea carrito + draft. Toast explicativo.
+- **Query de lineas filtra por sucursal_id estrictamente**: antes podía descontar de otra sucursal. Error explícito: "Stock insuficiente en esta sucursal".
+- **Validación pre-venta**: bloquea si hay >1 sucursal y ninguna seleccionada (toast: "Seleccioná una sucursal antes de registrar la venta").
+- **Completar reserva → despachada**: usa `sucursal_id` de la venta original (no de la sesión actual).
+
+### Re-fetch lineas al restaurar carrito (v1.8.40)
+- Al volver al módulo Ventas, el carrito se restauraba pero `lineas_disponibles = []` → "Stock insuf. (0 disp.)"
+- Fix: el re-fetch se hace DENTRO del mismo `useEffect` que restaura el carrito, justo después del `setCart`
+- Elimina race condition con el effect separado que evaluaba antes de que el cart estuviera poblado
+
+### Número ticket — fix fallback "S1-XXXX" (v1.8.40)
+- `formatTicket` usaba `?? \`S${index+1}\`` como fallback cuando `sucursal.codigo = null`
+- Toda venta con `sucursal_id` aparecía como `S1-0001` aunque nunca se configuró prefijo
+- Fix: si `codigo` no está explícitamente configurado, muestra `#175` (número global)
+- SucursalesPage: campo "Prefijo de ticket" opcional con preview en tiempo real
+
+### Autocomplete direcciones reescrito (v1.8.39-v1.8.41)
+- **Bug 1**: widget de Google Places Autocomplete tomaba el `<input>` y lo congelaba si fallaba (ApiNotActivatedMapError)
+  - Fix: reemplazado por `AutocompleteSuggestion.fetchAutocompleteSuggestions()` (servicio programático, no toca el DOM)
+- **Bug 2**: dual callback+Promise causaba que el callback con `status=undefined` resolviera la Promise vacía antes que llegaran resultados reales
+  - Fix: API nueva es Promise-only; legacy `AutocompleteService` es callback-only (sin dual handling)
+- **Bug 3**: tipeo bloqueaba el input por el `useEffect` watching value
+  - Fix: tipeo procesado en `handleChange` directamente, actualiza padre primero, búsqueda en background
+
+### Cálculo distancia con Haversine (v1.8.39-v1.8.41)
+- **Antes**: dependía de `calcularDistanciaKm()` que necesitaba geocodificar el origen al momento de seleccionar destino → rate limiting Nominatim → fallaba
+- **Ahora**: al activar el toggle envío, pre-geocodifica el origen UNA SOLA VEZ → `envioOrigenCoords`
+- Cuando el usuario selecciona destino (que ya tiene `placeId = "lat,lon"` de Nominatim) → Haversine instantáneo × 1.35 (factor carretera)
+- Fallback a Maps Distance Matrix API solo si faltan coordenadas
+
+### Alertas geocodificación fallida (v1.8.39)
+- Si origen no geocodifica → mensaje rojo bajo el campo "Dirección de origen" con link directo a Sucursales
+- Si destino no geocodifica → mensaje rojo bajo "Dirección de entrega" con sugerencia de formato

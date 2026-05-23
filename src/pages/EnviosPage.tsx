@@ -941,7 +941,7 @@ export default function EnviosPage() {
                                       token = crypto.randomUUID()
                                       await supabase.from('envios').update({ token_transportista: token }).eq('id', e.id)
                                     }
-                                    const url = `${window.location.origin}/transporte/${token}`
+                                    const url = `${import.meta.env.VITE_APP_URL || window.location.origin}/transporte/${token}`
                                     await navigator.clipboard.writeText(url).catch(() => {})
                                     toast.success('Link copiado al portapapeles 📋', { duration: 3000 })
                                   }}

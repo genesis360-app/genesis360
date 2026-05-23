@@ -479,52 +479,76 @@ export default function EnviosPage() {
     const numVenta = envio.ventas ? formatVentaNum(envio.ventas) : null
     const numEnvio = `E-${envio.numero ?? envio.id.slice(-6)}`
 
-    // QR codes — generados como dataURL
+    // QR codes — 35×35 mm, alta resolución
     let qrVenta = '', qrEnvio = ''
     try {
-      if (numVenta) qrVenta = await QRCode.toDataURL(numVenta, { width: 80, margin: 1 })
-      qrEnvio = await QRCode.toDataURL(numEnvio, { width: 80, margin: 1 })
+      if (numVenta) qrVenta = await QRCode.toDataURL(numVenta, { width: 140, margin: 1 })
+      qrEnvio = await QRCode.toDataURL(numEnvio, { width: 140, margin: 1 })
     } catch { /* sin QR si falla */ }
 
-    doc.setFontSize(18)
-    doc.text('REMITO DE ENVÍO', 105, 20, { align: 'center' })
+    // ── Título ───────────────────────────────────────────────────────────────
+    doc.setFontSize(17)
+    doc.text('REMITO DE ENVÍO', 105, 18, { align: 'center' })
+
+    // ── Header izquierdo (texto) ──────────────────────────────────────────────
     doc.setFontSize(10)
-    doc.text(`${tenant?.nombre ?? BRAND.name}`, 15, 35)
-    doc.text(`Envío ${numEnvio}`, 15, 42)
-    doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 15, 49)
+    doc.text(`${tenant?.nombre ?? BRAND.name}`, 15, 30)
+    doc.text(`Envío ${numEnvio}`, 15, 37)
+    doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 15, 44)
+    if (envio.courier)
+      doc.text(`Courier: ${envio.courier}${envio.servicio ? ` — ${envio.servicio}` : ''}`, 15, 51)
+    if (envio.tracking_number)
+      doc.text(`Tracking: ${envio.tracking_number}`, 15, 58)
 
-    if (envio.courier) {
-      doc.text(`Courier: ${envio.courier}${envio.servicio ? ` — ${envio.servicio}` : ''}`, 15, 56)
-    }
-    if (envio.tracking_number) doc.text(`Tracking: ${envio.tracking_number}`, 15, 63)
-
-    // QR codes en esquina superior derecha
+    // ── QR #Envío — arriba a la derecha (bloque header) ──────────────────────
     if (qrEnvio) {
-      doc.addImage(qrEnvio, 'PNG', 155, 15, 28, 28)
-      doc.setFontSize(7); doc.text('# Envío', 161, 46)
-    }
-    if (qrVenta) {
-      doc.addImage(qrVenta, 'PNG', 125, 15, 28, 28)
-      doc.setFontSize(7); doc.text('# Venta', 131, 46)
+      doc.addImage(qrEnvio, 'PNG', 162, 8, 35, 35)
+      doc.setFontSize(7)
+      doc.setTextColor(100, 100, 100)
+      doc.text('# Envío', 172, 46)
+      doc.setTextColor(0, 0, 0)
     }
 
+    // ── Separador ─────────────────────────────────────────────────────────────
+    doc.setDrawColor(220, 220, 220)
+    doc.line(15, 63, 195, 63)
+
+    // ── DESTINATARIO (izquierda) ──────────────────────────────────────────────
     doc.setFontSize(11)
-    doc.text('DESTINATARIO', 15, 78)
+    doc.setFont(undefined as any, 'bold')
+    doc.text('DESTINATARIO', 15, 72)
+    doc.setFont(undefined as any, 'normal')
     doc.setFontSize(10)
     const cliente = envio.ventas?.clientes?.nombre ?? envio.destino_descripcion ?? '—'
-    doc.text(cliente, 15, 85)
+    doc.text(cliente, 15, 80)
 
     const dom = envio.cliente_domicilios
     if (dom) {
-      doc.text(`${dom.calle}${dom.numero ? ` ${dom.numero}` : ''}`, 15, 92)
-      if (dom.ciudad) doc.text(`${dom.ciudad}${dom.provincia ? `, ${dom.provincia}` : ''}`, 15, 99)
+      doc.text(`${dom.calle}${dom.numero ? ` ${dom.numero}` : ''}`, 15, 87)
+      if (dom.ciudad) doc.text(`${dom.ciudad}${dom.provincia ? `, ${dom.provincia}` : ''}`, 15, 94)
     } else if (envio.destino_descripcion) {
-      doc.text(envio.destino_descripcion, 15, 92)
+      const lines = doc.splitTextToSize(envio.destino_descripcion, 135) as string[]
+      doc.text(lines, 15, 87)
     }
+    if (envio.fecha_entrega_acordada)
+      doc.text(`Entrega: ${envio.fecha_entrega_acordada}`, 15, 101)
+
+    // ── QR #Venta — a la derecha del bloque DESTINATARIO ─────────────────────
+    if (qrVenta) {
+      doc.addImage(qrVenta, 'PNG', 162, 64, 35, 35)
+      doc.setFontSize(7)
+      doc.setTextColor(100, 100, 100)
+      doc.text('# Venta', 172, 101)
+      doc.setTextColor(0, 0, 0)
+    }
+
+    // ── Separador ─────────────────────────────────────────────────────────────
+    doc.setDrawColor(220, 220, 220)
+    doc.line(15, 108, 195, 108)
 
     if (items.length > 0) {
       autoTable(doc, {
-        startY: 115,
+        startY: 113,
         head: [['Producto', 'SKU', 'LPN', 'Ubic.', 'Cant.', 'Precio unit.']],
         body: items.map((it: any) => [
           it.productos?.nombre ?? '—',

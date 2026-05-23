@@ -6,11 +6,13 @@ import {
   ExternalLink, MapPin, Truck, Clock, CheckCircle, RotateCcw,
   AlertTriangle, Send, Scale, Ruler, ChevronDown, Pencil, Trash2,
   FileText, RefreshCw, Navigation, Loader2, Warehouse, ClipboardCheck, Upload, User as UserIcon,
+  Camera, CreditCard, DollarSign, PackageCheck, QrCode, Tag,
 } from 'lucide-react'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -20,7 +22,9 @@ import { BRAND } from '@/config/brand'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'en_bodega' | 'entregado' | 'devolucion' | 'cancelado'
-type TabEnvio = 'envios'
+type TabEnvio = 'envios' | 'pagos'
+
+const MEDIOS_PAGO_COURIER = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro']
 
 const COURIERS = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 'Otro']
 
@@ -121,6 +125,14 @@ export default function EnviosPage() {
   const [podModalId, setPodModalId]   = useState<string | null>(null)
   const [podForm, setPodForm]         = useState({ pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '' })
   const [savingPod, setSavingPod]     = useState(false)
+  const [uploadingFoto, setUploadingFoto] = useState(false)   // ISS-166: upload foto POD
+  const cameraInputRef = useRef<HTMLInputElement>(null)        // ISS-166: hidden file input
+
+  // ISS-169: Pagos courier
+  const [pagosSeleccion, setPagosSeleccion] = useState<Set<string>>(new Set())
+  const [pagoMedio, setPagoMedio]           = useState('Transferencia')
+  const [pagoFecha, setPagoFecha]           = useState(new Date().toISOString().split('T')[0])
+  const [savingPago, setSavingPago]         = useState(false)
 
   // Edición inline de domicilios
   const [editandoDomId, setEditandoDomId] = useState<string | null>(null)
@@ -192,8 +204,9 @@ export default function EnviosPage() {
     queryFn: async () => {
       const envio = (envios as any[]).find(e => e.id === expandedId)
       if (!envio?.venta_id) return []
+      // ISS-168: incluye linea_id para obtener LPN y ubicación
       const { data } = await supabase.from('venta_items')
-        .select('cantidad, precio_unitario, productos(nombre, sku)')
+        .select('cantidad, precio_unitario, linea_id, productos(nombre, sku), inventario_lineas(lpn, ubicaciones(nombre))')
         .eq('venta_id', envio.venta_id)
       return data ?? []
     },
@@ -221,6 +234,23 @@ export default function EnviosPage() {
       return data ?? []
     },
     enabled: !!tenant && !!sucursalId,
+  })
+
+  // ISS-169: envíos con costo pendiente de pago al courier
+  const { data: enviosPendientesPago = [] } = useQuery({
+    queryKey: ['envios-pendientes-pago', tenant?.id, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('envios')
+        .select('id, numero, courier, costo_cotizado, estado, created_at, ventas(numero, numero_sucursal, sucursal_id, clientes(nombre))')
+        .eq('tenant_id', tenant!.id)
+        .eq('costo_pagado', false)
+        .gt('costo_cotizado', 0)
+        .order('created_at', { ascending: false })
+      q = applyFilter(q)
+      const { data } = await q
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'pagos',
   })
 
   // Auto-calcular KM cuando hay dirección de entrega + sucursal con dirección
@@ -372,6 +402,43 @@ export default function EnviosPage() {
     }
   }
 
+  // ── ISS-166: Upload foto POD desde cámara ───────────────────────────────────
+  const handleFotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !podModalId) return
+    setUploadingFoto(true)
+    try {
+      const ext = file.name.split('.').pop() ?? 'jpg'
+      const path = `pod/${podModalId}/${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('etiquetas-envios').upload(path, file, { upsert: true })
+      if (upErr) throw upErr
+      const { data: signedData } = await supabase.storage.from('etiquetas-envios').createSignedUrl(path, 60 * 60 * 24 * 365)
+      if (signedData?.signedUrl) setPodForm(f => ({ ...f, pod_url: signedData.signedUrl }))
+      toast.success('Foto subida correctamente')
+    } catch (err: any) { toast.error('Error al subir la foto') }
+    finally { setUploadingFoto(false); if (cameraInputRef.current) cameraInputRef.current.value = '' }
+  }
+
+  // ── ISS-169: Marcar envíos seleccionados como pagados ───────────────────────
+  const marcarPagados = async () => {
+    if (pagosSeleccion.size === 0) { toast.error('Seleccioná al menos un envío'); return }
+    setSavingPago(true)
+    try {
+      const ids = [...pagosSeleccion]
+      const { error } = await supabase.from('envios').update({
+        costo_pagado: true,
+        fecha_pago_courier: pagoFecha || null,
+        medio_pago_courier: pagoMedio || null,
+      }).in('id', ids)
+      if (error) throw error
+      toast.success(`${ids.length} envío${ids.length > 1 ? 's' : ''} marcado${ids.length > 1 ? 's' : ''} como pagado${ids.length > 1 ? 's' : ''}`)
+      qc.invalidateQueries({ queryKey: ['envios-pendientes-pago'] })
+      qc.invalidateQueries({ queryKey: ['envios'] })
+      setPagosSeleccion(new Set())
+    } catch (e: any) { toast.error(e.message ?? 'Error al guardar') }
+    finally { setSavingPago(false) }
+  }
+
   // ── WhatsApp ─────────────────────────────────────────────────────────────────
   const abrirWhatsApp = (envio: any) => {
     const cliente = envio.ventas?.clientes
@@ -395,22 +462,41 @@ export default function EnviosPage() {
     window.open(url, '_blank', 'noopener')
   }
 
-  // ── Remito PDF ───────────────────────────────────────────────────────────────
-  const generarRemito = (envio: any) => {
+  // ── ISS-167: Remito PDF con QR codes ─────────────────────────────────────────
+  const generarRemito = async (envio: any) => {
     const doc = new jsPDF()
     const items = ventaItems as any[]
+    const numVenta = envio.ventas ? formatVentaNum(envio.ventas) : null
+    const numEnvio = `E-${envio.numero ?? envio.id.slice(-6)}`
+
+    // QR codes — generados como dataURL
+    let qrVenta = '', qrEnvio = ''
+    try {
+      if (numVenta) qrVenta = await QRCode.toDataURL(numVenta, { width: 80, margin: 1 })
+      qrEnvio = await QRCode.toDataURL(numEnvio, { width: 80, margin: 1 })
+    } catch { /* sin QR si falla */ }
 
     doc.setFontSize(18)
     doc.text('REMITO DE ENVÍO', 105, 20, { align: 'center' })
     doc.setFontSize(10)
     doc.text(`${tenant?.nombre ?? BRAND.name}`, 15, 35)
-    doc.text(`Envío #${envio.numero ?? envio.id.slice(-6)}`, 15, 42)
+    doc.text(`Envío ${numEnvio}`, 15, 42)
     doc.text(`Fecha: ${new Date().toLocaleDateString('es-AR')}`, 15, 49)
 
     if (envio.courier) {
       doc.text(`Courier: ${envio.courier}${envio.servicio ? ` — ${envio.servicio}` : ''}`, 15, 56)
     }
     if (envio.tracking_number) doc.text(`Tracking: ${envio.tracking_number}`, 15, 63)
+
+    // QR codes en esquina superior derecha
+    if (qrEnvio) {
+      doc.addImage(qrEnvio, 'PNG', 155, 15, 28, 28)
+      doc.setFontSize(7); doc.text('# Envío', 161, 46)
+    }
+    if (qrVenta) {
+      doc.addImage(qrVenta, 'PNG', 125, 15, 28, 28)
+      doc.setFontSize(7); doc.text('# Venta', 131, 46)
+    }
 
     doc.setFontSize(11)
     doc.text('DESTINATARIO', 15, 78)
@@ -429,15 +515,18 @@ export default function EnviosPage() {
     if (items.length > 0) {
       autoTable(doc, {
         startY: 115,
-        head: [['Producto', 'Cant.', 'Precio unit.', 'Subtotal']],
+        head: [['Producto', 'SKU', 'LPN', 'Ubic.', 'Cant.', 'Precio unit.']],
         body: items.map((it: any) => [
           it.productos?.nombre ?? '—',
+          it.productos?.sku ?? '—',
+          (it.inventario_lineas as any)?.lpn ?? '—',
+          (it.inventario_lineas as any)?.ubicaciones?.nombre ?? '—',
           it.cantidad,
           formatMoneda(it.precio_unitario ?? 0),
-          formatMoneda((it.precio_unitario ?? 0) * it.cantidad),
         ]),
-        styles: { fontSize: 9 },
+        styles: { fontSize: 8 },
         headStyles: { fillColor: [100, 0, 200] },
+        columnStyles: { 0: { cellWidth: 50 } },
       })
     }
 
@@ -522,10 +611,16 @@ export default function EnviosPage() {
 
       {/* Tabs */}
       <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
-        <button
-          className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 border-accent text-accent -mb-px">
-          <Package2 size={14} /> Envíos
-        </button>
+        {([
+          { key: 'envios', label: 'Envíos', icon: <Package2 size={14} /> },
+          { key: 'pagos',  label: 'Pagos Courier', icon: <CreditCard size={14} />, badge: (enviosPendientesPago as any[]).length || undefined },
+        ] as const).map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t.key ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+            {t.icon} {t.label}
+            {'badge' in t && t.badge ? <span className="ml-1 bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{t.badge}</span> : null}
+          </button>
+        ))}
       </div>
 
       {/* ══ TAB: ENVÍOS ══ */}
@@ -735,18 +830,32 @@ export default function EnviosPage() {
                                     )}
                                   </div>
 
-                                  {/* Productos */}
+                                  {/* ISS-168: Productos + LPN + Ubicación */}
                                   <div>
-                                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Productos</p>
+                                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-1">
+                                      <Tag size={11} /> Productos y ubicación en almacén
+                                    </p>
                                     {(ventaItems as any[]).length === 0 ? (
                                       <p className="text-xs text-gray-400">Sin detalle de productos</p>
                                     ) : (
-                                      <div className="space-y-1">
-                                        {(ventaItems as any[]).map((it: any, i: number) => (
-                                          <p key={i} className="text-xs text-gray-600 dark:text-gray-300">
-                                            {it.cantidad}× {it.productos?.nombre ?? '—'}
-                                          </p>
-                                        ))}
+                                      <div className="space-y-2">
+                                        {(ventaItems as any[]).map((it: any, i: number) => {
+                                          const lpn = (it.inventario_lineas as any)?.lpn
+                                          const ubic = (it.inventario_lineas as any)?.ubicaciones?.nombre
+                                          return (
+                                            <div key={i} className="text-xs">
+                                              <span className="text-gray-700 dark:text-gray-300 font-medium">
+                                                {it.cantidad}× {it.productos?.nombre ?? '—'}
+                                              </span>
+                                              {(lpn || ubic) && (
+                                                <div className="flex items-center gap-3 mt-0.5 ml-3">
+                                                  {lpn && <span className="flex items-center gap-1 text-accent font-mono bg-accent/10 px-1.5 py-0.5 rounded"><PackageCheck size={10} /> LPN: {lpn}</span>}
+                                                  {ubic && <span className="flex items-center gap-1 text-gray-500 dark:text-gray-400"><MapPin size={10} /> {ubic}</span>}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )
+                                        })}
                                       </div>
                                     )}
                                   </div>
@@ -852,6 +961,120 @@ export default function EnviosPage() {
         </div>
       )}
 
+
+      {/* ══ TAB: PAGOS COURIER (ISS-169) ══ */}
+      {tab === 'pagos' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
+              <CreditCard size={16} className="text-accent" /> Pagos pendientes al courier
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Seleccioná los envíos a pagar, elegí el medio y marcá como pagados.
+            </p>
+
+            {/* Formulario de pago */}
+            <div className="flex flex-wrap gap-3 items-end mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Medio de pago</label>
+                <select value={pagoMedio} onChange={e => setPagoMedio(e.target.value)}
+                  className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent">
+                  {MEDIOS_PAGO_COURIER.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de pago</label>
+                <input type="date" value={pagoFecha} onChange={e => setPagoFecha(e.target.value)}
+                  className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+              </div>
+              <div className="flex-1 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Seleccionados: <strong>{pagosSeleccion.size}</strong></p>
+                  <p className="text-sm font-bold text-accent">
+                    Total: ${(enviosPendientesPago as any[])
+                      .filter(e => pagosSeleccion.has(e.id))
+                      .reduce((s, e) => s + (e.costo_cotizado ?? 0), 0)
+                      .toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                  </p>
+                </div>
+                <button onClick={marcarPagados} disabled={savingPago || pagosSeleccion.size === 0}
+                  className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-xl transition-all disabled:opacity-40 text-sm">
+                  <CheckCircle size={16} /> {savingPago ? 'Guardando…' : 'Marcar como pagados'}
+                </button>
+              </div>
+            </div>
+
+            {/* Lista de envíos pendientes de pago */}
+            {(enviosPendientesPago as any[]).length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <CreditCard size={36} className="mx-auto mb-3 opacity-30" />
+                <p className="font-medium">No hay pagos pendientes al courier</p>
+                <p className="text-xs mt-1">Todos los envíos con costo están pagados.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-100 dark:border-gray-600">
+                    <tr>
+                      <th className="px-3 py-2.5 w-8">
+                        <input type="checkbox"
+                          checked={pagosSeleccion.size === (enviosPendientesPago as any[]).length && (enviosPendientesPago as any[]).length > 0}
+                          onChange={e => {
+                            if (e.target.checked) setPagosSeleccion(new Set((enviosPendientesPago as any[]).map((x: any) => x.id)))
+                            else setPagosSeleccion(new Set())
+                          }}
+                          className="accent-accent" />
+                      </th>
+                      <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-300"># Envío</th>
+                      <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-300">Venta</th>
+                      <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-300">Courier</th>
+                      <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-300">Estado</th>
+                      <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-600 dark:text-gray-300">Costo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                    {(enviosPendientesPago as any[]).map((e: any) => (
+                      <tr key={e.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${pagosSeleccion.has(e.id) ? 'bg-accent/5' : ''}`}>
+                        <td className="px-3 py-2.5">
+                          <input type="checkbox" checked={pagosSeleccion.has(e.id)}
+                            onChange={ev => {
+                              const next = new Set(pagosSeleccion)
+                              ev.target.checked ? next.add(e.id) : next.delete(e.id)
+                              setPagosSeleccion(next)
+                            }}
+                            className="accent-accent" />
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold text-gray-800 dark:text-gray-100">#{e.numero}</td>
+                        <td className="px-3 py-2.5 text-gray-600 dark:text-gray-300">
+                          {e.ventas ? formatVentaNum(e.ventas) : '—'}
+                          {e.ventas?.clientes?.nombre && <span className="ml-1 text-xs text-gray-400">· {e.ventas.clientes.nombre}</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-600 dark:text-gray-300">{e.courier ?? '—'}</td>
+                        <td className="px-3 py-2.5">
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${ESTADO_CFG[e.estado as EstadoEnvio]?.color ?? ''}`}>
+                            {ESTADO_CFG[e.estado as EstadoEnvio]?.label ?? e.estado}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-gray-800 dark:text-gray-100">
+                          ${Number(e.costo_cotizado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <td colSpan={5} className="px-3 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 text-right">Total pendiente</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-primary">
+                        ${(enviosPendientesPago as any[]).reduce((s, e) => s + (e.costo_cotizado ?? 0), 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ══ MODAL: NUEVO / EDITAR ENVÍO ══ */}
       {showModal && (
@@ -1251,10 +1474,28 @@ export default function EnviosPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">URL comprobante / foto</label>
-                <input type="text" value={podForm.pod_url} onChange={e => setPodForm(f => ({ ...f, pod_url: e.target.value }))}
-                  placeholder="https://... (link a foto, firma digital, etc.)"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Comprobante / foto</label>
+                {/* ISS-166: input cámara oculto */}
+                <input ref={cameraInputRef} type="file" accept="image/*" capture="environment"
+                  onChange={handleFotoCapture} className="hidden" />
+                <div className="flex gap-2">
+                  <input type="text" value={podForm.pod_url} onChange={e => setPodForm(f => ({ ...f, pod_url: e.target.value }))}
+                    placeholder="https://... (link o pegá una URL)"
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  <button type="button" onClick={() => cameraInputRef.current?.click()}
+                    disabled={uploadingFoto}
+                    title="Tomar foto con la cámara"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-xl text-sm font-medium transition-colors disabled:opacity-50 border border-accent/20">
+                    {uploadingFoto ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                    {uploadingFoto ? 'Subiendo…' : 'Foto'}
+                  </button>
+                </div>
+                {podForm.pod_url && (
+                  <a href={podForm.pod_url} target="_blank" rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-1">
+                    <ExternalLink size={11} /> Ver comprobante
+                  </a>
+                )}
               </div>
 
               <div>

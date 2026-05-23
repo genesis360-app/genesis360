@@ -4,18 +4,18 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.37** ✅ · DEV: **v1.8.40**
+Último release en PROD: **v1.8.40** ✅ · DEV: **v1.8.40**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.39 / PROD v1.8.37 (cierre sesión 2026-05-21)
+## Estado actual DEV v1.8.40 / PROD v1.8.40 (cierre sesión 2026-05-23)
 
-- APP_VERSION DEV: `v1.8.39` en `src/config/brand.ts` ✅ (pendiente bump)
-- APP_VERSION PROD: `v1.8.37` ✅ (PR #114 mergeado)
-- Migrations DEV: 001–127 ✅
-- Migrations PROD: 001–126 ✅
+- APP_VERSION DEV: `v1.8.40` en `src/config/brand.ts` ✅
+- APP_VERSION PROD: `v1.8.40` ✅ (PR #115 mergeado)
+- Migrations DEV: 001–129 ✅
+- Migrations PROD: 001–129 ✅
 
 ### Estado infra
 - Edge Functions DEV: todas activas · `scan-ticket` v3 (Claude Sonnet 4.6 vision) deployada

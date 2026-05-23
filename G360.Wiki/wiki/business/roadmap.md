@@ -13,6 +13,41 @@ updated: 2026-05-07
 
 ---
 
+## v1.8.40 — Módulo Envíos completo + fixes integridad inventario (PROD ✅)
+
+**Estado:** desplegado a PROD  
+**Fecha:** 2026-05-23 · PR #115
+
+### Nuevas features Envíos
+- **ISS-165** Página pública `/transporte/:token` para transportista (sin login, mobile-first)
+- **ISS-166** Botón cámara en modal POD — sube foto a Storage `etiquetas-envios/pod/`
+- **ISS-167** QR codes en remito PDF (envío esquina superior derecha, venta al lado del DESTINATARIO)
+- **ISS-168** LPN y ubicación de mercadería en panel expandido de cada envío
+- **ISS-169** Pestaña Pagos Courier — selección múltiple, marcar pagados
+- **ISS-171** Bloquea progresión de estado si costo del courier no está pagado
+- Número venta coherente Ventas ↔ Envíos (prefijo sucursal opcional, fallback `#global`)
+- DashEnviosArea: `en_bodega` en funnel, velocidad real desde POD, insight cancelados
+
+### Fixes críticos integridad inventario
+- Cambio de sucursal en VentasPage limpia carrito automáticamente (toast explicativo)
+- Query de lineas filtra estrictamente por `sucursal_id` al vender/reservar
+- Validación: bloquea venta si hay >1 sucursal y ninguna seleccionada
+- Carrito restaurado: re-fetch de lineas dentro del mismo effect (sin race condition)
+
+### Fixes UX
+- Autocomplete direcciones con `AutocompleteSuggestion` API (misma que Google Maps)
+- Cálculo distancia con Haversine + coords pre-geocodificadas (instantáneo, sin API calls)
+- Alertas si dirección de origen o destino no geocodifica con link a corregir
+- Stock 0 al restaurar carrito: resuelto definitivamente
+- Botón "Compartir transportista" usa `VITE_APP_URL` (link siempre a producción)
+
+### Migrations en PROD
+- 127: `envios` — POD fields + estado `en_bodega`
+- 128: `envios` — `costo_pagado + fecha_pago_courier + medio_pago_courier`
+- 129: `envios.token_transportista` + 3 funciones SECURITY DEFINER públicas
+
+---
+
 ## v1.8.39 — POD + en_bodega + fix crítico envíos + corrección totales (DEV ✅)
 
 **Estado:** en DEV · pendiente deploy a PROD  

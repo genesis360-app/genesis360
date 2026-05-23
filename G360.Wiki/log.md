@@ -6,6 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-23] update | PROD deploy v1.8.40 — modulo Envios completo
+
+- PR #115 `dev → main` mergeado ✅
+- Migrations 127-129 aplicadas en PROD ✅
+- GitHub release v1.8.40 como latest ✅
+- App version DEV y PROD = v1.8.40
+
 ## [2026-05-23] update | v1.8.40-dev — ISS-166/167/168/169 + fixes carrito/numeración/autocomplete
 
 ### ISS-166 — Botón cámara en modal POD

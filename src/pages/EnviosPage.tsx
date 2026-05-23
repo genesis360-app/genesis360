@@ -332,8 +332,18 @@ export default function EnviosPage() {
     onError: (e: any) => toast.error(e.message ?? 'Error al guardar'),
   })
 
+  // ISS-171: verificar pago antes de avanzar estado
+  const verificarPagoAntes = (envio: any): boolean => {
+    if ((envio.costo_cotizado ?? 0) > 0 && !envio.costo_pagado) {
+      toast.error('💳 Pagá el costo del courier antes de avanzar el envío. → Pestaña "Pagos Courier"', { duration: 5000 })
+      return false
+    }
+    return true
+  }
+
   const actualizarEstado = useMutation({
-    mutationFn: async ({ id, estado }: { id: string; estado: EstadoEnvio }) => {
+    mutationFn: async ({ id, estado, envio }: { id: string; estado: EstadoEnvio; envio: any }) => {
+      if (!verificarPagoAntes(envio)) throw new Error('pago_pendiente')
       const { error } = await supabase.from('envios').update({ estado }).eq('id', id)
       if (error) throw error
     },
@@ -341,7 +351,7 @@ export default function EnviosPage() {
       toast.success(`Estado: ${ESTADO_CFG[estado].label}`)
       qc.invalidateQueries({ queryKey: ['envios'] })
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => { if (e.message !== 'pago_pendiente') toast.error(e.message) },
   })
 
   const eliminarEnvio = useMutation({
@@ -762,7 +772,7 @@ export default function EnviosPage() {
                                   </svg>
                                 </button>
                                 {sigEstado && (
-                                  <button onClick={() => actualizarEstado.mutate({ id: e.id, estado: sigEstado })}
+                                  <button onClick={() => actualizarEstado.mutate({ id: e.id, estado: sigEstado, envio: e })}
                                     title={`Marcar como ${ESTADO_CFG[sigEstado].label}`}
                                     className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                                     <RefreshCw size={14} />
@@ -900,6 +910,20 @@ export default function EnviosPage() {
                                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                                     <FileText size={13} /> Generar remito
                                   </button>
+                                  {/* ISS-165: Compartir link con transportista */}
+                                  <button onClick={async () => {
+                                    let token = e.token_transportista
+                                    if (!token) {
+                                      token = crypto.randomUUID()
+                                      await supabase.from('envios').update({ token_transportista: token }).eq('id', e.id)
+                                    }
+                                    const url = `${window.location.origin}/transporte/${token}`
+                                    await navigator.clipboard.writeText(url).catch(() => {})
+                                    toast.success('Link copiado al portapapeles 📋', { duration: 3000 })
+                                  }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-violet-300 dark:border-violet-700 rounded-lg text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors">
+                                    <Send size={13} /> Compartir con transportista
+                                  </button>
                                   {e.tracking_url && (
                                     <a href={e.tracking_url} target="_blank" rel="noreferrer"
                                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-accent/30 rounded-lg text-accent hover:bg-accent/10 transition-colors">
@@ -925,7 +949,7 @@ export default function EnviosPage() {
                                   {/* Avanzar estado */}
                                   {ESTADO_SIGUIENTE[e.estado as EstadoEnvio] && e.estado !== 'en_bodega' && (
                                     <button
-                                      onClick={() => actualizarEstado.mutate({ id: e.id, estado: ESTADO_SIGUIENTE[e.estado as EstadoEnvio]! })}
+                                      onClick={() => actualizarEstado.mutate({ id: e.id, estado: ESTADO_SIGUIENTE[e.estado as EstadoEnvio]!, envio: e })}
                                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors">
                                       <RefreshCw size={13} /> Marcar como {ESTADO_CFG[ESTADO_SIGUIENTE[e.estado as EstadoEnvio]!].label}
                                     </button>
@@ -941,7 +965,7 @@ export default function EnviosPage() {
                                     </button>
                                   )}
                                   {e.estado !== 'cancelado' && e.estado !== 'entregado' && (
-                                    <button onClick={() => actualizarEstado.mutate({ id: e.id, estado: 'cancelado' })}
+                                    <button onClick={() => actualizarEstado.mutate({ id: e.id, estado: 'cancelado', envio: e })}
                                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-red-200 dark:border-red-800 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors ml-auto">
                                       <X size={13} /> Cancelar envío
                                     </button>

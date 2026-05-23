@@ -79,7 +79,17 @@ const FORM_VACIO: FormEnvio = {
 
 export default function EnviosPage() {
   const { tenant, user } = useAuthStore()
-  const { sucursalId, applyFilter } = useSucursalFilter()
+  const { sucursalId, applyFilter, sucursales } = useSucursalFilter()
+
+  // Formatea el número de venta igual que VentasPage:
+  // con prefijo (CODIGO-NNNN) si la sucursal tiene código configurado, sino #numero global
+  const formatVentaNum = (venta: any) => {
+    if (venta?.numero_sucursal && venta?.sucursal_id) {
+      const suc = (sucursales as any[]).find(s => s.id === venta.sucursal_id)
+      if (suc?.codigo) return `${suc.codigo}-${String(venta.numero_sucursal).padStart(4, '0')}`
+    }
+    return `#${venta?.numero ?? '?'}`
+  }
   const qc = useQueryClient()
   const navigate = useNavigate()
   const etiquetaRef = useRef<HTMLInputElement>(null)
@@ -122,7 +132,7 @@ export default function EnviosPage() {
     queryKey: ['envios', tenant?.id, filtroEstado, filtroCourier, filtroCanal, filtroDesde, filtroHasta, sucursalId],
     queryFn: async () => {
       let q = supabase.from('envios')
-        .select('*, ventas(numero, total, cliente_id, clientes(nombre, telefono)), cliente_domicilios(calle, numero, ciudad, provincia)')
+        .select('*, ventas(numero, numero_sucursal, sucursal_id, total, cliente_id, clientes(nombre, telefono)), cliente_domicilios(calle, numero, ciudad, provincia)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -150,7 +160,7 @@ export default function EnviosPage() {
       const idsConEnvio = (conEnvio ?? []).map((e: any) => e.venta_id).filter(Boolean)
 
       let q = supabase.from('ventas')
-        .select('id, numero, total, estado, origen, created_at, cliente_id, clientes(nombre, id)')
+        .select('id, numero, numero_sucursal, sucursal_id, total, estado, origen, created_at, cliente_id, clientes(nombre, id)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'reservada'])
         .order('created_at', { ascending: false })
@@ -372,7 +382,7 @@ export default function EnviosPage() {
     const mensaje = expandirPlantilla(plantilla, {
       nombre_cliente:  cliente?.nombre ?? '',
       nombre_negocio:  tenant?.nombre ?? BRAND.name,
-      numero_orden:    envio.numero ?? envio.id.slice(-6),
+      numero_orden:    envio.ventas ? formatVentaNum(envio.ventas) : `#${envio.numero ?? envio.id.slice(-6)}`,
       tracking:        envio.tracking_number ?? 'pendiente',
       courier:         envio.courier ?? '',
       fecha_entrega:   envio.fecha_entrega_acordada
@@ -619,7 +629,9 @@ export default function EnviosPage() {
                             </td>
                             <td className="px-4 py-3 font-semibold text-gray-800 dark:text-gray-100">
                               #{e.numero ?? e.id.slice(-6)}
-                              {e.ventas?.numero && <span className="ml-1.5 text-xs text-gray-400">V#{e.ventas.numero}</span>}
+                              {e.ventas?.numero && (
+                                <span className="ml-1.5 text-xs text-gray-400">{formatVentaNum(e.ventas)}</span>
+                              )}
                             </td>
                             <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatFecha(e.created_at)}</td>
                             <td className="px-4 py-3 text-gray-800 dark:text-gray-100 font-medium">
@@ -859,7 +871,7 @@ export default function EnviosPage() {
                   {ventaSeleccionada ? (
                     <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl px-3 py-2">
                       <span className="text-sm text-gray-800 dark:text-gray-100">
-                        Venta #{ventaSeleccionada.numero} — {ventaSeleccionada.clientes?.nombre ?? '—'} — {formatMoneda(ventaSeleccionada.total ?? 0)}
+                        Venta {formatVentaNum(ventaSeleccionada)} — {ventaSeleccionada.clientes?.nombre ?? '—'} — {formatMoneda(ventaSeleccionada.total ?? 0)}
                       </span>
                       <button onClick={() => { setVentaSeleccionada(null); setForm(f => ({ ...f, venta_id: '', destino_id: '' })) }}
                         className="text-gray-400 hover:text-red-500"><X size={14} /></button>
@@ -876,7 +888,7 @@ export default function EnviosPage() {
                         {(ventasRecientes as any[]).map((v: any) => (
                           <button key={v.id} onClick={() => seleccionarVenta(v)}
                             className="w-full text-left px-3 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700 text-gray-800 dark:text-gray-100">
-                            #{v.numero} — {v.clientes?.nombre ?? 'Sin cliente'} — {formatMoneda(v.total ?? 0)}
+                            {formatVentaNum(v)} — {v.clientes?.nombre ?? 'Sin cliente'} — {formatMoneda(v.total ?? 0)}
                           </button>
                         ))}
                       </div>

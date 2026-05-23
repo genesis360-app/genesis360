@@ -15,60 +15,80 @@ interface Props {
 
 type Sugg = { label: string; value: string; placeId: string }
 
-// Nominatim con addressdetails=1 → dirección limpia + coordenadas
+// ── Nominatim mejorado: usa display_name limpio + coordenadas ─────────────────
 async function searchNominatim(q: string): Promise<Sugg[]> {
+  if (q.length < 2) return []
   try {
     const params = new URLSearchParams({
       q, format: 'jsonv2', limit: '6', countrycodes: 'ar',
       'accept-language': 'es', addressdetails: '1',
     })
-    const res = await fetch(
+    const res  = await fetch(
       `https://nominatim.openstreetmap.org/search?${params}`,
       { headers: { 'User-Agent': 'Genesis360App/1.0' } }
     )
     const data: any[] = await res.json()
     return data.map(d => {
+      // Usamos display_name directo (más completo) solo limpiando el sufijo ", Argentina"
+      const full = (d.display_name as string).replace(/, Argentina$/, '')
+      // Label corto para mostrar: "Calle Número, Localidad, Provincia"
       const a = d.address ?? {}
       const calle  = a.road ?? a.pedestrian ?? a.street ?? ''
       const num    = a.house_number ?? ''
       const local  = a.suburb ?? a.city_district ?? a.town ?? a.city ?? a.municipality ?? ''
       const prov   = a.state ?? ''
-      const parts  = [
-        calle ? (num ? `${calle} ${num}` : calle) : '',
-        local,
-        prov !== local ? prov : '',
-      ].filter(Boolean)
-      const label = parts.join(', ') || d.display_name.replace(/, Argentina$/, '')
-      return { label, value: label, placeId: `${d.lat},${d.lon}` }
+      const parts  = [calle ? (num ? `${calle} ${num}` : calle) : '', local, prov !== local ? prov : ''].filter(Boolean)
+      const label  = parts.length >= 2 ? parts.join(', ') : full
+      return { label, value: full, placeId: `${d.lat},${d.lon}` }
     })
   } catch { return [] }
 }
 
-// Google Places AutocompleteService — maneja API clásica (callback) y nueva (Promise)
-async function searchGoogle(svc: any, q: string): Promise<Sugg[]> {
-  return new Promise(resolve => {
-    // Safety: si en 2s no responde nada, devolver vacío
-    const timer = setTimeout(() => resolve([]), 2000)
-    const done  = (items: Sugg[]) => { clearTimeout(timer); resolve(items) }
-    const map   = (preds: any[]) => preds.map(p => ({
-      label: p.description, value: p.description, placeId: p.place_id ?? '',
-    }))
+// ── Google Places — intenta nueva API primero, legacy como fallback ─────────────
+async function searchGoogle(
+  newApi: any,           // AutocompleteSuggestion class (Maps v3.55+)
+  legacyApi: any,        // AutocompleteService instance (legacy)
+  sessionToken: any,     // AutocompleteSessionToken
+  q: string,
+): Promise<Sugg[]> {
+
+  // 1. Nueva API AutocompleteSuggestion (misma que Google Maps)
+  if (newApi) {
     try {
-      const result = svc.getPlacePredictions(
-        { input: q, componentRestrictions: { country: 'ar' } },
-        (preds: any[], status: string) => {   // callback (API clásica)
-          if (preds?.length && status === 'OK') done(map(preds))
-          else done([])
-        }
-      )
-      // API nueva (v:weekly) devuelve Promise además del callback
-      if (result?.then) {
-        result
-          .then((r: any) => { if (r?.predictions?.length) done(map(r.predictions)) })
-          .catch(() => {})
-      }
-    } catch { done([]) }
-  })
+      const { suggestions } = await newApi.fetchAutocompleteSuggestions({
+        input: q,
+        includedRegionCodes: ['ar'],
+        sessionToken,
+      })
+      return (suggestions ?? []).map((s: any) => ({
+        label: s.placePrediction?.text?.text ?? s.placePrediction?.mainText?.text ?? '',
+        value: s.placePrediction?.text?.text ?? '',
+        placeId: s.placePrediction?.placeId ?? '',
+      })).filter((s: Sugg) => s.label)
+    } catch { /* fallback a legacy */ }
+  }
+
+  // 2. API legacy AutocompleteService (callback-only, sin carrera con Promise)
+  if (legacyApi) {
+    try {
+      return await new Promise<Sugg[]>(resolve => {
+        const timer = setTimeout(() => resolve([]), 5000)
+        legacyApi.getPlacePredictions(
+          { input: q, componentRestrictions: { country: 'ar' } },
+          (preds: any[], status: string) => {
+            clearTimeout(timer)
+            if (preds?.length && status === 'OK') {
+              resolve(preds.map(p => ({ label: p.description, value: p.description, placeId: p.place_id ?? '' })))
+            } else {
+              resolve([])
+            }
+          }
+        )
+      })
+    } catch { /* fallback a Nominatim */ }
+  }
+
+  return []
 }
 
 export function AddressAutocompleteInput({
@@ -78,41 +98,63 @@ export function AddressAutocompleteInput({
   disabled = false,
   savedAddresses = [],
 }: Props) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const svcRef   = useRef<any>(null)     // AutocompleteService de Google
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const [suggs,   setSuggs]   = useState<Sugg[]>([])
-  const [loading, setLoading] = useState(false)
-  const [open,    setOpen]    = useState(false)
+  // APIs de Google
+  const newApiRef     = useRef<any>(null)   // AutocompleteSuggestion class
+  const legacyApiRef  = useRef<any>(null)   // AutocompleteService instance
+  const sessionRef    = useRef<any>(null)   // AutocompleteSessionToken
 
-  // Inicializar AutocompleteService una sola vez
+  const [mapsLoading, setMapsLoading] = useState(false)
+  const [suggs,       setSuggs]       = useState<Sugg[]>([])
+  const [loading,     setLoading]     = useState(false)
+  const [open,        setOpen]        = useState(false)
+
+  // Inicializa APIs de Google una sola vez
   useEffect(() => {
     if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY) return
+    setMapsLoading(true)
     getGoogleMapsLoader()
       .then(() => importLibrary('places'))
-      .then((places: any) => { svcRef.current = new places.AutocompleteService() })
+      .then((places: any) => {
+        // Nueva API (Maps JS v3.55+ / v:weekly)
+        if (places.AutocompleteSuggestion) {
+          newApiRef.current    = places.AutocompleteSuggestion
+          sessionRef.current   = places.AutocompleteSessionToken ? new places.AutocompleteSessionToken() : null
+        }
+        // Legacy API (siempre disponible como fallback)
+        if (places.AutocompleteService) {
+          legacyApiRef.current = new places.AutocompleteService()
+        }
+      })
       .catch(() => { /* sin Google, usa Nominatim */ })
+      .finally(() => setMapsLoading(false))
   }, [])
 
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
+  useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current) }, [])
 
-  // El tipeo actualiza el padre inmediatamente; la búsqueda ocurre en background
+  // El tipeo actualiza el padre inmediatamente; búsqueda en background
   const handleChange = (raw: string) => {
-    onChange(raw)                          // actualiza el input en React al instante
-    if (timerRef.current) clearTimeout(timerRef.current)
+    onChange(raw)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
     if (raw.length < 2) { setSuggs([]); setLoading(false); return }
     setLoading(true)
-    timerRef.current = setTimeout(async () => {
+    searchTimer.current = setTimeout(async () => {
       let results: Sugg[] = []
-      if (svcRef.current) {
-        results = await searchGoogle(svcRef.current, raw)
+
+      // Google Places (nueva API preferida → legacy → Nominatim)
+      if (newApiRef.current || legacyApiRef.current) {
+        results = await searchGoogle(newApiRef.current, legacyApiRef.current, sessionRef.current, raw)
       }
+
+      // Nominatim si Google no da resultados o no está disponible
       if (results.length === 0) {
         results = await searchNominatim(raw)
       }
+
       setSuggs(results)
       setLoading(false)
-    }, 300)
+    }, 250)   // 250ms debounce — más ágil
   }
 
   const filteredSaved = savedAddresses.filter(
@@ -125,6 +167,13 @@ export function AddressAutocompleteInput({
     onPlaceSelected?.(label, placeId)
     setSuggs([])
     setOpen(false)
+    // Resetear sesión de Google para la próxima búsqueda (billing)
+    if (newApiRef.current) {
+      try {
+        const { AutocompleteSessionToken } = (window as any).google?.maps?.places ?? {}
+        if (AutocompleteSessionToken) sessionRef.current = new AutocompleteSessionToken()
+      } catch { /* silencioso */ }
+    }
   }
 
   return (
@@ -141,15 +190,19 @@ export function AddressAutocompleteInput({
           autoComplete="off"
           className={`w-full pl-8 pr-8 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         />
-        {loading && <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />}
+        {(mapsLoading || loading) && (
+          <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />
+        )}
       </div>
 
       {showDrop && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden max-h-60 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-50 overflow-hidden max-h-64 overflow-y-auto">
 
           {filteredSaved.length > 0 && (
             <>
-              <p className="text-[10px] font-semibold text-gray-400 px-3 pt-2 pb-1 uppercase tracking-wide">Guardadas del cliente</p>
+              <p className="text-[10px] font-semibold text-gray-400 px-3 pt-2 pb-1 uppercase tracking-wide">
+                Guardadas del cliente
+              </p>
               {filteredSaved.map((a, i) => (
                 <button key={`s${i}`} onMouseDown={e => { e.preventDefault(); pick(a) }}
                   className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent/5 transition-colors">
@@ -163,12 +216,14 @@ export function AddressAutocompleteInput({
 
           {suggs.length > 0 && (
             <>
-              <p className="text-[10px] font-semibold text-gray-400 px-3 pt-2 pb-1 uppercase tracking-wide">Sugerencias</p>
+              <p className="text-[10px] font-semibold text-gray-400 px-3 pt-2 pb-1 uppercase tracking-wide">
+                Sugerencias
+              </p>
               {suggs.map((s, i) => (
                 <button key={`g${i}`} onMouseDown={e => { e.preventDefault(); pick(s.value, s.placeId) }}
                   className="w-full text-left flex items-start gap-2 px-3 py-2 text-sm hover:bg-accent/5 transition-colors">
                   <MapPin size={12} className="text-accent shrink-0 mt-0.5" />
-                  <span className="text-gray-700 dark:text-gray-300 leading-snug line-clamp-2">{s.label}</span>
+                  <span className="text-gray-700 dark:text-gray-300 leading-snug">{s.label}</span>
                 </button>
               ))}
             </>

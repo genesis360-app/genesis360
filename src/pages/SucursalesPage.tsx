@@ -177,7 +177,14 @@ export default function SucursalesPage() {
                   <Building2 size={18} className="text-primary dark:text-blue-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 dark:text-white">{s.nombre}</p>
+                  <p className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    {s.nombre}
+                    {(s as any).codigo && (
+                      <span className="text-xs font-mono px-1.5 py-0.5 bg-primary/10 text-primary rounded">
+                        {(s as any).codigo}
+                      </span>
+                    )}
+                  </p>
                   <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                     {s.direccion && (
                       <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
@@ -286,14 +293,18 @@ export default function SucursalesPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Código ticket
+                    Prefijo de ticket <span className="text-xs font-normal text-gray-400">(opcional)</span>
                   </label>
                   <input value={form.codigo}
                     onChange={e => setForm(f => ({ ...f, codigo: e.target.value.toUpperCase() }))}
-                    placeholder="S1"
+                    placeholder="Ej: SN, MA, B1 (vacío = usa #global)"
                     maxLength={5}
                     className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
-                  <p className="text-xs text-gray-400 mt-1">Prefijo del # de venta</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {form.codigo.trim()
+                      ? `Las ventas de esta sucursal mostrarán: ${form.codigo.trim().toUpperCase()}-0001, ${form.codigo.trim().toUpperCase()}-0002…`
+                      : 'Sin prefijo: las ventas muestran el número global (#1, #2…)'}
+                  </p>
                 </div>
               </div>
 

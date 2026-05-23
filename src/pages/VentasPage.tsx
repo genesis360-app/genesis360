@@ -93,12 +93,12 @@ export default function VentasPage() {
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
 
   // ISS-085: formatea el número de ticket por sucursal
+  // Solo usa formato CODIGO-NNNN si la sucursal tiene un código explícitamente configurado
   const formatTicket = (v: any) => {
     if (v?.numero_sucursal && v?.sucursal_id) {
       const suc = sucursales.find((s: any) => s.id === v.sucursal_id)
-      const codigo = (suc as any)?.codigo
-        ?? `S${(sucursales as any[]).findIndex((s: any) => s.id === v.sucursal_id) + 1}`
-      return `${codigo}-${String(v.numero_sucursal).padStart(4, '0')}`
+      const codigo = (suc as any)?.codigo   // null/undefined si no configurado
+      if (codigo) return `${codigo}-${String(v.numero_sucursal).padStart(4, '0')}`
     }
     return `#${v?.numero ?? '?'}`
   }

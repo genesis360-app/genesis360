@@ -6,6 +6,30 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-23] update | v1.8.40-dev — ISS-166/167/168/169 + fixes carrito/numeración/autocomplete
+
+### ISS-166 — Botón cámara en modal POD
+- Input file con `capture="environment"` para tomar foto con la cámara del dispositivo
+- Upload a bucket `etiquetas-envios/pod/{id}/` con URL firmada 365 días como `pod_url`
+
+### ISS-167 — QR codes en remito PDF
+- QR número de venta + QR número de envío en esquina superior derecha
+- Tabla incluye SKU, LPN y Ubicación de almacén
+
+### ISS-168 — LPN y ubicación de mercadería en Envíos
+- Panel expandido muestra LPN en badge + ubicación por producto de la venta
+
+### ISS-169 — Pestaña Pagos Courier
+- Tab con badge de pendientes · selección múltiple · marcar como pagados
+- Migration 128: `costo_pagado + fecha_pago_courier + medio_pago_courier`
+
+### Fixes sesión (2026-05-21 → 2026-05-23)
+- Número venta coherente Ventas↔Envíos (prefijo sucursal opcional, fallback `#global`)
+- Carrito restaurado: re-fetch lineas dentro del mismo effect (elimina race condition)
+- Autocomplete: `AutocompleteSuggestion` API (misma que Google Maps) + `AutocompleteService` legacy
+- Distancia: Haversine con coords pre-geocodificadas · alertas si dirección mala
+- DashEnviosArea: `en_bodega` en funnel, tiempo medio desde POD, insight cancelados
+
 ## [2026-05-21] update | v1.8.39-dev — autocomplete direcciones con Nominatim fallback
 
 ### AddressAutocompleteInput — autocomplete robusto

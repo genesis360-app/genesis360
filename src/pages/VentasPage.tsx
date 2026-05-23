@@ -471,6 +471,27 @@ export default function VentasPage() {
     setCalculandoDistancia(false)
   }
 
+  // Limpiar carrito cuando el DUEÑO cambia de sucursal (evita vender inventario de otra sucursal)
+  const prevSucursalRef = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (prevSucursalRef.current === undefined) {
+      prevSucursalRef.current = sucursalId   // primera carga — solo registrar, no limpiar
+      return
+    }
+    if (prevSucursalRef.current === sucursalId) return
+    prevSucursalRef.current = sucursalId
+    if (cart.length > 0) {
+      setCart([])
+      setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteCCEnabled(false)
+      setMediosPago([{ tipo: '', monto: '' }]); setNotas(''); setDescuentoTotal(''); setRequiereEnvio(false)
+      if (cartDraftKey) localStorage.removeItem(cartDraftKey)
+      toast('Sucursal cambiada — el carrito fue borrado para evitar vender stock de otra sucursal.', {
+        icon: '🏪', duration: 5000,
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sucursalId])
+
   // Modal series
   const [seriesModal, setSeriesModal] = useState<{ itemIdx: number; lineas: any[] } | null>(null)
   const [seriesBusqueda, setSeriesBusqueda] = useState('')
@@ -1371,6 +1392,11 @@ export default function VentasPage() {
       ? null
       : validarMediosPago(estado, modoCC ? mediosSinCC : mediosPago, modoCC ? totalSinCC : totalConEnvio)
     if (errorPago) { toast.error(errorPago); return }
+    // Validar que hay sucursal seleccionada cuando hay varias sucursales
+    if (sucursales.length > 1 && !sucursalId) {
+      toast.error('Seleccioná una sucursal antes de registrar la venta. El stock se descuenta por sucursal.')
+      return
+    }
     if (estado === 'despachada' || estado === 'reservada') {
       const montoNoCCAsignado = mediosPago.filter(m => m.tipo !== 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
       const necesitaCaja = montoNoCCAsignado > 0 || !modoCC
@@ -1488,15 +1514,18 @@ export default function VentasPage() {
 
         if (!item.tiene_series && (estado === 'reservada' || estado === 'despachada')) {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
-          const { data: lineasRaw } = await supabase.from('inventario_lineas')
+          let lineasQ = supabase.from('inventario_lineas')
             .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
             .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+          // Filtrar ESTRICTAMENTE por sucursal activa para no tocar stock de otra sucursal
+          if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
+          const { data: lineasRaw } = await lineasQ
           const lineas = (lineasRaw ?? [])
             .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
             .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoy)
             .sort(sortLineas)
           const stockDisp = lineas.reduce((sum: number, l: any) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0)
-          if (stockDisp < cant) throw new Error(`Stock insuficiente para "${item.nombre}". Disponible: ${stockDisp}, pedido: ${cant}`)
+          if (stockDisp < cant) throw new Error(`Stock insuficiente para "${item.nombre}" en esta sucursal. Disponible: ${stockDisp}, pedido: ${cant}`)
 
           let restante = cant
           for (const linea of lineas) {
@@ -2197,9 +2226,13 @@ export default function VentasPage() {
           } else {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
-            const { data: lineasRaw } = await supabase.from('inventario_lineas')
+            let complQ = supabase.from('inventario_lineas')
               .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+            // Usar la sucursal de la venta original para no tocar lineas de otra sucursal
+            const ventaSucursal = (ventaDetalle as any)?.sucursal_id
+            if (ventaSucursal) complQ = complQ.eq('sucursal_id', ventaSucursal)
+            const { data: lineasRaw } = await complQ
             const _hoyStr2 = new Date().toISOString().split('T')[0]
             const lineas = (lineasRaw ?? [])
               .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)

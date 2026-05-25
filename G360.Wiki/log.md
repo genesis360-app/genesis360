@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-25] update | PROD deploy v1.9.0 — Reglas Gastos Fases 4+5 (capitalización + cierre contable)
+
+- Migrations 134 + 135 aplicadas en PROD ✅ (3 columnas nuevas en gastos, tabla cierres_contables, vista vw_egresos_consolidados, 4 funciones, 5 triggers)
+- PR #117 `dev → main` mergeado ✅ (squash commit `4ec5885b`)
+- Vercel auto-deploy PROD `dpl_DH6q1FMCKxPnPN6tav1xC3j79Kab` en estado READY ✅ (build 66s)
+- `app.genesis360.pro` ya sirviendo v1.9.0
+- GitHub release v1.9.0 actualizada como **latest** (título limpio sin sufijo DEV)
+- DEV y PROD ahora ambas en v1.9.0 — pipeline Reglas de Negocio Gastos cerrado
+
+---
+
 ## [2026-05-25] update | v1.9.0-dev — Fases 4 + 5 reglas Gastos (capitalización + cierre contable)
 
 ### Migrations aplicadas en DEV

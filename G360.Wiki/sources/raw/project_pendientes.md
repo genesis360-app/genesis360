@@ -4,19 +4,20 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.44** ✅ · DEV: **v1.9.0**
+Último release en PROD: **v1.9.0** ✅ · DEV: **v1.9.0**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.9.0 / PROD v1.8.44 (cierre sesión 2026-05-25)
+## Estado actual DEV v1.9.0 / PROD v1.9.0 (cierre sesión 2026-05-25)
 
 - APP_VERSION DEV: `v1.9.0` en `src/config/brand.ts` ✅
-- APP_VERSION PROD: `v1.8.44` ✅
-- Migrations DEV: 001–135 ✅ (134 capitalización + vw_egresos_consolidados · 135 cierre contable)
-- Migrations PROD: 001–133 (pendiente aplicar 134 + 135 al deployar)
-- Pendiente deploy PROD: PR `dev → main` con v1.8.45 + v1.9.0
+- APP_VERSION PROD: `v1.9.0` ✅ (PR #117 mergeado `4ec5885b`, release v1.9.0 como `latest`)
+- Migrations DEV: 001–135 ✅
+- Migrations PROD: 001–135 ✅ (al día — 134 capitalización + vw_egresos_consolidados · 135 cierre contable)
+- Vercel deploys READY: PROD `dpl_DH6q1FMCKxPnPN6tav1xC3j79Kab`
+- **Pipeline Reglas de Negocio - Gastos: cerrado ✅** (Fases 1-5 en PROD)
 
 ### Lo producido en DEV en esta sesión (2026-05-25 — v1.9.0)
 - **v1.8.45 + v1.9.0 combinados** — Fases 4 y 5 reglas Gastos cerradas en un único bump por ser HITO transversal

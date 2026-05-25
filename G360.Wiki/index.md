@@ -60,7 +60,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | 135 + 086b en DEV (001-135) · 133 + 086b en PROD · descripción completa | ✅ |
+| [[wiki/database/migraciones]] | 135 + 086b en DEV y PROD (001-135) · descripción completa | ✅ |
 | [[wiki/database/rls-policies]] | Patrón subquery, funciones helper, Storage, Edge Functions | ✅ |
 | [[wiki/database/triggers]] | Stock, numeración, integraciones, nómina, stock mínimo | ✅ |
 
@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-25 — 53 páginas + 3 manuales · 8 fuentes en raw/ · DEV en 135 + 086b · PROD en 133 + 086b · v1.9.0 DEV · v1.8.44 PROD · Fases 1-5 reglas Gastos completas en DEV · pendiente deploy PROD (v1.8.45 + v1.9.0)*
+*Última actualización: 2026-05-25 — 53 páginas + 3 manuales · 8 fuentes en raw/ · DEV y PROD ambos en 135 + 086b · v1.9.0 DEV y PROD · Pipeline Reglas de Negocio Gastos cerrado (Fases 1-5 en PROD)*

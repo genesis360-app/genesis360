@@ -13,9 +13,9 @@ updated: 2026-05-25
 
 ---
 
-## v1.9.0 — HITO: Reglas Gastos Fases 4 + 5 — Capitalización + Cierre Contable (DEV ✅)
+## v1.9.0 — HITO: Reglas Gastos Fases 4 + 5 — Capitalización + Cierre Contable (PROD ✅)
 
-**Estado:** completado en DEV · pendiente deploy PROD
+**Estado:** desplegado en PROD ✅ (PR #117 mergeado, Vercel READY, migrations 134+135 aplicadas)
 **Fecha:** 2026-05-25
 
 ### Migrations

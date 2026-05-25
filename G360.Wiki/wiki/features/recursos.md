@@ -1,9 +1,9 @@
 ---
 title: Recursos
 category: features
-tags: [recursos, patrimonio, ubicaciones, recurrentes, gastos]
+tags: [recursos, patrimonio, ubicaciones, recurrentes, gastos, capitalizacion]
 sources: [CLAUDE.md]
-updated: 2026-05-19
+updated: 2026-05-25
 ---
 
 # Recursos
@@ -129,9 +129,20 @@ proximo_vencimiento = hoy + frecuencia_valor × unidad
 | Stat | Valor |
 |---|---|
 | Activos | Recursos en estado `activo` |
-| Valor patrimonial | Suma de `valor` de activos + en reparación |
-| En reparación | Count |
+| Valor patrimonial | Suma de `valor` de activos + en reparación + capitalizaciones (v1.8.45) |
+| Mantenimiento acumulado | Suma de `gastos.monto` vinculados a recursos con `capitaliza_recurso=false` (v1.8.45) |
 | Por adquirir | Count + presupuesto estimado |
+
+---
+
+## Capitalización en recursos (v1.8.45 · migration 134)
+
+Cada `RecursoCard` agrega:
+- Valor base + `+ $X cap.` cuando hay gastos capitalizables vinculados
+- Chip "🔧 Mantto $Y" + "📈 Cap. $Z" con cantidad de gastos asociados
+- Click → navega a `/gastos?tab=recursos` para ver el detalle
+
+Detalle: ver [[wiki/features/gastos]] sección "Capitalización en recursos".
 
 ---
 
@@ -157,3 +168,4 @@ proximo_vencimiento = hoy + frecuencia_valor × unidad
 - [[wiki/features/gastos]]
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/alertas]]
+- [[wiki/development/cierre-contable]]

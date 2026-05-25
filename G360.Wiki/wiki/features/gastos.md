@@ -1,9 +1,9 @@
 ---
 title: Módulo Gastos
 category: features
-tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto]
+tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable]
 sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md]
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # Módulo Gastos
@@ -22,6 +22,8 @@ updated: 2026-05-24
 3. **Historial** — todos los gastos con filtros avanzados
 4. **Órdenes de Compra** — seguimiento de pagos a proveedores
 5. **Recursos** — gastos vinculados a activos del negocio
+6. **Autorizaciones** (v1.8.43+) — bandeja para DUEÑO/SUPERVISOR/ADMIN
+7. **Cierres contables** (v1.9.0) — cierre mensual + historial · DUEÑO/CONTADOR/SUPERVISOR
 
 ---
 
@@ -364,6 +366,70 @@ Aplica tanto al **crear** como al **editar** un gasto.
 
 ---
 
+## Capitalización en recursos (v1.8.45 · migration 134)
+
+Cuando un gasto se vincula a un **recurso** (`gastos.recurso_id`), aparece el checkbox **"Sumar al valor del recurso"** (`gastos.capitaliza_recurso BOOLEAN`).
+
+- **Capitalizable** (mejora, ampliación, accesorio que aumenta valor patrimonial) → tildado · suma al valor del recurso
+- **Mantenimiento/repuesto** (uso normal, reparación) → sin tildar · cuenta como costo operativo
+
+CHECK constraint: `capitaliza_recurso = TRUE` requiere `recurso_id IS NOT NULL`.
+
+En **RecursosPage** cada card muestra:
+- Valor base + `+ $X cap.` (suma de capitalizaciones)
+- Badge "🔧 Mantto $Y" + "📈 Cap. $Z" + cantidad de gastos asociados
+- Stats globales: nueva card "Mantenimiento acumulado"
+
+---
+
+## Vista `vw_egresos_consolidados` (v1.8.45 · migration 134)
+
+Vista PostgreSQL `SECURITY INVOKER` que une:
+- Todos los `gastos` (cualquier estado de comprobante)
+- `rrhh_salarios` con `pagado = TRUE`
+
+Columnas: `id, fuente ('gasto' | 'rrhh_salario'), tenant_id, fecha, monto, descripcion, categoria, categoria_id, sucursal_id, medio_pago, usuario_id, recurso_id, empleado_id, periodo, created_at`.
+
+Usada por:
+- **DashGastosArea** — banner "Costo laboral del período (RRHH)" debajo de los 4 KPIs principales, con link a `/rrhh?tab=nomina` y total consolidado Gastos + RRHH
+- **RentabilidadPage** — sección "Estado de resultados (período)" con línea separada **"Sueldos pagados (RRHH)"** + resultado neto
+
+---
+
+## Cierre contable mensual (v1.9.0 · migration 135)
+
+**HITO transversal**: cierre por período de **Gastos + Ventas + Caja + OC**.
+
+### Tabla `cierres_contables`
+- `tenant_id, periodo (YYYY-MM-01), fecha_cierre, cerrado_por, cerrado_por_rol, observaciones, totales JSONB`
+- UNIQUE(tenant_id, periodo) · RLS por tenant
+
+### Triggers BEFORE UPDATE/DELETE
+- `gastos` (fecha) · `ventas` (created_at::date) · `caja_movimientos` (created_at::date)
+- `caja_sesiones` (abierta_at::date) · `ordenes_compra` (created_at::date)
+- RAISE EXCEPTION SQLSTATE P0001 con mensaje "Periodo contable cerrado hasta YYYY-MM-DD"
+- Los INSERT no se bloquean: las notas de corrección pueden insertarse libremente
+
+### Notas de corrección
+- `gastos.gasto_padre_id UUID REFERENCES gastos(id) ON DELETE SET NULL`
+- `gastos.es_correccion BOOLEAN DEFAULT FALSE`
+- En GastosPage, los gastos con fecha cerrada muestran **🔒 Corregir** en lugar de Editar/Eliminar
+- Modal "Nota de corrección" pre-rellena descripción/categoría/recurso/IVA, fecha=hoy, acepta monto negativo
+
+### RPCs
+- `cerrar_periodo(p_periodo DATE, p_observaciones TEXT) RETURNS JSON` — DUEÑO/SUPERVISOR/CONTADOR/ADMIN. Valida periodo > último y no en curso. Snapshot totales en JSONB.
+- `reabrir_periodo(p_cierre_id UUID) RETURNS BOOLEAN` — solo DUEÑO/ADMIN/SUPER_USUARIO. Solo último cierre.
+
+### Frontend
+- Hook `useCierreContable()` → `{ ultimoCierre, isPeriodoCerrado(fecha) }` (cache 60s)
+- Helper `manejarErrorPeriodoCerrado(error, toast)` para interceptar errores de trigger
+- Componente `CierresContablesPanel` con preview live + listado expandible con totales snapshot
+- Visible en GastosPage > Tab "Cierres contables" para DUEÑO/SUPERVISOR/CONTADOR/SUPER_USUARIO/ADMIN
+
+Detalle completo: [[wiki/development/cierre-contable]]
+
+---
+
 ## Tab "Gastos" en ConfigPage (v1.8.42)
 
 Nueva tab con 3 secciones:
@@ -384,4 +450,5 @@ Acceso: DUEÑO (canEdit).
 - [[wiki/features/alertas]]
 - [[wiki/features/recursos]]
 - [[wiki/development/reglas-negocio]]
+- [[wiki/development/cierre-contable]]
 - [[wiki/features/configuracion]]

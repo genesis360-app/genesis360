@@ -6,6 +6,67 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-25] update | v1.9.0-dev — Fases 4 + 5 reglas Gastos (capitalización + cierre contable)
+
+### Migrations aplicadas en DEV
+- **134** `134_gastos_capitaliza_egresos_consolidados.sql`
+  - `gastos.capitaliza_recurso BOOLEAN DEFAULT FALSE` + CHECK constraint (TRUE solo si recurso_id IS NOT NULL) + índice parcial `idx_gastos_recurso_capit`
+  - VIEW `vw_egresos_consolidados` (UNION ALL de `gastos` + `rrhh_salarios.pagado=true`, `security_invoker=true`)
+- **135** `135_cierre_contable.sql`
+  - Tabla `cierres_contables(tenant_id, periodo, fecha_cierre, cerrado_por, cerrado_por_rol, observaciones, totales JSONB)` UNIQUE(tenant_id, periodo) + RLS + CHECK periodo=primer día del mes
+  - `gastos.gasto_padre_id` + `gastos.es_correccion BOOLEAN` + índice parcial
+  - Helpers `ultimo_cierre_hasta(tenant)` y `periodo_cerrado(tenant, fecha)` STABLE
+  - 5 triggers BEFORE UPDATE/DELETE en `gastos / ventas / caja_movimientos / caja_sesiones / ordenes_compra` con RAISE EXCEPTION SQLSTATE P0001
+  - RPC `cerrar_periodo(p_periodo, p_observaciones)` SECURITY DEFINER — DUEÑO/SUPERVISOR/CONTADOR/ADMIN, valida periodo > último cierre y no en curso, snapshot de totales
+  - RPC `reabrir_periodo(p_cierre_id)` — solo último cierre, DUEÑO/ADMIN/SUPER_USUARIO
+
+### Frontend
+- **`src/lib/supabase.ts`**: nueva interface `CierreContable` + extensión de `Gasto` (`recurso_id`, `capitaliza_recurso`, `gasto_padre_id`, `es_correccion`)
+- **`src/hooks/useCierreContable.ts`** (nuevo): hook que cachea el último cierre + `isPeriodoCerrado(fecha)` helper. Función auxiliar `manejarErrorPeriodoCerrado(error, toastFn)`.
+- **`src/components/CierresContablesPanel.tsx`** (nuevo): selector de periodo a cerrar (sugerencias automáticas) + preview live de gastos/ventas/sueldos del periodo + botón "Cerrar periodo" con confirmación + listado histórico expandible con totales snapshot + botón "Reabrir" solo en el último cierre (DUEÑO/ADMIN).
+- **GastosPage**:
+  - Nuevo tab **"Cierres contables"** visible a DUEÑO/SUPERVISOR/CONTADOR/SUPER_USUARIO/ADMIN
+  - Checkbox **"Sumar al valor del recurso"** debajo del selector de recurso (visible solo si hay recurso_id), persiste `capitaliza_recurso`
+  - Query nueva `recursos-select-gasto` (carga recursos no dados de baja) para el dropdown del form
+  - Modo **"Nota de corrección"**: estado `correccionPadre` + función `abrirCorreccion(g)` que pre-rellena form con datos del gasto original, fecha=hoy, descripción "Corrección de: ..."
+  - Validación de monto: en modo corrección admite negativos (anular total/parcial), en modo normal solo positivos
+  - En el listado (tab gastos + historial), reemplaza Editar/Eliminar por **🔒 Corregir** cuando `isPeriodoCerrado(g.fecha)`
+  - `eliminar()` y `guardar()` chequean el periodo antes y capturan errores del trigger via `manejarErrorPeriodoCerrado`
+- **RecursosPage**:
+  - Query `gastos-por-recurso` que agrega `mantenimiento`/`capitalizado`/`total`/`count` por recurso_id
+  - Nueva card en stats grid: **"Mantenimiento acumulado"** (suma de gastos no capitalizables vinculados)
+  - Valor patrimonial ahora incluye capitalizaciones: `valor + capitalizado`
+  - Cada `RecursoCard` muestra `+ $X cap.` junto al valor base y chips "🔧 Mantto" + "📈 Cap." con cantidad de gastos asociados
+- **DashGastosArea**:
+  - Query agrega `rrhh_salarios.pagado=true` del período (actual y previo) → calcula `costoLaboral` y `empleadosLiquidados`
+  - Banner nuevo **"Costo laboral del período (RRHH)"** debajo de los 4 KPIs principales, con link a `/rrhh?tab=nomina` y total consolidado "Gastos + RRHH"
+- **RentabilidadPage**:
+  - Query nueva `rentabilidad-egresos` (gastos + sueldos del período)
+  - Nueva sección **"Estado de resultados (período)"** con líneas: Ventas / CMV / Ganancia bruta / Gastos operativos / **Sueldos pagados (RRHH)** (con link a `/rrhh?tab=nomina`) / Resultado neto
+- **VentasPage**: handler "Eliminar venta" intercepta y muestra el mensaje del trigger periodo cerrado
+
+### Wiki
+- Nueva página `wiki/development/cierre-contable.md` con concepto, schema, triggers, RPCs, hook, componente, casos de uso y pendientes opcionales
+- `wiki/features/gastos.md`: nuevas secciones "Capitalización en recursos", "Vista vw_egresos_consolidados", "Cierre contable mensual"; tabs ampliados a 7
+- `wiki/features/recursos.md`: nueva card stats "Mantenimiento acumulado" + sección "Capitalización en recursos"
+- `wiki/database/migraciones.md`: entradas 134 + 135
+
+### Estado al cierre
+- DEV: v1.9.0 con migrations 130-135 aplicadas
+- PROD: v1.8.44
+- Pendiente deploy PROD: bloque DEV completo (v1.8.45 + v1.9.0)
+- Cierre del pipeline Reglas de Negocio - Gastos ✅ — Fases 1-5 completas
+
+---
+
+## [2026-05-24] update | PROD deploy v1.8.44 — Reglas Gastos Fases 1-3 + Moneda multi-país
+
+- PR #116 `dev → main` mergeado ✅ (commit f8f4e434)
+- Vercel auto-deploy PROD `dpl_FqCFSJA64t19A9GXGQs7gEibpMmy` en estado READY ✅
+- Migrations 130-133 aplicadas en PROD ✅ (4 tenants × 16 categorías = 64 categorías_gasto seedeadas + moneda default ARS + ambas tablas de autorizaciones creadas)
+- GitHub release v1.8.44 como **latest** ✅
+- DEV y PROD ahora ambas en v1.8.44
+
 ## [2026-05-24] update | v1.8.44-dev — Fase 3 reglas Gastos (moneda + IVA + CC proveedor)
 
 ### Migration aplicada en DEV

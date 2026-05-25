@@ -4,7 +4,7 @@ import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
   ChevronDown, ChevronUp, Paperclip, ExternalLink, Repeat, ToggleLeft, ToggleRight,
   Info, ChevronRight, User, Bell, History, ShoppingCart, AlertCircle,
-  Clock, CheckCircle, CreditCard, DollarSign, Landmark,
+  Clock, CheckCircle, CreditCard, DollarSign, Landmark, Lock,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -20,6 +20,8 @@ import SolicitarAutorizacionGastoModal from '@/components/SolicitarAutorizacionG
 import SolicitarOverrideCCModal from '@/components/SolicitarOverrideCCModal'
 import BandejaAutorizacionesGasto from '@/components/BandejaAutorizacionesGasto'
 import BandejaAutorizacionesCC from '@/components/BandejaAutorizacionesCC'
+import CierresContablesPanel from '@/components/CierresContablesPanel'
+import { useCierreContable, manejarErrorPeriodoCerrado } from '@/hooks/useCierreContable'
 
 // Fallback solo si la query a categorias_gasto falla. Se sobreescribe con la tabla.
 const CATEGORIAS_GASTO_FALLBACK = [
@@ -96,6 +98,9 @@ interface FormGasto {
   alicuota_iva_custom: string
   deduce_ganancias: boolean; gasto_negocio: string
   categoria: string; fecha: string; notas: string
+  // Migration 134 — link a recurso + capitalización
+  recurso_id: string
+  capitaliza_recurso: boolean
 }
 interface FormFijo {
   descripcion: string; monto: string
@@ -112,6 +117,7 @@ const FORM_VACIO: FormGasto = {
   alicuota_iva_custom: '',
   deduce_ganancias: false, gasto_negocio: '',
   categoria: '', fecha: new Date().toISOString().split('T')[0], notas: '',
+  recurso_id: '', capitaliza_recurso: false,
 }
 const FORM_FIJO_VACIO: FormFijo = {
   descripcion: '', monto: '', tipo_iva: '', iva_deducible: false,
@@ -142,7 +148,7 @@ export default function GastosPage() {
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const [searchParams] = useSearchParams()
-  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'recursos', 'autorizaciones'] as const
+  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'recursos', 'autorizaciones', 'cierres'] as const
   type TabGastos = typeof tabValidos[number]
   const tabFromUrl = searchParams.get('tab') as TabGastos | null
   const [tab, setTab] = useState<TabGastos>(tabValidos.includes(tabFromUrl as TabGastos) ? (tabFromUrl as TabGastos) : 'gastos')
@@ -319,6 +325,9 @@ export default function GastosPage() {
 
   // Conteo de autorizaciones pendientes que este usuario puede aprobar
   const puedeAprobarRoles = ['DUEÑO', 'ADMIN', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
+  // Cierre contable (Fase 5 — v1.9.0): roles que ven el tab + helper para bloquear edición/eliminación de gastos viejos
+  const puedeCerrarPeriodo = ['DUEÑO', 'ADMIN', 'SUPERVISOR', 'CONTADOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
+  const { ultimoCierre, isPeriodoCerrado } = useCierreContable()
   const { data: autorizacionesPendientesCount = 0 } = useQuery({
     queryKey: ['autorizaciones-pendientes-count', tenant?.id, user?.rol],
     queryFn: async () => {
@@ -460,6 +469,20 @@ export default function GastosPage() {
   const MEDIOS_OC_DB = metodosPagoDB.length > 0
     ? [...metodosPagoDB.filter((m: string) => m !== 'Cuenta Corriente'), 'Cuenta Corriente']
     : ['Efectivo', 'Transferencia', 'Tarjeta de débito', 'Cheque', 'Cuenta Corriente', 'Otro']
+
+  // ── Recursos para selector en form (Migration 134) ────────────────────────
+  const { data: recursosSelect = [] } = useQuery({
+    queryKey: ['recursos-select-gasto', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('recursos')
+        .select('id, nombre, categoria, valor, estado')
+        .eq('tenant_id', tenant!.id)
+        .neq('estado', 'dado_de_baja')
+        .order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant?.id && modalAbierto,
+  })
 
   // ── Tab Recursos — gastos vinculados a recursos ───────────────────────────
   const { data: gastosRecursos = [], refetch: refetchGastosRecursos } = useQuery({
@@ -766,8 +789,35 @@ export default function GastosPage() {
   // Derivados que dependen de parseMediosPago — definidos después de ella
   const originalTeniaPago = parseMediosPago(originalMedioPago).some(m => m.tipo && parseFloat(m.monto) > 0)
 
+  // Modo "nota de corrección" (Fase 5 — v1.9.0): cuando se abre el modal con un padre,
+  // el insert lleva gasto_padre_id + es_correccion=true y la fecha se setea a hoy.
+  const [correccionPadre, setCorreccionPadre] = useState<any | null>(null)
+
   const abrirNuevo = () => {
-    setEditandoId(null); setForm(FORM_VACIO)
+    setEditandoId(null); setCorreccionPadre(null); setForm(FORM_VACIO)
+    setMediosPago([{ tipo: '', monto: '' }])
+    setComprobanteFile(null); setComprobanteExistente(null)
+    setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
+    setModalAbierto(true)
+  }
+
+  const abrirCorreccion = (g: any) => {
+    setEditandoId(null)
+    setCorreccionPadre(g)
+    setForm({
+      descripcion:          `Corrección de: ${g.descripcion}`,
+      monto:                '',
+      tipo_iva:             g.tipo_iva ?? '',
+      iva_deducible:        g.iva_deducible ?? false,
+      alicuota_iva_custom:  g.tipo_iva === 'custom' && g.alicuota_iva != null ? String(g.alicuota_iva) : '',
+      deduce_ganancias:     g.deduce_ganancias ?? false,
+      gasto_negocio:        g.gasto_negocio === true ? 'negocio' : g.gasto_negocio === false ? 'personal' : '',
+      categoria:            g.categoria ?? '',
+      fecha:                new Date().toISOString().split('T')[0],
+      notas:                `Nota de corrección sobre gasto del ${g.fecha} (#${String(g.id).slice(0,8)}).`,
+      recurso_id:           g.recurso_id ?? '',
+      capitaliza_recurso:   g.capitaliza_recurso ?? false,
+    })
     setMediosPago([{ tipo: '', monto: '' }])
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
@@ -782,6 +832,8 @@ export default function GastosPage() {
       deduce_ganancias: g.deduce_ganancias ?? false,
       gasto_negocio: g.gasto_negocio === true ? 'negocio' : g.gasto_negocio === false ? 'personal' : '',
       categoria: g.categoria ?? '', fecha: g.fecha, notas: g.notas ?? '',
+      recurso_id: g.recurso_id ?? '',
+      capitaliza_recurso: g.capitaliza_recurso ?? false,
     })
     setMediosPago(parseMediosPago(g.medio_pago))
     setOriginalMedioPago(g.medio_pago ?? null)  // guarda el pago original para detectar cambios
@@ -791,7 +843,7 @@ export default function GastosPage() {
     setModalAbierto(true)
   }
   const cerrarModal = () => {
-    setModalAbierto(false); setEditandoId(null); setForm(FORM_VACIO)
+    setModalAbierto(false); setEditandoId(null); setCorreccionPadre(null); setForm(FORM_VACIO)
     setMediosPago([{ tipo: '', monto: '' }])
     setOriginalMedioPago(null)
     setComprobanteFile(null); setComprobanteExistente(null)
@@ -839,7 +891,9 @@ export default function GastosPage() {
   const guardar = async () => {
     if (!form.descripcion.trim()) { toast.error('La descripción es requerida'); return }
     const monto = parseFloat(form.monto.replace(',', '.'))
-    if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    if (isNaN(monto) || monto === 0) { toast.error('Ingresá un monto válido'); return }
+    // Las notas de corrección admiten montos negativos; el resto no.
+    if (!correccionPadre && monto < 0) { toast.error('El monto debe ser positivo (usá una nota de corrección si querés revertir un gasto cerrado).'); return }
 
     // Validación: categoría con `requiere_sucursal` exige sucursal activa (v1.8.44)
     if (form.categoria) {
@@ -922,6 +976,12 @@ export default function GastosPage() {
         fecha: form.fecha, notas: form.notas.trim() || null,
         sucursal_id: sucursalId || null,
         usuario_id: user?.id ?? null,
+        // Migration 134 — link a recurso + capitalización
+        recurso_id: form.recurso_id || null,
+        capitaliza_recurso: form.recurso_id ? form.capitaliza_recurso : false,
+        // Migration 135 — nota de corrección
+        gasto_padre_id: correccionPadre?.id ?? null,
+        es_correccion: !!correccionPadre,
       }
 
       const titulo = getTituloFinal()
@@ -946,9 +1006,18 @@ export default function GastosPage() {
 
       let gastoId = editandoId
       if (editandoId) {
+        // Bloqueo: si el gasto original cayó en período cerrado, no permitir edición (Fase 5)
+        const origFecha = ([...gastos, ...historialGastos] as any[]).find(g => g.id === editandoId)?.fecha
+        if (origFecha && isPeriodoCerrado(origFecha)) {
+          toast.error(`Este gasto pertenece a un periodo contable cerrado (hasta ${ultimoCierre}). Generá una nota de corrección.`)
+          return
+        }
         payload.comprobante_url = comprobanteExistente ?? null
         const { error } = await supabase.from('gastos').update(payload).eq('id', editandoId)
-        if (error) throw error
+        if (error) {
+          if (!manejarErrorPeriodoCerrado(error, toast.error)) throw error
+          return
+        }
         toast.success('Gasto actualizado')
         logActividad({ entidad: 'gasto', entidad_id: editandoId, entidad_nombre: form.descripcion.trim(), accion: 'editar', pagina: '/gastos' })
 
@@ -1049,6 +1118,11 @@ export default function GastosPage() {
   // ── Eliminar gasto ────────────────────────────────────────────────────────
   const eliminar = async (id: string) => {
     const g = ([...gastos, ...historialGastos] as any[]).find(x => x.id === id)
+    // Bloqueo por período cerrado (Fase 5)
+    if (g && isPeriodoCerrado(g.fecha)) {
+      toast.error(`Este gasto cayó en el periodo contable cerrado (hasta ${ultimoCierre}). Generá una nota de corrección.`)
+      return
+    }
     const teniaPago = parseMediosPago(g?.medio_pago).some(m => m.tipo && parseFloat(String(m.monto)) > 0)
     const confirmMsg = teniaPago
       ? '¿Eliminar este gasto? Se creará un movimiento de corrección en caja para revertir el egreso registrado.'
@@ -1056,7 +1130,10 @@ export default function GastosPage() {
     if (!confirm(confirmMsg)) return
     if (g?.comprobante_url) void supabase.storage.from('comprobantes-gastos').remove([g.comprobante_url])
     const { error } = await supabase.from('gastos').delete().eq('id', id)
-    if (error) { toast.error('Error al eliminar'); return }
+    if (error) {
+      if (!manejarErrorPeriodoCerrado(error, toast.error)) toast.error('Error al eliminar')
+      return
+    }
 
     // ISS-136: Si tenía pago registrado en caja, crear reversión
     if (teniaPago) {
@@ -1349,6 +1426,9 @@ export default function GastosPage() {
           ...(puedeAprobarRoles
             ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones', icon: <AlertCircle size={14} />, badge: autorizacionesPendientesCount }]
             : []),
+          ...(puedeCerrarPeriodo
+            ? [{ id: 'cierres' as const, label: 'Cierres contables', icon: <Lock size={14} />, badge: 0 }]
+            : []),
         ].map(({ id, label, icon, badge }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap
@@ -1518,8 +1598,17 @@ export default function GastosPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
-                            <button onClick={() => abrirEdicion(g)} className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><Pencil size={14} /></button>
-                            <button onClick={() => eliminar(g.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={14} /></button>
+                            {isPeriodoCerrado(g.fecha) ? (
+                              <button onClick={() => abrirCorreccion(g)} title="Período cerrado · crear nota de corrección"
+                                className="p-1.5 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors flex items-center gap-1 text-[11px]">
+                                <Lock size={12} /> Corregir
+                              </button>
+                            ) : (
+                              <>
+                                <button onClick={() => abrirEdicion(g)} className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><Pencil size={14} /></button>
+                                <button onClick={() => eliminar(g.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={14} /></button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1690,9 +1779,17 @@ export default function GastosPage() {
                         )}
 
                         <div className="flex items-center gap-2 pt-1">
-                          <button onClick={() => abrirEdicion(g)} className="flex items-center gap-1 text-xs text-accent hover:underline"><Pencil size={12} /> Editar</button>
-                          <span className="text-gray-200 dark:text-gray-700">|</span>
-                          <button onClick={() => eliminar(g.id)} className="flex items-center gap-1 text-xs text-red-500 hover:underline"><Trash2 size={12} /> Eliminar</button>
+                          {isPeriodoCerrado(g.fecha) ? (
+                            <button onClick={() => abrirCorreccion(g)} className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline">
+                              <Lock size={12} /> Nota de corrección (período cerrado)
+                            </button>
+                          ) : (
+                            <>
+                              <button onClick={() => abrirEdicion(g)} className="flex items-center gap-1 text-xs text-accent hover:underline"><Pencil size={12} /> Editar</button>
+                              <span className="text-gray-200 dark:text-gray-700">|</span>
+                              <button onClick={() => eliminar(g.id)} className="flex items-center gap-1 text-xs text-red-500 hover:underline"><Trash2 size={12} /> Eliminar</button>
+                            </>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1910,9 +2007,20 @@ export default function GastosPage() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
-              <h2 className="font-semibold text-gray-800 dark:text-gray-100">{editandoId ? 'Editar gasto' : 'Nuevo gasto'}</h2>
+              <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                {correccionPadre ? <><Lock size={16} className="text-amber-500" /> Nota de corrección</> : (editandoId ? 'Editar gasto' : 'Nuevo gasto')}
+              </h2>
               <button onClick={cerrarModal} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
             </div>
+
+            {correccionPadre && (
+              <div className="px-5 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-400">
+                <p>
+                  Corrige el gasto del <strong>{correccionPadre.fecha}</strong> ({formatMoneda(Number(correccionPadre.monto))}) — el original queda intacto en el período cerrado.
+                  Cargá un monto <strong>negativo</strong> para anular total o parcial.
+                </p>
+              </div>
+            )}
 
             <div className="p-5 space-y-4 overflow-y-auto">
               <div>
@@ -1978,6 +2086,51 @@ export default function GastosPage() {
                   }
                   return null
                 })()}
+              </div>
+
+              {/* Vincular a recurso + capitalizar (Migration 134 — Fase 4) */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Vincular a recurso <span className="text-xs text-gray-400">(opcional)</span>
+                </label>
+                <div className="relative">
+                  <select
+                    value={form.recurso_id}
+                    onChange={e => setForm(f => ({
+                      ...f,
+                      recurso_id: e.target.value,
+                      capitaliza_recurso: e.target.value ? f.capitaliza_recurso : false,
+                    }))}
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                  >
+                    <option value="">Sin recurso asociado</option>
+                    {recursosSelect.map((r: any) => (
+                      <option key={r.id} value={r.id}>
+                        {r.nombre} · {r.categoria}
+                        {r.valor ? ` · ${formatMoneda(r.valor)}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+                {form.recurso_id && (
+                  <label className="flex items-start gap-2 cursor-pointer select-none p-2.5 rounded-lg border border-border-ds dark:border-gray-600 hover:bg-page dark:hover:bg-gray-700/50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={form.capitaliza_recurso}
+                      onChange={e => setForm(f => ({ ...f, capitaliza_recurso: e.target.checked }))}
+                      className="w-4 h-4 mt-0.5 accent-accent rounded"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Sumar al valor del recurso
+                      </span>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        Marcalo solo si esta compra es una mejora capitalizable (ampliación, accesorio que aumenta el valor patrimonial). Si es mantenimiento o repuesto de uso, dejalo sin tildar.
+                      </p>
+                    </div>
+                  </label>
+                )}
               </div>
 
               {/* Medios de pago múltiples */}
@@ -2468,6 +2621,11 @@ export default function GastosPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ══ TAB: CIERRES CONTABLES (v1.9.0) ══ */}
+      {tab === 'cierres' && puedeCerrarPeriodo && (
+        <CierresContablesPanel />
       )}
 
       {/* ══ TAB: AUTORIZACIONES (v1.8.43/v1.8.44) ══ */}

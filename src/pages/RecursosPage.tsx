@@ -9,8 +9,9 @@ import { Recurso } from '@/lib/supabase'
 import {
   Plus, Pencil, Trash2, Landmark, Wrench, CheckCircle,
   ShoppingBag, AlertTriangle, Search, ChevronRight,
-  MapPin, RefreshCw, Check, X,
+  MapPin, RefreshCw, Check, X, TrendingUp, Wrench as WrenchIcon,
 } from 'lucide-react'
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 import { useNavigate } from 'react-router-dom'
 import { BTN } from '@/config/brand'
 
@@ -116,12 +117,43 @@ export default function RecursosPage() {
     enabled: !!tenant?.id,
   })
 
+  // Gastos asociados por recurso — Costo de mantenimiento + capitalización (Migration 134)
+  const { data: gastosPorRecurso = {} } = useQuery({
+    queryKey: ['gastos-por-recurso', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('gastos')
+        .select('recurso_id, monto, capitaliza_recurso')
+        .eq('tenant_id', tenant!.id)
+        .not('recurso_id', 'is', null)
+      const acc: Record<string, { mantenimiento: number; capitalizado: number; total: number; count: number }> = {}
+      for (const g of (data ?? []) as any[]) {
+        const k = g.recurso_id as string
+        acc[k] ??= { mantenimiento: 0, capitalizado: 0, total: 0, count: 0 }
+        const m = Number(g.monto) || 0
+        acc[k].total += m
+        acc[k].count += 1
+        if (g.capitaliza_recurso) acc[k].capitalizado += m
+        else acc[k].mantenimiento += m
+      }
+      return acc
+    },
+    enabled: !!tenant?.id,
+  })
+  const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
+
   // ── Stats ──────────────────────────────────────────────────────────────────
   const activos      = recursos.filter(r => r.estado === 'activo')
   const enReparacion = recursos.filter(r => r.estado === 'en_reparacion')
   const adquirir     = recursos.filter(r => r.estado === 'pendiente_adquisicion')
-  const valorTotal   = activos.concat(enReparacion).reduce((s, r) => s + (r.valor ?? 0), 0)
+  const valorTotal   = activos.concat(enReparacion).reduce((s, r) => {
+    const cap = (gastosPorRecurso as any)[r.id]?.capitalizado ?? 0
+    return s + (r.valor ?? 0) + cap
+  }, 0)
   const presupuesto  = adquirir.reduce((s, r) => s + (r.valor ?? 0), 0)
+  const totalMantenimiento = Object.values(gastosPorRecurso as Record<string, { mantenimiento: number }>)
+    .reduce((s, g) => s + g.mantenimiento, 0)
+  const totalCapitalizado = Object.values(gastosPorRecurso as Record<string, { capitalizado: number }>)
+    .reduce((s, g) => s + g.capitalizado, 0)
 
   // Recurrentes vencidos o próximos (dentro de 7 días)
   const recurrentesAlerta = recursos.filter(r => r.es_recurrente && proximoAlerta(r) !== null).length
@@ -296,6 +328,7 @@ export default function RecursosPage() {
   const RecursoCard = ({ r }: { r: Recurso }) => {
     const ga = garantiaAlerta(r)
     const pa = r.es_recurrente ? proximoAlerta(r) : null
+    const gastos = (gastosPorRecurso as any)[r.id] as { mantenimiento: number; capitalizado: number; total: number; count: number } | undefined
     return (
       <div className="flex items-start gap-3 p-3 rounded-lg border border-border-ds hover:bg-page transition-colors">
         <div className="flex-1 min-w-0 space-y-1">
@@ -318,7 +351,17 @@ export default function RecursosPage() {
             {ga === 'proxima'  && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Garantía por vencer</span>}
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
-            {r.valor != null && <span>{r.estado === 'pendiente_adquisicion' ? 'Est. ' : ''}<span className="font-semibold text-primary">${r.valor.toLocaleString('es-AR')}</span></span>}
+            {r.valor != null && (
+              <span>
+                {r.estado === 'pendiente_adquisicion' ? 'Est. ' : ''}
+                <span className="font-semibold text-primary">{formatMoneda(r.valor)}</span>
+                {gastos && gastos.capitalizado > 0 && r.estado !== 'pendiente_adquisicion' && (
+                  <span className="text-emerald-600 dark:text-emerald-400">
+                    {' '}+ {formatMoneda(gastos.capitalizado)} cap.
+                  </span>
+                )}
+              </span>
+            )}
             {r.ubicacion && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {r.ubicacion}</span>}
             {(r as any).proveedores?.nombre && <span>🏪 {(r as any).proveedores.nombre}</span>}
             {r.numero_serie && <span>S/N: {r.numero_serie}</span>}
@@ -330,6 +373,26 @@ export default function RecursosPage() {
               </span>
             )}
           </div>
+          {gastos && gastos.total > 0 && r.estado !== 'pendiente_adquisicion' && (
+            <button
+              type="button"
+              onClick={() => navigate(`/gastos?tab=recursos`)}
+              title="Ver gastos vinculados en Gastos → Recursos"
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted hover:text-accent transition-colors"
+            >
+              {gastos.mantenimiento > 0 && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400">
+                  <WrenchIcon className="w-3 h-3" /> Mantto {formatMoneda(gastos.mantenimiento)}
+                </span>
+              )}
+              {gastos.capitalizado > 0 && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400">
+                  <TrendingUp className="w-3 h-3" /> Cap. {formatMoneda(gastos.capitalizado)}
+                </span>
+              )}
+              <span className="opacity-60">· {gastos.count} gasto{gastos.count !== 1 ? 's' : ''}</span>
+            </button>
+          )}
           {r.notas && <p className="text-xs text-muted italic truncate">{r.notas}</p>}
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -394,10 +457,26 @@ export default function RecursosPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Activos',          value: activos.length,      sub: null },
-          { label: 'Valor patrimonial',value: valorTotal > 0 ? `$${valorTotal.toLocaleString('es-AR', { minimumFractionDigits: 0 })}` : '—', sub: null },
-          { label: 'En reparación',    value: enReparacion.length, sub: null },
-          { label: 'Por adquirir',     value: adquirir.length,     sub: presupuesto > 0 ? `~$${presupuesto.toLocaleString('es-AR', { minimumFractionDigits: 0 })} est.` : null },
+          {
+            label: 'Activos',
+            value: activos.length,
+            sub: enReparacion.length > 0 ? `${enReparacion.length} en reparación` : null,
+          },
+          {
+            label: 'Valor patrimonial',
+            value: valorTotal > 0 ? formatMoneda(valorTotal) : '—',
+            sub: totalCapitalizado > 0 ? `+ ${formatMoneda(totalCapitalizado)} capitalizado` : null,
+          },
+          {
+            label: 'Mantenimiento acumulado',
+            value: totalMantenimiento > 0 ? formatMoneda(totalMantenimiento) : '—',
+            sub: 'Gastos en recursos (no capitalizables)',
+          },
+          {
+            label: 'Por adquirir',
+            value: adquirir.length,
+            sub: presupuesto > 0 ? `~${formatMoneda(presupuesto)} est.` : null,
+          },
         ].map(s => (
           <div key={s.label} className="bg-surface rounded-xl p-3 shadow-sm">
             <p className="text-xs text-muted">{s.label}</p>

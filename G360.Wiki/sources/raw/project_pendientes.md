@@ -4,42 +4,32 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.40** ✅ · DEV: **v1.8.41**
+Último release en PROD: **v1.8.44** ✅ · DEV: **v1.9.0**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.44 / PROD v1.8.40 (cierre sesión 2026-05-24)
+## Estado actual DEV v1.9.0 / PROD v1.8.44 (cierre sesión 2026-05-25)
 
-- APP_VERSION DEV: `v1.8.44` en `src/config/brand.ts` ✅
-- APP_VERSION PROD: `v1.8.40` ✅ (PR #115 mergeado, release latest)
-- Migrations DEV: 001–133 ✅
-- Migrations PROD: 001–129 ✅
+- APP_VERSION DEV: `v1.9.0` en `src/config/brand.ts` ✅
+- APP_VERSION PROD: `v1.8.44` ✅
+- Migrations DEV: 001–135 ✅ (134 capitalización + vw_egresos_consolidados · 135 cierre contable)
+- Migrations PROD: 001–133 (pendiente aplicar 134 + 135 al deployar)
+- Pendiente deploy PROD: PR `dev → main` con v1.8.45 + v1.9.0
 
-### Pendiente de deploy a PROD (en DEV como v1.8.44)
-- Selector courier propio/tercero en VentasPage — v1.8.41
-- Fix: link transportista usa `VITE_APP_URL` — v1.8.41
-- **Fase 1 Reglas Gastos** (v1.8.42):
-  - Migrations 130 + 131 (categorias_gasto + seed automático + tenants.gastos_*)
-  - GastosPage: selector categorías dinámico desde tabla + indicadores estado en fijos (🟢🟡🔴✅) + badge 💰 Anticipo en OC
-  - ConfigPage: nueva tab "Gastos" con CRUD categorías + reglas comprobante + alertas
-- **Fase 2 Reglas Gastos** (v1.8.43):
-  - Migration 132 (sucursales.umbral_gasto_supervisor/cajero + tabla autorizaciones_gasto + helper `puede_aprobar_autorizacion_gasto`)
-  - `src/lib/umbralGasto.ts` con helpers `evaluarUmbralGasto` + `puedeAprobar`
-  - `SolicitarAutorizacionGastoModal` y `BandejaAutorizacionesGasto` componentes nuevos
-  - GastosPage: validación umbral al guardar + tab nuevo "Autorizaciones" con badge de pendientes
-  - SucursalesPage: bloque "Umbrales de autorización de gastos" con 2 inputs por sucursal
-  - CAJERO ve solo sus gastos · CONTADOR aviso + monto bloqueado · botón "Nuevo gasto" oculto para CONTADOR
-- **Fase 3 Reglas Gastos + Moneda** (v1.8.44):
-  - Migration 133 (tenants.moneda + gastos.alicuota_iva + tabla autorizaciones_cc)
-  - `src/lib/formato.ts`: `formatMoneda(monto, moneda)` + 11 monedas disponibles (ARS, USD, CLP, UYU, PYG, BOB, BRL, PEN, MXN, COP, EUR)
-  - `src/lib/ccProveedor.ts`: `chequearBloqueoCC` + `existeAutorizacionCCAprobada`
-  - `SolicitarOverrideCCModal` y `BandejaAutorizacionesCC` componentes nuevos
-  - ConfigPage Mi Negocio: selector de moneda principal
-  - GastosPage: IVA auto al elegir tipo de comprobante + selector alícuota con custom + validación sucursal obligatoria por categoría + bloqueo CC con OC vencida o límite excedido + override DUEÑO con auditoría
-  - Sub-tabs en "Autorizaciones": Gastos / CC Proveedores
-  - Migración a `formatMoneda` central en: GastosPage, CajaPage, ClientesPage, EnviosPage, FacturacionPage, MetricasPage, RentabilidadPage, ReportesPage
+### Lo producido en DEV en esta sesión (2026-05-25 — v1.9.0)
+- **v1.8.45 + v1.9.0 combinados** — Fases 4 y 5 reglas Gastos cerradas en un único bump por ser HITO transversal
+- **Migration 134**: `gastos.capitaliza_recurso BOOLEAN` + CHECK + índice parcial · VIEW `vw_egresos_consolidados` (gastos + rrhh_salarios.pagado)
+- **Migration 135**: tabla `cierres_contables` + `gastos.gasto_padre_id` + `gastos.es_correccion` + 5 triggers BEFORE UPDATE/DELETE (gastos, ventas, caja_movimientos, caja_sesiones, ordenes_compra) + RPCs `cerrar_periodo` y `reabrir_periodo` + helpers `ultimo_cierre_hasta` y `periodo_cerrado`
+- **Frontend Fase 4**: checkbox capitalización en form de gasto · query `gastos-por-recurso` + card "Mantenimiento acumulado" + chips mantto/capit en RecursosPage · banner "Costo laboral del período (RRHH)" en DashGastosArea con link a `/rrhh?tab=nomina` · sección "Estado de resultados" con línea separada "Sueldos pagados (RRHH)" en RentabilidadPage
+- **Frontend Fase 5**: hook `useCierreContable` + helper `manejarErrorPeriodoCerrado` · componente `CierresContablesPanel` con preview live + listado expandible + reabrir · nuevo tab "Cierres contables" en GastosPage · modo "Nota de corrección" (estado `correccionPadre`, modal banner amber, monto negativo permitido) · candado 🔒 reemplaza Editar/Eliminar para gastos en periodo cerrado · interceptación del error de trigger en VentasPage
+
+### Releases anteriores (todo dentro de v1.8.44)
+- **v1.8.41** — Selector courier propio/tercero en VentasPage + fix link transportista con `VITE_APP_URL`
+- **v1.8.42** — Fase 1 Reglas Gastos: migrations 130+131 + categorías_gasto seed automático + config comprobante + indicadores fijos 🟢🟡🔴✅ + badge anticipo OC + tab Gastos en ConfigPage
+- **v1.8.43** — Fase 2 Reglas Gastos: migration 132 + umbrales por rol/sucursal + autorizaciones_gasto + helpers `umbralGasto.ts` + modales `SolicitarAutorizacionGastoModal` y `BandejaAutorizacionesGasto` + restricciones CAJERO/CONTADOR
+- **v1.8.44** — Fase 3 Reglas Gastos + Moneda multi-país: migration 133 + `tenants.moneda` (11 monedas LatAm + EUR/USD) + `formato.ts` central + `ccProveedor.ts` + `SolicitarOverrideCCModal` + `BandejaAutorizacionesCC` + IVA auto + selector alícuota + sucursal obligatoria por categoría + bloqueo CC con override DUEÑO + 8 páginas migradas a `formatMoneda`
 
 ---
 
@@ -68,22 +58,29 @@ Relevamiento completo en sesión 2026-05-24. Detalle de reglas en `wiki/developm
 - Bloqueo OC CC nueva con proveedor con OC vencida · override DUEÑO con tabla `autorizaciones_cc` (auditoría)
 - Reportes: gasto sin sucursal aparece como "Tenant / Global"
 
-### v1.8.45 — Recursos↔Gastos + Dashboard consolidado (Fase 4) · migration 134
-- Card "Costo mantenimiento acumulado" en ficha recurso
-- Checkbox "Sumar al valor del recurso" → `gastos.capitaliza_recurso BOOLEAN` (default OFF)
-- Vista `vw_egresos_consolidados` (gastos UNION rrhh_salarios.pagado=true)
-- Dashboard Gastos: card "Costo laboral del mes" leyendo de `rrhh_salarios`
-- P&L con línea separada "Sueldos pagados (RRHH)" con link a `/rrhh?tab=nomina`
+### v1.8.45 — Recursos↔Gastos + Dashboard consolidado (Fase 4) · migration 134 ✅
+- ✅ Checkbox "Sumar al valor del recurso" → `gastos.capitaliza_recurso BOOLEAN` (default OFF) + CHECK constraint
+- ✅ Card "Mantenimiento acumulado" + chips Mantto/Cap en RecursosPage
+- ✅ Vista `vw_egresos_consolidados` (gastos UNION rrhh_salarios.pagado=true) con `security_invoker=true`
+- ✅ Dashboard Gastos: banner "Costo laboral del período (RRHH)" con link a `/rrhh?tab=nomina` + total consolidado
+- ✅ RentabilidadPage: sección "Estado de resultados" con línea separada "Sueldos pagados (RRHH)" + resultado neto
 
-### v1.9.0 — HITO Cierre Contable Mensual (Fase 5) · migration 135
-- Tabla `cierres_contables(tenant, periodo, fecha_cierre, cerrado_por, observaciones)`
-- Botón "Cerrar período" disparado por DUEÑO/SUPERVISOR/CONTADOR según permisos
-- Aplica a **Gastos + Ventas + Caja + OC** (transversal)
-- Triggers que rechazan UPDATE/DELETE de registros con `fecha ≤ último cierre`
-- Notas de corrección: nuevo gasto con `gasto_padre_id` + `es_correccion=true` + monto invertido
-- UI bloqueada en Ventas/Caja/OC con mensaje "Período cerrado, generá nota de corrección"
-- Reportes: opción "ver con/sin correcciones"
-- Documentar flujo en nueva página `wiki/development/cierre-contable.md`
+### v1.9.0 — HITO Cierre Contable Mensual (Fase 5) · migration 135 ✅
+- ✅ Tabla `cierres_contables(tenant, periodo, fecha_cierre, cerrado_por, cerrado_por_rol, observaciones, totales JSONB)`
+- ✅ RPC `cerrar_periodo()` — DUEÑO/SUPERVISOR/CONTADOR/ADMIN + snapshot de totales
+- ✅ RPC `reabrir_periodo()` — solo último cierre, DUEÑO/ADMIN/SUPER_USUARIO
+- ✅ 5 triggers BEFORE UPDATE/DELETE en gastos + ventas + caja_movimientos + caja_sesiones + ordenes_compra (RAISE EXCEPTION P0001)
+- ✅ Notas de corrección: `gastos.gasto_padre_id` + `es_correccion=TRUE` + monto negativo permitido
+- ✅ UI: hook `useCierreContable` + helper `manejarErrorPeriodoCerrado` + componente `CierresContablesPanel`
+- ✅ Nuevo tab "Cierres contables" en GastosPage con preview live + listado expandible
+- ✅ Candado 🔒 reemplaza Editar/Eliminar para gastos en periodo cerrado + modo corrección
+- ✅ Doc: `wiki/development/cierre-contable.md` con concepto, schema, RPCs y casos de uso
+
+### Pendientes opcionales (no bloqueantes)
+- UI de candado por fila en `VentasPage`, `CajaPage`, `RecepcionesPage` (hoy solo viene el toast del trigger)
+- Reporte "Con/Sin correcciones" en RentabilidadPage (filtrar `es_correccion`)
+- Notificación al cerrar/reabrir un periodo
+- Exportar PDF del cierre con snapshot de totales (datos ya están en `cierres_contables.totales JSONB`)
 
 ### Decisiones de diseño documentadas
 

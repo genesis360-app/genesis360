@@ -21,7 +21,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/inventario-stock]] | LPNs, FIFO/FEFO, stock sucursal, bulk edit · conteos borrador · rebaje masivo fix · shortcuts ESC/ENTER · filtros pill · defaults producto · modales inline | ✅ |
 | [[wiki/features/ventas-pos]] | Carrito · 3 modos · CC parcial · cuotas · ticket por sucursal · envío con autocompletado + Haversine · selector courier propio/tercero · multi-sucursal estricto (cambio limpia carrito) | ✅ |
 | [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja · caja predeterminada ★ · cajas.sucursal_id · Caja Principal en seed | ✅ |
-| [[wiki/features/gastos]] | Variables, fijos, IVA, OC · efectivo en caja · CC en OC · **v1.8.42**: categorías predefinidas + custom · reglas comprobante · indicadores fijos · badge anticipo OC · **v1.8.43**: umbrales por rol/sucursal + bandeja autorizaciones · **v1.8.44**: IVA auto + selector alícuota + sucursal obligatoria por categoría + bloqueo CC proveedor + override DUEÑO | ✅ |
+| [[wiki/features/gastos]] | Variables, fijos, IVA, OC · efectivo en caja · CC en OC · **v1.8.42**: categorías predefinidas + custom · reglas comprobante · indicadores fijos · badge anticipo OC · **v1.8.43**: umbrales por rol/sucursal + bandeja autorizaciones · **v1.8.44**: IVA auto + selector alícuota + sucursal obligatoria por categoría + bloqueo CC proveedor + override DUEÑO · **v1.8.45**: capitalización en recursos + vw_egresos_consolidados · **v1.9.0**: cierre contable mensual (HITO) + notas de corrección | ✅ |
 | [[wiki/features/devoluciones]] | Stock serializado/no-serializado, NC, caja | ✅ |
 | [[wiki/features/clientes-proveedores]] | CRM, CC, OC, domicilios · globales entre sucursales · cancelar deuda CC (ISS-107) | ✅ |
 | [[wiki/features/facturacion-afip]] | AFIP WSFE, tipos A/B/C, AfipSDK, FacturacionPage 4 tabs | ✅ DEV |
@@ -34,7 +34,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku (scan-product) + scan-ticket IA (v1.8.38): ticket supermercado → recepciones + productos | ✅ |
 | [[wiki/features/multi-sucursal]] | Selector, roles, stock · SucursalesPage consolidada v1.8.38 (todos los campos en un modal) · backfill 114–117 · filtros estrictos · cajas por sucursal | ✅ |
 | [[wiki/features/alertas]] | Stock bajo, LPNs vencidos, reservas viejas, sin categoría, deuda · filtro por sucursal | ✅ |
-| [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos · ISS-111/112/114 fixes | ✅ |
+| [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos · ISS-111/112/114 fixes · **v1.8.45**: capitalización (`capitaliza_recurso`) + card "Mantenimiento acumulado" + chips Mantto/Cap en cada card | ✅ |
 | [[wiki/features/reportes-metricas]] | Dashboard 9 áreas, SQL Runner, aging individual · fix categoria FK (KPIs en 0) · filtro sucursal inclusivo + banner · nueva nav (area+sub-tabs) | ✅ |
 | [[wiki/features/grupos-variantes]] | Grupos de variantes (talle, color, etc.) · ProductoGrupoModal · vista agrupada en ProductosPage · migration 120 | ✅ |
 | [[wiki/features/configuracion]] | ConfigPage v2 — 11 tabs temáticas · Mi negocio solo nivel tenant (v1.8.38, campos por sucursal movidos a SucursalesPage) · métodos de pago, comisión, descuento máx, caja, cliente POS | ✅ |
@@ -60,7 +60,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | 133 + 086b en DEV (001-133) · PROD 001-129 · descripción completa | ✅ |
+| [[wiki/database/migraciones]] | 135 + 086b en DEV (001-135) · 133 + 086b en PROD · descripción completa | ✅ |
 | [[wiki/database/rls-policies]] | Patrón subquery, funciones helper, Storage, Edge Functions | ✅ |
 | [[wiki/database/triggers]] | Stock, numeración, integraciones, nómina, stock mínimo | ✅ |
 
@@ -100,7 +100,8 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/development/deploy]] | Vercel + Supabase, dominios, env vars, comandos | ✅ |
 | [[wiki/development/testing]] | 154+ unit tests Vitest + Playwright E2E todos los roles | ✅ |
 | [[wiki/development/supabase-dev-vs-prod]] | DEV vs PROD, flujo migraciones, EF deploy, pg_cron | ✅ |
-| [[wiki/development/reglas-negocio]] | Reglas relevadas con GO: caja, ventas, inventario, clientes, **gastos** (v1.8.42-v1.9.0 pipeline) + UAT | ✅ |
+| [[wiki/development/reglas-negocio]] | Reglas relevadas con GO: caja, ventas, inventario, clientes, **gastos** (Fases 1-5 completas, v1.8.42→v1.9.0) + UAT | ✅ |
+| [[wiki/development/cierre-contable]] | **HITO v1.9.0** — cierre contable mensual transversal (gastos+ventas+caja+OC) + notas de corrección + triggers de bloqueo + RPCs cerrar/reabrir | ✅ |
 
 ---
 
@@ -139,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-24 — 52 páginas + 3 manuales · 8 fuentes en raw/ · DEV 133 + 086b / PROD 129 + 086b migraciones · v1.8.44 DEV / v1.8.40 PROD · Fases 1+2+3 reglas Gastos + Moneda multi-país implementados*
+*Última actualización: 2026-05-25 — 53 páginas + 3 manuales · 8 fuentes en raw/ · DEV en 135 + 086b · PROD en 133 + 086b · v1.9.0 DEV · v1.8.44 PROD · Fases 1-5 reglas Gastos completas en DEV · pendiente deploy PROD (v1.8.45 + v1.9.0)*

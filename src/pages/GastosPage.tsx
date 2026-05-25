@@ -13,12 +13,21 @@ import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { evaluarUmbralGasto } from '@/lib/umbralGasto'
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { chequearBloqueoCC, existeAutorizacionCCAprobada, type MotivoBloqueoCC } from '@/lib/ccProveedor'
+import SolicitarAutorizacionGastoModal from '@/components/SolicitarAutorizacionGastoModal'
+import SolicitarOverrideCCModal from '@/components/SolicitarOverrideCCModal'
+import BandejaAutorizacionesGasto from '@/components/BandejaAutorizacionesGasto'
+import BandejaAutorizacionesCC from '@/components/BandejaAutorizacionesCC'
 
-const CATEGORIAS_GASTO = [
-  'Alquiler', 'Servicios (luz/gas/agua/internet)',
-  'Compras de mercadería', 'Transporte y logística', 'Mantenimiento y reparaciones',
-  'Marketing y publicidad', 'Impuestos y tasas', 'Seguros', 'Insumos y descartables',
-  'Honorarios profesionales', 'Otro',
+// Fallback solo si la query a categorias_gasto falla. Se sobreescribe con la tabla.
+const CATEGORIAS_GASTO_FALLBACK = [
+  'Alquiler', 'Servicios (luz, gas, agua)', 'Internet y telefonía',
+  'Mercadería', 'Insumos y suministros', 'Mantenimiento y reparaciones',
+  'Limpieza', 'Marketing y publicidad', 'Combustible', 'Transporte y fletes',
+  'Impuestos y tasas', 'Honorarios profesionales', 'Comisiones bancarias',
+  'SaaS y plataformas', 'Capacitación', 'Otros',
 ]
 
 const TIPOS_COMPROBANTE = [
@@ -29,11 +38,28 @@ const TIPOS_COMPROBANTE = [
 ]
 
 const TASAS_IVA = [
-  { value: '21',    label: '21%' },
-  { value: '10.5',  label: '10,5%' },
-  { value: 'exento',label: 'Exento' },
+  { value: '21',     label: '21%' },
+  { value: '10.5',   label: '10,5%' },
+  { value: '27',     label: '27%' },
+  { value: '0',      label: '0%' },
+  { value: 'exento', label: 'Exento' },
   { value: 'sin_iva',label: 'Sin IVA' },
+  { value: 'custom', label: 'Personalizado…' },
 ]
+
+// Auto-relación entre tipo de comprobante y alícuota IVA (v1.8.44)
+// Default según el comprobante; el usuario puede sobreescribir manualmente.
+function ivaAutoPorTipoComprobante(tipoComp: string): string {
+  if (!tipoComp) return ''
+  const t = tipoComp.toLowerCase()
+  if (t.includes('factura a') || t.includes('factura b')) return '21'
+  if (t.includes('nota de crédito a') || t.includes('nota de débito a')) return '21'
+  if (t.includes('factura de importación')) return '21'
+  if (t.includes('factura c') || t.includes('recibo')) return 'sin_iva'
+  if (t.includes('comprobante de bienes usados')) return 'sin_iva'
+  if (t.includes('ticket')) return '21'
+  return ''
+}
 
 const MEDIOS_PAGO_DEFAULT = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'Otro']
 
@@ -54,21 +80,27 @@ const FRECUENCIAS = [
   { value: 'semanal',   label: 'Semanal' },
 ]
 
-function calcularIVA(monto: number, tipoIva: string): number {
-  if (tipoIva === '21')   return monto - monto / 1.21
-  if (tipoIva === '10.5') return monto - monto / 1.105
+function calcularIVA(monto: number, tipoIva: string, alicuotaCustom?: number | null): number {
+  if (tipoIva === 'custom' && alicuotaCustom && alicuotaCustom > 0) {
+    return monto - monto / (1 + alicuotaCustom / 100)
+  }
+  if (tipoIva === 'exento' || tipoIva === 'sin_iva' || !tipoIva) return 0
+  const n = parseFloat(tipoIva)
+  if (!isNaN(n) && n > 0) return monto - monto / (1 + n / 100)
   return 0
 }
 
 interface FormGasto {
   descripcion: string; monto: string
   tipo_iva: string; iva_deducible: boolean
+  alicuota_iva_custom: string
   deduce_ganancias: boolean; gasto_negocio: string
   categoria: string; fecha: string; notas: string
 }
 interface FormFijo {
   descripcion: string; monto: string
   tipo_iva: string; iva_deducible: boolean
+  alicuota_iva_custom: string
   deduce_ganancias: boolean; gasto_negocio: string
   categoria: string; medio_pago: string
   frecuencia: string; dia_vencimiento: string; alerta_dias_antes: string
@@ -77,19 +109,19 @@ interface FormFijo {
 
 const FORM_VACIO: FormGasto = {
   descripcion: '', monto: '', tipo_iva: '', iva_deducible: false,
+  alicuota_iva_custom: '',
   deduce_ganancias: false, gasto_negocio: '',
   categoria: '', fecha: new Date().toISOString().split('T')[0], notas: '',
 }
 const FORM_FIJO_VACIO: FormFijo = {
   descripcion: '', monto: '', tipo_iva: '', iva_deducible: false,
+  alicuota_iva_custom: '',
   deduce_ganancias: false, gasto_negocio: '',
   categoria: '', medio_pago: '', frecuencia: 'mensual',
   dia_vencimiento: '', alerta_dias_antes: '3', notas: '', activo: true,
 }
 
-function formatMoneda(v: number) {
-  return `$${v.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-}
+// formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
 function formatFecha(f: string) {
   return new Date(f + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
@@ -101,11 +133,16 @@ export default function GastosPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const puedeAdministrarCaja = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
   const esCajero = user?.rol === 'CAJERO'
+  const esContador = user?.rol === 'CONTADOR'
   const esSoloFijos = !['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
+
+  // Moneda principal del tenant para formateo (v1.8.44)
+  const monedaTenant = (tenant as any)?.moneda ?? 'ARS'
+  const formatMoneda = (v: number) => formatMonedaLib(v, monedaTenant)
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const [searchParams] = useSearchParams()
-  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'recursos'] as const
+  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'recursos', 'autorizaciones'] as const
   type TabGastos = typeof tabValidos[number]
   const tabFromUrl = searchParams.get('tab') as TabGastos | null
   const [tab, setTab] = useState<TabGastos>(tabValidos.includes(tabFromUrl as TabGastos) ? (tabFromUrl as TabGastos) : 'gastos')
@@ -237,13 +274,94 @@ export default function GastosPage() {
   }, [])
   const fechaHasta30 = useMemo(() => new Date().toISOString().split('T')[0], [])
 
+  // Umbrales de gasto de la sucursal activa (v1.8.43)
+  const { data: sucursalUmbrales = null } = useQuery({
+    queryKey: ['sucursal-umbrales-gasto', tenant?.id, sucursalId],
+    queryFn: async () => {
+      if (sucursalId) {
+        const { data } = await supabase.from('sucursales')
+          .select('id, umbral_gasto_supervisor, umbral_gasto_cajero')
+          .eq('id', sucursalId).single()
+        return data
+      }
+      const { data } = await supabase.from('sucursales')
+        .select('id, umbral_gasto_supervisor, umbral_gasto_cajero')
+        .eq('tenant_id', tenant!.id).limit(1).maybeSingle()
+      return data
+    },
+    enabled: !!tenant,
+  })
+
+  // Estado del modal de solicitud de autorización
+  const [solicitudUmbral, setSolicitudUmbral] = useState<null | {
+    tipo: 'crear' | 'editar' | 'eliminar'
+    monto: number
+    descripcion: string
+    payload: Record<string, any>
+    umbral: number | null
+    rolMinimoAprobador: 'SUPERVISOR' | 'DUEÑO'
+    sucursalId: string | null
+    gastoId: string | null
+  }>(null)
+
+  // Estado del modal de override CC (v1.8.44)
+  const [solicitudCC, setSolicitudCC] = useState<null | {
+    proveedorId: string
+    proveedorNombre: string
+    ocId: string | null
+    monto: number
+    motivoBloqueo: MotivoBloqueoCC
+    detalle: string
+  }>(null)
+
+  // Sub-tab dentro de "Autorizaciones"
+  const [autSubTab, setAutSubTab] = useState<'gastos' | 'cc'>('gastos')
+
+  // Conteo de autorizaciones pendientes que este usuario puede aprobar
+  const puedeAprobarRoles = ['DUEÑO', 'ADMIN', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
+  const { data: autorizacionesPendientesCount = 0 } = useQuery({
+    queryKey: ['autorizaciones-pendientes-count', tenant?.id, user?.rol],
+    queryFn: async () => {
+      if (!puedeAprobarRoles) return 0
+      let q = supabase.from('autorizaciones_gasto')
+        .select('id, solicitante_rol', { count: 'exact', head: true })
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'pendiente')
+      // SUPERVISOR ve sólo solicitudes de CAJERO
+      if (user?.rol === 'SUPERVISOR') q = q.eq('solicitante_rol', 'CAJERO')
+      const { count } = await q
+      return count ?? 0
+    },
+    enabled: !!tenant && puedeAprobarRoles,
+    refetchInterval: 30000,
+  })
+
+  // Categorías de gasto (tabla categorias_gasto, fallback hardcoded si falla)
+  const { data: categoriasGasto = [] } = useQuery({
+    queryKey: ['categorias-gasto', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categorias_gasto')
+        .select('id, nombre, requiere_sucursal, activo, predefinida, orden')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .order('orden', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+  const categoriasNombres = categoriasGasto.length > 0
+    ? categoriasGasto.map((c: any) => c.nombre as string)
+    : CATEGORIAS_GASTO_FALLBACK
+
   const { data: gastos = [], isLoading } = useQuery({
-    queryKey: ['gastos', tenant?.id, fechaDesde30, fechaHasta30, sucursalId],
+    queryKey: ['gastos', tenant?.id, fechaDesde30, fechaHasta30, sucursalId, esCajero ? user?.id : null],
     queryFn: async () => {
       let q = supabase.from('gastos').select('*').eq('tenant_id', tenant!.id)
         .gte('fecha', fechaDesde30).lte('fecha', fechaHasta30)
         .order('fecha', { ascending: false }).order('created_at', { ascending: false })
       q = applyFilter(q)
+      // CAJERO solo ve sus propios gastos (v1.8.43)
+      if (esCajero && user?.id) q = q.eq('usuario_id', user.id)
       const { data } = await q
       return data ?? []
     },
@@ -252,16 +370,32 @@ export default function GastosPage() {
 
   // Historial (tab historial — rango libre)
   const { data: historialGastos = [], isLoading: loadingHistorial } = useQuery({
-    queryKey: ['gastos-historial', tenant?.id, histFechaDesde, histFechaHasta, sucursalId],
+    queryKey: ['gastos-historial', tenant?.id, histFechaDesde, histFechaHasta, sucursalId, esCajero ? user?.id : null],
     queryFn: async () => {
       let q = supabase.from('gastos').select('*').eq('tenant_id', tenant!.id)
         .gte('fecha', histFechaDesde).lte('fecha', histFechaHasta)
         .order('fecha', { ascending: false }).order('created_at', { ascending: false })
       q = applyFilter(q)
+      // CAJERO solo ve sus propios gastos (v1.8.43)
+      if (esCajero && user?.id) q = q.eq('usuario_id', user.id)
       const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'historial',
+  })
+
+  // Gastos del mes actual para detectar si un gasto_fijo ya fue generado
+  const mesActualISO = useMemo(() => new Date().toISOString().slice(0, 7), [])
+  const { data: gastosDelMes = [] } = useQuery({
+    queryKey: ['gastos-mes-actual', tenant?.id, mesActualISO],
+    queryFn: async () => {
+      const { data } = await supabase.from('gastos')
+        .select('descripcion, fecha')
+        .eq('tenant_id', tenant!.id)
+        .gte('fecha', `${mesActualISO}-01`)
+      return data ?? []
+    },
+    enabled: !!tenant,
   })
 
   const { data: gastosFijos = [], isLoading: loadingFijos } = useQuery({
@@ -485,6 +619,26 @@ export default function GastosPage() {
         setOcGuardando(false); return
       }
 
+      // Bloqueo CC: chequear si proveedor tiene OC vencidas o límite excedido (v1.8.44)
+      if (montoCC > 0 && ocSeleccionada.proveedor_id) {
+        const yaAprobado = await existeAutorizacionCCAprobada(ocSeleccionada.proveedor_id)
+        if (!yaAprobado) {
+          const chequeo = await chequearBloqueoCC(ocSeleccionada.proveedor_id, montoCC)
+          if (chequeo.bloqueado) {
+            setOcGuardando(false)
+            setSolicitudCC({
+              proveedorId:    ocSeleccionada.proveedor_id,
+              proveedorNombre: ocSeleccionada.proveedores?.nombre ?? 'Proveedor',
+              ocId:           ocSeleccionada.id,
+              monto:          montoCC,
+              motivoBloqueo:  chequeo.motivo!,
+              detalle:        chequeo.detalle ?? 'Proveedor con CC bloqueada',
+            })
+            return
+          }
+        }
+      }
+
       const nuevoMontoPagado = Number(ocSeleccionada.monto_pagado ?? 0) + montoNoCc
       const nuevoDescuento   = Number(ocSeleccionada.monto_descuento ?? 0) + descuentoNum
       const nuevoEstadoPago = (nuevoMontoPagado + montoCC + nuevoDescuento) >= total - 0.5
@@ -624,6 +778,7 @@ export default function GastosPage() {
     setForm({
       descripcion: g.descripcion, monto: String(g.monto),
       tipo_iva: g.tipo_iva ?? '', iva_deducible: g.iva_deducible ?? false,
+      alicuota_iva_custom: g.tipo_iva === 'custom' && g.alicuota_iva != null ? String(g.alicuota_iva) : '',
       deduce_ganancias: g.deduce_ganancias ?? false,
       gasto_negocio: g.gasto_negocio === true ? 'negocio' : g.gasto_negocio === false ? 'personal' : '',
       categoria: g.categoria ?? '', fecha: g.fecha, notas: g.notas ?? '',
@@ -652,6 +807,7 @@ export default function GastosPage() {
     setFormFijo({
       descripcion: f.descripcion, monto: String(f.monto),
       tipo_iva: f.tipo_iva ?? '', iva_deducible: f.iva_deducible ?? false,
+      alicuota_iva_custom: f.tipo_iva === 'custom' && f.alicuota_iva != null ? String(f.alicuota_iva) : '',
       deduce_ganancias: f.deduce_ganancias ?? false,
       gasto_negocio: f.gasto_negocio === true ? 'negocio' : f.gasto_negocio === false ? 'personal' : '',
       categoria: f.categoria ?? '', medio_pago: f.medio_pago ?? '',
@@ -684,6 +840,15 @@ export default function GastosPage() {
     if (!form.descripcion.trim()) { toast.error('La descripción es requerida'); return }
     const monto = parseFloat(form.monto.replace(',', '.'))
     if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+
+    // Validación: categoría con `requiere_sucursal` exige sucursal activa (v1.8.44)
+    if (form.categoria) {
+      const catActiva = (categoriasGasto as any[]).find((c: any) => c.nombre === form.categoria)
+      if (catActiva?.requiere_sucursal && !sucursalId) {
+        toast.error(`La categoría "${form.categoria}" requiere una sucursal seleccionada. Elegí una sucursal en el menú superior antes de continuar.`)
+        return
+      }
+    }
 
     // Validación de caja (solo en creación nueva)
     if (!editandoId) {
@@ -730,7 +895,11 @@ export default function GastosPage() {
 
     setGuardando(true)
     try {
-      const ivaMonto = form.tipo_iva && form.iva_deducible ? calcularIVA(monto, form.tipo_iva) : null
+      const alicuotaCustom = parseFloat(form.alicuota_iva_custom) || null
+      const ivaMonto = form.tipo_iva && form.iva_deducible ? calcularIVA(monto, form.tipo_iva, alicuotaCustom) : null
+      const alicuotaIvaPersist = form.tipo_iva === 'custom'
+        ? alicuotaCustom
+        : form.tipo_iva && !isNaN(parseFloat(form.tipo_iva)) ? parseFloat(form.tipo_iva) : null
 
       const mediosValidos = mediosPago.filter(m => m.tipo && parseFloat(m.monto) > 0)
       const mediosPagoJson = mediosValidos.length > 0
@@ -742,6 +911,7 @@ export default function GastosPage() {
         descripcion: form.descripcion.trim(), monto,
         tipo_iva: form.tipo_iva || null,
         iva_monto: ivaMonto && ivaMonto > 0 ? parseFloat(ivaMonto.toFixed(2)) : null,
+        alicuota_iva: alicuotaIvaPersist,
         iva_deducible: form.iva_deducible,
         deduce_ganancias: form.deduce_ganancias,
         gasto_negocio: form.deduce_ganancias
@@ -756,6 +926,23 @@ export default function GastosPage() {
 
       const titulo = getTituloFinal()
       if (titulo) payload.comprobante_titulo = titulo
+
+      // Validación de umbral por rol (v1.8.43) — si supera, abrir modal de solicitud y NO insertar
+      const evalUmbral = evaluarUmbralGasto(user?.rol, sucursalUmbrales, monto)
+      if (evalUmbral.aplica && evalUmbral.superado) {
+        setGuardando(false)
+        setSolicitudUmbral({
+          tipo: editandoId ? 'editar' : 'crear',
+          monto,
+          descripcion: form.descripcion.trim(),
+          payload,
+          umbral: evalUmbral.umbral,
+          rolMinimoAprobador: evalUmbral.rolMinimoAprobador!,
+          sucursalId: sucursalId ?? null,
+          gastoId: editandoId,
+        })
+        return
+      }
 
       let gastoId = editandoId
       if (editandoId) {
@@ -907,12 +1094,17 @@ export default function GastosPage() {
     if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
     setGuardandoFijo(true)
     try {
-      const ivaMonto = formFijo.tipo_iva && formFijo.iva_deducible ? calcularIVA(monto, formFijo.tipo_iva) : null
+      const alicuotaFijoCustom = parseFloat(formFijo.alicuota_iva_custom) || null
+      const ivaMonto = formFijo.tipo_iva && formFijo.iva_deducible ? calcularIVA(monto, formFijo.tipo_iva, alicuotaFijoCustom) : null
+      const alicuotaIvaFijoPersist = formFijo.tipo_iva === 'custom'
+        ? alicuotaFijoCustom
+        : formFijo.tipo_iva && !isNaN(parseFloat(formFijo.tipo_iva)) ? parseFloat(formFijo.tipo_iva) : null
       const payload: any = {
         tenant_id: tenant!.id,
         descripcion: formFijo.descripcion.trim(), monto,
         tipo_iva: formFijo.tipo_iva || null,
         iva_monto: ivaMonto && ivaMonto > 0 ? parseFloat(ivaMonto.toFixed(2)) : null,
+        alicuota_iva: alicuotaIvaFijoPersist,
         iva_deducible: formFijo.iva_deducible,
         deduce_ganancias: formFijo.deduce_ganancias,
         gasto_negocio: formFijo.deduce_ganancias
@@ -1022,15 +1214,17 @@ export default function GastosPage() {
 
   // ── IVA preview ───────────────────────────────────────────────────────────
   const montoNum = parseFloat(form.monto.replace(',', '.')) || 0
-  const ivaPreview = montoNum > 0 && form.tipo_iva && form.iva_deducible ? calcularIVA(montoNum, form.tipo_iva) : 0
+  const alicuotaCustomNum = parseFloat(form.alicuota_iva_custom) || null
+  const ivaPreview = montoNum > 0 && form.tipo_iva && form.iva_deducible ? calcularIVA(montoNum, form.tipo_iva, alicuotaCustomNum) : 0
   const netoPreview = montoNum - ivaPreview
 
   const montoFijoNum = parseFloat(formFijo.monto.replace(',', '.')) || 0
-  const ivaFijoPreview = montoFijoNum > 0 && formFijo.tipo_iva && formFijo.iva_deducible ? calcularIVA(montoFijoNum, formFijo.tipo_iva) : 0
+  const alicuotaFijoCustomNum = parseFloat(formFijo.alicuota_iva_custom) || null
+  const ivaFijoPreview = montoFijoNum > 0 && formFijo.tipo_iva && formFijo.iva_deducible ? calcularIVA(montoFijoNum, formFijo.tipo_iva, alicuotaFijoCustomNum) : 0
 
   // ── Sección IVA + Ganancias (reutilizable en ambos modales) ───────────────
   const renderFiscal = (
-    vals: { tipo_iva: string; iva_deducible: boolean; deduce_ganancias: boolean; gasto_negocio: string; monto: string },
+    vals: { tipo_iva: string; iva_deducible: boolean; alicuota_iva_custom: string; deduce_ganancias: boolean; gasto_negocio: string; monto: string },
     setVals: (u: any) => void,
     ivaCalc: number, netoCalc: number
   ) => (
@@ -1040,15 +1234,24 @@ export default function GastosPage() {
       {/* IVA */}
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tasa de IVA</label>
-        <div className="flex gap-2 items-center">
-          <div className="relative flex-1">
-            <select value={vals.tipo_iva} onChange={e => setVals((f: any) => ({ ...f, tipo_iva: e.target.value }))}
+        <div className="flex gap-2 items-center flex-wrap">
+          <div className="relative flex-1 min-w-[140px]">
+            <select value={vals.tipo_iva} onChange={e => setVals((f: any) => ({ ...f, tipo_iva: e.target.value, alicuota_iva_custom: e.target.value === 'custom' ? f.alicuota_iva_custom : '' }))}
               className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
               <option value="">Sin IVA / No aplica</option>
               {TASAS_IVA.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
             <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
+          {vals.tipo_iva === 'custom' && (
+            <div className="flex items-center gap-1">
+              <input type="number" value={vals.alicuota_iva_custom}
+                onChange={e => setVals((f: any) => ({ ...f, alicuota_iva_custom: e.target.value }))}
+                placeholder="0,00" min="0" max="100" step="0.01"
+                className="w-20 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              <span className="text-sm text-gray-500">%</span>
+            </div>
+          )}
           {vals.tipo_iva && vals.tipo_iva !== 'exento' && vals.tipo_iva !== 'sin_iva' && (
             <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap cursor-pointer">
               <input type="checkbox" checked={vals.iva_deducible}
@@ -1121,7 +1324,7 @@ export default function GastosPage() {
             {tab === 'gastos' ? 'Últimos 30 días' : tab === 'historial' ? 'Historial completo con filtros' : 'Gastos estimados recurrentes'}
           </p>
         </div>
-        {tab === 'gastos' && (
+        {tab === 'gastos' && !esContador && (
           <button onClick={abrirNuevo}
             className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
             <Plus size={18} /> Nuevo gasto
@@ -1136,18 +1339,26 @@ export default function GastosPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
         {[
-          { id: 'gastos'   as const, label: 'Gastos variables', icon: <Receipt size={14} /> },
-          { id: 'historial'as const, label: 'Historial',        icon: <History size={14} /> },
-          { id: 'fijos'    as const, label: 'Gastos fijos',     icon: <Repeat size={14} /> },
-          { id: 'oc'       as const, label: 'Órdenes de Compra',icon: <ShoppingCart size={14} /> },
-          { id: 'recursos' as const, label: 'Recursos',         icon: <Landmark size={14} /> },
-        ].map(({ id, label, icon }) => (
+          { id: 'gastos'   as const, label: 'Gastos variables', icon: <Receipt size={14} />, badge: 0 },
+          { id: 'historial'as const, label: 'Historial',        icon: <History size={14} />, badge: 0 },
+          { id: 'fijos'    as const, label: 'Gastos fijos',     icon: <Repeat size={14} />, badge: 0 },
+          { id: 'oc'       as const, label: 'Órdenes de Compra',icon: <ShoppingCart size={14} />, badge: 0 },
+          { id: 'recursos' as const, label: 'Recursos',         icon: <Landmark size={14} />, badge: 0 },
+          ...(puedeAprobarRoles
+            ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones', icon: <AlertCircle size={14} />, badge: autorizacionesPendientesCount }]
+            : []),
+        ].map(({ id, label, icon, badge }) => (
           <button key={id} onClick={() => setTab(id)}
-            className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
+            className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap
               ${tab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
             {icon}{label}
+            {badge > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold">
+                {badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -1528,18 +1739,34 @@ export default function GastosPage() {
                   </thead>
                   <tbody>
                     {(gastosFijos as any[]).map((f: any) => {
-                      // Calcular si está próximo (por vencimiento y alerta_dias_antes)
                       const hoy = new Date()
                       const diaHoy = hoy.getDate()
                       const diasAlerta = f.alerta_dias_antes ?? 3
                       const estaProximo = f.dia_vencimiento && f.activo &&
                         Math.abs(f.dia_vencimiento - diaHoy) <= diasAlerta
+                      // Estado v1.8.42: 🟢 dentro · 🟡 pendiente · 🔴 atrasado · ✅ generado
+                      const yaGeneradoMes = (gastosDelMes as any[]).some(g => g.descripcion === f.descripcion)
+                      const umbralAtraso = (tenant as any)?.gastos_dias_alerta_borrador ?? 7
+                      let estadoFijo: { icon: string; label: string; cls: string } | null = null
+                      if (f.activo) {
+                        if (yaGeneradoMes) estadoFijo = { icon: '✅', label: 'Generado este mes', cls: 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300' }
+                        else if (!f.dia_vencimiento) estadoFijo = null
+                        else if (diaHoy < f.dia_vencimiento) estadoFijo = { icon: '🟢', label: 'Dentro de fecha', cls: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300' }
+                        else if (diaHoy - f.dia_vencimiento > umbralAtraso) estadoFijo = { icon: '🔴', label: `Atrasado (+${diaHoy - f.dia_vencimiento}d)`, cls: 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300' }
+                        else estadoFijo = { icon: '🟡', label: 'Pendiente este mes', cls: 'bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300' }
+                      }
                       return (
                         <tr key={f.id} className={`border-b border-gray-50 dark:border-gray-700 transition-colors ${f.activo ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'opacity-50'}`}>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <p className="font-medium text-gray-800 dark:text-gray-100">{f.descripcion}</p>
-                              {estaProximo && (
+                              {estadoFijo && (
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${estadoFijo.cls}`} title={estadoFijo.label}>
+                                  <span>{estadoFijo.icon}</span>
+                                  <span className="hidden sm:inline">{estadoFijo.label}</span>
+                                </span>
+                              )}
+                              {estaProximo && !estadoFijo && (
                                 <span title={`Vence en los próximos ${diasAlerta} días`}>
                                   <Bell size={13} className="text-amber-500" />
                                 </span>
@@ -1703,11 +1930,19 @@ export default function GastosPage() {
                 </div>
               )}
 
+              {/* Aviso CONTADOR: solo puede tocar campos de IVA (v1.8.43) */}
+              {esContador && (
+                <div className="flex items-center gap-2 text-xs text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg px-3 py-2">
+                  <span>📊</span>
+                  <span>Solo podés modificar campos de IVA del gasto. El resto está bloqueado para tu rol.</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto total ($) *</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={form.monto}
                   onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
-                  disabled={!!(editandoId && originalTeniaPago)}
+                  disabled={!!(editandoId && originalTeniaPago) || esContador}
                   placeholder="0" min="0" step="0.01"
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
               </div>
@@ -1727,10 +1962,22 @@ export default function GastosPage() {
                   <select value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}
                     className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                     <option value="">Sin categoría</option>
-                    {CATEGORIAS_GASTO.map(c => <option key={c} value={c}>{c}</option>)}
+                    {categoriasNombres.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
+                {(() => {
+                  const cat = (categoriasGasto as any[]).find((c: any) => c.nombre === form.categoria)
+                  if (cat?.requiere_sucursal && !sucursalId) {
+                    return (
+                      <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-lg px-2 py-1 flex items-center gap-1.5">
+                        <AlertCircle size={12} />
+                        Esta categoría requiere una <strong>sucursal seleccionada</strong> (usá el selector superior antes de guardar).
+                      </p>
+                    )
+                  }
+                  return null
+                })()}
               </div>
 
               {/* Medios de pago múltiples */}
@@ -1869,7 +2116,16 @@ export default function GastosPage() {
                   <div className="space-y-1.5">
                     <div className="relative">
                       <select value={tipoComprobanteSelect}
-                        onChange={e => { setTipoComprobanteSelect(e.target.value); if (e.target.value) setComprobanteNombre('') }}
+                        onChange={e => {
+                          const v = e.target.value
+                          setTipoComprobanteSelect(v)
+                          if (v) setComprobanteNombre('')
+                          // Auto-fill IVA según tipo de comprobante si no está seteado todavía
+                          const ivaSugerido = ivaAutoPorTipoComprobante(v)
+                          if (ivaSugerido && !form.tipo_iva) {
+                            setForm(f => ({ ...f, tipo_iva: ivaSugerido, iva_deducible: ivaSugerido === '21' }))
+                          }
+                        }}
                         className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         <option value="">Seleccionar tipo de comprobante…</option>
                         {TIPOS_COMPROBANTE.map(t => <option key={t} value={t}>{t}</option>)}
@@ -2029,7 +2285,7 @@ export default function GastosPage() {
                   <select value={formFijo.categoria} onChange={e => setFormFijo(f => ({ ...f, categoria: e.target.value }))}
                     className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                     <option value="">Sin categoría</option>
-                    {CATEGORIAS_GASTO.map(c => <option key={c} value={c}>{c}</option>)}
+                    {categoriasNombres.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                   <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
@@ -2214,6 +2470,25 @@ export default function GastosPage() {
         </div>
       )}
 
+      {/* ══ TAB: AUTORIZACIONES (v1.8.43/v1.8.44) ══ */}
+      {tab === 'autorizaciones' && puedeAprobarRoles && (
+        <div className="space-y-4">
+          {/* Sub-tabs */}
+          <div className="flex gap-2">
+            <button onClick={() => setAutSubTab('gastos')}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${autSubTab === 'gastos' ? 'bg-accent text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+              Gastos
+            </button>
+            <button onClick={() => setAutSubTab('cc')}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium transition-colors ${autSubTab === 'cc' ? 'bg-accent text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+              CC Proveedores
+            </button>
+          </div>
+          {autSubTab === 'gastos' && <BandejaAutorizacionesGasto />}
+          {autSubTab === 'cc'     && <BandejaAutorizacionesCC />}
+        </div>
+      )}
+
       {/* ══ TAB: ÓRDENES DE COMPRA ══ */}
       {tab === 'oc' && (
         <div className="space-y-4">
@@ -2258,6 +2533,12 @@ export default function GastosPage() {
                 const badge = estadoPagoBadge(oc)
                 const venc = oc.fecha_vencimiento_pago
                 const esVencida = venc && venc < hoy
+                // 💰 Anticipo: pago realizado sin recepción de mercadería
+                const diasAlertaAnticipo = (tenant as any)?.gastos_dias_alerta_anticipo_oc ?? 15
+                const recibida = ['recibida','recibida_parcial'].includes(oc.estado)
+                const esAnticipo = Number(oc.monto_pagado ?? 0) > 0 && !recibida && oc.estado !== 'cancelada'
+                const diasDesdeOC = Math.floor((Date.now() - new Date(oc.created_at).getTime()) / 86400000)
+                const anticipoAlerta = esAnticipo && diasDesdeOC > diasAlertaAnticipo
 
                 const expanded = ocExpandedId === oc.id
                 return (
@@ -2274,6 +2555,17 @@ export default function GastosPage() {
                           {(oc as any).tiene_reembolso_pendiente && (
                             <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">
                               Reembolso pendiente
+                            </span>
+                          )}
+                          {esAnticipo && (
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full font-medium ${anticipoAlerta
+                                ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                                : 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'}`}
+                              title={anticipoAlerta
+                                ? `Anticipo: pago hace ${diasDesdeOC}d sin recibir mercadería (umbral ${diasAlertaAnticipo}d)`
+                                : 'Anticipo: pago realizado antes de la recepción'}>
+                              💰 Anticipo{anticipoAlerta ? ` · ${diasDesdeOC}d` : ''}
                             </span>
                           )}
                           {(oc as any).es_derivada && (
@@ -2544,6 +2836,44 @@ export default function GastosPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Modal solicitud autorización por umbral (v1.8.43) */}
+      {solicitudUmbral && (
+        <SolicitarAutorizacionGastoModal
+          tipo={solicitudUmbral.tipo}
+          monto={solicitudUmbral.monto}
+          descripcion={solicitudUmbral.descripcion}
+          payload={solicitudUmbral.payload}
+          umbral={solicitudUmbral.umbral}
+          rolMinimoAprobador={solicitudUmbral.rolMinimoAprobador}
+          sucursalId={solicitudUmbral.sucursalId}
+          gastoId={solicitudUmbral.gastoId}
+          onClose={() => setSolicitudUmbral(null)}
+          onSubmitted={() => {
+            setSolicitudUmbral(null)
+            cerrarModal()
+            qc.invalidateQueries({ queryKey: ['autorizaciones-gasto'] })
+          }}
+        />
+      )}
+
+      {/* Modal override CC (v1.8.44) */}
+      {solicitudCC && (
+        <SolicitarOverrideCCModal
+          proveedorId={solicitudCC.proveedorId}
+          proveedorNombre={solicitudCC.proveedorNombre}
+          ocId={solicitudCC.ocId}
+          monto={solicitudCC.monto}
+          motivoBloqueo={solicitudCC.motivoBloqueo}
+          detalle={solicitudCC.detalle}
+          onClose={() => setSolicitudCC(null)}
+          onSubmitted={() => {
+            setSolicitudCC(null)
+            setOcModalId(null)
+            qc.invalidateQueries({ queryKey: ['autorizaciones-cc'] })
+          }}
+        />
       )}
     </div>
   )

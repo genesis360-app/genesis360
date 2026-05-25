@@ -4,18 +4,147 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.37** ✅ · DEV: **v1.8.40**
+Último release en PROD: **v1.8.40** ✅ · DEV: **v1.8.41**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.8.39 / PROD v1.8.37 (cierre sesión 2026-05-21)
+## Estado actual DEV v1.8.44 / PROD v1.8.40 (cierre sesión 2026-05-24)
 
-- APP_VERSION DEV: `v1.8.39` en `src/config/brand.ts` ✅ (pendiente bump)
-- APP_VERSION PROD: `v1.8.37` ✅ (PR #114 mergeado)
-- Migrations DEV: 001–127 ✅
-- Migrations PROD: 001–126 ✅
+- APP_VERSION DEV: `v1.8.44` en `src/config/brand.ts` ✅
+- APP_VERSION PROD: `v1.8.40` ✅ (PR #115 mergeado, release latest)
+- Migrations DEV: 001–133 ✅
+- Migrations PROD: 001–129 ✅
+
+### Pendiente de deploy a PROD (en DEV como v1.8.44)
+- Selector courier propio/tercero en VentasPage — v1.8.41
+- Fix: link transportista usa `VITE_APP_URL` — v1.8.41
+- **Fase 1 Reglas Gastos** (v1.8.42):
+  - Migrations 130 + 131 (categorias_gasto + seed automático + tenants.gastos_*)
+  - GastosPage: selector categorías dinámico desde tabla + indicadores estado en fijos (🟢🟡🔴✅) + badge 💰 Anticipo en OC
+  - ConfigPage: nueva tab "Gastos" con CRUD categorías + reglas comprobante + alertas
+- **Fase 2 Reglas Gastos** (v1.8.43):
+  - Migration 132 (sucursales.umbral_gasto_supervisor/cajero + tabla autorizaciones_gasto + helper `puede_aprobar_autorizacion_gasto`)
+  - `src/lib/umbralGasto.ts` con helpers `evaluarUmbralGasto` + `puedeAprobar`
+  - `SolicitarAutorizacionGastoModal` y `BandejaAutorizacionesGasto` componentes nuevos
+  - GastosPage: validación umbral al guardar + tab nuevo "Autorizaciones" con badge de pendientes
+  - SucursalesPage: bloque "Umbrales de autorización de gastos" con 2 inputs por sucursal
+  - CAJERO ve solo sus gastos · CONTADOR aviso + monto bloqueado · botón "Nuevo gasto" oculto para CONTADOR
+- **Fase 3 Reglas Gastos + Moneda** (v1.8.44):
+  - Migration 133 (tenants.moneda + gastos.alicuota_iva + tabla autorizaciones_cc)
+  - `src/lib/formato.ts`: `formatMoneda(monto, moneda)` + 11 monedas disponibles (ARS, USD, CLP, UYU, PYG, BOB, BRL, PEN, MXN, COP, EUR)
+  - `src/lib/ccProveedor.ts`: `chequearBloqueoCC` + `existeAutorizacionCCAprobada`
+  - `SolicitarOverrideCCModal` y `BandejaAutorizacionesCC` componentes nuevos
+  - ConfigPage Mi Negocio: selector de moneda principal
+  - GastosPage: IVA auto al elegir tipo de comprobante + selector alícuota con custom + validación sucursal obligatoria por categoría + bloqueo CC con OC vencida o límite excedido + override DUEÑO con auditoría
+  - Sub-tabs en "Autorizaciones": Gastos / CC Proveedores
+  - Migración a `formatMoneda` central en: GastosPage, CajaPage, ClientesPage, EnviosPage, FacturacionPage, MetricasPage, RentabilidadPage, ReportesPage
+
+---
+
+## Pipeline Reglas de Negocio — Gastos (v1.8.42 → v1.9.0)
+
+Relevamiento completo en sesión 2026-05-24. Detalle de reglas en `wiki/development/reglas-negocio.md` (sección Gastos).
+
+### v1.8.42 — Quick wins (Fase 1) · migrations 130-131
+- Tabla `categorias_gasto` + seed ~15-20 categorías base + flag `predefinida` + `requiere_sucursal`
+- ConfigPage tab Gastos: 4 toggles obligatoriedad comprobante (OR) + monto umbral + `dias_alerta_borrador` + `dias_alerta_anticipo_oc`
+- Default seed: comprobante obligatorio siempre
+- Indicadores visuales gastos fijos (🟢 dentro de fecha · 🟡 pendiente este mes · 🔴 atrasado · ✅ generado)
+- Badge "💰 Anticipo" en OC + alerta N días sin recibir (`monto_pagado > 0 AND recepcion_estado='pendiente'`)
+
+### v1.8.43 — Permisos y umbrales (Fase 2) · migration 132
+- `sucursales.umbral_gasto_supervisor` + `umbral_gasto_cajero`
+- Tabla `autorizaciones_gasto` (solicitud → aprobada/rechazada por SUPERVISOR+)
+- RLS Gastos por rol: CAJERO solo crea/edita en su caja abierta · CONTADOR solo edita IVA · DUEÑO/ADMIN sin restricción · SUPERVISOR hasta umbral
+- Validación umbral en crear + editar
+- Notificación borrador (creador + DUEÑO + SUPERVISOR) tras N días via pg_cron
+
+### v1.8.44 — IVA + Multi-sucursal + CC proveedor (Fase 3) · migration 133
+- IVA auto (A=21% desglosado, B=21% incluido, C=0) + selector alícuota (21/10.5/27/0/custom)
+- Form gasto: sucursal obligatoria/opcional según `categorias_gasto.requiere_sucursal`
+- `proveedores.limite_cc DECIMAL` + validación al crear OC con CC
+- Bloqueo OC CC nueva con proveedor con OC vencida · override DUEÑO con tabla `autorizaciones_cc` (auditoría)
+- Reportes: gasto sin sucursal aparece como "Tenant / Global"
+
+### v1.8.45 — Recursos↔Gastos + Dashboard consolidado (Fase 4) · migration 134
+- Card "Costo mantenimiento acumulado" en ficha recurso
+- Checkbox "Sumar al valor del recurso" → `gastos.capitaliza_recurso BOOLEAN` (default OFF)
+- Vista `vw_egresos_consolidados` (gastos UNION rrhh_salarios.pagado=true)
+- Dashboard Gastos: card "Costo laboral del mes" leyendo de `rrhh_salarios`
+- P&L con línea separada "Sueldos pagados (RRHH)" con link a `/rrhh?tab=nomina`
+
+### v1.9.0 — HITO Cierre Contable Mensual (Fase 5) · migration 135
+- Tabla `cierres_contables(tenant, periodo, fecha_cierre, cerrado_por, observaciones)`
+- Botón "Cerrar período" disparado por DUEÑO/SUPERVISOR/CONTADOR según permisos
+- Aplica a **Gastos + Ventas + Caja + OC** (transversal)
+- Triggers que rechazan UPDATE/DELETE de registros con `fecha ≤ último cierre`
+- Notas de corrección: nuevo gasto con `gasto_padre_id` + `es_correccion=true` + monto invertido
+- UI bloqueada en Ventas/Caja/OC con mensaje "Período cerrado, generá nota de corrección"
+- Reportes: opción "ver con/sin correcciones"
+- Documentar flujo en nueva página `wiki/development/cierre-contable.md`
+
+### Decisiones de diseño documentadas
+
+- **Sueldos/Nómina**: NO migrar a Gastos. Se quedan en RRHH → Nómina. Integración via vista `vw_egresos_consolidados`
+- **Depreciación de recursos**: diferida a fase fiscal posterior (requiere relevamiento con contador)
+- **OC anticipo**: sin estado nuevo, mitigación con badge visual + alerta
+
+---
+
+## Lo producido en sesión 2026-05-21 → 2026-05-23 (v1.8.39 → v1.8.41)
+
+### Módulo Envíos — features completas (v1.8.40 — PROD ✅)
+- **ISS-165 — Página transportista pública**: `/transporte/:token` mobile-first sin login. El driver actualiza estado (en_camino, en_bodega, entregado, devolución) y carga POD (fecha, receptor, observaciones, foto) directo desde el celular. Migration 129 + 3 funciones SECURITY DEFINER públicas (`get_envio_by_token`, `get_envio_items_by_token`, `update_envio_by_token`).
+- **ISS-166 — Cámara POD**: botón con `<input capture="environment">` que abre cámara trasera del celular o explorador en desktop. Sube foto a bucket `etiquetas-envios/pod/{envioId}/` con URL firmada 365 días.
+- **ISS-167 — QR codes en remito PDF**: QR del número de envío arriba a la derecha y QR del número de venta al lado del bloque DESTINATARIO. Tabla incluye SKU, LPN y Ubicación. Layout con líneas separadoras grises.
+- **ISS-168 — LPN y ubicación en panel expandido**: query de `venta_items` incluye `inventario_lineas(lpn, ubicaciones(nombre))`. Por cada producto muestra badge violeta con LPN y ubicación del depósito.
+- **ISS-169 — Pestaña Pagos Courier**: tab con badge naranja de cantidad pendiente. Selección múltiple con checkbox + Seleccionar todo. Medio de pago, fecha, total dinámico. Migration 128: `costo_pagado + fecha_pago_courier + medio_pago_courier`.
+- **ISS-171 — Bloqueo si costo no pagado**: `verificarPagoAntes()` antes de avanzar estado. Si `costo_cotizado > 0 AND costo_pagado = false` → toast bloqueante con redirect a Pagos Courier.
+
+### Otros fixes Envíos (v1.8.39 — PROD ✅)
+- **POD completo**: pod_url, pod_fecha, pod_receptor, pod_notas en envíos. Modal POD standalone + sección en modal edición + display en panel expandido. Migration 127.
+- **Estado `en_bodega`**: nuevo entre `en_camino` y `entregado` (paquete en depósito del courier). Badge violeta + icono Warehouse. CHECK constraint ampliado.
+- **BUG CRÍTICO resuelto**: `cliente_id` inexistente en envíos → INSERT silenciosamente fallaba al hacer venta con envío. Fix: eliminado del INSERT.
+- Número venta coherente Ventas ↔ Envíos: `formatVentaNum()` igual que `formatTicket()`. Prefijo solo si sucursal tiene `codigo` configurado, fallback `#numero`.
+- DashEnviosArea: agrega `en_bodega` al funnel, calcula tiempo medio real desde `pod_fecha`, insight de cancelados.
+
+### Fixes integridad inventario en Ventas
+- Cambio de sucursal con carrito activo limpia automáticamente el carrito + draft localStorage. Toast explicativo.
+- Query de lineas en `registrarVenta` filtra estrictamente por `sucursal_id` (antes podía descontar de otra sucursal).
+- Validación: bloquea venta si hay >1 sucursal y ninguna seleccionada.
+- Carrito restaurado: re-fetch de `lineas_disponibles` dentro del mismo `useEffect` (sin race condition con effect separado).
+- `productosBusqueda` query usa `enabled: authInitialized` para esperar Supabase session.
+
+### Autocomplete direcciones (reescritura completa)
+- `AutocompleteSuggestion.fetchAutocompleteSuggestions()` (nueva Places API, misma que Google Maps internamente, Promise-only).
+- Fallback automático a `AutocompleteService` legacy (callback-only) si Suggestion no disponible.
+- Fallback final a Nominatim con `addressdetails=1` para labels limpios y coords.
+- Min 2 caracteres, debounce 300ms.
+- Bug del input congelado: resuelto reemplazando widget de Google por servicio programático que no toca el DOM.
+
+### Cálculo de distancia (reescritura)
+- `calcularDistanciaKm()`: intenta `google.maps.DistanceMatrixService` (callback + Promise dual), fallback a Haversine con geocodificación Nominatim.
+- En VentasPage: pre-geocodifica origen al activar toggle envío → cálculo Haversine **instantáneo** al seleccionar destino (sin API calls adicionales).
+- Alertas claras si origen/destino no geocodifica con link a Sucursales para corregir.
+
+### Otros fixes UX
+- Stock 0 al restaurar carrito: resuelto definitivamente (re-fetch inline).
+- Número ticket: sin prefijo configurado muestra `#175` (antes mostraba `S1-0175` por fallback hardcodeado).
+- Botón "Compartir transportista" usa `VITE_APP_URL` para que el link apunte siempre a PROD.
+
+### Migrations aplicadas en PROD
+- 127: `envios` — POD fields + estado `en_bodega`
+- 128: `envios` — costo_pagado + fecha_pago_courier + medio_pago_courier
+- 129: `envios.token_transportista` + 3 funciones SECURITY DEFINER públicas
+
+### Bug pendiente — ya identificado (NO requiere acción inmediata)
+- Ruta `/transporte/:token` solo está en PROD desde v1.8.40. Si el usuario genera link desde dev preview, el link apunta a PROD que ya tiene la ruta (fix con `VITE_APP_URL` en v1.8.41).
+
+---
+
+## Lo producido en sesión 2026-05-21 → 2026-05-23 — más detalle
 
 ### Estado infra
 - Edge Functions DEV: todas activas · `scan-ticket` v3 (Claude Sonnet 4.6 vision) deployada
@@ -118,24 +247,31 @@ type: project
 
 ## Para la próxima sesión — prioridades
 
-### 1. Deploy PROD v1.8.19 — COMPLETADO ✅
-- [x] PR #110 `dev → main` mergeado
-- [x] Migrations 093–107 aplicadas en PROD
-- [x] `VITE_GOOGLE_MAPS_API_KEY` en Vercel Production (redeploy pendiente para activar)
-- [x] EF `invite-user` + `ai-assistant` deployadas en PROD
-- [x] `GROQ_API_KEY` configurada en PROD
-- [x] GitHub release v1.8.19
+### 1. Deploy PROD v1.8.40 — COMPLETADO ✅
+- [x] PR #115 `dev → main` mergeado
+- [x] Migrations 127–129 aplicadas en PROD
+- [x] GitHub release v1.8.40 como latest
+- [x] App version PROD = v1.8.40
 
-### 2. Post-deploy pendientes menores
-- [ ] Redeploy Vercel PROD para activar `VITE_GOOGLE_MAPS_API_KEY` (o esperar próximo deploy)
-- [ ] Probar invite-user desde DEV y PROD con el nuevo redirect dinámico
+### 2. Verificación post-deploy en PROD
+- [ ] Verificar página transportista `/transporte/:token` funciona en `app.genesis360.pro` (sin login)
+- [ ] Probar generación de link "Compartir transportista" desde Envíos en PROD
+- [ ] Verificar QR codes en remito PDF (envío arriba derecha, venta junto a DESTINATARIO)
+- [ ] Probar marcar pagos courier desde nueva pestaña
 
-### 3. Reglas de negocio — relevar e implementar
+### 3. Pendiente deploy a PROD (DEV v1.8.41)
+- [ ] PR `dev → main` con título `v1.8.41 — Selector courier en VentasPage`
+- [ ] GitHub release v1.8.41
+
+### 4. Reglas de negocio — relevar e implementar
 - **Pendientes de relevar:** Gastos (completo), RRHH (completo), Ventas (devoluciones/límites), Clientes (deuda configurable)
 - **Pendientes de implementar:** Bóveda (Caja), contraseña maestra cierre caja ajena, ticket cierre PDF, alerta diferencia cierre
 
-### 3. Envíos — pendientes
-- Probar Google Maps en DEV con la key recién configurada
+### 5. Envíos — mejoras posibles próximas sesiones
+- Cron para limpiar tokens transportista expirados (>30 días, envíos entregados)
+- Soporte para múltiples fotos POD (no solo una URL)
+- Reportes de pagos courier (acumulado por mes/courier)
+- Tracking integrations: APIs de OCA/Andreani para auto-actualizar estado
 - Verificar cálculo de distancia sucursal → cliente funciona end-to-end
 
 ---

@@ -3,13 +3,116 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-05-07
+updated: 2026-05-24
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 7 de Mayo, 2026
+**Última actualización:** 24 de Mayo, 2026
+
+---
+
+## v1.8.44 — Reglas de Negocio Gastos Fase 3 + Moneda multi-país (DEV ✅, pend. PROD)
+
+**Estado:** completado en DEV
+**Fecha:** 2026-05-24
+
+### Migration
+- **133** `tenants.moneda` (11 monedas LatAm + EUR/USD) + `gastos/gastos_fijos.alicuota_iva` + tabla `autorizaciones_cc` (motivo_bloqueo `limite_excedido | oc_vencida`)
+
+### Nuevas features
+- **Moneda principal del tenant** (etiqueta visual, sin conversión): selector en ConfigPage > Mi Negocio. Lista inicial: ARS, USD, CLP, UYU, PYG, BOB, BRL, PEN, MXN, COP, EUR
+- **Helper centralizado `src/lib/formato.ts`**: `formatMoneda(monto, moneda)` con símbolo + locale específicos por moneda. Migración aplicada en: Gastos, Caja, Clientes, Envíos, Facturación, Métricas, Rentabilidad, Reportes
+- **IVA auto según tipo de comprobante**: al seleccionar Factura A/B/Ticket → 21% · Factura C/Recibo/bienes usados → sin_iva. Solo si tipo_iva está vacío (no sobrescribe selección manual)
+- **Selector de alícuota IVA extendido**: 21%, 10.5%, 27%, 0%, exento, sin_iva, personalizado (input numérico)
+- **Sucursal obligatoria por categoría**: si la categoría tiene `requiere_sucursal=true` y no hay sucursal activa, bloqueo + aviso amber inline
+- **Bloqueo CC con proveedor problemático**:
+  - Helper `chequearBloqueoCC(proveedorId, monto)`: detecta OC con CC vencida o saldo + monto > límite_credito_proveedor
+  - Modal `SolicitarOverrideCCModal` permite pedir autorización al DUEÑO con motivo
+  - Bandeja `BandejaAutorizacionesCC` para que el DUEÑO apruebe/rechace
+  - `existeAutorizacionCCAprobada(proveedorId)`: si hay aprobación válida <24h sin usar, se permite continuar sin volver a pedir
+- **Sub-tabs en "Autorizaciones"** dentro de GastosPage: Gastos / CC Proveedores
+
+### Pendientes Fase 4-5 (v1.8.45 → v1.9.0)
+Ver `wiki/development/reglas-negocio.md` sección "Plan de implementación".
+
+---
+
+## v1.8.43 — Reglas de Negocio Gastos Fase 2: Umbrales + Autorizaciones (DEV ✅, pend. PROD)
+
+**Estado:** completado en DEV
+**Fecha:** 2026-05-24
+
+### Migration
+- **132** `sucursales.umbral_gasto_supervisor/cajero` + tabla `autorizaciones_gasto` (tipo/monto/payload/solicitante_rol/estado/aprobador) + helper SQL `puede_aprobar_autorizacion_gasto`
+
+### Nuevas features
+- **Helper `src/lib/umbralGasto.ts`**: `evaluarUmbralGasto(rol, sucursal, monto)` + `puedeAprobar(solicRol, aprobRol)`. Reglas: DUEÑO/ADMIN sin tope · SUPERVISOR umbral configurable (NULL = sin tope) · CAJERO umbral configurable (NULL = todo pide auth) · CONTADOR no crea (solo IVA)
+- **SolicitarAutorizacionGastoModal** (componente): se abre cuando el monto supera el umbral del rol; pide motivo y crea registro en `autorizaciones_gasto` con payload completo
+- **BandejaAutorizacionesGasto** (componente): nuevo tab en GastosPage visible solo a SUPERVISOR+ con badge de pendientes (refetch 30s). Aprueba ejecutando INSERT/UPDATE/DELETE en gastos según `tipo` + marca aprobada; rechaza con motivo obligatorio
+- **SucursalesPage** — bloque "Umbrales de autorización de gastos" con 2 inputs por sucursal (supervisor + cajero)
+- **GastosPage** — restricciones de rol:
+  - CAJERO ve solo sus propios gastos (filter `usuario_id = user.id`)
+  - CONTADOR: aviso 📊 en modal de edición + monto bloqueado + botón "Nuevo gasto" oculto
+
+### Pendientes Fase 3-5 (v1.8.44 → v1.9.0)
+Ver `wiki/development/reglas-negocio.md` sección "Plan de implementación".
+
+---
+
+## v1.8.42 — Reglas de Negocio Gastos Fase 1 (DEV ✅, pend. PROD)
+
+**Estado:** completado en DEV  
+**Fecha:** 2026-05-24
+
+### Migrations
+- **130** `categorias_gasto`: catálogo por tenant + seed de 16 categorías + trigger automático + FK opcional en gastos/gastos_fijos
+- **131** `tenants.gastos_*`: 7 columnas para reglas de comprobante (4 toggles OR + monto umbral) + días alerta borrador + días alerta anticipo OC
+
+### Nuevas features
+- **GastosPage** — selector de categoría dinámico desde tabla `categorias_gasto` (fallback a constante hardcoded)
+- **GastosPage tab Fijos** — indicadores de estado por gasto fijo: 🟢 Dentro de fecha · 🟡 Pendiente este mes · 🔴 Atrasado (+Nd) · ✅ Generado este mes
+- **GastosPage tab OC** — badge "💰 Anticipo" naranja/rojo cuando hay pago sin recepción (rojo después de N días configurable)
+- **ConfigPage tab Gastos** (nueva) — 3 secciones: Reglas comprobante (4 toggles + umbral), Alertas (2 inputs), Categorías (CRUD con `requiere_sucursal` + `activo`)
+
+### Pendientes Fase 2-5 (v1.8.43 → v1.9.0)
+Ver `wiki/development/reglas-negocio.md` sección "Plan de implementación".
+
+---
+
+## v1.8.40 — Módulo Envíos completo + fixes integridad inventario (PROD ✅)
+
+**Estado:** desplegado a PROD  
+**Fecha:** 2026-05-23 · PR #115
+
+### Nuevas features Envíos
+- **ISS-165** Página pública `/transporte/:token` para transportista (sin login, mobile-first)
+- **ISS-166** Botón cámara en modal POD — sube foto a Storage `etiquetas-envios/pod/`
+- **ISS-167** QR codes en remito PDF (envío esquina superior derecha, venta al lado del DESTINATARIO)
+- **ISS-168** LPN y ubicación de mercadería en panel expandido de cada envío
+- **ISS-169** Pestaña Pagos Courier — selección múltiple, marcar pagados
+- **ISS-171** Bloquea progresión de estado si costo del courier no está pagado
+- Número venta coherente Ventas ↔ Envíos (prefijo sucursal opcional, fallback `#global`)
+- DashEnviosArea: `en_bodega` en funnel, velocidad real desde POD, insight cancelados
+
+### Fixes críticos integridad inventario
+- Cambio de sucursal en VentasPage limpia carrito automáticamente (toast explicativo)
+- Query de lineas filtra estrictamente por `sucursal_id` al vender/reservar
+- Validación: bloquea venta si hay >1 sucursal y ninguna seleccionada
+- Carrito restaurado: re-fetch de lineas dentro del mismo effect (sin race condition)
+
+### Fixes UX
+- Autocomplete direcciones con `AutocompleteSuggestion` API (misma que Google Maps)
+- Cálculo distancia con Haversine + coords pre-geocodificadas (instantáneo, sin API calls)
+- Alertas si dirección de origen o destino no geocodifica con link a corregir
+- Stock 0 al restaurar carrito: resuelto definitivamente
+- Botón "Compartir transportista" usa `VITE_APP_URL` (link siempre a producción)
+
+### Migrations en PROD
+- 127: `envios` — POD fields + estado `en_bodega`
+- 128: `envios` — `costo_pagado + fecha_pago_courier + medio_pago_courier`
+- 129: `envios.token_transportista` + 3 funciones SECURITY DEFINER públicas
 
 ---
 

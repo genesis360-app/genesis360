@@ -40,13 +40,13 @@ function formatFecha(fecha: string) {
   return new Date(fecha).toLocaleDateString('es-AR')
 }
 
-function formatMoneda(valor: number) {
-  return `$${valor.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-}
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+// formatMoneda local: usa moneda del tenant (v1.8.44)
 
 export default function ReportesPage() {
   const { limits } = usePlanLimits()
   const { tenant, user } = useAuthStore()
+  const formatMoneda = (valor: number) => formatMonedaLib(valor, (tenant as any)?.moneda ?? 'ARS')
 
   const [reporteActivo, setReporteActivo] = useState<ReporteId | null>(null)
   const [fechaDesde, setFechaDesde] = useState(() => {

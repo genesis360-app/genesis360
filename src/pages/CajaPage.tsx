@@ -16,9 +16,8 @@ import toast from 'react-hot-toast'
 
 type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'configuracion'
 
-function formatMoneda(v: number) {
-  return `$${v.toLocaleString('es-AR', { minimumFractionDigits: 0 })}`
-}
+// formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 
 const TIPO_LABEL: Record<string, string> = {
   ingreso:               'Venta',
@@ -54,6 +53,7 @@ function extraerMedioPago(tipo: string, concepto: string): string {
 
 export default function CajaPage() {
   const { tenant, user, sucursales } = useAuthStore()
+  const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const [tab, setTab] = useState<Tab>('caja')

@@ -136,6 +136,9 @@ export default function VentasPage() {
   const cuotasBancos: { id: string; nombre: string; cuotas: { cant: number; sin_interes: boolean; interes: number }[] }[] =
     ((tenant as any)?.cuotas_bancos ?? [])
   const [requiereEnvio, setRequiereEnvio] = useState(false)
+  const [envioTransporte, setEnvioTransporte] = useState<'propio' | 'tercero'>('propio')
+  const [envioCourier, setEnvioCourier] = useState('')
+  const [envioServicio, setEnvioServicio] = useState('')
   const [costoEnvioVenta, setCostoEnvioVenta] = useState('')
   const [envioTipoVenta, setEnvioTipoVenta]   = useState<'monto' | 'km'>('monto')
   const [envioKmVenta, setEnvioKmVenta]       = useState('')
@@ -1680,6 +1683,8 @@ export default function VentasPage() {
           destino_descripcion: envioDestinoVenta || null,
           costo_cotizado: costoEnvioNum > 0 ? costoEnvioNum : null,
           fecha_entrega_acordada: envioFechaVenta || null,
+          courier: envioTransporte === 'tercero' ? (envioCourier || null) : 'Envío propio',
+          servicio: envioTransporte === 'tercero' ? (envioServicio.trim() || null) : null,
         })
         qc.invalidateQueries({ queryKey: ['envios'] })
         toast('Envío creado en estado pendiente', { icon: '📦' })
@@ -1689,6 +1694,7 @@ export default function VentasPage() {
       setClienteCCEnabled(false)
       setMediosPago([{ tipo: '', monto: '' }]); setCommittedAsignado(0); setCuotasSeleccion({}); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada'); setCanalPOS('POS')
       setRequiereEnvio(false)
+      setEnvioTransporte('propio'); setEnvioCourier(''); setEnvioServicio('')
       setCostoEnvioVenta(''); setEnvioTipoVenta('monto'); setEnvioKmVenta('')
       setPrecioPorKmVenta(''); setEnvioDestinoVenta(''); setEnvioOrigenVenta('')
       setPreVentaId(null)
@@ -2976,6 +2982,45 @@ export default function VentasPage() {
                   {/* Panel expandido */}
                   {requiereEnvio && (
                     <div className="px-3 pb-3 pt-2 space-y-3 border-t border-accent/20">
+
+                      {/* Tipo de transporte: propio vs courier tercero */}
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo de transporte</p>
+                        <div className="flex gap-2">
+                          {(['propio', 'tercero'] as const).map(t => (
+                            <button key={t} type="button" onClick={() => { setEnvioTransporte(t); if (t === 'propio') { setEnvioCourier(''); setEnvioServicio('') } }}
+                              className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors
+                                ${envioTransporte === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                              {t === 'propio' ? '🚗 Envío propio' : '📦 Courier / 3ro'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Courier + Servicio (solo si tercero) */}
+                      {envioTransporte === 'tercero' && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Courier</label>
+                            <select value={envioCourier} onChange={e => setEnvioCourier(e.target.value)}
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                              <option value="">Seleccionar…</option>
+                              <option value="OCA">OCA</option>
+                              <option value="Correo Argentino">Correo Argentino</option>
+                              <option value="Andreani">Andreani</option>
+                              <option value="DHL Express">DHL Express</option>
+                              <option value="Otro">Otro</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Servicio</label>
+                            <input value={envioServicio} onChange={e => setEnvioServicio(e.target.value)}
+                              placeholder="Ej: Estándar, Urgente"
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          </div>
+                        </div>
+                      )}
+
                       {/* Tipo de costo */}
                       <div className="flex gap-2">
                         {(['monto', 'km'] as const).map(t => (

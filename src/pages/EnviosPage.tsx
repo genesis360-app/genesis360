@@ -57,9 +57,8 @@ const ESTADO_SIGUIENTE: Partial<Record<EstadoEnvio, EstadoEnvio>> = {
 function formatFecha(d: string) {
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
-function formatMoneda(v: number) {
-  return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-}
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+// formatMoneda local: usa moneda del tenant (v1.8.44)
 
 interface FormEnvio {
   venta_id: string; cliente_nombre: string
@@ -83,6 +82,7 @@ const FORM_VACIO: FormEnvio = {
 
 export default function EnviosPage() {
   const { tenant, user } = useAuthStore()
+  const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter, sucursales } = useSucursalFilter()
 
   // Formatea el número de venta igual que VentasPage:

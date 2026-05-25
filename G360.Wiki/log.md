@@ -6,6 +6,145 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-24] update | v1.8.44-dev — Fase 3 reglas Gastos (moneda + IVA + CC proveedor)
+
+### Migration aplicada en DEV
+- **133** `133_moneda_iva_alicuota_cc_autorizaciones.sql`
+  - `tenants.moneda TEXT NOT NULL DEFAULT 'ARS'` con CHECK (ARS, USD, CLP, UYU, PYG, BOB, BRL, PEN, MXN, COP, EUR)
+  - `gastos.alicuota_iva DECIMAL(5,2)` + `gastos_fijos.alicuota_iva DECIMAL(5,2)` para selector de alícuota persistente
+  - Nueva tabla `autorizaciones_cc(tenant_id, proveedor_id, oc_id, motivo_bloqueo, monto, motivo, payload, solicitante_rol, estado, aprobador_rol, ...)` con RLS por tenant
+  - `motivo_bloqueo`: `limite_excedido | oc_vencida`
+
+### Frontend
+- **`src/lib/formato.ts`** (nuevo): `formatMoneda(monto, moneda, opts)` + `simboloMoneda()` + `localeMoneda()` + `MONEDAS_DISPONIBLES`. 11 monedas: ARS, USD, CLP, UYU, PYG, BOB, BRL, PEN, MXN, COP, EUR con símbolo + locale específico.
+- **`src/lib/ccProveedor.ts`** (nuevo): `chequearBloqueoCC(proveedorId, monto)` retorna `{bloqueado, motivo, detalle, ocsVencidas, saldoActual, limite}`. `existeAutorizacionCCAprobada(proveedorId)` verifica autorización vigente <24h sin usar.
+- **`src/components/SolicitarOverrideCCModal.tsx`** (nuevo): modal rojo con motivo obligatorio que crea fila en `autorizaciones_cc`
+- **`src/components/BandejaAutorizacionesCC.tsx`** (nuevo): bandeja paralela a la de gastos, solo DUEÑO aprueba/rechaza overrides de CC
+- **ConfigPage tab Mi Negocio**: nuevo selector "Moneda principal del negocio" con 11 opciones. Aviso explícito de que es etiqueta visual, no conversión.
+- **GastosPage**:
+  - `TASAS_IVA` extendido con 27%, 0% y opción `custom` (input numérico al lado del select)
+  - `calcularIVA(monto, tipoIva, alicuotaCustom)` actualizado para soportar custom
+  - `ivaAutoPorTipoComprobante(tipoComp)` mapea: Factura A/B/Nota A/B/Importación/Ticket → 21% · Factura C/Recibo C/bienes usados → sin_iva. Auto-fill del form al elegir tipo de comprobante (solo si tipo_iva está vacío)
+  - Form `alicuota_iva_custom` para input numérico cuando `tipo_iva === 'custom'`
+  - Persistencia de `alicuota_iva` en payload de gastos y gastos_fijos
+  - Validación nueva en `guardar()`: si la categoría tiene `requiere_sucursal=true` y no hay sucursal activa → toast.error bloqueante. Aviso amber inline cuando el usuario selecciona una categoría con sucursal obligatoria sin tener sucursal activa
+  - Validación nueva en `registrarPagoOC()`: si `montoCC > 0` y proveedor está bloqueado (OC vencida o límite excedido), se abre `SolicitarOverrideCCModal`. Si hay autorización aprobada <24h, se permite continuar.
+  - Tab "Autorizaciones" extendido con sub-tabs **"Gastos"** y **"CC Proveedores"**
+- **Migración formatMoneda a helper central**: GastosPage, CajaPage, ClientesPage, EnviosPage, FacturacionPage, MetricasPage, RentabilidadPage, ReportesPage — ahora cada página usa el helper centralizado con `tenant.moneda`. Cambiar moneda en ConfigPage refleja en toda la app.
+- **`src/lib/supabase.ts`**: `Tenant.moneda?`, `Gasto.alicuota_iva?`, nueva interface `AutorizacionCC`
+
+### Estado al cierre
+- DEV: v1.8.44 con migrations 130-133 aplicadas
+- PROD: v1.8.40
+- Pendiente deploy PROD: bloque DEV completo (v1.8.41 + v1.8.42 + v1.8.43 + v1.8.44)
+- Fases pendientes:
+  - **v1.8.45**: Recursos↔Gastos + Dashboard consolidado + vw_egresos_consolidados
+  - **v1.9.0**: Cierre contable mensual (HITO transversal)
+
+---
+
+## [2026-05-24] update | v1.8.43-dev — Fase 2 reglas Gastos (umbrales + autorizaciones)
+
+### Migration aplicada en DEV
+- **132** `132_gastos_umbrales_autorizaciones.sql`
+  - `sucursales.umbral_gasto_supervisor` + `umbral_gasto_cajero` (DECIMAL nullable)
+  - Nueva tabla `autorizaciones_gasto`: `tipo` (crear/editar/eliminar), `monto`, `descripcion`, `motivo`, `payload JSONB`, `solicitante_id/rol`, `estado` (pendiente/aprobada/rechazada/cancelada), `aprobador_id/rol`, `motivo_rechazo`, índices y RLS por tenant
+  - Helper SQL `puede_aprobar_autorizacion_gasto(solic_rol, aprob_rol)` con reglas: CAJERO → SUPERVISOR+ · SUPERVISOR → ADMIN/DUEÑO
+
+### Frontend
+- **`src/lib/umbralGasto.ts`** (nuevo): helper `evaluarUmbralGasto(rol, sucursal, monto)` y `puedeAprobar(solicRol, aprobRol)`
+  - DUEÑO/ADMIN/SUPER_USUARIO → sin restricción
+  - SUPERVISOR → umbral configurable (NULL = sin restricción)
+  - CAJERO → umbral configurable (NULL = todo requiere autorización)
+  - CONTADOR → no crea/edita gastos (solo IVA)
+- **`src/components/SolicitarAutorizacionGastoModal.tsx`** (nuevo): modal amber con motivo obligatorio que crea fila en `autorizaciones_gasto` con payload completo del gasto pendiente
+- **`src/components/BandejaAutorizacionesGasto.tsx`** (nuevo): lista filtrable pendiente/aprobada/rechazada · expandible con motivo + payload JSON · botón aprobar ejecuta INSERT/UPDATE/DELETE en gastos según `tipo` + marca autorización · botón rechazar requiere motivo · SUPERVISOR ve solo solicitudes de CAJERO, ADMIN/DUEÑO ven todas
+- **`SucursalesPage`**: nuevo bloque "Umbrales de autorización de gastos" con 2 inputs por sucursal
+- **`GastosPage`**:
+  - Query `sucursal-umbrales-gasto` carga umbrales según `sucursalId` activo (o primera del tenant)
+  - En `guardar()`, después de armar `payload`, llama a `evaluarUmbralGasto`; si supera → abre `SolicitarAutorizacionGastoModal` con el payload y NO inserta
+  - Nuevo tab "Autorizaciones" visible solo a DUEÑO/ADMIN/SUPERVISOR/SUPER_USUARIO con badge amber de pendientes (refetch cada 30s)
+  - CAJERO solo ve sus propios gastos (filter `usuario_id = user.id` en queries de gastos + historial)
+  - CONTADOR: botón "Nuevo gasto" oculto · aviso visible 📊 en modal de edición · monto bloqueado (disabled)
+- **`src/lib/actividadLog.ts`**: agregada entidad `autorizacion_gasto` + acciones `solicitar`/`aprobar`/`rechazar`
+- **`src/lib/supabase.ts`**: nueva interface `AutorizacionGasto`, `Sucursal` con campos `umbral_gasto_*`
+
+### Estado al cierre
+- DEV: v1.8.43 con migrations 130-132 aplicadas
+- PROD: v1.8.40
+- Pendiente deploy PROD: bloque DEV completo (v1.8.41 + v1.8.42 + v1.8.43)
+- Fases pendientes:
+  - **v1.8.44**: IVA auto + selector alícuota + CC proveedor (límite/vencimiento/override) + multi-sucursal por categoría
+  - **v1.8.45**: Recursos↔Gastos + Dashboard consolidado
+  - **v1.9.0**: Cierre contable mensual (HITO transversal)
+
+---
+
+## [2026-05-24] update | v1.8.42-dev — Fase 1 reglas Gastos (migrations 130, 131)
+
+### Migrations aplicadas en DEV
+- **130** `categorias_gasto`: catálogo por tenant + seed de 16 categorías predefinidas + flag `requiere_sucursal` + trigger AFTER INSERT en tenants para alta automática. FK opcional `gastos.categoria_id` + `gastos_fijos.categoria_id`. Verificado: 7 tenants en DEV recibieron las 16 categorías (7 con sucursal obligatoria).
+- **131** `tenants.gastos_*`: 7 nuevas columnas — 4 reglas combinables OR de obligatoriedad de comprobante (`siempre`, `si_iva`, `si_monto + monto_umbral`, `si_deduce_ganancias`) + `dias_alerta_borrador` (default 7) + `dias_alerta_anticipo_oc` (default 15). Default activo: `gastos_comp_siempre=true`.
+
+### Frontend
+- `src/lib/supabase.ts`: nueva interface `CategoriaGasto`, `Gasto.categoria_id`, 7 campos `gastos_*` en `Tenant`.
+- `GastosPage`: la lista hardcoded `CATEGORIAS_GASTO` ahora es `CATEGORIAS_GASTO_FALLBACK`; selector de categoría carga desde `categorias_gasto` (forma activa) con fallback.
+- `GastosPage` tab Fijos: badges de estado por gasto fijo: 🟢 Dentro de fecha · 🟡 Pendiente este mes · 🔴 Atrasado (+Nd) · ✅ Generado este mes. Atraso usa `tenant.gastos_dias_alerta_borrador` como umbral. "Generado" se detecta matcheando `gastos.descripcion === fijo.descripcion` dentro del mes actual.
+- `GastosPage` tab OC: badge **💰 Anticipo** cuando `monto_pagado > 0 && estado != recibida/recibida_parcial/cancelada`. Color naranja por default, **rojo** si pasaron más de `gastos_dias_alerta_anticipo_oc` días desde la OC sin recibir mercadería.
+- `ConfigPage`: nueva tab **Gastos** (icono TrendingDown) con 3 secciones — Reglas de comprobante (4 toggles combinables OR + input monto umbral si "Si supera monto" está activo), Alertas (2 inputs: días borrador + días anticipo OC), Categorías (CRUD con tabla, agregar custom, toggles `requiere_sucursal` y `activo`, delete solo para custom).
+
+### Estado al cierre
+- DEV: v1.8.42 con migrations 130-131 aplicadas
+- PROD: v1.8.40 (sin cambios en esta sesión)
+- Pendiente deploy PROD: bloque DEV completo (v1.8.41 selector courier + v1.8.42 reglas gastos Fase 1)
+
+---
+
+## [2026-05-24] update | relevamiento reglas Gastos + plan implementación 5 fases
+
+### Reglas de negocio relevadas (sesión con GO)
+
+Decisiones clave del módulo **Gastos** documentadas en `wiki/development/reglas-negocio.md`:
+
+- **Permisos por rol** con doble umbral por sucursal (`umbral_gasto_supervisor` + `umbral_gasto_cajero`)
+- **CONTADOR**: ve todo, edita solo IVA del gasto
+- **CAJERO**: solo en su caja abierta; editar/eliminar requiere autorización SUPERVISOR+
+- **Cierre contable mensual**: feature transversal nueva (Gastos + Ventas + Caja + OC) → hito v1.9.0
+- **Multi-sucursal por categoría**: `categorias_gasto.requiere_sucursal` define obligatoriedad
+- **Borradores**: badge visual + alerta tras N días configurable (creador + DUEÑO + SUPERVISOR)
+- **Comprobante**: 4 reglas combinables OR en Config → Gastos (default: siempre obligatorio)
+- **Cuotas**: gasto madre + N `gasto_cuotas` (sin tocar caja); cada cuota genera egreso al pagarse
+- **Gastos fijos**: manual con "Generar hoy" + indicadores visuales 🟢🟡🔴✅ + notificación + email diario
+- **OC anticipo**: permitido; badge "💰 Anticipo" + alerta N días sin recibir (sin estado nuevo)
+- **CC proveedor**: límite + vencimiento + bloqueo solo CC + override DUEÑO con auditoría
+- **IVA**: auto según tipo (A/B/C) + selector alícuota (21/10.5/27/0/custom)
+- **Categorías**: catálogo predefinido + custom; predefinidas se desactivan, no se eliminan
+- **Sueldos**: NO migran a Gastos, se quedan en RRHH → Nómina. Integración via `vw_egresos_consolidados`
+- **Recursos↔Gastos**: mantenimiento acumulado por default + checkbox capitalizar opt-in
+
+### Plan de implementación (5 fases) en `sources/raw/project_pendientes.md`
+
+| Release | Migrations | Resumen |
+|---------|-----------|---------|
+| v1.8.42 | 130, 131 | Categorías + config comprobante + indicadores fijos + OC anticipo |
+| v1.8.43 | 132 | Umbrales + autorizaciones + RLS por rol + alerta borrador |
+| v1.8.44 | 133 | IVA auto + selector alícuota + CC proveedor + multi-sucursal |
+| v1.8.45 | 134 | Recursos↔Gastos + Dashboard consolidado + vista vw_egresos_consolidados |
+| **v1.9.0** | 135 | **HITO**: Cierre contable mensual (transversal) + notas de corrección |
+
+### Pendientes de relevar (próximas sesiones)
+
+- RRHH (detalle completo) · Devoluciones · Ventas (límites/reapertura) · Clientes (límite deuda) · Compras (derivadas/over-receipt) · Envíos (reglas extra)
+
+---
+
+## [2026-05-23] update | PROD deploy v1.8.40 — modulo Envios completo
+
+- PR #115 `dev → main` mergeado ✅
+- Migrations 127-129 aplicadas en PROD ✅
+- GitHub release v1.8.40 como latest ✅
+- App version DEV y PROD = v1.8.40
+
 ## [2026-05-23] update | v1.8.40-dev — ISS-166/167/168/169 + fixes carrito/numeración/autocomplete
 
 ### ISS-166 — Botón cámara en modal POD

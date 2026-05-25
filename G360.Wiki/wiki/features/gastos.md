@@ -1,9 +1,9 @@
 ---
 title: Módulo Gastos
 category: features
-tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra]
-sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-19
+tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto]
+sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md]
+updated: 2026-05-24
 ---
 
 # Módulo Gastos
@@ -189,6 +189,193 @@ comprobante_titulo TEXT
 
 ---
 
+## Categorías de gasto (v1.8.42 · migration 130)
+
+Catálogo predefinido + custom por tenant. Tabla `categorias_gasto(tenant_id, nombre, requiere_sucursal, activo, predefinida, orden)`.
+
+### Seed automático
+- 16 categorías base sembradas en cada tenant nuevo via trigger `AFTER INSERT ON tenants`
+- Backfill ejecutado en migration 130 para los tenants existentes
+- 7 marcan `requiere_sucursal=true` (Alquiler, Servicios, Internet/Telefonía, Mercadería, Insumos, Mantenimiento, Limpieza) y 9 son globales
+
+### Reglas
+- **Predefinidas** no se eliminan, solo se desactivan (toggle `activo`)
+- **Custom** se eliminan o editan libremente
+- `requiere_sucursal=true` → el form de gasto exige sucursal_id (validación frontend, próxima fase backend)
+- Selector de categoría en GastosPage carga desde la tabla; si la query falla usa `CATEGORIAS_GASTO_FALLBACK` hardcoded
+
+### FK opcional
+- `gastos.categoria_id` y `gastos_fijos.categoria_id` agregadas como nullable (retrocompat: el campo `categoria TEXT` sigue siendo el principal)
+- Migración de datos (texto → FK) se hará en fase futura
+
+---
+
+## Reglas de obligatoriedad de comprobante (v1.8.42 · migration 131)
+
+Configurables en ConfigPage → tab Gastos. Si **cualquier** regla activa aplica → comprobante obligatorio.
+
+| Columna en `tenants` | Default | Descripción |
+|---|---|---|
+| `gastos_comp_siempre` | `true` | Comprobante siempre obligatorio (regla por defecto) |
+| `gastos_comp_si_iva` | `false` | Obligatorio si `iva_deducible` o `conciliado_iva` |
+| `gastos_comp_si_monto` | `false` | Obligatorio si `monto > gastos_comp_monto_umbral` |
+| `gastos_comp_si_deduce_ganancias` | `false` | Obligatorio si `deduce_ganancias` o `gasto_negocio` |
+| `gastos_comp_monto_umbral` | `null` | Umbral para regla por monto |
+
+Validación frontend en próxima fase (v1.8.43 con permisos completos).
+
+---
+
+## Indicadores visuales en Gastos fijos (v1.8.42)
+
+Badge por fila en tab Fijos según estado del mes actual:
+
+- 🟢 **Dentro de fecha** — día del mes ≥ hoy, sin generar
+- 🟡 **Pendiente este mes** — pasó `dia_vencimiento`, sin generar, dentro del umbral de atraso
+- 🔴 **Atrasado (+Nd)** — más de `tenant.gastos_dias_alerta_borrador` días desde el vencimiento sin generar
+- ✅ **Generado este mes** — existe un gasto en `gastos` del mes con la misma descripción
+
+Detección "ya generado": match por `descripcion === fijo.descripcion` dentro del mes corriente. En fase futura, FK directa `gastos.gasto_fijo_id`.
+
+---
+
+## Badge "💰 Anticipo" en Órdenes de Compra (v1.8.42)
+
+Aparece cuando:
+- `monto_pagado > 0` (hay pago realizado)
+- Y `estado NOT IN ('recibida', 'recibida_parcial', 'cancelada')` (sin recepción de mercadería)
+
+**Color**:
+- Naranja (default) — anticipo normal
+- Rojo — pasaron más de `tenant.gastos_dias_alerta_anticipo_oc` días sin recibir mercadería (incluye contador `Nd`)
+
+Sin estado nuevo en OC; mitigación visual de bajo costo para detectar exposición financiera con anticipos sin entregar.
+
+---
+
+## Moneda principal del tenant (v1.8.44 · migration 133)
+
+- `tenants.moneda TEXT NOT NULL DEFAULT 'ARS'` con CHECK (ARS, USD, CLP, UYU, PYG, BOB, BRL, PEN, MXN, COP, EUR)
+- Configurable en **ConfigPage → Mi Negocio** (sólo DUEÑO)
+- **Etiqueta visual**: cambia símbolo y formato numérico sin conversión automática
+- Helper centralizado `src/lib/formato.ts`: `formatMoneda(monto, moneda)`, `simboloMoneda()`, `localeMoneda()`, `MONEDAS_DISPONIBLES`
+- Migración aplicada en: Gastos, Caja, Clientes, Envíos, Facturación, Métricas, Rentabilidad, Reportes
+
+---
+
+## Selector de alícuota IVA + auto según tipo de comprobante (v1.8.44)
+
+### Opciones disponibles
+21% · 10,5% · 27% · 0% · Exento · Sin IVA · **Personalizado** (input numérico)
+
+### Auto-fill al elegir tipo de comprobante
+Si `tipo_iva` está vacío al elegir el tipo, se asigna automáticamente:
+- Factura A / Factura B / Nota A / Nota B / Factura de Importación / Ticket → 21%
+- Factura C / Recibo C / Comprobante de bienes usados → sin_iva
+
+No sobrescribe selección manual. El usuario siempre puede ajustar.
+
+### Persistencia
+- `gastos.alicuota_iva DECIMAL(5,2)` — guarda el porcentaje aplicado (parseado de `tipo_iva` o del input custom)
+- `gastos_fijos.alicuota_iva DECIMAL(5,2)` — heredado al generar gasto
+
+---
+
+## Multi-sucursal por categoría (v1.8.44)
+
+- `categorias_gasto.requiere_sucursal BOOLEAN` (existente desde migration 130)
+- **Frontend (nuevo)**: al elegir una categoría con `requiere_sucursal=true` y no hay sucursal activa:
+  - Aviso amber inline debajo del selector de categoría
+  - Bloqueo en `guardar()` con `toast.error` claro
+
+---
+
+## Bloqueo de Cuenta Corriente con proveedores (v1.8.44 · migration 133)
+
+### Reglas
+- **OC vencida**: si el proveedor tiene OC con CC vencida sin pagar (saldo > 0) → bloqueo
+- **Límite excedido**: si `saldo_actual_CC + monto_CC_nuevo > limite_credito_proveedor` → bloqueo
+- **Override DUEÑO**: solo el DUEÑO/ADMIN/SUPER_USUARIO puede aprobar. Aprobación válida por 24h sin usar.
+
+### Tabla `autorizaciones_cc`
+- `motivo_bloqueo`: `limite_excedido | oc_vencida`
+- `proveedor_id`, `oc_id`, `monto`, `motivo`, `payload`
+- `solicitante_id/rol`, `estado` (pendiente/aprobada/rechazada/cancelada)
+- `aprobador_id/rol`, `resolved_at`, `motivo_rechazo`
+
+### Flujo
+1. En GastosPage > Tab OC > "Pagar/CC", el usuario agrega CC al pago
+2. `chequearBloqueoCC(proveedorId, montoCC)` corre antes del submit
+3. Si bloqueado y no hay aprobación vigente → `SolicitarOverrideCCModal` (motivo obligatorio)
+4. DUEÑO ve la solicitud en GastosPage > Tab Autorizaciones > Sub-tab "CC Proveedores"
+5. Al aprobar, el solicitante puede reintentar el pago (función `existeAutorizacionCCAprobada` valida <24h)
+
+### Componentes
+- `src/lib/ccProveedor.ts`: `chequearBloqueoCC`, `existeAutorizacionCCAprobada`
+- `src/components/SolicitarOverrideCCModal.tsx`: modal rojo con motivo obligatorio
+- `src/components/BandejaAutorizacionesCC.tsx`: bandeja paralela a la de gastos
+
+---
+
+## Umbrales y Autorizaciones (v1.8.43 · migration 132)
+
+### Umbrales por sucursal
+- `sucursales.umbral_gasto_supervisor`: monto máximo de gasto que un SUPERVISOR puede crear/editar/eliminar sin pedir autorización del DUEÑO. `NULL = sin restricción`.
+- `sucursales.umbral_gasto_cajero`: monto máximo de gasto que un CAJERO puede crear/editar sin pedir autorización del SUPERVISOR. `NULL = todo requiere autorización`.
+
+Configurables en **SucursalesPage** → bloque "Umbrales de autorización de gastos" (2 inputs por sucursal).
+
+### Reglas de umbral por rol (`src/lib/umbralGasto.ts`)
+
+| Rol | Comportamiento |
+|---|---|
+| DUEÑO, ADMIN, SUPER_USUARIO | Sin restricción nunca |
+| SUPERVISOR | Hasta `umbral_gasto_supervisor` (NULL → sin restricción). Si supera → solicita al DUEÑO |
+| CAJERO | Hasta `umbral_gasto_cajero` (NULL → todo pide auth). Si supera → solicita al SUPERVISOR |
+| CONTADOR | No crea/edita gastos (solo IVA del gasto) |
+
+Aplica tanto al **crear** como al **editar** un gasto.
+
+### Tabla `autorizaciones_gasto`
+- `tipo`: `crear | editar | eliminar`
+- `monto`, `descripcion`, `motivo`
+- `payload JSONB`: snapshot del gasto a aplicar cuando se aprueba
+- `solicitante_id`, `solicitante_rol`
+- `estado`: `pendiente | aprobada | rechazada | cancelada`
+- `aprobador_id`, `aprobador_rol`, `resolved_at`, `motivo_rechazo`
+- Helper SQL `puede_aprobar_autorizacion_gasto(solic_rol, aprob_rol)`: CAJERO → SUPERVISOR+ · SUPERVISOR → ADMIN/DUEÑO
+
+### Flujo en GastosPage
+1. Al guardar un gasto, después de armar el `payload`, se llama a `evaluarUmbralGasto`
+2. Si supera el umbral → se abre `SolicitarAutorizacionGastoModal` con el `payload` completo (NO se inserta el gasto)
+3. El usuario completa motivo y envía la solicitud → fila en `autorizaciones_gasto` con estado `pendiente`
+4. SUPERVISOR/ADMIN/DUEÑO ven el nuevo tab **"Autorizaciones"** con badge amber de pendientes (refetch 30s)
+5. Al aprobar: se ejecuta INSERT/UPDATE/DELETE en `gastos` según `tipo` + se marca `aprobada`
+6. Al rechazar: se requiere motivo, se marca `rechazada`
+
+### Restricciones de rol
+- **CAJERO**: las queries de `gastos` y `historial` filtran por `usuario_id = user.id` — solo ve sus propios gastos
+- **CONTADOR**: botón "Nuevo gasto" oculto · aviso visible 📊 en modal de edición · input de `monto` deshabilitado
+
+### Componentes nuevos
+- `src/components/SolicitarAutorizacionGastoModal.tsx` — modal amber con motivo obligatorio
+- `src/components/BandejaAutorizacionesGasto.tsx` — bandeja filtrable (pendiente/aprobada/rechazada) · expandible con motivo + payload JSON · aprobar/rechazar inline
+- `src/lib/umbralGasto.ts` — helpers `evaluarUmbralGasto()` y `puedeAprobar()`
+
+---
+
+## Tab "Gastos" en ConfigPage (v1.8.42)
+
+Nueva tab con 3 secciones:
+
+1. **Reglas de comprobante** — 4 toggles (combinables OR) + input monto umbral si "Si supera monto" está activo
+2. **Alertas** — 2 inputs: días borrador (default 7) + días anticipo OC (default 15)
+3. **Categorías de gasto** — tabla con CRUD; toggle `requiere_sucursal` + toggle `activo` por fila; agregar custom; eliminar solo permitido en custom
+
+Acceso: DUEÑO (canEdit).
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/caja]]
@@ -196,3 +383,5 @@ comprobante_titulo TEXT
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/features/alertas]]
 - [[wiki/features/recursos]]
+- [[wiki/development/reglas-negocio]]
+- [[wiki/features/configuracion]]

@@ -14,9 +14,8 @@ type Periodo = '7d' | '30d' | '90d' | 'mes' | 'custom'
 
 const COLORES = [BRAND.color.primary, BRAND.color.accent, '#7DB9E8', '#22c55e', '#f97316', '#8b5cf6', '#ef4444', '#eab308']
 
-function formatMoneda(v: number) {
-  return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-}
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+// formatMoneda local: usa moneda del tenant (v1.8.44)
 
 function StatCard({ label, value, sub, icon: Icon, color, trend }: any) {
   return (
@@ -40,6 +39,7 @@ function StatCard({ label, value, sub, icon: Icon, color, trend }: any) {
 
 export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = {}) {
   const { tenant } = useAuthStore()
+  const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const [periodo, setPeriodo] = useState<Periodo>('30d')
   const [fechaDesdeCustom, setFechaDesdeCustom] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0]

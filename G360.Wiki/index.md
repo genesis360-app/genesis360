@@ -19,16 +19,16 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/autenticacion-onboarding]] | Google OAuth, roles, trial · fix registro · defaults seed (Sucursal 1 + Caja + motivos + estados) | ✅ |
 | [[wiki/features/productos]] | ProductosPage + ProductoFormPage · scan ticket IA (v1.8.38) · 6 cards · marca/UdM/variantes/shelf life · grupos · ubicación por sucursal · inactivos visibles | ✅ |
 | [[wiki/features/inventario-stock]] | LPNs, FIFO/FEFO, stock sucursal, bulk edit · conteos borrador · rebaje masivo fix · shortcuts ESC/ENTER · filtros pill · defaults producto · modales inline | ✅ |
-| [[wiki/features/ventas-pos]] | Carrito, 3 modos, CC parcial (fix ISS-090), cuotas, ticket sucursal · ISS-162/163/164 envío autocompletado + cálculo km automático | ✅ |
+| [[wiki/features/ventas-pos]] | Carrito · 3 modos · CC parcial · cuotas · ticket por sucursal · envío con autocompletado + Haversine · selector courier propio/tercero · multi-sucursal estricto (cambio limpia carrito) | ✅ |
 | [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja · caja predeterminada ★ · cajas.sucursal_id · Caja Principal en seed | ✅ |
-| [[wiki/features/gastos]] | Variables, fijos, IVA, OC · efectivo en caja · CC en OC · comprobante OC · ISS-044 ticket OC | ✅ |
+| [[wiki/features/gastos]] | Variables, fijos, IVA, OC · efectivo en caja · CC en OC · **v1.8.42**: categorías predefinidas + custom · reglas comprobante · indicadores fijos · badge anticipo OC · **v1.8.43**: umbrales por rol/sucursal + bandeja autorizaciones · **v1.8.44**: IVA auto + selector alícuota + sucursal obligatoria por categoría + bloqueo CC proveedor + override DUEÑO | ✅ |
 | [[wiki/features/devoluciones]] | Stock serializado/no-serializado, NC, caja | ✅ |
 | [[wiki/features/clientes-proveedores]] | CRM, CC, OC, domicilios · globales entre sucursales · cancelar deuda CC (ISS-107) | ✅ |
 | [[wiki/features/facturacion-afip]] | AFIP WSFE, tipos A/B/C, AfipSDK, FacturacionPage 4 tabs | ✅ DEV |
 | [[wiki/features/rrhh]] | 5 fases: empleados, nómina, vacaciones, asistencia, supervisor | ✅ |
 | [[wiki/features/wms]] | Estructuras, ubicaciones, KITs, kitting, conteos, recepciones · scan ticket en RecepcionesPage (v1.8.38) | ✅ |
 | [[wiki/features/marketplace]] | API pública, webhook saliente, publicación por producto | ✅ |
-| [[wiki/features/envios]] | Propio (Google Maps + KM auto) · jerarquía $/km global/sucursal · Courier (tarifas config) · canal auto | ✅ |
+| [[wiki/features/envios]] | Propio + Courier · POD (foto cámara) · estado `en_bodega` · página pública transportista `/transporte/:token` · pestaña Pagos Courier · QR codes en remito · LPN+ubicación en panel · bloqueo si no pagado | ✅ |
 | [[wiki/features/notificaciones]] | Tabla real, campana, email, diferencia apertura caja — v1.5.0 | ✅ |
 | [[wiki/features/suscripciones-planes]] | Planes Free/Básico/Pro/Enterprise, trial, Mercado Pago | ✅ |
 | [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku (scan-product) + scan-ticket IA (v1.8.38): ticket supermercado → recepciones + productos | ✅ |
@@ -60,7 +60,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | 121 + 086b en DEV (001-121) · PROD 001-110 · descripción completa | ✅ |
+| [[wiki/database/migraciones]] | 133 + 086b en DEV (001-133) · PROD 001-129 · descripción completa | ✅ |
 | [[wiki/database/rls-policies]] | Patrón subquery, funciones helper, Storage, Edge Functions | ✅ |
 | [[wiki/database/triggers]] | Stock, numeración, integraciones, nómina, stock mínimo | ✅ |
 
@@ -100,7 +100,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/development/deploy]] | Vercel + Supabase, dominios, env vars, comandos | ✅ |
 | [[wiki/development/testing]] | 154+ unit tests Vitest + Playwright E2E todos los roles | ✅ |
 | [[wiki/development/supabase-dev-vs-prod]] | DEV vs PROD, flujo migraciones, EF deploy, pg_cron | ✅ |
-| [[wiki/development/reglas-negocio]] | Reglas relevadas con GO: caja, ventas, inventario + UAT | ✅ |
+| [[wiki/development/reglas-negocio]] | Reglas relevadas con GO: caja, ventas, inventario, clientes, **gastos** (v1.8.42-v1.9.0 pipeline) + UAT | ✅ |
 
 ---
 
@@ -139,4 +139,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-19 — 52 páginas + 3 manuales · 8 fuentes en raw/ · 127 migraciones DEV+PROD (126 + 086b) · v1.8.37 DEV+PROD*
+*Última actualización: 2026-05-24 — 52 páginas + 3 manuales · 8 fuentes en raw/ · DEV 133 + 086b / PROD 129 + 086b migraciones · v1.8.44 DEV / v1.8.40 PROD · Fases 1+2+3 reglas Gastos + Moneda multi-país implementados*

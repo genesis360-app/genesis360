@@ -60,7 +60,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | 133 + 086b en DEV (001-133) · PROD 001-129 · descripción completa | ✅ |
+| [[wiki/database/migraciones]] | 133 + 086b en DEV y PROD (001-133) · descripción completa | ✅ |
 | [[wiki/database/rls-policies]] | Patrón subquery, funciones helper, Storage, Edge Functions | ✅ |
 | [[wiki/database/triggers]] | Stock, numeración, integraciones, nómina, stock mínimo | ✅ |
 
@@ -139,4 +139,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-24 — 52 páginas + 3 manuales · 8 fuentes en raw/ · DEV 133 + 086b / PROD 129 + 086b migraciones · v1.8.44 DEV / v1.8.40 PROD · Fases 1+2+3 reglas Gastos + Moneda multi-país implementados*
+*Última actualización: 2026-05-24 — 52 páginas + 3 manuales · 8 fuentes en raw/ · DEV y PROD ambos en 133 + 086b · v1.8.44 DEV y PROD · Fases 1+2+3 reglas Gastos + Moneda multi-país desplegados a PROD*

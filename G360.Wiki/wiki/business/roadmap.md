@@ -13,7 +13,7 @@ updated: 2026-05-24
 
 ---
 
-## v1.8.44 — Reglas de Negocio Gastos Fase 3 + Moneda multi-país (DEV ✅, pend. PROD)
+## v1.8.44 — Reglas de Negocio Gastos Fases 1-3 + Moneda multi-país (PROD ✅)
 
 **Estado:** completado en DEV
 **Fecha:** 2026-05-24
@@ -39,7 +39,7 @@ Ver `wiki/development/reglas-negocio.md` sección "Plan de implementación".
 
 ---
 
-## v1.8.43 — Reglas de Negocio Gastos Fase 2: Umbrales + Autorizaciones (DEV ✅, pend. PROD)
+## v1.8.43 — Reglas de Negocio Gastos Fase 2: Umbrales + Autorizaciones (PROD ✅ vía v1.8.44)
 
 **Estado:** completado en DEV
 **Fecha:** 2026-05-24
@@ -61,7 +61,7 @@ Ver `wiki/development/reglas-negocio.md` sección "Plan de implementación".
 
 ---
 
-## v1.8.42 — Reglas de Negocio Gastos Fase 1 (DEV ✅, pend. PROD)
+## v1.8.42 — Reglas de Negocio Gastos Fase 1 (PROD ✅ vía v1.8.44)
 
 **Estado:** completado en DEV  
 **Fecha:** 2026-05-24

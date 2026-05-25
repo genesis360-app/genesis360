@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-24] update | PROD deploy v1.8.44 — Reglas Gastos Fases 1-3 + Moneda multi-país
+
+- PR #116 `dev → main` mergeado ✅ (commit f8f4e434)
+- Vercel auto-deploy PROD `dpl_FqCFSJA64t19A9GXGQs7gEibpMmy` en estado READY ✅
+- Migrations 130-133 aplicadas en PROD ✅ (4 tenants × 16 categorías = 64 categorías_gasto seedeadas + moneda default ARS + ambas tablas de autorizaciones creadas)
+- GitHub release v1.8.44 como **latest** ✅
+- DEV y PROD ahora ambas en v1.8.44
+
 ## [2026-05-24] update | v1.8.44-dev — Fase 3 reglas Gastos (moneda + IVA + CC proveedor)
 
 ### Migration aplicada en DEV

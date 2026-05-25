@@ -10,36 +10,19 @@ type: project
 
 ---
 
-## Estado actual DEV v1.8.44 / PROD v1.8.40 (cierre sesión 2026-05-24)
+## Estado actual DEV v1.8.44 / PROD v1.8.44 (cierre sesión 2026-05-24)
 
 - APP_VERSION DEV: `v1.8.44` en `src/config/brand.ts` ✅
-- APP_VERSION PROD: `v1.8.40` ✅ (PR #115 mergeado, release latest)
+- APP_VERSION PROD: `v1.8.44` ✅ (PR #116 mergeado, release v1.8.44 como `latest`)
 - Migrations DEV: 001–133 ✅
-- Migrations PROD: 001–129 ✅
+- Migrations PROD: 001–133 ✅ (al día)
+- Vercel deploys READY: PROD `dpl_FqCFSJA64t19A9GXGQs7gEibpMmy` + dev preview `dpl_9K6EitMuWxjhFxNffaq9CigRm5xg`
 
-### Pendiente de deploy a PROD (en DEV como v1.8.44)
-- Selector courier propio/tercero en VentasPage — v1.8.41
-- Fix: link transportista usa `VITE_APP_URL` — v1.8.41
-- **Fase 1 Reglas Gastos** (v1.8.42):
-  - Migrations 130 + 131 (categorias_gasto + seed automático + tenants.gastos_*)
-  - GastosPage: selector categorías dinámico desde tabla + indicadores estado en fijos (🟢🟡🔴✅) + badge 💰 Anticipo en OC
-  - ConfigPage: nueva tab "Gastos" con CRUD categorías + reglas comprobante + alertas
-- **Fase 2 Reglas Gastos** (v1.8.43):
-  - Migration 132 (sucursales.umbral_gasto_supervisor/cajero + tabla autorizaciones_gasto + helper `puede_aprobar_autorizacion_gasto`)
-  - `src/lib/umbralGasto.ts` con helpers `evaluarUmbralGasto` + `puedeAprobar`
-  - `SolicitarAutorizacionGastoModal` y `BandejaAutorizacionesGasto` componentes nuevos
-  - GastosPage: validación umbral al guardar + tab nuevo "Autorizaciones" con badge de pendientes
-  - SucursalesPage: bloque "Umbrales de autorización de gastos" con 2 inputs por sucursal
-  - CAJERO ve solo sus gastos · CONTADOR aviso + monto bloqueado · botón "Nuevo gasto" oculto para CONTADOR
-- **Fase 3 Reglas Gastos + Moneda** (v1.8.44):
-  - Migration 133 (tenants.moneda + gastos.alicuota_iva + tabla autorizaciones_cc)
-  - `src/lib/formato.ts`: `formatMoneda(monto, moneda)` + 11 monedas disponibles (ARS, USD, CLP, UYU, PYG, BOB, BRL, PEN, MXN, COP, EUR)
-  - `src/lib/ccProveedor.ts`: `chequearBloqueoCC` + `existeAutorizacionCCAprobada`
-  - `SolicitarOverrideCCModal` y `BandejaAutorizacionesCC` componentes nuevos
-  - ConfigPage Mi Negocio: selector de moneda principal
-  - GastosPage: IVA auto al elegir tipo de comprobante + selector alícuota con custom + validación sucursal obligatoria por categoría + bloqueo CC con OC vencida o límite excedido + override DUEÑO con auditoría
-  - Sub-tabs en "Autorizaciones": Gastos / CC Proveedores
-  - Migración a `formatMoneda` central en: GastosPage, CajaPage, ClientesPage, EnviosPage, FacturacionPage, MetricasPage, RentabilidadPage, ReportesPage
+### Lo desplegado a PROD en esta sesión (todo dentro de v1.8.44)
+- **v1.8.41** — Selector courier propio/tercero en VentasPage + fix link transportista con `VITE_APP_URL`
+- **v1.8.42** — Fase 1 Reglas Gastos: migrations 130+131 + categorías_gasto seed automático + config comprobante + indicadores fijos 🟢🟡🔴✅ + badge anticipo OC + tab Gastos en ConfigPage
+- **v1.8.43** — Fase 2 Reglas Gastos: migration 132 + umbrales por rol/sucursal + autorizaciones_gasto + helpers `umbralGasto.ts` + modales `SolicitarAutorizacionGastoModal` y `BandejaAutorizacionesGasto` + restricciones CAJERO/CONTADOR
+- **v1.8.44** — Fase 3 Reglas Gastos + Moneda multi-país: migration 133 + `tenants.moneda` (11 monedas LatAm + EUR/USD) + `formato.ts` central + `ccProveedor.ts` + `SolicitarOverrideCCModal` + `BandejaAutorizacionesCC` + IVA auto + selector alícuota + sucursal obligatoria por categoría + bloqueo CC con override DUEÑO + 8 páginas migradas a `formatMoneda`
 
 ---
 

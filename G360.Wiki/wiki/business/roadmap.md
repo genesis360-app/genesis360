@@ -3,13 +3,44 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-05-24
+updated: 2026-05-25
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 24 de Mayo, 2026
+**Última actualización:** 25 de Mayo, 2026
+
+---
+
+## v1.9.0 — HITO: Reglas Gastos Fases 4 + 5 — Capitalización + Cierre Contable (DEV ✅)
+
+**Estado:** completado en DEV · pendiente deploy PROD
+**Fecha:** 2026-05-25
+
+### Migrations
+- **134** `gastos.capitaliza_recurso BOOLEAN` con CHECK constraint (TRUE solo si recurso_id IS NOT NULL) + índice parcial · VIEW `vw_egresos_consolidados` (gastos + rrhh_salarios.pagado=true) con `security_invoker=true`
+- **135** Cierre contable mensual: tabla `cierres_contables(tenant, periodo, fecha_cierre, cerrado_por, cerrado_por_rol, observaciones, totales JSONB)` UNIQUE(tenant, periodo) + 5 triggers BEFORE UPDATE/DELETE en `gastos/ventas/caja_movimientos/caja_sesiones/ordenes_compra` + RPCs `cerrar_periodo` y `reabrir_periodo` + `gastos.gasto_padre_id` + `gastos.es_correccion`
+
+### Fase 4 — Recursos↔Gastos + Dashboard consolidado
+- **Capitalización**: checkbox "Sumar al valor del recurso" en form de gasto (visible solo si hay recurso_id) → `capitaliza_recurso=true` suma al valor patrimonial
+- **RecursosPage**: nueva card stats "Mantenimiento acumulado" + chips por recurso "🔧 Mantto" + "📈 Cap." con cantidad de gastos · valor patrimonial = base + capitalizaciones
+- **DashGastosArea**: banner "Costo laboral del período (RRHH)" debajo de los 4 KPIs con link a `/rrhh?tab=nomina` + total consolidado Gastos + RRHH
+- **RentabilidadPage**: nueva sección "Estado de resultados (período)" con líneas separadas Ventas / CMV / Ganancia bruta / Gastos operativos / **Sueldos pagados (RRHH)** / Resultado neto
+
+### Fase 5 — Cierre Contable Mensual (HITO transversal)
+- **DB**: triggers BEFORE UPDATE/DELETE bloquean modificaciones en periodos cerrados con RAISE EXCEPTION SQLSTATE P0001. Helpers `ultimo_cierre_hasta(tenant)` y `periodo_cerrado(tenant, fecha)`
+- **RPC `cerrar_periodo`**: DUEÑO/SUPERVISOR/CONTADOR/SUPER_USUARIO/ADMIN. Valida que el periodo sea > último cierre y no esté en curso. Snapshot de totales (gastos, ventas, sueldos, OC) en JSONB
+- **RPC `reabrir_periodo`**: solo último cierre + solo DUEÑO/ADMIN/SUPER_USUARIO
+- **Frontend**:
+  - Hook `useCierreContable()` → `{ ultimoCierre, isPeriodoCerrado(fecha) }` + helper `manejarErrorPeriodoCerrado()`
+  - Componente `CierresContablesPanel` con preview live + listado expandible con totales snapshot + botón "Reabrir"
+  - Nuevo tab "Cierres contables" en GastosPage
+  - Notas de corrección: candado 🔒 reemplaza Editar/Eliminar para gastos cerrados · modal de corrección pre-rellena datos del padre, fecha=hoy, monto negativo permitido · persiste `gasto_padre_id` + `es_correccion=true`
+  - VentasPage: handler "Eliminar venta" intercepta y muestra el mensaje del trigger
+
+### Doc nuevo
+- `wiki/development/cierre-contable.md` — concepto, schema, triggers, RPCs, hook, componente, casos de uso, pendientes opcionales
 
 ---
 

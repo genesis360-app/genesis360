@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Award } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Award, ArrowRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
@@ -66,6 +67,27 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
         .order('created_at', { ascending: false })
       if (error) throw error
       return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  // Egresos del período: Gastos + Sueldos pagados (Migration 134 — vw_egresos_consolidados)
+  const { data: egresos = { gastos: 0, sueldos: 0, empleados: 0 } } = useQuery({
+    queryKey: ['rentabilidad-egresos', tenant?.id, periodo],
+    queryFn: async () => {
+      const desde = getFechaDesde(periodo)
+      const desdeDate = desde.split('T')[0]
+      const [gRes, sRes] = await Promise.all([
+        supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdeDate),
+        supabase.from('rrhh_salarios')
+          .select('neto, empleado_id')
+          .eq('tenant_id', tenant!.id).eq('pagado', true)
+          .gte('fecha_pago', desde),
+      ])
+      const gastos = (gRes.data ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
+      const sueldos = (sRes.data ?? []).reduce((a: number, s: any) => a + (s.neto ?? 0), 0)
+      const empleados = new Set((sRes.data ?? []).map((s: any) => s.empleado_id)).size
+      return { gastos, sueldos, empleados }
     },
     enabled: !!tenant,
   })
@@ -220,6 +242,55 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
               color="bg-purple-100 text-purple-600"
               trend={kpis.margenPromedio !== null ? (kpis.margenPromedio >= 20 ? 'good' : 'bad') : undefined}
             />
+          </div>
+
+          {/* P&L simplificado (Migration 134 — Fase 4) */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSign size={16} className="text-accent" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Estado de resultados (período)</h2>
+            </div>
+            {(() => {
+              const ingresos = kpis.totalVentas
+              const costoMercaderia = kpis.totalCosto
+              const gananciaBruta = ingresos - costoMercaderia
+              const otrosGastos = egresos.gastos
+              const sueldos = egresos.sueldos
+              const resultadoNeto = gananciaBruta - otrosGastos - sueldos
+              const row = (label: string, value: number, opts: { strong?: boolean; muted?: boolean; sign?: '+' | '-'; sub?: string; link?: { to: string; label: string } } = {}) => (
+                <div className={`flex items-center justify-between py-2 ${opts.strong ? 'border-t border-gray-200 dark:border-gray-700 mt-1 pt-3' : ''}`}>
+                  <div className="min-w-0">
+                    <p className={`text-sm ${opts.strong ? 'font-semibold text-gray-800 dark:text-gray-100' : opts.muted ? 'text-gray-500 dark:text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>{label}</p>
+                    {opts.sub && <p className="text-xs text-gray-400 dark:text-gray-500">{opts.sub}</p>}
+                    {opts.link && (
+                      <Link to={opts.link.to} className="text-xs text-accent hover:underline inline-flex items-center gap-1 mt-0.5">
+                        {opts.link.label} <ArrowRight size={11} />
+                      </Link>
+                    )}
+                  </div>
+                  <p className={`text-sm font-mono tabular-nums ${opts.strong ? 'font-bold text-gray-900 dark:text-white' : opts.sign === '-' ? 'text-red-500' : 'text-gray-700 dark:text-gray-300'}`}>
+                    {opts.sign === '-' && value > 0 ? '−' : ''}{formatMoneda(value)}
+                  </p>
+                </div>
+              )
+              return (
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {row('Ventas despachadas', ingresos)}
+                  {row('Costo de mercadería vendida', costoMercaderia, { sign: '-', muted: !costoMercaderia })}
+                  {row('Ganancia bruta', gananciaBruta, { strong: true })}
+                  {row('Gastos operativos', otrosGastos, { sign: '-' })}
+                  {row('Sueldos pagados (RRHH)', sueldos, {
+                    sign: '-',
+                    sub: egresos.empleados > 0 ? `${egresos.empleados} empleado${egresos.empleados !== 1 ? 's' : ''} liquidado${egresos.empleados !== 1 ? 's' : ''}` : 'Sin liquidaciones pagadas',
+                    link: { to: '/rrhh?tab=nomina', label: 'Ver nómina' },
+                  })}
+                  {row('Resultado neto', resultadoNeto, { strong: true })}
+                </div>
+              )
+            })()}
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-3 italic">
+              Estimación basada en gastos registrados, liquidaciones pagadas y ventas despachadas del período. No reemplaza un balance contable formal.
+            </p>
           </div>
 
           {/* Gráfico por producto */}

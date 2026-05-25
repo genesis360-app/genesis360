@@ -224,6 +224,19 @@ export function DashGastosArea() {
         .eq('estado', 'pendiente')
         .lt('fecha_vencimiento', hoy)
 
+      // Sueldos pagados en el período (Migration 134 — Fase 4)
+      const { data: sueldosPeriodo = [] } = await supabase.from('rrhh_salarios')
+        .select('neto, fecha_pago, periodo, empleado_id')
+        .eq('tenant_id', tenant!.id)
+        .eq('pagado', true)
+        .gte('fecha_pago', desde).lte('fecha_pago', hasta)
+
+      const { data: sueldosPrev = [] } = await supabase.from('rrhh_salarios')
+        .select('neto')
+        .eq('tenant_id', tenant!.id)
+        .eq('pagado', true)
+        .gte('fecha_pago', desdePrev).lte('fecha_pago', hastaPrev)
+
       // ── KPI 1: Total Salidas ──────────────────────────────────────────────
       const totalGastos = (gastos ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
       const totalGastosPrev = (gastosPrev ?? []).reduce((a: number, g: any) => a + (g.monto ?? 0), 0)
@@ -330,6 +343,11 @@ export function DashGastosArea() {
         }
       }
 
+      // ── Costo laboral del período (RRHH) ─────────────────────────────────
+      const costoLaboral = (sueldosPeriodo ?? []).reduce((a: number, s: any) => a + (s.neto ?? 0), 0)
+      const costoLaboralPrev = (sueldosPrev ?? []).reduce((a: number, s: any) => a + (s.neto ?? 0), 0)
+      const empleadosLiquidados = new Set((sueldosPeriodo ?? []).map((s: any) => s.empleado_id)).size
+
       return {
         totalGastos, totalGastosPrev,
         burnRate, burnRatePrev,
@@ -344,6 +362,8 @@ export function DashGastosArea() {
         anomalia: { cat: mayorAnomaliaCat, pct: mayorAnomaliaPct, monto: mayorAnomaliaActual },
         categoriasDisp,
         totalVentas,
+        // Migration 134 — costo laboral
+        costoLaboral, costoLaboralPrev, empleadosLiquidados,
       }
     },
     enabled: !!tenant,
@@ -629,6 +649,51 @@ export function DashGastosArea() {
           )}
         </div>
       </div>
+
+      {/* ── Banner: Costo laboral del período (RRHH, Migration 134) ──────────── */}
+      <a
+        href="/rrhh?tab=nomina"
+        className="block bg-surface border border-border-ds rounded-xl p-4 shadow-sm hover:border-accent transition-colors"
+      >
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+            <DollarSign size={20} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-muted">Costo laboral del período (RRHH)</p>
+            <div className="flex items-baseline gap-3 flex-wrap mt-0.5">
+              <p className="text-2xl font-semibold text-primary font-mono tabular-nums">
+                {isLoading ? '—' : fmt(gData?.costoLaboral ?? 0)}
+              </p>
+              {(gData?.empleadosLiquidados ?? 0) > 0 && (
+                <p className="text-xs text-muted">
+                  {gData!.empleadosLiquidados} empleado{gData!.empleadosLiquidados !== 1 ? 's' : ''} liquidado{gData!.empleadosLiquidados !== 1 ? 's' : ''}
+                </p>
+              )}
+              {(() => {
+                const b = badgeVsInv(gData?.costoLaboral ?? null, gData?.costoLaboralPrev ?? null)
+                if (!b) return null
+                const cls = b.color === 'danger' ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+                  : b.color === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-gray-100 dark:bg-gray-700 text-muted'
+                return <span className={`text-xs px-2 py-0.5 rounded ${cls}`}>{b.label}</span>
+              })()}
+            </div>
+            <p className="text-xs text-muted mt-1">
+              Sueldos efectivamente pagados a empleados — NO incluido en los KPIs de Salidas Operativas. Click para ver Nómina.
+            </p>
+          </div>
+          {(gData?.totalGastos ?? 0) > 0 && (gData?.costoLaboral ?? 0) > 0 && (
+            <div className="text-right flex-shrink-0">
+              <p className="text-xs text-muted">Egresos consolidados</p>
+              <p className="text-sm font-semibold text-primary">
+                {fmt((gData?.totalGastos ?? 0) + (gData?.costoLaboral ?? 0))}
+              </p>
+              <p className="text-[11px] text-muted">Gastos + RRHH</p>
+            </div>
+          )}
+        </div>
+      </a>
 
       {/* ── Capa 2: Gráficos ─────────────────────────────────────────────────── */}
 

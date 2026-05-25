@@ -409,8 +409,35 @@ export interface Gasto {
   fecha: string
   usuario_id?: string
   notas?: string
+  // Migration 097 — link a recurso (mejora/mantenimiento/adquisicion)
+  recurso_id?: string | null
   // Migration 133 — selector de alícuota IVA
   alicuota_iva?: number | null
+  // Migration 134 — capitaliza al valor del recurso (mejora capitalizable)
+  capitaliza_recurso?: boolean
+  // Migration 135 — notas de corrección (no se aplica directo, son metadata)
+  gasto_padre_id?: string | null
+  es_correccion?: boolean
+  created_at: string
+}
+
+export interface CierreContable {
+  id: string
+  tenant_id: string
+  periodo: string            // YYYY-MM-01
+  fecha_cierre: string
+  cerrado_por: string
+  cerrado_por_rol: string
+  observaciones?: string | null
+  totales?: {
+    total_gastos: number
+    total_ventas: number
+    total_sueldos: number
+    total_oc: number
+    count_gastos: number
+    count_ventas: number
+    count_correcciones: number
+  } | null
   created_at: string
 }
 

@@ -3875,7 +3875,15 @@ export default function VentasPage() {
                 <button onClick={async () => {
                   if (!confirm('¿Eliminar definitivamente esta venta? Esta acción no se puede deshacer.')) return
                   const { error } = await supabase.from('ventas').delete().eq('id', ventaDetalle.id)
-                  if (error) { toast.error('Error al eliminar'); return }
+                  if (error) {
+                    const msg = (error.message ?? '').toLowerCase()
+                    if (msg.includes('periodo contable cerrado') || msg.includes('período contable cerrado')) {
+                      toast.error(error.message)
+                    } else {
+                      toast.error('Error al eliminar')
+                    }
+                    return
+                  }
                   toast.success('Venta eliminada')
                   setVentaDetalle(null)
                   qc.invalidateQueries({ queryKey: ['ventas'] })

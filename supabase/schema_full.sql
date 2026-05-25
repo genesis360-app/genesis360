@@ -2121,3 +2121,110 @@ CREATE OR REPLACE FUNCTION fn_saldo_proveedor_cc(p_proveedor_id UUID)
 RETURNS DECIMAL(12,2) LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT COALESCE(SUM(monto), 0) FROM proveedor_cc_movimientos WHERE proveedor_id = p_proveedor_id;
 $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 130 — categorias_gasto + seed por tenant (v1.8.42)
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS categorias_gasto (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre             TEXT NOT NULL,
+  requiere_sucursal  BOOLEAN NOT NULL DEFAULT FALSE,
+  activo             BOOLEAN NOT NULL DEFAULT TRUE,
+  predefinida        BOOLEAN NOT NULL DEFAULT FALSE,
+  orden              INT,
+  created_at         TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (tenant_id, nombre)
+);
+CREATE INDEX IF NOT EXISTS idx_categorias_gasto_tenant ON categorias_gasto(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_categorias_gasto_activo ON categorias_gasto(tenant_id, activo) WHERE activo;
+ALTER TABLE categorias_gasto ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "categorias_gasto_tenant" ON categorias_gasto FOR ALL
+  USING      (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+  WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+ALTER TABLE gastos        ADD COLUMN IF NOT EXISTS categoria_id UUID REFERENCES categorias_gasto(id) ON DELETE SET NULL;
+ALTER TABLE gastos_fijos  ADD COLUMN IF NOT EXISTS categoria_id UUID REFERENCES categorias_gasto(id) ON DELETE SET NULL;
+
+-- Función seed_categorias_gasto + trigger AFTER INSERT en tenants para alta automática
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 131 — settings de Gastos en tenants (v1.8.42)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE tenants
+  ADD COLUMN IF NOT EXISTS gastos_comp_si_iva                BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS gastos_comp_si_monto              BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS gastos_comp_monto_umbral          DECIMAL(12,2),
+  ADD COLUMN IF NOT EXISTS gastos_comp_si_deduce_ganancias   BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS gastos_comp_siempre               BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS gastos_dias_alerta_borrador       INT     NOT NULL DEFAULT 7,
+  ADD COLUMN IF NOT EXISTS gastos_dias_alerta_anticipo_oc    INT     NOT NULL DEFAULT 15;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 132 — umbrales gasto por sucursal + autorizaciones_gasto (v1.8.43)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE sucursales
+  ADD COLUMN IF NOT EXISTS umbral_gasto_supervisor DECIMAL(12,2),
+  ADD COLUMN IF NOT EXISTS umbral_gasto_cajero     DECIMAL(12,2);
+
+CREATE TABLE IF NOT EXISTS autorizaciones_gasto (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  sucursal_id     UUID REFERENCES sucursales(id) ON DELETE SET NULL,
+  gasto_id        UUID REFERENCES gastos(id) ON DELETE SET NULL,
+  tipo            TEXT NOT NULL CHECK (tipo IN ('crear','editar','eliminar')),
+  monto           DECIMAL(12,2),
+  descripcion     TEXT,
+  motivo          TEXT,
+  payload         JSONB,
+  solicitante_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  solicitante_rol TEXT NOT NULL,
+  estado          TEXT NOT NULL DEFAULT 'pendiente'
+                    CHECK (estado IN ('pendiente','aprobada','rechazada','cancelada')),
+  aprobador_id    UUID REFERENCES users(id),
+  aprobador_rol   TEXT,
+  resolved_at     TIMESTAMPTZ,
+  motivo_rechazo  TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_autoriz_gasto_tenant_estado ON autorizaciones_gasto(tenant_id, estado);
+ALTER TABLE autorizaciones_gasto ENABLE ROW LEVEL SECURITY;
+CREATE POLICY autoriz_gasto_tenant ON autorizaciones_gasto FOR ALL
+  USING      (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+  WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+-- helper: ¿se puede aprobar esta solicitud según rol?
+-- (CAJERO → SUPERVISOR+, SUPERVISOR → ADMIN/DUEÑO)
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 133 — moneda del tenant + alícuota IVA + autorizaciones_cc (v1.8.44)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS moneda TEXT NOT NULL DEFAULT 'ARS'
+  CHECK (moneda IN ('ARS','USD','CLP','UYU','PYG','BOB','BRL','PEN','MXN','COP','EUR'));
+
+ALTER TABLE gastos       ADD COLUMN IF NOT EXISTS alicuota_iva DECIMAL(5,2);
+ALTER TABLE gastos_fijos ADD COLUMN IF NOT EXISTS alicuota_iva DECIMAL(5,2);
+
+CREATE TABLE IF NOT EXISTS autorizaciones_cc (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  proveedor_id    UUID NOT NULL REFERENCES proveedores(id) ON DELETE CASCADE,
+  oc_id           UUID REFERENCES ordenes_compra(id) ON DELETE SET NULL,
+  motivo_bloqueo  TEXT NOT NULL CHECK (motivo_bloqueo IN ('limite_excedido','oc_vencida')),
+  monto           DECIMAL(12,2),
+  motivo          TEXT,
+  solicitante_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  solicitante_rol TEXT NOT NULL,
+  estado          TEXT NOT NULL DEFAULT 'pendiente'
+                    CHECK (estado IN ('pendiente','aprobada','rechazada','cancelada')),
+  aprobador_id    UUID REFERENCES users(id),
+  aprobador_rol   TEXT,
+  resolved_at     TIMESTAMPTZ,
+  motivo_rechazo  TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_autoriz_cc_tenant_estado ON autorizaciones_cc(tenant_id, estado);
+ALTER TABLE autorizaciones_cc ENABLE ROW LEVEL SECURITY;
+CREATE POLICY autoriz_cc_tenant ON autorizaciones_cc FOR ALL
+  USING      (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+  WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));

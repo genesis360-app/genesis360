@@ -7,9 +7,8 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 
 type Periodo = '7d' | '30d' | '90d' | 'mes'
 
-function formatMoneda(v: number) {
-  return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-}
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+// formatMoneda local: usa moneda del tenant (v1.8.44)
 
 function formatPct(v: number) {
   return `${v.toFixed(1)}%`
@@ -45,6 +44,7 @@ function KpiCard({ label, value, sub, icon: Icon, color, trend }: any) {
 
 export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: boolean }) {
   const { tenant } = useAuthStore()
+  const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const [periodo, setPeriodo] = useState<Periodo>('30d')
 
   const { data: ventas = [], isLoading } = useQuery({

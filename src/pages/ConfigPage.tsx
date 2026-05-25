@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign } from 'lucide-react'
+import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
@@ -11,7 +12,7 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
+type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
 type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades'
 type ConSubTab = 'integraciones' | 'api'
@@ -380,7 +381,7 @@ function MarketplaceSection() {
 export default function ConfigPage() {
   const searchParams = new URLSearchParams(window.location.search)
   const initialTab = searchParams.get('tab') as Tab | null
-  const VALID_TABS: Tab[] = ['negocio','ventas','caja','clientes','inventario','envios','facturacion','rrhh','alertas','notificaciones','conectividad']
+  const VALID_TABS: Tab[] = ['negocio','ventas','caja','clientes','inventario','envios','gastos','facturacion','rrhh','alertas','notificaciones','conectividad']
   const [tab, setTab] = useState<Tab>(VALID_TABS.includes(initialTab as Tab) ? initialTab as Tab : 'negocio')
   const [estadosSubTab, setEstadosSubTab] = useState<EstadosSubTab>('estados')
   const [ventasSubTab, setVentasSubTab] = useState<VentasSubTab>('metodos')
@@ -438,6 +439,8 @@ export default function ConfigPage() {
   // Fase 2 — identidad
   const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
   const [bizPrecioRedondeo,  setBizPrecioRedondeo]  = useState<string>(tenant?.precio_redondeo ?? 'none')
+  // Moneda principal (v1.8.44)
+  const [bizMoneda,          setBizMoneda]          = useState<string>((tenant as any)?.moneda ?? 'ARS')
 
   // Fase 3 — cliente en POS
   const [bizClienteObligatorio,     setBizClienteObligatorio]     = useState<string>(tenant?.cliente_obligatorio ?? 'nunca')
@@ -451,6 +454,18 @@ export default function ConfigPage() {
   const [bizClaveMaestra,           setBizClaveMaestra]           = useState<string>('')
   const [showClaveMaestra,          setShowClaveMaestra]          = useState(false)
   const [bizBovedaUmbral,           setBizBovedaUmbral]           = useState<string>(tenant?.boveda_umbral_caja != null ? String(tenant.boveda_umbral_caja) : '')
+
+  // Gastos — reglas comprobante + alertas (v1.8.42)
+  const t142 = tenant as any
+  const [gCompSiIva,           setGCompSiIva]           = useState<boolean>(t142?.gastos_comp_si_iva ?? false)
+  const [gCompSiMonto,         setGCompSiMonto]         = useState<boolean>(t142?.gastos_comp_si_monto ?? false)
+  const [gCompMontoUmbral,     setGCompMontoUmbral]     = useState<string>(t142?.gastos_comp_monto_umbral != null ? String(t142.gastos_comp_monto_umbral) : '')
+  const [gCompSiGanancias,     setGCompSiGanancias]     = useState<boolean>(t142?.gastos_comp_si_deduce_ganancias ?? false)
+  const [gCompSiempre,         setGCompSiempre]         = useState<boolean>(t142?.gastos_comp_siempre ?? true)
+  const [gDiasAlertaBorrador,  setGDiasAlertaBorrador]  = useState<string>(String(t142?.gastos_dias_alerta_borrador ?? 7))
+  const [gDiasAlertaAnticipo,  setGDiasAlertaAnticipo]  = useState<string>(String(t142?.gastos_dias_alerta_anticipo_oc ?? 15))
+  const [savingGastosCfg,      setSavingGastosCfg]      = useState(false)
+  const [newCategoria,         setNewCategoria]         = useState<{ nombre: string; requiere_sucursal: boolean }>({ nombre: '', requiere_sucursal: false })
 
 
   // Puntos de venta AFIP
@@ -480,6 +495,7 @@ export default function ConfigPage() {
       // Fase 2
       email_legal:           bizEmailLegal.trim() || null,
       precio_redondeo:       bizPrecioRedondeo,
+      moneda:                bizMoneda,
       // Fase 3 — cliente en POS
       cliente_obligatorio:      bizClienteObligatorio,
       cliente_datos_minimos:    bizClienteDatosMinimos,
@@ -498,6 +514,74 @@ export default function ConfigPage() {
     if (error) toast.error(error.message)
     else { setTenant(data); toast.success('Datos actualizados') }
     setSavingBiz(false)
+  }
+
+  // Gastos — categorías + settings (v1.8.42)
+  const { data: categoriasGasto = [], isLoading: loadingCatGasto } = useQuery({
+    queryKey: ['categorias-gasto-config', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categorias_gasto')
+        .select('id, nombre, requiere_sucursal, activo, predefinida, orden')
+        .eq('tenant_id', tenant!.id)
+        .order('orden', { ascending: true, nullsFirst: false })
+        .order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'gastos',
+  })
+
+  const addCategoriaGasto = async () => {
+    const nombre = newCategoria.nombre.trim()
+    if (!nombre) return toast.error('Nombre vacío')
+    const { error } = await supabase.from('categorias_gasto').insert({
+      tenant_id: tenant!.id, nombre, requiere_sucursal: newCategoria.requiere_sucursal,
+      activo: true, predefinida: false,
+    })
+    if (error) return toast.error(error.message)
+    toast.success('Categoría agregada')
+    setNewCategoria({ nombre: '', requiere_sucursal: false })
+    qc.invalidateQueries({ queryKey: ['categorias-gasto-config'] })
+    qc.invalidateQueries({ queryKey: ['categorias-gasto'] })
+  }
+
+  const toggleCategoriaGastoActivo = async (id: string, activo: boolean) => {
+    const { error } = await supabase.from('categorias_gasto').update({ activo: !activo }).eq('id', id)
+    if (error) return toast.error(error.message)
+    qc.invalidateQueries({ queryKey: ['categorias-gasto-config'] })
+    qc.invalidateQueries({ queryKey: ['categorias-gasto'] })
+  }
+
+  const toggleCategoriaGastoRequiereSucursal = async (id: string, requiere: boolean) => {
+    const { error } = await supabase.from('categorias_gasto').update({ requiere_sucursal: !requiere }).eq('id', id)
+    if (error) return toast.error(error.message)
+    qc.invalidateQueries({ queryKey: ['categorias-gasto-config'] })
+  }
+
+  const deleteCategoriaGasto = async (id: string, predefinida: boolean) => {
+    if (predefinida) return toast.error('Las categorías predefinidas no se pueden eliminar, solo desactivar')
+    if (!confirm('¿Eliminar esta categoría? Los gastos existentes mantendrán el nombre como texto.')) return
+    const { error } = await supabase.from('categorias_gasto').delete().eq('id', id)
+    if (error) return toast.error(error.message)
+    toast.success('Categoría eliminada')
+    qc.invalidateQueries({ queryKey: ['categorias-gasto-config'] })
+    qc.invalidateQueries({ queryKey: ['categorias-gasto'] })
+  }
+
+  const handleSaveGastosCfg = async () => {
+    setSavingGastosCfg(true)
+    const payload: any = {
+      gastos_comp_si_iva:              gCompSiIva,
+      gastos_comp_si_monto:            gCompSiMonto,
+      gastos_comp_monto_umbral:        gCompMontoUmbral ? parseFloat(gCompMontoUmbral) : null,
+      gastos_comp_si_deduce_ganancias: gCompSiGanancias,
+      gastos_comp_siempre:             gCompSiempre,
+      gastos_dias_alerta_borrador:     Math.max(1, parseInt(gDiasAlertaBorrador) || 7),
+      gastos_dias_alerta_anticipo_oc:  Math.max(1, parseInt(gDiasAlertaAnticipo) || 15),
+    }
+    const { data, error } = await supabase.from('tenants').update(payload).eq('id', tenant!.id).select('*').single()
+    if (error) toast.error(error.message)
+    else { setTenant(data); toast.success('Reglas de gastos actualizadas') }
+    setSavingGastosCfg(false)
   }
 
   // Categorías
@@ -1499,6 +1583,7 @@ export default function ConfigPage() {
         { id: 'clientes',       label: 'Clientes',        icon: Users },
         { id: 'inventario',     label: 'Inventario',      icon: Package },
         { id: 'envios',         label: 'Envíos',          icon: Truck },
+        { id: 'gastos',         label: 'Gastos',          icon: TrendingDown },
         { id: 'facturacion',    label: 'Facturación',     icon: Receipt },
         { id: 'rrhh',           label: 'RRHH',            icon: UserCog, placeholder: true },
       ],
@@ -1638,6 +1723,19 @@ export default function ConfigPage() {
               placeholder="ej. admin@minegocio.com"
               className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Para notificaciones fiscales y envío de facturas.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5">
+              <DollarSign size={14} className="text-accent" /> Moneda principal del negocio
+            </label>
+            <select value={bizMoneda} disabled={!canEdit}
+              onChange={e => setBizMoneda(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+              {MONEDAS_DISPONIBLES.map(m => (
+                <option key={m.code} value={m.code}>{m.simbolo}  {m.code} — {m.nombre}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Define el símbolo y el formato numérico que se usa en toda la app. <strong>No convierte precios existentes</strong> — solo cambia cómo se muestran.</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Redondeo de precios de venta</label>
@@ -2703,6 +2801,167 @@ export default function ConfigPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ═══════════ TAB: GASTOS (v1.8.42) ═══════════ */}
+      {tab === 'gastos' && (
+        <div className="space-y-4">
+          {/* Reglas de comprobante */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Receipt size={18} className="text-accent" /> Cuándo es obligatorio adjuntar comprobante
+            </h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
+              Si <strong>cualquier</strong> regla activa aplica al gasto, el comprobante será obligatorio para guardarlo.
+            </p>
+
+            {[
+              { v: gCompSiempre,     s: setGCompSiempre,     label: 'Siempre obligatorio',                       desc: 'Todo gasto pide comprobante. Default activo.' },
+              { v: gCompSiIva,       s: setGCompSiIva,       label: 'Si el gasto deduce IVA',                    desc: 'iva_deducible o conciliado_iva marcados.' },
+              { v: gCompSiGanancias, s: setGCompSiGanancias, label: 'Si deduce ganancias o es gasto del negocio', desc: 'deduce_ganancias o gasto_negocio marcados.' },
+              { v: gCompSiMonto,     s: setGCompSiMonto,     label: 'Si supera un monto umbral',                  desc: 'Solo se pide comprobante por arriba del monto definido.' },
+            ].map((r, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                <button onClick={() => canEdit && r.s(!r.v)} disabled={!canEdit} className="flex-shrink-0 mt-0.5">
+                  {r.v ? <ToggleRight size={26} className="text-accent" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-700 dark:text-gray-200 text-sm">{r.label}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{r.desc}</p>
+                </div>
+              </div>
+            ))}
+
+            {gCompSiMonto && (
+              <div className="flex items-center gap-3 pl-12">
+                <label className="text-sm text-gray-700 dark:text-gray-300">Monto umbral:</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={gCompMontoUmbral}
+                  onChange={e => setGCompMontoUmbral(e.target.value)} placeholder="Ej: 50000" min="0" step="0.01" disabled={!canEdit}
+                  className="w-40 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                <span className="text-xs text-gray-400">A partir de este monto, se exigirá comprobante</span>
+              </div>
+            )}
+          </div>
+
+          {/* Alertas */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Bell size={18} className="text-accent" /> Alertas
+            </h2>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Días para alertar gastos en Borrador</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={gDiasAlertaBorrador}
+                  onChange={e => setGDiasAlertaBorrador(e.target.value)} min="1" max="365" disabled={!canEdit}
+                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si un gasto sin medio de pago lleva más de N días, alerta al DUEÑO + SUPERVISOR.</p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Días para alertar Anticipo en OC sin recibir</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={gDiasAlertaAnticipo}
+                  onChange={e => setGDiasAlertaAnticipo(e.target.value)} min="1" max="365" disabled={!canEdit}
+                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si una OC tiene anticipo (pago hecho) y pasaron N días sin recibir mercadería, el badge se pone en rojo.</p>
+              </div>
+            </div>
+            {canEdit && (
+              <div className="flex justify-end pt-2">
+                <button onClick={handleSaveGastosCfg} disabled={savingGastosCfg}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingGastosCfg ? 'Guardando...' : 'Guardar reglas'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Categorías de gasto */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Tag size={18} className="text-accent" /> Categorías de gasto
+              <span className="ml-auto text-xs text-gray-400">{(categoriasGasto as any[]).filter((c: any) => c.activo).length} activas / {(categoriasGasto as any[]).length} total</span>
+            </h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
+              Las predefinidas no se pueden eliminar (sólo desactivar). Las categorías con <strong>sucursal obligatoria</strong> exigen elegir sucursal al cargar el gasto.
+            </p>
+
+            {canEdit && (
+              <div className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-3 flex flex-col sm:flex-row gap-2 sm:items-end">
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Nombre de la nueva categoría</label>
+                  <input type="text" value={newCategoria.nombre}
+                    onChange={e => setNewCategoria(c => ({ ...c, nombre: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') addCategoriaGasto() }}
+                    placeholder="Ej: Suscripciones de software"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" />
+                </div>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                  <input type="checkbox" checked={newCategoria.requiere_sucursal}
+                    onChange={e => setNewCategoria(c => ({ ...c, requiere_sucursal: e.target.checked }))}
+                    className="rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent" />
+                  Sucursal obligatoria
+                </label>
+                <button onClick={addCategoriaGasto}
+                  className="px-4 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-xl flex items-center gap-1 justify-center">
+                  <Plus size={14} /> Agregar
+                </button>
+              </div>
+            )}
+
+            {loadingCatGasto ? (
+              <p className="text-sm text-gray-400">Cargando…</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 dark:border-gray-700 text-left text-xs text-gray-500 dark:text-gray-400 uppercase">
+                      <th className="py-2 px-2 font-medium">Nombre</th>
+                      <th className="py-2 px-2 font-medium text-center">Sucursal oblig.</th>
+                      <th className="py-2 px-2 font-medium text-center">Activa</th>
+                      <th className="py-2 px-2 font-medium text-center">Origen</th>
+                      <th className="py-2 px-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(categoriasGasto as any[]).map((c: any) => (
+                      <tr key={c.id} className={`border-b border-gray-50 dark:border-gray-700/50 ${!c.activo ? 'opacity-50' : ''}`}>
+                        <td className="py-2 px-2 text-gray-700 dark:text-gray-200">{c.nombre}</td>
+                        <td className="py-2 px-2 text-center">
+                          <button onClick={() => canEdit && toggleCategoriaGastoRequiereSucursal(c.id, c.requiere_sucursal)} disabled={!canEdit}
+                            title={c.requiere_sucursal ? 'Sucursal obligatoria' : 'Sucursal opcional'}>
+                            {c.requiere_sucursal
+                              ? <ToggleRight size={22} className="text-accent" />
+                              : <ToggleLeft size={22} className="text-gray-300 dark:text-gray-600" />}
+                          </button>
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <button onClick={() => canEdit && toggleCategoriaGastoActivo(c.id, c.activo)} disabled={!canEdit}
+                            title={c.activo ? 'Desactivar' : 'Activar'}>
+                            {c.activo
+                              ? <ToggleRight size={22} className="text-green-500" />
+                              : <ToggleLeft size={22} className="text-gray-300 dark:text-gray-600" />}
+                          </button>
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          {c.predefinida
+                            ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-900/20 text-accent">Predefinida</span>
+                            : <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">Custom</span>}
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          {canEdit && !c.predefinida && (
+                            <button onClick={() => deleteCategoriaGasto(c.id, c.predefinida)}
+                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg">
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

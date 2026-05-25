@@ -10,16 +10,86 @@ type: project
 
 ---
 
-## Estado actual DEV v1.8.41 / PROD v1.8.40 (cierre sesión 2026-05-23)
+## Estado actual DEV v1.8.44 / PROD v1.8.40 (cierre sesión 2026-05-24)
 
-- APP_VERSION DEV: `v1.8.41` en `src/config/brand.ts` ✅
+- APP_VERSION DEV: `v1.8.44` en `src/config/brand.ts` ✅
 - APP_VERSION PROD: `v1.8.40` ✅ (PR #115 mergeado, release latest)
-- Migrations DEV: 001–129 ✅
-- Migrations PROD: 001–129 ✅ (al día)
+- Migrations DEV: 001–133 ✅
+- Migrations PROD: 001–129 ✅
 
-### Pendiente de deploy a PROD (en DEV como v1.8.41)
-- Selector courier propio/tercero en VentasPage (al activar Incluir envío)
-- Fix: link transportista usa `VITE_APP_URL` para apuntar a PROD desde dev preview
+### Pendiente de deploy a PROD (en DEV como v1.8.44)
+- Selector courier propio/tercero en VentasPage — v1.8.41
+- Fix: link transportista usa `VITE_APP_URL` — v1.8.41
+- **Fase 1 Reglas Gastos** (v1.8.42):
+  - Migrations 130 + 131 (categorias_gasto + seed automático + tenants.gastos_*)
+  - GastosPage: selector categorías dinámico desde tabla + indicadores estado en fijos (🟢🟡🔴✅) + badge 💰 Anticipo en OC
+  - ConfigPage: nueva tab "Gastos" con CRUD categorías + reglas comprobante + alertas
+- **Fase 2 Reglas Gastos** (v1.8.43):
+  - Migration 132 (sucursales.umbral_gasto_supervisor/cajero + tabla autorizaciones_gasto + helper `puede_aprobar_autorizacion_gasto`)
+  - `src/lib/umbralGasto.ts` con helpers `evaluarUmbralGasto` + `puedeAprobar`
+  - `SolicitarAutorizacionGastoModal` y `BandejaAutorizacionesGasto` componentes nuevos
+  - GastosPage: validación umbral al guardar + tab nuevo "Autorizaciones" con badge de pendientes
+  - SucursalesPage: bloque "Umbrales de autorización de gastos" con 2 inputs por sucursal
+  - CAJERO ve solo sus gastos · CONTADOR aviso + monto bloqueado · botón "Nuevo gasto" oculto para CONTADOR
+- **Fase 3 Reglas Gastos + Moneda** (v1.8.44):
+  - Migration 133 (tenants.moneda + gastos.alicuota_iva + tabla autorizaciones_cc)
+  - `src/lib/formato.ts`: `formatMoneda(monto, moneda)` + 11 monedas disponibles (ARS, USD, CLP, UYU, PYG, BOB, BRL, PEN, MXN, COP, EUR)
+  - `src/lib/ccProveedor.ts`: `chequearBloqueoCC` + `existeAutorizacionCCAprobada`
+  - `SolicitarOverrideCCModal` y `BandejaAutorizacionesCC` componentes nuevos
+  - ConfigPage Mi Negocio: selector de moneda principal
+  - GastosPage: IVA auto al elegir tipo de comprobante + selector alícuota con custom + validación sucursal obligatoria por categoría + bloqueo CC con OC vencida o límite excedido + override DUEÑO con auditoría
+  - Sub-tabs en "Autorizaciones": Gastos / CC Proveedores
+  - Migración a `formatMoneda` central en: GastosPage, CajaPage, ClientesPage, EnviosPage, FacturacionPage, MetricasPage, RentabilidadPage, ReportesPage
+
+---
+
+## Pipeline Reglas de Negocio — Gastos (v1.8.42 → v1.9.0)
+
+Relevamiento completo en sesión 2026-05-24. Detalle de reglas en `wiki/development/reglas-negocio.md` (sección Gastos).
+
+### v1.8.42 — Quick wins (Fase 1) · migrations 130-131
+- Tabla `categorias_gasto` + seed ~15-20 categorías base + flag `predefinida` + `requiere_sucursal`
+- ConfigPage tab Gastos: 4 toggles obligatoriedad comprobante (OR) + monto umbral + `dias_alerta_borrador` + `dias_alerta_anticipo_oc`
+- Default seed: comprobante obligatorio siempre
+- Indicadores visuales gastos fijos (🟢 dentro de fecha · 🟡 pendiente este mes · 🔴 atrasado · ✅ generado)
+- Badge "💰 Anticipo" en OC + alerta N días sin recibir (`monto_pagado > 0 AND recepcion_estado='pendiente'`)
+
+### v1.8.43 — Permisos y umbrales (Fase 2) · migration 132
+- `sucursales.umbral_gasto_supervisor` + `umbral_gasto_cajero`
+- Tabla `autorizaciones_gasto` (solicitud → aprobada/rechazada por SUPERVISOR+)
+- RLS Gastos por rol: CAJERO solo crea/edita en su caja abierta · CONTADOR solo edita IVA · DUEÑO/ADMIN sin restricción · SUPERVISOR hasta umbral
+- Validación umbral en crear + editar
+- Notificación borrador (creador + DUEÑO + SUPERVISOR) tras N días via pg_cron
+
+### v1.8.44 — IVA + Multi-sucursal + CC proveedor (Fase 3) · migration 133
+- IVA auto (A=21% desglosado, B=21% incluido, C=0) + selector alícuota (21/10.5/27/0/custom)
+- Form gasto: sucursal obligatoria/opcional según `categorias_gasto.requiere_sucursal`
+- `proveedores.limite_cc DECIMAL` + validación al crear OC con CC
+- Bloqueo OC CC nueva con proveedor con OC vencida · override DUEÑO con tabla `autorizaciones_cc` (auditoría)
+- Reportes: gasto sin sucursal aparece como "Tenant / Global"
+
+### v1.8.45 — Recursos↔Gastos + Dashboard consolidado (Fase 4) · migration 134
+- Card "Costo mantenimiento acumulado" en ficha recurso
+- Checkbox "Sumar al valor del recurso" → `gastos.capitaliza_recurso BOOLEAN` (default OFF)
+- Vista `vw_egresos_consolidados` (gastos UNION rrhh_salarios.pagado=true)
+- Dashboard Gastos: card "Costo laboral del mes" leyendo de `rrhh_salarios`
+- P&L con línea separada "Sueldos pagados (RRHH)" con link a `/rrhh?tab=nomina`
+
+### v1.9.0 — HITO Cierre Contable Mensual (Fase 5) · migration 135
+- Tabla `cierres_contables(tenant, periodo, fecha_cierre, cerrado_por, observaciones)`
+- Botón "Cerrar período" disparado por DUEÑO/SUPERVISOR/CONTADOR según permisos
+- Aplica a **Gastos + Ventas + Caja + OC** (transversal)
+- Triggers que rechazan UPDATE/DELETE de registros con `fecha ≤ último cierre`
+- Notas de corrección: nuevo gasto con `gasto_padre_id` + `es_correccion=true` + monto invertido
+- UI bloqueada en Ventas/Caja/OC con mensaje "Período cerrado, generá nota de corrección"
+- Reportes: opción "ver con/sin correcciones"
+- Documentar flujo en nueva página `wiki/development/cierre-contable.md`
+
+### Decisiones de diseño documentadas
+
+- **Sueldos/Nómina**: NO migrar a Gastos. Se quedan en RRHH → Nómina. Integración via vista `vw_egresos_consolidados`
+- **Depreciación de recursos**: diferida a fase fiscal posterior (requiere relevamiento con contador)
+- **OC anticipo**: sin estado nuevo, mitigación con badge visual + alerta
 
 ---
 

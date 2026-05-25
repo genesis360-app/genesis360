@@ -16,11 +16,14 @@ interface SucursalForm {
   horario_apertura: string
   horario_cierre: string
   punto_venta_afip: string
+  umbral_gasto_supervisor: string
+  umbral_gasto_cajero: string
 }
 
 const EMPTY: SucursalForm = {
   nombre: '', direccion: '', telefono: '', costo_km_envio: '', codigo: '',
   codigo_postal: '', email: '', horario_apertura: '', horario_cierre: '', punto_venta_afip: '',
+  umbral_gasto_supervisor: '', umbral_gasto_cajero: '',
 }
 
 const COURIERS_DEFAULT = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 'FedEx', 'Otro']
@@ -71,6 +74,8 @@ export default function SucursalesPage() {
       horario_apertura: s.horario_apertura ?? '',
       horario_cierre: s.horario_cierre ?? '',
       punto_venta_afip: s.punto_venta_afip != null ? String(s.punto_venta_afip) : '',
+      umbral_gasto_supervisor: s.umbral_gasto_supervisor != null ? String(s.umbral_gasto_supervisor) : '',
+      umbral_gasto_cajero:     s.umbral_gasto_cajero != null ? String(s.umbral_gasto_cajero) : '',
     })
     setModal(true)
   }
@@ -90,6 +95,8 @@ export default function SucursalesPage() {
         horario_apertura: form.horario_apertura || null,
         horario_cierre: form.horario_cierre || null,
         punto_venta_afip: form.punto_venta_afip ? parseInt(form.punto_venta_afip) : null,
+        umbral_gasto_supervisor: form.umbral_gasto_supervisor ? parseFloat(form.umbral_gasto_supervisor) : null,
+        umbral_gasto_cajero:     form.umbral_gasto_cajero     ? parseFloat(form.umbral_gasto_cajero)     : null,
       }
       if (editId) {
         const { error } = await supabase.from('sucursales').update(payload).eq('id', editId)
@@ -275,7 +282,7 @@ export default function SucursalesPage() {
       {/* Modal crear/editar */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">
               {editId ? 'Editar sucursal' : 'Nueva sucursal'}
             </h2>
@@ -379,6 +386,32 @@ export default function SucursalesPage() {
                     <input type="number" onWheel={e => e.currentTarget.blur()} value={form.punto_venta_afip}
                       onChange={e => setForm(f => ({ ...f, punto_venta_afip: e.target.value }))}
                       placeholder="ej. 1"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Umbrales de autorización de gastos (v1.8.43) */}
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-200 text-sm mb-3 flex items-center gap-2">
+                  <span className="text-accent">$</span> Umbrales de autorización de gastos
+                </h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                  Hasta este monto, el rol puede crear/editar/eliminar gastos sin pedir autorización. Dejá vacío para sin restricción (SUPERVISOR) o todo-requiere-autorización (CAJERO).
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">SUPERVISOR — máximo sin autorización del DUEÑO</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={form.umbral_gasto_supervisor}
+                      onChange={e => setForm(f => ({ ...f, umbral_gasto_supervisor: e.target.value }))}
+                      placeholder="Ej: 100000 (vacío = sin restricción)" min="0" step="0.01"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CAJERO — máximo sin autorización del SUPERVISOR</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={form.umbral_gasto_cajero}
+                      onChange={e => setForm(f => ({ ...f, umbral_gasto_cajero: e.target.value }))}
+                      placeholder="Ej: 20000 (vacío = todo pide auth)" min="0" step="0.01"
                       className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary" />
                   </div>
                 </div>

@@ -22,9 +22,8 @@ const TIPO_COMPROBANTE_OPTS = [
   { value: 'C', label: 'Factura C — Emisor Monotributista' },
 ]
 
-function formatMoneda(v: number) {
-  return `$${v.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-}
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+// formatMoneda local: usa moneda del tenant (v1.8.44)
 function mesLabel(m: string) {
   const [y, mo] = m.split('-')
   return new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString('es-AR', { month: 'short', year: 'numeric' })
@@ -34,6 +33,7 @@ const DISCLAIMER = `Los valores de IVA mostrados son de carácter estimado, basa
 
 export default function FacturacionPage() {
   const { tenant, user } = useAuthStore()
+  const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId } = useSucursalFilter()
   const { limits } = usePlanLimits()
   const qc = useQueryClient()

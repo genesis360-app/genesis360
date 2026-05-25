@@ -25,9 +25,8 @@ interface FilaCliente {
   errores: string[]
 }
 
-function formatMoneda(v: number) {
-  return `$${v.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
-}
+import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+// formatMoneda local: usa moneda del tenant (v1.8.44)
 function formatFecha(iso: string) {
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
@@ -87,6 +86,7 @@ const ESTADOS: Record<string, { label: string; color: string }> = {
 
 export default function ClientesPage() {
   const { tenant, user } = useAuthStore()
+  const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const navigate = useNavigate()

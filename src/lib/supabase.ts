@@ -52,6 +52,16 @@ export interface Tenant {
   descuento_max_supervisor_pct?: number | null
   clave_maestra?: string | null
   boveda_umbral_caja?: number | null
+  // Reglas Gastos (v1.8.42)
+  gastos_comp_si_iva?: boolean
+  gastos_comp_si_monto?: boolean
+  gastos_comp_monto_umbral?: number | null
+  gastos_comp_si_deduce_ganancias?: boolean
+  gastos_comp_siempre?: boolean
+  gastos_dias_alerta_borrador?: number
+  gastos_dias_alerta_anticipo_oc?: number
+  // Moneda principal (v1.8.44)
+  moneda?: string | null
   created_at: string
 }
 
@@ -85,6 +95,29 @@ export interface Sucursal {
   punto_venta_afip?: number | null
   // Migration 107
   costo_km_envio?: number
+  // Migration 132 — umbrales gasto por rol
+  umbral_gasto_supervisor?: number | null
+  umbral_gasto_cajero?: number | null
+  created_at: string
+}
+
+export interface AutorizacionGasto {
+  id: string
+  tenant_id: string
+  sucursal_id?: string | null
+  gasto_id?: string | null
+  tipo: 'crear' | 'editar' | 'eliminar'
+  monto?: number | null
+  descripcion?: string | null
+  motivo?: string | null
+  payload?: Record<string, any> | null
+  solicitante_id: string
+  solicitante_rol: string
+  estado: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada'
+  aprobador_id?: string | null
+  aprobador_rol?: string | null
+  resolved_at?: string | null
+  motivo_rechazo?: string | null
   created_at: string
 }
 
@@ -371,10 +404,42 @@ export interface Gasto {
   descripcion: string
   monto: number
   categoria?: string
+  categoria_id?: string | null
   medio_pago?: string
   fecha: string
   usuario_id?: string
   notas?: string
+  // Migration 133 — selector de alícuota IVA
+  alicuota_iva?: number | null
+  created_at: string
+}
+
+export interface AutorizacionCC {
+  id: string
+  tenant_id: string
+  proveedor_id: string
+  oc_id?: string | null
+  motivo_bloqueo: 'limite_excedido' | 'oc_vencida'
+  monto?: number | null
+  motivo?: string | null
+  solicitante_id: string
+  solicitante_rol: string
+  estado: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada'
+  aprobador_id?: string | null
+  aprobador_rol?: string | null
+  resolved_at?: string | null
+  motivo_rechazo?: string | null
+  created_at: string
+}
+
+export interface CategoriaGasto {
+  id: string
+  tenant_id: string
+  nombre: string
+  requiere_sucursal: boolean
+  activo: boolean
+  predefinida: boolean
+  orden?: number | null
   created_at: string
 }
 

@@ -5,7 +5,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History, Trash2,
-  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft
+  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft, Receipt
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -68,6 +68,7 @@ export default function CajaPage() {
   const puedeReimprimirTicket = cajaPuede(rol, 'reimprimir_ticket_cierre')
   const puedeEditarMovimiento = cajaPuede(rol, 'editar_movimiento', configCaja)
   const esSoloLectura         = user?.rol === 'CONTADOR'                // J1 — read-only
+  const puedeAdministrarCaja  = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
   const [tab, setTab] = useState<Tab>('caja')
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string | null>(null)
   const [showApertura, setShowApertura] = useState(false)
@@ -165,6 +166,18 @@ export default function CajaPage() {
     if (m.tipo === 'egreso_traspaso') return acc - m.monto
     return acc
   }, 0)
+
+  // B4 — Reporte diferencias por cajero (últimos 30 días)
+  const { data: difsPorCajero = [] } = useQuery({
+    queryKey: ['vw-diferencias-cajero', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('vw_diferencias_por_cajero')
+        .select('*').eq('tenant_id', tenant!.id)
+        .order('diferencia_absoluta_acumulada', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'historial' && (puedeAdministrarCaja || puedeReimprimirTicket),
+  })
 
   // A2 — cajeros del tenant (para que DUEÑO/SUPERVISOR pueda abrir caja a su nombre)
   const { data: cajerosTenant = [] } = useQuery({
@@ -468,7 +481,6 @@ export default function CajaPage() {
   // Multi-usuario: quién abrió la sesión
   const abrioNombre = (sesionActiva as any)?.abrio?.nombre_display ?? null
   const esOtroUsuario = !!sesionActiva && sesionActiva.usuario_id !== user?.id
-  const puedeAdministrarCaja = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
   // B2: CAJERO puede abrir 1 caja, pero no más de una simultáneamente
   const puedeAbrirCaja = puedeAdministrarCaja || misSesionesAbiertas.length === 0
   // CAJERO no puede ver el contenido de cajas abiertas por otro usuario
@@ -577,6 +589,45 @@ export default function CajaPage() {
         })
         if (!claveOK) throw new Error('Clave maestra incorrecta')
       }
+
+      // K2 — Calcular snapshot_totales (por método de pago + ventas + movimientos manuales)
+      const movs = movimientos as any[]
+      const totalesPorMetodo: Record<string, number> = {}
+      const ventasResumen: { numero?: number; concepto: string; medio: string; monto: number; created_at: string }[] = []
+      const movManuales: { tipo: string; concepto: string; monto: number; created_at: string }[] = []
+      for (const m of movs) {
+        const medio = extraerMedioPago(m.tipo, m.concepto)
+        const signo = ['egreso','egreso_informativo','egreso_devolucion_sena','egreso_traspaso'].includes(m.tipo) ? -1 : 1
+        const monto = signo * Number(m.monto || 0)
+        totalesPorMetodo[medio] = (totalesPorMetodo[medio] ?? 0) + monto
+        const numVenta = extraerNumeroVenta(m.concepto)
+        if (numVenta) {
+          ventasResumen.push({ numero: Number(numVenta), concepto: m.concepto, medio, monto: Number(m.monto), created_at: m.created_at })
+        } else if (m.tipo === 'ingreso' || m.tipo === 'egreso') {
+          movManuales.push({ tipo: m.tipo, concepto: m.concepto, monto: Number(m.monto), created_at: m.created_at })
+        }
+      }
+      const snapshot = {
+        version: 1,
+        sucursal: { id: sesionActiva.sucursal_id ?? null, nombre: (sesionActiva as any).sucursales?.nombre ?? null },
+        caja:     { id: sesionActiva.caja_id, nombre: cajaActual?.nombre ?? '—', moneda: (cajaActual as any)?.moneda ?? (tenant as any)?.moneda ?? 'ARS' },
+        cajero:   { abrio: (sesionActiva as any)?.abrio?.nombre_display ?? null, cerro: user?.nombre_display ?? null },
+        montos:   {
+          apertura:    Number(sesionActiva.monto_apertura ?? 0),
+          ingresos:    Number(totalIngresos ?? 0),
+          egresos:     Number(totalEgresos ?? 0),
+          saldo_sistema: Number(saldoActual ?? 0),
+          conteo_real: Number(montoRealNum ?? 0),
+          diferencia:  Number(diferencia ?? 0),
+        },
+        totales_por_metodo: Object.entries(totalesPorMetodo).map(([medio, monto]) => ({ medio, monto: Number(monto.toFixed(2)) })),
+        ventas: ventasResumen.slice(0, 100),
+        movimientos_manuales: movManuales.slice(0, 100),
+        arqueos: (arqueosSesion as any[]).map((a: any) => ({ saldo_calculado: a.saldo_calculado, saldo_real: a.saldo_real, diferencia: a.diferencia, notas: a.notas, created_at: a.created_at })),
+        numero_cierre: (sesionActiva as any).numero ?? null,
+        generado_at: new Date().toISOString(),
+      }
+
       const payload: any = {
         estado: 'cerrada',
         monto_cierre: saldoActual,
@@ -587,9 +638,24 @@ export default function CajaPage() {
         cerrada_at: new Date().toISOString(),
         monto_real_cierre: montoRealNum,
         diferencia_cierre: diferencia ?? 0,
+        snapshot_totales: snapshot,
       }
       const { error } = await supabase.from('caja_sesiones').update(payload).eq('id', sesionActiva.id)
       if (error) throw error
+
+      // B4 — Si hay diferencia, registrar movimiento de ajuste asociado al cajero
+      const dif = diferencia ?? 0
+      if (dif !== 0) {
+        const tipoMov = dif > 0 ? 'ingreso' : 'egreso'
+        await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id,
+          sesion_id: sesionActiva.id,
+          tipo: tipoMov,
+          concepto: dif > 0 ? `[Diferencia caja] Sobrante en cierre` : `[Diferencia caja] Faltante en cierre`,
+          monto: Math.abs(dif),
+          usuario_id: sesionActiva.usuario_id,  // asociado al cajero responsable
+        })
+      }
     },
     onSuccess: () => {
       logActividad({
@@ -616,11 +682,10 @@ export default function CajaPage() {
       // DUEÑO/SUPERVISOR/CONTADOR sí descargan localmente.
       const esCajeroPuro = user?.rol === 'CAJERO'
       if (!esCajeroPuro) imprimirCierre(closedSesion)
-      // C2 — Enviar mail al DUEÑO con detalle del cierre (fire-and-forget)
+      // C2 — Mail al DUEÑO con detalle del cierre (siempre)
+      // B1/B2/B3 — Alertas adicionales por diferencia según config del tenant
       void (async () => {
-        const { data: duenos } = await supabase.from('users')
-          .select('email, nombre_display').eq('tenant_id', tenant!.id).eq('rol', 'DUEÑO')
-        const titulo = `Cierre de ${cajaActual?.nombre ?? 'Caja'} — ${formatMoneda(saldoActual)}`
+        const titulo = `Cierre de ${cajaActual?.nombre ?? 'Caja'} #${(sesionActiva as any).numero ?? ''} — ${formatMoneda(saldoActual)}`
         const lineas = [
           `Caja: ${cajaActual?.nombre ?? '—'}`,
           `Cerró: ${user?.nombre_display ?? (user as any)?.email ?? '—'}`,
@@ -632,11 +697,51 @@ export default function CajaPage() {
           `Egresos: ${formatMoneda(totalEgresos)}`,
           notasCierre ? `Notas: ${notasCierre}` : '',
         ].filter(Boolean).join('\n')
+
+        // Mail al DUEÑO (C2 — siempre)
+        const { data: duenos } = await supabase.from('users')
+          .select('email, nombre_display').eq('tenant_id', tenant!.id).eq('rol', 'DUEÑO')
         for (const d of (duenos ?? [])) {
           if (!d.email) continue
           void supabase.functions.invoke('send-email', {
             body: { type: 'notificacion', to: d.email, data: { titulo, mensaje: lineas, action_url: '/caja?tab=historial' } }
           }).catch(() => {})
+        }
+
+        // B1/B2/B3 — Si hay diferencia que supera umbral configurado, alertar a roles configurados
+        const dif = diferencia ?? 0
+        const umbral = Number((tenant as any)?.diferencia_caja_umbral ?? 0)  // 0/NULL = alerta con cualquier dif
+        const superaUmbral = umbral > 0 ? Math.abs(dif) >= umbral : dif !== 0
+        if (superaUmbral) {
+          const rolesAlerta: string[] = (tenant as any)?.diferencia_caja_alerta_roles ?? ['DUEÑO','SUPERVISOR']
+          const canales: string[] = (tenant as any)?.diferencia_caja_alerta_canales ?? ['inapp','email']
+          const tituloDif = `⚠ Diferencia en cierre ${cajaActual?.nombre ?? 'caja'}: ${dif > 0 ? '+' : ''}${formatMoneda(dif)}`
+          const mensajeDif = `${user?.nombre_display ?? 'Un cajero'} cerró ${cajaActual?.nombre ?? 'la caja'} con ${dif > 0 ? 'sobrante' : 'faltante'} de ${formatMoneda(Math.abs(dif))}. Saldo sistema: ${formatMoneda(saldoActual)} · Conteo: ${formatMoneda(montoRealNum)}.`
+          const { data: destinatarios } = await supabase.from('users')
+            .select('id, email').eq('tenant_id', tenant!.id).in('rol', rolesAlerta)
+          if (destinatarios?.length) {
+            // Canal in-app
+            if (canales.includes('inapp')) {
+              await supabase.from('notificaciones').insert(
+                destinatarios.filter(d => d.id !== user?.id).map(d => ({
+                  tenant_id: tenant!.id, user_id: d.id,
+                  tipo: 'diferencia_cierre_caja',
+                  titulo: tituloDif, mensaje: mensajeDif,
+                  action_url: '/caja?tab=historial',
+                }))
+              )
+            }
+            // Canal email
+            if (canales.includes('email')) {
+              for (const d of destinatarios) {
+                if (!d.email || d.id === user?.id) continue
+                void supabase.functions.invoke('send-email', {
+                  body: { type: 'notificacion', to: d.email, data: { titulo: tituloDif, mensaje: mensajeDif, action_url: '/caja?tab=historial' } }
+                }).catch(() => {})
+              }
+            }
+            // Canal whatsapp — pendiente integración
+          }
         }
       })()
       toast.success(esCajeroPuro ? 'Caja cerrada · El DUEÑO recibirá el detalle por email' : 'Caja cerrada · PDF descargado')
@@ -910,54 +1015,213 @@ export default function CajaPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [sesionActiva, tab])
 
-  const imprimirCierre = (sesion: any) => {
-    const doc = new jsPDF()
-    doc.setFillColor(30, 58, 95)
-    doc.rect(0, 0, doc.internal.pageSize.width, 25, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(16); doc.setFont('helvetica', 'bold')
-    doc.text(BRAND.name, 14, 12)
-    doc.setFontSize(11); doc.setFont('helvetica', 'normal')
-    doc.text('Resumen de cierre de caja', 14, 20)
+  const imprimirCierre = (sesion: any, formato: 'a4' | 'termico' = 'a4') => {
+    // Si la sesión tiene snapshot_totales (K2), lo usamos. Si no, fallback a campos legacy.
+    const snap = sesion.snapshot_totales || null
+    const numCierre = sesion.numero ?? snap?.numero_cierre ?? null
+    const numStr = numCierre ? `#${String(numCierre).padStart(4, '0')}` : ''
+    const titulo = `Cierre de Caja ${numStr}`.trim()
+    const tenantInfo = (tenant as any) || {}
 
+    if (formato === 'termico') {
+      // ─── Ticket angosto 80mm (C3) ──────────────────────────
+      // Ancho 80mm, alto dinámico (calculado en función de líneas)
+      const ancho = 80
+      const lineasMov = (snap?.movimientos_manuales ?? []).length
+      const lineasMet = (snap?.totales_por_metodo ?? []).length
+      const alto = 130 + lineasMet * 5 + lineasMov * 4
+      const tdoc = new jsPDF({ unit: 'mm', format: [ancho, alto] })
+      tdoc.setFont('helvetica', 'bold'); tdoc.setFontSize(11)
+      tdoc.text(BRAND.name, ancho/2, 7, { align: 'center' })
+      tdoc.setFontSize(9); tdoc.setFont('helvetica', 'normal')
+      tdoc.text(tenant?.nombre ?? '', ancho/2, 12, { align: 'center' })
+      if (tenantInfo.cuit) tdoc.text(`CUIT: ${tenantInfo.cuit}`, ancho/2, 16, { align: 'center' })
+      tdoc.setLineDashPattern([1,1], 0)
+      tdoc.line(3, 19, ancho-3, 19)
+      tdoc.setLineDashPattern([], 0)
+
+      let y = 24
+      tdoc.setFont('helvetica', 'bold'); tdoc.setFontSize(10)
+      tdoc.text(titulo, ancho/2, y, { align: 'center' }); y += 5
+      tdoc.setFont('helvetica', 'normal'); tdoc.setFontSize(8)
+      tdoc.text(`Caja: ${sesion.cajas?.nombre ?? '—'}`, 3, y); y += 4
+      const sucNombre = sesion.sucursales?.nombre ?? snap?.sucursal?.nombre
+      if (sucNombre) { tdoc.text(`Sucursal: ${sucNombre}`, 3, y); y += 4 }
+      tdoc.text(`Abrió: ${sesion.abrio?.nombre_display ?? '—'}`, 3, y); y += 4
+      tdoc.text(`Cerró: ${sesion.cerrado_por?.nombre_display ?? '—'}`, 3, y); y += 4
+      tdoc.text(`Apertura: ${new Date(sesion.abierta_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`, 3, y); y += 4
+      tdoc.text(`Cierre:   ${new Date(sesion.cerrada_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`, 3, y); y += 5
+
+      tdoc.setLineDashPattern([1,1], 0); tdoc.line(3, y, ancho-3, y); tdoc.setLineDashPattern([], 0); y += 4
+      tdoc.setFont('helvetica', 'bold'); tdoc.text('Resumen', 3, y); y += 4
+      tdoc.setFont('helvetica', 'normal')
+      const filas: [string, string][] = [
+        ['Apertura', formatMoneda(sesion.monto_apertura)],
+        ['Ingresos', formatMoneda(sesion.total_ingresos)],
+        ['Egresos',  formatMoneda(sesion.total_egresos)],
+        ['Saldo sistema', formatMoneda(sesion.monto_cierre)],
+      ]
+      if (sesion.monto_real_cierre != null) filas.push(['Conteo real', formatMoneda(sesion.monto_real_cierre)])
+      const dif = sesion.diferencia_cierre ?? 0
+      if (sesion.monto_real_cierre != null) filas.push([dif >= 0 ? 'Sobrante' : 'Faltante', formatMoneda(Math.abs(dif))])
+      for (const [c, v] of filas) {
+        tdoc.text(c, 3, y); tdoc.text(v, ancho-3, y, { align: 'right' }); y += 4
+      }
+
+      // Totales por método (snapshot)
+      if (snap?.totales_por_metodo?.length) {
+        y += 1
+        tdoc.setLineDashPattern([1,1], 0); tdoc.line(3, y, ancho-3, y); tdoc.setLineDashPattern([], 0); y += 4
+        tdoc.setFont('helvetica', 'bold'); tdoc.text('Por método de pago', 3, y); y += 4
+        tdoc.setFont('helvetica', 'normal')
+        for (const t of snap.totales_por_metodo) {
+          tdoc.text(t.medio || 'Otro', 3, y); tdoc.text(formatMoneda(t.monto), ancho-3, y, { align: 'right' }); y += 4
+        }
+      }
+
+      // Notas
+      if (sesion.notas_cierre) {
+        y += 2; tdoc.setFont('helvetica', 'italic'); tdoc.setFontSize(7)
+        const lines = tdoc.splitTextToSize(`Notas: ${sesion.notas_cierre}`, ancho - 6)
+        tdoc.text(lines, 3, y); y += lines.length * 3
+      }
+
+      tdoc.save(`cierre_${numStr || new Date(sesion.cerrada_at).toISOString().split('T')[0]}_termico.pdf`)
+      return
+    }
+
+    // ─── Formato A4 (default) ─────────────────────────────────
+    const doc = new jsPDF()
+    const w = doc.internal.pageSize.width
+
+    // Header con logo + nombre
+    doc.setFillColor(30, 58, 95)
+    doc.rect(0, 0, w, 28, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(17); doc.setFont('helvetica', 'bold')
+    doc.text(BRAND.name, 14, 13)
+    doc.setFontSize(12); doc.setFont('helvetica', 'normal')
+    doc.text(titulo, 14, 21)
+    // Datos fiscales arriba derecha
+    doc.setFontSize(9)
+    if (tenant?.nombre) doc.text(tenant.nombre, w - 14, 10, { align: 'right' })
+    if (tenantInfo.cuit) doc.text(`CUIT: ${tenantInfo.cuit}`, w - 14, 15, { align: 'right' })
+    if (tenantInfo.domicilio_fiscal) doc.text(tenantInfo.domicilio_fiscal, w - 14, 20, { align: 'right' })
+
+    // Bloque de datos del cierre
     doc.setTextColor(60, 60, 60)
     doc.setFontSize(10)
-    doc.text(`Caja: ${sesion.cajas?.nombre ?? '—'}`, 14, 35)
-    doc.text(`Negocio: ${tenant?.nombre}`, 14, 42)
-    doc.text(`Apertura: ${new Date(sesion.abierta_at).toLocaleString('es-AR')}`, 14, 49)
-    doc.text(`Cierre: ${new Date(sesion.cerrada_at).toLocaleString('es-AR')}`, 14, 56)
-    const abrioNombre = sesion.abrio?.nombre_display ?? '—'
-    const cerroNombre = sesion.cerrado_por?.nombre_display ?? abrioNombre
-    doc.text(`Abrió: ${abrioNombre}`, 14, 63)
-    doc.text(`Cerró: ${cerroNombre}`, 14, 70)
+    const sucNombre = sesion.sucursales?.nombre ?? snap?.sucursal?.nombre
+    let yh = 38
+    doc.text(`Caja: ${sesion.cajas?.nombre ?? '—'}`, 14, yh); yh += 6
+    if (sucNombre) { doc.text(`Sucursal: ${sucNombre}`, 14, yh); yh += 6 }
+    doc.text(`Apertura: ${new Date(sesion.abierta_at).toLocaleString('es-AR')}`, 14, yh); yh += 6
+    doc.text(`Cierre: ${new Date(sesion.cerrada_at).toLocaleString('es-AR')}`, 14, yh); yh += 6
+    doc.text(`Abrió: ${sesion.abrio?.nombre_display ?? '—'}`, 14, yh); yh += 6
+    doc.text(`Cerró: ${sesion.cerrado_por?.nombre_display ?? '—'}`, 14, yh); yh += 6
 
-    const rows: any[] = [
+    // Tabla resumen
+    const resumenRows: any[] = [
       ['Monto de apertura', formatMoneda(sesion.monto_apertura)],
       ['Total ingresos', formatMoneda(sesion.total_ingresos)],
       ['Total egresos', formatMoneda(sesion.total_egresos)],
-      ['Saldo calculado', formatMoneda(sesion.monto_cierre)],
+      ['Saldo sistema (calculado)', formatMoneda(sesion.monto_cierre)],
     ]
     if (sesion.monto_real_cierre != null) {
-      rows.push(['Conteo real', formatMoneda(sesion.monto_real_cierre)])
+      resumenRows.push(['Conteo real', formatMoneda(sesion.monto_real_cierre)])
       const dif = sesion.diferencia_cierre ?? 0
-      rows.push([dif >= 0 ? 'Sobrante' : 'Faltante', formatMoneda(Math.abs(dif))])
+      resumenRows.push([dif >= 0 ? 'Sobrante' : 'Faltante', formatMoneda(Math.abs(dif))])
     }
-
     autoTable(doc, {
-      startY: 78,
+      startY: yh + 2,
       head: [['Concepto', 'Monto']],
-      body: rows,
+      body: resumenRows,
       styles: { fontSize: 10 },
       headStyles: { fillColor: [30, 58, 95] },
       columnStyles: { 1: { halign: 'right' } },
     })
+    let y2: number = (doc as any).lastAutoTable.finalY + 8
 
-    if (sesion.notas_cierre) {
-      const finalY = (doc as any).lastAutoTable.finalY + 10
-      doc.text(`Notas: ${sesion.notas_cierre}`, 14, finalY)
+    // Totales por método de pago (del snapshot)
+    if (snap?.totales_por_metodo?.length) {
+      autoTable(doc, {
+        startY: y2,
+        head: [['Método de pago', 'Total']],
+        body: snap.totales_por_metodo.map((t: any) => [t.medio || 'Otro', formatMoneda(t.monto)]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [80, 100, 130] },
+        columnStyles: { 1: { halign: 'right' } },
+      })
+      y2 = (doc as any).lastAutoTable.finalY + 6
     }
 
-    doc.save(`cierre_caja_${new Date(sesion.cerrada_at).toISOString().split('T')[0]}.pdf`)
+    // Listado de ventas (truncado a 25 para no inflar el PDF)
+    if (snap?.ventas?.length) {
+      const ventas = snap.ventas.slice(0, 25)
+      autoTable(doc, {
+        startY: y2,
+        head: [['#', 'Hora', 'Medio', 'Monto']],
+        body: ventas.map((v: any) => [
+          v.numero ?? '—',
+          new Date(v.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+          v.medio || '—',
+          formatMoneda(v.monto),
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [80, 100, 130] },
+        columnStyles: { 3: { halign: 'right' } },
+      })
+      y2 = (doc as any).lastAutoTable.finalY + 6
+      if (snap.ventas.length > 25) {
+        doc.setFontSize(8); doc.setTextColor(120, 120, 120)
+        doc.text(`+ ${snap.ventas.length - 25} ventas más en el detalle online`, 14, y2)
+        y2 += 5
+      }
+    }
+
+    // Movimientos manuales
+    if (snap?.movimientos_manuales?.length) {
+      autoTable(doc, {
+        startY: y2,
+        head: [['Tipo', 'Concepto', 'Monto']],
+        body: snap.movimientos_manuales.slice(0, 15).map((m: any) => [
+          m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
+          m.concepto?.length > 60 ? m.concepto.substring(0, 57) + '...' : m.concepto,
+          formatMoneda(m.monto),
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [80, 100, 130] },
+        columnStyles: { 2: { halign: 'right' } },
+      })
+      y2 = (doc as any).lastAutoTable.finalY + 6
+    }
+
+    // Notas
+    if (sesion.notas_cierre) {
+      doc.setFontSize(9); doc.setTextColor(80, 80, 80)
+      const lines = doc.splitTextToSize(`Notas: ${sesion.notas_cierre}`, w - 28)
+      doc.text(lines, 14, y2)
+      y2 += lines.length * 5 + 4
+    }
+
+    // Espacio para firmas
+    if (y2 < 250) {
+      y2 = Math.max(y2 + 18, 260)
+      doc.setDrawColor(180, 180, 180)
+      doc.line(20, y2, 90, y2)
+      doc.line(w - 90, y2, w - 20, y2)
+      doc.setFontSize(8); doc.setTextColor(120, 120, 120)
+      doc.text('Firma del cajero', 55, y2 + 4, { align: 'center' })
+      doc.text('Firma del supervisor', w - 55, y2 + 4, { align: 'center' })
+    }
+
+    // Pie con número correlativo
+    if (numCierre) {
+      doc.setFontSize(8); doc.setTextColor(150, 150, 150)
+      doc.text(`Cierre correlativo: ${numStr} · Generado: ${new Date().toLocaleString('es-AR')}`, w / 2, 290, { align: 'center' })
+    }
+
+    doc.save(`cierre_caja${numStr ? '_' + numStr.replace('#', '') : ''}_${new Date(sesion.cerrada_at).toISOString().split('T')[0]}.pdf`)
   }
 
   return (
@@ -1816,6 +2080,52 @@ export default function CajaPage() {
       {/* ── HISTORIAL ── */}
       {tab === 'historial' && (
         <div className="space-y-3">
+          {/* B4 — Reporte: diferencias acumuladas por cajero últimos 30 días */}
+          {(puedeAdministrarCaja || puedeReimprimirTicket) && (difsPorCajero as any[]).length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                  <AlertTriangle size={13} className="text-amber-500" /> Diferencias por cajero (últimos 30 días)
+                </p>
+                <span className="text-[10px] text-gray-400">trazabilidad — sin descuento automático</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-700/30">
+                  <tr className="text-left text-xs text-gray-500 dark:text-gray-400">
+                    <th className="px-4 py-2 font-medium">Cajero</th>
+                    <th className="px-4 py-2 font-medium text-center">Cierres</th>
+                    <th className="px-4 py-2 font-medium text-center">Con diferencia</th>
+                    <th className="px-4 py-2 font-medium text-right">Neto</th>
+                    <th className="px-4 py-2 font-medium text-right">Absoluto</th>
+                    <th className="px-4 py-2 font-medium text-right">Máxima</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {(difsPorCajero as any[]).map((d: any) => {
+                    const neto = Number(d.diferencia_neta_acumulada || 0)
+                    return (
+                      <tr key={d.usuario_id ?? d.cajero} className="text-gray-700 dark:text-gray-300">
+                        <td className="px-4 py-2.5 font-medium">{d.cajero ?? '—'}</td>
+                        <td className="px-4 py-2.5 text-center">{d.cierres_count}</td>
+                        <td className="px-4 py-2.5 text-center">
+                          {d.cierres_con_diferencia > 0 ? (
+                            <span className="text-amber-600 dark:text-amber-400 font-medium">{d.cierres_con_diferencia}</span>
+                          ) : (
+                            <span className="text-gray-400">0</span>
+                          )}
+                        </td>
+                        <td className={`px-4 py-2.5 text-right font-medium ${neto > 0 ? 'text-green-600 dark:text-green-400' : neto < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
+                          {neto >= 0 ? '+' : ''}{formatMoneda(neto)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-400">{formatMoneda(Number(d.diferencia_absoluta_acumulada || 0))}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-400">{formatMoneda(Number(d.diferencia_maxima || 0))}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           {historialSesiones.length === 0 ? (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-10 text-center text-gray-400 dark:text-gray-500 shadow-sm border border-gray-100">
               <History size={36} className="mx-auto mb-3 opacity-30" />
@@ -1864,10 +2174,20 @@ export default function CajaPage() {
                           </span>
                         )}
                       </div>
-                      <button onClick={() => imprimirCierre(s)}
-                        className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <Printer size={13} /> PDF
-                      </button>
+                      {puedeReimprimirTicket && (
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => imprimirCierre(s, 'a4')}
+                            title="Descargar ticket de cierre (formato A4)"
+                            className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <Printer size={13} /> A4
+                          </button>
+                          <button onClick={() => imprimirCierre(s, 'termico')}
+                            title="Descargar ticket de cierre (formato térmico 80mm)"
+                            className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <Receipt size={13} /> Tícket
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 

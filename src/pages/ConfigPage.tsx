@@ -454,6 +454,23 @@ export default function ConfigPage() {
   const [bizClaveMaestra,           setBizClaveMaestra]           = useState<string>('')
   const [showClaveMaestra,          setShowClaveMaestra]          = useState(false)
   const [bizBovedaUmbral,           setBizBovedaUmbral]           = useState<string>(tenant?.boveda_umbral_caja != null ? String(tenant.boveda_umbral_caja) : '')
+  // Fase 2.1 — Diferencia de cierre (B1/B2/B3)
+  const [bizDifUmbral, setBizDifUmbral] = useState<string>((tenant as any)?.diferencia_caja_umbral != null ? String((tenant as any).diferencia_caja_umbral) : '')
+  const [bizDifRoles, setBizDifRoles] = useState<string[]>((tenant as any)?.diferencia_caja_alerta_roles ?? ['DUEÑO','SUPERVISOR'])
+  const [bizDifCanales, setBizDifCanales] = useState<string[]>((tenant as any)?.diferencia_caja_alerta_canales ?? ['inapp','email'])
+  const [savingDif, setSavingDif] = useState(false)
+  const handleSaveDif = async () => {
+    setSavingDif(true)
+    const { data, error } = await supabase.from('tenants').update({
+      diferencia_caja_umbral: bizDifUmbral.trim() ? parseFloat(bizDifUmbral) : null,
+      diferencia_caja_alerta_roles: bizDifRoles,
+      diferencia_caja_alerta_canales: bizDifCanales,
+    }).eq('id', tenant!.id).select().single()
+    setSavingDif(false)
+    if (error || !data) { toast.error('No se pudo guardar'); return }
+    setTenant(data)
+    toast.success('Configuración de alertas guardada')
+  }
 
   // Gastos — reglas comprobante + alertas (v1.8.42)
   const t142 = tenant as any
@@ -4147,6 +4164,67 @@ export default function ConfigPage() {
                     <button onClick={handleSaveBiz} disabled={savingBiz}
                       className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
                       {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Diferencias de cierre (B1/B2/B3) */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <AlertCircle size={16} className="text-accent" /> Diferencias en cierre de caja
+                </h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Umbral mínimo para alertar ($)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="100"
+                    value={bizDifUmbral} disabled={!canEdit}
+                    onChange={e => setBizDifUmbral(e.target.value)}
+                    placeholder="Alertar con cualquier diferencia"
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Si la diferencia (sobrante o faltante) supera este monto en valor absoluto, se dispara la alerta. Vacío = alertar siempre con cualquier diferencia ≠ 0.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Roles que reciben la alerta</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['DUEÑO','SUPERVISOR','ADMIN','CONTADOR'].map(r => {
+                      const activo = bizDifRoles.includes(r)
+                      return (
+                        <button key={r} type="button" disabled={!canEdit}
+                          onClick={() => setBizDifRoles(curr => curr.includes(r) ? curr.filter(x => x !== r) : [...curr, r])}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          {r}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Canales</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'inapp', label: 'In-app' },
+                      { id: 'email', label: 'Email' },
+                      { id: 'whatsapp', label: 'WhatsApp (próximamente)' },
+                    ].map(c => {
+                      const activo = bizDifCanales.includes(c.id)
+                      const deshab = c.id === 'whatsapp'
+                      return (
+                        <button key={c.id} type="button" disabled={!canEdit || deshab}
+                          onClick={() => setBizDifCanales(curr => curr.includes(c.id) ? curr.filter(x => x !== c.id) : [...curr, c.id])}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${activo ? 'bg-accent text-white border-accent' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          {c.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveDif} disabled={savingDif}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingDif ? 'Guardando...' : 'Guardar alertas'}
                     </button>
                   </div>
                 )}

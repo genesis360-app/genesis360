@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-26] update | v1.9.4-dev — Caja Fase 2.1 — Ticket cierre + Diferencias (C1/C3/K2/K3/B1-B4)
+
+### Migration 141 aplicada en DEV
+- `caja_sesiones.numero INT` con trigger `fn_set_caja_sesion_numero()` que asigna correlativo por sucursal en INSERT (K3) + backfill de 43 sesiones existentes con `ROW_NUMBER() OVER (PARTITION BY tenant_id, sucursal_id ORDER BY abierta_at)`
+- `caja_sesiones.snapshot_totales JSONB` para almacenar el estado completo al momento del cierre (K2)
+- `tenants.diferencia_caja_umbral DECIMAL(14,2)` (B1)
+- `tenants.diferencia_caja_alerta_roles TEXT[]` default `['DUEÑO','SUPERVISOR']` (B2)
+- `tenants.diferencia_caja_alerta_canales TEXT[]` default `['inapp','email']` (B3)
+- Vista `vw_diferencias_por_cajero` con `security_invoker=true` — cierres_count + cierres_con_diferencia + diferencia_neta/absoluta_acumulada + maxima, últimos 30 días por cajero (B4)
+
+### Frontend
+- **CajaPage `cerrarCaja` (K2)**: calcula snapshot completo al cerrar — `montos` (apertura/ingresos/egresos/saldo/conteo/diferencia) + `totales_por_metodo` (agrupados de movimientos) + `ventas` (las que matchean #N en concepto) + `movimientos_manuales` (ingresos/egresos manuales) + `arqueos` de la sesión + `numero_cierre`. Persistido en `caja_sesiones.snapshot_totales`
+- **CajaPage `cerrarCaja` (B4)**: si hay diferencia ≠ 0, inserta `caja_movimientos` tipo `ingreso`/`egreso` con concepto `[Diferencia caja] Sobrante|Faltante` asociado al `sesionActiva.usuario_id` (cajero responsable, no quien cerró)
+- **CajaPage `cerrarCaja` (B1/B2/B3)**: si `Math.abs(diferencia) >= umbral` (o umbral=null), envía alerta a usuarios con rol en `diferencia_caja_alerta_roles` por canales `inapp` (notificaciones) + `email` (send-email EF). WhatsApp queda como TODO
+- **CajaPage `imprimirCierre(sesion, formato)` (C1+C3)**: refactor completo
+  - Formato `'a4'` (default): header con logo + datos fiscales del negocio (CUIT, domicilio) · tabla resumen · totales por método de pago (del snapshot) · listado ventas (top 25) · listado movimientos manuales (top 15) · espacio para 2 firmas · numeración correlativa `#NNNN` en pie
+  - Formato `'termico'` (nuevo): jsPDF con tamaño custom 80mm × dinámico · diseño tipo ticket de caja registradora · centrado · líneas dashed · misma data condensada
+- **CajaPage historial**: botón "Reimprimir PDF" reemplazado por 2 botones (A4 + Tícket) visibles solo si `puedeReimprimirTicket`
+- **CajaPage historial**: nueva card "Diferencias por cajero (últimos 30 días)" para DUEÑO/SUPERVISOR/CONTADOR con tabla — cierres count + con diferencia + neto + absoluto + máxima
+- **ConfigPage tab Caja**: nueva sección "Diferencias en cierre de caja" con input umbral + chips toggles para roles destinatarios + chips toggles para canales (inapp/email/whatsapp deshabilitado)
+- **ConfigPage**: nueva mutation `handleSaveDif` con `setTenant(data)` para refrescar store
+- **ConfigPage**: state `bizDifUmbral` / `bizDifRoles` / `bizDifCanales` inicializados desde tenant
+
+### Wiki
+- `wiki/database/migraciones.md`: entrada 141
+- `wiki/business/roadmap.md`: entrada v1.9.4
+- `wiki/features/caja.md`: nueva sección Fase 2.1
+- `log.md` + `index.md` + `project_pendientes.md` actualizados
+
+### Estado al cierre
+- DEV: v1.9.4 con migrations 130-141 aplicadas
+- PROD: v1.9.0 (136-141 pendientes)
+- Pipeline Caja: Tanda 1+1.5 (v1.9.1-2) + Fase 2.0 (v1.9.3) + Fase 2.1 (v1.9.4)
+- Score: **7 de 8 decisiones críticas del relevamiento implementadas (87.5%)** — falta B7 doble validación
+
+---
+
 ## [2026-05-26] update | v1.9.3-dev — Caja Fase 2.0 — Permisos + Roles (J/B5/B6/A2/A4/C2)
 
 Implementación de respuestas J-M del relevamiento Caja (con socio en `relevamiento-caja-reglas-negocio.pdf` + respuestas guardadas en `sources/relevamientos/caja_2026-05-25.md`).

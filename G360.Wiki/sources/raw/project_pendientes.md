@@ -4,13 +4,47 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.9.0** ✅ · DEV: **v1.10.0** (HITO)
+Último release en PROD: **v1.10.0** ✅ (HITO Caja completo) · DEV: **v1.10.0**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.9.2 / PROD v1.9.0 (cierre sesión 2026-05-25 — Caja Tanda 1 + 1.5)
+## Estado actual DEV v1.10.0 / PROD v1.10.0 (cierre sesión 2026-05-26 — HITO Pipeline Caja)
+
+- APP_VERSION DEV: `v1.10.0` ✅
+- APP_VERSION PROD: `v1.10.0` ✅ (PR #118 mergeado `c857384b`)
+- Migrations DEV: 001–142 ✅
+- Migrations PROD: 001–142 ✅
+- Vercel deploy PROD `dpl_SKeSdLV75LfW2u2cnMWuMq5vLBLe` desde commit del merge
+- GitHub release v1.10.0 actualizada como **latest** sobre main
+- **Pipeline Reglas Caja: CERRADO** — 8 de 8 decisiones críticas implementadas (100%)
+
+### Pipeline Caja completo (recorrido 2 días)
+
+| Versión | Foco | Migrations |
+|---|---|---|
+| **v1.9.1** | Tanda 1 (F1/H1/G2/D3) — cajas por moneda + Cuentas de Origen + sin egreso manual + arqueo pre-cierre | 136 |
+| **v1.9.2** | Tanda 1.5 (E4/E5) — bóveda billetera + extraer dinero solo DUEÑO + historial privado | 137 + 138 |
+| **v1.9.3** | Fase 2.0 (J/B5/B6/A2/A4/C2) — permisos + CONTADOR read-only + abrir a nombre + clave maestra + mail al cierre | 140 |
+| **v1.9.4** | Fase 2.1 (C1/C3/K2/K3/B1-B4) — ticket cierre A4/térmico + numeración + snapshot + alertas configurables | 141 |
+| **v1.9.5** | Fase 2.2a (L1/L4/L5/B7/G1) — selector caja devolución + bloqueo sucursal + cadena anulación + corregir movs + doble validación | — |
+| **v1.10.0** | HITO Fase 2.4 (I1/I2) — 4 reportes + 3 exports | 142 |
+
+### Pendientes opcionales (no críticos)
+
+- Fase 2.2b: L3 préstamos a empleados en RRHH (toca otro módulo, scope mayor)
+- Fase 2.3: M2/M3/M4 (UX selector + panel cajero touchscreen + sonido) + E1/E3 (visibilidad bóveda por rol + arqueo bóveda) + G5 (chips motivos)
+
+### Próximos módulos a relevar
+
+- **RRHH**: completo (puede incluir L3 préstamos)
+- **Ventas**: devoluciones / re-apertura despachada / límite ítems
+- **Clientes**: límite deuda configurable / notificación deuda
+
+---
+
+## Estado anterior DEV v1.9.2 / PROD v1.9.0 (cierre sesión 2026-05-25 — Caja Tanda 1 + 1.5)
 
 - APP_VERSION DEV: `v1.9.2` en `src/config/brand.ts`
 - APP_VERSION PROD: `v1.9.0` (PR pendiente)

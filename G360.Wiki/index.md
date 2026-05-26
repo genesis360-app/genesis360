@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-26 — 53 páginas + 3 manuales + 1 PDF relevamiento (caja) · 8 fuentes en raw/ + 1 relevamiento caja · DEV: 142 + 086b · PROD: 135 + 086b · **v1.10.0 DEV** / v1.9.0 PROD · **Pipeline Reglas Caja CERRADO** — todas las decisiones priorizadas del relevamiento implementadas (Fases 1, 1.5, 2.0, 2.1, 2.2a, 2.4) 🎉*
+*Última actualización: 2026-05-26 — 53 páginas + 3 manuales + 1 PDF relevamiento (caja) · 8 fuentes en raw/ + 1 relevamiento caja · DEV: 142 + 086b · PROD: 142 + 086b · **v1.10.0 DEV y PROD** ✅ · **Pipeline Reglas Caja CERRADO** — 8/8 decisiones críticas del relevamiento implementadas en 2 días (Fases 1, 1.5, 2.0, 2.1, 2.2a, 2.4)*

@@ -6,6 +6,49 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-26] update | PROD deploy v1.10.0 — Pipeline Reglas Caja CERRADO
+
+Cierre del pipeline completo de Caja con 6 versiones consecutivas (v1.9.1 → v1.10.0) en 2 días.
+
+### Deploy
+- **Migrations 136–142 aplicadas en PROD** (7 migrations aditivas idempotentes)
+  - 136: cajas.moneda + cuentas_origen + cuenta_origen_id en metodos_pago/caja_movimientos + vw_boveda_cuentas + seed
+  - 137: boveda_retiros + RLS solo DUEÑO/ADMIN/SUPER_USUARIO + backfill cuenta_origen_id
+  - 138: auto-seed cuentas_origen por método no-efectivo
+  - 139: backfill fuzzy con normalización (sin tildes/sin "de")
+  - 140: caja_sesiones.abierta_por + tenants.config_caja JSONB + RPCs requiere_clave_maestra y verificar_clave_maestra
+  - 141: caja_sesiones.numero correlativo + snapshot_totales + tenants.diferencia_caja_* + vw_diferencias_por_cajero
+  - 142: vw_caja_resumen_diario + vw_caja_mensual_por_sucursal
+- **PR #118 mergeado** en main (squash, commit `c857384b`)
+- **Vercel PROD** auto-deploy en estado BUILDING (`dpl_SKeSdLV75LfW2u2cnMWuMq5vLBLe` desde commit del merge)
+- **GitHub release v1.10.0** actualizada como **latest** apuntando a main
+- `app.genesis360.pro` servirá v1.10.0 una vez termine el build (~90s)
+
+### Score final del pipeline Caja
+**8 de 8 decisiones críticas implementadas (100%)** ✅
+
+Recorrido completo:
+- v1.9.1 Tanda 1 (F1/H1/G2/D3): cajas por moneda + Cuentas de Origen + sin egreso manual + arqueo pre-cierre
+- v1.9.2 Tanda 1.5 (E4/E5): bóveda como billetera + extraer dinero solo DUEÑO + historial privado
+- v1.9.3 Fase 2.0 (J1/J3/B5/B6/A2/A4/C2): permisos + CONTADOR read-only + abrir a nombre de cajero + clave maestra + mail al cierre
+- v1.9.4 Fase 2.1 (C1/C3/K2/K3/B1-B4): ticket cierre A4/térmico + numeración correlativa + snapshot + umbral diferencia + alertas configurables
+- v1.9.5 Fase 2.2a (L1/L4/L5/B7/G1): selector caja devolución + bloqueo sucursal + cadena anulación + corregir movs + doble validación cierre
+- v1.10.0 HITO Fase 2.4 (I1/I2): 4 reportes (diario/consolidado/mensual/por cajero) + 3 exports (Excel/PDF/CSV)
+
+### Estado al cierre
+- DEV: v1.10.0 con migrations 130-142
+- PROD: v1.10.0 con migrations 130-142 ✅ (en deploy)
+- **Pipeline Reglas Caja: CERRADO** (todas las decisiones priorizadas del relevamiento implementadas)
+- Pendientes opcionales no críticos: Fase 2.2b (L3 préstamos RRHH), Fase 2.3 (M2/M3/M4 + E1/E3 + G5)
+
+### Fixes adicionales en la sesión
+- ConfigPage tab Facturación: toggle auto-guarda + botón datos fiscales + `setTenant(data)` para sincronizar store
+- VentasPage: caja predeterminada se pre-selecciona automáticamente (useMemo en lugar de useEffect con race)
+- VentasPage: medios de pago dinámicos desde tabla `metodos_pago` (eliminada constante hardcodeada con "Otro" genérico)
+- Bóveda: backfill fuzzy de cuenta_origen_id + helper `cuentaOrigenDeMetodo` tolerante (lowercase + sin tildes + sin "de")
+
+---
+
 ## [2026-05-26] update | v1.10.0-dev — HITO Caja Fase 2.4 — Reportes (I1/I2)
 
 Cierre del pipeline de Reportes con 4 vistas + 3 exports (Excel/PDF/CSV).

@@ -5,9 +5,10 @@ import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History, Trash2,
-  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft, Receipt
+  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft, Receipt, RotateCcw
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import jsPDF from 'jspdf'
@@ -106,6 +107,13 @@ export default function CajaPage() {
   const [aperturaParaUsuarioId, setAperturaParaUsuarioId] = useState<string>('')
   // B5 — clave maestra al cerrar caja ajena
   const [claveMaestraCierre, setClaveMaestraCierre] = useState('')
+  // G1 — corregir movimiento manual
+  const [corregirMov, setCorregirMov] = useState<any | null>(null)
+  const [corregirMonto, setCorregirMonto] = useState('')
+  const [corregirConcepto, setCorregirConcepto] = useState('')
+  // B7 — doble validación al cierre
+  const [dobleValEmail, setDobleValEmail] = useState('')
+  const [dobleValPassword, setDobleValPassword] = useState('')
 
   // Forms
   const [montoApertura, setMontoApertura] = useState('')
@@ -589,6 +597,39 @@ export default function CajaPage() {
         })
         if (!claveOK) throw new Error('Clave maestra incorrecta')
       }
+      // B7 — doble validación: si está activada en config, requerir 2do usuario válido
+      if (configCaja.doble_validacion_cierre) {
+        if (!dobleValEmail.trim() || !dobleValPassword.trim()) {
+          throw new Error('Doble validación activada: ingresá email y contraseña del 2do usuario.')
+        }
+        // Cliente Supabase secundario para no romper la sesión actual
+        const supaTemp = createClient(
+          import.meta.env.VITE_SUPABASE_URL,
+          import.meta.env.VITE_SUPABASE_ANON_KEY,
+          { auth: { persistSession: false, autoRefreshToken: false } }
+        )
+        const { data: auth2, error: err2 } = await supaTemp.auth.signInWithPassword({
+          email: dobleValEmail.trim(),
+          password: dobleValPassword,
+        })
+        if (err2 || !auth2.user) {
+          await supaTemp.auth.signOut().catch(() => {})
+          throw new Error('Credenciales del 2do usuario inválidas')
+        }
+        if (auth2.user.id === user!.id) {
+          await supaTemp.auth.signOut().catch(() => {})
+          throw new Error('El 2do usuario debe ser distinto del que está cerrando la caja')
+        }
+        const { data: user2 } = await supaTemp.from('users')
+          .select('rol, tenant_id').eq('id', auth2.user.id).single()
+        await supaTemp.auth.signOut().catch(() => {})
+        if (!user2 || user2.tenant_id !== tenant!.id) {
+          throw new Error('El 2do usuario no pertenece a este negocio')
+        }
+        if (!['DUEÑO','SUPERVISOR','ADMIN','SUPER_USUARIO'].includes(user2.rol)) {
+          throw new Error('El 2do usuario debe tener rol DUEÑO, SUPERVISOR o ADMIN')
+        }
+      }
 
       // K2 — Calcular snapshot_totales (por método de pago + ventas + movimientos manuales)
       const movs = movimientos as any[]
@@ -748,6 +789,7 @@ export default function CajaPage() {
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
       qc.invalidateQueries({ queryKey: ['historial-sesiones'] })
       setShowCierre(false); setNotasCierre(''); setMontoRealCierre(''); setClaveMaestraCierre('')
+      setDobleValEmail(''); setDobleValPassword('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -772,6 +814,51 @@ export default function CajaPage() {
       toast.success('Ingreso registrado')
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
       setShowMovimiento(false); setMovConcepto(''); setMovMonto('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // G1 — Corregir movimiento manual (DUEÑO/SUPERVISOR con config)
+  const corregirMovimiento = useMutation({
+    mutationFn: async () => {
+      if (!corregirMov) throw new Error('No hay movimiento')
+      if (!puedeEditarMovimiento) throw new Error('No tenés permiso para corregir movimientos')
+      const nuevoMonto = parseFloat(corregirMonto)
+      if (!nuevoMonto || nuevoMonto <= 0) throw new Error('Ingresá un monto válido')
+      if (!corregirConcepto.trim()) throw new Error('Ingresá un concepto')
+      // 1) Insertar reversión del original (mismo tipo opuesto)
+      const tipoReverso = corregirMov.tipo === 'ingreso' ? 'egreso' : 'ingreso'
+      const { error: e1 } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id,
+        sesion_id: corregirMov.sesion_id,
+        tipo: tipoReverso,
+        concepto: `[Reversión] ${corregirMov.concepto}`,
+        monto: Number(corregirMov.monto),
+        usuario_id: user?.id,
+      })
+      if (e1) throw e1
+      // 2) Insertar nuevo movimiento con valores corregidos
+      const { error: e2 } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id,
+        sesion_id: corregirMov.sesion_id,
+        tipo: corregirMov.tipo,  // mismo tipo (ingreso)
+        concepto: `[Corregido] ${corregirConcepto.trim()}`,
+        monto: nuevoMonto,
+        usuario_id: user?.id,
+      })
+      if (e2) throw e2
+    },
+    onSuccess: () => {
+      toast.success('Movimiento corregido')
+      logActividad({
+        entidad: 'caja', entidad_id: corregirMov?.id, entidad_nombre: corregirMov?.concepto,
+        accion: 'editar',
+        valor_anterior: `${corregirMov?.monto} · ${corregirMov?.concepto}`,
+        valor_nuevo: `${parseFloat(corregirMonto)} · ${corregirConcepto.trim()}`,
+        pagina: '/caja',
+      })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      setCorregirMov(null); setCorregirMonto(''); setCorregirConcepto('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -1604,13 +1691,24 @@ export default function CajaPage() {
                                 </div>
                               </div>
                             </div>
-                            <span className={`font-bold text-sm flex-shrink-0 ${
-                              esIngreso ? 'text-green-600 dark:text-green-400'
-                              : esEgreso ? 'text-red-500'
-                              : 'text-blue-400'
-                            }`}>
-                              {esIngreso ? '+' : esEgreso ? '−' : '~'}{formatMoneda(m.monto)}
-                            </span>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <span className={`font-bold text-sm ${
+                                esIngreso ? 'text-green-600 dark:text-green-400'
+                                : esEgreso ? 'text-red-500'
+                                : 'text-blue-400'
+                              }`}>
+                                {esIngreso ? '+' : esEgreso ? '−' : '~'}{formatMoneda(m.monto)}
+                              </span>
+                              {/* G1 — Corregir: solo en ingresos manuales (sin #venta), si rol tiene permiso */}
+                              {puedeEditarMovimiento && m.tipo === 'ingreso' && !numVenta && !m.concepto.startsWith('[Reversión]') && !m.concepto.startsWith('[Corregido]') && !m.concepto.startsWith('[Diferencia caja]') && (
+                                <button
+                                  onClick={() => { setCorregirMov(m); setCorregirMonto(String(m.monto)); setCorregirConcepto(m.concepto) }}
+                                  title="Corregir este movimiento"
+                                  className="p-1 text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 transition-colors">
+                                  <RotateCcw size={12} />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )
                       })}
@@ -2035,6 +2133,52 @@ export default function CajaPage() {
                 disabled={extraerDeBoveda.isPending || !extraerCuentaId || !extraerMonto || !extraerMotivo.trim()}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
                 {extraerDeBoveda.isPending ? 'Registrando...' : 'Confirmar extracción'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* G1 — Modal corregir movimiento manual (DUEÑO/SUPERVISOR) */}
+      {corregirMov && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setCorregirMov(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
+                <RotateCcw size={18} className="text-amber-600" /> Corregir movimiento
+              </h2>
+              <button onClick={() => setCorregirMov(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Se creará un movimiento de reversión + uno nuevo corregido. El original queda en el historial con audit log.
+            </p>
+            <div className="space-y-3 mb-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Concepto corregido</label>
+                <input type="text" value={corregirConcepto} onChange={e => setCorregirConcepto(e.target.value)}
+                  autoFocus
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                <p className="text-[11px] text-gray-400 mt-1">Original: <span className="italic">{corregirMov.concepto}</span></p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto corregido</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={corregirMonto}
+                    onChange={e => setCorregirMonto(e.target.value)}
+                    className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">Original: {formatMoneda(corregirMov.monto)}</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setCorregirMov(null)}
+                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
+                Cancelar
+              </button>
+              <button onClick={() => corregirMovimiento.mutate()} disabled={corregirMovimiento.isPending}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
+                {corregirMovimiento.isPending ? 'Corrigiendo...' : 'Confirmar corrección'}
               </button>
             </div>
           </div>
@@ -2625,8 +2769,30 @@ export default function CajaPage() {
               )
             })()}
 
+            {/* B7 — Doble validación: 2do usuario debe autenticarse */}
+            {configCaja.doble_validacion_cierre && (
+              <div className="mb-5 bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 rounded-xl p-3 space-y-2">
+                <label className="block text-sm font-medium text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
+                  <Lock size={13} /> Doble validación del cierre
+                </label>
+                <p className="text-xs text-blue-700 dark:text-blue-400">
+                  Este negocio requiere que un 2do usuario (DUEÑO/SUPERVISOR/ADMIN) confirme el cierre con sus credenciales.
+                </p>
+                <input type="email" value={dobleValEmail}
+                  onChange={e => setDobleValEmail(e.target.value)}
+                  placeholder="Email del 2do usuario"
+                  autoComplete="off"
+                  className="w-full px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg text-sm focus:outline-none focus:border-blue-500 dark:bg-gray-800" />
+                <input type="password" value={dobleValPassword}
+                  onChange={e => setDobleValPassword(e.target.value)}
+                  placeholder="Contraseña"
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg text-sm focus:outline-none focus:border-blue-500 dark:bg-gray-800" />
+              </div>
+            )}
+
             <div className="flex gap-3">
-              <button onClick={() => { setShowCierre(false); setMontoRealCierre(''); setClaveMaestraCierre('') }}
+              <button onClick={() => { setShowCierre(false); setMontoRealCierre(''); setClaveMaestraCierre(''); setDobleValEmail(''); setDobleValPassword('') }}
                 className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                 Cancelar
               </button>

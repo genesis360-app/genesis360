@@ -6,6 +6,59 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-26] update | v1.9.5-dev — Caja Fase 2.2a — Operaciones especiales (L1/L4/L5/B7/G1)
+
+Implementación de Fase 2.2 — sin migrations nuevas (solo frontend + uso de tablas existentes).
+**L3 (préstamos RRHH) diferido a Fase 2.2b** porque toca otro módulo.
+
+### Cambios
+
+**L4 — Bloqueo cambio de sucursal con caja propia abierta** (`AppLayout.tsx`)
+- Nueva query `mis-cajas-abiertas-por-suc` que devuelve `sucursal_id` de cajas abiertas propias
+- Wrapper `handleCambiarSucursal(newId)` que intercepta el `onChange` de los 2 selectores de sucursal
+- Si user tiene caja en otra sucursal: confirm "Tenés caja abierta en X. Cerrala antes de cambiar" → opción "Ir a esa caja" navega a `/caja` con la sucursal correcta seleccionada
+
+**L1 — Selector de caja para egreso efectivo en devolución** (`VentasPage.tsx`)
+- Nuevo state `devCajaSesionId`
+- Modal de devolución: si hay medio "Efectivo" con monto > 0 → bloque ámbar pide elegir caja (auto-elige si solo hay 1 sesión)
+- Validación: bloquea si hay >1 sesión abierta y no se eligió
+- `procesarDevolucion`: usa `devCajaSesionId || sesionCajaId` como destino del egreso + asigna `cuenta_origen_id` de Efectivo
+- Reset de `devCajaSesionId` al abrir modal
+
+**L5 — Cadena de anulación venta según estado** (`VentasPage.tsx`)
+- En `cambiarEstado` (case `cancelada`): si la venta estaba `despachada` con cobro > 0 y NO hay caja abierta → throw con mensaje detallado sugiriendo "Devolver" o emisión de NC
+- `onError`: detecta SQLSTATE P0001 / "periodo_cerrado" del trigger BD y muestra mensaje específico "Generá una nota de corrección desde Gastos → Cierres contables"
+
+**G1 — Botón "Corregir" en movimientos manuales** (`CajaPage.tsx`)
+- Nuevo state `corregirMov`, `corregirMonto`, `corregirConcepto`
+- Nueva mutation `corregirMovimiento`: inserta `[Reversión] <original>` (tipo opuesto) + nuevo movimiento `[Corregido] <nuevo>` con valores actualizados + `logActividad` con audit trail (valor_anterior → valor_nuevo)
+- Botón inline 🔄 visible solo si `puedeEditarMovimiento` (DUEÑO/ADMIN o SUPERVISOR con flag `supervisor_puede_editar_movimientos`)
+- Filtros: solo en `tipo='ingreso'` sin `#venta` (manual puro) y excluye los que ya son `[Reversión]`, `[Corregido]` o `[Diferencia caja]`
+- Modal de corrección con form (concepto + monto) y referencia visible del original
+
+**B7 — Doble validación al cierre** (`CajaPage.tsx`)
+- Flag opcional `config_caja.doble_validacion_cierre` (default false)
+- Si activado, modal de cierre muestra inputs email + password adicionales
+- Mutation `cerrarCaja`: crea cliente Supabase secundario (`persistSession: false`) que llama `signInWithPassword` sin romper la sesión actual del cerrador
+- Valida: credenciales OK + 2do usuario ≠ cerrador + mismo tenant + rol DUEÑO/SUPERVISOR/ADMIN/SUPER_USUARIO
+- Logs `signOut` del cliente temporal en todos los paths
+
+**ConfigPage tab Caja — nueva sección "Permisos avanzados"**:
+- 3 toggles: doble validación cierre (B7) · SUPERVISOR puede editar movs (G1) · SUPERVISOR puede ver bóveda (E2)
+- Mutation `handleSaveConfigCaja` que merge dentro de `tenants.config_caja` JSONB y refresca store
+
+### Score final
+- **8 de 8 decisiones críticas del relevamiento implementadas (100%)** 🎉
+- B7 era la única que faltaba — ahora implementada como opcional configurable
+
+### Estado al cierre
+- DEV: v1.9.5 con migrations 130-141 aplicadas (sin migration nueva en esta fase)
+- PROD: v1.9.0 (136-141 pendientes)
+- Pipeline Caja: Tanda 1+1.5 (v1.9.1-2) + Fase 2.0 (v1.9.3) + Fase 2.1 (v1.9.4) + Fase 2.2a (v1.9.5)
+- Quedan Fase 2.2b (L3 préstamos RRHH), 2.3 (UX + bóveda detalles), 2.4 (HITO v1.10.0 reportes)
+
+---
+
 ## [2026-05-26] update | v1.9.4-dev — Caja Fase 2.1 — Ticket cierre + Diferencias (C1/C3/K2/K3/B1-B4)
 
 ### Migration 141 aplicada en DEV

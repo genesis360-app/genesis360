@@ -458,6 +458,26 @@ export default function ConfigPage() {
   const [bizDifUmbral, setBizDifUmbral] = useState<string>((tenant as any)?.diferencia_caja_umbral != null ? String((tenant as any).diferencia_caja_umbral) : '')
   const [bizDifRoles, setBizDifRoles] = useState<string[]>((tenant as any)?.diferencia_caja_alerta_roles ?? ['DUEÑO','SUPERVISOR'])
   const [bizDifCanales, setBizDifCanales] = useState<string[]>((tenant as any)?.diferencia_caja_alerta_canales ?? ['inapp','email'])
+  // Fase 2.2 — Doble validación cierre (B7) + Editar movimientos (G1) por SUPERVISOR
+  const [bizDobleVal, setBizDobleVal] = useState<boolean>(((tenant as any)?.config_caja ?? {}).doble_validacion_cierre === true)
+  const [bizSupervisorEdita, setBizSupervisorEdita] = useState<boolean>(((tenant as any)?.config_caja ?? {}).supervisor_puede_editar_movimientos === true)
+  const [bizSupervisorBoveda, setBizSupervisorBoveda] = useState<boolean>(((tenant as any)?.config_caja ?? {}).supervisor_puede_ver_boveda === true)
+  const [savingConfigCaja, setSavingConfigCaja] = useState(false)
+  const handleSaveConfigCaja = async () => {
+    setSavingConfigCaja(true)
+    const configActual = (tenant as any)?.config_caja ?? {}
+    const nueva = {
+      ...configActual,
+      doble_validacion_cierre: bizDobleVal,
+      supervisor_puede_editar_movimientos: bizSupervisorEdita,
+      supervisor_puede_ver_boveda: bizSupervisorBoveda,
+    }
+    const { data, error } = await supabase.from('tenants').update({ config_caja: nueva }).eq('id', tenant!.id).select().single()
+    setSavingConfigCaja(false)
+    if (error || !data) { toast.error('No se pudo guardar'); return }
+    setTenant(data)
+    toast.success('Configuración de Caja guardada')
+  }
   const [savingDif, setSavingDif] = useState(false)
   const handleSaveDif = async () => {
     setSavingDif(true)
@@ -4138,6 +4158,50 @@ export default function ConfigPage() {
                     <button onClick={handleSaveBiz} disabled={savingBiz}
                       className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
                       {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Permisos avanzados de caja (B7/G1/E2) */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-accent" /> Permisos avanzados
+                </h2>
+                <div className="space-y-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bizDobleVal} disabled={!canEdit}
+                      onChange={e => setBizDobleVal(e.target.checked)}
+                      className="mt-1 rounded border-gray-300 text-accent focus:ring-accent disabled:opacity-50" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Doble validación al cerrar caja</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Un 2do usuario (DUEÑO/SUPERVISOR/ADMIN) debe confirmar el cierre con sus credenciales (B7).</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bizSupervisorEdita} disabled={!canEdit}
+                      onChange={e => setBizSupervisorEdita(e.target.checked)}
+                      className="mt-1 rounded border-gray-300 text-accent focus:ring-accent disabled:opacity-50" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">SUPERVISOR puede corregir movimientos manuales</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Permite al SUPERVISOR usar el botón "Corregir" en ingresos manuales (G1).</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bizSupervisorBoveda} disabled={!canEdit}
+                      onChange={e => setBizSupervisorBoveda(e.target.checked)}
+                      className="mt-1 rounded border-gray-300 text-accent focus:ring-accent disabled:opacity-50" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">SUPERVISOR puede ver el saldo de la bóveda</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Por default solo el DUEÑO ve los saldos por cuenta de origen (E2).</p>
+                    </div>
+                  </label>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveConfigCaja} disabled={savingConfigCaja}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingConfigCaja ? 'Guardando...' : 'Guardar permisos'}
                     </button>
                   </div>
                 )}

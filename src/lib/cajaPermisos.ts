@@ -53,6 +53,7 @@ export interface ConfigCaja {
   supervisor_puede_ver_boveda?: boolean
   supervisor_puede_editar_movimientos?: boolean
   forzar_cierre_dia_anterior?: boolean
+  doble_validacion_cierre?: boolean  // B7 — pide email+password del 2do usuario al cerrar
 }
 
 /**

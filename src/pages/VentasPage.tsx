@@ -186,6 +186,8 @@ export default function VentasPage() {
   const [devItems, setDevItems] = useState<DevItem[]>([])
   const [devMotivo, setDevMotivo] = useState('')
   const [devMediosPago, setDevMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
+  // L1 — caja específica para egreso efectivo en devolución
+  const [devCajaSesionId, setDevCajaSesionId] = useState<string>('')
   const [devSaving, setDevSaving] = useState(false)
   const [devComprobante, setDevComprobante] = useState<any | null>(null)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
@@ -1894,6 +1896,7 @@ export default function VentasPage() {
     setDevItems(items)
     setDevMotivo('')
     setDevMediosPago([{ tipo: '', monto: '' }])
+    setDevCajaSesionId(sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : '')
     setDevolucionVenta(venta)
   }
 
@@ -2015,9 +2018,17 @@ export default function VentasPage() {
       toast.error(`Los medios de devolución ($${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no cubren el total ($${montoTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })})`)
       return
     }
-    if (hayEfectivo && !sesionCajaId) {
-      toast.error('No hay caja abierta. Abrí una caja antes de devolver en efectivo.')
-      return
+    if (hayEfectivo) {
+      // L1 — si hay efectivo, debe haber caja elegida (selector explícito o fallback a la activa)
+      const cajaParaEgreso = devCajaSesionId || sesionCajaId
+      if (!cajaParaEgreso) {
+        toast.error('No hay caja abierta. Abrí una caja antes de devolver en efectivo.')
+        return
+      }
+      if (sesionesAbiertas.length > 1 && !devCajaSesionId) {
+        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar el egreso.')
+        return
+      }
     }
 
     setDevSaving(true)
@@ -2113,17 +2124,19 @@ export default function VentasPage() {
         }
       }
 
-      // 4. Egreso en caja si hay efectivo
-      if (hayEfectivo && sesionCajaId) {
+      // 4. Egreso en caja si hay efectivo (L1: usar caja seleccionada explícitamente para el egreso)
+      const cajaParaEgreso = devCajaSesionId || sesionCajaId
+      if (hayEfectivo && cajaParaEgreso) {
         const montoEfectivo = mediosValidos
           .filter(m => m.tipo === 'Efectivo')
           .reduce((a, m) => a + parseFloat(m.monto), 0)
         void supabase.from('caja_movimientos').insert({
           tenant_id: tenant.id,
-          sesion_id: sesionCajaId,
+          sesion_id: cajaParaEgreso,
           tipo: 'egreso',
           concepto: `Devolución venta #${devolucionVenta.numero}${numero_nc ? ` · ${numero_nc}` : ''}`,
           monto: montoEfectivo,
+          cuenta_origen_id: cuentaOrigenDeMetodo('Efectivo'),
           usuario_id: user?.id,
         })
       }
@@ -2398,6 +2411,16 @@ export default function VentasPage() {
         }
 
       } else if (nuevoEstado === 'cancelada') {
+        // L5 — Cadena de anulación según estado de la venta original
+        // (a) venta pendiente/reservada → cancelar libre (sin afectar caja)
+        // (b) venta despachada con seña/pago efectivo → si NO hay caja abierta, bloquear y sugerir devolución/NC
+        // (c) periodo contable cerrado → el trigger BD bloquea con SQLSTATE P0001
+        if (venta.estado === 'despachada' && (venta.monto_pagado ?? 0) > 0) {
+          const hayCajaAbierta = sesionesAbiertas.length > 0
+          if (!hayCajaAbierta) {
+            throw new Error('Esta venta fue despachada con cobro efectivo. Para anularla necesitás:\n• Abrir una caja para registrar el egreso de devolución, O\n• Usar el flujo "Devolver" en el historial para emitir una nota de crédito')
+          }
+        }
         // Liberar reservas
         for (const item of items ?? []) {
           if ((item.productos as any)?.tiene_series) {
@@ -2479,7 +2502,15 @@ export default function VentasPage() {
         if (v) triggerFacturaModal(v.id, v.numero ?? 0, Number(v.total ?? 0))
       }
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      // L5 — Si el periodo contable está cerrado, mostrar mensaje específico
+      const msg = e?.message ?? ''
+      if (msg.includes('periodo contable cerrado') || msg.includes('periodo_cerrado') || e?.code === 'P0001') {
+        toast.error('Este periodo contable ya está cerrado. Para anular esta venta, generá una nota de corrección desde Gastos → Cierres contables.', { duration: 7000 })
+        return
+      }
+      toast.error(msg)
+    },
   })
 
   const filteredVentas = ventas.filter((v: any) => {
@@ -4047,6 +4078,28 @@ export default function VentasPage() {
                   placeholder="Producto dañado, talla incorrecta..."
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
               </div>
+
+              {/* L1 — Selector de caja para el egreso efectivo */}
+              {devMediosPago.some(mp => mp.tipo === 'Efectivo' && parseFloat(mp.monto) > 0) && sesionesAbiertas.length > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
+                  <label className="block text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">
+                    💵 Caja para el egreso efectivo *
+                  </label>
+                  {sesionesAbiertas.length === 1 ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja única'}
+                    </p>
+                  ) : (
+                    <select value={devCajaSesionId} onChange={e => setDevCajaSesionId(e.target.value)}
+                      className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg text-sm focus:outline-none focus:border-amber-500 bg-white dark:bg-gray-800">
+                      <option value="">— Seleccioná de qué caja sale el efectivo —</option>
+                      {(sesionesAbiertas as any[]).map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
 
               {/* Medio de devolución */}
               <div>

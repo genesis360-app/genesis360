@@ -6,6 +6,263 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-26] update | v1.10.0-dev — HITO Caja Fase 2.4 — Reportes (I1/I2)
+
+Cierre del pipeline de Reportes con 4 vistas + 3 exports (Excel/PDF/CSV).
+**Versión mayor v1.10.0** marca el módulo Caja como completo en su pipeline de relevamiento (todas las features de A a M implementadas según las decisiones priorizadas del relevamiento).
+
+### Migration 142 aplicada en DEV
+- Vista `vw_caja_resumen_diario` — agregado por día/caja/sucursal · cierres count + cerrados + total apertura/ingresos/egresos/ventas + saldo_sistema + conteo_real + diferencia_total/absoluta. Excluye caja fuerte (where `NOT es_caja_fuerte`)
+- Vista `vw_caja_mensual_por_sucursal` — agregado por mes/sucursal · sesiones + cerradas + ingresos/egresos/ventas + diferencia + cajas_activas + cajeros_distintos. Periodo = `DATE_TRUNC('month', abierta_at)::DATE`
+
+### Frontend
+- **Nuevo componente `src/components/CajaReportes.tsx`** (~330 líneas) — 4 sub-tabs:
+  - **(a) Diario por caja** — usa `vw_caja_resumen_diario` filtrado por fecha + opcional sucursal
+  - **(b) Diario consolidado** — agrega todas las cajas por fecha en frontend (sin nueva vista)
+  - **(c) Mensual por sucursal** — usa `vw_caja_mensual_por_sucursal`
+  - **(d) Por cajero** — usa `vw_diferencias_por_cajero` (ya existente desde v1.9.4) - últimos 30 días
+- **Filtros**: fecha desde/hasta (todos los reportes excepto cajero) + selector sucursal (a + c) opcional
+- **Tabla**: render dinámico desde array `columnas[]` con `COL_LABELS` y `COLS_MONETARIAS` para detectar columnas a formatear como dinero. Color rojo/verde en columnas de diferencia. Tfoot con totales si hay >1 fila
+- **3 botones de export** en cada reporte:
+  - **Excel** (xlsx): hoja Info + hoja Datos. Labels en español
+  - **PDF** (jspdf + autoTable): landscape si hay >6 columnas. Header con BRAND + período
+  - **CSV** con BOM utf-8 para Excel ES + escape de comillas
+- **CajaPage**: nuevo tab `'reportes'` (icono 📊) visible para DUEÑO/SUPERVISOR/SUPER_USUARIO/CONTADOR. Type `Tab` ampliado
+
+### Score final del relevamiento Caja
+- **8 de 8 decisiones críticas implementadas (100%)** ✅
+- **I1/I2 reportes**: ✅ los 4 reportes prioritarios respondidos en el relevamiento + 3 formatos de export
+
+### Estado al cierre
+- DEV: **v1.10.0** con migrations 130-142 aplicadas
+- PROD: v1.9.0 (136-142 pendientes de deploy)
+- **Pipeline Reglas Caja: CERRADO** (todas las respuestas A-M del PDF de relevamiento implementadas con sus features priorizadas)
+- Quedan opcionales: Fase 2.2b (L3 préstamos RRHH), Fase 2.3 (M2/M3/M4 + E1/E3 + G5) — refinos no críticos
+
+---
+
+## [2026-05-26] update | v1.9.5-dev — Caja Fase 2.2a — Operaciones especiales (L1/L4/L5/B7/G1)
+
+Implementación de Fase 2.2 — sin migrations nuevas (solo frontend + uso de tablas existentes).
+**L3 (préstamos RRHH) diferido a Fase 2.2b** porque toca otro módulo.
+
+### Cambios
+
+**L4 — Bloqueo cambio de sucursal con caja propia abierta** (`AppLayout.tsx`)
+- Nueva query `mis-cajas-abiertas-por-suc` que devuelve `sucursal_id` de cajas abiertas propias
+- Wrapper `handleCambiarSucursal(newId)` que intercepta el `onChange` de los 2 selectores de sucursal
+- Si user tiene caja en otra sucursal: confirm "Tenés caja abierta en X. Cerrala antes de cambiar" → opción "Ir a esa caja" navega a `/caja` con la sucursal correcta seleccionada
+
+**L1 — Selector de caja para egreso efectivo en devolución** (`VentasPage.tsx`)
+- Nuevo state `devCajaSesionId`
+- Modal de devolución: si hay medio "Efectivo" con monto > 0 → bloque ámbar pide elegir caja (auto-elige si solo hay 1 sesión)
+- Validación: bloquea si hay >1 sesión abierta y no se eligió
+- `procesarDevolucion`: usa `devCajaSesionId || sesionCajaId` como destino del egreso + asigna `cuenta_origen_id` de Efectivo
+- Reset de `devCajaSesionId` al abrir modal
+
+**L5 — Cadena de anulación venta según estado** (`VentasPage.tsx`)
+- En `cambiarEstado` (case `cancelada`): si la venta estaba `despachada` con cobro > 0 y NO hay caja abierta → throw con mensaje detallado sugiriendo "Devolver" o emisión de NC
+- `onError`: detecta SQLSTATE P0001 / "periodo_cerrado" del trigger BD y muestra mensaje específico "Generá una nota de corrección desde Gastos → Cierres contables"
+
+**G1 — Botón "Corregir" en movimientos manuales** (`CajaPage.tsx`)
+- Nuevo state `corregirMov`, `corregirMonto`, `corregirConcepto`
+- Nueva mutation `corregirMovimiento`: inserta `[Reversión] <original>` (tipo opuesto) + nuevo movimiento `[Corregido] <nuevo>` con valores actualizados + `logActividad` con audit trail (valor_anterior → valor_nuevo)
+- Botón inline 🔄 visible solo si `puedeEditarMovimiento` (DUEÑO/ADMIN o SUPERVISOR con flag `supervisor_puede_editar_movimientos`)
+- Filtros: solo en `tipo='ingreso'` sin `#venta` (manual puro) y excluye los que ya son `[Reversión]`, `[Corregido]` o `[Diferencia caja]`
+- Modal de corrección con form (concepto + monto) y referencia visible del original
+
+**B7 — Doble validación al cierre** (`CajaPage.tsx`)
+- Flag opcional `config_caja.doble_validacion_cierre` (default false)
+- Si activado, modal de cierre muestra inputs email + password adicionales
+- Mutation `cerrarCaja`: crea cliente Supabase secundario (`persistSession: false`) que llama `signInWithPassword` sin romper la sesión actual del cerrador
+- Valida: credenciales OK + 2do usuario ≠ cerrador + mismo tenant + rol DUEÑO/SUPERVISOR/ADMIN/SUPER_USUARIO
+- Logs `signOut` del cliente temporal en todos los paths
+
+**ConfigPage tab Caja — nueva sección "Permisos avanzados"**:
+- 3 toggles: doble validación cierre (B7) · SUPERVISOR puede editar movs (G1) · SUPERVISOR puede ver bóveda (E2)
+- Mutation `handleSaveConfigCaja` que merge dentro de `tenants.config_caja` JSONB y refresca store
+
+### Score final
+- **8 de 8 decisiones críticas del relevamiento implementadas (100%)** 🎉
+- B7 era la única que faltaba — ahora implementada como opcional configurable
+
+### Estado al cierre
+- DEV: v1.9.5 con migrations 130-141 aplicadas (sin migration nueva en esta fase)
+- PROD: v1.9.0 (136-141 pendientes)
+- Pipeline Caja: Tanda 1+1.5 (v1.9.1-2) + Fase 2.0 (v1.9.3) + Fase 2.1 (v1.9.4) + Fase 2.2a (v1.9.5)
+- Quedan Fase 2.2b (L3 préstamos RRHH), 2.3 (UX + bóveda detalles), 2.4 (HITO v1.10.0 reportes)
+
+---
+
+## [2026-05-26] update | v1.9.4-dev — Caja Fase 2.1 — Ticket cierre + Diferencias (C1/C3/K2/K3/B1-B4)
+
+### Migration 141 aplicada en DEV
+- `caja_sesiones.numero INT` con trigger `fn_set_caja_sesion_numero()` que asigna correlativo por sucursal en INSERT (K3) + backfill de 43 sesiones existentes con `ROW_NUMBER() OVER (PARTITION BY tenant_id, sucursal_id ORDER BY abierta_at)`
+- `caja_sesiones.snapshot_totales JSONB` para almacenar el estado completo al momento del cierre (K2)
+- `tenants.diferencia_caja_umbral DECIMAL(14,2)` (B1)
+- `tenants.diferencia_caja_alerta_roles TEXT[]` default `['DUEÑO','SUPERVISOR']` (B2)
+- `tenants.diferencia_caja_alerta_canales TEXT[]` default `['inapp','email']` (B3)
+- Vista `vw_diferencias_por_cajero` con `security_invoker=true` — cierres_count + cierres_con_diferencia + diferencia_neta/absoluta_acumulada + maxima, últimos 30 días por cajero (B4)
+
+### Frontend
+- **CajaPage `cerrarCaja` (K2)**: calcula snapshot completo al cerrar — `montos` (apertura/ingresos/egresos/saldo/conteo/diferencia) + `totales_por_metodo` (agrupados de movimientos) + `ventas` (las que matchean #N en concepto) + `movimientos_manuales` (ingresos/egresos manuales) + `arqueos` de la sesión + `numero_cierre`. Persistido en `caja_sesiones.snapshot_totales`
+- **CajaPage `cerrarCaja` (B4)**: si hay diferencia ≠ 0, inserta `caja_movimientos` tipo `ingreso`/`egreso` con concepto `[Diferencia caja] Sobrante|Faltante` asociado al `sesionActiva.usuario_id` (cajero responsable, no quien cerró)
+- **CajaPage `cerrarCaja` (B1/B2/B3)**: si `Math.abs(diferencia) >= umbral` (o umbral=null), envía alerta a usuarios con rol en `diferencia_caja_alerta_roles` por canales `inapp` (notificaciones) + `email` (send-email EF). WhatsApp queda como TODO
+- **CajaPage `imprimirCierre(sesion, formato)` (C1+C3)**: refactor completo
+  - Formato `'a4'` (default): header con logo + datos fiscales del negocio (CUIT, domicilio) · tabla resumen · totales por método de pago (del snapshot) · listado ventas (top 25) · listado movimientos manuales (top 15) · espacio para 2 firmas · numeración correlativa `#NNNN` en pie
+  - Formato `'termico'` (nuevo): jsPDF con tamaño custom 80mm × dinámico · diseño tipo ticket de caja registradora · centrado · líneas dashed · misma data condensada
+- **CajaPage historial**: botón "Reimprimir PDF" reemplazado por 2 botones (A4 + Tícket) visibles solo si `puedeReimprimirTicket`
+- **CajaPage historial**: nueva card "Diferencias por cajero (últimos 30 días)" para DUEÑO/SUPERVISOR/CONTADOR con tabla — cierres count + con diferencia + neto + absoluto + máxima
+- **ConfigPage tab Caja**: nueva sección "Diferencias en cierre de caja" con input umbral + chips toggles para roles destinatarios + chips toggles para canales (inapp/email/whatsapp deshabilitado)
+- **ConfigPage**: nueva mutation `handleSaveDif` con `setTenant(data)` para refrescar store
+- **ConfigPage**: state `bizDifUmbral` / `bizDifRoles` / `bizDifCanales` inicializados desde tenant
+
+### Wiki
+- `wiki/database/migraciones.md`: entrada 141
+- `wiki/business/roadmap.md`: entrada v1.9.4
+- `wiki/features/caja.md`: nueva sección Fase 2.1
+- `log.md` + `index.md` + `project_pendientes.md` actualizados
+
+### Estado al cierre
+- DEV: v1.9.4 con migrations 130-141 aplicadas
+- PROD: v1.9.0 (136-141 pendientes)
+- Pipeline Caja: Tanda 1+1.5 (v1.9.1-2) + Fase 2.0 (v1.9.3) + Fase 2.1 (v1.9.4)
+- Score: **7 de 8 decisiones críticas del relevamiento implementadas (87.5%)** — falta B7 doble validación
+
+---
+
+## [2026-05-26] update | v1.9.3-dev — Caja Fase 2.0 — Permisos + Roles (J/B5/B6/A2/A4/C2)
+
+Implementación de respuestas J-M del relevamiento Caja (con socio en `relevamiento-caja-reglas-negocio.pdf` + respuestas guardadas en `sources/relevamientos/caja_2026-05-25.md`).
+
+### Migration 140 aplicada en DEV
+- `caja_sesiones.abierta_por UUID REFERENCES users(id)` + backfill = usuario_id (A2: registra quien hizo la apertura, distinto del propietario)
+- `tenants.config_caja JSONB DEFAULT '{}'` — config flexible de permisos opcionales por rol (supervisor_puede_ver_boveda, supervisor_puede_editar_movimientos, forzar_cierre_dia_anterior)
+- RPC `requiere_clave_maestra(tenant, accion)` — centraliza B5: cerrar_caja_ajena | abrir_caja_diferencia | anular_venta | anular_movimiento
+- RPC `verificar_clave_maestra(tenant, clave)` SECURITY DEFINER — compara sin exponer clave al frontend
+
+### Frontend
+- **Nuevo helper `src/lib/cajaPermisos.ts`** — matriz J3 completa con `puede(rol, accion, configCaja?)` + lista de acciones con clave maestra
+- **ConfigPage** tab Caja: clave maestra **solo editable por DUEÑO (B6)** — disabled para SUPERVISOR/ADMIN/CONTADOR + badge "🔒 Solo DUEÑO puede modificarla" + texto expandido sobre cuándo se requiere
+- **AppLayout**: CONTADOR ahora ve y puede acceder a `/caja` (read-only)
+- **CajaPage**: permisos granulares aplicados — `puedeAbrirAjena`, `puedeOperarCaja`, `puedeReimprimirTicket`, `puedeEditarMovimiento`, `esSoloLectura`
+- **CajaPage tab Caja**: si `esSoloLectura` (CONTADOR) → ocultas las acciones Ingreso/Arqueo/Bóveda/Traspaso y se muestra banner "Modo solo lectura"
+- **CajaPage modal Apertura (A2)**: si DUEÑO/SUPERVISOR, selector "Abrir caja para" con la lista de cajeros del tenant. Si se selecciona otro, la sesión queda con `usuario_id = cajero` y `abierta_por = current_user`
+- **CajaPage abrirCaja mutation**: validación adicional — si abre a nombre de otro, verifica que ESE cajero no tenga ya una sesión abierta
+- **CajaPage banner A4**: detecta si user tiene sesión propia abierta hace más de 24h y muestra banner ámbar con CTA "Ir a esa caja →" para forzar cierre
+- **CajaPage cerrarCaja (B5)**: si es cierre ajeno Y el tenant tiene `clave_maestra` configurada → modal pide input password + valida vía RPC `verificar_clave_maestra` antes de cerrar
+- **CajaPage cerrarCaja (C2)**: CAJERO ya no descarga PDF al cerrar — solo DUEÑO/SUPERVISOR/CONTADOR lo descargan. Toast muestra "El DUEÑO recibirá el detalle por email" para CAJERO. Mail al DUEÑO via EF `send-email` con detalle del cierre (saldo, conteo real, diferencia, ingresos, egresos, notas)
+- **CajaPage**: botón "Cerrar caja" oculto para CONTADOR
+
+### Wiki
+- `wiki/database/migraciones.md`: entradas 139 + 140 (también 139 que se había olvidado documentar)
+- `sources/relevamientos/caja_2026-05-25.md`: respuestas J-M con estado de implementación
+- `wiki/business/roadmap.md`: entrada v1.9.3 con Fase 2.0
+- `index.md`: actualizado
+
+### Estado al cierre
+- DEV: v1.9.3 con migrations 130-140 aplicadas
+- PROD: v1.9.0 (136-140 pendientes de deploy)
+- Pipeline Reglas Caja: Tanda 1 (v1.9.1) + Tanda 1.5 (v1.9.2) + Fase 2.0 (v1.9.3) implementadas. Resta Fase 2.1 (Ticket+Diferencias), 2.2 (Operaciones especiales), 2.3 (UX+Bóveda detalles), 2.4 (Reportes - HITO v1.10.0)
+
+### Score implementación
+- ✅ **6 de 8 decisiones críticas del relevamiento implementadas** (75%)
+- Pendientes: B7 doble validación cierre · I1/I2 reportes
+
+---
+
+## [2026-05-25] update | v1.9.2-dev — Caja Tanda 1.5 — Bóveda como billetera del negocio + Extraer dinero (E4/E5)
+
+Cierra el goal del usuario: la bóveda funciona como billetera del negocio con TODO el capital categorizado por cuenta de origen (efectivo, débito, crédito, MP, transferencia, etc.). Solo el DUEÑO puede extraer dinero con registro privado.
+
+### Migration 137 — `137_boveda_retiros_y_backfill.sql`
+- Tabla `boveda_retiros(id, tenant_id, cuenta_origen_id, monto, tipo_retiro, motivo, notas, usuario_id, movimiento_id, created_at)` con CHECK `tipo_retiro IN (banco/retiro_personal/gasto/inversion/pago_proveedor/otro)`
+- 3 índices (tenant+created_at, cuenta_origen_id, usuario_id)
+- **RLS estricta**: USING/WITH CHECK exige rol IN ('DUEÑO','ADMIN','SUPER_USUARIO') vía EXISTS en users — otros roles no ven ni el listado ni el detalle
+- Backfill cuenta_origen_id en `caja_movimientos` históricos: match por concepto `[Nombre Método]` para ingreso/egreso informativo; cuenta tipo='efectivo' para ingreso/egreso/ingreso_traspaso/egreso_traspaso/ingreso_reserva/egreso_devolucion_sena/ingreso_apertura
+- UNIQUE partial index `uq_cuentas_origen_efectivo_por_tenant` (garantiza 1 cuenta efectivo por tenant)
+
+### Migration 138 — `138_cuentas_origen_seed_metodos.sql`
+- Auto-seed: crea cuenta_origen por cada método de pago no-efectivo activo (Mercado Pago/UALA → billetera · Tarjeta/Transferencia → banco · resto → otro) usando moneda del tenant
+- Vincula `metodos_pago.cuenta_origen_id` con la cuenta recién creada (match por nombre)
+- Re-aplica backfill con conceptos históricos `[Nombre Método]` → cuenta_origen_id del método
+
+### Frontend
+- **CajaPage**: nuevo estado para modal Extraer (`extraerCuentaId`, `extraerMonto`, `extraerTipo`, `extraerMotivo`, `extraerNotas`) + `puedeExtraerBoveda = DUEÑO/ADMIN/SUPER_USUARIO`
+- **CajaPage**: nueva query `boveda-retiros` con `enabled: puedeExtraerBoveda` (RLS bloquea a otros roles igualmente)
+- **CajaPage**: nueva mutation `extraerDeBoveda` que valida saldo de cuenta, obtiene/crea sesión permanente de caja fuerte, inserta movimiento (`egreso_traspaso` si efectivo o `egreso_informativo` si banco/billetera) con `cuenta_origen_id`, e inserta registro en `boveda_retiros` con link al movimiento
+- **CajaPage** tab Bóveda: nuevo botón "Extraer dinero" (rojo, ml-auto) solo para DUEÑO+
+- **CajaPage** tab Bóveda: nueva sección "Historial de extracciones (privado)" con borde rojo, badge tipo, cuenta, motivo, notas, monto, fecha/hora y usuario — solo para DUEÑO+
+- **CajaPage** tab Bóveda: eliminada card hardcodeada "Efectivo (caja fuerte)" basada en `fuerteSaldo` — ahora la card Efectivo viene de `vw_boveda_cuentas` (cuenta tipo='efectivo' única); única fuente de verdad
+- **CajaPage** tab Bóveda: indicador "Capital del negocio · Total: $X" arriba a la derecha (solo DUEÑO+) sumando todas las cuentas activas
+- **CajaPage** `operarCajaFuerte`: los 4 inserts de traspaso (depósito caja → fuerte + retiro fuerte → caja) ahora setean `cuenta_origen_id = id cuenta efectivo` para que la vista los considere
+- **CajaPage** modal Extraer Dinero: pide cuenta (con saldo disponible en label), monto, tipo (6 opciones), motivo obligatorio, notas opcionales
+
+### Datos validados en DEV (tenant `3769b1db`)
+- Efectivo: $12.874.811 (86 movs)
+- Mercado Pago: $37.228 (10 movs)
+- Transferencia: -$958.749 (7 movs · negativo porque hay más gastos que ingresos en transferencia)
+
+### Wiki
+- `wiki/features/caja.md`: nueva sección "Bóveda como billetera del negocio — Tanda 1.5"
+- `wiki/database/migraciones.md`: entradas 137 y 138
+- `sources/relevamientos/caja_2026-05-25.md`: marcadas E4 y E5 como implementadas
+
+### Estado al cierre
+- DEV: v1.9.2 con migrations 130-138 aplicadas
+- PROD: v1.9.0 (migrations 136-138 pendientes de deploy)
+
+---
+
+## [2026-05-25] update | v1.9.1-dev — Reglas Caja Tanda 1 (moneda + Cuentas de Origen + bóveda discriminada)
+
+Implementación de respuestas A-I del relevamiento de Caja (con socio en `relevamiento-caja-reglas-negocio.pdf` + respuestas guardadas en `sources/relevamientos/caja_2026-05-25.md`).
+
+### Migration 136 aplicada en DEV
+- `cajas.moneda TEXT NOT NULL DEFAULT 'ARS'` + índice + seed desde `tenants.moneda` (23 cajas existentes asignadas)
+- Tabla `cuentas_origen(id, tenant_id, nombre, tipo, banco, numero, alias, moneda, activo, notas)` con CHECK `tipo IN (banco/billetera/efectivo/otro)` + RLS tenant
+- Seed de 1 cuenta `Efectivo` por tenant (7 cuentas creadas) + auto-asociación al método de pago "Efectivo" (5 métodos vinculados)
+- `metodos_pago.cuenta_origen_id` FK → cuentas_origen ON DELETE SET NULL
+- `caja_movimientos.cuenta_origen_id` FK opcional + índice parcial
+- Vista `vw_boveda_cuentas` con `security_invoker=true` → saldo neto por cuenta calculado de `caja_movimientos`
+
+### Frontend
+- **ConfigPage** tab Caja: nueva sección "Cuentas de Origen" con ABM completo (alta inline + edición inline + toggle activo + eliminar con guard de FK 23503)
+- **ConfigPage** tab Ventas → Métodos de pago: selector "Cuenta de origen default" en cada método + badge `→ Cuenta` en modo display
+- **VentasPage**: nueva query `metodos_pago_cfg` + helper `cuentaOrigenDeMetodo(nombre)` aplicado en los 5 puntos de insert informativo (despacho, seña reservada, seña en updateVentaEstado, despacho desde reservada, devolución seña cancelada)
+- **GastosPage**: misma query + helper aplicado en los 5 puntos de insert (OC, edición gasto borrador, gasto nuevo caja fuerte/normal, reversión por eliminación, gasto fijo generado)
+- **CajaPage** tab Bóveda: cards de saldos discriminados — card Efectivo (caja fuerte tradicional) + 1 card por cada `cuenta_origen` activa con icono por tipo + saldo + count + moneda + empty state que invita a Config
+- **CajaPage** modal Nueva Caja: selector de moneda obligatorio (default = `tenant.moneda` o `'ARS'`)
+- **CajaPage** selector pílulas: badge `MONEDA` cuando difiere de la del tenant
+- **CajaPage** lista en tab Configuración: badge `MONEDA` siempre visible junto al nombre
+- **CajaPage** modal movimiento manual: solo registra ingresos (eliminado `setMovTipo`, `movTipo` queda como constante `'ingreso'`), texto guía explica que los egresos pasan por Gastos
+- **CajaPage** botón "Cerrar caja": cuando `arqueosSesion.length === 0` se muestra como "Arqueo requerido antes de cerrar" (amber, abre modal de arqueo); mutation `cerrarCaja` valida con throw si no hay arqueos previos
+
+### Wiki
+- Nueva página `sources/relevamientos/caja_2026-05-25.md` con respuestas A-I + recomendación B4 + decisiones críticas pendientes
+- `wiki/features/caja.md`: nueva sección "Reglas relevadas — Tanda 1 (v1.9.1)" con F1, H1, G2, D3 + listado de pendientes para próximas tandas
+- `wiki/database/migraciones.md`: entrada 136
+- `index.md`: descripción Caja actualizada + pie con nuevo conteo y estado de relevamiento
+- PDF generado en raíz: `relevamiento-caja-reglas-negocio.pdf` (50 preguntas, 14 secciones) — A-I respondidas, J-N pendientes
+
+### Estado al cierre
+- DEV: v1.9.1 con migrations 130-136 aplicadas
+- PROD: v1.9.0 (migration 136 pendiente de deploy)
+- Pendiente próximas tandas: respuestas J-N del relevamiento + features B4/B5/B7/C2/E1/E4/G1 (algunas dependen de respuestas pendientes)
+
+---
+
+## [2026-05-25] update | PROD deploy v1.9.0 — Reglas Gastos Fases 4+5 (capitalización + cierre contable)
+
+- Migrations 134 + 135 aplicadas en PROD ✅ (3 columnas nuevas en gastos, tabla cierres_contables, vista vw_egresos_consolidados, 4 funciones, 5 triggers)
+- PR #117 `dev → main` mergeado ✅ (squash commit `4ec5885b`)
+- Vercel auto-deploy PROD `dpl_DH6q1FMCKxPnPN6tav1xC3j79Kab` en estado READY ✅ (build 66s)
+- `app.genesis360.pro` ya sirviendo v1.9.0
+- GitHub release v1.9.0 actualizada como **latest** (título limpio sin sufijo DEV)
+- DEV y PROD ahora ambas en v1.9.0 — pipeline Reglas de Negocio Gastos cerrado
+
+---
+
 ## [2026-05-25] update | v1.9.0-dev — Fases 4 + 5 reglas Gastos (capitalización + cierre contable)
 
 ### Migrations aplicadas en DEV

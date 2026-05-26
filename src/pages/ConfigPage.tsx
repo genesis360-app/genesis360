@@ -454,6 +454,43 @@ export default function ConfigPage() {
   const [bizClaveMaestra,           setBizClaveMaestra]           = useState<string>('')
   const [showClaveMaestra,          setShowClaveMaestra]          = useState(false)
   const [bizBovedaUmbral,           setBizBovedaUmbral]           = useState<string>(tenant?.boveda_umbral_caja != null ? String(tenant.boveda_umbral_caja) : '')
+  // Fase 2.1 — Diferencia de cierre (B1/B2/B3)
+  const [bizDifUmbral, setBizDifUmbral] = useState<string>((tenant as any)?.diferencia_caja_umbral != null ? String((tenant as any).diferencia_caja_umbral) : '')
+  const [bizDifRoles, setBizDifRoles] = useState<string[]>((tenant as any)?.diferencia_caja_alerta_roles ?? ['DUEÑO','SUPERVISOR'])
+  const [bizDifCanales, setBizDifCanales] = useState<string[]>((tenant as any)?.diferencia_caja_alerta_canales ?? ['inapp','email'])
+  // Fase 2.2 — Doble validación cierre (B7) + Editar movimientos (G1) por SUPERVISOR
+  const [bizDobleVal, setBizDobleVal] = useState<boolean>(((tenant as any)?.config_caja ?? {}).doble_validacion_cierre === true)
+  const [bizSupervisorEdita, setBizSupervisorEdita] = useState<boolean>(((tenant as any)?.config_caja ?? {}).supervisor_puede_editar_movimientos === true)
+  const [bizSupervisorBoveda, setBizSupervisorBoveda] = useState<boolean>(((tenant as any)?.config_caja ?? {}).supervisor_puede_ver_boveda === true)
+  const [savingConfigCaja, setSavingConfigCaja] = useState(false)
+  const handleSaveConfigCaja = async () => {
+    setSavingConfigCaja(true)
+    const configActual = (tenant as any)?.config_caja ?? {}
+    const nueva = {
+      ...configActual,
+      doble_validacion_cierre: bizDobleVal,
+      supervisor_puede_editar_movimientos: bizSupervisorEdita,
+      supervisor_puede_ver_boveda: bizSupervisorBoveda,
+    }
+    const { data, error } = await supabase.from('tenants').update({ config_caja: nueva }).eq('id', tenant!.id).select().single()
+    setSavingConfigCaja(false)
+    if (error || !data) { toast.error('No se pudo guardar'); return }
+    setTenant(data)
+    toast.success('Configuración de Caja guardada')
+  }
+  const [savingDif, setSavingDif] = useState(false)
+  const handleSaveDif = async () => {
+    setSavingDif(true)
+    const { data, error } = await supabase.from('tenants').update({
+      diferencia_caja_umbral: bizDifUmbral.trim() ? parseFloat(bizDifUmbral) : null,
+      diferencia_caja_alerta_roles: bizDifRoles,
+      diferencia_caja_alerta_canales: bizDifCanales,
+    }).eq('id', tenant!.id).select().single()
+    setSavingDif(false)
+    if (error || !data) { toast.error('No se pudo guardar'); return }
+    setTenant(data)
+    toast.success('Configuración de alertas guardada')
+  }
 
   // Gastos — reglas comprobante + alertas (v1.8.42)
   const t142 = tenant as any
@@ -472,6 +509,40 @@ export default function ConfigPage() {
   const [pvCollapsed,   setPvCollapsed]   = useState(true)
   const [pvForm,        setPvForm]        = useState({ numero: '', nombre: '' })
   const [savingPv,      setSavingPv]      = useState(false)
+
+  // Toggle facturación con auto-guardado y rollback si falla
+  const toggleFacturacion = async () => {
+    const nuevoValor = !bizFactHabilitada
+    setBizFactHabilitada(nuevoValor)
+    const { data, error } = await supabase.from('tenants')
+      .update({ facturacion_habilitada: nuevoValor })
+      .eq('id', tenant!.id).select().single()
+    if (error || !data) {
+      setBizFactHabilitada(!nuevoValor)
+      toast.error('No se pudo guardar el cambio')
+      return
+    }
+    setTenant(data)  // refrescar store para que persista al cambiar de tab/página
+    toast.success(nuevoValor ? 'Facturación habilitada' : 'Facturación deshabilitada')
+  }
+
+  // Guardar solo los datos fiscales (sin pisar otros campos del state)
+  const [savingFact, setSavingFact] = useState(false)
+  const handleSaveFacturacion = async () => {
+    setSavingFact(true)
+    const { data, error } = await supabase.from('tenants').update({
+      cuit: bizCuit.trim() || null,
+      condicion_iva_emisor: bizCondIva || null,
+      razon_social_fiscal: bizRazonSocial.trim() || null,
+      domicilio_fiscal: bizDomicilioFiscal.trim() || null,
+      umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
+      afipsdk_token: bizAfipToken.trim() || null,
+    }).eq('id', tenant!.id).select().single()
+    setSavingFact(false)
+    if (error || !data) { toast.error('No se pudo guardar'); return }
+    setTenant(data)  // refrescar store
+    toast.success('Datos fiscales guardados')
+  }
 
   const handleSaveBiz = async () => {
     setSavingBiz(true)
@@ -1105,7 +1176,7 @@ export default function ConfigPage() {
   // ── Métodos de pago ─────────────────────────────────────────────────────────
   const [nuevoMetodo, setNuevoMetodo] = useState({ nombre: '', color: '#22c55e' })
   const [editMetodoId, setEditMetodoId] = useState<string | null>(null)
-  const [editMetodoData, setEditMetodoData] = useState({ nombre: '', color: '', comision_pct: '' })
+  const [editMetodoData, setEditMetodoData] = useState({ nombre: '', color: '', comision_pct: '', cuenta_origen_id: '' as string | null | '' })
 
   // ISS-086: Cuotas por banco
   type BancoCuota = { id: string; nombre: string; cuotas: { cant: number; sin_interes: boolean; interes: number }[] }
@@ -1166,6 +1237,7 @@ export default function ConfigPage() {
         nombre: editMetodoData.nombre.trim(),
         color: editMetodoData.color,
         comision_pct: editMetodoData.comision_pct ? parseFloat(editMetodoData.comision_pct) : 0,
+        cuenta_origen_id: editMetodoData.cuenta_origen_id || null,
       }).eq('id', id).eq('tenant_id', tenant!.id)
       if (error) throw error
     },
@@ -1188,6 +1260,83 @@ export default function ConfigPage() {
       if (error) throw error
     },
     onSuccess: () => { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ─── Cuentas de Origen ────────────────────────────────────────────────────
+  const [nuevaCuenta, setNuevaCuenta] = useState({ nombre: '', tipo: 'banco', banco: '', alias: '', numero: '', moneda: '' })
+  const [editCuentaId, setEditCuentaId] = useState<string | null>(null)
+  const [editCuentaData, setEditCuentaData] = useState({ nombre: '', tipo: 'banco', banco: '', alias: '', numero: '', moneda: '' })
+
+  const { data: cuentasOrigen = [], isLoading: loadingCuentas } = useQuery<any[]>({
+    queryKey: ['cuentas_origen', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('cuentas_origen')
+        .select('*').eq('tenant_id', tenant!.id).order('activo', { ascending: false }).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && (tab === 'caja' || tab === 'ventas'),
+  })
+
+  const addCuentaOrigen = useMutation({
+    mutationFn: async () => {
+      if (!nuevaCuenta.nombre.trim()) throw new Error('El nombre es requerido')
+      const { error } = await supabase.from('cuentas_origen').insert({
+        tenant_id: tenant!.id,
+        nombre: nuevaCuenta.nombre.trim(),
+        tipo: nuevaCuenta.tipo,
+        banco: nuevaCuenta.banco.trim() || null,
+        alias: nuevaCuenta.alias.trim() || null,
+        numero: nuevaCuenta.numero.trim() || null,
+        moneda: nuevaCuenta.moneda || (tenant as any)?.moneda || 'ARS',
+        activo: true,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Cuenta creada')
+      setNuevaCuenta({ nombre: '', tipo: 'banco', banco: '', alias: '', numero: '', moneda: '' })
+      qc.invalidateQueries({ queryKey: ['cuentas_origen'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const updateCuentaOrigen = useMutation({
+    mutationFn: async (id: string) => {
+      if (!editCuentaData.nombre.trim()) throw new Error('El nombre es requerido')
+      const { error } = await supabase.from('cuentas_origen').update({
+        nombre: editCuentaData.nombre.trim(),
+        tipo: editCuentaData.tipo,
+        banco: editCuentaData.banco.trim() || null,
+        alias: editCuentaData.alias.trim() || null,
+        numero: editCuentaData.numero.trim() || null,
+        moneda: editCuentaData.moneda || (tenant as any)?.moneda || 'ARS',
+        updated_at: new Date().toISOString(),
+      }).eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Guardado'); setEditCuentaId(null); qc.invalidateQueries({ queryKey: ['cuentas_origen'] }) },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const toggleCuentaOrigen = useMutation({
+    mutationFn: async ({ id, activo }: { id: string; activo: boolean }) => {
+      const { error } = await supabase.from('cuentas_origen').update({ activo }).eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cuentas_origen'] }),
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const deleteCuentaOrigen = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('cuentas_origen').delete().eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) {
+        if ((error as any).code === '23503') throw new Error('No se puede eliminar: tiene movimientos o métodos asociados. Desactivala en su lugar.')
+        throw error
+      }
+    },
+    onSuccess: () => { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['cuentas_origen'] }); qc.invalidateQueries({ queryKey: ['metodos_pago'] }) },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -1797,7 +1946,8 @@ export default function ConfigPage() {
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 {bizFactHabilitada ? 'Habilitada' : 'Deshabilitada'}
               </span>
-              <button onClick={() => setBizFactHabilitada(v => !v)}
+              <button onClick={toggleFacturacion}
+                title="Click para habilitar/deshabilitar — se guarda automáticamente"
                 className={`relative w-10 h-5 rounded-full transition-colors ${bizFactHabilitada ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
                 <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${bizFactHabilitada ? 'translate-x-5' : 'translate-x-0.5'}`} />
               </button>
@@ -1861,6 +2011,12 @@ export default function ConfigPage() {
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5">Obtenelo en afipsdk.com. Se guarda encriptado.</p>
               </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button onClick={handleSaveFacturacion} disabled={savingFact}
+                className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                {savingFact ? 'Guardando...' : 'Guardar datos fiscales'}
+              </button>
             </div>
           </div>
         </div>
@@ -3117,6 +3273,16 @@ export default function ConfigPage() {
                           className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-center focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
                         <span className="text-xs text-gray-400 dark:text-gray-500">%</span>
                       </div>
+                      <select
+                        value={editMetodoData.cuenta_origen_id || ''}
+                        onChange={e => setEditMetodoData(p => ({ ...p, cuenta_origen_id: e.target.value || null }))}
+                        title="Cuenta donde se acredita este método"
+                        className="px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white shrink-0">
+                        <option value="">— sin cuenta —</option>
+                        {(cuentasOrigen as any[]).filter(c => c.activo).map(c => (
+                          <option key={c.id} value={c.id}>{c.nombre}</option>
+                        ))}
+                      </select>
                       <button onClick={() => updateMetodoPago.mutate(m.id)} disabled={updateMetodoPago.isPending}
                         className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors">
                         <Check size={15} />
@@ -3135,13 +3301,21 @@ export default function ConfigPage() {
                           {m.comision_pct}%
                         </span>
                       )}
+                      {m.cuenta_origen_id && (() => {
+                        const co = (cuentasOrigen as any[]).find(c => c.id === m.cuenta_origen_id)
+                        return co ? (
+                          <span className="text-xs px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded" title={`Acredita en: ${co.nombre}`}>
+                            → {co.nombre}
+                          </span>
+                        ) : null
+                      })()}
                       {m.es_sistema && <span className="text-xs text-gray-400 dark:text-gray-500 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">sistema</span>}
                       <button onClick={() => toggleMetodoPago.mutate({ id: m.id, activo: !m.activo })}
                         title={m.activo ? 'Deshabilitar' : 'Habilitar'}
                         className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${m.activo ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
                         {m.activo ? 'Activo' : 'Inactivo'}
                       </button>
-                      <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color, comision_pct: m.comision_pct ? String(m.comision_pct) : '' }) }}
+                      <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color, comision_pct: m.comision_pct ? String(m.comision_pct) : '', cuenta_origen_id: m.cuenta_origen_id ?? '' }) }}
                         className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
                         <Pencil size={14} />
                       </button>
@@ -3950,7 +4124,7 @@ export default function ConfigPage() {
           {/* ── CAJA ──────────────────────────────────────────────────────────── */}
           {tab === 'caja' && (
             <div className="space-y-4">
-              {/* Contraseña maestra */}
+              {/* Contraseña maestra — Solo DUEÑO (B6) */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                   <Clock size={16} className="text-accent" /> Seguridad de Caja
@@ -3959,13 +4133,14 @@ export default function ConfigPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Contraseña maestra
                     {(tenant as any)?.clave_maestra && <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-normal">✓ Configurada</span>}
+                    {user?.rol !== 'DUEÑO' && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">🔒 Solo DUEÑO puede modificarla</span>}
                   </label>
                   <div className="relative">
                     <input
                       type={showClaveMaestra ? 'text' : 'password'}
                       value={bizClaveMaestra}
                       onChange={e => setBizClaveMaestra(e.target.value)}
-                      disabled={!canEdit}
+                      disabled={user?.rol !== 'DUEÑO'}
                       placeholder={(tenant as any)?.clave_maestra ? '••••••••' : 'Nueva contraseña maestra'}
                       className="w-full px-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700"
                     />
@@ -3975,14 +4150,58 @@ export default function ConfigPage() {
                     </button>
                   </div>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Permite que un DUEÑO o SUPERVISOR cierre la caja de otro usuario. Si está vacío, el cierre ajeno no requiere contraseña.
+                    Requerida para: cerrar caja ajena · abrir con diferencia · anular ventas o movimientos. Si está vacía, ninguna acción la requiere.
                   </p>
                 </div>
-                {canEdit && (
+                {user?.rol === 'DUEÑO' && (
                   <div className="flex justify-end">
                     <button onClick={handleSaveBiz} disabled={savingBiz}
                       className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
                       {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Permisos avanzados de caja (B7/G1/E2) */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-accent" /> Permisos avanzados
+                </h2>
+                <div className="space-y-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bizDobleVal} disabled={!canEdit}
+                      onChange={e => setBizDobleVal(e.target.checked)}
+                      className="mt-1 rounded border-gray-300 text-accent focus:ring-accent disabled:opacity-50" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Doble validación al cerrar caja</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Un 2do usuario (DUEÑO/SUPERVISOR/ADMIN) debe confirmar el cierre con sus credenciales (B7).</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bizSupervisorEdita} disabled={!canEdit}
+                      onChange={e => setBizSupervisorEdita(e.target.checked)}
+                      className="mt-1 rounded border-gray-300 text-accent focus:ring-accent disabled:opacity-50" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">SUPERVISOR puede corregir movimientos manuales</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Permite al SUPERVISOR usar el botón "Corregir" en ingresos manuales (G1).</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bizSupervisorBoveda} disabled={!canEdit}
+                      onChange={e => setBizSupervisorBoveda(e.target.checked)}
+                      className="mt-1 rounded border-gray-300 text-accent focus:ring-accent disabled:opacity-50" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">SUPERVISOR puede ver el saldo de la bóveda</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Por default solo el DUEÑO ve los saldos por cuenta de origen (E2).</p>
+                    </div>
+                  </label>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveConfigCaja} disabled={savingConfigCaja}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingConfigCaja ? 'Guardando...' : 'Guardar permisos'}
                     </button>
                   </div>
                 )}
@@ -4014,8 +4233,191 @@ export default function ConfigPage() {
                 )}
               </div>
 
+              {/* Diferencias de cierre (B1/B2/B3) */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <AlertCircle size={16} className="text-accent" /> Diferencias en cierre de caja
+                </h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Umbral mínimo para alertar ($)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="100"
+                    value={bizDifUmbral} disabled={!canEdit}
+                    onChange={e => setBizDifUmbral(e.target.value)}
+                    placeholder="Alertar con cualquier diferencia"
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Si la diferencia (sobrante o faltante) supera este monto en valor absoluto, se dispara la alerta. Vacío = alertar siempre con cualquier diferencia ≠ 0.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Roles que reciben la alerta</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['DUEÑO','SUPERVISOR','ADMIN','CONTADOR'].map(r => {
+                      const activo = bizDifRoles.includes(r)
+                      return (
+                        <button key={r} type="button" disabled={!canEdit}
+                          onClick={() => setBizDifRoles(curr => curr.includes(r) ? curr.filter(x => x !== r) : [...curr, r])}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          {r}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Canales</label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'inapp', label: 'In-app' },
+                      { id: 'email', label: 'Email' },
+                      { id: 'whatsapp', label: 'WhatsApp (próximamente)' },
+                    ].map(c => {
+                      const activo = bizDifCanales.includes(c.id)
+                      const deshab = c.id === 'whatsapp'
+                      return (
+                        <button key={c.id} type="button" disabled={!canEdit || deshab}
+                          onClick={() => setBizDifCanales(curr => curr.includes(c.id) ? curr.filter(x => x !== c.id) : [...curr, c.id])}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${activo ? 'bg-accent text-white border-accent' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          {c.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveDif} disabled={savingDif}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingDif ? 'Guardando...' : 'Guardar alertas'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Cuentas de Origen */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <CreditCard size={16} className="text-accent" /> Cuentas de Origen
+                  </h2>
+                  <span className="text-xs text-gray-400 dark:text-gray-500">{(cuentasOrigen as any[]).filter(c => c.activo).length} activas / {(cuentasOrigen as any[]).length} total</span>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Cuentas bancarias, billeteras o efectivo donde se acreditan los cobros. Asociá cada método de pago a una cuenta en el tab <strong>Ventas → Métodos de pago</strong> para ver la bóveda discriminada por banco.
+                </p>
+
+                {loadingCuentas ? (
+                  <p className="text-sm text-gray-400 text-center py-4">Cargando...</p>
+                ) : (
+                  <div className="space-y-2">
+                    {(cuentasOrigen as any[]).map((c: any) => (
+                      <div key={c.id} className="flex items-center gap-3 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl">
+                        {editCuentaId === c.id ? (
+                          <>
+                            <input type="text" value={editCuentaData.nombre}
+                              onChange={e => setEditCuentaData(p => ({ ...p, nombre: e.target.value }))}
+                              placeholder="Nombre"
+                              className="flex-1 min-w-0 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                            <select value={editCuentaData.tipo}
+                              onChange={e => setEditCuentaData(p => ({ ...p, tipo: e.target.value }))}
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white shrink-0">
+                              <option value="banco">Banco</option>
+                              <option value="billetera">Billetera</option>
+                              <option value="efectivo">Efectivo</option>
+                              <option value="otro">Otro</option>
+                            </select>
+                            <input type="text" value={editCuentaData.banco}
+                              onChange={e => setEditCuentaData(p => ({ ...p, banco: e.target.value }))}
+                              placeholder="Banco / Entidad"
+                              className="w-32 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                            <select value={editCuentaData.moneda}
+                              onChange={e => setEditCuentaData(p => ({ ...p, moneda: e.target.value }))}
+                              className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white shrink-0">
+                              {MONEDAS_DISPONIBLES.map(m => <option key={m.code} value={m.code}>{m.code}</option>)}
+                            </select>
+                            <button onClick={() => updateCuentaOrigen.mutate(c.id)} disabled={updateCuentaOrigen.isPending}
+                              className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors">
+                              <Check size={15} />
+                            </button>
+                            <button onClick={() => setEditCuentaId(null)}
+                              className="p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                              <X size={15} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-100">
+                              {c.nombre}
+                              {c.banco && <span className="ml-2 text-xs text-gray-400 dark:text-gray-500 font-normal">· {c.banco}</span>}
+                            </span>
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${
+                              c.tipo === 'banco' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' :
+                              c.tipo === 'billetera' ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400' :
+                              c.tipo === 'efectivo' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' :
+                              'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                            }`}>
+                              {c.tipo}
+                            </span>
+                            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">{c.moneda}</span>
+                            <button onClick={() => toggleCuentaOrigen.mutate({ id: c.id, activo: !c.activo })}
+                              title={c.activo ? 'Desactivar' : 'Activar'}
+                              className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${c.activo ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200'}`}>
+                              {c.activo ? 'Activa' : 'Inactiva'}
+                            </button>
+                            <button onClick={() => { setEditCuentaId(c.id); setEditCuentaData({ nombre: c.nombre, tipo: c.tipo, banco: c.banco ?? '', alias: c.alias ?? '', numero: c.numero ?? '', moneda: c.moneda }) }}
+                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                              <Pencil size={14} />
+                            </button>
+                            <button onClick={() => { if (confirm('¿Eliminar esta cuenta? Si tiene movimientos vinculados, mejor desactivarla.')) deleteCuentaOrigen.mutate(c.id) }}
+                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                              <Trash2 size={14} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {(cuentasOrigen as any[]).length === 0 && (
+                      <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Sin cuentas todavía. Agregá la primera abajo.</p>
+                    )}
+                  </div>
+                )}
+
+                {canEdit && (
+                  <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Agregar cuenta</p>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <input type="text" value={nuevaCuenta.nombre}
+                        onChange={e => setNuevaCuenta(p => ({ ...p, nombre: e.target.value }))}
+                        placeholder="Nombre (ej: BBVA Cuenta Corriente)"
+                        className="flex-1 min-w-[200px] px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                      <select value={nuevaCuenta.tipo}
+                        onChange={e => setNuevaCuenta(p => ({ ...p, tipo: e.target.value }))}
+                        className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                        <option value="banco">Banco</option>
+                        <option value="billetera">Billetera</option>
+                        <option value="efectivo">Efectivo</option>
+                        <option value="otro">Otro</option>
+                      </select>
+                      <input type="text" value={nuevaCuenta.banco}
+                        onChange={e => setNuevaCuenta(p => ({ ...p, banco: e.target.value }))}
+                        placeholder="Banco / Entidad"
+                        className="w-44 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                      <select value={nuevaCuenta.moneda || (tenant as any)?.moneda || 'ARS'}
+                        onChange={e => setNuevaCuenta(p => ({ ...p, moneda: e.target.value }))}
+                        className="w-24 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                        {MONEDAS_DISPONIBLES.map(m => <option key={m.code} value={m.code}>{m.code}</option>)}
+                      </select>
+                      <button onClick={() => addCuentaOrigen.mutate()} disabled={addCuentaOrigen.isPending || !nuevaCuenta.nombre.trim()}
+                        className="px-4 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                        <Plus size={14} /> Agregar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Pendientes */}
-              <PlaceholderTab icon={Clock} title="Más configuraciones de Caja" desc="Tolerancia de diferencia, arqueo parcial y cierre automático — próximamente." />
+              <PlaceholderTab icon={Clock} title="Más configuraciones de Caja" desc="Tolerancia de diferencia, doble validación cierre y panel cajero — próximamente." />
             </div>
           )}
           {tab === 'clientes' && <PlaceholderTab icon={Users} title="Configuración de Clientes" desc="Cuenta corriente, segmentación, límites de crédito y políticas de cobranza." />}

@@ -30,7 +30,7 @@ const navItems = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',      modulo: 'dashboard',     contadorVisible: true },
   { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas',         modulo: 'ventas',        cajeroVisible: true },
   { to: '/gastos',        icon: TrendingDown,    label: 'Gastos',         modulo: 'gastos',        contadorVisible: true },
-  { to: '/caja',          icon: DollarSign,      label: 'Caja',           modulo: 'caja',          cajeroVisible: true },
+  { to: '/caja',          icon: DollarSign,      label: 'Caja',           modulo: 'caja',          cajeroVisible: true, contadorVisible: true },
   { to: '/productos',     icon: Package,         label: 'Productos',      modulo: 'inventario',    depositoVisible: true },
   { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos',   depositoVisible: true },
   { to: '/clientes',      icon: Users,           label: 'Clientes',       modulo: 'clientes',      cajeroVisible: true },
@@ -54,7 +54,7 @@ const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
-const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion']
+const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion']
 const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones']
 
 export function AppLayout() {
@@ -152,6 +152,37 @@ export function AppLayout() {
   }, [pathname, user?.rol, user?.permisos_custom])
 
   const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
+
+  // L4 — Detectar caja propia abierta en otra sucursal (para bloquear cambio)
+  const { data: misCajasAbiertasPorSuc = [] } = useQuery({
+    queryKey: ['mis-cajas-abiertas-por-suc', tenant?.id, user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, sucursal_id, cajas(nombre)')
+        .eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
+      return data ?? []
+    },
+    enabled: !!tenant && !!user,
+    refetchInterval: 30_000,
+  })
+
+  // L4 — Wrapper de setSucursal: bloquea cambio si hay caja propia abierta en otra sucursal
+  const handleCambiarSucursal = (newId: string | null) => {
+    if (newId === sucursalId) return
+    const cajaPropiaEnOtra = (misCajasAbiertasPorSuc as any[]).find((s: any) => s.sucursal_id && s.sucursal_id !== newId)
+    if (cajaPropiaEnOtra) {
+      const nombre = cajaPropiaEnOtra.cajas?.nombre ?? 'caja'
+      const ok = window.confirm(
+        `Tenés una caja abierta (${nombre}) en otra sucursal. Para mantener el control contable, debés cerrarla antes de cambiar de sucursal.\n\n¿Querés ir a cerrar esa caja primero?`
+      )
+      if (ok) {
+        setSucursal(cajaPropiaEnOtra.sucursal_id)
+        window.location.assign('/caja')
+      }
+      return
+    }
+    setSucursal(newId)
+  }
 
   // Módulos que requieren exactamente una sucursal (sin opción "Todas")
   const RUTAS_SOLO_SUCURSAL = ['/ventas', '/gastos', '/caja', '/recepciones', '/alertas']
@@ -374,7 +405,7 @@ export function AppLayout() {
                     // Selector completo: Todas + cada sucursal
                     <select
                       value={sucursalId ?? ''}
-                      onChange={e => setSucursal(e.target.value || null)}
+                      onChange={e => handleCambiarSucursal(e.target.value || null)}
                       className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
                       title="Filtrar por sucursal"
                     >
@@ -387,7 +418,7 @@ export function AppLayout() {
                     // Selector sin "Todas": obliga a elegir una sucursal específica
                     <select
                       value={sucursalId ?? ''}
-                      onChange={e => setSucursal(e.target.value || null)}
+                      onChange={e => handleCambiarSucursal(e.target.value || null)}
                       className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
                       title="Seleccioná una sucursal"
                     >

@@ -20,7 +20,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/productos]] | ProductosPage + ProductoFormPage · scan ticket IA (v1.8.38) · 6 cards · marca/UdM/variantes/shelf life · grupos · ubicación por sucursal · inactivos visibles | ✅ |
 | [[wiki/features/inventario-stock]] | LPNs, FIFO/FEFO, stock sucursal, bulk edit · conteos borrador · rebaje masivo fix · shortcuts ESC/ENTER · filtros pill · defaults producto · modales inline | ✅ |
 | [[wiki/features/ventas-pos]] | Carrito · 3 modos · CC parcial · cuotas · ticket por sucursal · envío con autocompletado + Haversine · selector courier propio/tercero · multi-sucursal estricto (cambio limpia carrito) | ✅ |
-| [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja · caja predeterminada ★ · cajas.sucursal_id · Caja Principal en seed | ✅ |
+| [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja · caja predeterminada ★ · cajas.sucursal_id · Caja Principal en seed · **v1.9.1**: cajas por moneda + Cuentas de Origen + bóveda discriminada + sin egreso manual + arqueo pre-cierre obligatorio · **v1.9.2**: bóveda como billetera del negocio + botón Extraer dinero (solo DUEÑO) + historial privado · **v1.9.3**: Fase 2.0 — permisos J3 + CONTADOR read-only + abrir a nombre de cajero (A2) + clave maestra solo DUEÑO (B6) + clave maestra al cerrar ajena (B5) + mail al DUEÑO al cierre (C2) + banner caja olvidada 24h (A4) · **v1.9.4**: Fase 2.1 — numeración correlativa por sucursal (K3) + snapshot completo del cierre (K2) + ticket PDF ampliado A4 / Térmico 80mm (C1+C3) + umbral diferencia + alertas multi-canal configurables (B1/B2/B3) + movimiento "Diferencia caja" asociado al cajero (B4) + reporte diferencias por cajero 30d · **v1.9.5**: Fase 2.2a — bloqueo cambio sucursal con caja abierta (L4) + selector caja en devolución efectivo (L1) + cadena anulación según estado (L5) + botón "Corregir" en movimientos manuales con audit log (G1) + doble validación al cierre con 2do usuario (B7) · **v1.10.0 HITO**: Reportes Caja con 4 vistas (diario por caja / consolidado / mensual por sucursal / por cajero) + 3 exports (Excel/PDF/CSV) (I1/I2) | ✅ |
 | [[wiki/features/gastos]] | Variables, fijos, IVA, OC · efectivo en caja · CC en OC · **v1.8.42**: categorías predefinidas + custom · reglas comprobante · indicadores fijos · badge anticipo OC · **v1.8.43**: umbrales por rol/sucursal + bandeja autorizaciones · **v1.8.44**: IVA auto + selector alícuota + sucursal obligatoria por categoría + bloqueo CC proveedor + override DUEÑO · **v1.8.45**: capitalización en recursos + vw_egresos_consolidados · **v1.9.0**: cierre contable mensual (HITO) + notas de corrección | ✅ |
 | [[wiki/features/devoluciones]] | Stock serializado/no-serializado, NC, caja | ✅ |
 | [[wiki/features/clientes-proveedores]] | CRM, CC, OC, domicilios · globales entre sucursales · cancelar deuda CC (ISS-107) | ✅ |
@@ -60,7 +60,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | 135 + 086b en DEV (001-135) · 133 + 086b en PROD · descripción completa | ✅ |
+| [[wiki/database/migraciones]] | 135 + 086b en DEV y PROD (001-135) · descripción completa | ✅ |
 | [[wiki/database/rls-policies]] | Patrón subquery, funciones helper, Storage, Edge Functions | ✅ |
 | [[wiki/database/triggers]] | Stock, numeración, integraciones, nómina, stock mínimo | ✅ |
 
@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-25 — 53 páginas + 3 manuales · 8 fuentes en raw/ · DEV en 135 + 086b · PROD en 133 + 086b · v1.9.0 DEV · v1.8.44 PROD · Fases 1-5 reglas Gastos completas en DEV · pendiente deploy PROD (v1.8.45 + v1.9.0)*
+*Última actualización: 2026-05-26 — 53 páginas + 3 manuales + 1 PDF relevamiento (caja) · 8 fuentes en raw/ + 1 relevamiento caja · DEV: 142 + 086b · PROD: 135 + 086b · **v1.10.0 DEV** / v1.9.0 PROD · **Pipeline Reglas Caja CERRADO** — todas las decisiones priorizadas del relevamiento implementadas (Fases 1, 1.5, 2.0, 2.1, 2.2a, 2.4) 🎉*

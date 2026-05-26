@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2 } from 'lucide-react'
@@ -30,7 +30,8 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
   devuelta:   { label: 'Devuelta',   color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
 }
 
-const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'MODO', 'Otro']
+// Fallback si el tenant aún no tiene métodos configurados — se prefiere la lista dinámica de Config
+const MEDIOS_PAGO_FALLBACK = ['Efectivo', 'Tarjeta de débito', 'Tarjeta de crédito', 'Transferencia', 'Mercado Pago']
 
 function isPresupuestoVencido(venta: any, validezDias: number | null | undefined): boolean {
   if (!validezDias || venta?.estado !== 'pendiente') return false
@@ -185,6 +186,8 @@ export default function VentasPage() {
   const [devItems, setDevItems] = useState<DevItem[]>([])
   const [devMotivo, setDevMotivo] = useState('')
   const [devMediosPago, setDevMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
+  // L1 — caja específica para egreso efectivo en devolución
+  const [devCajaSesionId, setDevCajaSesionId] = useState<string>('')
   const [devSaving, setDevSaving] = useState(false)
   const [devComprobante, setDevComprobante] = useState<any | null>(null)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
@@ -340,7 +343,7 @@ export default function VentasPage() {
     queryKey: ['caja-sesiones-abiertas', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, caja_id, cajas(nombre)')
+        .select('id, caja_id, cajas(nombre, moneda)')
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'abierta')
       return data ?? []
@@ -350,18 +353,57 @@ export default function VentasPage() {
     refetchOnMount: true,      // Refresca al entrar a la página (ej: después de abrir caja en otra tab)
     refetchOnWindowFocus: true,
   })
-  const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
-  const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
 
-  // Auto-seleccionar sesión de la caja predeterminada del usuario
+  // Métodos de pago con su cuenta de origen default (para acreditar movimientos informativos)
+  const { data: metodosPagoCfg = [] } = useQuery<any[]>({
+    queryKey: ['metodos_pago_cfg', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('metodos_pago')
+        .select('id, nombre, cuenta_origen_id')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+  const normalizarNombreMetodo = (s: string): string =>
+    s.toLowerCase()
+      .normalize('NFD').replace(/\p{Diacritic}/gu, '') // sin tildes
+      .replace(/\sde\s/g, ' ')                          // sin preposición "de"
+      .replace(/\s+/g, ' ').trim()
+  const cuentaOrigenDeMetodo = (nombreMetodo: string): string | null => {
+    if (!nombreMetodo) return null
+    const norm = normalizarNombreMetodo(nombreMetodo)
+    const m = (metodosPagoCfg as any[]).find(x => normalizarNombreMetodo(x.nombre || '') === norm)
+    return m?.cuenta_origen_id ?? null
+  }
+  // Lista de medios de pago: viene de Config → Ventas → Métodos de pago (dinámica)
+  // Si el tenant aún no tiene config, fallback al hardcoded
+  const MEDIOS_PAGO: string[] = (metodosPagoCfg as any[]).length > 0
+    ? (metodosPagoCfg as any[]).map(m => m.nombre).filter(Boolean)
+    : MEDIOS_PAGO_FALLBACK
+  const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
+
+  // Sesión de la caja predeterminada del usuario (derivada de localStorage + sesiones abiertas)
   const cajaPrefKey = tenant?.id && user?.id ? `caja_preferida_${tenant.id}_${user.id}` : null
-  useEffect(() => {
-    if (cajaSeleccionadaId || sesionesAbiertas.length === 0 || !cajaPrefKey) return
+  const cajaPreferidaSesionId = useMemo<string | null>(() => {
+    if (sesionesAbiertas.length === 0 || !cajaPrefKey) return null
     const cajaPrefId = localStorage.getItem(cajaPrefKey)
-    if (!cajaPrefId) return
+    if (!cajaPrefId) return null
     const sesion = (sesionesAbiertas as any[]).find(s => s.caja_id === cajaPrefId)
-    if (sesion) setCajaSeleccionadaId(sesion.id)
+    return sesion?.id ?? null
   }, [sesionesAbiertas, cajaPrefKey])
+
+  // sesión efectiva: selección explícita del user > caja preferida > única abierta
+  const sesionCajaId = cajaSeleccionadaId
+    ?? cajaPreferidaSesionId
+    ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
+
+  // Si la selección explícita ya no es válida (caja cerrada, etc.), resetearla
+  useEffect(() => {
+    if (!cajaSeleccionadaId) return
+    const stillValid = (sesionesAbiertas as any[]).some(s => s.id === cajaSeleccionadaId)
+    if (!stillValid) setCajaSeleccionadaId(null)
+  }, [sesionesAbiertas, cajaSeleccionadaId])
 
   // Historial
   const [searchHistorial, setSearchHistorial] = useState('')
@@ -1408,7 +1450,7 @@ export default function VentasPage() {
           toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
           return
         }
-        if (sesionesAbiertas.length > 1 && !cajaSeleccionadaId) {
+        if (sesionesAbiertas.length > 1 && !sesionCajaId) {
           toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
           return
         }
@@ -1630,6 +1672,7 @@ export default function VentasPage() {
             tipo: 'ingreso_informativo',
             concepto: `[${mp.tipo}] Venta #${venta.numero}`,
             monto: montoMp,
+            cuenta_origen_id: cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
           })
           if (errInfo) console.error('[caja] ingreso_informativo error:', errInfo)
@@ -1658,6 +1701,7 @@ export default function VentasPage() {
             tipo: 'ingreso_informativo',
             concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`,
             monto: montoMp,
+            cuenta_origen_id: cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
           })
         }
@@ -1852,6 +1896,7 @@ export default function VentasPage() {
     setDevItems(items)
     setDevMotivo('')
     setDevMediosPago([{ tipo: '', monto: '' }])
+    setDevCajaSesionId(sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : '')
     setDevolucionVenta(venta)
   }
 
@@ -1973,9 +2018,17 @@ export default function VentasPage() {
       toast.error(`Los medios de devolución ($${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no cubren el total ($${montoTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })})`)
       return
     }
-    if (hayEfectivo && !sesionCajaId) {
-      toast.error('No hay caja abierta. Abrí una caja antes de devolver en efectivo.')
-      return
+    if (hayEfectivo) {
+      // L1 — si hay efectivo, debe haber caja elegida (selector explícito o fallback a la activa)
+      const cajaParaEgreso = devCajaSesionId || sesionCajaId
+      if (!cajaParaEgreso) {
+        toast.error('No hay caja abierta. Abrí una caja antes de devolver en efectivo.')
+        return
+      }
+      if (sesionesAbiertas.length > 1 && !devCajaSesionId) {
+        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar el egreso.')
+        return
+      }
     }
 
     setDevSaving(true)
@@ -2071,17 +2124,19 @@ export default function VentasPage() {
         }
       }
 
-      // 4. Egreso en caja si hay efectivo
-      if (hayEfectivo && sesionCajaId) {
+      // 4. Egreso en caja si hay efectivo (L1: usar caja seleccionada explícitamente para el egreso)
+      const cajaParaEgreso = devCajaSesionId || sesionCajaId
+      if (hayEfectivo && cajaParaEgreso) {
         const montoEfectivo = mediosValidos
           .filter(m => m.tipo === 'Efectivo')
           .reduce((a, m) => a + parseFloat(m.monto), 0)
         void supabase.from('caja_movimientos').insert({
           tenant_id: tenant.id,
-          sesion_id: sesionCajaId,
+          sesion_id: cajaParaEgreso,
           tipo: 'egreso',
           concepto: `Devolución venta #${devolucionVenta.numero}${numero_nc ? ` · ${numero_nc}` : ''}`,
           monto: montoEfectivo,
+          cuenta_origen_id: cuentaOrigenDeMetodo('Efectivo'),
           usuario_id: user?.id,
         })
       }
@@ -2135,7 +2190,7 @@ export default function VentasPage() {
 
       if (nuevoEstado === 'despachada' || nuevoEstado === 'reservada') {
         if (sesionesAbiertas.length === 0) throw new Error('No hay caja abierta. Abrí una caja antes de continuar.')
-        if (nuevoEstado === 'despachada' && sesionesAbiertas.length > 1 && !cajaSeleccionadaId)
+        if (nuevoEstado === 'despachada' && sesionesAbiertas.length > 1 && !sesionCajaId)
           throw new Error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta desde el checkout.')
       }
 
@@ -2199,7 +2254,7 @@ export default function VentasPage() {
 
         // Registrar seña en caja
         if (saldoMediosPago && saldoMediosPago.some(m => parseFloat(m.monto) > 0)) {
-          const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
+          const _sesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
           if (_sesionId) {
             const efectivoSena = calcularEfectivoCaja(saldoMediosPago, montoPagadoReserva)
             if (efectivoSena > 0) {
@@ -2215,7 +2270,9 @@ export default function VentasPage() {
                 supabase.from('caja_movimientos').insert({
                   tenant_id: tenant!.id, sesion_id: _sesionId,
                   tipo: 'ingreso_informativo', monto,
-                  concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`, usuario_id: user?.id,
+                  concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`,
+                  cuenta_origen_id: cuentaOrigenDeMetodo(mp.tipo),
+                  usuario_id: user?.id,
                 }).then(() => null)
               }
             }
@@ -2289,7 +2346,7 @@ export default function VentasPage() {
           .update({ estado: 'despachada', despachado_at: new Date().toISOString(), medio_pago: mediosPagoFinal, monto_pagado: montoPagadoFinal })
           .eq('id', ventaId)
         // Registrar en caja el efectivo del saldo + la seña si no fue registrada al reservar
-        const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
+        const _sesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
         if (_sesionId) {
           try {
             // Efectivo del saldo cobrado ahora
@@ -2346,6 +2403,7 @@ export default function VentasPage() {
                 tipo: 'ingreso_informativo',
                 concepto: `[${tipo}] Venta #${venta.numero}`,
                 monto,
+                cuenta_origen_id: cuentaOrigenDeMetodo(tipo),
                 usuario_id: user?.id,
               })
             }
@@ -2353,6 +2411,16 @@ export default function VentasPage() {
         }
 
       } else if (nuevoEstado === 'cancelada') {
+        // L5 — Cadena de anulación según estado de la venta original
+        // (a) venta pendiente/reservada → cancelar libre (sin afectar caja)
+        // (b) venta despachada con seña/pago efectivo → si NO hay caja abierta, bloquear y sugerir devolución/NC
+        // (c) periodo contable cerrado → el trigger BD bloquea con SQLSTATE P0001
+        if (venta.estado === 'despachada' && (venta.monto_pagado ?? 0) > 0) {
+          const hayCajaAbierta = sesionesAbiertas.length > 0
+          if (!hayCajaAbierta) {
+            throw new Error('Esta venta fue despachada con cobro efectivo. Para anularla necesitás:\n• Abrir una caja para registrar el egreso de devolución, O\n• Usar el flujo "Devolver" en el historial para emitir una nota de crédito')
+          }
+        }
         // Liberar reservas
         for (const item of items ?? []) {
           if ((item.productos as any)?.tiene_series) {
@@ -2379,7 +2447,7 @@ export default function VentasPage() {
           .eq('id', ventaId)
         // Dev. seña: si la reserva tenía efectivo cobrado → egreso en caja (fire-and-forget)
         if ((venta.monto_pagado ?? 0) > 0) {
-          const cancelSesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
+          const cancelSesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
           if (cancelSesionId) {
             try {
               const prevArr = venta.medio_pago ? JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[] : []
@@ -2396,13 +2464,16 @@ export default function VentasPage() {
               }
               const noCashCancelado = (venta.monto_pagado ?? 0) - efectivoCobrado
               if (noCashCancelado > 0.01) {
-                const noCashTypes = [...new Set(prevArr.filter(m => m.tipo !== 'Efectivo' && (m.monto ?? 0) > 0).map(m => m.tipo))].join(' + ') || 'No efectivo'
+                const noCashTipos = [...new Set(prevArr.filter(m => m.tipo !== 'Efectivo' && (m.monto ?? 0) > 0).map(m => m.tipo))]
+                const noCashTypes = noCashTipos.join(' + ') || 'No efectivo'
+                // Para devolución de seña usamos la cuenta del primer método no-efectivo (suele haber 1 solo)
                 void supabase.from('caja_movimientos').insert({
                   tenant_id: tenant!.id,
                   sesion_id: cancelSesionId,
                   tipo: 'egreso_informativo',
                   concepto: `[${noCashTypes}] Dev. seña Venta #${venta.numero}`,
                   monto: noCashCancelado,
+                  cuenta_origen_id: noCashTipos[0] ? cuentaOrigenDeMetodo(noCashTipos[0]) : null,
                   usuario_id: user?.id,
                 })
               }
@@ -2431,7 +2502,15 @@ export default function VentasPage() {
         if (v) triggerFacturaModal(v.id, v.numero ?? 0, Number(v.total ?? 0))
       }
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => {
+      // L5 — Si el periodo contable está cerrado, mostrar mensaje específico
+      const msg = e?.message ?? ''
+      if (msg.includes('periodo contable cerrado') || msg.includes('periodo_cerrado') || e?.code === 'P0001') {
+        toast.error('Este periodo contable ya está cerrado. Para anular esta venta, generá una nota de corrección desde Gastos → Cierres contables.', { duration: 7000 })
+        return
+      }
+      toast.error(msg)
+    },
   })
 
   const filteredVentas = ventas.filter((v: any) => {
@@ -3361,18 +3440,35 @@ export default function VentasPage() {
                       <span>⚠️</span><span>Sin caja abierta — no se puede vender ni reservar</span>
                     </div>
                   )
-                  if (sesionesAbiertas.length > 1) return (
-                    <div>
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar en caja:</label>
-                      <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
-                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                        <option value="">— Seleccioná una caja —</option>
-                        {(sesionesAbiertas as any[]).map(s => (
-                          <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )
+                  if (sesionesAbiertas.length > 1) {
+                    const valorSelect = cajaSeleccionadaId ?? cajaPreferidaSesionId ?? ''
+                    const sesionActiva = (sesionesAbiertas as any[]).find(s => s.id === valorSelect)
+                    return (
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          Registrar en caja:
+                          {!cajaSeleccionadaId && cajaPreferidaSesionId && (
+                            <span className="ml-1 text-[10px] text-yellow-600 dark:text-yellow-400 font-medium">★ predeterminada</span>
+                          )}
+                        </label>
+                        <select value={valorSelect} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
+                          className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                          {!valorSelect && <option value="">— Seleccioná una caja —</option>}
+                          {(sesionesAbiertas as any[]).map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.cajas?.nombre ?? 'Caja'}
+                              {s.id === cajaPreferidaSesionId ? ' ★' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {sesionActiva && (
+                          <p className="text-[11px] text-green-600 dark:text-green-400 mt-1">
+                            ✓ {efectivo > 0 ? 'Efectivo' : 'Venta'} → {sesionActiva.cajas?.nombre ?? 'Caja'}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  }
                   return (
                     <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-lg px-3 py-2.5">
                       <span>✓</span><span>{efectivo > 0 ? 'Efectivo' : 'Venta'} → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja'}</span>
@@ -3982,6 +4078,28 @@ export default function VentasPage() {
                   placeholder="Producto dañado, talla incorrecta..."
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
               </div>
+
+              {/* L1 — Selector de caja para el egreso efectivo */}
+              {devMediosPago.some(mp => mp.tipo === 'Efectivo' && parseFloat(mp.monto) > 0) && sesionesAbiertas.length > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
+                  <label className="block text-xs font-medium text-amber-800 dark:text-amber-300 mb-1">
+                    💵 Caja para el egreso efectivo *
+                  </label>
+                  {sesionesAbiertas.length === 1 ? (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja única'}
+                    </p>
+                  ) : (
+                    <select value={devCajaSesionId} onChange={e => setDevCajaSesionId(e.target.value)}
+                      className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg text-sm focus:outline-none focus:border-amber-500 bg-white dark:bg-gray-800">
+                      <option value="">— Seleccioná de qué caja sale el efectivo —</option>
+                      {(sesionesAbiertas as any[]).map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
 
               {/* Medio de devolución */}
               <div>

@@ -230,6 +230,19 @@ calcularLpnFuentes(lineas, cant)
 
 ---
 
+## Cuenta de origen en movimientos informativos (v1.9.1)
+
+Cada venta con medio de pago ≠ Efectivo inserta `caja_movimientos` con tipo `ingreso_informativo` y `cuenta_origen_id` derivado del default del método de pago (configurado en `metodos_pago.cuenta_origen_id`). Esto alimenta la vista `vw_boveda_cuentas` para que el DUEÑO vea TODO el capital del negocio discriminado por cuenta bancaria/billetera en el tab Bóveda. Ver [[wiki/features/caja]] sección "Bóveda como billetera del negocio".
+
+Aplica en 5 puntos de `VentasPage.tsx`:
+- Despacho con métodos no-efectivo
+- Seña reservada (creación)
+- Seña reservada (en `updateVentaEstado`)
+- Despacho desde reservada (con `noCashMap` por tipo)
+- Devolución de seña al cancelar reserva
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/caja]]

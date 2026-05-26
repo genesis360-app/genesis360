@@ -4,19 +4,61 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.8.44** ✅ · DEV: **v1.9.0**
+Último release en PROD: **v1.9.0** ✅ · DEV: **v1.10.0** (HITO)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.9.0 / PROD v1.8.44 (cierre sesión 2026-05-25)
+## Estado actual DEV v1.9.2 / PROD v1.9.0 (cierre sesión 2026-05-25 — Caja Tanda 1 + 1.5)
+
+- APP_VERSION DEV: `v1.9.2` en `src/config/brand.ts`
+- APP_VERSION PROD: `v1.9.0` (PR pendiente)
+- Migrations DEV: 001–138 ✅
+- Migrations PROD: 001–135 ✅ (136-138 pendientes de deploy)
+- **Pipeline Reglas de Negocio - Caja: Tanda 1 + 1.5 cerradas ✅**
+  - Tanda 1 (v1.9.1): respuestas A-I implementadas — moneda + Cuentas de Origen + bóveda discriminada + sin egreso manual + arqueo pre-cierre
+  - Tanda 1.5 (v1.9.2): goal "bóveda billetera + extraer dinero solo DUEÑO" — E4 + E5 implementadas — tabla `boveda_retiros` con RLS estricta + UI completa
+
+### Lo producido en DEV en esta tanda (2026-05-25 — v1.9.1)
+
+- **Migration 136**: `cajas.moneda` + tabla `cuentas_origen` + `metodos_pago.cuenta_origen_id` + `caja_movimientos.cuenta_origen_id` + vista `vw_boveda_cuentas` + seed cuenta `Efectivo` por tenant
+- **F1 · Cajas separadas por moneda**: selector moneda en modal Nueva Caja + badges en pílulas y lista de configuración
+- **H1 · Cuentas de Origen + Bóveda discriminada**: ABM en Config/Caja + selector en métodos de pago + tab Bóveda muestra cards por cuenta (banco/billetera/efectivo) con saldo neto · cuenta_origen_id se setea automáticamente en los 10 puntos de insert informativo (5 en VentasPage + 5 en GastosPage) leyendo el default del método de pago
+- **G2 · Sin egreso manual en Caja**: modal de movimiento manual solo admite ingresos; todo egreso pasa por Gastos
+- **D3 · Arqueo pre-cierre obligatorio**: botón "Cerrar caja" reemplazado por "Arqueo requerido" cuando `arqueosSesion.length === 0`, mutation valida con throw
+- **PDF relevamiento Caja**: `relevamiento-caja-reglas-negocio.pdf` en raíz (50 preguntas, 14 secciones)
+- **Wiki**: nueva página `sources/relevamientos/caja_2026-05-25.md` con respuestas A-I + decisiones críticas; sección "Reglas relevadas — Tanda 1" en `wiki/features/caja.md`
+
+### Pendientes próximas tandas de Caja
+
+**Dependen del relevamiento (J-N a responder)**:
+- J · Permisos por rol (CONTADOR, DEPOSITO, matriz completa)
+- K · Cumplimiento fiscal / Auditoría (controlador fiscal, backup, numeración, IP/dispositivo)
+- L · Operaciones especiales (devoluciones, pago proveedor, vales, anulaciones)
+- M · UX Selector (panel cajero simplificado, sonido)
+- N · Abiertos / Prioridades top 3
+
+**Ya respondidos pero pendientes de implementar (próximas tandas)**:
+- C2 · Mail al DUEÑO con detalle del cierre + sacar download automático del PDF
+- B7 · Doble validación al cierre (modal con login del 2do usuario)
+- E1 + E4 · Restricción visibilidad saldo bóveda solo DUEÑO + retiros bóveda solo DUEÑO con historial privado
+- B4 + B5 + B6 · Clave maestra ampliada (cerrar ajena + abrir con diferencia + anular movimientos)
+- B1 + B2 + B3 · Alertas de diferencia con umbral configurable + canales por rol
+- G1 · Botón "Corregir" en movimientos manuales (solo DUEÑO/SUPERVISOR con audit log)
+- A2 + A3 + A4 · Apertura por DUEÑO/SUPERVISOR a nombre de cajero + cajas olvidadas + cierre forzado al día siguiente
+- I1 + I2 · Reportes de caja (4 vistas + export Excel/PDF/CSV)
+
+---
+
+## Estado anterior DEV v1.9.0 / PROD v1.9.0 (cierre sesión 2026-05-25)
 
 - APP_VERSION DEV: `v1.9.0` en `src/config/brand.ts` ✅
-- APP_VERSION PROD: `v1.8.44` ✅
-- Migrations DEV: 001–135 ✅ (134 capitalización + vw_egresos_consolidados · 135 cierre contable)
-- Migrations PROD: 001–133 (pendiente aplicar 134 + 135 al deployar)
-- Pendiente deploy PROD: PR `dev → main` con v1.8.45 + v1.9.0
+- APP_VERSION PROD: `v1.9.0` ✅ (PR #117 mergeado `4ec5885b`, release v1.9.0 como `latest`)
+- Migrations DEV: 001–135 ✅
+- Migrations PROD: 001–135 ✅ (al día — 134 capitalización + vw_egresos_consolidados · 135 cierre contable)
+- Vercel deploys READY: PROD `dpl_DH6q1FMCKxPnPN6tav1xC3j79Kab`
+- **Pipeline Reglas de Negocio - Gastos: cerrado ✅** (Fases 1-5 en PROD)
 
 ### Lo producido en DEV en esta sesión (2026-05-25 — v1.9.0)
 - **v1.8.45 + v1.9.0 combinados** — Fases 4 y 5 reglas Gastos cerradas en un único bump por ser HITO transversal

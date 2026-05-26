@@ -5,19 +5,24 @@ import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History, Trash2,
-  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft
+  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft, Receipt, RotateCcw
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
 
-type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'configuracion'
+type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'reportes' | 'configuracion'
 
 // formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
-import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { formatMoneda as formatMonedaLib, MONEDAS_DISPONIBLES } from '@/lib/formato'
+import { puede as cajaPuede, type ConfigCaja } from '@/lib/cajaPermisos'
+import CajaReportes from '@/components/CajaReportes'
+
+const MONEDAS_LISTA = MONEDAS_DISPONIBLES.map(m => m.code)
 
 const TIPO_LABEL: Record<string, string> = {
   ingreso:               'Venta',
@@ -56,6 +61,16 @@ export default function CajaPage() {
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
+  // Permisos centralizados (J3) — declarados arriba para que las queries los usen
+  const configCaja: ConfigCaja = (tenant as any)?.config_caja ?? {}
+  const rol = user?.rol as any
+  const puedeExtraerBoveda    = cajaPuede(rol, 'extraer_boveda')
+  const puedeAbrirAjena       = cajaPuede(rol, 'abrir_ajena')           // A2
+  const puedeOperarCaja       = cajaPuede(rol, 'ingreso_manual')        // CONTADOR no puede
+  const puedeReimprimirTicket = cajaPuede(rol, 'reimprimir_ticket_cierre')
+  const puedeEditarMovimiento = cajaPuede(rol, 'editar_movimiento', configCaja)
+  const esSoloLectura         = user?.rol === 'CONTADOR'                // J1 — read-only
+  const puedeAdministrarCaja  = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
   const [tab, setTab] = useState<Tab>('caja')
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string | null>(null)
   const [showApertura, setShowApertura] = useState(false)
@@ -82,16 +97,36 @@ export default function CajaPage() {
   const [showArqueo, setShowArqueo] = useState(false)
   const [arqueoConteo, setArqueoConteo] = useState('')
   const [arqueoNotas, setArqueoNotas] = useState('')
+  // Extraer dinero de bóveda (solo DUEÑO/ADMIN/SUPER_USUARIO)
+  const [showExtraerBoveda, setShowExtraerBoveda] = useState(false)
+  const [extraerCuentaId, setExtraerCuentaId] = useState<string>('')
+  const [extraerMonto, setExtraerMonto] = useState('')
+  const [extraerTipo, setExtraerTipo] = useState<'banco' | 'retiro_personal' | 'gasto' | 'inversion' | 'pago_proveedor' | 'otro'>('retiro_personal')
+  const [extraerMotivo, setExtraerMotivo] = useState('')
+  const [extraerNotas, setExtraerNotas] = useState('')
+  // A2 — abrir caja a nombre de cajero (DUEÑO/SUPERVISOR)
+  const [aperturaParaUsuarioId, setAperturaParaUsuarioId] = useState<string>('')
+  // B5 — clave maestra al cerrar caja ajena
+  const [claveMaestraCierre, setClaveMaestraCierre] = useState('')
+  // G1 — corregir movimiento manual
+  const [corregirMov, setCorregirMov] = useState<any | null>(null)
+  const [corregirMonto, setCorregirMonto] = useState('')
+  const [corregirConcepto, setCorregirConcepto] = useState('')
+  // B7 — doble validación al cierre
+  const [dobleValEmail, setDobleValEmail] = useState('')
+  const [dobleValPassword, setDobleValPassword] = useState('')
 
   // Forms
   const [montoApertura, setMontoApertura] = useState('')
   const [montoSugerido, setMontoSugerido] = useState<number | null>(null)
   const [notasCierre, setNotasCierre] = useState('')
   const [montoRealCierre, setMontoRealCierre] = useState('')
-  const [movTipo, setMovTipo] = useState<'ingreso' | 'egreso'>('ingreso')
+  // Caja solo registra ingresos manuales — los egresos van por Gastos (relevamiento G2)
+  const movTipo: 'ingreso' = 'ingreso'
   const [movConcepto, setMovConcepto] = useState('')
   const [movMonto, setMovMonto] = useState('')
   const [nuevaCajaNombre, setNuevaCajaNombre] = useState('')
+  const [nuevaCajaMoneda, setNuevaCajaMoneda] = useState('')
 
   // Queries
   const { data: cajas = [] } = useQuery({
@@ -141,6 +176,125 @@ export default function CajaPage() {
     return acc
   }, 0)
 
+  // B4 — Reporte diferencias por cajero (últimos 30 días)
+  const { data: difsPorCajero = [] } = useQuery({
+    queryKey: ['vw-diferencias-cajero', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('vw_diferencias_por_cajero')
+        .select('*').eq('tenant_id', tenant!.id)
+        .order('diferencia_absoluta_acumulada', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'historial' && (puedeAdministrarCaja || puedeReimprimirTicket),
+  })
+
+  // A2 — cajeros del tenant (para que DUEÑO/SUPERVISOR pueda abrir caja a su nombre)
+  const { data: cajerosTenant = [] } = useQuery({
+    queryKey: ['cajeros-tenant', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('users')
+        .select('id, nombre_display, email, rol')
+        .eq('tenant_id', tenant!.id)
+        .in('rol', ['CAJERO','SUPERVISOR','DUEÑO'])
+        .order('nombre_display')
+      return data ?? []
+    },
+    enabled: !!tenant && puedeAbrirAjena,
+  })
+
+  // Saldos por Cuenta de Origen (banco / billetera) — bóveda discriminada
+  const { data: bovedaCuentas = [] } = useQuery({
+    queryKey: ['boveda-cuentas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('vw_boveda_cuentas')
+        .select('*').eq('tenant_id', tenant!.id).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'caja_fuerte',
+    refetchInterval: 30_000,
+  })
+
+  // Historial de retiros de bóveda — RLS estricta: solo DUEÑO/ADMIN/SUPER_USUARIO
+  const { data: bovedaRetiros = [] } = useQuery({
+    queryKey: ['boveda-retiros', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('boveda_retiros')
+        .select('*, users:usuario_id(nombre_display), cuentas_origen:cuenta_origen_id(nombre, tipo)')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'caja_fuerte' && puedeExtraerBoveda,
+  })
+
+  // Mutation: extraer dinero de la bóveda (egreso real del sistema, no traspaso)
+  const extraerDeBoveda = useMutation({
+    mutationFn: async () => {
+      if (!puedeExtraerBoveda) throw new Error('No tenés permiso para extraer dinero de la bóveda')
+      if (!extraerCuentaId) throw new Error('Seleccioná una cuenta')
+      const monto = parseFloat(extraerMonto)
+      if (!monto || monto <= 0) throw new Error('Ingresá un monto válido')
+      if (!extraerMotivo.trim()) throw new Error('Ingresá un motivo')
+
+      const cuenta = (bovedaCuentas as any[]).find(c => c.cuenta_origen_id === extraerCuentaId)
+      if (!cuenta) throw new Error('Cuenta inválida')
+      const saldoCuenta = Number(cuenta.saldo || 0)
+      if (monto > saldoCuenta) throw new Error(`Saldo insuficiente en ${cuenta.nombre}. Disponible: ${formatMoneda(saldoCuenta)}`)
+
+      // Necesitamos una sesión donde anclar el movimiento (sesión de caja fuerte)
+      if (!cajaFuerte) throw new Error('No hay caja fuerte configurada')
+      let fuerteSessionId = (fuerteSesion as any)?.id
+      if (!fuerteSessionId) {
+        const { data: ns, error: eS } = await supabase.from('caja_sesiones').insert({
+          tenant_id: tenant!.id, caja_id: cajaFuerte.id,
+          estado: 'abierta', es_permanente: true,
+          usuario_id: user!.id, monto_apertura: 0,
+        }).select('id').single()
+        if (eS) throw eS
+        fuerteSessionId = ns.id
+      }
+
+      const tipoMov = cuenta.tipo === 'efectivo' ? 'egreso_traspaso' : 'egreso_informativo'
+      const concepto = `[Extracción] ${extraerMotivo.trim()} (${extraerTipo.replace('_', ' ')})`
+
+      const { data: mov, error: eMov } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id,
+        sesion_id: fuerteSessionId,
+        tipo: tipoMov,
+        monto,
+        concepto,
+        cuenta_origen_id: extraerCuentaId,
+        usuario_id: user!.id,
+      }).select('id').single()
+      if (eMov) throw eMov
+
+      const { error: eRet } = await supabase.from('boveda_retiros').insert({
+        tenant_id: tenant!.id,
+        cuenta_origen_id: extraerCuentaId,
+        monto,
+        tipo_retiro: extraerTipo,
+        motivo: extraerMotivo.trim(),
+        notas: extraerNotas.trim() || null,
+        usuario_id: user!.id,
+        movimiento_id: mov.id,
+      })
+      if (eRet) throw eRet
+    },
+    onSuccess: () => {
+      toast.success('Extracción registrada')
+      logActividad({ entidad: 'caja', entidad_nombre: 'Bóveda', accion: 'pagar', valor_nuevo: `Extracción ${formatMoneda(parseFloat(extraerMonto))} - ${extraerMotivo}`, pagina: '/caja' })
+      qc.invalidateQueries({ queryKey: ['boveda-cuentas'] })
+      qc.invalidateQueries({ queryKey: ['boveda-retiros'] })
+      qc.invalidateQueries({ queryKey: ['caja-fuerte-movimientos'] })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      setShowExtraerBoveda(false)
+      setExtraerCuentaId(''); setExtraerMonto(''); setExtraerTipo('retiro_personal')
+      setExtraerMotivo(''); setExtraerNotas('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   // Sesiones abiertas en TODAS las cajas (para mostrar indicador en selector)
   const { data: cajasAbiertas = [] } = useQuery({
     queryKey: ['cajas-abiertas-ids', tenant?.id, sucursalId],
@@ -156,19 +310,26 @@ export default function CajaPage() {
     refetchOnWindowFocus: true,
   })
 
-  // Sesiones abiertas propias del usuario actual (para bloquear segunda apertura en CAJERO)
+  // Sesiones abiertas propias del usuario actual (para bloquear segunda apertura en CAJERO + A4 detectar día anterior)
   const { data: misSesionesAbiertas = [] } = useQuery({
     queryKey: ['mis-sesiones-abiertas', tenant?.id, user?.id, sucursalId],
     queryFn: async () => {
       const { data } = await applyFilter(
         supabase.from('caja_sesiones')
-          .select('caja_id').eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
+          .select('id, caja_id, abierta_at, cajas(nombre)').eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
       )
       return data ?? []
     },
     enabled: !!tenant && !!user,
     refetchInterval: 10_000,
     refetchOnWindowFocus: true,
+  })
+
+  // A4 — detectar caja propia abierta más de 24h (probablemente olvidada del día anterior)
+  const sesionDiaAnterior = (misSesionesAbiertas as any[]).find((s: any) => {
+    if (!s.abierta_at) return false
+    const horas = (Date.now() - new Date(s.abierta_at).getTime()) / (1000 * 60 * 60)
+    return horas > 24
   })
 
   // Sesiones abiertas con datos completos (para modal traspaso)
@@ -329,7 +490,6 @@ export default function CajaPage() {
   // Multi-usuario: quién abrió la sesión
   const abrioNombre = (sesionActiva as any)?.abrio?.nombre_display ?? null
   const esOtroUsuario = !!sesionActiva && sesionActiva.usuario_id !== user?.id
-  const puedeAdministrarCaja = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
   // B2: CAJERO puede abrir 1 caja, pero no más de una simultáneamente
   const puedeAbrirCaja = puedeAdministrarCaja || misSesionesAbiertas.length === 0
   // CAJERO no puede ver el contenido de cajas abiertas por otro usuario
@@ -340,6 +500,9 @@ export default function CajaPage() {
   const abrirCaja = useMutation({
     mutationFn: async () => {
       if (!cajaId) throw new Error('Seleccioná una caja')
+      // A2: si DUEÑO/SUPERVISOR seleccionó otro usuario, esa es la sesión propietaria
+      const usuarioPropietarioId = (puedeAbrirAjena && aperturaParaUsuarioId) ? aperturaParaUsuarioId : user!.id
+      const abreEnNombreDeOtro = usuarioPropietarioId !== user!.id
       // B2: CAJERO no puede tener más de 1 sesión abierta simultáneamente
       if (!puedeAdministrarCaja) {
         const { data: check } = await supabase.from('caja_sesiones')
@@ -348,12 +511,21 @@ export default function CajaPage() {
           throw new Error('Ya tenés una caja abierta. Cerrala antes de abrir otra.')
         }
       }
-      // Verificar que no haya otra sesión abierta por otro usuario
+      // Si abre a nombre de otro cajero: verificar que ESE cajero no tenga ya una sesión abierta
+      if (abreEnNombreDeOtro) {
+        const { data: yaAbierta } = await supabase.from('caja_sesiones')
+          .select('id, cajas(nombre)').eq('tenant_id', tenant!.id)
+          .eq('usuario_id', usuarioPropietarioId).eq('estado', 'abierta')
+        if (yaAbierta && yaAbierta.length > 0) {
+          throw new Error('Ese cajero ya tiene una caja abierta. Cerrá esa primero.')
+        }
+      }
+      // Verificar que no haya otra sesión abierta por otro usuario en la misma caja
       const { data: existente } = await supabase.from('caja_sesiones')
         .select('id, usuario_id, abrio:usuario_id(nombre_display)')
         .eq('caja_id', cajaId).eq('estado', 'abierta')
         .maybeSingle()
-      if (existente && existente.usuario_id !== user?.id) {
+      if (existente && existente.usuario_id !== usuarioPropietarioId) {
         const nombre = (existente as any).abrio?.nombre_display ?? 'otro usuario'
         throw new Error(`Esta caja ya está abierta por ${nombre}`)
       }
@@ -362,7 +534,8 @@ export default function CajaPage() {
       const { error } = await supabase.from('caja_sesiones').insert({
         tenant_id: tenant!.id,
         caja_id: cajaId,
-        usuario_id: user?.id,
+        usuario_id: usuarioPropietarioId,    // propietario (puede ser otro cajero)
+        abierta_por: user!.id,               // quien efectivamente abrió (A2)
         monto_apertura: montoReal,
         monto_sugerido_apertura: montoSugerido,
         diferencia_apertura: difApertura,
@@ -403,7 +576,8 @@ export default function CajaPage() {
     onSuccess: () => {
       toast.success('Caja abierta')
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
-      setShowApertura(false); setShowDifConfirm(false); setMontoApertura('')
+      qc.invalidateQueries({ queryKey: ['cajas-abiertas-ids'] })
+      setShowApertura(false); setShowDifConfirm(false); setMontoApertura(''); setAperturaParaUsuarioId('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -411,7 +585,91 @@ export default function CajaPage() {
   const cerrarCaja = useMutation({
     mutationFn: async () => {
       if (!sesionActiva) throw new Error('No hay caja abierta')
+      if (arqueosSesion.length === 0) throw new Error('Hacé al menos un arqueo parcial antes de cerrar la caja')
       if (montoRealCierre.trim() === '') throw new Error('Ingresá el monto contado para poder cerrar la caja')
+      // B5 — verificar clave maestra si cierra caja ajena Y el tenant tiene clave configurada
+      const claveConfigurada = !!(tenant as any)?.clave_maestra
+      const esCierreAjeno = sesionActiva.usuario_id && sesionActiva.usuario_id !== user!.id
+      if (esCierreAjeno && claveConfigurada) {
+        if (!claveMaestraCierre.trim()) throw new Error('Esta caja la abrió otro usuario. Ingresá la clave maestra para cerrarla.')
+        const { data: claveOK } = await supabase.rpc('verificar_clave_maestra', {
+          p_tenant_id: tenant!.id,
+          p_clave: claveMaestraCierre.trim(),
+        })
+        if (!claveOK) throw new Error('Clave maestra incorrecta')
+      }
+      // B7 — doble validación: si está activada en config, requerir 2do usuario válido
+      if (configCaja.doble_validacion_cierre) {
+        if (!dobleValEmail.trim() || !dobleValPassword.trim()) {
+          throw new Error('Doble validación activada: ingresá email y contraseña del 2do usuario.')
+        }
+        // Cliente Supabase secundario para no romper la sesión actual
+        const supaTemp = createClient(
+          import.meta.env.VITE_SUPABASE_URL,
+          import.meta.env.VITE_SUPABASE_ANON_KEY,
+          { auth: { persistSession: false, autoRefreshToken: false } }
+        )
+        const { data: auth2, error: err2 } = await supaTemp.auth.signInWithPassword({
+          email: dobleValEmail.trim(),
+          password: dobleValPassword,
+        })
+        if (err2 || !auth2.user) {
+          await supaTemp.auth.signOut().catch(() => {})
+          throw new Error('Credenciales del 2do usuario inválidas')
+        }
+        if (auth2.user.id === user!.id) {
+          await supaTemp.auth.signOut().catch(() => {})
+          throw new Error('El 2do usuario debe ser distinto del que está cerrando la caja')
+        }
+        const { data: user2 } = await supaTemp.from('users')
+          .select('rol, tenant_id').eq('id', auth2.user.id).single()
+        await supaTemp.auth.signOut().catch(() => {})
+        if (!user2 || user2.tenant_id !== tenant!.id) {
+          throw new Error('El 2do usuario no pertenece a este negocio')
+        }
+        if (!['DUEÑO','SUPERVISOR','ADMIN','SUPER_USUARIO'].includes(user2.rol)) {
+          throw new Error('El 2do usuario debe tener rol DUEÑO, SUPERVISOR o ADMIN')
+        }
+      }
+
+      // K2 — Calcular snapshot_totales (por método de pago + ventas + movimientos manuales)
+      const movs = movimientos as any[]
+      const totalesPorMetodo: Record<string, number> = {}
+      const ventasResumen: { numero?: number; concepto: string; medio: string; monto: number; created_at: string }[] = []
+      const movManuales: { tipo: string; concepto: string; monto: number; created_at: string }[] = []
+      for (const m of movs) {
+        const medio = extraerMedioPago(m.tipo, m.concepto)
+        const signo = ['egreso','egreso_informativo','egreso_devolucion_sena','egreso_traspaso'].includes(m.tipo) ? -1 : 1
+        const monto = signo * Number(m.monto || 0)
+        totalesPorMetodo[medio] = (totalesPorMetodo[medio] ?? 0) + monto
+        const numVenta = extraerNumeroVenta(m.concepto)
+        if (numVenta) {
+          ventasResumen.push({ numero: Number(numVenta), concepto: m.concepto, medio, monto: Number(m.monto), created_at: m.created_at })
+        } else if (m.tipo === 'ingreso' || m.tipo === 'egreso') {
+          movManuales.push({ tipo: m.tipo, concepto: m.concepto, monto: Number(m.monto), created_at: m.created_at })
+        }
+      }
+      const snapshot = {
+        version: 1,
+        sucursal: { id: sesionActiva.sucursal_id ?? null, nombre: (sesionActiva as any).sucursales?.nombre ?? null },
+        caja:     { id: sesionActiva.caja_id, nombre: cajaActual?.nombre ?? '—', moneda: (cajaActual as any)?.moneda ?? (tenant as any)?.moneda ?? 'ARS' },
+        cajero:   { abrio: (sesionActiva as any)?.abrio?.nombre_display ?? null, cerro: user?.nombre_display ?? null },
+        montos:   {
+          apertura:    Number(sesionActiva.monto_apertura ?? 0),
+          ingresos:    Number(totalIngresos ?? 0),
+          egresos:     Number(totalEgresos ?? 0),
+          saldo_sistema: Number(saldoActual ?? 0),
+          conteo_real: Number(montoRealNum ?? 0),
+          diferencia:  Number(diferencia ?? 0),
+        },
+        totales_por_metodo: Object.entries(totalesPorMetodo).map(([medio, monto]) => ({ medio, monto: Number(monto.toFixed(2)) })),
+        ventas: ventasResumen.slice(0, 100),
+        movimientos_manuales: movManuales.slice(0, 100),
+        arqueos: (arqueosSesion as any[]).map((a: any) => ({ saldo_calculado: a.saldo_calculado, saldo_real: a.saldo_real, diferencia: a.diferencia, notas: a.notas, created_at: a.created_at })),
+        numero_cierre: (sesionActiva as any).numero ?? null,
+        generado_at: new Date().toISOString(),
+      }
+
       const payload: any = {
         estado: 'cerrada',
         monto_cierre: saldoActual,
@@ -422,9 +680,24 @@ export default function CajaPage() {
         cerrada_at: new Date().toISOString(),
         monto_real_cierre: montoRealNum,
         diferencia_cierre: diferencia ?? 0,
+        snapshot_totales: snapshot,
       }
       const { error } = await supabase.from('caja_sesiones').update(payload).eq('id', sesionActiva.id)
       if (error) throw error
+
+      // B4 — Si hay diferencia, registrar movimiento de ajuste asociado al cajero
+      const dif = diferencia ?? 0
+      if (dif !== 0) {
+        const tipoMov = dif > 0 ? 'ingreso' : 'egreso'
+        await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id,
+          sesion_id: sesionActiva.id,
+          tipo: tipoMov,
+          concepto: dif > 0 ? `[Diferencia caja] Sobrante en cierre` : `[Diferencia caja] Faltante en cierre`,
+          monto: Math.abs(dif),
+          usuario_id: sesionActiva.usuario_id,  // asociado al cajero responsable
+        })
+      }
     },
     onSuccess: () => {
       logActividad({
@@ -434,7 +707,6 @@ export default function CajaPage() {
         valor_nuevo: `Saldo: ${formatMoneda(saldoActual)}${diferencia !== null ? ` | Diferencia: ${formatMoneda(diferencia)}` : ''}`,
         pagina: '/caja',
       })
-      // Auto-download ticket de cierre
       const closedSesion = {
         ...sesionActiva,
         cajas: { nombre: cajaActual?.nombre ?? 'Caja' },
@@ -448,11 +720,77 @@ export default function CajaPage() {
         abrio: (sesionActiva as any)?.abrio,
         cerrado_por: { nombre_display: user?.nombre_display ?? '—' },
       }
-      imprimirCierre(closedSesion)
-      toast.success('Caja cerrada · PDF descargado')
+      // C2 — CAJERO no descarga PDF (no debe ver el ticket de cierre).
+      // DUEÑO/SUPERVISOR/CONTADOR sí descargan localmente.
+      const esCajeroPuro = user?.rol === 'CAJERO'
+      if (!esCajeroPuro) imprimirCierre(closedSesion)
+      // C2 — Mail al DUEÑO con detalle del cierre (siempre)
+      // B1/B2/B3 — Alertas adicionales por diferencia según config del tenant
+      void (async () => {
+        const titulo = `Cierre de ${cajaActual?.nombre ?? 'Caja'} #${(sesionActiva as any).numero ?? ''} — ${formatMoneda(saldoActual)}`
+        const lineas = [
+          `Caja: ${cajaActual?.nombre ?? '—'}`,
+          `Cerró: ${user?.nombre_display ?? (user as any)?.email ?? '—'}`,
+          `Hora: ${new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`,
+          `Saldo sistema: ${formatMoneda(saldoActual)}`,
+          `Conteo real: ${formatMoneda(montoRealNum)}`,
+          `Diferencia: ${diferencia !== null ? formatMoneda(diferencia) : '—'}`,
+          `Ingresos: ${formatMoneda(totalIngresos)}`,
+          `Egresos: ${formatMoneda(totalEgresos)}`,
+          notasCierre ? `Notas: ${notasCierre}` : '',
+        ].filter(Boolean).join('\n')
+
+        // Mail al DUEÑO (C2 — siempre)
+        const { data: duenos } = await supabase.from('users')
+          .select('email, nombre_display').eq('tenant_id', tenant!.id).eq('rol', 'DUEÑO')
+        for (const d of (duenos ?? [])) {
+          if (!d.email) continue
+          void supabase.functions.invoke('send-email', {
+            body: { type: 'notificacion', to: d.email, data: { titulo, mensaje: lineas, action_url: '/caja?tab=historial' } }
+          }).catch(() => {})
+        }
+
+        // B1/B2/B3 — Si hay diferencia que supera umbral configurado, alertar a roles configurados
+        const dif = diferencia ?? 0
+        const umbral = Number((tenant as any)?.diferencia_caja_umbral ?? 0)  // 0/NULL = alerta con cualquier dif
+        const superaUmbral = umbral > 0 ? Math.abs(dif) >= umbral : dif !== 0
+        if (superaUmbral) {
+          const rolesAlerta: string[] = (tenant as any)?.diferencia_caja_alerta_roles ?? ['DUEÑO','SUPERVISOR']
+          const canales: string[] = (tenant as any)?.diferencia_caja_alerta_canales ?? ['inapp','email']
+          const tituloDif = `⚠ Diferencia en cierre ${cajaActual?.nombre ?? 'caja'}: ${dif > 0 ? '+' : ''}${formatMoneda(dif)}`
+          const mensajeDif = `${user?.nombre_display ?? 'Un cajero'} cerró ${cajaActual?.nombre ?? 'la caja'} con ${dif > 0 ? 'sobrante' : 'faltante'} de ${formatMoneda(Math.abs(dif))}. Saldo sistema: ${formatMoneda(saldoActual)} · Conteo: ${formatMoneda(montoRealNum)}.`
+          const { data: destinatarios } = await supabase.from('users')
+            .select('id, email').eq('tenant_id', tenant!.id).in('rol', rolesAlerta)
+          if (destinatarios?.length) {
+            // Canal in-app
+            if (canales.includes('inapp')) {
+              await supabase.from('notificaciones').insert(
+                destinatarios.filter(d => d.id !== user?.id).map(d => ({
+                  tenant_id: tenant!.id, user_id: d.id,
+                  tipo: 'diferencia_cierre_caja',
+                  titulo: tituloDif, mensaje: mensajeDif,
+                  action_url: '/caja?tab=historial',
+                }))
+              )
+            }
+            // Canal email
+            if (canales.includes('email')) {
+              for (const d of destinatarios) {
+                if (!d.email || d.id === user?.id) continue
+                void supabase.functions.invoke('send-email', {
+                  body: { type: 'notificacion', to: d.email, data: { titulo: tituloDif, mensaje: mensajeDif, action_url: '/caja?tab=historial' } }
+                }).catch(() => {})
+              }
+            }
+            // Canal whatsapp — pendiente integración
+          }
+        }
+      })()
+      toast.success(esCajeroPuro ? 'Caja cerrada · El DUEÑO recibirá el detalle por email' : 'Caja cerrada · PDF descargado')
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
       qc.invalidateQueries({ queryKey: ['historial-sesiones'] })
-      setShowCierre(false); setNotasCierre(''); setMontoRealCierre('')
+      setShowCierre(false); setNotasCierre(''); setMontoRealCierre(''); setClaveMaestraCierre('')
+      setDobleValEmail(''); setDobleValPassword('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -463,11 +801,10 @@ export default function CajaPage() {
       if (!movConcepto.trim()) throw new Error('Ingresá un concepto')
       const monto = parseFloat(movMonto)
       if (!monto || monto <= 0) throw new Error('Ingresá un monto válido')
-      if (movTipo === 'egreso' && monto > saldoActual) throw new Error(`Saldo insuficiente. Saldo actual: $${saldoActual.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`)
       const { error } = await supabase.from('caja_movimientos').insert({
         tenant_id: tenant!.id,
         sesion_id: sesionActiva.id,
-        tipo: movTipo,
+        tipo: 'ingreso',
         concepto: movConcepto.trim(),
         monto,
         usuario_id: user?.id,
@@ -475,9 +812,54 @@ export default function CajaPage() {
       if (error) throw error
     },
     onSuccess: () => {
-      toast.success(`${movTipo === 'ingreso' ? 'Ingreso' : 'Egreso'} registrado`)
+      toast.success('Ingreso registrado')
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
       setShowMovimiento(false); setMovConcepto(''); setMovMonto('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // G1 — Corregir movimiento manual (DUEÑO/SUPERVISOR con config)
+  const corregirMovimiento = useMutation({
+    mutationFn: async () => {
+      if (!corregirMov) throw new Error('No hay movimiento')
+      if (!puedeEditarMovimiento) throw new Error('No tenés permiso para corregir movimientos')
+      const nuevoMonto = parseFloat(corregirMonto)
+      if (!nuevoMonto || nuevoMonto <= 0) throw new Error('Ingresá un monto válido')
+      if (!corregirConcepto.trim()) throw new Error('Ingresá un concepto')
+      // 1) Insertar reversión del original (mismo tipo opuesto)
+      const tipoReverso = corregirMov.tipo === 'ingreso' ? 'egreso' : 'ingreso'
+      const { error: e1 } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id,
+        sesion_id: corregirMov.sesion_id,
+        tipo: tipoReverso,
+        concepto: `[Reversión] ${corregirMov.concepto}`,
+        monto: Number(corregirMov.monto),
+        usuario_id: user?.id,
+      })
+      if (e1) throw e1
+      // 2) Insertar nuevo movimiento con valores corregidos
+      const { error: e2 } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id,
+        sesion_id: corregirMov.sesion_id,
+        tipo: corregirMov.tipo,  // mismo tipo (ingreso)
+        concepto: `[Corregido] ${corregirConcepto.trim()}`,
+        monto: nuevoMonto,
+        usuario_id: user?.id,
+      })
+      if (e2) throw e2
+    },
+    onSuccess: () => {
+      toast.success('Movimiento corregido')
+      logActividad({
+        entidad: 'caja', entidad_id: corregirMov?.id, entidad_nombre: corregirMov?.concepto,
+        accion: 'editar',
+        valor_anterior: `${corregirMov?.monto} · ${corregirMov?.concepto}`,
+        valor_nuevo: `${parseFloat(corregirMonto)} · ${corregirConcepto.trim()}`,
+        pagina: '/caja',
+      })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      setCorregirMov(null); setCorregirMonto(''); setCorregirConcepto('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -559,13 +941,19 @@ export default function CajaPage() {
         fuerteSessionId = ns.id
       }
 
+      // Cuenta efectivo del tenant — los traspasos siempre son de efectivo entre cajas
+      const cuentaEfectivo = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo')
+      const cuentaEfectivoId = cuentaEfectivo?.cuenta_origen_id ?? null
+
       if (tipo === 'deposito') {
         // Si viene de una caja activa: egreso en esa caja
         if (desdeSessionId) {
           const { error: e1 } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id, sesion_id: desdeSessionId,
             tipo: 'egreso_traspaso', monto,
-            concepto: concepto || 'Depósito en caja fuerte', usuario_id: user!.id,
+            concepto: concepto || 'Depósito en caja fuerte',
+            cuenta_origen_id: cuentaEfectivoId,
+            usuario_id: user!.id,
           })
           if (e1) throw e1
         }
@@ -574,6 +962,7 @@ export default function CajaPage() {
           tenant_id: tenant!.id, sesion_id: fuerteSessionId,
           tipo: 'ingreso_traspaso', monto,
           concepto: concepto || (desdeSessionId ? `Depósito desde caja` : 'Ingreso externo'),
+          cuenta_origen_id: cuentaEfectivoId,
           usuario_id: user!.id,
         })
         if (e2) throw e2
@@ -583,13 +972,17 @@ export default function CajaPage() {
         const { error: e1 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: fuerteSessionId,
           tipo: 'egreso_traspaso', monto,
-          concepto: concepto || 'Retiro de caja fuerte', usuario_id: user!.id,
+          concepto: concepto || 'Retiro de caja fuerte',
+          cuenta_origen_id: cuentaEfectivoId,
+          usuario_id: user!.id,
         })
         if (e1) throw e1
         const { error: e2 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: destSesionId,
           tipo: 'ingreso_traspaso', monto,
-          concepto: concepto || 'Ingreso desde caja fuerte', usuario_id: user!.id,
+          concepto: concepto || 'Ingreso desde caja fuerte',
+          cuenta_origen_id: cuentaEfectivoId,
+          usuario_id: user!.id,
         })
         if (e2) throw e2
       }
@@ -679,13 +1072,14 @@ export default function CajaPage() {
         tenant_id: tenant!.id,
         nombre: nuevaCajaNombre.trim(),
         sucursal_id: sucursalId || null,
+        moneda: nuevaCajaMoneda || (tenant as any)?.moneda || 'ARS',
       })
       if (error) throw error
     },
     onSuccess: () => {
       toast.success('Caja creada')
       qc.invalidateQueries({ queryKey: ['cajas'] })
-      setShowNuevaCaja(false); setNuevaCajaNombre('')
+      setShowNuevaCaja(false); setNuevaCajaNombre(''); setNuevaCajaMoneda('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -697,65 +1091,225 @@ export default function CajaPage() {
   useModalKeyboard({ isOpen: showNuevaCaja, onClose: () => setShowNuevaCaja(false), onConfirm: () => { if (!crearCaja.isPending) crearCaja.mutate() } })
   useModalKeyboard({ isOpen: showTraspaso && !showMovimiento, onClose: () => { setShowTraspaso(false); setTraspasoMonto(''); setTraspasoConcepto(''); setTraspasoDestinoSesionId('') }, onConfirm: () => { if (!realizarTraspaso.isPending) realizarTraspaso.mutate() } })
   useModalKeyboard({ isOpen: showArqueo, onClose: () => { setShowArqueo(false); setArqueoConteo(''); setArqueoNotas('') }, onConfirm: () => { if (!realizarArqueo.isPending) realizarArqueo.mutate() } })
+  useModalKeyboard({ isOpen: showExtraerBoveda, onClose: () => setShowExtraerBoveda(false), onConfirm: () => { if (!extraerDeBoveda.isPending) extraerDeBoveda.mutate() } })
 
   // Atajo de teclado: Shift+I = ingreso (solo con caja abierta)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!sesionActiva || tab !== 'caja') return
-      if (e.shiftKey && e.key === 'I') { e.preventDefault(); setMovTipo('ingreso'); setShowMovimiento(true) }
+      if (e.shiftKey && e.key === 'I') { e.preventDefault(); setShowMovimiento(true) }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [sesionActiva, tab])
 
-  const imprimirCierre = (sesion: any) => {
-    const doc = new jsPDF()
-    doc.setFillColor(30, 58, 95)
-    doc.rect(0, 0, doc.internal.pageSize.width, 25, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(16); doc.setFont('helvetica', 'bold')
-    doc.text(BRAND.name, 14, 12)
-    doc.setFontSize(11); doc.setFont('helvetica', 'normal')
-    doc.text('Resumen de cierre de caja', 14, 20)
+  const imprimirCierre = (sesion: any, formato: 'a4' | 'termico' = 'a4') => {
+    // Si la sesión tiene snapshot_totales (K2), lo usamos. Si no, fallback a campos legacy.
+    const snap = sesion.snapshot_totales || null
+    const numCierre = sesion.numero ?? snap?.numero_cierre ?? null
+    const numStr = numCierre ? `#${String(numCierre).padStart(4, '0')}` : ''
+    const titulo = `Cierre de Caja ${numStr}`.trim()
+    const tenantInfo = (tenant as any) || {}
 
+    if (formato === 'termico') {
+      // ─── Ticket angosto 80mm (C3) ──────────────────────────
+      // Ancho 80mm, alto dinámico (calculado en función de líneas)
+      const ancho = 80
+      const lineasMov = (snap?.movimientos_manuales ?? []).length
+      const lineasMet = (snap?.totales_por_metodo ?? []).length
+      const alto = 130 + lineasMet * 5 + lineasMov * 4
+      const tdoc = new jsPDF({ unit: 'mm', format: [ancho, alto] })
+      tdoc.setFont('helvetica', 'bold'); tdoc.setFontSize(11)
+      tdoc.text(BRAND.name, ancho/2, 7, { align: 'center' })
+      tdoc.setFontSize(9); tdoc.setFont('helvetica', 'normal')
+      tdoc.text(tenant?.nombre ?? '', ancho/2, 12, { align: 'center' })
+      if (tenantInfo.cuit) tdoc.text(`CUIT: ${tenantInfo.cuit}`, ancho/2, 16, { align: 'center' })
+      tdoc.setLineDashPattern([1,1], 0)
+      tdoc.line(3, 19, ancho-3, 19)
+      tdoc.setLineDashPattern([], 0)
+
+      let y = 24
+      tdoc.setFont('helvetica', 'bold'); tdoc.setFontSize(10)
+      tdoc.text(titulo, ancho/2, y, { align: 'center' }); y += 5
+      tdoc.setFont('helvetica', 'normal'); tdoc.setFontSize(8)
+      tdoc.text(`Caja: ${sesion.cajas?.nombre ?? '—'}`, 3, y); y += 4
+      const sucNombre = sesion.sucursales?.nombre ?? snap?.sucursal?.nombre
+      if (sucNombre) { tdoc.text(`Sucursal: ${sucNombre}`, 3, y); y += 4 }
+      tdoc.text(`Abrió: ${sesion.abrio?.nombre_display ?? '—'}`, 3, y); y += 4
+      tdoc.text(`Cerró: ${sesion.cerrado_por?.nombre_display ?? '—'}`, 3, y); y += 4
+      tdoc.text(`Apertura: ${new Date(sesion.abierta_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`, 3, y); y += 4
+      tdoc.text(`Cierre:   ${new Date(sesion.cerrada_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`, 3, y); y += 5
+
+      tdoc.setLineDashPattern([1,1], 0); tdoc.line(3, y, ancho-3, y); tdoc.setLineDashPattern([], 0); y += 4
+      tdoc.setFont('helvetica', 'bold'); tdoc.text('Resumen', 3, y); y += 4
+      tdoc.setFont('helvetica', 'normal')
+      const filas: [string, string][] = [
+        ['Apertura', formatMoneda(sesion.monto_apertura)],
+        ['Ingresos', formatMoneda(sesion.total_ingresos)],
+        ['Egresos',  formatMoneda(sesion.total_egresos)],
+        ['Saldo sistema', formatMoneda(sesion.monto_cierre)],
+      ]
+      if (sesion.monto_real_cierre != null) filas.push(['Conteo real', formatMoneda(sesion.monto_real_cierre)])
+      const dif = sesion.diferencia_cierre ?? 0
+      if (sesion.monto_real_cierre != null) filas.push([dif >= 0 ? 'Sobrante' : 'Faltante', formatMoneda(Math.abs(dif))])
+      for (const [c, v] of filas) {
+        tdoc.text(c, 3, y); tdoc.text(v, ancho-3, y, { align: 'right' }); y += 4
+      }
+
+      // Totales por método (snapshot)
+      if (snap?.totales_por_metodo?.length) {
+        y += 1
+        tdoc.setLineDashPattern([1,1], 0); tdoc.line(3, y, ancho-3, y); tdoc.setLineDashPattern([], 0); y += 4
+        tdoc.setFont('helvetica', 'bold'); tdoc.text('Por método de pago', 3, y); y += 4
+        tdoc.setFont('helvetica', 'normal')
+        for (const t of snap.totales_por_metodo) {
+          tdoc.text(t.medio || 'Otro', 3, y); tdoc.text(formatMoneda(t.monto), ancho-3, y, { align: 'right' }); y += 4
+        }
+      }
+
+      // Notas
+      if (sesion.notas_cierre) {
+        y += 2; tdoc.setFont('helvetica', 'italic'); tdoc.setFontSize(7)
+        const lines = tdoc.splitTextToSize(`Notas: ${sesion.notas_cierre}`, ancho - 6)
+        tdoc.text(lines, 3, y); y += lines.length * 3
+      }
+
+      tdoc.save(`cierre_${numStr || new Date(sesion.cerrada_at).toISOString().split('T')[0]}_termico.pdf`)
+      return
+    }
+
+    // ─── Formato A4 (default) ─────────────────────────────────
+    const doc = new jsPDF()
+    const w = doc.internal.pageSize.width
+
+    // Header con logo + nombre
+    doc.setFillColor(30, 58, 95)
+    doc.rect(0, 0, w, 28, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(17); doc.setFont('helvetica', 'bold')
+    doc.text(BRAND.name, 14, 13)
+    doc.setFontSize(12); doc.setFont('helvetica', 'normal')
+    doc.text(titulo, 14, 21)
+    // Datos fiscales arriba derecha
+    doc.setFontSize(9)
+    if (tenant?.nombre) doc.text(tenant.nombre, w - 14, 10, { align: 'right' })
+    if (tenantInfo.cuit) doc.text(`CUIT: ${tenantInfo.cuit}`, w - 14, 15, { align: 'right' })
+    if (tenantInfo.domicilio_fiscal) doc.text(tenantInfo.domicilio_fiscal, w - 14, 20, { align: 'right' })
+
+    // Bloque de datos del cierre
     doc.setTextColor(60, 60, 60)
     doc.setFontSize(10)
-    doc.text(`Caja: ${sesion.cajas?.nombre ?? '—'}`, 14, 35)
-    doc.text(`Negocio: ${tenant?.nombre}`, 14, 42)
-    doc.text(`Apertura: ${new Date(sesion.abierta_at).toLocaleString('es-AR')}`, 14, 49)
-    doc.text(`Cierre: ${new Date(sesion.cerrada_at).toLocaleString('es-AR')}`, 14, 56)
-    const abrioNombre = sesion.abrio?.nombre_display ?? '—'
-    const cerroNombre = sesion.cerrado_por?.nombre_display ?? abrioNombre
-    doc.text(`Abrió: ${abrioNombre}`, 14, 63)
-    doc.text(`Cerró: ${cerroNombre}`, 14, 70)
+    const sucNombre = sesion.sucursales?.nombre ?? snap?.sucursal?.nombre
+    let yh = 38
+    doc.text(`Caja: ${sesion.cajas?.nombre ?? '—'}`, 14, yh); yh += 6
+    if (sucNombre) { doc.text(`Sucursal: ${sucNombre}`, 14, yh); yh += 6 }
+    doc.text(`Apertura: ${new Date(sesion.abierta_at).toLocaleString('es-AR')}`, 14, yh); yh += 6
+    doc.text(`Cierre: ${new Date(sesion.cerrada_at).toLocaleString('es-AR')}`, 14, yh); yh += 6
+    doc.text(`Abrió: ${sesion.abrio?.nombre_display ?? '—'}`, 14, yh); yh += 6
+    doc.text(`Cerró: ${sesion.cerrado_por?.nombre_display ?? '—'}`, 14, yh); yh += 6
 
-    const rows: any[] = [
+    // Tabla resumen
+    const resumenRows: any[] = [
       ['Monto de apertura', formatMoneda(sesion.monto_apertura)],
       ['Total ingresos', formatMoneda(sesion.total_ingresos)],
       ['Total egresos', formatMoneda(sesion.total_egresos)],
-      ['Saldo calculado', formatMoneda(sesion.monto_cierre)],
+      ['Saldo sistema (calculado)', formatMoneda(sesion.monto_cierre)],
     ]
     if (sesion.monto_real_cierre != null) {
-      rows.push(['Conteo real', formatMoneda(sesion.monto_real_cierre)])
+      resumenRows.push(['Conteo real', formatMoneda(sesion.monto_real_cierre)])
       const dif = sesion.diferencia_cierre ?? 0
-      rows.push([dif >= 0 ? 'Sobrante' : 'Faltante', formatMoneda(Math.abs(dif))])
+      resumenRows.push([dif >= 0 ? 'Sobrante' : 'Faltante', formatMoneda(Math.abs(dif))])
     }
-
     autoTable(doc, {
-      startY: 78,
+      startY: yh + 2,
       head: [['Concepto', 'Monto']],
-      body: rows,
+      body: resumenRows,
       styles: { fontSize: 10 },
       headStyles: { fillColor: [30, 58, 95] },
       columnStyles: { 1: { halign: 'right' } },
     })
+    let y2: number = (doc as any).lastAutoTable.finalY + 8
 
-    if (sesion.notas_cierre) {
-      const finalY = (doc as any).lastAutoTable.finalY + 10
-      doc.text(`Notas: ${sesion.notas_cierre}`, 14, finalY)
+    // Totales por método de pago (del snapshot)
+    if (snap?.totales_por_metodo?.length) {
+      autoTable(doc, {
+        startY: y2,
+        head: [['Método de pago', 'Total']],
+        body: snap.totales_por_metodo.map((t: any) => [t.medio || 'Otro', formatMoneda(t.monto)]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [80, 100, 130] },
+        columnStyles: { 1: { halign: 'right' } },
+      })
+      y2 = (doc as any).lastAutoTable.finalY + 6
     }
 
-    doc.save(`cierre_caja_${new Date(sesion.cerrada_at).toISOString().split('T')[0]}.pdf`)
+    // Listado de ventas (truncado a 25 para no inflar el PDF)
+    if (snap?.ventas?.length) {
+      const ventas = snap.ventas.slice(0, 25)
+      autoTable(doc, {
+        startY: y2,
+        head: [['#', 'Hora', 'Medio', 'Monto']],
+        body: ventas.map((v: any) => [
+          v.numero ?? '—',
+          new Date(v.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+          v.medio || '—',
+          formatMoneda(v.monto),
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [80, 100, 130] },
+        columnStyles: { 3: { halign: 'right' } },
+      })
+      y2 = (doc as any).lastAutoTable.finalY + 6
+      if (snap.ventas.length > 25) {
+        doc.setFontSize(8); doc.setTextColor(120, 120, 120)
+        doc.text(`+ ${snap.ventas.length - 25} ventas más en el detalle online`, 14, y2)
+        y2 += 5
+      }
+    }
+
+    // Movimientos manuales
+    if (snap?.movimientos_manuales?.length) {
+      autoTable(doc, {
+        startY: y2,
+        head: [['Tipo', 'Concepto', 'Monto']],
+        body: snap.movimientos_manuales.slice(0, 15).map((m: any) => [
+          m.tipo === 'ingreso' ? 'Ingreso' : 'Egreso',
+          m.concepto?.length > 60 ? m.concepto.substring(0, 57) + '...' : m.concepto,
+          formatMoneda(m.monto),
+        ]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [80, 100, 130] },
+        columnStyles: { 2: { halign: 'right' } },
+      })
+      y2 = (doc as any).lastAutoTable.finalY + 6
+    }
+
+    // Notas
+    if (sesion.notas_cierre) {
+      doc.setFontSize(9); doc.setTextColor(80, 80, 80)
+      const lines = doc.splitTextToSize(`Notas: ${sesion.notas_cierre}`, w - 28)
+      doc.text(lines, 14, y2)
+      y2 += lines.length * 5 + 4
+    }
+
+    // Espacio para firmas
+    if (y2 < 250) {
+      y2 = Math.max(y2 + 18, 260)
+      doc.setDrawColor(180, 180, 180)
+      doc.line(20, y2, 90, y2)
+      doc.line(w - 90, y2, w - 20, y2)
+      doc.setFontSize(8); doc.setTextColor(120, 120, 120)
+      doc.text('Firma del cajero', 55, y2 + 4, { align: 'center' })
+      doc.text('Firma del supervisor', w - 55, y2 + 4, { align: 'center' })
+    }
+
+    // Pie con número correlativo
+    if (numCierre) {
+      doc.setFontSize(8); doc.setTextColor(150, 150, 150)
+      doc.text(`Cierre correlativo: ${numStr} · Generado: ${new Date().toLocaleString('es-AR')}`, w / 2, 290, { align: 'center' })
+    }
+
+    doc.save(`cierre_caja${numStr ? '_' + numStr.replace('#', '') : ''}_${new Date(sesion.cerrada_at).toISOString().split('T')[0]}.pdf`)
   }
 
   return (
@@ -775,6 +1329,7 @@ export default function CajaPage() {
           { id: 'caja', label: 'Caja actual', visible: true },
           { id: 'historial', label: 'Historial', visible: true },
           { id: 'caja_fuerte', label: '🔒 Caja Fuerte', visible: puedeCajaFuerte && !!cajaFuerte },
+          { id: 'reportes', label: '📊 Reportes', visible: puedeAdministrarCaja || puedeReimprimirTicket },
           { id: 'configuracion', label: 'Configuración', visible: puedeAdministrarCaja },
         ].filter(t => t.visible)
         return (
@@ -793,6 +1348,28 @@ export default function CajaPage() {
       {/* ── CAJA ACTUAL ── */}
       {tab === 'caja' && (
         <div className="space-y-4">
+          {/* A4 — Banner: caja propia abierta más de 24h */}
+          {sesionDiaAnterior && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm">
+                  Caja olvidada del día anterior
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                  Tu sesión en <strong>{(sesionDiaAnterior as any).cajas?.nombre ?? 'la caja'}</strong> está abierta hace más de 24h
+                  ({new Date((sesionDiaAnterior as any).abierta_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}).
+                  Cerrala primero para mantener el control contable.
+                </p>
+                {((sesionDiaAnterior as any).caja_id !== cajaId) && (
+                  <button onClick={() => setCajaSeleccionada((sesionDiaAnterior as any).caja_id)}
+                    className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 underline">
+                    Ir a esa caja →
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {/* ISS-104: selector de caja — solo píldoras, sin select box */}
           {cajasOperativas.length > 1 && (
             <div className="flex gap-2 flex-wrap items-center">
@@ -813,6 +1390,9 @@ export default function CajaPage() {
                       <DollarSign size={12} />
                       {esPref && <span className="text-yellow-500 text-[11px]">★</span>}
                       <span>{c.nombre}</span>
+                      {c.moneda && c.moneda !== ((tenant as any)?.moneda ?? 'ARS') && (
+                        <span className="text-[10px] font-mono px-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{c.moneda}</span>
+                      )}
                       <span className={`w-2 h-2 rounded-full ${abierta ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
                     </button>
                     <button
@@ -855,6 +1435,25 @@ export default function CajaPage() {
               </p>
               {showApertura ? (
                 <div className="max-w-xs mx-auto space-y-3">
+                  {/* A2: DUEÑO/SUPERVISOR puede abrir caja a nombre de un cajero */}
+                  {puedeAbrirAjena && (cajerosTenant as any[]).length > 1 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-left">Abrir caja para</label>
+                      <select value={aperturaParaUsuarioId}
+                        onChange={e => setAperturaParaUsuarioId(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                        <option value="">Yo ({user?.nombre_display ?? 'mi usuario'})</option>
+                        {(cajerosTenant as any[]).filter((u: any) => u.id !== user?.id).map((u: any) => (
+                          <option key={u.id} value={u.id}>{u.nombre_display ?? u.email} ({u.rol})</option>
+                        ))}
+                      </select>
+                      {aperturaParaUsuarioId && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 text-left">
+                          ⚠ La caja quedará a nombre del cajero seleccionado y solo él (o un DUEÑO/SUPERVISOR) podrá cerrarla
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-left">Monto inicial en caja</label>
                     {montoSugerido !== null && (
@@ -928,8 +1527,8 @@ export default function CajaPage() {
                     }
                     setShowApertura(true)
                   }}
-                    disabled={!puedeAbrirCaja}
-                    title={!puedeAbrirCaja ? 'Ya tenés una caja abierta. Cerrala antes de abrir otra.' : undefined}
+                    disabled={!puedeAbrirCaja || esSoloLectura}
+                    title={esSoloLectura ? 'Solo lectura — CONTADOR no puede abrir cajas' : (!puedeAbrirCaja ? 'Ya tenés una caja abierta. Cerrala antes de abrir otra.' : undefined)}
                     className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-6 py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                     <Unlock size={18} /> Abrir caja
                   </button>
@@ -1000,9 +1599,14 @@ export default function CajaPage() {
                 </div>
               </div>
 
-              {/* Acciones */}
+              {/* Acciones — ocultas para CONTADOR (read-only) */}
+              {esSoloLectura ? (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+                  <Info size={14} /> Modo solo lectura — CONTADOR puede consultar movimientos y reimprimir tickets de cierre, pero no operar la caja.
+                </div>
+              ) : (
               <div className="flex gap-2">
-                <button onClick={() => { setMovTipo('ingreso'); setShowMovimiento(true) }}
+                <button onClick={() => setShowMovimiento(true)}
                   className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
                   <Plus size={18} /> Ingreso
                 </button>
@@ -1037,6 +1641,7 @@ export default function CajaPage() {
                   </button>
                 )}
               </div>
+              )}
 
               {/* Movimientos */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -1088,13 +1693,24 @@ export default function CajaPage() {
                                 </div>
                               </div>
                             </div>
-                            <span className={`font-bold text-sm flex-shrink-0 ${
-                              esIngreso ? 'text-green-600 dark:text-green-400'
-                              : esEgreso ? 'text-red-500'
-                              : 'text-blue-400'
-                            }`}>
-                              {esIngreso ? '+' : esEgreso ? '−' : '~'}{formatMoneda(m.monto)}
-                            </span>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <span className={`font-bold text-sm ${
+                                esIngreso ? 'text-green-600 dark:text-green-400'
+                                : esEgreso ? 'text-red-500'
+                                : 'text-blue-400'
+                              }`}>
+                                {esIngreso ? '+' : esEgreso ? '−' : '~'}{formatMoneda(m.monto)}
+                              </span>
+                              {/* G1 — Corregir: solo en ingresos manuales (sin #venta), si rol tiene permiso */}
+                              {puedeEditarMovimiento && m.tipo === 'ingreso' && !numVenta && !m.concepto.startsWith('[Reversión]') && !m.concepto.startsWith('[Corregido]') && !m.concepto.startsWith('[Diferencia caja]') && (
+                                <button
+                                  onClick={() => { setCorregirMov(m); setCorregirMonto(String(m.monto)); setCorregirConcepto(m.concepto) }}
+                                  title="Corregir este movimiento"
+                                  className="p-1 text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 transition-colors">
+                                  <RotateCcw size={12} />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )
                       })}
@@ -1157,11 +1773,17 @@ export default function CajaPage() {
                 </div>
               )}
 
-              {/* Cerrar caja */}
-              {esOtroUsuario && !puedeAdministrarCaja ? (
+              {/* Cerrar caja — oculto para CONTADOR */}
+              {esSoloLectura ? null : esOtroUsuario && !puedeAdministrarCaja ? (
                 <div className="w-full flex items-center justify-center gap-2 border-2 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 font-semibold py-3 rounded-xl cursor-not-allowed">
                   <Lock size={18} /> Solo {abrioNombre ?? 'quien abrió'} puede cerrar esta caja
                 </div>
+              ) : arqueosSesion.length === 0 ? (
+                <button onClick={() => { toast('Hacé un arqueo parcial antes de cerrar', { icon: 'ℹ' }); setShowArqueo(true) }}
+                  title="Para cerrar la caja, primero registrá al menos un arqueo parcial en esta sesión"
+                  className="w-full flex items-center justify-center gap-2 border-2 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 font-semibold py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all">
+                  <CheckCircle size={18} /> Arqueo requerido antes de cerrar
+                </button>
               ) : (
                 <button onClick={() => setShowCierre(true)}
                   className="w-full flex items-center justify-center gap-2 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-3 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all">
@@ -1175,6 +1797,9 @@ export default function CajaPage() {
 
       {/* ── CAJA FUERTE ── */}
       {/* ── CAJA FUERTE TAB ── */}
+      {/* ── REPORTES (Fase 2.4 / I1+I2) ── */}
+      {tab === 'reportes' && <CajaReportes />}
+
       {tab === 'caja_fuerte' && cajaFuerte && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
@@ -1184,7 +1809,7 @@ export default function CajaPage() {
               </div>
               <div>
                 <p className="font-semibold text-gray-800 dark:text-gray-100">Caja Fuerte / Bóveda</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Registro de depósitos. No registra saldo.</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Efectivo + cuentas asociadas a métodos de pago.</p>
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -1198,8 +1823,111 @@ export default function CajaPage() {
                 className="flex items-center gap-2 px-4 py-2.5 bg-gray-700 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
                 <ArrowRightLeft size={15} /> Enviar a Caja
               </button>
+              {puedeExtraerBoveda && (
+                <button onClick={() => setShowExtraerBoveda(true)}
+                  title="Extraer dinero del negocio (retiro personal, banco, gasto, etc.)"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors ml-auto">
+                  <Minus size={15} /> Extraer dinero
+                </button>
+              )}
             </div>
           </div>
+
+          {/* Saldos por Cuenta de Origen — bóveda discriminada (H1) */}
+          {(() => {
+            const cuentasActivas = (bovedaCuentas as any[]).filter((c: any) => c.activo)
+            const capitalTotal = cuentasActivas.reduce((acc: number, c: any) => acc + Number(c.saldo || 0), 0)
+            return (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Capital del negocio por cuenta</p>
+                  {puedeExtraerBoveda && cuentasActivas.length > 0 && (
+                    <p className="text-sm font-bold text-gray-700 dark:text-gray-200">Total: <span className="text-accent">{formatMoneda(capitalTotal)}</span></p>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {cuentasActivas.map((c: any) => {
+                    const tipoColor = c.tipo === 'banco' ? 'blue' : c.tipo === 'billetera' ? 'purple' : c.tipo === 'efectivo' ? 'green' : 'gray'
+                    const Icon = c.tipo === 'efectivo' ? Lock : DollarSign
+                    return (
+                      <div key={c.cuenta_origen_id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`w-7 h-7 bg-${tipoColor}-50 dark:bg-${tipoColor}-900/30 rounded-lg flex items-center justify-center shrink-0`}>
+                              <Icon size={14} className={`text-${tipoColor}-600 dark:text-${tipoColor}-400`} />
+                            </div>
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate" title={c.nombre}>{c.nombre}</p>
+                          </div>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-${tipoColor}-50 dark:bg-${tipoColor}-900/20 text-${tipoColor}-700 dark:text-${tipoColor}-400`}>{c.tipo}</span>
+                        </div>
+                        <p className={`text-xl font-bold ${Number(c.saldo) > 0 ? 'text-gray-900 dark:text-white' : Number(c.saldo) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                          {formatMoneda(Number(c.saldo || 0))}
+                        </p>
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                          {c.movimientos_count} mov · {c.moneda}
+                          {c.banco && ` · ${c.banco}`}
+                        </p>
+                      </div>
+                    )
+                  })}
+
+                  {cuentasActivas.length === 0 && (
+                    <div className="col-span-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-start gap-3">
+                      <Info size={16} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                      <div className="text-xs text-blue-700 dark:text-blue-300">
+                        <p className="font-semibold mb-1">Configurá las cuentas de origen</p>
+                        <p>Andá a <strong>Configuración → Caja → Cuentas de Origen</strong> y asocialas a tus métodos de pago para ver la bóveda discriminada por banco/billetera.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Historial de extracciones — solo DUEÑO/ADMIN/SUPER_USUARIO (RLS) */}
+          {puedeExtraerBoveda && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-100 dark:border-red-900/40 overflow-hidden">
+              <div className="px-5 py-3 border-b border-red-100 dark:border-red-900/40 bg-red-50/40 dark:bg-red-900/20 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Lock size={13} className="text-red-600 dark:text-red-400" />
+                  <p className="text-xs font-semibold text-red-700 dark:text-red-300 uppercase tracking-wide">Historial de extracciones (privado)</p>
+                </div>
+                <span className="text-xs text-red-600 dark:text-red-400">{bovedaRetiros.length} {bovedaRetiros.length === 1 ? 'extracción' : 'extracciones'}</span>
+              </div>
+              {bovedaRetiros.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">Sin extracciones registradas</p>
+              ) : (
+                <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {(bovedaRetiros as any[]).map((r: any) => (
+                    <div key={r.id} className="px-5 py-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{r.motivo}</p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium">
+                            {r.tipo_retiro.replace('_', ' ')}
+                          </span>
+                          {r.cuentas_origen?.nombre && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                              {r.cuentas_origen.nombre}
+                            </span>
+                          )}
+                        </div>
+                        {r.notas && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{r.notas}</p>}
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          {new Date(r.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                          {r.users?.nombre_display && ` · ${r.users.nombre_display}`}
+                        </p>
+                      </div>
+                      <span className="font-bold text-red-600 dark:text-red-400 shrink-0">
+                        -{formatMoneda(r.monto)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Historial completo de caja fuerte */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -1338,6 +2066,130 @@ export default function CajaPage() {
         </div>
       )}
 
+      {/* Modal Extraer dinero — solo DUEÑO/ADMIN/SUPER_USUARIO */}
+      {showExtraerBoveda && puedeExtraerBoveda && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowExtraerBoveda(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <Minus size={16} className="text-red-600" /> Extraer dinero de la bóveda
+              </h3>
+              <button onClick={() => setShowExtraerBoveda(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Este registro queda visible <strong>solo para vos</strong>. Descuenta el monto del saldo de la cuenta elegida.
+            </p>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cuenta de origen *</label>
+              <select value={extraerCuentaId} onChange={e => setExtraerCuentaId(e.target.value)}
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                <option value="">Seleccioná una cuenta...</option>
+                {(bovedaCuentas as any[]).filter((c: any) => c.activo && Number(c.saldo) > 0).map((c: any) => (
+                  <option key={c.cuenta_origen_id} value={c.cuenta_origen_id}>
+                    {c.nombre} ({c.tipo}) — {formatMoneda(Number(c.saldo))} disponible
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
+              <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
+                value={extraerMonto} onChange={e => setExtraerMonto(e.target.value)}
+                placeholder="0"
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tipo de retiro *</label>
+              <select value={extraerTipo} onChange={e => setExtraerTipo(e.target.value as any)}
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                <option value="retiro_personal">Retiro personal del dueño</option>
+                <option value="banco">Depósito a banco / inversión bancaria</option>
+                <option value="inversion">Inversión (compra activos, etc.)</option>
+                <option value="gasto">Gasto del negocio</option>
+                <option value="pago_proveedor">Pago a proveedor</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Motivo *</label>
+              <input type="text" value={extraerMotivo} onChange={e => setExtraerMotivo(e.target.value)}
+                placeholder="Ej: Sueldo del dueño abril, Depósito Plazo Fijo, etc."
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Notas (opcional)</label>
+              <textarea value={extraerNotas} onChange={e => setExtraerNotas(e.target.value)}
+                rows={2}
+                placeholder="Detalle adicional para tu registro personal..."
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none" />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setShowExtraerBoveda(false)}
+                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
+                Cancelar
+              </button>
+              <button onClick={() => extraerDeBoveda.mutate()}
+                disabled={extraerDeBoveda.isPending || !extraerCuentaId || !extraerMonto || !extraerMotivo.trim()}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
+                {extraerDeBoveda.isPending ? 'Registrando...' : 'Confirmar extracción'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* G1 — Modal corregir movimiento manual (DUEÑO/SUPERVISOR) */}
+      {corregirMov && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setCorregirMov(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-primary flex items-center gap-2">
+                <RotateCcw size={18} className="text-amber-600" /> Corregir movimiento
+              </h2>
+              <button onClick={() => setCorregirMov(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Se creará un movimiento de reversión + uno nuevo corregido. El original queda en el historial con audit log.
+            </p>
+            <div className="space-y-3 mb-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Concepto corregido</label>
+                <input type="text" value={corregirConcepto} onChange={e => setCorregirConcepto(e.target.value)}
+                  autoFocus
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                <p className="text-[11px] text-gray-400 mt-1">Original: <span className="italic">{corregirMov.concepto}</span></p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto corregido</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={corregirMonto}
+                    onChange={e => setCorregirMonto(e.target.value)}
+                    className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">Original: {formatMoneda(corregirMov.monto)}</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setCorregirMov(null)}
+                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
+                Cancelar
+              </button>
+              <button onClick={() => corregirMovimiento.mutate()} disabled={corregirMovimiento.isPending}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
+                {corregirMovimiento.isPending ? 'Corrigiendo...' : 'Confirmar corrección'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal solicitud CAJERO → caja fuerte */}
       {showSolicitudFuerte && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -1377,6 +2229,52 @@ export default function CajaPage() {
       {/* ── HISTORIAL ── */}
       {tab === 'historial' && (
         <div className="space-y-3">
+          {/* B4 — Reporte: diferencias acumuladas por cajero últimos 30 días */}
+          {(puedeAdministrarCaja || puedeReimprimirTicket) && (difsPorCajero as any[]).length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                  <AlertTriangle size={13} className="text-amber-500" /> Diferencias por cajero (últimos 30 días)
+                </p>
+                <span className="text-[10px] text-gray-400">trazabilidad — sin descuento automático</span>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-700/30">
+                  <tr className="text-left text-xs text-gray-500 dark:text-gray-400">
+                    <th className="px-4 py-2 font-medium">Cajero</th>
+                    <th className="px-4 py-2 font-medium text-center">Cierres</th>
+                    <th className="px-4 py-2 font-medium text-center">Con diferencia</th>
+                    <th className="px-4 py-2 font-medium text-right">Neto</th>
+                    <th className="px-4 py-2 font-medium text-right">Absoluto</th>
+                    <th className="px-4 py-2 font-medium text-right">Máxima</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {(difsPorCajero as any[]).map((d: any) => {
+                    const neto = Number(d.diferencia_neta_acumulada || 0)
+                    return (
+                      <tr key={d.usuario_id ?? d.cajero} className="text-gray-700 dark:text-gray-300">
+                        <td className="px-4 py-2.5 font-medium">{d.cajero ?? '—'}</td>
+                        <td className="px-4 py-2.5 text-center">{d.cierres_count}</td>
+                        <td className="px-4 py-2.5 text-center">
+                          {d.cierres_con_diferencia > 0 ? (
+                            <span className="text-amber-600 dark:text-amber-400 font-medium">{d.cierres_con_diferencia}</span>
+                          ) : (
+                            <span className="text-gray-400">0</span>
+                          )}
+                        </td>
+                        <td className={`px-4 py-2.5 text-right font-medium ${neto > 0 ? 'text-green-600 dark:text-green-400' : neto < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400'}`}>
+                          {neto >= 0 ? '+' : ''}{formatMoneda(neto)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-400">{formatMoneda(Number(d.diferencia_absoluta_acumulada || 0))}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-600 dark:text-gray-400">{formatMoneda(Number(d.diferencia_maxima || 0))}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           {historialSesiones.length === 0 ? (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-10 text-center text-gray-400 dark:text-gray-500 shadow-sm border border-gray-100">
               <History size={36} className="mx-auto mb-3 opacity-30" />
@@ -1425,10 +2323,20 @@ export default function CajaPage() {
                           </span>
                         )}
                       </div>
-                      <button onClick={() => imprimirCierre(s)}
-                        className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <Printer size={13} /> PDF
-                      </button>
+                      {puedeReimprimirTicket && (
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => imprimirCierre(s, 'a4')}
+                            title="Descargar ticket de cierre (formato A4)"
+                            className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <Printer size={13} /> A4
+                          </button>
+                          <button onClick={() => imprimirCierre(s, 'termico')}
+                            title="Descargar ticket de cierre (formato térmico 80mm)"
+                            className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <Receipt size={13} /> Tícket
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1528,10 +2436,16 @@ export default function CajaPage() {
             </div>
 
             {showNuevaCaja && (
-              <div className="flex gap-2 mb-4">
+              <div className="flex gap-2 mb-4 flex-wrap">
                 <input type="text" value={nuevaCajaNombre} onChange={e => setNuevaCajaNombre(e.target.value)}
                   placeholder="Nombre de la caja (ej: Caja 1, Caja Principal)"
-                  className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  className="flex-1 min-w-[200px] px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                <select value={nuevaCajaMoneda || (tenant as any)?.moneda || 'ARS'}
+                  onChange={e => setNuevaCajaMoneda(e.target.value)}
+                  title="Moneda de la caja (no se puede cambiar luego)"
+                  className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                  {MONEDAS_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
                 <button onClick={() => crearCaja.mutate()} disabled={crearCaja.isPending}
                   className="px-4 py-2 bg-primary text-white rounded-xl text-sm disabled:opacity-50">
                   Crear
@@ -1558,6 +2472,7 @@ export default function CajaPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <span className="font-medium text-gray-800 dark:text-gray-100">{c.nombre}</span>
+                          <span className="ml-2 text-[11px] font-mono px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">{c.moneda || 'ARS'}</span>
                           {tieneSessionActiva && (
                             <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-medium">● Abierta</span>
                           )}
@@ -1682,12 +2597,13 @@ export default function CajaPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                {movTipo === 'ingreso'
-                  ? <><Plus size={18} className="text-green-600 dark:text-green-400" /> Ingreso de caja</>
-                  : <><Minus size={18} className="text-orange-500" /> Egreso de caja</>}
+                <Plus size={18} className="text-green-600 dark:text-green-400" /> Ingreso de caja
               </h2>
               <button onClick={() => setShowMovimiento(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 -mt-2">
+              Para registrar un egreso, creá un <strong>Gasto</strong> con el monto y método de pago. Caja solo registra ingresos manuales (aportes, devoluciones, etc.).
+            </p>
             <div className="space-y-3 mb-5">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Concepto</label>
@@ -1836,8 +2752,52 @@ export default function CajaPage() {
                 className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
             </div>
 
+            {/* B5 — Clave maestra al cerrar caja ajena */}
+            {(() => {
+              const claveConfigurada = !!(tenant as any)?.clave_maestra
+              const esCierreAjeno = sesionActiva?.usuario_id && sesionActiva.usuario_id !== user?.id
+              if (!claveConfigurada || !esCierreAjeno) return null
+              return (
+                <div className="mb-5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-3 space-y-2">
+                  <label className="block text-sm font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                    <Lock size={13} /> Clave maestra requerida
+                  </label>
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Esta caja fue abierta por otro usuario. Ingresá la clave maestra del negocio para cerrarla.
+                  </p>
+                  <input type="password" value={claveMaestraCierre}
+                    onChange={e => setClaveMaestraCierre(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="off"
+                    className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg text-sm focus:outline-none focus:border-amber-500 dark:bg-gray-800" />
+                </div>
+              )
+            })()}
+
+            {/* B7 — Doble validación: 2do usuario debe autenticarse */}
+            {configCaja.doble_validacion_cierre && (
+              <div className="mb-5 bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700 rounded-xl p-3 space-y-2">
+                <label className="block text-sm font-medium text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
+                  <Lock size={13} /> Doble validación del cierre
+                </label>
+                <p className="text-xs text-blue-700 dark:text-blue-400">
+                  Este negocio requiere que un 2do usuario (DUEÑO/SUPERVISOR/ADMIN) confirme el cierre con sus credenciales.
+                </p>
+                <input type="email" value={dobleValEmail}
+                  onChange={e => setDobleValEmail(e.target.value)}
+                  placeholder="Email del 2do usuario"
+                  autoComplete="off"
+                  className="w-full px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg text-sm focus:outline-none focus:border-blue-500 dark:bg-gray-800" />
+                <input type="password" value={dobleValPassword}
+                  onChange={e => setDobleValPassword(e.target.value)}
+                  placeholder="Contraseña"
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2 border border-blue-300 dark:border-blue-600 rounded-lg text-sm focus:outline-none focus:border-blue-500 dark:bg-gray-800" />
+              </div>
+            )}
+
             <div className="flex gap-3">
-              <button onClick={() => { setShowCierre(false); setMontoRealCierre('') }}
+              <button onClick={() => { setShowCierre(false); setMontoRealCierre(''); setClaveMaestraCierre(''); setDobleValEmail(''); setDobleValPassword('') }}
                 className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                 Cancelar
               </button>

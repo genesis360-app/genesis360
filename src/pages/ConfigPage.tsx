@@ -477,14 +477,15 @@ export default function ConfigPage() {
   const toggleFacturacion = async () => {
     const nuevoValor = !bizFactHabilitada
     setBizFactHabilitada(nuevoValor)
-    const { error } = await supabase.from('tenants')
+    const { data, error } = await supabase.from('tenants')
       .update({ facturacion_habilitada: nuevoValor })
-      .eq('id', tenant!.id)
-    if (error) {
+      .eq('id', tenant!.id).select().single()
+    if (error || !data) {
       setBizFactHabilitada(!nuevoValor)
       toast.error('No se pudo guardar el cambio')
       return
     }
+    setTenant(data)  // refrescar store para que persista al cambiar de tab/página
     toast.success(nuevoValor ? 'Facturación habilitada' : 'Facturación deshabilitada')
   }
 
@@ -492,16 +493,17 @@ export default function ConfigPage() {
   const [savingFact, setSavingFact] = useState(false)
   const handleSaveFacturacion = async () => {
     setSavingFact(true)
-    const { error } = await supabase.from('tenants').update({
+    const { data, error } = await supabase.from('tenants').update({
       cuit: bizCuit.trim() || null,
       condicion_iva_emisor: bizCondIva || null,
       razon_social_fiscal: bizRazonSocial.trim() || null,
       domicilio_fiscal: bizDomicilioFiscal.trim() || null,
       umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
       afipsdk_token: bizAfipToken.trim() || null,
-    }).eq('id', tenant!.id)
+    }).eq('id', tenant!.id).select().single()
     setSavingFact(false)
-    if (error) { toast.error('No se pudo guardar'); return }
+    if (error || !data) { toast.error('No se pudo guardar'); return }
+    setTenant(data)  // refrescar store
     toast.success('Datos fiscales guardados')
   }
 

@@ -6,6 +6,44 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-25] update | v1.9.1-dev — Reglas Caja Tanda 1 (moneda + Cuentas de Origen + bóveda discriminada)
+
+Implementación de respuestas A-I del relevamiento de Caja (con socio en `relevamiento-caja-reglas-negocio.pdf` + respuestas guardadas en `sources/relevamientos/caja_2026-05-25.md`).
+
+### Migration 136 aplicada en DEV
+- `cajas.moneda TEXT NOT NULL DEFAULT 'ARS'` + índice + seed desde `tenants.moneda` (23 cajas existentes asignadas)
+- Tabla `cuentas_origen(id, tenant_id, nombre, tipo, banco, numero, alias, moneda, activo, notas)` con CHECK `tipo IN (banco/billetera/efectivo/otro)` + RLS tenant
+- Seed de 1 cuenta `Efectivo` por tenant (7 cuentas creadas) + auto-asociación al método de pago "Efectivo" (5 métodos vinculados)
+- `metodos_pago.cuenta_origen_id` FK → cuentas_origen ON DELETE SET NULL
+- `caja_movimientos.cuenta_origen_id` FK opcional + índice parcial
+- Vista `vw_boveda_cuentas` con `security_invoker=true` → saldo neto por cuenta calculado de `caja_movimientos`
+
+### Frontend
+- **ConfigPage** tab Caja: nueva sección "Cuentas de Origen" con ABM completo (alta inline + edición inline + toggle activo + eliminar con guard de FK 23503)
+- **ConfigPage** tab Ventas → Métodos de pago: selector "Cuenta de origen default" en cada método + badge `→ Cuenta` en modo display
+- **VentasPage**: nueva query `metodos_pago_cfg` + helper `cuentaOrigenDeMetodo(nombre)` aplicado en los 5 puntos de insert informativo (despacho, seña reservada, seña en updateVentaEstado, despacho desde reservada, devolución seña cancelada)
+- **GastosPage**: misma query + helper aplicado en los 5 puntos de insert (OC, edición gasto borrador, gasto nuevo caja fuerte/normal, reversión por eliminación, gasto fijo generado)
+- **CajaPage** tab Bóveda: cards de saldos discriminados — card Efectivo (caja fuerte tradicional) + 1 card por cada `cuenta_origen` activa con icono por tipo + saldo + count + moneda + empty state que invita a Config
+- **CajaPage** modal Nueva Caja: selector de moneda obligatorio (default = `tenant.moneda` o `'ARS'`)
+- **CajaPage** selector pílulas: badge `MONEDA` cuando difiere de la del tenant
+- **CajaPage** lista en tab Configuración: badge `MONEDA` siempre visible junto al nombre
+- **CajaPage** modal movimiento manual: solo registra ingresos (eliminado `setMovTipo`, `movTipo` queda como constante `'ingreso'`), texto guía explica que los egresos pasan por Gastos
+- **CajaPage** botón "Cerrar caja": cuando `arqueosSesion.length === 0` se muestra como "Arqueo requerido antes de cerrar" (amber, abre modal de arqueo); mutation `cerrarCaja` valida con throw si no hay arqueos previos
+
+### Wiki
+- Nueva página `sources/relevamientos/caja_2026-05-25.md` con respuestas A-I + recomendación B4 + decisiones críticas pendientes
+- `wiki/features/caja.md`: nueva sección "Reglas relevadas — Tanda 1 (v1.9.1)" con F1, H1, G2, D3 + listado de pendientes para próximas tandas
+- `wiki/database/migraciones.md`: entrada 136
+- `index.md`: descripción Caja actualizada + pie con nuevo conteo y estado de relevamiento
+- PDF generado en raíz: `relevamiento-caja-reglas-negocio.pdf` (50 preguntas, 14 secciones) — A-I respondidas, J-N pendientes
+
+### Estado al cierre
+- DEV: v1.9.1 con migrations 130-136 aplicadas
+- PROD: v1.9.0 (migration 136 pendiente de deploy)
+- Pendiente próximas tandas: respuestas J-N del relevamiento + features B4/B5/B7/C2/E1/E4/G1 (algunas dependen de respuestas pendientes)
+
+---
+
 ## [2026-05-25] update | PROD deploy v1.9.0 — Reglas Gastos Fases 4+5 (capitalización + cierre contable)
 
 - Migrations 134 + 135 aplicadas en PROD ✅ (3 columnas nuevas en gastos, tabla cierres_contables, vista vw_egresos_consolidados, 4 funciones, 5 triggers)

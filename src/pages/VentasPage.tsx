@@ -340,7 +340,7 @@ export default function VentasPage() {
     queryKey: ['caja-sesiones-abiertas', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, caja_id, cajas(nombre)')
+        .select('id, caja_id, cajas(nombre, moneda)')
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'abierta')
       return data ?? []
@@ -350,6 +350,23 @@ export default function VentasPage() {
     refetchOnMount: true,      // Refresca al entrar a la página (ej: después de abrir caja en otra tab)
     refetchOnWindowFocus: true,
   })
+
+  // Métodos de pago con su cuenta de origen default (para acreditar movimientos informativos)
+  const { data: metodosPagoCfg = [] } = useQuery<any[]>({
+    queryKey: ['metodos_pago_cfg', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('metodos_pago')
+        .select('id, nombre, cuenta_origen_id')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+  const cuentaOrigenDeMetodo = (nombreMetodo: string): string | null => {
+    if (!nombreMetodo) return null
+    const m = (metodosPagoCfg as any[]).find(x => (x.nombre || '').toLowerCase() === nombreMetodo.toLowerCase())
+    return m?.cuenta_origen_id ?? null
+  }
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
   const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
 
@@ -1630,6 +1647,7 @@ export default function VentasPage() {
             tipo: 'ingreso_informativo',
             concepto: `[${mp.tipo}] Venta #${venta.numero}`,
             monto: montoMp,
+            cuenta_origen_id: cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
           })
           if (errInfo) console.error('[caja] ingreso_informativo error:', errInfo)
@@ -1658,6 +1676,7 @@ export default function VentasPage() {
             tipo: 'ingreso_informativo',
             concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`,
             monto: montoMp,
+            cuenta_origen_id: cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
           })
         }
@@ -2215,7 +2234,9 @@ export default function VentasPage() {
                 supabase.from('caja_movimientos').insert({
                   tenant_id: tenant!.id, sesion_id: _sesionId,
                   tipo: 'ingreso_informativo', monto,
-                  concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`, usuario_id: user?.id,
+                  concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`,
+                  cuenta_origen_id: cuentaOrigenDeMetodo(mp.tipo),
+                  usuario_id: user?.id,
                 }).then(() => null)
               }
             }
@@ -2346,6 +2367,7 @@ export default function VentasPage() {
                 tipo: 'ingreso_informativo',
                 concepto: `[${tipo}] Venta #${venta.numero}`,
                 monto,
+                cuenta_origen_id: cuentaOrigenDeMetodo(tipo),
                 usuario_id: user?.id,
               })
             }
@@ -2396,13 +2418,16 @@ export default function VentasPage() {
               }
               const noCashCancelado = (venta.monto_pagado ?? 0) - efectivoCobrado
               if (noCashCancelado > 0.01) {
-                const noCashTypes = [...new Set(prevArr.filter(m => m.tipo !== 'Efectivo' && (m.monto ?? 0) > 0).map(m => m.tipo))].join(' + ') || 'No efectivo'
+                const noCashTipos = [...new Set(prevArr.filter(m => m.tipo !== 'Efectivo' && (m.monto ?? 0) > 0).map(m => m.tipo))]
+                const noCashTypes = noCashTipos.join(' + ') || 'No efectivo'
+                // Para devolución de seña usamos la cuenta del primer método no-efectivo (suele haber 1 solo)
                 void supabase.from('caja_movimientos').insert({
                   tenant_id: tenant!.id,
                   sesion_id: cancelSesionId,
                   tipo: 'egreso_informativo',
                   concepto: `[${noCashTypes}] Dev. seña Venta #${venta.numero}`,
                   monto: noCashCancelado,
+                  cuenta_origen_id: noCashTipos[0] ? cuentaOrigenDeMetodo(noCashTipos[0]) : null,
                   usuario_id: user?.id,
                 })
               }

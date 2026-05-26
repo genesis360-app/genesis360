@@ -247,12 +247,29 @@ export default function GastosPage() {
     queryKey: ['caja-sesiones-abiertas', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, caja_id, usuario_id, monto_apertura, cajas(nombre, es_caja_fuerte), abrio:usuario_id(nombre_display)')
+        .select('id, caja_id, usuario_id, monto_apertura, cajas(nombre, es_caja_fuerte, moneda), abrio:usuario_id(nombre_display)')
         .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
       return data ?? []
     },
     enabled: !!tenant, refetchInterval: 60_000,
   })
+
+  // Métodos de pago con cuenta de origen default (para acreditar egresos informativos)
+  const { data: metodosPagoCfg = [] } = useQuery<any[]>({
+    queryKey: ['metodos_pago_cfg', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('metodos_pago')
+        .select('id, nombre, cuenta_origen_id')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+  const cuentaOrigenDeMetodo = (nombreMetodo: string | null | undefined): string | null => {
+    if (!nombreMetodo) return null
+    const m = (metodosPagoCfg as any[]).find(x => (x.nombre || '').toLowerCase() === nombreMetodo.toLowerCase())
+    return m?.cuenta_origen_id ?? null
+  }
 
   const sesionFuerte = (sesionesAbiertas as any[]).find(s => s.cajas?.es_caja_fuerte) ?? null
   const sesionesOperativas = (sesionesAbiertas as any[]).filter(s => !s.cajas?.es_caja_fuerte)
@@ -717,6 +734,7 @@ export default function GastosPage() {
           tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
           monto: m.monto,
           concepto: esEfectivo ? concepto : `[${m.tipo}] ${concepto}`,
+          cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(m.tipo),
           usuario_id: user?.id,
         })
         if (cajErr) console.error('caja_movimientos OC insert:', cajErr.message)
@@ -1035,7 +1053,9 @@ export default function GastosPage() {
                 tenant_id: tenant!.id, sesion_id: sesionUsar,
                 tipo,
                 concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
-                monto: montoMp, usuario_id: user?.id,
+                monto: montoMp,
+                cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
+                usuario_id: user?.id,
               }).then(({ error: cajErr }) => { if (cajErr) console.error('caja edit gasto:', cajErr.message) })
             }
             qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
@@ -1063,7 +1083,9 @@ export default function GastosPage() {
               tenant_id: tenant!.id, sesion_id: sesionUsar,
               tipo,
               concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
-              monto: montoMp, usuario_id: user?.id,
+              monto: montoMp,
+              cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
+              usuario_id: user?.id,
             }).then(({ error }) => { if (error) console.error('caja_movimientos gasto:', error.message) })
           }
           qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
@@ -1150,6 +1172,7 @@ export default function GastosPage() {
             concepto: esEfectivo
               ? `[Corrección] Gasto eliminado: ${g.descripcion}`
               : `[${mp.tipo}][Corrección] Gasto eliminado: ${g.descripcion}`,
+            cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
           }).then(({ error: cajErr }) => { if (cajErr) console.error('caja reversión gasto:', cajErr.message) })
         }
@@ -1275,7 +1298,9 @@ export default function GastosPage() {
             tenant_id: tenant!.id, sesion_id: sesionUsarFijo,
             tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
             concepto: esEfectivo ? `Gasto: ${f.descripcion}` : `[${mp.tipo}] Gasto: ${f.descripcion}`,
-            monto: parseFloat(mp.monto), usuario_id: user?.id,
+            monto: parseFloat(mp.monto),
+            cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
+            usuario_id: user?.id,
           }).then(({ error: cajErr }) => { if (cajErr) console.error('caja fijo:', cajErr.message) })
         }
         qc.invalidateQueries({ queryKey: ['caja-movimientos'] })

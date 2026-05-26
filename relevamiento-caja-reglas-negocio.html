@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Módulo Caja · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Módulo Caja</h1>
+<div class="meta">
+  Genesis360 · v1.9.0 · Fecha: 25 de mayo de 2026 · Relevamiento con Gastón Otranto + socio
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas con
+  <span class="tag tag-existente">EXISTENTE</span> piden confirmar reglas ya implementadas;
+  <span class="tag tag-nuevo">NUEVO</span> piden definir reglas pendientes;
+  <span class="tag tag-cambio">CAMBIO</span> señalan contradicciones a resolver entre lo relevado antes y lo que ya está en código.
+  Cuando contesten, las cargo en wiki y planificamos la implementación.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo:</strong> Multi-caja por sucursal · Apertura con sugerido del cierre anterior ·
+  Cierre con conteo real y diferencia · Traspasos entre cajas · Caja Fuerte/Bóveda (historial sin saldo visible) ·
+  Arqueo parcial registrado en tabla <code>caja_arqueos</code> · Contraseña maestra y umbral bóveda en
+  <code>tenants.clave_maestra</code> / <code>tenants.boveda_umbral_caja</code> (campos creados, flujo de uso pendiente
+  de definir).
+</div>
+
+<!-- ============================ A. APERTURA ============================ -->
+<h2>A. Apertura de caja</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Diferencia entre monto sugerido (cierre anterior) y monto declarado al abrir <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: warning ámbar/rojo + confirmación 2 pasos + notificación a DUEÑO/SUPERVISOR.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está (solo aviso, se puede continuar)</li>
+    <li>(b) Bloquear apertura si la diferencia supera un umbral configurable (ej: $1.000)</li>
+    <li>(c) Pedir contraseña maestra para abrir con diferencia</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    ¿DUEÑO/SUPERVISOR pueden abrir caja a nombre de un CAJERO? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: cada usuario abre su propia caja. Útil si el cajero llega tarde y otro arranca el turno.</div>
+  <ul class="opciones">
+    <li>(a) Sí, sin restricción — el usuario que opera la caja queda registrado por sesión</li>
+    <li>(b) Sí, pero queda registrado el usuario que abrió y el cajero asignado</li>
+    <li>(c) No, cada cajero abre la suya obligatoriamente</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Cajas olvidadas abiertas (>16h, alerta hoy via monitoring-check) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo alertar — el cajero/DUEÑO la cierra manualmente al día siguiente</li>
+    <li>(b) Cierre automático al pasar X horas (configurable) sin actividad — saldo = último calculado</li>
+    <li>(c) Bloquear ventas/gastos en esa caja hasta que se haga el cierre formal</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    Un cajero ya tiene caja abierta y vuelve al día siguiente sin cerrar <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sigue operando en la misma sesión (caja del día anterior)</li>
+    <li>(b) Forzar cierre primero antes de hacer cualquier movimiento</li>
+    <li>(c) Sugerir cierre, pero permitir continuar</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. CIERRE ============================ -->
+<h2>B. Cierre de caja</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Cierre con diferencia (sistema vs conteo real) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Se acepta cualquier diferencia, solo se registra</li>
+    <li>(b) Umbral configurable (ej: $500) — debajo se acepta, arriba pide observación obligatoria</li>
+    <li>(c) Pide observación obligatoria siempre que haya diferencia ≠ 0</li>
+    <li>(d) Pide contraseña maestra de DUEÑO si la diferencia supera umbral</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Destinatarios de la alerta por diferencia <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo DUEÑO</li>
+    <li>(b) DUEÑO + SUPERVISOR</li>
+    <li>(c) DUEÑO + SUPERVISOR + CONTADOR</li>
+    <li>(d) Configurable por tenant (checkbox por rol)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Canal de la alerta <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo in-app (notificación)</li>
+    <li>(b) In-app + email</li>
+    <li>(c) In-app + email + WhatsApp</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Tratamiento contable de la diferencia <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo informativa — no afecta nada más</li>
+    <li>(b) Se carga como egreso especial "Diferencia caja" (faltante) o ingreso (sobrante)</li>
+    <li>(c) Se asocia al cajero responsable (registro para deducir luego)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span><span class="pregunta-titulo">
+    Alcance de la contraseña maestra <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy: el campo existe pero solo se pensó para cerrar caja ajena. ¿Otros usos?</div>
+  <ul class="opciones">
+    <li>(a) Solo cerrar caja ajena (DUEÑO/SUPERVISOR cerrando la del CAJERO)</li>
+    <li>(b) Cerrar caja ajena + anular venta despachada</li>
+    <li>(c) Cerrar caja ajena + anular movimiento manual de caja</li>
+    <li>(d) Cerrar caja ajena + abrir caja con diferencia + anular ventas/movimientos</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B6</span><span class="pregunta-titulo">
+    Quién puede cambiar la contraseña maestra <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo DUEÑO</li>
+    <li>(b) DUEÑO + ADMIN (plataforma)</li>
+    <li>(c) DUEÑO + SUPERVISOR (cualquiera con permiso de bóveda)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B7</span><span class="pregunta-titulo">
+    Doble validación de cierre <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No, el cajero cierra solo</li>
+    <li>(b) Para cajas con saldo > umbral, requiere firma/aprobación de SUPERVISOR</li>
+    <li>(c) Siempre requiere segundo usuario que confirme conteo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. TICKET CIERRE ============================ -->
+<h2>C. Ticket de cierre PDF</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Datos a incluir en el ticket (marcar todos los que apliquen) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Encabezado con logo, nombre comercio, dirección, CUIT</li>
+    <li>(b) Sucursal + nombre de la caja</li>
+    <li>(c) Cajero (nombre + email/usuario)</li>
+    <li>(d) Fecha/hora apertura · Fecha/hora cierre · Duración del turno</li>
+    <li>(e) Saldo inicial · Total ingresos efectivo · Total egresos efectivo · Saldo esperado · Conteo real · Diferencia</li>
+    <li>(f) Totales por método de pago (Efectivo, Tarjeta, MP, Transferencia, CC)</li>
+    <li>(g) Listado detallado de ventas (#ticket · cliente · monto · medio)</li>
+    <li>(h) Listado detallado de movimientos manuales (ingresos/egresos/traspasos)</li>
+    <li>(i) Numeración correlativa del cierre (Cierre #N de la sucursal)</li>
+    <li>(j) QR con link al detalle online</li>
+    <li>(k) Firma del cajero (espacio para firmar) + firma supervisor (si aplica)</li>
+    <li>(l) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Reimpresión desde historial <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Todos los roles con acceso a caja pueden reimprimir</li>
+    <li>(b) Solo DUEÑO/SUPERVISOR/CONTADOR + el cajero original</li>
+    <li>(c) Solo DUEÑO + SUPERVISOR</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Formato de ticket <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) PDF A4 (similar a facturas)</li>
+    <li>(b) PDF tipo ticket angosto (58/80mm, para impresora térmica)</li>
+    <li>(c) Ambos formatos disponibles (el usuario elige al imprimir)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. ARQUEO ============================ -->
+<h2>D. Arqueo parcial</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Persistencia del arqueo <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Relevamiento previo decía "no queda registrado, es momentáneo". Pero ya existe la tabla
+  <code>caja_arqueos</code> con saldo calculado, saldo real, diferencia, notas. Hay que decidir definitivamente.</div>
+  <ul class="opciones">
+    <li>(a) Mantener registro persistente (como está hoy) — queda en historial de la sesión</li>
+    <li>(b) Solo cálculo momentáneo en pantalla, no se guarda en BD</li>
+    <li>(c) Híbrido: el cajero puede elegir "guardar" o "solo consultar"</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Visibilidad del arqueo (si se persiste) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo visible para el cajero que lo hizo + DUEÑO/SUPERVISOR</li>
+    <li>(b) Todos los roles con acceso a caja</li>
+    <li>(c) Solo DUEÑO/SUPERVISOR (oculto al cajero)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    Límite de arqueos por sesión <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin límite</li>
+    <li>(b) Máximo N por turno (configurable)</li>
+    <li>(c) Mínimo 1 (obligatorio antes de cerrar, como pre-conteo)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. BÓVEDA ============================ -->
+<h2>E. Bóveda / Caja Fuerte</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    ¿Mostrar saldo de bóveda en pantalla? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy: solo se ve el historial de depósitos, sin saldo total. El relevamiento previo decía
+  "saldo visible".</div>
+  <ul class="opciones">
+    <li>(a) Sí, saldo visible siempre (con permisos)</li>
+    <li>(b) Sí, pero opcional/toggle (botón "Mostrar/ocultar saldo")</li>
+    <li>(c) No, solo historial</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Roles que ven el saldo de bóveda <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo DUEÑO</li>
+    <li>(b) DUEÑO + SUPERVISOR (si tiene permiso bóveda)</li>
+    <li>(c) DUEÑO + SUPERVISOR + CONTADOR</li>
+    <li>(d) Configurable en <code>tenants.caja_fuerte_roles</code> (como está hoy)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    ¿Cierre/arqueo de bóveda? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sí, igual que cajas operativas (conteo periódico con diferencia)</li>
+    <li>(b) Solo arqueo manual cuando el DUEÑO quiera (sin obligación)</li>
+    <li>(c) No, la bóveda nunca se "cierra" — solo registra movimientos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    Umbral bóveda — qué pasa al superarlo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Campo <code>tenants.boveda_umbral_caja</code> ya existe, falta definir el comportamiento.</div>
+  <ul class="opciones">
+    <li>(a) Solo alerta visual en CajaPage ("Caja por encima del umbral, transferir a bóveda")</li>
+    <li>(b) Notificación in-app + email al DUEÑO</li>
+    <li>(c) Bloqueo de nuevos ingresos hasta transferir</li>
+    <li>(d) Sugerencia automática de monto a transferir (caja − umbral)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E5</span><span class="pregunta-titulo">
+    Bóveda — egreso sin destino caja <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ej: el DUEÑO retira dinero para depositar en el banco o uso personal.</div>
+  <ul class="opciones">
+    <li>(a) Permitido con motivo obligatorio (Banco / Retiro personal / Gasto / Otro)</li>
+    <li>(b) Solo permitido con destino caja operativa (siempre debe quedar en el sistema)</li>
+    <li>(c) Permitido pero requiere contraseña maestra</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E6</span><span class="pregunta-titulo">
+    ¿Bóveda por sucursal o única del tenant? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy: <code>sucursal_id = NULL</code> en bóveda (única a nivel tenant).</div>
+  <ul class="opciones">
+    <li>(a) Una bóveda única para todo el tenant (como está hoy)</li>
+    <li>(b) Una bóveda por sucursal</li>
+    <li>(c) Configurable por tenant (uno u otro modo)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. MULTI-MONEDA ============================ -->
+<h2>F. Multi-moneda en caja</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    Manejo de varias monedas en una misma caja <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: <code>tenants.moneda</code> define moneda única (ARS/USD/etc).
+  ¿Quieren manejar cajas multi-moneda (ej: ARS y USD a la vez)?</div>
+  <ul class="opciones">
+    <li>(a) No, una caja = una moneda (la del tenant)</li>
+    <li>(b) Sí, una caja puede tener saldos separados por moneda (ARS, USD, etc.)</li>
+    <li>(c) Sí, pero como "cajas separadas" (una caja ARS + una caja USD)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Cobro en moneda extranjera con vuelto en moneda local <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Permitido — se registra cotización del día + movimiento doble</li>
+    <li>(b) No permitido (debe cobrar y dar vuelto en la misma moneda)</li>
+    <li>(c) Configurable por tenant</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. MOVIMIENTOS MANUALES ============================ -->
+<h2>G. Movimientos manuales (ingresos/egresos)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Edición/anulación de movimientos manuales <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No editables — solo se puede crear un movimiento inverso ("corrección")</li>
+    <li>(b) Editables por el creador hasta cerrar la sesión</li>
+    <li>(c) Editables solo por DUEÑO/SUPERVISOR (con audit log)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Umbrales para egresos manuales <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Análogo a Gastos (que ya tiene <code>umbral_gasto_cajero/supervisor</code> por sucursal).</div>
+  <ul class="opciones">
+    <li>(a) No hay umbrales — cualquier rol con acceso puede crear egreso de cualquier monto</li>
+    <li>(b) CAJERO hasta umbral X · SUPERVISOR hasta umbral Y · DUEÑO sin límite (reutilizar los de gastos)</li>
+    <li>(c) Umbrales separados específicos para Caja</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span><span class="pregunta-titulo">
+    Comprobante físico/foto para egresos manuales <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No requerido</li>
+    <li>(b) Requerido para egresos > X (configurable)</li>
+    <li>(c) Siempre obligatorio</li>
+    <li>(d) Si se levanta un egreso manual sin comprobante → automáticamente queda como "borrador Gasto"</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G4</span><span class="pregunta-titulo">
+    Catálogo de motivos predefinidos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: tabla <code>motivos_movimiento</code> tipo <code>caja</code>. ¿Lista cerrada o personalizable?</div>
+  <ul class="opciones">
+    <li>(a) Solo motivos predefinidos del sistema (lista cerrada)</li>
+    <li>(b) Predefinidos + el tenant puede agregar los suyos</li>
+    <li>(c) Predefinidos + campo libre "Otro" siempre disponible</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G5</span><span class="pregunta-titulo">
+    Sugerir motivos típicos según contexto <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sí — ej: ingreso manual = "Aporte dueño / Devolución a cliente revertida / Otro"; egreso = "Combustible / Almuerzo / Cambio chico / Otro"</li>
+    <li>(b) No, motivo libre siempre</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. CONCILIACIÓN ============================ -->
+<h2>H. Pagos no-efectivo (informativos) y conciliación</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    Conciliación bancaria de tarjeta/MP/transferencia <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Fuera de alcance por ahora — solo se registran como informativos</li>
+    <li>(b) Sí, módulo aparte que permite marcar "conciliado" cada movimiento contra extracto</li>
+    <li>(c) Sí, con importación automática de extracto bancario (CSV/Excel) — futuro</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Reporte "Esperado vs Recibido" por método <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sí, en Dashboard / Reportes (por día / mes / método)</li>
+    <li>(b) Solo si hay módulo de conciliación (H1)</li>
+    <li>(c) No es necesario</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. REPORTES ============================ -->
+<h2>I. Reportes de caja</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    Reportes prioritarios (marcar los que más importan) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Diario por caja (ingresos / egresos / saldo neto)</li>
+    <li>(b) Diario consolidado del tenant (todas las cajas + sucursales)</li>
+    <li>(c) Mensual por sucursal (alineado con cierre contable)</li>
+    <li>(d) Por cajero — volumen manejado + diferencias acumuladas</li>
+    <li>(e) Ranking de cajeros (menos diferencias / mayor volumen)</li>
+    <li>(f) Histórico de diferencias por caja (gráfico de tendencia)</li>
+    <li>(g) Movimientos por motivo (top 10 motivos de egreso manual)</li>
+    <li>(h) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    Exportabilidad <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Excel + PDF</li>
+    <li>(b) Solo PDF</li>
+    <li>(c) Solo Excel</li>
+    <li>(d) CSV adicional para integrar con contables</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ J. PERMISOS ============================ -->
+<h2>J. Permisos por rol</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J1</span><span class="pregunta-titulo">
+    CONTADOR — qué ve/hace en Caja <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin acceso (como está hoy)</li>
+    <li>(b) Solo lectura de movimientos + reportes (read-only)</li>
+    <li>(c) Lectura + puede agregar/editar IVA de movimientos no-efectivo (similar a Gastos)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J2</span><span class="pregunta-titulo">
+    DEPOSITO — devoluciones con efectivo desde caja <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin acceso a caja — devoluciones siempre las hace CAJERO/SUPERVISOR</li>
+    <li>(b) Acceso limitado: puede registrar egreso de caja solo si hay devolución vinculada</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J3</span><span class="pregunta-titulo">
+    Matriz definitiva de permisos (confirmar/ajustar) <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Confirmar/ajustar la matriz que voy a documentar:</div>
+  <table>
+    <tr><th>Acción</th><th>DUEÑO</th><th>SUPERVISOR</th><th>CAJERO</th><th>CONTADOR</th><th>DEPOSITO</th><th>RRHH</th></tr>
+    <tr><td>Abrir caja propia</td><td>✅</td><td>✅</td><td>✅</td><td>?</td><td>?</td><td>❌</td></tr>
+    <tr><td>Abrir caja ajena</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+    <tr><td>Cerrar caja propia</td><td>✅</td><td>✅</td><td>✅</td><td>?</td><td>?</td><td>❌</td></tr>
+    <tr><td>Cerrar caja ajena (con clave maestra)</td><td>✅</td><td>✅</td><td>❌</td><td>?</td><td>❌</td><td>❌</td></tr>
+    <tr><td>Ingreso/Egreso manual</td><td>✅</td><td>✅</td><td>✅</td><td>?</td><td>?</td><td>❌</td></tr>
+    <tr><td>Traspaso entre cajas</td><td>✅</td><td>✅</td><td>?</td><td>❌</td><td>❌</td><td>❌</td></tr>
+    <tr><td>Acceso a Bóveda (saldo + movimientos)</td><td>✅</td><td>opcional</td><td>❌</td><td>?</td><td>❌</td><td>❌</td></tr>
+    <tr><td>Cambiar clave maestra</td><td>✅</td><td>?</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+    <tr><td>Reimprimir ticket cierre histórico</td><td>✅</td><td>✅</td><td>solo el suyo</td><td>✅</td><td>❌</td><td>❌</td></tr>
+    <tr><td>Editar/anular movimiento</td><td>✅</td><td>?</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+  </table>
+  <div class="respuesta-libre">Ajustes / observaciones a la matriz: ____</div>
+</div>
+
+<!-- ============================ K. CUMPLIMIENTO FISCAL ============================ -->
+<h2>K. Cumplimiento fiscal / Auditoría</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K1</span><span class="pregunta-titulo">
+    ¿Algún cliente Genesis360 está obligado a usar controlador fiscal / "cierre Z"? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No, todos son monotributo o responsables sin controlador fiscal</li>
+    <li>(b) Algunos sí, evaluar integración con controladores fiscales (futuro)</li>
+    <li>(c) Sí, prioritario implementar cierre Z compatible</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K2</span><span class="pregunta-titulo">
+    Backup automático de tickets de cierre en Storage <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sí, cada cierre se guarda en bucket privado por X años (configurable, default 5)</li>
+    <li>(b) No, se regenera on-demand desde la BD</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K3</span><span class="pregunta-titulo">
+    Numeración correlativa del cierre <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Por sucursal (sucursal A: cierres #1, #2... · sucursal B: cierres #1, #2...)</li>
+    <li>(b) Por caja específica (cada caja tiene su propia secuencia)</li>
+    <li>(c) Global del tenant (un único contador)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K4</span><span class="pregunta-titulo">
+    Auditoría de movimientos (IP, dispositivo, geolocalización) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo registrar usuario + timestamp (como está hoy)</li>
+    <li>(b) Agregar IP origen del movimiento</li>
+    <li>(c) Agregar IP + user-agent + tipo dispositivo</li>
+    <li>(d) Agregar geolocalización (lat/lng) si el navegador lo permite</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ L. OPERACIONES ESPECIALES ============================ -->
+<h2>L. Operaciones especiales</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L1</span><span class="pregunta-titulo">
+    Devolución de venta despachada con efectivo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Egreso de caja inmediato en la caja activa al momento de la devolución</li>
+    <li>(b) Egreso en la misma caja que cobró originalmente (debe estar abierta)</li>
+    <li>(c) Se genera nota de crédito, sin movimiento de caja hasta que el cliente cobre</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L2</span><span class="pregunta-titulo">
+    Pago a proveedor directo desde caja (sin OC) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No permitido — siempre se modela como Gasto o pago de OC</li>
+    <li>(b) Permitido como "Egreso manual" con motivo "Pago proveedor" y referencia opcional</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L3</span><span class="pregunta-titulo">
+    Préstamos / vales a empleados desde caja <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No se modela (queda como egreso manual con motivo)</li>
+    <li>(b) Sí, integrado con RRHH (se descuenta del próximo sueldo automáticamente)</li>
+    <li>(c) Sí, pero como deuda manual (sin integración automática)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L4</span><span class="pregunta-titulo">
+    Cambio de sucursal del cajero a mitad de turno <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Bloqueado — el cajero solo opera la sucursal de su sesión activa</li>
+    <li>(b) Permitido — debe cerrar caja primero y abrir en la nueva sucursal</li>
+    <li>(c) Una sesión puede tener movimientos de varias sucursales (no recomendado contablemente)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L5</span><span class="pregunta-titulo">
+    Anulación de venta despachada — efecto en caja <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Si la caja sigue abierta: revierte el ingreso de esa sesión</li>
+    <li>(b) Si la caja ya cerró: bloqueada (solo se permite Nota de Crédito que genera egreso futuro)</li>
+    <li>(c) Si el periodo contable está cerrado: bloqueada (usar nota de corrección)</li>
+    <li>(d) Confirmar la cadena (a) → (b) → (c) según corresponda</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ M. UX SELECTOR ============================ -->
+<h2>M. Selector de caja y UX</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">M1</span><span class="pregunta-titulo">
+    Múltiples cajas abiertas en una sucursal — cómo se asigna el cobro <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy: selector visible siempre que haya ≥2 cajas. Caja preferida ★ en localStorage.</div>
+  <ul class="opciones">
+    <li>(a) Auto-asignar a la caja preferida del usuario, sin preguntar (más rápido)</li>
+    <li>(b) Auto-asignar pero permitir cambiar antes de confirmar (selector visible pero pre-seleccionado)</li>
+    <li>(c) Siempre pedir confirmación del cajero</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">M2</span><span class="pregunta-titulo">
+    Quién define la caja preferida del cajero <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) El propio cajero (autonomía, queda en localStorage como hoy)</li>
+    <li>(b) DUEÑO/SUPERVISOR asigna caja por usuario en Config</li>
+    <li>(c) Ambos modos disponibles, según preferencia del tenant</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">M3</span><span class="pregunta-titulo">
+    Vista "Panel de cajero" simplificada <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sí — modo con botones grandes (apertura, cobro, arqueo, cierre) optimizado para tablets/touchscreen</li>
+    <li>(b) No, la vista actual es suficiente</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">M4</span><span class="pregunta-titulo">
+    Sonido al confirmar cobro <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sí, con toggle en preferencias del usuario</li>
+    <li>(b) No</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ N. ABIERTAS / TEMAS LIBRES ============================ -->
+<h2>N. Temas adicionales / abiertos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">N1</span><span class="pregunta-titulo">
+    ¿Algo del módulo Caja que <strong>no funciona</strong> como esperan hoy? (lista libre)
+  </span>
+  <div class="respuesta-libre">____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">N2</span><span class="pregunta-titulo">
+    ¿Algo que <strong>les gustaría</strong> que tenga y no está en este documento? (lista libre)
+  </span>
+  <div class="respuesta-libre">____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">N3</span><span class="pregunta-titulo">
+    Prioridad relativa: si tuvieran que elegir 3 features para implementar primero, ¿cuáles?
+  </span>
+  <div class="respuesta-libre">1) ____<br/>2) ____<br/>3) ____</div>
+</div>
+
+<div class="footer">
+  Documento generado automáticamente · Genesis360 v1.9.0 · Para devolverlo: respondan con los códigos
+  (ej: "A1=b, A2=c, B1=a...") y lo cargo al wiki en <code>G360.Wiki/wiki/development/reglas-negocio.md</code>.
+</div>
+
+</body>
+</html>

@@ -17,7 +17,9 @@ import toast from 'react-hot-toast'
 type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'configuracion'
 
 // formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
-import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { formatMoneda as formatMonedaLib, MONEDAS_DISPONIBLES } from '@/lib/formato'
+
+const MONEDAS_LISTA = MONEDAS_DISPONIBLES.map(m => m.code)
 
 const TIPO_LABEL: Record<string, string> = {
   ingreso:               'Venta',
@@ -88,10 +90,12 @@ export default function CajaPage() {
   const [montoSugerido, setMontoSugerido] = useState<number | null>(null)
   const [notasCierre, setNotasCierre] = useState('')
   const [montoRealCierre, setMontoRealCierre] = useState('')
-  const [movTipo, setMovTipo] = useState<'ingreso' | 'egreso'>('ingreso')
+  // Caja solo registra ingresos manuales — los egresos van por Gastos (relevamiento G2)
+  const movTipo: 'ingreso' = 'ingreso'
   const [movConcepto, setMovConcepto] = useState('')
   const [movMonto, setMovMonto] = useState('')
   const [nuevaCajaNombre, setNuevaCajaNombre] = useState('')
+  const [nuevaCajaMoneda, setNuevaCajaMoneda] = useState('')
 
   // Queries
   const { data: cajas = [] } = useQuery({
@@ -140,6 +144,18 @@ export default function CajaPage() {
     if (m.tipo === 'egreso_traspaso') return acc - m.monto
     return acc
   }, 0)
+
+  // Saldos por Cuenta de Origen (banco / billetera) — bóveda discriminada
+  const { data: bovedaCuentas = [] } = useQuery({
+    queryKey: ['boveda-cuentas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('vw_boveda_cuentas')
+        .select('*').eq('tenant_id', tenant!.id).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'caja_fuerte',
+    refetchInterval: 30_000,
+  })
 
   // Sesiones abiertas en TODAS las cajas (para mostrar indicador en selector)
   const { data: cajasAbiertas = [] } = useQuery({
@@ -411,6 +427,7 @@ export default function CajaPage() {
   const cerrarCaja = useMutation({
     mutationFn: async () => {
       if (!sesionActiva) throw new Error('No hay caja abierta')
+      if (arqueosSesion.length === 0) throw new Error('Hacé al menos un arqueo parcial antes de cerrar la caja')
       if (montoRealCierre.trim() === '') throw new Error('Ingresá el monto contado para poder cerrar la caja')
       const payload: any = {
         estado: 'cerrada',
@@ -463,11 +480,10 @@ export default function CajaPage() {
       if (!movConcepto.trim()) throw new Error('Ingresá un concepto')
       const monto = parseFloat(movMonto)
       if (!monto || monto <= 0) throw new Error('Ingresá un monto válido')
-      if (movTipo === 'egreso' && monto > saldoActual) throw new Error(`Saldo insuficiente. Saldo actual: $${saldoActual.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`)
       const { error } = await supabase.from('caja_movimientos').insert({
         tenant_id: tenant!.id,
         sesion_id: sesionActiva.id,
-        tipo: movTipo,
+        tipo: 'ingreso',
         concepto: movConcepto.trim(),
         monto,
         usuario_id: user?.id,
@@ -475,7 +491,7 @@ export default function CajaPage() {
       if (error) throw error
     },
     onSuccess: () => {
-      toast.success(`${movTipo === 'ingreso' ? 'Ingreso' : 'Egreso'} registrado`)
+      toast.success('Ingreso registrado')
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
       setShowMovimiento(false); setMovConcepto(''); setMovMonto('')
     },
@@ -679,13 +695,14 @@ export default function CajaPage() {
         tenant_id: tenant!.id,
         nombre: nuevaCajaNombre.trim(),
         sucursal_id: sucursalId || null,
+        moneda: nuevaCajaMoneda || (tenant as any)?.moneda || 'ARS',
       })
       if (error) throw error
     },
     onSuccess: () => {
       toast.success('Caja creada')
       qc.invalidateQueries({ queryKey: ['cajas'] })
-      setShowNuevaCaja(false); setNuevaCajaNombre('')
+      setShowNuevaCaja(false); setNuevaCajaNombre(''); setNuevaCajaMoneda('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -702,7 +719,7 @@ export default function CajaPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!sesionActiva || tab !== 'caja') return
-      if (e.shiftKey && e.key === 'I') { e.preventDefault(); setMovTipo('ingreso'); setShowMovimiento(true) }
+      if (e.shiftKey && e.key === 'I') { e.preventDefault(); setShowMovimiento(true) }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -813,6 +830,9 @@ export default function CajaPage() {
                       <DollarSign size={12} />
                       {esPref && <span className="text-yellow-500 text-[11px]">★</span>}
                       <span>{c.nombre}</span>
+                      {c.moneda && c.moneda !== ((tenant as any)?.moneda ?? 'ARS') && (
+                        <span className="text-[10px] font-mono px-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{c.moneda}</span>
+                      )}
                       <span className={`w-2 h-2 rounded-full ${abierta ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
                     </button>
                     <button
@@ -1002,7 +1022,7 @@ export default function CajaPage() {
 
               {/* Acciones */}
               <div className="flex gap-2">
-                <button onClick={() => { setMovTipo('ingreso'); setShowMovimiento(true) }}
+                <button onClick={() => setShowMovimiento(true)}
                   className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
                   <Plus size={18} /> Ingreso
                 </button>
@@ -1162,6 +1182,12 @@ export default function CajaPage() {
                 <div className="w-full flex items-center justify-center gap-2 border-2 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 font-semibold py-3 rounded-xl cursor-not-allowed">
                   <Lock size={18} /> Solo {abrioNombre ?? 'quien abrió'} puede cerrar esta caja
                 </div>
+              ) : arqueosSesion.length === 0 ? (
+                <button onClick={() => { toast('Hacé un arqueo parcial antes de cerrar', { icon: 'ℹ' }); setShowArqueo(true) }}
+                  title="Para cerrar la caja, primero registrá al menos un arqueo parcial en esta sesión"
+                  className="w-full flex items-center justify-center gap-2 border-2 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 font-semibold py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-all">
+                  <CheckCircle size={18} /> Arqueo requerido antes de cerrar
+                </button>
               ) : (
                 <button onClick={() => setShowCierre(true)}
                   className="w-full flex items-center justify-center gap-2 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-3 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all">
@@ -1184,7 +1210,7 @@ export default function CajaPage() {
               </div>
               <div>
                 <p className="font-semibold text-gray-800 dark:text-gray-100">Caja Fuerte / Bóveda</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Registro de depósitos. No registra saldo.</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Efectivo + cuentas asociadas a métodos de pago.</p>
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
@@ -1198,6 +1224,64 @@ export default function CajaPage() {
                 className="flex items-center gap-2 px-4 py-2.5 bg-gray-700 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
                 <ArrowRightLeft size={15} /> Enviar a Caja
               </button>
+            </div>
+          </div>
+
+          {/* Saldos por Cuenta de Origen — bóveda discriminada (H1) */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Saldos por cuenta</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* Card Efectivo en caja fuerte */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-green-50 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                      <Lock size={14} className="text-green-600 dark:text-green-400" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Efectivo</p>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400">caja fuerte</span>
+                </div>
+                <p className={`text-xl font-bold ${fuerteSaldo > 0 ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>
+                  {formatMoneda(fuerteSaldo)}
+                </p>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{fuerteMovimientos.length} movimientos</p>
+              </div>
+
+              {/* Cards por cada cuenta de origen activa */}
+              {(bovedaCuentas as any[]).filter((c: any) => c.activo).map((c: any) => {
+                const tipoColor = c.tipo === 'banco' ? 'blue' : c.tipo === 'billetera' ? 'purple' : c.tipo === 'efectivo' ? 'green' : 'gray'
+                return (
+                  <div key={c.cuenta_origen_id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-7 h-7 bg-${tipoColor}-50 dark:bg-${tipoColor}-900/30 rounded-lg flex items-center justify-center shrink-0`}>
+                          <DollarSign size={14} className={`text-${tipoColor}-600 dark:text-${tipoColor}-400`} />
+                        </div>
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate" title={c.nombre}>{c.nombre}</p>
+                      </div>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-${tipoColor}-50 dark:bg-${tipoColor}-900/20 text-${tipoColor}-700 dark:text-${tipoColor}-400`}>{c.tipo}</span>
+                    </div>
+                    <p className={`text-xl font-bold ${Number(c.saldo) > 0 ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>
+                      {formatMoneda(Number(c.saldo || 0))}
+                    </p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                      {c.movimientos_count} mov · {c.moneda}
+                      {c.banco && ` · ${c.banco}`}
+                    </p>
+                  </div>
+                )
+              })}
+
+              {(bovedaCuentas as any[]).filter((c: any) => c.activo).length === 0 && (
+                <div className="col-span-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-start gap-3">
+                  <Info size={16} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                  <div className="text-xs text-blue-700 dark:text-blue-300">
+                    <p className="font-semibold mb-1">Configurá las cuentas de origen</p>
+                    <p>Andá a <strong>Configuración → Caja → Cuentas de Origen</strong> y asocialas a tus métodos de pago para ver la bóveda discriminada por banco/billetera.</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1528,10 +1612,16 @@ export default function CajaPage() {
             </div>
 
             {showNuevaCaja && (
-              <div className="flex gap-2 mb-4">
+              <div className="flex gap-2 mb-4 flex-wrap">
                 <input type="text" value={nuevaCajaNombre} onChange={e => setNuevaCajaNombre(e.target.value)}
                   placeholder="Nombre de la caja (ej: Caja 1, Caja Principal)"
-                  className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  className="flex-1 min-w-[200px] px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                <select value={nuevaCajaMoneda || (tenant as any)?.moneda || 'ARS'}
+                  onChange={e => setNuevaCajaMoneda(e.target.value)}
+                  title="Moneda de la caja (no se puede cambiar luego)"
+                  className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                  {MONEDAS_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
                 <button onClick={() => crearCaja.mutate()} disabled={crearCaja.isPending}
                   className="px-4 py-2 bg-primary text-white rounded-xl text-sm disabled:opacity-50">
                   Crear
@@ -1558,6 +1648,7 @@ export default function CajaPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <span className="font-medium text-gray-800 dark:text-gray-100">{c.nombre}</span>
+                          <span className="ml-2 text-[11px] font-mono px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">{c.moneda || 'ARS'}</span>
                           {tieneSessionActiva && (
                             <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-medium">● Abierta</span>
                           )}
@@ -1682,12 +1773,13 @@ export default function CajaPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                {movTipo === 'ingreso'
-                  ? <><Plus size={18} className="text-green-600 dark:text-green-400" /> Ingreso de caja</>
-                  : <><Minus size={18} className="text-orange-500" /> Egreso de caja</>}
+                <Plus size={18} className="text-green-600 dark:text-green-400" /> Ingreso de caja
               </h2>
               <button onClick={() => setShowMovimiento(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 -mt-2">
+              Para registrar un egreso, creá un <strong>Gasto</strong> con el monto y método de pago. Caja solo registra ingresos manuales (aportes, devoluciones, etc.).
+            </p>
             <div className="space-y-3 mb-5">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Concepto</label>

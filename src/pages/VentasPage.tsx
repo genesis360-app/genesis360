@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2 } from 'lucide-react'
@@ -368,17 +368,28 @@ export default function VentasPage() {
     return m?.cuenta_origen_id ?? null
   }
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
-  const sesionCajaId = cajaSeleccionadaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
 
-  // Auto-seleccionar sesión de la caja predeterminada del usuario
+  // Sesión de la caja predeterminada del usuario (derivada de localStorage + sesiones abiertas)
   const cajaPrefKey = tenant?.id && user?.id ? `caja_preferida_${tenant.id}_${user.id}` : null
-  useEffect(() => {
-    if (cajaSeleccionadaId || sesionesAbiertas.length === 0 || !cajaPrefKey) return
+  const cajaPreferidaSesionId = useMemo<string | null>(() => {
+    if (sesionesAbiertas.length === 0 || !cajaPrefKey) return null
     const cajaPrefId = localStorage.getItem(cajaPrefKey)
-    if (!cajaPrefId) return
+    if (!cajaPrefId) return null
     const sesion = (sesionesAbiertas as any[]).find(s => s.caja_id === cajaPrefId)
-    if (sesion) setCajaSeleccionadaId(sesion.id)
+    return sesion?.id ?? null
   }, [sesionesAbiertas, cajaPrefKey])
+
+  // sesión efectiva: selección explícita del user > caja preferida > única abierta
+  const sesionCajaId = cajaSeleccionadaId
+    ?? cajaPreferidaSesionId
+    ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
+
+  // Si la selección explícita ya no es válida (caja cerrada, etc.), resetearla
+  useEffect(() => {
+    if (!cajaSeleccionadaId) return
+    const stillValid = (sesionesAbiertas as any[]).some(s => s.id === cajaSeleccionadaId)
+    if (!stillValid) setCajaSeleccionadaId(null)
+  }, [sesionesAbiertas, cajaSeleccionadaId])
 
   // Historial
   const [searchHistorial, setSearchHistorial] = useState('')
@@ -1425,7 +1436,7 @@ export default function VentasPage() {
           toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
           return
         }
-        if (sesionesAbiertas.length > 1 && !cajaSeleccionadaId) {
+        if (sesionesAbiertas.length > 1 && !sesionCajaId) {
           toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
           return
         }
@@ -2154,7 +2165,7 @@ export default function VentasPage() {
 
       if (nuevoEstado === 'despachada' || nuevoEstado === 'reservada') {
         if (sesionesAbiertas.length === 0) throw new Error('No hay caja abierta. Abrí una caja antes de continuar.')
-        if (nuevoEstado === 'despachada' && sesionesAbiertas.length > 1 && !cajaSeleccionadaId)
+        if (nuevoEstado === 'despachada' && sesionesAbiertas.length > 1 && !sesionCajaId)
           throw new Error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta desde el checkout.')
       }
 
@@ -2218,7 +2229,7 @@ export default function VentasPage() {
 
         // Registrar seña en caja
         if (saldoMediosPago && saldoMediosPago.some(m => parseFloat(m.monto) > 0)) {
-          const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
+          const _sesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
           if (_sesionId) {
             const efectivoSena = calcularEfectivoCaja(saldoMediosPago, montoPagadoReserva)
             if (efectivoSena > 0) {
@@ -2310,7 +2321,7 @@ export default function VentasPage() {
           .update({ estado: 'despachada', despachado_at: new Date().toISOString(), medio_pago: mediosPagoFinal, monto_pagado: montoPagadoFinal })
           .eq('id', ventaId)
         // Registrar en caja el efectivo del saldo + la seña si no fue registrada al reservar
-        const _sesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
+        const _sesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
         if (_sesionId) {
           try {
             // Efectivo del saldo cobrado ahora
@@ -2401,7 +2412,7 @@ export default function VentasPage() {
           .eq('id', ventaId)
         // Dev. seña: si la reserva tenía efectivo cobrado → egreso en caja (fire-and-forget)
         if ((venta.monto_pagado ?? 0) > 0) {
-          const cancelSesionId = cajaSeleccionadaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
+          const cancelSesionId = sesionCajaId ?? (sesionesAbiertas.length > 0 ? (sesionesAbiertas[0] as any).id : null)
           if (cancelSesionId) {
             try {
               const prevArr = venta.medio_pago ? JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[] : []
@@ -3386,18 +3397,35 @@ export default function VentasPage() {
                       <span>⚠️</span><span>Sin caja abierta — no se puede vender ni reservar</span>
                     </div>
                   )
-                  if (sesionesAbiertas.length > 1) return (
-                    <div>
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Registrar en caja:</label>
-                      <select value={cajaSeleccionadaId ?? ''} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
-                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
-                        <option value="">— Seleccioná una caja —</option>
-                        {(sesionesAbiertas as any[]).map(s => (
-                          <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )
+                  if (sesionesAbiertas.length > 1) {
+                    const valorSelect = cajaSeleccionadaId ?? cajaPreferidaSesionId ?? ''
+                    const sesionActiva = (sesionesAbiertas as any[]).find(s => s.id === valorSelect)
+                    return (
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          Registrar en caja:
+                          {!cajaSeleccionadaId && cajaPreferidaSesionId && (
+                            <span className="ml-1 text-[10px] text-yellow-600 dark:text-yellow-400 font-medium">★ predeterminada</span>
+                          )}
+                        </label>
+                        <select value={valorSelect} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
+                          className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                          {!valorSelect && <option value="">— Seleccioná una caja —</option>}
+                          {(sesionesAbiertas as any[]).map(s => (
+                            <option key={s.id} value={s.id}>
+                              {s.cajas?.nombre ?? 'Caja'}
+                              {s.id === cajaPreferidaSesionId ? ' ★' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        {sesionActiva && (
+                          <p className="text-[11px] text-green-600 dark:text-green-400 mt-1">
+                            ✓ {efectivo > 0 ? 'Efectivo' : 'Venta'} → {sesionActiva.cajas?.nombre ?? 'Caja'}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  }
                   return (
                     <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 rounded-lg px-3 py-2.5">
                       <span>✓</span><span>{efectivo > 0 ? 'Efectivo' : 'Venta'} → {(sesionesAbiertas[0] as any).cajas?.nombre ?? 'Caja'}</span>

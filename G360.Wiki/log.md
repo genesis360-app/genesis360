@@ -6,6 +6,46 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-26] update | v1.9.3-dev — Caja Fase 2.0 — Permisos + Roles (J/B5/B6/A2/A4/C2)
+
+Implementación de respuestas J-M del relevamiento Caja (con socio en `relevamiento-caja-reglas-negocio.pdf` + respuestas guardadas en `sources/relevamientos/caja_2026-05-25.md`).
+
+### Migration 140 aplicada en DEV
+- `caja_sesiones.abierta_por UUID REFERENCES users(id)` + backfill = usuario_id (A2: registra quien hizo la apertura, distinto del propietario)
+- `tenants.config_caja JSONB DEFAULT '{}'` — config flexible de permisos opcionales por rol (supervisor_puede_ver_boveda, supervisor_puede_editar_movimientos, forzar_cierre_dia_anterior)
+- RPC `requiere_clave_maestra(tenant, accion)` — centraliza B5: cerrar_caja_ajena | abrir_caja_diferencia | anular_venta | anular_movimiento
+- RPC `verificar_clave_maestra(tenant, clave)` SECURITY DEFINER — compara sin exponer clave al frontend
+
+### Frontend
+- **Nuevo helper `src/lib/cajaPermisos.ts`** — matriz J3 completa con `puede(rol, accion, configCaja?)` + lista de acciones con clave maestra
+- **ConfigPage** tab Caja: clave maestra **solo editable por DUEÑO (B6)** — disabled para SUPERVISOR/ADMIN/CONTADOR + badge "🔒 Solo DUEÑO puede modificarla" + texto expandido sobre cuándo se requiere
+- **AppLayout**: CONTADOR ahora ve y puede acceder a `/caja` (read-only)
+- **CajaPage**: permisos granulares aplicados — `puedeAbrirAjena`, `puedeOperarCaja`, `puedeReimprimirTicket`, `puedeEditarMovimiento`, `esSoloLectura`
+- **CajaPage tab Caja**: si `esSoloLectura` (CONTADOR) → ocultas las acciones Ingreso/Arqueo/Bóveda/Traspaso y se muestra banner "Modo solo lectura"
+- **CajaPage modal Apertura (A2)**: si DUEÑO/SUPERVISOR, selector "Abrir caja para" con la lista de cajeros del tenant. Si se selecciona otro, la sesión queda con `usuario_id = cajero` y `abierta_por = current_user`
+- **CajaPage abrirCaja mutation**: validación adicional — si abre a nombre de otro, verifica que ESE cajero no tenga ya una sesión abierta
+- **CajaPage banner A4**: detecta si user tiene sesión propia abierta hace más de 24h y muestra banner ámbar con CTA "Ir a esa caja →" para forzar cierre
+- **CajaPage cerrarCaja (B5)**: si es cierre ajeno Y el tenant tiene `clave_maestra` configurada → modal pide input password + valida vía RPC `verificar_clave_maestra` antes de cerrar
+- **CajaPage cerrarCaja (C2)**: CAJERO ya no descarga PDF al cerrar — solo DUEÑO/SUPERVISOR/CONTADOR lo descargan. Toast muestra "El DUEÑO recibirá el detalle por email" para CAJERO. Mail al DUEÑO via EF `send-email` con detalle del cierre (saldo, conteo real, diferencia, ingresos, egresos, notas)
+- **CajaPage**: botón "Cerrar caja" oculto para CONTADOR
+
+### Wiki
+- `wiki/database/migraciones.md`: entradas 139 + 140 (también 139 que se había olvidado documentar)
+- `sources/relevamientos/caja_2026-05-25.md`: respuestas J-M con estado de implementación
+- `wiki/business/roadmap.md`: entrada v1.9.3 con Fase 2.0
+- `index.md`: actualizado
+
+### Estado al cierre
+- DEV: v1.9.3 con migrations 130-140 aplicadas
+- PROD: v1.9.0 (136-140 pendientes de deploy)
+- Pipeline Reglas Caja: Tanda 1 (v1.9.1) + Tanda 1.5 (v1.9.2) + Fase 2.0 (v1.9.3) implementadas. Resta Fase 2.1 (Ticket+Diferencias), 2.2 (Operaciones especiales), 2.3 (UX+Bóveda detalles), 2.4 (Reportes - HITO v1.10.0)
+
+### Score implementación
+- ✅ **6 de 8 decisiones críticas del relevamiento implementadas** (75%)
+- Pendientes: B7 doble validación cierre · I1/I2 reportes
+
+---
+
 ## [2026-05-25] update | v1.9.2-dev — Caja Tanda 1.5 — Bóveda como billetera del negocio + Extraer dinero (E4/E5)
 
 Cierra el goal del usuario: la bóveda funciona como billetera del negocio con TODO el capital categorizado por cuenta de origen (efectivo, débito, crédito, MP, transferencia, etc.). Solo el DUEÑO puede extraer dinero con registro privado.

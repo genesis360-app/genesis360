@@ -18,6 +18,7 @@ type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'configuracion'
 
 // formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
 import { formatMoneda as formatMonedaLib, MONEDAS_DISPONIBLES } from '@/lib/formato'
+import { puede as cajaPuede, type ConfigCaja } from '@/lib/cajaPermisos'
 
 const MONEDAS_LISTA = MONEDAS_DISPONIBLES.map(m => m.code)
 
@@ -58,7 +59,15 @@ export default function CajaPage() {
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
-  const puedeExtraerBoveda = user?.rol === 'DUEÑO' || user?.rol === 'ADMIN' || user?.rol === 'SUPER_USUARIO'
+  // Permisos centralizados (J3) — declarados arriba para que las queries los usen
+  const configCaja: ConfigCaja = (tenant as any)?.config_caja ?? {}
+  const rol = user?.rol as any
+  const puedeExtraerBoveda    = cajaPuede(rol, 'extraer_boveda')
+  const puedeAbrirAjena       = cajaPuede(rol, 'abrir_ajena')           // A2
+  const puedeOperarCaja       = cajaPuede(rol, 'ingreso_manual')        // CONTADOR no puede
+  const puedeReimprimirTicket = cajaPuede(rol, 'reimprimir_ticket_cierre')
+  const puedeEditarMovimiento = cajaPuede(rol, 'editar_movimiento', configCaja)
+  const esSoloLectura         = user?.rol === 'CONTADOR'                // J1 — read-only
   const [tab, setTab] = useState<Tab>('caja')
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string | null>(null)
   const [showApertura, setShowApertura] = useState(false)
@@ -92,6 +101,10 @@ export default function CajaPage() {
   const [extraerTipo, setExtraerTipo] = useState<'banco' | 'retiro_personal' | 'gasto' | 'inversion' | 'pago_proveedor' | 'otro'>('retiro_personal')
   const [extraerMotivo, setExtraerMotivo] = useState('')
   const [extraerNotas, setExtraerNotas] = useState('')
+  // A2 — abrir caja a nombre de cajero (DUEÑO/SUPERVISOR)
+  const [aperturaParaUsuarioId, setAperturaParaUsuarioId] = useState<string>('')
+  // B5 — clave maestra al cerrar caja ajena
+  const [claveMaestraCierre, setClaveMaestraCierre] = useState('')
 
   // Forms
   const [montoApertura, setMontoApertura] = useState('')
@@ -152,6 +165,20 @@ export default function CajaPage() {
     if (m.tipo === 'egreso_traspaso') return acc - m.monto
     return acc
   }, 0)
+
+  // A2 — cajeros del tenant (para que DUEÑO/SUPERVISOR pueda abrir caja a su nombre)
+  const { data: cajerosTenant = [] } = useQuery({
+    queryKey: ['cajeros-tenant', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('users')
+        .select('id, nombre_display, email, rol')
+        .eq('tenant_id', tenant!.id)
+        .in('rol', ['CAJERO','SUPERVISOR','DUEÑO'])
+        .order('nombre_display')
+      return data ?? []
+    },
+    enabled: !!tenant && puedeAbrirAjena,
+  })
 
   // Saldos por Cuenta de Origen (banco / billetera) — bóveda discriminada
   const { data: bovedaCuentas = [] } = useQuery({
@@ -261,19 +288,26 @@ export default function CajaPage() {
     refetchOnWindowFocus: true,
   })
 
-  // Sesiones abiertas propias del usuario actual (para bloquear segunda apertura en CAJERO)
+  // Sesiones abiertas propias del usuario actual (para bloquear segunda apertura en CAJERO + A4 detectar día anterior)
   const { data: misSesionesAbiertas = [] } = useQuery({
     queryKey: ['mis-sesiones-abiertas', tenant?.id, user?.id, sucursalId],
     queryFn: async () => {
       const { data } = await applyFilter(
         supabase.from('caja_sesiones')
-          .select('caja_id').eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
+          .select('id, caja_id, abierta_at, cajas(nombre)').eq('tenant_id', tenant!.id).eq('usuario_id', user!.id).eq('estado', 'abierta')
       )
       return data ?? []
     },
     enabled: !!tenant && !!user,
     refetchInterval: 10_000,
     refetchOnWindowFocus: true,
+  })
+
+  // A4 — detectar caja propia abierta más de 24h (probablemente olvidada del día anterior)
+  const sesionDiaAnterior = (misSesionesAbiertas as any[]).find((s: any) => {
+    if (!s.abierta_at) return false
+    const horas = (Date.now() - new Date(s.abierta_at).getTime()) / (1000 * 60 * 60)
+    return horas > 24
   })
 
   // Sesiones abiertas con datos completos (para modal traspaso)
@@ -445,6 +479,9 @@ export default function CajaPage() {
   const abrirCaja = useMutation({
     mutationFn: async () => {
       if (!cajaId) throw new Error('Seleccioná una caja')
+      // A2: si DUEÑO/SUPERVISOR seleccionó otro usuario, esa es la sesión propietaria
+      const usuarioPropietarioId = (puedeAbrirAjena && aperturaParaUsuarioId) ? aperturaParaUsuarioId : user!.id
+      const abreEnNombreDeOtro = usuarioPropietarioId !== user!.id
       // B2: CAJERO no puede tener más de 1 sesión abierta simultáneamente
       if (!puedeAdministrarCaja) {
         const { data: check } = await supabase.from('caja_sesiones')
@@ -453,12 +490,21 @@ export default function CajaPage() {
           throw new Error('Ya tenés una caja abierta. Cerrala antes de abrir otra.')
         }
       }
-      // Verificar que no haya otra sesión abierta por otro usuario
+      // Si abre a nombre de otro cajero: verificar que ESE cajero no tenga ya una sesión abierta
+      if (abreEnNombreDeOtro) {
+        const { data: yaAbierta } = await supabase.from('caja_sesiones')
+          .select('id, cajas(nombre)').eq('tenant_id', tenant!.id)
+          .eq('usuario_id', usuarioPropietarioId).eq('estado', 'abierta')
+        if (yaAbierta && yaAbierta.length > 0) {
+          throw new Error('Ese cajero ya tiene una caja abierta. Cerrá esa primero.')
+        }
+      }
+      // Verificar que no haya otra sesión abierta por otro usuario en la misma caja
       const { data: existente } = await supabase.from('caja_sesiones')
         .select('id, usuario_id, abrio:usuario_id(nombre_display)')
         .eq('caja_id', cajaId).eq('estado', 'abierta')
         .maybeSingle()
-      if (existente && existente.usuario_id !== user?.id) {
+      if (existente && existente.usuario_id !== usuarioPropietarioId) {
         const nombre = (existente as any).abrio?.nombre_display ?? 'otro usuario'
         throw new Error(`Esta caja ya está abierta por ${nombre}`)
       }
@@ -467,7 +513,8 @@ export default function CajaPage() {
       const { error } = await supabase.from('caja_sesiones').insert({
         tenant_id: tenant!.id,
         caja_id: cajaId,
-        usuario_id: user?.id,
+        usuario_id: usuarioPropietarioId,    // propietario (puede ser otro cajero)
+        abierta_por: user!.id,               // quien efectivamente abrió (A2)
         monto_apertura: montoReal,
         monto_sugerido_apertura: montoSugerido,
         diferencia_apertura: difApertura,
@@ -508,7 +555,8 @@ export default function CajaPage() {
     onSuccess: () => {
       toast.success('Caja abierta')
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
-      setShowApertura(false); setShowDifConfirm(false); setMontoApertura('')
+      qc.invalidateQueries({ queryKey: ['cajas-abiertas-ids'] })
+      setShowApertura(false); setShowDifConfirm(false); setMontoApertura(''); setAperturaParaUsuarioId('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -518,6 +566,17 @@ export default function CajaPage() {
       if (!sesionActiva) throw new Error('No hay caja abierta')
       if (arqueosSesion.length === 0) throw new Error('Hacé al menos un arqueo parcial antes de cerrar la caja')
       if (montoRealCierre.trim() === '') throw new Error('Ingresá el monto contado para poder cerrar la caja')
+      // B5 — verificar clave maestra si cierra caja ajena Y el tenant tiene clave configurada
+      const claveConfigurada = !!(tenant as any)?.clave_maestra
+      const esCierreAjeno = sesionActiva.usuario_id && sesionActiva.usuario_id !== user!.id
+      if (esCierreAjeno && claveConfigurada) {
+        if (!claveMaestraCierre.trim()) throw new Error('Esta caja la abrió otro usuario. Ingresá la clave maestra para cerrarla.')
+        const { data: claveOK } = await supabase.rpc('verificar_clave_maestra', {
+          p_tenant_id: tenant!.id,
+          p_clave: claveMaestraCierre.trim(),
+        })
+        if (!claveOK) throw new Error('Clave maestra incorrecta')
+      }
       const payload: any = {
         estado: 'cerrada',
         monto_cierre: saldoActual,
@@ -540,7 +599,6 @@ export default function CajaPage() {
         valor_nuevo: `Saldo: ${formatMoneda(saldoActual)}${diferencia !== null ? ` | Diferencia: ${formatMoneda(diferencia)}` : ''}`,
         pagina: '/caja',
       })
-      // Auto-download ticket de cierre
       const closedSesion = {
         ...sesionActiva,
         cajas: { nombre: cajaActual?.nombre ?? 'Caja' },
@@ -554,11 +612,37 @@ export default function CajaPage() {
         abrio: (sesionActiva as any)?.abrio,
         cerrado_por: { nombre_display: user?.nombre_display ?? '—' },
       }
-      imprimirCierre(closedSesion)
-      toast.success('Caja cerrada · PDF descargado')
+      // C2 — CAJERO no descarga PDF (no debe ver el ticket de cierre).
+      // DUEÑO/SUPERVISOR/CONTADOR sí descargan localmente.
+      const esCajeroPuro = user?.rol === 'CAJERO'
+      if (!esCajeroPuro) imprimirCierre(closedSesion)
+      // C2 — Enviar mail al DUEÑO con detalle del cierre (fire-and-forget)
+      void (async () => {
+        const { data: duenos } = await supabase.from('users')
+          .select('email, nombre_display').eq('tenant_id', tenant!.id).eq('rol', 'DUEÑO')
+        const titulo = `Cierre de ${cajaActual?.nombre ?? 'Caja'} — ${formatMoneda(saldoActual)}`
+        const lineas = [
+          `Caja: ${cajaActual?.nombre ?? '—'}`,
+          `Cerró: ${user?.nombre_display ?? (user as any)?.email ?? '—'}`,
+          `Hora: ${new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}`,
+          `Saldo sistema: ${formatMoneda(saldoActual)}`,
+          `Conteo real: ${formatMoneda(montoRealNum)}`,
+          `Diferencia: ${diferencia !== null ? formatMoneda(diferencia) : '—'}`,
+          `Ingresos: ${formatMoneda(totalIngresos)}`,
+          `Egresos: ${formatMoneda(totalEgresos)}`,
+          notasCierre ? `Notas: ${notasCierre}` : '',
+        ].filter(Boolean).join('\n')
+        for (const d of (duenos ?? [])) {
+          if (!d.email) continue
+          void supabase.functions.invoke('send-email', {
+            body: { type: 'notificacion', to: d.email, data: { titulo, mensaje: lineas, action_url: '/caja?tab=historial' } }
+          }).catch(() => {})
+        }
+      })()
+      toast.success(esCajeroPuro ? 'Caja cerrada · El DUEÑO recibirá el detalle por email' : 'Caja cerrada · PDF descargado')
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
       qc.invalidateQueries({ queryKey: ['historial-sesiones'] })
-      setShowCierre(false); setNotasCierre(''); setMontoRealCierre('')
+      setShowCierre(false); setNotasCierre(''); setMontoRealCierre(''); setClaveMaestraCierre('')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -911,6 +995,28 @@ export default function CajaPage() {
       {/* ── CAJA ACTUAL ── */}
       {tab === 'caja' && (
         <div className="space-y-4">
+          {/* A4 — Banner: caja propia abierta más de 24h */}
+          {sesionDiaAnterior && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm">
+                  Caja olvidada del día anterior
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                  Tu sesión en <strong>{(sesionDiaAnterior as any).cajas?.nombre ?? 'la caja'}</strong> está abierta hace más de 24h
+                  ({new Date((sesionDiaAnterior as any).abierta_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}).
+                  Cerrala primero para mantener el control contable.
+                </p>
+                {((sesionDiaAnterior as any).caja_id !== cajaId) && (
+                  <button onClick={() => setCajaSeleccionada((sesionDiaAnterior as any).caja_id)}
+                    className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400 hover:text-amber-800 underline">
+                    Ir a esa caja →
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           {/* ISS-104: selector de caja — solo píldoras, sin select box */}
           {cajasOperativas.length > 1 && (
             <div className="flex gap-2 flex-wrap items-center">
@@ -976,6 +1082,25 @@ export default function CajaPage() {
               </p>
               {showApertura ? (
                 <div className="max-w-xs mx-auto space-y-3">
+                  {/* A2: DUEÑO/SUPERVISOR puede abrir caja a nombre de un cajero */}
+                  {puedeAbrirAjena && (cajerosTenant as any[]).length > 1 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-left">Abrir caja para</label>
+                      <select value={aperturaParaUsuarioId}
+                        onChange={e => setAperturaParaUsuarioId(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                        <option value="">Yo ({user?.nombre_display ?? 'mi usuario'})</option>
+                        {(cajerosTenant as any[]).filter((u: any) => u.id !== user?.id).map((u: any) => (
+                          <option key={u.id} value={u.id}>{u.nombre_display ?? u.email} ({u.rol})</option>
+                        ))}
+                      </select>
+                      {aperturaParaUsuarioId && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 text-left">
+                          ⚠ La caja quedará a nombre del cajero seleccionado y solo él (o un DUEÑO/SUPERVISOR) podrá cerrarla
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-left">Monto inicial en caja</label>
                     {montoSugerido !== null && (
@@ -1049,8 +1174,8 @@ export default function CajaPage() {
                     }
                     setShowApertura(true)
                   }}
-                    disabled={!puedeAbrirCaja}
-                    title={!puedeAbrirCaja ? 'Ya tenés una caja abierta. Cerrala antes de abrir otra.' : undefined}
+                    disabled={!puedeAbrirCaja || esSoloLectura}
+                    title={esSoloLectura ? 'Solo lectura — CONTADOR no puede abrir cajas' : (!puedeAbrirCaja ? 'Ya tenés una caja abierta. Cerrala antes de abrir otra.' : undefined)}
                     className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-6 py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                     <Unlock size={18} /> Abrir caja
                   </button>
@@ -1121,7 +1246,12 @@ export default function CajaPage() {
                 </div>
               </div>
 
-              {/* Acciones */}
+              {/* Acciones — ocultas para CONTADOR (read-only) */}
+              {esSoloLectura ? (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-blue-700 dark:text-blue-300">
+                  <Info size={14} /> Modo solo lectura — CONTADOR puede consultar movimientos y reimprimir tickets de cierre, pero no operar la caja.
+                </div>
+              ) : (
               <div className="flex gap-2">
                 <button onClick={() => setShowMovimiento(true)}
                   className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
@@ -1158,6 +1288,7 @@ export default function CajaPage() {
                   </button>
                 )}
               </div>
+              )}
 
               {/* Movimientos */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -1278,8 +1409,8 @@ export default function CajaPage() {
                 </div>
               )}
 
-              {/* Cerrar caja */}
-              {esOtroUsuario && !puedeAdministrarCaja ? (
+              {/* Cerrar caja — oculto para CONTADOR */}
+              {esSoloLectura ? null : esOtroUsuario && !puedeAdministrarCaja ? (
                 <div className="w-full flex items-center justify-center gap-2 border-2 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 font-semibold py-3 rounded-xl cursor-not-allowed">
                   <Lock size={18} /> Solo {abrioNombre ?? 'quien abrió'} puede cerrar esta caja
                 </div>
@@ -2152,8 +2283,30 @@ export default function CajaPage() {
                 className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
             </div>
 
+            {/* B5 — Clave maestra al cerrar caja ajena */}
+            {(() => {
+              const claveConfigurada = !!(tenant as any)?.clave_maestra
+              const esCierreAjeno = sesionActiva?.usuario_id && sesionActiva.usuario_id !== user?.id
+              if (!claveConfigurada || !esCierreAjeno) return null
+              return (
+                <div className="mb-5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-3 space-y-2">
+                  <label className="block text-sm font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                    <Lock size={13} /> Clave maestra requerida
+                  </label>
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Esta caja fue abierta por otro usuario. Ingresá la clave maestra del negocio para cerrarla.
+                  </p>
+                  <input type="password" value={claveMaestraCierre}
+                    onChange={e => setClaveMaestraCierre(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="off"
+                    className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg text-sm focus:outline-none focus:border-amber-500 dark:bg-gray-800" />
+                </div>
+              )
+            })()}
+
             <div className="flex gap-3">
-              <button onClick={() => { setShowCierre(false); setMontoRealCierre('') }}
+              <button onClick={() => { setShowCierre(false); setMontoRealCierre(''); setClaveMaestraCierre('') }}
                 className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
                 Cancelar
               </button>

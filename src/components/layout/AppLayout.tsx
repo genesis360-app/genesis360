@@ -30,7 +30,7 @@ const navItems = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',      modulo: 'dashboard',     contadorVisible: true },
   { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas',         modulo: 'ventas',        cajeroVisible: true },
   { to: '/gastos',        icon: TrendingDown,    label: 'Gastos',         modulo: 'gastos',        contadorVisible: true },
-  { to: '/caja',          icon: DollarSign,      label: 'Caja',           modulo: 'caja',          cajeroVisible: true },
+  { to: '/caja',          icon: DollarSign,      label: 'Caja',           modulo: 'caja',          cajeroVisible: true, contadorVisible: true },
   { to: '/productos',     icon: Package,         label: 'Productos',      modulo: 'inventario',    depositoVisible: true },
   { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos',   depositoVisible: true },
   { to: '/clientes',      icon: Users,           label: 'Clientes',       modulo: 'clientes',      cajeroVisible: true },
@@ -54,7 +54,7 @@ const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
-const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion']
+const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion']
 const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones']
 
 export function AppLayout() {

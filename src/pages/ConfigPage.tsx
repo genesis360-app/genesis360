@@ -4087,7 +4087,7 @@ export default function ConfigPage() {
           {/* ── CAJA ──────────────────────────────────────────────────────────── */}
           {tab === 'caja' && (
             <div className="space-y-4">
-              {/* Contraseña maestra */}
+              {/* Contraseña maestra — Solo DUEÑO (B6) */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                   <Clock size={16} className="text-accent" /> Seguridad de Caja
@@ -4096,13 +4096,14 @@ export default function ConfigPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Contraseña maestra
                     {(tenant as any)?.clave_maestra && <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-normal">✓ Configurada</span>}
+                    {user?.rol !== 'DUEÑO' && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">🔒 Solo DUEÑO puede modificarla</span>}
                   </label>
                   <div className="relative">
                     <input
                       type={showClaveMaestra ? 'text' : 'password'}
                       value={bizClaveMaestra}
                       onChange={e => setBizClaveMaestra(e.target.value)}
-                      disabled={!canEdit}
+                      disabled={user?.rol !== 'DUEÑO'}
                       placeholder={(tenant as any)?.clave_maestra ? '••••••••' : 'Nueva contraseña maestra'}
                       className="w-full px-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700"
                     />
@@ -4112,10 +4113,10 @@ export default function ConfigPage() {
                     </button>
                   </div>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Permite que un DUEÑO o SUPERVISOR cierre la caja de otro usuario. Si está vacío, el cierre ajeno no requiere contraseña.
+                    Requerida para: cerrar caja ajena · abrir con diferencia · anular ventas o movimientos. Si está vacía, ninguna acción la requiere.
                   </p>
                 </div>
-                {canEdit && (
+                {user?.rol === 'DUEÑO' && (
                   <div className="flex justify-end">
                     <button onClick={handleSaveBiz} disabled={savingBiz}
                       className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">

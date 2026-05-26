@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-25
 ---
 
-# Historial de Migraciones (001-138)
+# Historial de Migraciones (001-140)
 
-**Total al 2026-05-25:** 138 archivos de migración + 086b correctivo.  
+**Total al 2026-05-26:** 140 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -203,6 +203,8 @@ DEV al día (incluye 136) · PROD al día con 135 (136 pendiente de deploy).
 | 136 | `136_caja_moneda_cuentas_origen.sql` | **Caja Tanda 1 (v1.9.1)** · `cajas.moneda` + tabla `cuentas_origen` + `metodos_pago.cuenta_origen_id` + `caja_movimientos.cuenta_origen_id` + vista `vw_boveda_cuentas` + seed cuenta `Efectivo` por tenant |
 | 137 | `137_boveda_retiros_y_backfill.sql` | **Caja Tanda 1.5 (v1.9.2)** · Tabla `boveda_retiros` con RLS estricta (solo DUEÑO/ADMIN/SUPER_USUARIO) + backfill `cuenta_origen_id` en movimientos históricos + UNIQUE partial index (1 cuenta efectivo por tenant) |
 | 138 | `138_cuentas_origen_seed_metodos.sql` | **Caja Tanda 1.5 (v1.9.2)** · Auto-seed de cuentas de origen para métodos de pago no-efectivo existentes (banco / billetera inferido por nombre) + re-backfill de conceptos históricos `[Nombre Método] ...` |
+| 139 | `139_boveda_backfill_fuzzy.sql` | **Hotfix v1.9.2** · Backfill flexible cuenta_origen_id con normalización (lower + sin tildes + sin "de ") para matchear conceptos viejos como `[Tarjeta crédito]` con `Tarjeta de crédito` |
+| 140 | `140_caja_permisos_fase2_0.sql` | **Caja Fase 2.0 (v1.9.3)** · `caja_sesiones.abierta_por` (A2) + `tenants.config_caja JSONB` (config permisos) + RPCs `requiere_clave_maestra` y `verificar_clave_maestra` (B5) |
 
 ---
 

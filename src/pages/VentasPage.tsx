@@ -30,7 +30,8 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
   devuelta:   { label: 'Devuelta',   color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
 }
 
-const MEDIOS_PAGO = ['Efectivo', 'Tarjeta débito', 'Tarjeta crédito', 'Transferencia', 'Mercado Pago', 'MODO', 'Otro']
+// Fallback si el tenant aún no tiene métodos configurados — se prefiere la lista dinámica de Config
+const MEDIOS_PAGO_FALLBACK = ['Efectivo', 'Tarjeta de débito', 'Tarjeta de crédito', 'Transferencia', 'Mercado Pago']
 
 function isPresupuestoVencido(venta: any, validezDias: number | null | undefined): boolean {
   if (!validezDias || venta?.estado !== 'pendiente') return false
@@ -373,6 +374,11 @@ export default function VentasPage() {
     const m = (metodosPagoCfg as any[]).find(x => normalizarNombreMetodo(x.nombre || '') === norm)
     return m?.cuenta_origen_id ?? null
   }
+  // Lista de medios de pago: viene de Config → Ventas → Métodos de pago (dinámica)
+  // Si el tenant aún no tiene config, fallback al hardcoded
+  const MEDIOS_PAGO: string[] = (metodosPagoCfg as any[]).length > 0
+    ? (metodosPagoCfg as any[]).map(m => m.nombre).filter(Boolean)
+    : MEDIOS_PAGO_FALLBACK
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
 
   // Sesión de la caja predeterminada del usuario (derivada de localStorage + sesiones abiertas)

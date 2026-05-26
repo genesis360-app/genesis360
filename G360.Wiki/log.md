@@ -6,6 +6,41 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-26] update | v1.10.0-dev — HITO Caja Fase 2.4 — Reportes (I1/I2)
+
+Cierre del pipeline de Reportes con 4 vistas + 3 exports (Excel/PDF/CSV).
+**Versión mayor v1.10.0** marca el módulo Caja como completo en su pipeline de relevamiento (todas las features de A a M implementadas según las decisiones priorizadas del relevamiento).
+
+### Migration 142 aplicada en DEV
+- Vista `vw_caja_resumen_diario` — agregado por día/caja/sucursal · cierres count + cerrados + total apertura/ingresos/egresos/ventas + saldo_sistema + conteo_real + diferencia_total/absoluta. Excluye caja fuerte (where `NOT es_caja_fuerte`)
+- Vista `vw_caja_mensual_por_sucursal` — agregado por mes/sucursal · sesiones + cerradas + ingresos/egresos/ventas + diferencia + cajas_activas + cajeros_distintos. Periodo = `DATE_TRUNC('month', abierta_at)::DATE`
+
+### Frontend
+- **Nuevo componente `src/components/CajaReportes.tsx`** (~330 líneas) — 4 sub-tabs:
+  - **(a) Diario por caja** — usa `vw_caja_resumen_diario` filtrado por fecha + opcional sucursal
+  - **(b) Diario consolidado** — agrega todas las cajas por fecha en frontend (sin nueva vista)
+  - **(c) Mensual por sucursal** — usa `vw_caja_mensual_por_sucursal`
+  - **(d) Por cajero** — usa `vw_diferencias_por_cajero` (ya existente desde v1.9.4) - últimos 30 días
+- **Filtros**: fecha desde/hasta (todos los reportes excepto cajero) + selector sucursal (a + c) opcional
+- **Tabla**: render dinámico desde array `columnas[]` con `COL_LABELS` y `COLS_MONETARIAS` para detectar columnas a formatear como dinero. Color rojo/verde en columnas de diferencia. Tfoot con totales si hay >1 fila
+- **3 botones de export** en cada reporte:
+  - **Excel** (xlsx): hoja Info + hoja Datos. Labels en español
+  - **PDF** (jspdf + autoTable): landscape si hay >6 columnas. Header con BRAND + período
+  - **CSV** con BOM utf-8 para Excel ES + escape de comillas
+- **CajaPage**: nuevo tab `'reportes'` (icono 📊) visible para DUEÑO/SUPERVISOR/SUPER_USUARIO/CONTADOR. Type `Tab` ampliado
+
+### Score final del relevamiento Caja
+- **8 de 8 decisiones críticas implementadas (100%)** ✅
+- **I1/I2 reportes**: ✅ los 4 reportes prioritarios respondidos en el relevamiento + 3 formatos de export
+
+### Estado al cierre
+- DEV: **v1.10.0** con migrations 130-142 aplicadas
+- PROD: v1.9.0 (136-142 pendientes de deploy)
+- **Pipeline Reglas Caja: CERRADO** (todas las respuestas A-M del PDF de relevamiento implementadas con sus features priorizadas)
+- Quedan opcionales: Fase 2.2b (L3 préstamos RRHH), Fase 2.3 (M2/M3/M4 + E1/E3 + G5) — refinos no críticos
+
+---
+
 ## [2026-05-26] update | v1.9.5-dev — Caja Fase 2.2a — Operaciones especiales (L1/L4/L5/B7/G1)
 
 Implementación de Fase 2.2 — sin migrations nuevas (solo frontend + uso de tablas existentes).

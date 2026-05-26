@@ -15,11 +15,12 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
 
-type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'configuracion'
+type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'reportes' | 'configuracion'
 
 // formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
 import { formatMoneda as formatMonedaLib, MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { puede as cajaPuede, type ConfigCaja } from '@/lib/cajaPermisos'
+import CajaReportes from '@/components/CajaReportes'
 
 const MONEDAS_LISTA = MONEDAS_DISPONIBLES.map(m => m.code)
 
@@ -1328,6 +1329,7 @@ export default function CajaPage() {
           { id: 'caja', label: 'Caja actual', visible: true },
           { id: 'historial', label: 'Historial', visible: true },
           { id: 'caja_fuerte', label: '🔒 Caja Fuerte', visible: puedeCajaFuerte && !!cajaFuerte },
+          { id: 'reportes', label: '📊 Reportes', visible: puedeAdministrarCaja || puedeReimprimirTicket },
           { id: 'configuracion', label: 'Configuración', visible: puedeAdministrarCaja },
         ].filter(t => t.visible)
         return (
@@ -1795,6 +1797,9 @@ export default function CajaPage() {
 
       {/* ── CAJA FUERTE ── */}
       {/* ── CAJA FUERTE TAB ── */}
+      {/* ── REPORTES (Fase 2.4 / I1+I2) ── */}
+      {tab === 'reportes' && <CajaReportes />}
+
       {tab === 'caja_fuerte' && cajaFuerte && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">

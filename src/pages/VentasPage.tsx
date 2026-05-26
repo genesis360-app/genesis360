@@ -362,9 +362,15 @@ export default function VentasPage() {
     },
     enabled: !!tenant,
   })
+  const normalizarNombreMetodo = (s: string): string =>
+    s.toLowerCase()
+      .normalize('NFD').replace(/\p{Diacritic}/gu, '') // sin tildes
+      .replace(/\sde\s/g, ' ')                          // sin preposición "de"
+      .replace(/\s+/g, ' ').trim()
   const cuentaOrigenDeMetodo = (nombreMetodo: string): string | null => {
     if (!nombreMetodo) return null
-    const m = (metodosPagoCfg as any[]).find(x => (x.nombre || '').toLowerCase() === nombreMetodo.toLowerCase())
+    const norm = normalizarNombreMetodo(nombreMetodo)
+    const m = (metodosPagoCfg as any[]).find(x => normalizarNombreMetodo(x.nombre || '') === norm)
     return m?.cuenta_origen_id ?? null
   }
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)

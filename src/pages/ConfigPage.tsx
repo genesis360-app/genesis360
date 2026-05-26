@@ -473,6 +473,38 @@ export default function ConfigPage() {
   const [pvForm,        setPvForm]        = useState({ numero: '', nombre: '' })
   const [savingPv,      setSavingPv]      = useState(false)
 
+  // Toggle facturación con auto-guardado y rollback si falla
+  const toggleFacturacion = async () => {
+    const nuevoValor = !bizFactHabilitada
+    setBizFactHabilitada(nuevoValor)
+    const { error } = await supabase.from('tenants')
+      .update({ facturacion_habilitada: nuevoValor })
+      .eq('id', tenant!.id)
+    if (error) {
+      setBizFactHabilitada(!nuevoValor)
+      toast.error('No se pudo guardar el cambio')
+      return
+    }
+    toast.success(nuevoValor ? 'Facturación habilitada' : 'Facturación deshabilitada')
+  }
+
+  // Guardar solo los datos fiscales (sin pisar otros campos del state)
+  const [savingFact, setSavingFact] = useState(false)
+  const handleSaveFacturacion = async () => {
+    setSavingFact(true)
+    const { error } = await supabase.from('tenants').update({
+      cuit: bizCuit.trim() || null,
+      condicion_iva_emisor: bizCondIva || null,
+      razon_social_fiscal: bizRazonSocial.trim() || null,
+      domicilio_fiscal: bizDomicilioFiscal.trim() || null,
+      umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
+      afipsdk_token: bizAfipToken.trim() || null,
+    }).eq('id', tenant!.id)
+    setSavingFact(false)
+    if (error) { toast.error('No se pudo guardar'); return }
+    toast.success('Datos fiscales guardados')
+  }
+
   const handleSaveBiz = async () => {
     setSavingBiz(true)
     const tipoFinal = bizTipoSelect === 'Otro' && bizTipoPersonalizado.trim()
@@ -1875,7 +1907,8 @@ export default function ConfigPage() {
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 {bizFactHabilitada ? 'Habilitada' : 'Deshabilitada'}
               </span>
-              <button onClick={() => setBizFactHabilitada(v => !v)}
+              <button onClick={toggleFacturacion}
+                title="Click para habilitar/deshabilitar — se guarda automáticamente"
                 className={`relative w-10 h-5 rounded-full transition-colors ${bizFactHabilitada ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
                 <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${bizFactHabilitada ? 'translate-x-5' : 'translate-x-0.5'}`} />
               </button>
@@ -1939,6 +1972,12 @@ export default function ConfigPage() {
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5">Obtenelo en afipsdk.com. Se guarda encriptado.</p>
               </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button onClick={handleSaveFacturacion} disabled={savingFact}
+                className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                {savingFact ? 'Guardando...' : 'Guardar datos fiscales'}
+              </button>
             </div>
           </div>
         </div>

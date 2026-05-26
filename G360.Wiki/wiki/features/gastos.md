@@ -442,6 +442,19 @@ Acceso: DUEÑO (canEdit).
 
 ---
 
+## Cuenta de origen en movimientos informativos (v1.9.1)
+
+Cada gasto con medio de pago ≠ Efectivo inserta `caja_movimientos` con tipo `egreso_informativo` y `cuenta_origen_id` derivado del default del método de pago (`metodos_pago.cuenta_origen_id`). Esto descuenta el saldo de la cuenta bancaria/billetera correspondiente en la vista `vw_boveda_cuentas`. Ver [[wiki/features/caja]] sección "Bóveda como billetera del negocio".
+
+Aplica en 5 puntos de `GastosPage.tsx`:
+- Pago de OC con medios no-efectivo
+- Edición de gasto borrador para agregar medio de pago
+- Creación de gasto nuevo con cualquier medio (incluida caja fuerte)
+- Reversión por eliminación de gasto pagado
+- Generación de gasto fijo desde el cron manual
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/caja]]

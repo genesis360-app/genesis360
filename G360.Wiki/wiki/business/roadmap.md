@@ -3,13 +3,77 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-05-25
+updated: 2026-05-26
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 25 de Mayo, 2026
+**Última actualización:** 26 de Mayo, 2026
+
+---
+
+## v1.9.2 — Caja Tanda 1.5: Bóveda como billetera del negocio + Extraer dinero (DEV ✅)
+
+**Estado:** desplegado en DEV ✅ ([Vercel READY](https://genesis360-git-dev-tongas86s-projects.vercel.app) · commit `45e46cc7` · migrations 137+138 aplicadas)
+**Fecha:** 2026-05-25
+**Release:** [v1.9.2](https://github.com/genesis360-app/genesis360/releases/tag/v1.9.2)
+
+### Goal cubierto
+La bóveda muestra TODO el capital del negocio categorizado por cuenta de origen (efectivo, débito, crédito, MP, transferencia, etc.). Solo el DUEÑO/ADMIN/SUPER_USUARIO puede extraer dinero con registro privado.
+
+### Migrations
+- **137** `137_boveda_retiros_y_backfill.sql` · Tabla `boveda_retiros(id, tenant_id, cuenta_origen_id, monto, tipo_retiro, motivo, notas, usuario_id, movimiento_id, created_at)` con CHECK de 6 tipos (`banco/retiro_personal/gasto/inversion/pago_proveedor/otro`) · **RLS estricta** que exige rol IN ('DUEÑO','ADMIN','SUPER_USUARIO') · Backfill `cuenta_origen_id` en movimientos históricos por concepto `[Nombre Método]` o tipo efectivo · UNIQUE partial index (1 cuenta efectivo por tenant)
+- **138** `138_cuentas_origen_seed_metodos.sql` · Auto-seed: crea cuenta_origen por cada método de pago activo no-efectivo (MP/UALA → billetera · Tarjeta/Transferencia → banco · resto → otro) + vincula `metodos_pago.cuenta_origen_id` + re-aplica backfill
+
+### Frontend (CajaPage tab Bóveda)
+- **Botón "Extraer dinero"** (rojo, ml-auto) solo DUEÑO/ADMIN/SUPER_USUARIO
+- **Modal completo**: selector de cuenta con saldo disponible en label · monto (valida saldo) · tipo de retiro (6 opciones) · motivo obligatorio · notas opcionales
+- **Mutation `extraerDeBoveda`**: crea movimiento (`egreso_traspaso` si efectivo o `egreso_informativo` si banco/billetera) con `cuenta_origen_id` · inserta registro en `boveda_retiros` con link al movimiento
+- **Sección "Historial de extracciones (privado)"** con borde rojo, último 50 retiros, badge por tipo, cuenta, motivo, notas, usuario, fecha/hora — solo DUEÑO+
+- **Card "Capital del negocio · Total $X"** arriba derecha sumando todas las cuentas activas (solo DUEÑO+)
+- Eliminada card hardcodeada "Efectivo (caja fuerte)" — ahora viene de `vw_boveda_cuentas` (única fuente de verdad)
+- `operarCajaFuerte`: los 4 inserts de traspaso ahora setean `cuenta_origen_id = id cuenta efectivo`
+
+### Datos validados en DEV
+- Efectivo: $12.874.811 (86 movs)
+- Mercado Pago: $37.228 (10 movs)
+- Transferencia: -$958.749 (7 movs)
+
+### Cubre del relevamiento
+- ✅ **E4 + E5** del relevamiento Caja del 2026-05-25 (parcial — falta umbral configurable + email/notif)
+
+---
+
+## v1.9.1 — Caja Tanda 1: Cajas por moneda + Cuentas de Origen + sin egreso manual + arqueo pre-cierre (DEV ✅)
+
+**Estado:** desplegado en DEV ✅ (commit `92e0cca5` · migration 136 aplicada)
+**Fecha:** 2026-05-25
+**Release:** [v1.9.1](https://github.com/genesis360-app/genesis360/releases/tag/v1.9.1)
+
+### Migration 136
+- `cajas.moneda TEXT NOT NULL DEFAULT 'ARS'` + índice + seed desde `tenants.moneda` (23 cajas en DEV)
+- Tabla `cuentas_origen(id, tenant_id, nombre, tipo, banco, numero, alias, moneda, activo, notas)` con CHECK + RLS tenant + seed cuenta `Efectivo` por tenant
+- `metodos_pago.cuenta_origen_id` FK opcional
+- `caja_movimientos.cuenta_origen_id` FK + índice parcial
+- Vista `vw_boveda_cuentas` con `security_invoker=true`
+
+### Frontend
+- **ConfigPage** tab Caja: ABM Cuentas de Origen con edición inline + toggle activo + eliminar con guard de FK
+- **ConfigPage** tab Ventas: selector "Acredita en" en cada método de pago + badge `→ Cuenta`
+- **VentasPage + GastosPage**: nueva query `metodos_pago_cfg` + helper `cuentaOrigenDeMetodo()` aplicado en los 10 inserts de movimientos informativos
+- **CajaPage** tab Bóveda: cards de saldos discriminados por cuenta de origen con icono por tipo + saldo + count + moneda
+- **CajaPage** modal Nueva Caja: selector de moneda obligatorio
+- **CajaPage**: badges de moneda en pílulas y lista de configuración
+- **CajaPage** modal movimiento manual: solo registra ingresos (G2 · sin egreso manual)
+- **CajaPage**: arqueo pre-cierre obligatorio (D3 · botón "Cerrar caja" reemplazado por "Arqueo requerido" + validación dura)
+
+### Cubre del relevamiento
+- ✅ **F1** (cajas por moneda), **H1** (cuentas de origen + bóveda discriminada), **G2** (eliminar egreso manual), **D3** (arqueo pre-cierre obligatorio)
+
+### Documentos
+- PDF generado: `relevamiento-caja-reglas-negocio.pdf` (50 preguntas en 14 secciones) en raíz del repo
+- Wiki: `sources/relevamientos/caja_2026-05-25.md` con respuestas A-I + estado de implementación
 
 ---
 

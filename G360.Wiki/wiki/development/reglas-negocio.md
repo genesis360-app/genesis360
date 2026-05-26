@@ -14,7 +14,9 @@ updated: 2026-05-24
 
 ## Módulo: Caja
 
-> Relevamiento 2026-05-25 con socio (PDF `relevamiento-caja-reglas-negocio.pdf` · respuestas A-I en `sources/relevamientos/caja_2026-05-25.md`). Tanda 1 implementada en v1.9.1 — pendientes J-N + features ya respondidas pero no implementadas (detalle en `project_pendientes.md`).
+> Relevamiento 2026-05-25 con socio (PDF `relevamiento-caja-reglas-negocio.pdf` · respuestas A-I en `sources/relevamientos/caja_2026-05-25.md`). Tanda 1 implementada en v1.9.1 + Tanda 1.5 (bóveda billetera + extraer dinero) en v1.9.2 — pendientes J-N + features ya respondidas pero no implementadas (detalle en `project_pendientes.md`).
+>
+> Score implementación: **4 de 8 decisiones críticas cerradas** (eliminar egreso manual ✅ · retiros bóveda solo DUEÑO ✅ · arqueo pre-cierre ✅ · cajas por moneda ✅ · Cuentas de Origen ✅). Pendientes: ticket por mail al DUEÑO · doble validación cierre · diferencias por cajero · clave maestra ampliada.
 
 ### Estructura
 - Múltiples cajas por sucursal

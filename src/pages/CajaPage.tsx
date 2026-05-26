@@ -58,6 +58,7 @@ export default function CajaPage() {
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
+  const puedeExtraerBoveda = user?.rol === 'DUEÑO' || user?.rol === 'ADMIN' || user?.rol === 'SUPER_USUARIO'
   const [tab, setTab] = useState<Tab>('caja')
   const [cajaSeleccionada, setCajaSeleccionada] = useState<string | null>(null)
   const [showApertura, setShowApertura] = useState(false)
@@ -84,6 +85,13 @@ export default function CajaPage() {
   const [showArqueo, setShowArqueo] = useState(false)
   const [arqueoConteo, setArqueoConteo] = useState('')
   const [arqueoNotas, setArqueoNotas] = useState('')
+  // Extraer dinero de bóveda (solo DUEÑO/ADMIN/SUPER_USUARIO)
+  const [showExtraerBoveda, setShowExtraerBoveda] = useState(false)
+  const [extraerCuentaId, setExtraerCuentaId] = useState<string>('')
+  const [extraerMonto, setExtraerMonto] = useState('')
+  const [extraerTipo, setExtraerTipo] = useState<'banco' | 'retiro_personal' | 'gasto' | 'inversion' | 'pago_proveedor' | 'otro'>('retiro_personal')
+  const [extraerMotivo, setExtraerMotivo] = useState('')
+  const [extraerNotas, setExtraerNotas] = useState('')
 
   // Forms
   const [montoApertura, setMontoApertura] = useState('')
@@ -155,6 +163,87 @@ export default function CajaPage() {
     },
     enabled: !!tenant && tab === 'caja_fuerte',
     refetchInterval: 30_000,
+  })
+
+  // Historial de retiros de bóveda — RLS estricta: solo DUEÑO/ADMIN/SUPER_USUARIO
+  const { data: bovedaRetiros = [] } = useQuery({
+    queryKey: ['boveda-retiros', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('boveda_retiros')
+        .select('*, users:usuario_id(nombre_display), cuentas_origen:cuenta_origen_id(nombre, tipo)')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'caja_fuerte' && puedeExtraerBoveda,
+  })
+
+  // Mutation: extraer dinero de la bóveda (egreso real del sistema, no traspaso)
+  const extraerDeBoveda = useMutation({
+    mutationFn: async () => {
+      if (!puedeExtraerBoveda) throw new Error('No tenés permiso para extraer dinero de la bóveda')
+      if (!extraerCuentaId) throw new Error('Seleccioná una cuenta')
+      const monto = parseFloat(extraerMonto)
+      if (!monto || monto <= 0) throw new Error('Ingresá un monto válido')
+      if (!extraerMotivo.trim()) throw new Error('Ingresá un motivo')
+
+      const cuenta = (bovedaCuentas as any[]).find(c => c.cuenta_origen_id === extraerCuentaId)
+      if (!cuenta) throw new Error('Cuenta inválida')
+      const saldoCuenta = Number(cuenta.saldo || 0)
+      if (monto > saldoCuenta) throw new Error(`Saldo insuficiente en ${cuenta.nombre}. Disponible: ${formatMoneda(saldoCuenta)}`)
+
+      // Necesitamos una sesión donde anclar el movimiento (sesión de caja fuerte)
+      if (!cajaFuerte) throw new Error('No hay caja fuerte configurada')
+      let fuerteSessionId = (fuerteSesion as any)?.id
+      if (!fuerteSessionId) {
+        const { data: ns, error: eS } = await supabase.from('caja_sesiones').insert({
+          tenant_id: tenant!.id, caja_id: cajaFuerte.id,
+          estado: 'abierta', es_permanente: true,
+          usuario_id: user!.id, monto_apertura: 0,
+        }).select('id').single()
+        if (eS) throw eS
+        fuerteSessionId = ns.id
+      }
+
+      const tipoMov = cuenta.tipo === 'efectivo' ? 'egreso_traspaso' : 'egreso_informativo'
+      const concepto = `[Extracción] ${extraerMotivo.trim()} (${extraerTipo.replace('_', ' ')})`
+
+      const { data: mov, error: eMov } = await supabase.from('caja_movimientos').insert({
+        tenant_id: tenant!.id,
+        sesion_id: fuerteSessionId,
+        tipo: tipoMov,
+        monto,
+        concepto,
+        cuenta_origen_id: extraerCuentaId,
+        usuario_id: user!.id,
+      }).select('id').single()
+      if (eMov) throw eMov
+
+      const { error: eRet } = await supabase.from('boveda_retiros').insert({
+        tenant_id: tenant!.id,
+        cuenta_origen_id: extraerCuentaId,
+        monto,
+        tipo_retiro: extraerTipo,
+        motivo: extraerMotivo.trim(),
+        notas: extraerNotas.trim() || null,
+        usuario_id: user!.id,
+        movimiento_id: mov.id,
+      })
+      if (eRet) throw eRet
+    },
+    onSuccess: () => {
+      toast.success('Extracción registrada')
+      logActividad({ entidad: 'caja', entidad_nombre: 'Bóveda', accion: 'pagar', valor_nuevo: `Extracción ${formatMoneda(parseFloat(extraerMonto))} - ${extraerMotivo}`, pagina: '/caja' })
+      qc.invalidateQueries({ queryKey: ['boveda-cuentas'] })
+      qc.invalidateQueries({ queryKey: ['boveda-retiros'] })
+      qc.invalidateQueries({ queryKey: ['caja-fuerte-movimientos'] })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      setShowExtraerBoveda(false)
+      setExtraerCuentaId(''); setExtraerMonto(''); setExtraerTipo('retiro_personal')
+      setExtraerMotivo(''); setExtraerNotas('')
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   // Sesiones abiertas en TODAS las cajas (para mostrar indicador en selector)
@@ -575,13 +664,19 @@ export default function CajaPage() {
         fuerteSessionId = ns.id
       }
 
+      // Cuenta efectivo del tenant — los traspasos siempre son de efectivo entre cajas
+      const cuentaEfectivo = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo')
+      const cuentaEfectivoId = cuentaEfectivo?.cuenta_origen_id ?? null
+
       if (tipo === 'deposito') {
         // Si viene de una caja activa: egreso en esa caja
         if (desdeSessionId) {
           const { error: e1 } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id, sesion_id: desdeSessionId,
             tipo: 'egreso_traspaso', monto,
-            concepto: concepto || 'Depósito en caja fuerte', usuario_id: user!.id,
+            concepto: concepto || 'Depósito en caja fuerte',
+            cuenta_origen_id: cuentaEfectivoId,
+            usuario_id: user!.id,
           })
           if (e1) throw e1
         }
@@ -590,6 +685,7 @@ export default function CajaPage() {
           tenant_id: tenant!.id, sesion_id: fuerteSessionId,
           tipo: 'ingreso_traspaso', monto,
           concepto: concepto || (desdeSessionId ? `Depósito desde caja` : 'Ingreso externo'),
+          cuenta_origen_id: cuentaEfectivoId,
           usuario_id: user!.id,
         })
         if (e2) throw e2
@@ -599,13 +695,17 @@ export default function CajaPage() {
         const { error: e1 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: fuerteSessionId,
           tipo: 'egreso_traspaso', monto,
-          concepto: concepto || 'Retiro de caja fuerte', usuario_id: user!.id,
+          concepto: concepto || 'Retiro de caja fuerte',
+          cuenta_origen_id: cuentaEfectivoId,
+          usuario_id: user!.id,
         })
         if (e1) throw e1
         const { error: e2 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: destSesionId,
           tipo: 'ingreso_traspaso', monto,
-          concepto: concepto || 'Ingreso desde caja fuerte', usuario_id: user!.id,
+          concepto: concepto || 'Ingreso desde caja fuerte',
+          cuenta_origen_id: cuentaEfectivoId,
+          usuario_id: user!.id,
         })
         if (e2) throw e2
       }
@@ -714,6 +814,7 @@ export default function CajaPage() {
   useModalKeyboard({ isOpen: showNuevaCaja, onClose: () => setShowNuevaCaja(false), onConfirm: () => { if (!crearCaja.isPending) crearCaja.mutate() } })
   useModalKeyboard({ isOpen: showTraspaso && !showMovimiento, onClose: () => { setShowTraspaso(false); setTraspasoMonto(''); setTraspasoConcepto(''); setTraspasoDestinoSesionId('') }, onConfirm: () => { if (!realizarTraspaso.isPending) realizarTraspaso.mutate() } })
   useModalKeyboard({ isOpen: showArqueo, onClose: () => { setShowArqueo(false); setArqueoConteo(''); setArqueoNotas('') }, onConfirm: () => { if (!realizarArqueo.isPending) realizarArqueo.mutate() } })
+  useModalKeyboard({ isOpen: showExtraerBoveda, onClose: () => setShowExtraerBoveda(false), onConfirm: () => { if (!extraerDeBoveda.isPending) extraerDeBoveda.mutate() } })
 
   // Atajo de teclado: Shift+I = ingreso (solo con caja abierta)
   useEffect(() => {
@@ -1224,66 +1325,111 @@ export default function CajaPage() {
                 className="flex items-center gap-2 px-4 py-2.5 bg-gray-700 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
                 <ArrowRightLeft size={15} /> Enviar a Caja
               </button>
+              {puedeExtraerBoveda && (
+                <button onClick={() => setShowExtraerBoveda(true)}
+                  title="Extraer dinero del negocio (retiro personal, banco, gasto, etc.)"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors ml-auto">
+                  <Minus size={15} /> Extraer dinero
+                </button>
+              )}
             </div>
           </div>
 
           {/* Saldos por Cuenta de Origen — bóveda discriminada (H1) */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Saldos por cuenta</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* Card Efectivo en caja fuerte */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+          {(() => {
+            const cuentasActivas = (bovedaCuentas as any[]).filter((c: any) => c.activo)
+            const capitalTotal = cuentasActivas.reduce((acc: number, c: any) => acc + Number(c.saldo || 0), 0)
+            return (
+              <div>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 bg-green-50 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                      <Lock size={14} className="text-green-600 dark:text-green-400" />
-                    </div>
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Efectivo</p>
-                  </div>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400">caja fuerte</span>
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Capital del negocio por cuenta</p>
+                  {puedeExtraerBoveda && cuentasActivas.length > 0 && (
+                    <p className="text-sm font-bold text-gray-700 dark:text-gray-200">Total: <span className="text-accent">{formatMoneda(capitalTotal)}</span></p>
+                  )}
                 </div>
-                <p className={`text-xl font-bold ${fuerteSaldo > 0 ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>
-                  {formatMoneda(fuerteSaldo)}
-                </p>
-                <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{fuerteMovimientos.length} movimientos</p>
-              </div>
-
-              {/* Cards por cada cuenta de origen activa */}
-              {(bovedaCuentas as any[]).filter((c: any) => c.activo).map((c: any) => {
-                const tipoColor = c.tipo === 'banco' ? 'blue' : c.tipo === 'billetera' ? 'purple' : c.tipo === 'efectivo' ? 'green' : 'gray'
-                return (
-                  <div key={c.cuenta_origen_id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className={`w-7 h-7 bg-${tipoColor}-50 dark:bg-${tipoColor}-900/30 rounded-lg flex items-center justify-center shrink-0`}>
-                          <DollarSign size={14} className={`text-${tipoColor}-600 dark:text-${tipoColor}-400`} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {cuentasActivas.map((c: any) => {
+                    const tipoColor = c.tipo === 'banco' ? 'blue' : c.tipo === 'billetera' ? 'purple' : c.tipo === 'efectivo' ? 'green' : 'gray'
+                    const Icon = c.tipo === 'efectivo' ? Lock : DollarSign
+                    return (
+                      <div key={c.cuenta_origen_id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`w-7 h-7 bg-${tipoColor}-50 dark:bg-${tipoColor}-900/30 rounded-lg flex items-center justify-center shrink-0`}>
+                              <Icon size={14} className={`text-${tipoColor}-600 dark:text-${tipoColor}-400`} />
+                            </div>
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate" title={c.nombre}>{c.nombre}</p>
+                          </div>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-${tipoColor}-50 dark:bg-${tipoColor}-900/20 text-${tipoColor}-700 dark:text-${tipoColor}-400`}>{c.tipo}</span>
                         </div>
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate" title={c.nombre}>{c.nombre}</p>
+                        <p className={`text-xl font-bold ${Number(c.saldo) > 0 ? 'text-gray-900 dark:text-white' : Number(c.saldo) < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                          {formatMoneda(Number(c.saldo || 0))}
+                        </p>
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                          {c.movimientos_count} mov · {c.moneda}
+                          {c.banco && ` · ${c.banco}`}
+                        </p>
                       </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-${tipoColor}-50 dark:bg-${tipoColor}-900/20 text-${tipoColor}-700 dark:text-${tipoColor}-400`}>{c.tipo}</span>
-                    </div>
-                    <p className={`text-xl font-bold ${Number(c.saldo) > 0 ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500'}`}>
-                      {formatMoneda(Number(c.saldo || 0))}
-                    </p>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
-                      {c.movimientos_count} mov · {c.moneda}
-                      {c.banco && ` · ${c.banco}`}
-                    </p>
-                  </div>
-                )
-              })}
+                    )
+                  })}
 
-              {(bovedaCuentas as any[]).filter((c: any) => c.activo).length === 0 && (
-                <div className="col-span-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-start gap-3">
-                  <Info size={16} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-                  <div className="text-xs text-blue-700 dark:text-blue-300">
-                    <p className="font-semibold mb-1">Configurá las cuentas de origen</p>
-                    <p>Andá a <strong>Configuración → Caja → Cuentas de Origen</strong> y asocialas a tus métodos de pago para ver la bóveda discriminada por banco/billetera.</p>
-                  </div>
+                  {cuentasActivas.length === 0 && (
+                    <div className="col-span-full bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-start gap-3">
+                      <Info size={16} className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
+                      <div className="text-xs text-blue-700 dark:text-blue-300">
+                        <p className="font-semibold mb-1">Configurá las cuentas de origen</p>
+                        <p>Andá a <strong>Configuración → Caja → Cuentas de Origen</strong> y asocialas a tus métodos de pago para ver la bóveda discriminada por banco/billetera.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Historial de extracciones — solo DUEÑO/ADMIN/SUPER_USUARIO (RLS) */}
+          {puedeExtraerBoveda && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-100 dark:border-red-900/40 overflow-hidden">
+              <div className="px-5 py-3 border-b border-red-100 dark:border-red-900/40 bg-red-50/40 dark:bg-red-900/20 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Lock size={13} className="text-red-600 dark:text-red-400" />
+                  <p className="text-xs font-semibold text-red-700 dark:text-red-300 uppercase tracking-wide">Historial de extracciones (privado)</p>
+                </div>
+                <span className="text-xs text-red-600 dark:text-red-400">{bovedaRetiros.length} {bovedaRetiros.length === 1 ? 'extracción' : 'extracciones'}</span>
+              </div>
+              {bovedaRetiros.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">Sin extracciones registradas</p>
+              ) : (
+                <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {(bovedaRetiros as any[]).map((r: any) => (
+                    <div key={r.id} className="px-5 py-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{r.motivo}</p>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 font-medium">
+                            {r.tipo_retiro.replace('_', ' ')}
+                          </span>
+                          {r.cuentas_origen?.nombre && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                              {r.cuentas_origen.nombre}
+                            </span>
+                          )}
+                        </div>
+                        {r.notas && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{r.notas}</p>}
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          {new Date(r.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                          {r.users?.nombre_display && ` · ${r.users.nombre_display}`}
+                        </p>
+                      </div>
+                      <span className="font-bold text-red-600 dark:text-red-400 shrink-0">
+                        -{formatMoneda(r.monto)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-          </div>
+          )}
 
           {/* Historial completo de caja fuerte */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -1418,6 +1564,84 @@ export default function CajaPage() {
               className="w-full bg-gray-700 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50">
               {operarCajaFuerte.isPending ? 'Procesando...' : 'Confirmar envío'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Extraer dinero — solo DUEÑO/ADMIN/SUPER_USUARIO */}
+      {showExtraerBoveda && puedeExtraerBoveda && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowExtraerBoveda(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <Minus size={16} className="text-red-600" /> Extraer dinero de la bóveda
+              </h3>
+              <button onClick={() => setShowExtraerBoveda(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Este registro queda visible <strong>solo para vos</strong>. Descuenta el monto del saldo de la cuenta elegida.
+            </p>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cuenta de origen *</label>
+              <select value={extraerCuentaId} onChange={e => setExtraerCuentaId(e.target.value)}
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                <option value="">Seleccioná una cuenta...</option>
+                {(bovedaCuentas as any[]).filter((c: any) => c.activo && Number(c.saldo) > 0).map((c: any) => (
+                  <option key={c.cuenta_origen_id} value={c.cuenta_origen_id}>
+                    {c.nombre} ({c.tipo}) — {formatMoneda(Number(c.saldo))} disponible
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
+              <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
+                value={extraerMonto} onChange={e => setExtraerMonto(e.target.value)}
+                placeholder="0"
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tipo de retiro *</label>
+              <select value={extraerTipo} onChange={e => setExtraerTipo(e.target.value as any)}
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                <option value="retiro_personal">Retiro personal del dueño</option>
+                <option value="banco">Depósito a banco / inversión bancaria</option>
+                <option value="inversion">Inversión (compra activos, etc.)</option>
+                <option value="gasto">Gasto del negocio</option>
+                <option value="pago_proveedor">Pago a proveedor</option>
+                <option value="otro">Otro</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Motivo *</label>
+              <input type="text" value={extraerMotivo} onChange={e => setExtraerMotivo(e.target.value)}
+                placeholder="Ej: Sueldo del dueño abril, Depósito Plazo Fijo, etc."
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Notas (opcional)</label>
+              <textarea value={extraerNotas} onChange={e => setExtraerNotas(e.target.value)}
+                rows={2}
+                placeholder="Detalle adicional para tu registro personal..."
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none" />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setShowExtraerBoveda(false)}
+                className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-2.5 rounded-xl text-sm">
+                Cancelar
+              </button>
+              <button onClick={() => extraerDeBoveda.mutate()}
+                disabled={extraerDeBoveda.isPending || !extraerCuentaId || !extraerMonto || !extraerMotivo.trim()}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
+                {extraerDeBoveda.isPending ? 'Registrando...' : 'Confirmar extracción'}
+              </button>
+            </div>
           </div>
         </div>
       )}

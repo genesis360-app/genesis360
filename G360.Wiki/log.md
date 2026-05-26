@@ -6,6 +6,49 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-25] update | v1.9.2-dev — Caja Tanda 1.5 — Bóveda como billetera del negocio + Extraer dinero (E4/E5)
+
+Cierra el goal del usuario: la bóveda funciona como billetera del negocio con TODO el capital categorizado por cuenta de origen (efectivo, débito, crédito, MP, transferencia, etc.). Solo el DUEÑO puede extraer dinero con registro privado.
+
+### Migration 137 — `137_boveda_retiros_y_backfill.sql`
+- Tabla `boveda_retiros(id, tenant_id, cuenta_origen_id, monto, tipo_retiro, motivo, notas, usuario_id, movimiento_id, created_at)` con CHECK `tipo_retiro IN (banco/retiro_personal/gasto/inversion/pago_proveedor/otro)`
+- 3 índices (tenant+created_at, cuenta_origen_id, usuario_id)
+- **RLS estricta**: USING/WITH CHECK exige rol IN ('DUEÑO','ADMIN','SUPER_USUARIO') vía EXISTS en users — otros roles no ven ni el listado ni el detalle
+- Backfill cuenta_origen_id en `caja_movimientos` históricos: match por concepto `[Nombre Método]` para ingreso/egreso informativo; cuenta tipo='efectivo' para ingreso/egreso/ingreso_traspaso/egreso_traspaso/ingreso_reserva/egreso_devolucion_sena/ingreso_apertura
+- UNIQUE partial index `uq_cuentas_origen_efectivo_por_tenant` (garantiza 1 cuenta efectivo por tenant)
+
+### Migration 138 — `138_cuentas_origen_seed_metodos.sql`
+- Auto-seed: crea cuenta_origen por cada método de pago no-efectivo activo (Mercado Pago/UALA → billetera · Tarjeta/Transferencia → banco · resto → otro) usando moneda del tenant
+- Vincula `metodos_pago.cuenta_origen_id` con la cuenta recién creada (match por nombre)
+- Re-aplica backfill con conceptos históricos `[Nombre Método]` → cuenta_origen_id del método
+
+### Frontend
+- **CajaPage**: nuevo estado para modal Extraer (`extraerCuentaId`, `extraerMonto`, `extraerTipo`, `extraerMotivo`, `extraerNotas`) + `puedeExtraerBoveda = DUEÑO/ADMIN/SUPER_USUARIO`
+- **CajaPage**: nueva query `boveda-retiros` con `enabled: puedeExtraerBoveda` (RLS bloquea a otros roles igualmente)
+- **CajaPage**: nueva mutation `extraerDeBoveda` que valida saldo de cuenta, obtiene/crea sesión permanente de caja fuerte, inserta movimiento (`egreso_traspaso` si efectivo o `egreso_informativo` si banco/billetera) con `cuenta_origen_id`, e inserta registro en `boveda_retiros` con link al movimiento
+- **CajaPage** tab Bóveda: nuevo botón "Extraer dinero" (rojo, ml-auto) solo para DUEÑO+
+- **CajaPage** tab Bóveda: nueva sección "Historial de extracciones (privado)" con borde rojo, badge tipo, cuenta, motivo, notas, monto, fecha/hora y usuario — solo para DUEÑO+
+- **CajaPage** tab Bóveda: eliminada card hardcodeada "Efectivo (caja fuerte)" basada en `fuerteSaldo` — ahora la card Efectivo viene de `vw_boveda_cuentas` (cuenta tipo='efectivo' única); única fuente de verdad
+- **CajaPage** tab Bóveda: indicador "Capital del negocio · Total: $X" arriba a la derecha (solo DUEÑO+) sumando todas las cuentas activas
+- **CajaPage** `operarCajaFuerte`: los 4 inserts de traspaso (depósito caja → fuerte + retiro fuerte → caja) ahora setean `cuenta_origen_id = id cuenta efectivo` para que la vista los considere
+- **CajaPage** modal Extraer Dinero: pide cuenta (con saldo disponible en label), monto, tipo (6 opciones), motivo obligatorio, notas opcionales
+
+### Datos validados en DEV (tenant `3769b1db`)
+- Efectivo: $12.874.811 (86 movs)
+- Mercado Pago: $37.228 (10 movs)
+- Transferencia: -$958.749 (7 movs · negativo porque hay más gastos que ingresos en transferencia)
+
+### Wiki
+- `wiki/features/caja.md`: nueva sección "Bóveda como billetera del negocio — Tanda 1.5"
+- `wiki/database/migraciones.md`: entradas 137 y 138
+- `sources/relevamientos/caja_2026-05-25.md`: marcadas E4 y E5 como implementadas
+
+### Estado al cierre
+- DEV: v1.9.2 con migrations 130-138 aplicadas
+- PROD: v1.9.0 (migrations 136-138 pendientes de deploy)
+
+---
+
 ## [2026-05-25] update | v1.9.1-dev — Reglas Caja Tanda 1 (moneda + Cuentas de Origen + bóveda discriminada)
 
 Implementación de respuestas A-I del relevamiento de Caja (con socio en `relevamiento-caja-reglas-negocio.pdf` + respuestas guardadas en `sources/relevamientos/caja_2026-05-25.md`).

@@ -20,7 +20,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/productos]] | ProductosPage + ProductoFormPage · scan ticket IA (v1.8.38) · 6 cards · marca/UdM/variantes/shelf life · grupos · ubicación por sucursal · inactivos visibles | ✅ |
 | [[wiki/features/inventario-stock]] | LPNs, FIFO/FEFO, stock sucursal, bulk edit · conteos borrador · rebaje masivo fix · shortcuts ESC/ENTER · filtros pill · defaults producto · modales inline | ✅ |
 | [[wiki/features/ventas-pos]] | Carrito · 3 modos · CC parcial · cuotas · ticket por sucursal · envío con autocompletado + Haversine · selector courier propio/tercero · multi-sucursal estricto (cambio limpia carrito) | ✅ |
-| [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja · caja predeterminada ★ · cajas.sucursal_id · Caja Principal en seed · **v1.9.1**: cajas por moneda + Cuentas de Origen + bóveda discriminada + sin egreso manual + arqueo pre-cierre obligatorio | ✅ |
+| [[wiki/features/caja]] | Sesiones, traspasos, arqueos, multi-caja · caja predeterminada ★ · cajas.sucursal_id · Caja Principal en seed · **v1.9.1**: cajas por moneda + Cuentas de Origen + bóveda discriminada + sin egreso manual + arqueo pre-cierre obligatorio · **v1.9.2**: bóveda como billetera del negocio + botón Extraer dinero (solo DUEÑO) + historial privado | ✅ |
 | [[wiki/features/gastos]] | Variables, fijos, IVA, OC · efectivo en caja · CC en OC · **v1.8.42**: categorías predefinidas + custom · reglas comprobante · indicadores fijos · badge anticipo OC · **v1.8.43**: umbrales por rol/sucursal + bandeja autorizaciones · **v1.8.44**: IVA auto + selector alícuota + sucursal obligatoria por categoría + bloqueo CC proveedor + override DUEÑO · **v1.8.45**: capitalización en recursos + vw_egresos_consolidados · **v1.9.0**: cierre contable mensual (HITO) + notas de corrección | ✅ |
 | [[wiki/features/devoluciones]] | Stock serializado/no-serializado, NC, caja | ✅ |
 | [[wiki/features/clientes-proveedores]] | CRM, CC, OC, domicilios · globales entre sucursales · cancelar deuda CC (ISS-107) | ✅ |
@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-25 — 53 páginas + 3 manuales + 1 PDF relevamiento (caja) · 8 fuentes en raw/ + 1 relevamiento caja · DEV: 136 + 086b · PROD: 135 + 086b · v1.9.1 DEV / v1.9.0 PROD · Iniciado relevamiento Reglas de Negocio — Caja (Tanda 1: A-I implementadas)*
+*Última actualización: 2026-05-25 — 53 páginas + 3 manuales + 1 PDF relevamiento (caja) · 8 fuentes en raw/ + 1 relevamiento caja · DEV: 138 + 086b · PROD: 135 + 086b · v1.9.2 DEV / v1.9.0 PROD · Iniciado relevamiento Reglas de Negocio — Caja (Tanda 1+1.5: A-I + E4/E5 implementadas)*

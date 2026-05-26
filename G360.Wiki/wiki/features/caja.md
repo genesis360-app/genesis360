@@ -333,9 +333,60 @@ Respuestas A-I implementadas parcialmente. Implementación completa requiere:
 
 - **C2**: enviar mail al DUEÑO con detalle del cierre + sacar download automático del PDF
 - **B7**: doble validación al cierre (modal con login del 2do usuario)
-- **E1/E4**: restricción de visibilidad del saldo de bóveda solo al DUEÑO + retiros bóveda solo DUEÑO con historial privado
+- **E1**: restricción de visibilidad del saldo de bóveda solo al DUEÑO (UI por rol)
 - **B4 + B5 + B6**: clave maestra ampliada (cerrar ajena + abrir con diferencia + anular movimientos)
 - **B1 + B2 + B3**: alertas de diferencia con umbral configurable
 - **G1**: botón "Corregir" en movimientos manuales (solo DUEÑO/SUPERVISOR)
 - **J-N**: pendientes de respuesta del relevamiento
+
+---
+
+## Bóveda como billetera del negocio — Tanda 1.5 (v1.9.2 · migrations 137 + 138)
+
+Cierra parcialmente **E4 + E5** del relevamiento.
+
+### Consolidación de capital del negocio
+
+La bóveda muestra **TODO el capital del negocio** discriminado por cuenta de origen. Cada movimiento de caja con `cuenta_origen_id` impacta el saldo de la cuenta correspondiente en `vw_boveda_cuentas`:
+
+- Ventas en efectivo → cuenta `Efectivo`
+- Ventas con débito → cuenta `Tarjeta de débito` (banco)
+- Ventas con MP → cuenta `Mercado Pago` (billetera)
+- Ventas con transferencia → cuenta `Transferencia` (banco)
+- Traspasos caja → caja fuerte → cuenta `Efectivo`
+- Gastos / pagos OC con cualquier medio → restan al saldo de la cuenta
+
+Migration 138 auto-crea una cuenta por cada método de pago activo del tenant y las vincula. El backfill aplica `cuenta_origen_id` a movimientos históricos cuyo concepto empieza con `[Nombre del Método]`.
+
+### Botón "Extraer dinero" (solo DUEÑO/ADMIN/SUPER_USUARIO)
+
+Botón rojo en la barra del tab Bóveda. Modal pide cuenta de origen, monto, tipo de retiro (`retiro_personal | banco | inversion | gasto | pago_proveedor | otro`), motivo y notas opcionales.
+
+**Mutation `extraerDeBoveda`**:
+1. Valida permiso de rol, monto > 0 y monto ≤ saldo de la cuenta
+2. Obtiene/crea sesión permanente de caja fuerte
+3. Inserta `caja_movimientos` con tipo `egreso_traspaso` (cuenta efectivo) o `egreso_informativo` (otras) + `cuenta_origen_id`
+4. Inserta `boveda_retiros` con `motivo`, `tipo_retiro`, `notas`, `usuario_id`, `movimiento_id`
+5. Log en `actividad_log`
+
+### Sección "Historial de extracciones (privado)"
+
+Card con borde rojo, listado de últimos 50 retiros con motivo, tipo, cuenta, monto, fecha/hora y usuario. Solo se renderiza si `puedeExtraerBoveda`.
+
+**RLS de `boveda_retiros`** (migration 137):
+```sql
+USING/WITH CHECK: tenant_id IN (mi tenant)
+                  AND EXISTS user con rol IN ('DUEÑO','ADMIN','SUPER_USUARIO')
+```
+Otros usuarios reciben array vacío al hacer SELECT — la información no puede filtrarse aunque conozcan los IDs.
+
+### Card "Capital del negocio por cuenta" + Total
+
+Se eliminó la card hardcodeada "Efectivo (caja fuerte)" basada en `fuerteSaldo`. Ahora la card Efectivo viene de `vw_boveda_cuentas` (cuenta tipo='efectivo' única por tenant). Esto unifica la fuente de verdad.
+
+Indicador **Total: $X** arriba a la derecha (visible solo para DUEÑO+) sumando todas las cuentas activas.
+
+### Asociación automática en traspasos efectivo
+
+`operarCajaFuerte` ahora setea `cuenta_origen_id = id de cuenta tipo='efectivo'` en los 4 inserts (depósito caja → fuerte + retiro fuerte → caja). Así esos movimientos también se reflejan en la vista discriminada.
 

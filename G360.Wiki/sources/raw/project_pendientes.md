@@ -4,19 +4,21 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.9.0** ✅ · DEV: **v1.9.1**
+Último release en PROD: **v1.9.0** ✅ · DEV: **v1.9.2**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.9.1 / PROD v1.9.0 (cierre sesión 2026-05-25 — tanda Caja)
+## Estado actual DEV v1.9.2 / PROD v1.9.0 (cierre sesión 2026-05-25 — Caja Tanda 1 + 1.5)
 
-- APP_VERSION DEV: `v1.9.1` en `src/config/brand.ts`
+- APP_VERSION DEV: `v1.9.2` en `src/config/brand.ts`
 - APP_VERSION PROD: `v1.9.0` (PR pendiente)
-- Migrations DEV: 001–136 ✅
-- Migrations PROD: 001–135 ✅ (136 pendiente de deploy)
-- **Pipeline Reglas de Negocio - Caja: Tanda 1 cerrada ✅** (A-I del relevamiento implementadas)
+- Migrations DEV: 001–138 ✅
+- Migrations PROD: 001–135 ✅ (136-138 pendientes de deploy)
+- **Pipeline Reglas de Negocio - Caja: Tanda 1 + 1.5 cerradas ✅**
+  - Tanda 1 (v1.9.1): respuestas A-I implementadas — moneda + Cuentas de Origen + bóveda discriminada + sin egreso manual + arqueo pre-cierre
+  - Tanda 1.5 (v1.9.2): goal "bóveda billetera + extraer dinero solo DUEÑO" — E4 + E5 implementadas — tabla `boveda_retiros` con RLS estricta + UI completa
 
 ### Lo producido en DEV en esta tanda (2026-05-25 — v1.9.1)
 

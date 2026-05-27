@@ -38,8 +38,14 @@ Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.
 - **Compartir con transportista**: genera token único + link mobile-first sin login
 - **Bloqueo de progresión si costo no pagado** (ISS-171): si `costo_cotizado > 0 AND costo_pagado = false` no permite avanzar estado
 
+### Costo del envío cobrado en la venta (ISS-156/175/176 · v1.10.1)
+- El costo del envío que paga el **cliente** entra con la venta. El envío auto-creado nace `costo_pagado=true` cuando es **propio** (no hay courier a quien pagar) o cuando la venta se **despachó** (cobrada al 100%). Reservas con pago parcial quedan pendientes hasta el despacho.
+- El tab **Pagos Courier** excluye `courier='Envío propio'` (solo lista pagos a couriers terceros pendientes).
+- Al crear un envío manual seleccionando una venta despachada con `costo_envio > 0`, también nace saldado.
+- **Página `/transporte`**: si el envío tiene `costo_cotizado > 0 AND costo_pagado = false`, muestra banner rojo "Envío pendiente de pago" y deshabilita los botones de avance de estado (misma regla que `verificarPagoAntes` del operador).
+
 ### Tab Pagos Courier (ISS-169)
-- Lista todos los envíos con `costo_cotizado > 0 AND costo_pagado = false`
+- Lista todos los envíos con `costo_cotizado > 0 AND costo_pagado = false AND courier != 'Envío propio'`
 - Filtro por sucursal aplicado
 - Checkbox individual + "Seleccionar todo"
 - Medio de pago (Efectivo / Transferencia / Débito / Crédito / Otro)

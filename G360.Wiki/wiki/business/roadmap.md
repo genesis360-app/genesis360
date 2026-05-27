@@ -15,15 +15,28 @@ updated: 2026-05-27
 
 ## v1.10.1 — Cierre HITO v1.9.0 + quick wins Envíos (DEV ✅ · PROD ⏳)
 
-**Estado:** desplegado en DEV. Pendiente PR a main + migrations 143-144 en PROD.
+**Estado:** desplegado en DEV. Pendiente PR a main + migrations 143-147 en PROD.
 **Fecha:** 2026-05-27
-**Migrations:** 143 (cron limpieza tokens) · 144 (envio_pod_fotos)
+**Migrations:** 143 (cron tokens) · 144 (envio_pod_fotos) · 145 (fix saldo nómina) · 146 (FK traspasos) · 147 (supervisor=empleado)
 
-### Cambios
+### Cambios — features
 - **Candado 🔒 por fila** en VentasPage y CajaPage: badge ámbar "Cerrado" en cada fila/sesión que cae en periodo contable cerrado, usando `useCierreContable.isPeriodoCerrado(fecha)`. Evita el rebote del toast del trigger DB.
 - **PDF descargable del cierre contable** desde `CierresContablesPanel`: header BRAND + datos fiscales + periodo + snapshot tabla (Ventas/Gastos/Sueldos/OC) + resumen (Egresos + Resultado neto). Lee de `cierres_contables.totales JSONB`.
 - **Cron limpieza tokens transportista** (migration 143): pg_cron diario 07:00 UTC. NULL en `envios.token_transportista` para envíos entregados/cancelados/devolucion con +30 días.
 - **Múltiples fotos POD** (migration 144): tabla `envio_pod_fotos` con RLS + backfill + componente `PodFotosManager` con upload múltiple, thumbnails y eliminar. Integrado en modal POD y modal de edición. Sincroniza la primera foto (orden 0) con `envios.pod_url` para retro-compat.
+
+### Cambios — bugfixes (10 issues)
+- **ISS-182/183** (Gastos): comprobante obligatorio + medios de pago que cubran el total se validan al guardar.
+- **ISS-184** (RRHH): empleados aparecen al instante tras crear (optimistic update).
+- **ISS-195** (Cierre): cierres visibles en historial (quitado `users.email` inexistente del select).
+- **ISS-150** (Recepción): precio costo no editable si la OC ya está pagada.
+- **ISS-186** (RRHH/Caja) · migration 145: pagar nómina desde bóveda/caja considera traspasos en el saldo.
+- **ISS-193** (Caja) · migration 146: corregir un traspaso ajusta la caja origen.
+- **ISS-156/175/176** (Envíos): envío cobrado en venta no figura en Pagos Courier; `/transporte` valida pago.
+- **ISS-185** (RRHH) · migration 147: supervisor del empleado = otro empleado (FK a empleados).
+
+### Resiliencia
+- ErrorBoundary reporta a Sentry + muestra detalle/ID + boundary por-ruta (un crash de página no tumba el menú).
 
 ---
 

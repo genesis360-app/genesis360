@@ -172,7 +172,7 @@ export default function EnviosPage() {
       const idsConEnvio = (conEnvio ?? []).map((e: any) => e.venta_id).filter(Boolean)
 
       let q = supabase.from('ventas')
-        .select('id, numero, numero_sucursal, sucursal_id, total, estado, origen, created_at, cliente_id, clientes(nombre, id)')
+        .select('id, numero, numero_sucursal, sucursal_id, total, costo_envio, estado, origen, created_at, cliente_id, clientes(nombre, id)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'reservada'])
         .order('created_at', { ascending: false })
@@ -240,11 +240,14 @@ export default function EnviosPage() {
   const { data: enviosPendientesPago = [] } = useQuery({
     queryKey: ['envios-pendientes-pago', tenant?.id, sucursalId],
     queryFn: async () => {
+      // ISS-175: solo pagos a COURIER (tercero) pendientes. Envío propio nunca se le paga a un courier;
+      // y los envíos cuyo costo ya cobró el cliente en la venta vienen con costo_pagado=true.
       let q = supabase.from('envios')
         .select('id, numero, courier, costo_cotizado, estado, created_at, ventas(numero, numero_sucursal, sucursal_id, clientes(nombre))')
         .eq('tenant_id', tenant!.id)
         .eq('costo_pagado', false)
         .gt('costo_cotizado', 0)
+        .neq('courier', 'Envío propio')
         .order('created_at', { ascending: false })
       q = applyFilter(q)
       const { data } = await q
@@ -318,7 +321,11 @@ export default function EnviosPage() {
         const { error } = await supabase.from('envios').update(payload).eq('id', editId)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('envios').insert(payload)
+        // ISS-156: si el costo del envío ya lo cobró el cliente en la venta despachada,
+        // o si es envío propio (sin courier a quien pagar), nace saldado → no va a Pagos Courier.
+        const envioYaSaldado = form.courier === 'Envío propio'
+          || (!!ventaSeleccionada && Number(ventaSeleccionada.costo_envio ?? 0) > 0 && ventaSeleccionada.estado === 'despachada')
+        const { error } = await supabase.from('envios').insert({ ...payload, costo_pagado: envioYaSaldado })
         if (error) throw error
       }
     },

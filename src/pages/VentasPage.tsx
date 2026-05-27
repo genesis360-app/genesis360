@@ -1719,6 +1719,11 @@ export default function VentasPage() {
       }
       // Auto-crear envío si el toggle está activo
       if (requiereEnvio && estado !== 'pendiente') {
+        // ISS-156/175: el costo del envío que paga el CLIENTE ya entra con la venta.
+        // - Envío propio: no hay courier a quien pagar → siempre saldado.
+        // - Envío por tercero: si la venta se despachó (cobrada al 100%), el costo ya se cobró → saldado.
+        //   Si es reserva (pago parcial), queda pendiente hasta el despacho.
+        const envioYaSaldado = envioTransporte === 'propio' || (estado === 'despachada' && costoEnvioNum > 0)
         await supabase.from('envios').insert({
           tenant_id: tenant!.id,
           venta_id: venta.id,
@@ -1728,6 +1733,7 @@ export default function VentasPage() {
           sucursal_id: sucursalId || null,
           destino_descripcion: envioDestinoVenta || null,
           costo_cotizado: costoEnvioNum > 0 ? costoEnvioNum : null,
+          costo_pagado: envioYaSaldado,
           fecha_entrega_acordada: envioFechaVenta || null,
           courier: envioTransporte === 'tercero' ? (envioCourier || null) : 'Envío propio',
           servicio: envioTransporte === 'tercero' ? (envioServicio.trim() || null) : null,

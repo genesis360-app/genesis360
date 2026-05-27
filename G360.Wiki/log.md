@@ -6,6 +6,33 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-27] update | v1.10.1-dev — Tanda de bugfixes (10 issues) + resiliencia ErrorBoundary
+
+Continuación de la sesión v1.10.1. Mientras los relevamientos esperan respuesta, se atacó la lista de bugs críticos priorizada con GO. Todo en DEV, parte del lote v1.10.1 (no deployado).
+
+### Bugfixes
+- **ISS-182/183 (Gastos)**: `guardar()` y `confirmarGenerarFijo()` ahora validan comprobante obligatorio (según las 4 reglas del tenant) y que los medios de pago cubran exactamente el total con tipo definido. Antes dejaba crear gastos sin comprobante y con medios sin definir.
+- **ISS-184 (RRHH)**: la mutation de empleados usa `.select()` con joins + optimistic update via `setQueryData` → el empleado aparece al instante (antes "No hay empleados" hasta F5).
+- **ISS-195 (Gastos/Cierre)**: el panel de cierres no listaba nada porque el select pedía `users.email` (columna inexistente; el email vive en auth.users). Removido de `CierresContablesPanel`.
+- **ISS-150 (Recepción)**: al recibir una OC ya pagada, el precio costo se muestra como label "OC pagada (no editable)" en vez de input.
+- **ISS-186 (RRHH/Caja)** · migration 145: `pagar_nomina_empleado` calculaba saldo sin contar `ingreso_traspaso`/`egreso_traspaso`. La bóveda (que recibe por traspaso) daba "saldo insuficiente". Alineado con la lógica del frontend.
+- **ISS-193 (Caja)** · migration 146: `caja_traspasos` ahora guarda `movimiento_origen_id`/`movimiento_destino_id`. Al corregir un traspaso recibido, se inserta el ajuste de la diferencia en la caja origen (si está abierta; si no, error claro). Traspasos viejos sin FK no se propagan.
+- **ISS-156/175/176 (Envíos)**: el envío cuyo costo cobró el cliente en la venta nace `costo_pagado=true` (propio siempre; tercero si la venta se despachó). Tab Pagos Courier excluye `Envío propio`. `/transporte` valida pago: banner rojo + botones de avance deshabilitados si el costo está pendiente (`get_envio_by_token` ya exponía `costo_cotizado`/`costo_pagado`).
+- **ISS-185 (RRHH)** · migration 147: `empleados.supervisor_id` re-apuntado de `users(id)` a `empleados(id)`. El organigrama se arma con empleados de RRHH. `get_supervisor_team_ids()` reescrita para mapear `auth.uid()` → `empleados.user_id` → `supervisor_id`. Selector de supervisor lista empleados (excluye al editado). Los 8 supervisor_id viejos (a users) se nulearon. **Mi Equipo del SUPERVISOR queda vacío hasta vincular `empleados.user_id`** (pendiente UI — relevamiento A5).
+
+### Resiliencia (Heisenbug "Algo salió mal" reportado por GO)
+- ErrorBoundary: antes solo `console.error`. Ahora reporta a **Sentry** (con componentStack) + muestra el mensaje del error + Sentry ID + botón "Copiar detalle". Esto permite diagnosticar los crashes intermitentes que GO reportó en Config→Estados/Grupos y Gastos.
+- **Boundary por-ruta** en AppLayout (`<ErrorBoundary inline key={pathname}>` alrededor del `<Outlet />`): un crash de página ya no tumba toda la app — el menú sobrevive y al navegar se resetea.
+- `GruposEstadosPage`: blindado `grupo_estado_items ?? []` (causa probable del crash en esa pantalla).
+- **Pendiente diagnóstico**: el crash en Gastos no se identificó a ojo — necesita el stack real que el boundary ahora captura.
+
+### Estado al cierre
+- DEV: v1.10.1 con migrations 130-147
+- PROD: v1.10.0 (143-147 pendientes)
+- Lote v1.10.1 listo para PR `dev→main` cuando GO decida deployar
+
+---
+
 ## [2026-05-27] update | v1.10.1-dev — Cierre HITO v1.9.0 + quick wins Envíos
 
 Sesión paralela al relevamiento de Ventas/RRHH/Clientes/Compras/Envíos (HTMLs generados ayer, pendientes de respuesta). Se cerraron los últimos pendientes del HITO Cierre Contable v1.9.0 + 2 quick wins del backlog de Envíos.

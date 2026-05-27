@@ -133,7 +133,7 @@ interface Empleado {
   // Joins
   puesto?: { id: string; nombre: string }
   departamento?: { id: string; nombre: string }
-  supervisor?: { id: string; nombre_display: string }
+  supervisor?: { id: string; nombre: string; apellido: string | null }
 }
 
 interface Puesto {
@@ -295,7 +295,7 @@ export default function RrhhPage() {
     queryKey: ['empleados', tenant?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('empleados')
-        .select('*, puesto:rrhh_puestos(id, nombre), departamento:rrhh_departamentos(id, nombre), supervisor:users!supervisor_id(id, nombre_display)')
+        .select('*, puesto:rrhh_puestos(id, nombre), departamento:rrhh_departamentos(id, nombre), supervisor:empleados!supervisor_id(id, nombre, apellido)')
         .eq('tenant_id', tenant!.id)
         .order('fecha_ingreso', { ascending: false })
       if (error) throw error
@@ -490,15 +490,18 @@ export default function RrhhPage() {
     enabled: !!tenant && activeTab === 'asistencia',
   })
 
+  // ISS-185: el supervisor de un empleado es OTRO EMPLEADO (no un user del sistema).
+  // El organigrama se arma con empleados de RRHH.
   const { data: supervisores = [] } = useQuery({
-    queryKey: ['usuarios-supervisores', tenant?.id],
+    queryKey: ['empleados-supervisores', tenant?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('users')
-        .select('id, nombre_display')
+      const { data, error } = await supabase.from('empleados')
+        .select('id, nombre, apellido')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
+        .order('nombre')
       if (error) throw error
-      return (data ?? []) as Array<{ id: string; nombre_display: string }>
+      return (data ?? []) as Array<{ id: string; nombre: string; apellido: string | null }>
     },
     enabled: !!tenant,
   })
@@ -547,7 +550,7 @@ export default function RrhhPage() {
         // en el cache via setQueryData en onSuccess (evita el caso "lista vacía hasta F5").
         const { data: inserted, error } = await supabase.from('empleados')
           .insert({ tenant_id: tenant!.id, ...campos })
-          .select('*, puesto:rrhh_puestos(id, nombre), departamento:rrhh_departamentos(id, nombre), supervisor:users!supervisor_id(id, nombre_display)')
+          .select('*, puesto:rrhh_puestos(id, nombre), departamento:rrhh_departamentos(id, nombre), supervisor:empleados!supervisor_id(id, nombre, apellido)')
           .single()
         if (error) throw error
         logActividad({
@@ -563,7 +566,7 @@ export default function RrhhPage() {
           .from('empleados')
           .update(campos)
           .eq('id', selectedEmpleado.id)
-          .select('*, puesto:rrhh_puestos(id, nombre), departamento:rrhh_departamentos(id, nombre), supervisor:users!supervisor_id(id, nombre_display)')
+          .select('*, puesto:rrhh_puestos(id, nombre), departamento:rrhh_departamentos(id, nombre), supervisor:empleados!supervisor_id(id, nombre, apellido)')
           .single()
         if (error) throw error
         logActividad({
@@ -1297,8 +1300,11 @@ export default function RrhhPage() {
     setShowCapForm(true)
   }
 
-  // Equipo (Phase 5): equipo del supervisor actual
-  const teamEmpleados = empleados.filter((e) => e.supervisor_id === user?.id && e.activo)
+  // Equipo (Phase 5): equipo del supervisor actual.
+  // ISS-185: supervisor_id ahora apunta a empleados.id, así que mapeamos el user
+  // actual a su empleado (empleados.user_id = user.id) y filtramos por ese id.
+  const miEmpleadoId = empleados.find((e) => e.user_id === user?.id)?.id ?? null
+  const teamEmpleados = empleados.filter((e) => miEmpleadoId && e.supervisor_id === miEmpleadoId && e.activo)
 
   // Query: asistencia hoy del equipo (para tab equipo)
   const todayStr = format(new Date(), 'yyyy-MM-dd')
@@ -1614,11 +1620,13 @@ export default function RrhhPage() {
                     className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg col-span-2"
                   >
                     <option value="">Selecciona supervisor...</option>
-                    {supervisores.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.nombre_display}
-                      </option>
-                    ))}
+                    {supervisores
+                      .filter((s) => s.id !== selectedEmpleado?.id)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {[s.nombre, s.apellido].filter(Boolean).join(' ')}
+                        </option>
+                      ))}
                   </select>
 
                   <select
@@ -3558,8 +3566,8 @@ export default function RrhhPage() {
                 const key = e.supervisor_id ?? '__root__'
                 if (!bySup[key]) bySup[key] = []
                 bySup[key].push(e)
-                if (e.supervisor_id && e.supervisor?.nombre_display) {
-                  supNombres[e.supervisor_id] = e.supervisor.nombre_display
+                if (e.supervisor_id && e.supervisor) {
+                  supNombres[e.supervisor_id] = [e.supervisor.nombre, e.supervisor.apellido].filter(Boolean).join(' ')
                 }
               })
 

@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-144)
+# Historial de Migraciones (001-147)
 
-**Total al 2026-05-27:** 144 archivos de migración + 086b correctivo.  
+**Total al 2026-05-27:** 147 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -208,6 +208,9 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 142 | `142_caja_reportes.sql` | **Caja HITO v1.10.0** · vista `vw_caja_resumen_diario` (agregado día/caja/sucursal) + vista `vw_caja_mensual_por_sucursal` (alineada con cierre contable). Usadas por los 4 reportes de Caja (I1/I2) |
 | 143 | `143_cron_cleanup_envio_tokens.sql` | **v1.10.1 quick win** · pg_cron `cleanup_envio_tokens_transportista` diario 07:00 UTC. NULL en `envios.token_transportista` para envíos entregados/cancelados/devolucion con +30 días desde último update — invalida links públicos viejos sin tocar el resto del envío |
 | 144 | `144_envio_pod_fotos.sql` | **v1.10.1 quick win** · tabla `envio_pod_fotos(id, envio_id, tenant_id, url, storage_path, orden, created_at, created_by)` con RLS por tenant + backfill desde `envios.pod_url`. Soporta N fotos por POD; la de orden 0 sincroniza con `envios.pod_url` para retro-compat. Usada por componente `PodFotosManager` |
+| 145 | `145_fix_pagar_nomina_saldo.sql` | **Bugfix ISS-186** · `pagar_nomina_empleado` ahora cuenta `ingreso_traspaso`/`egreso_traspaso` en el saldo. Antes la bóveda (que recibe por traspaso) daba "saldo insuficiente" al pagar nómina |
+| 146 | `146_caja_traspasos_movimientos_fk.sql` | **Bugfix ISS-193** · `caja_traspasos.movimiento_origen_id` + `movimiento_destino_id` (FK a caja_movimientos). Permite que al corregir un traspaso se ajuste la caja contraparte (devuelve/cobra la diferencia) |
+| 147 | `147_empleados_supervisor_empleado.sql` | **Bugfix ISS-185** · `empleados.supervisor_id` re-apuntado de `users(id)` a `empleados(id)` — organigrama armado con empleados de RRHH. `get_supervisor_team_ids()` reescrita: mapea `auth.uid()` → `empleados.user_id` → `supervisor_id`. ⚠ Nulea supervisor_id viejos que apuntaban a users |
 
 ---
 

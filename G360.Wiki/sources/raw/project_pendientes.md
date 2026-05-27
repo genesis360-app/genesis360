@@ -10,14 +10,35 @@ type: project
 
 ---
 
-## Estado actual DEV v1.10.1 / PROD v1.10.0 (cierre sesión 2026-05-27 — Cierre HITO v1.9.0 + quick wins Envíos)
+## Estado actual DEV v1.10.1 / PROD v1.10.0 (cierre sesión 2026-05-27 — Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes)
 
 - APP_VERSION DEV: `v1.10.1` ✅
-- APP_VERSION PROD: `v1.10.0` (143-144 pendientes de deploy)
-- Migrations DEV: 001–144 ✅
-- Migrations PROD: 001–142 ✅ (143 cron limpieza tokens + 144 envio_pod_fotos pendientes)
+- APP_VERSION PROD: `v1.10.0` (143-147 pendientes de deploy)
+- Migrations DEV: 001–147 ✅
+- Migrations PROD: 001–142 ✅ (143-147 pendientes)
 - **Relevamientos abiertos**: 5 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos) listos para que GO + socio respondan
 - **Cierre HITO v1.9.0**: 100% completo (candado por fila + PDF cierre) ✅
+
+### Bugfixes resueltos en DEV esta sesión (parte del lote v1.10.1)
+
+| ID | Módulo | Fix | Migration |
+|---|---|---|---|
+| ISS-182 | Gastos | Comprobante obligatorio se valida al guardar según reglas del tenant (antes dejaba crear sin él) | — |
+| ISS-183 | Gastos | Medios de pago deben cubrir exactamente el total y tener tipo definido (antes guardaba con medio sin definir) | — |
+| ISS-184 | RRHH | Empleados aparecen al instante tras crear (optimistic update + select con joins; antes requería F5) | — |
+| ISS-195 | Gastos | Cierre contable invisible en historial — el select pedía `users.email` (no existe). Removido | — |
+| ISS-150 | Recepción | Precio costo no editable (label) si la OC ya está pagada | — |
+| ISS-186 | RRHH | Pagar nómina desde bóveda/caja ya no da "saldo insuficiente" — el saldo ahora incluye traspasos | 145 |
+| ISS-193 | Caja | Corregir un traspaso refleja la diferencia en la caja origen (FK movimientos + ajuste contraparte) | 146 |
+| ISS-156/175/176 | Envíos | Envío cobrado en la venta nace `costo_pagado=true` → no figura en Pagos Courier; propio excluido del tab; `/transporte` valida pago antes de avanzar estado | — |
+| ISS-185 | RRHH | Supervisor del empleado ahora es OTRO empleado (FK a empleados, no users); organigrama 100% RRHH; self-service mapea `empleados.user_id` | 147 |
+
+**Resiliencia (no es ISS):** ErrorBoundary ahora reporta a Sentry + muestra mensaje/ID + botón copiar; boundary por-ruta en AppLayout (un crash de página ya no tumba el menú); GruposEstadosPage blindado contra `grupo_estado_items` null.
+
+### ⚠ Pendiente al deployar v1.10.1 a PROD
+- Aplicar migrations **143, 144, 145, 146, 147** en PROD (todas aditivas/idempotentes; 147 cambia FK supervisor_id — ver nota)
+- **147 nota**: al aplicar en PROD se nulean los `supervisor_id` que apunten a users sin empleado vinculado. Para reactivar "Mi Equipo" del SUPERVISOR hay que vincular `empleados.user_id` (pendiente UI — relevamiento RRHH A5)
+- PR `dev → main` v1.10.1 + GitHub release
 
 ### Lo producido en DEV en esta sesión (2026-05-27 — v1.10.1)
 

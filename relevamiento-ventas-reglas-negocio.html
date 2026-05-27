@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Módulo Ventas · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Módulo Ventas</h1>
+<div class="meta">
+  Genesis360 · v1.10.0 · Fecha: 26 de mayo de 2026 · Relevamiento con Gastón Otranto + socio
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas con
+  <span class="tag tag-existente">EXISTENTE</span> piden confirmar reglas ya implementadas;
+  <span class="tag tag-nuevo">NUEVO</span> piden definir reglas pendientes;
+  <span class="tag tag-cambio">CAMBIO</span> señalan contradicciones a resolver entre lo relevado antes y lo que ya está en código.
+  Cuando contesten, las cargo en wiki y planificamos la implementación.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo:</strong> POS multi-LPN · 3 modos (Reservar / Venta directa / Presupuesto) ·
+  Estados <code>pendiente</code>/<code>reservada</code>/<code>despachada</code>/<code>cancelada</code>/<code>devuelta</code> ·
+  Medios de pago combinables (Efectivo / Tarjeta / Transferencia / Cheque / MP QR / CC) · Cuotas tarjeta por banco ·
+  Descuento máximo por rol (configurable en Config → Ventas) · Devoluciones con ubicación/estado DEV · NC para ventas
+  facturadas (sin NC electrónica AFIP todavía) · Numeración por sucursal · Canales (POS / IG / FB / WA / Otros / MELI / TN) ·
+  Cierre contable mensual bloquea edición de ventas anteriores.
+</div>
+
+<!-- ============================ A. DEVOLUCIONES ============================ -->
+<h2>A. Devoluciones</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Plazo máximo para aceptar una devolución <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: sin plazo — se puede devolver una venta despachada en cualquier momento.</div>
+  <ul class="opciones">
+    <li>(a) Sin plazo — siempre se puede devolver</li>
+    <li>(b) Plazo configurable por tenant (ej: 7 / 15 / 30 días desde el despacho)</li>
+    <li>(c) Plazo por categoría de producto (perecedero 24h, ropa 30 días, electro 90 días)</li>
+    <li>(d) Plazo legal (defensa del consumidor, 10 días corridos) + permitir extensión configurable</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Devolución parcial (devolver algunos ítems de la venta, no todos) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: ya se puede devolver ítem por ítem con cantidades parciales.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — permitir parcial en cualquier ítem y cualquier cantidad</li>
+    <li>(b) Solo total — todo o nada</li>
+    <li>(c) Parcial sí, pero ítems con descuento global se devuelven enteros (no fraccionados)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Quién puede procesar una devolución <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: cualquier rol con acceso a Ventas (incluye CAJERO).</div>
+  <ul class="opciones">
+    <li>(a) Cualquier rol con acceso a Ventas (como hoy)</li>
+    <li>(b) Solo DUEÑO / SUPERVISOR / ADMIN</li>
+    <li>(c) CAJERO puede devoluciones del mismo día; otras fechas requieren SUPERVISOR+</li>
+    <li>(d) CAJERO inicia, SUPERVISOR aprueba (con notificación)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    Motivo de devolución <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: campo libre de texto.</div>
+  <ul class="opciones">
+    <li>(a) Texto libre (como hoy)</li>
+    <li>(b) Catálogo cerrado de motivos (Falla / Cambio de talle / Arrepentimiento / Garantía / Otro)</li>
+    <li>(c) Catálogo + observación libre obligatoria</li>
+    <li>(d) Catálogo configurable por tenant en Config → Ventas</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span><span class="pregunta-titulo">
+    Reintegro del dinero <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: se elige medio de pago para la devolución (efectivo → egreso real en caja; otros → egreso informativo).</div>
+  <ul class="opciones">
+    <li>(a) Como hoy — el operador elige el medio (efectivo si hay caja, transferencia, etc.)</li>
+    <li>(b) Mismo medio que la venta original (si pagó tarjeta → devolver a tarjeta)</li>
+    <li>(c) Mismo medio + override con clave maestra para cambiar</li>
+    <li>(d) Crédito en cuenta del cliente (nota de haber, no efectivo) por default</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A6</span><span class="pregunta-titulo">
+    Devolución en efectivo con caja cerrada <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: bloqueado (necesita caja abierta para egreso efectivo).</div>
+  <ul class="opciones">
+    <li>(a) Mantener — bloquear hasta que haya caja abierta</li>
+    <li>(b) Permitir solo si DUEÑO/SUPERVISOR abre caja para hacer la devolución</li>
+    <li>(c) Permitir crédito en cuenta (no efectivo) si la caja está cerrada</li>
+    <li>(d) Generar "vale" que se cobra cuando se abra caja</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A7</span><span class="pregunta-titulo">
+    Estado del producto devuelto (reingreso al stock) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: producto va a ubicación DEV + estado DEV, queda excluido de venta. Hay que decidir manualmente si vuelve al stock normal.</div>
+  <ul class="opciones">
+    <li>(a) Como hoy — siempre va a DEV, alguien decide después</li>
+    <li>(b) Opción en el modal: "Reintegrar a stock vendible" vs "Dejar en DEV para evaluación"</li>
+    <li>(c) Auto según motivo (Cambio de talle → stock vendible; Falla → DEV)</li>
+    <li>(d) Solo a stock vendible si el operador tiene rol DUEÑO/SUPERVISOR; otros siempre a DEV</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A8</span><span class="pregunta-titulo">
+    Series (productos serializados) devueltas <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: la serie original se reactiva (<code>activo=true, reservado=false</code>) y vuelve a la línea original.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — re-activa la serie original en su línea</li>
+    <li>(b) Re-activar pero moverla a una línea separada "Series devueltas" para revisión</li>
+    <li>(c) Permitir elegir destino (línea original, ubicación DEV, descartar) en el modal</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A9</span><span class="pregunta-titulo">
+    Comprobante de devolución <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: PDF imprimible al finalizar.</div>
+  <ul class="opciones">
+    <li>(a) PDF imprimible (como hoy)</li>
+    <li>(b) PDF + email al cliente automático</li>
+    <li>(c) PDF + ticket térmico (58/80mm)</li>
+    <li>(d) PDF + ticket + envío por WhatsApp con link</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A10</span><span class="pregunta-titulo">
+    Nota de Crédito electrónica (AFIP) para venta facturada <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: genera <code>numero_nc = "NC-{numero}-N"</code> interno. No emite NC electrónica con CAE.</div>
+  <ul class="opciones">
+    <li>(a) Generar NC electrónica AFIP automáticamente al confirmar la devolución (factura A/B/C → NC A/B/C)</li>
+    <li>(b) Generar NC electrónica solo si el operador marca "Emitir NC AFIP" (opcional)</li>
+    <li>(c) Postergar — seguir con NC interna, NC AFIP en fase posterior</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A11</span><span class="pregunta-titulo">
+    Devolución sin ticket / venta original <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Cliente vuelve sin ticket pero quiere devolver el producto.</div>
+  <ul class="opciones">
+    <li>(a) No se acepta — siempre se vincula a una venta concreta</li>
+    <li>(b) Permitir devolución "huérfana" con clave maestra del DUEÑO</li>
+    <li>(c) Permitir con DNI del cliente buscando ventas previas</li>
+    <li>(d) Solo cambio por otro producto del mismo valor, sin reintegro</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A12</span><span class="pregunta-titulo">
+    Devoluciones múltiples sobre la misma venta <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: se permite — el modal muestra "Devoluciones (n)" colapsable y suma los totales devueltos.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — sin límite, suma hasta llegar al total</li>
+    <li>(b) Solo 1 devolución por venta — todo en un evento</li>
+    <li>(c) Múltiples pero con plazo entre devoluciones (ej: no más de 1 por día)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. RE-APERTURA / EDICIÓN POST-VENTA ============================ -->
+<h2>B. Re-apertura y edición post-venta</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Re-abrir una venta despachada (volver a estado editable) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: <code>despachada</code> es no editable. Si hay error, se anula con devolución y se rehace.</div>
+  <ul class="opciones">
+    <li>(a) No permitir — siempre rehacer con devolución + nueva venta (como hoy)</li>
+    <li>(b) Permitir solo DUEÑO/ADMIN con clave maestra, antes de cierre contable del mes</li>
+    <li>(c) Permitir cualquier operador del mismo día, mismas reglas que venta nueva</li>
+    <li>(d) Permitir corregir solo datos accesorios (cliente, canal, notas) — no ítems/precios/pago</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Cambiar el cliente de una venta despachada <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Caso típico: vendieron sin elegir cliente, ahora el cliente quiere factura A con su CUIT.</div>
+  <ul class="opciones">
+    <li>(a) No permitir — venta queda con el cliente original</li>
+    <li>(b) Permitir cualquier rol mientras la venta no esté facturada</li>
+    <li>(c) Permitir solo DUEÑO/SUPERVISOR/ADMIN, registrar en audit log</li>
+    <li>(d) Permitir solo el mismo día del despacho</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Vincular factura electrónica tardía (factura emitida después del despacho) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: la opción de facturar aparece justo post-despacho. Si el cliente vuelve al día siguiente pidiendo factura, no hay UI para volver a abrir el modal.</div>
+  <ul class="opciones">
+    <li>(a) Permitir facturar desde el detalle de venta despachada — sin restricción de fecha</li>
+    <li>(b) Permitir hasta N días después del despacho (configurable, ej: 7 días)</li>
+    <li>(c) Solo dentro del mismo mes contable (antes del cierre)</li>
+    <li>(d) No permitir — siempre rehacer la venta</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Cambiar medio de pago retroactivamente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Caso típico: registraron "Efectivo" pero el cliente había pagado con tarjeta.</div>
+  <ul class="opciones">
+    <li>(a) No permitir — siempre devolución + nueva venta</li>
+    <li>(b) Permitir solo si la sesión de caja sigue abierta, con clave maestra del DUEÑO</li>
+    <li>(c) Permitir solo DUEÑO/ADMIN antes del cierre contable, con audit log</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span><span class="pregunta-titulo">
+    Anular venta entera (vs devolución parcial) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: anulación = devolución total (estado <code>devuelta</code>). No hay un "anular" rápido.</div>
+  <ul class="opciones">
+    <li>(a) Mantener flujo único — siempre devolución (parcial o total)</li>
+    <li>(b) Agregar botón "Anular venta" que hace devolución total automática con motivo "Anulación"</li>
+    <li>(c) Anular sin generar movimientos contables, solo dentro de las primeras X horas (ej: 1h)</li>
+    <li>(d) Anular solo si la venta no afectó caja todavía (ej: presupuesto/pendiente)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B6</span><span class="pregunta-titulo">
+    Bloqueo por cierre contable <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: después del cierre mensual, las ventas del mes quedan bloqueadas para UPDATE/DELETE. Solo "Nota de corrección".</div>
+  <ul class="opciones">
+    <li>(a) Mantener — bloqueo total, solo nota de corrección</li>
+    <li>(b) Permitir devolución (que genera registros nuevos) pero no edición</li>
+    <li>(c) Permitir devolución + cambio de cliente (datos accesorios) pero no de monto</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. LÍMITES DE VENTA ============================ -->
+<h2>C. Límites y restricciones de venta</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Máximo de ítems (productos distintos) por venta <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: sin límite. ¿Hace falta tope técnico o operativo?</div>
+  <ul class="opciones">
+    <li>(a) Sin límite (como hoy)</li>
+    <li>(b) Tope técnico generoso (ej: 200 ítems) — alerta antes, bloqueo si se supera</li>
+    <li>(c) Tope configurable por tenant en Config → Ventas</li>
+    <li>(d) Tope por rol (CAJERO máx 50, SUPERVISOR sin límite)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Monto máximo por venta sin autorización <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Estilo "umbral_gasto_cajero" que ya existe en Gastos. Útil para evitar errores caros.</div>
+  <ul class="opciones">
+    <li>(a) Sin límite — cualquier monto se puede registrar</li>
+    <li>(b) Umbral configurable por rol y por sucursal (CAJERO hasta $X, SUPERVISOR hasta $Y)</li>
+    <li>(c) Umbral con autorización in-app del SUPERVISOR (notificación + aprobación)</li>
+    <li>(d) Solo alerta visual cuando se supera, sin bloqueo</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Descuento máximo por rol <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: <code>descuento_max_cajero_pct</code> y <code>descuento_max_supervisor_pct</code> en Config → Ventas. DUEÑO sin límite.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — porcentaje fijo por rol</li>
+    <li>(b) Permitir override con autorización in-app del SUPERVISOR+</li>
+    <li>(c) Sumar descuento por sucursal (CAJERO en S1 hasta 10%, en S2 hasta 5%)</li>
+    <li>(d) Distinguir descuento por ítem vs global, con tope distinto</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    Venta por debajo del precio de costo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Producto con costo $100, vendido a $90 (descuento manual). Margen negativo.</div>
+  <ul class="opciones">
+    <li>(a) Permitir sin avisar (como hoy)</li>
+    <li>(b) Mostrar alerta amarilla en el carrito, dejar continuar</li>
+    <li>(c) Bloquear salvo que SUPERVISOR+ autorice</li>
+    <li>(d) Solo permitir si el descuento global compensa (ej: combo con margen total positivo)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C5</span><span class="pregunta-titulo">
+    Stock negativo (vender sin stock) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: si no hay stock, el sistema bloquea la venta. No se permite stock negativo.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — siempre bloquear venta sin stock</li>
+    <li>(b) Permitir venta sin stock pero forzar estado <code>pendiente</code> hasta recepción</li>
+    <li>(c) Permitir con autorización DUEÑO/SUPERVISOR (sale como "Reservada sin stock")</li>
+    <li>(d) Configurable por tenant en Config → Ventas (default OFF)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C6</span><span class="pregunta-titulo">
+    Tope de productos restringidos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Casos típicos: medicamentos con receta, productos con verificación de edad, ventas reguladas.</div>
+  <ul class="opciones">
+    <li>(a) No aplica al negocio</li>
+    <li>(b) Flag por producto "requiere validación" — pide DNI/edad/receta antes de agregar al carrito</li>
+    <li>(c) Categorías restringidas (configurables) con tope diario por cliente</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. CC CLIENTES ============================ -->
+<h2>D. Cuenta corriente de clientes</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Límite de deuda por cliente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: CC se habilita por cliente, sin límite monetario.</div>
+  <ul class="opciones">
+    <li>(a) Sin límite (como hoy)</li>
+    <li>(b) <code>clientes.limite_cc DECIMAL</code> — bloqueo si la deuda total supera el límite</li>
+    <li>(c) Solo alerta visual al superar (no bloqueo)</li>
+    <li>(d) Bloqueo automático + override con clave maestra del DUEÑO</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Vencimiento de la deuda <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: la deuda no vence ni genera intereses.</div>
+  <ul class="opciones">
+    <li>(a) Sin vencimiento ni intereses (como hoy)</li>
+    <li>(b) Fecha de vencimiento por venta (configurable, ej: 30 días)</li>
+    <li>(c) Vencimiento + interés mensual configurable (ej: 5% mensual sobre saldo vencido)</li>
+    <li>(d) Vencimiento sin interés, solo alerta y bloqueo de nuevas CC al vencer</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    Notificación al cliente cuando se registra deuda <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No notificar (como hoy)</li>
+    <li>(b) Email automático con detalle de la venta y saldo total adeudado</li>
+    <li>(c) WhatsApp con link a estado de cuenta</li>
+    <li>(d) Email + WhatsApp (ambos)</li>
+    <li>(e) Configurable por tenant en Config → Clientes</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span><span class="pregunta-titulo">
+    Notificación de vencimiento de deuda <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Si activamos vencimiento (D2 b/c/d), qué hacemos cuando se acerca/cumple.</div>
+  <ul class="opciones">
+    <li>(a) Recordatorio N días antes del vencimiento (configurable)</li>
+    <li>(b) Aviso el día del vencimiento + recordatorio cada 7 días si sigue impaga</li>
+    <li>(c) Solo al vencer + escalado al DUEÑO si pasa X días</li>
+    <li>(d) No notificar al cliente — solo al DUEÑO/SUPERVISOR internamente</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D5</span><span class="pregunta-titulo">
+    Forma de saldar la deuda <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: la deuda se salda desde la ficha del cliente (no desde una nueva venta).</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo desde ficha del cliente</li>
+    <li>(b) Permitir también desde POS como "Pago de deuda" (genera movimiento informativo/efectivo)</li>
+    <li>(c) Desde ficha + cobranza masiva (varias ventas del cliente en un pago)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D6</span><span class="pregunta-titulo">
+    Política de morosidad <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cliente con deuda vencida no puede hacer nuevas ventas CC pero sí efectivo</li>
+    <li>(b) Cliente con deuda vencida no puede hacer ninguna venta hasta saldar</li>
+    <li>(c) Solo alerta al cajero al elegir el cliente, sin bloqueo</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D7</span><span class="pregunta-titulo">
+    Incobrables (deudas dadas de baja) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No aplica — siempre se intenta cobrar</li>
+    <li>(b) Botón "Dar de baja como incobrable" en ficha del cliente — genera gasto "Deudores incobrables"</li>
+    <li>(c) Marca de incobrable + reporte para CONTADOR (sin generar gasto)</li>
+    <li>(d) Solo DUEÑO con clave maestra puede dar de baja una deuda</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D8</span><span class="pregunta-titulo">
+    Tope de deuda global por tenant <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Alerta al DUEÑO cuando el total de CC pendiente supera un umbral del flujo de caja.</div>
+  <ul class="opciones">
+    <li>(a) No es necesario</li>
+    <li>(b) Umbral fijo configurable (ej: $500.000 total adeudado)</li>
+    <li>(c) Porcentaje de la facturación mensual (ej: deuda &gt; 30% de ventas del mes alerta)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. RESERVAS Y CANCELACIONES ============================ -->
+<h2>E. Reservas y cancelaciones</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    Vencimiento de reservas <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: las reservas no vencen automáticamente — el stock queda reservado indefinidamente.</div>
+  <ul class="opciones">
+    <li>(a) Sin vencimiento (como hoy)</li>
+    <li>(b) Vencimiento configurable (ej: 7 días sin despachar → alerta)</li>
+    <li>(c) Vencimiento + liberación automática del stock al vencer</li>
+    <li>(d) Vencimiento configurable por tipo (reserva con seña: 30 días, sin seña: 3 días)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Cancelación de reserva con seña pagada <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: cancela la reserva, libera stock. La seña se devuelve manualmente (egreso en caja).</div>
+  <ul class="opciones">
+    <li>(a) Mantener — cancela + devuelve seña 100% al cliente</li>
+    <li>(b) Permitir penalidad configurable (ej: retener X% de la seña como compensación)</li>
+    <li>(c) Permitir convertir la seña en crédito en cuenta del cliente (no efectivo)</li>
+    <li>(d) Devolución total o crédito en cuenta — elige el operador</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Motivo de cancelación de reserva <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Texto libre (como hoy)</li>
+    <li>(b) Catálogo cerrado (Cliente arrepentido / Producto roto / Stock perdido / Otro)</li>
+    <li>(c) Catálogo + observación libre obligatoria</li>
+    <li>(d) Catálogo configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    Quién puede cancelar una reserva <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cualquier rol con acceso a Ventas (como hoy)</li>
+    <li>(b) Solo el CAJERO que creó la reserva + DUEÑO/SUPERVISOR</li>
+    <li>(c) Solo DUEÑO/SUPERVISOR si la reserva tiene seña pagada; el creador si no</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E5</span><span class="pregunta-titulo">
+    Modificar reserva (cambiar ítems/cantidad/precio) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: "Modificar reserva" cancela la actual y pre-puebla el carrito para recrear con los datos originales.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — cancela + recrea (flujo actual)</li>
+    <li>(b) Edición in-place sin cancelar (cambia ítems directamente, mantiene número)</li>
+    <li>(c) Edición in-place pero con audit log de cambios</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E6</span><span class="pregunta-titulo">
+    Reserva sin seña <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: permitido — la reserva queda con <code>monto_pagado=0</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — siempre permitida sin seña</li>
+    <li>(b) Exigir seña mínima configurable (ej: 30% del total)</li>
+    <li>(c) Solo permitir reserva sin seña a clientes con historial (no nuevos)</li>
+    <li>(d) Solo permitir reserva sin seña a clientes con CC habilitada</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. PRESUPUESTOS ============================ -->
+<h2>F. Presupuestos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    Vencimiento de presupuestos <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: badge "Vencido" + botón "Actualizar precios ahora". Plazo hardcoded.</div>
+  <ul class="opciones">
+    <li>(a) Mantener plazo fijo (revisar valor actual)</li>
+    <li>(b) Configurable por tenant en Config → Ventas (ej: 7 / 15 / 30 días)</li>
+    <li>(c) Configurable por presupuesto al crearlo (operador elige)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Conversión presupuesto → venta <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: al despachar un presupuesto, se re-cotizan precios actuales si el presupuesto está vencido.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — siempre re-cotiza si está vencido, mantiene si vigente</li>
+    <li>(b) Siempre re-cotiza precios actuales (aunque esté vigente) — la garantía solo aplica a productos en stock</li>
+    <li>(c) Nunca re-cotiza — el precio se mantiene aunque el presupuesto esté vencido (responsabilidad del cliente venir a tiempo)</li>
+    <li>(d) Pregunta al operador qué hacer (mantener / actualizar)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    Quién puede convertir presupuesto en venta <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cualquier rol con acceso a Ventas (como hoy)</li>
+    <li>(b) Solo el creador del presupuesto + DUEÑO/SUPERVISOR</li>
+    <li>(c) Solo dentro de la misma sucursal donde se creó</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F4</span><span class="pregunta-titulo">
+    PDF imprimible / compartible <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Mantener PDF como hoy (descarga local)</li>
+    <li>(b) PDF + email automático al cliente</li>
+    <li>(c) PDF + link de WhatsApp directo al cliente</li>
+    <li>(d) Todo lo anterior, configurable</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F5</span><span class="pregunta-titulo">
+    Numeración de presupuestos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Comparte numeración con ventas (mismo correlativo)</li>
+    <li>(b) Numeración independiente con prefijo (ej: PRES-001)</li>
+    <li>(c) Numeración por sucursal independiente</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. LISTAS DE PRECIOS / MAYORISTA / B2B ============================ -->
+<h2>G. Listas de precios / Mayorista / B2B</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Múltiples listas de precios <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: un único precio por producto. ¿Hace falta lista mayorista / oferta / temporada?</div>
+  <ul class="opciones">
+    <li>(a) No aplica — un solo precio basta</li>
+    <li>(b) 2 listas (Minorista / Mayorista) — flag por cliente</li>
+    <li>(c) N listas configurables por tenant (Minorista / Mayorista / Empleado / Promoción)</li>
+    <li>(d) N listas + escalonadas por cantidad (1-9 unidades = lista A, 10-49 = lista B, +50 = lista C)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Asignación de lista a cliente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Lista por defecto del tenant aplica a todos</li>
+    <li>(b) Cada cliente tiene una lista asignada (configurable en ficha)</li>
+    <li>(c) Cliente sin lista → minorista; clientes mayoristas asignados manualmente</li>
+    <li>(d) Auto-asigna según historial de compras (volumen mensual)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span><span class="pregunta-titulo">
+    Override de precio en el POS <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: se aplica descuento por ítem (%) — no edición libre de precio.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo descuento por %, no edición libre</li>
+    <li>(b) Permitir edición libre del precio en el carrito (con audit log)</li>
+    <li>(c) Edición libre solo SUPERVISOR/DUEÑO</li>
+    <li>(d) Edición libre con tope (no menos del % de descuento máximo del rol)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G4</span><span class="pregunta-titulo">
+    Visibilidad del precio de costo / margen <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Visible para todos los roles en POS/Productos</li>
+    <li>(b) Visible solo para DUEÑO/SUPERVISOR/ADMIN/CONTADOR — oculto para CAJERO/DEPOSITO</li>
+    <li>(c) Visible para todos pero el margen solo para DUEÑO/SUPERVISOR/ADMIN/CONTADOR</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G5</span><span class="pregunta-titulo">
+    Precios en USD (multi-moneda en ventas) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: cotización USD se usa para algunos cálculos (combos). Caja ya tiene moneda por caja.</div>
+  <ul class="opciones">
+    <li>(a) No aplica — todo en moneda local</li>
+    <li>(b) Producto puede tener precio en USD que se convierte a moneda local en el POS al cargar</li>
+    <li>(c) Producto puede tener precio en USD y se vende en USD (caja USD)</li>
+    <li>(d) Configurable: precio en USD + flag "Vender en moneda local" o "Vender en USD"</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. EDICIÓN Y PERMISOS EN POS ============================ -->
+<h2>H. Edición y permisos en el POS</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    Quitar producto del carrito <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cualquier rol en cualquier momento (como hoy)</li>
+    <li>(b) Solo antes de cobrar — una vez cobrado, no se puede</li>
+    <li>(c) Confirmar con clave del SUPERVISOR si la venta ya tiene ítems impresos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Imprimir ticket / comprobante <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Imprimir siempre obligatorio al despachar</li>
+    <li>(b) Imprimir opcional (botón "Imprimir" + "Enviar por email")</li>
+    <li>(c) Configurable por tenant (modo "Ticket obligatorio" / "Sin ticket por default")</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H3</span><span class="pregunta-titulo">
+    Reimprimir ticket de venta anterior <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cualquier rol con acceso a Ventas puede reimprimir desde el historial</li>
+    <li>(b) Solo el cajero que hizo la venta + SUPERVISOR+</li>
+    <li>(c) Solo DUEÑO/SUPERVISOR — para evitar reimpresiones por error</li>
+    <li>(d) Audit log de reimpresiones</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H4</span><span class="pregunta-titulo">
+    Vender con caja cerrada (todos los medios o solo algunos) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: sin caja abierta no se puede despachar ni reservar.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — caja abierta obligatoria para cualquier venta</li>
+    <li>(b) Permitir venta full CC (sin caja) — ya implementado para 100% CC</li>
+    <li>(c) Permitir venta solo con medios informativos (tarjeta, transferencia) sin caja abierta</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H5</span><span class="pregunta-titulo">
+    Selector de cliente obligatorio <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: cliente obligatorio en <code>pendiente</code> y <code>reservada</code>, opcional en <code>despachada</code> directa.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — cliente opcional en venta directa</li>
+    <li>(b) Cliente siempre obligatorio (incluso venta directa)</li>
+    <li>(c) Cliente obligatorio si la venta supera un monto configurable</li>
+    <li>(d) Cliente obligatorio si se factura (A/B/C)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. CANALES (ONLINE vs PRESENCIAL) ============================ -->
+<h2>I. Canales de venta</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    Canales soportados <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: POS / Instagram / Facebook / WhatsApp / Otros / MELI / TiendaNube / Shopify / WooCommerce / MP.</div>
+  <ul class="opciones">
+    <li>(a) Mantener catálogo actual</li>
+    <li>(b) Permitir agregar canales custom por tenant (ej: Showroom, Mayorista, Telefónico)</li>
+    <li>(c) Configurable + jerarquía (POS hijo de Showroom, MELI hijo de Online)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    Reglas distintas por canal <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Mismas reglas para todos los canales (descuentos, listas, devoluciones)</li>
+    <li>(b) Online (MELI, TN) con plazo de devolución mayor por defecto</li>
+    <li>(c) Cada canal configurable independiente: lista de precios, descuento máximo, devolución</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I3</span><span class="pregunta-titulo">
+    Numeración separada por canal <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Misma numeración (correlativo único por sucursal) — como hoy</li>
+    <li>(b) POS aparte, online aparte (ej: POS S1-0001, IG IG-0001)</li>
+    <li>(c) Solo separar online de presencial</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I4</span><span class="pregunta-titulo">
+    Sincronización de stock online (MELI / TN) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: cron cada 5 min sincroniza stock. ¿Cuánto buffer reservar para venta presencial?</div>
+  <ul class="opciones">
+    <li>(a) Stock real publicado — sin buffer (como hoy)</li>
+    <li>(b) Buffer configurable por producto/canal (ej: en MELI publica stock - 2 unidades)</li>
+    <li>(c) Buffer global por tenant (ej: nunca publicar las últimas 3 unidades)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ J. AUDITORÍA Y PERMISOS GENERALES ============================ -->
+<h2>J. Auditoría y permisos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J1</span><span class="pregunta-titulo">
+    Log de cambios en ventas <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: <code>logActividad()</code> registra acciones a alto nivel, pero no hay "diff" detallado por venta.</div>
+  <ul class="opciones">
+    <li>(a) Mantener log actual (acciones genéricas en <code>actividad_log</code>)</li>
+    <li>(b) Audit log detallado por venta (cambios de ítems, precios, cliente) accesible desde el modal</li>
+    <li>(c) Audit log solo para acciones críticas (cambio de cliente, cambio de medio, anulación)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J2</span><span class="pregunta-titulo">
+    Acciones que requieren clave maestra del DUEÑO <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: la clave maestra existe en <code>tenants.clave_maestra</code> y se usa para cierre de caja ajena.</div>
+  <ul class="opciones">
+    <li>(a) Solo lo que ya tiene (cierre caja ajena, corregir movimientos)</li>
+    <li>(b) Agregar: anular venta despachada + cambiar cliente + override descuento</li>
+    <li>(c) Agregar todo lo del (b) + reapertura de venta + cambio de medio de pago</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J3</span><span class="pregunta-titulo">
+    CONTADOR en ventas <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: CONTADOR no tiene acceso directo a Ventas en la nav. Sí ve reportes de facturación.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — sin acceso a POS, solo ve reportes</li>
+    <li>(b) Acceso read-only al historial completo de ventas (no puede crear)</li>
+    <li>(c) Acceso read-only + edición de campos fiscales (IVA, alícuota) como en Gastos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ K. REPORTES Y ALERTAS ============================ -->
+<h2>K. Reportes y alertas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K1</span><span class="pregunta-titulo">
+    Reportes prioritarios para Ventas <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Top vendedores del mes (por cajero)</li>
+    <li>(b) Productos con baja rotación (vendidos &lt; X veces en el mes)</li>
+    <li>(c) Productos con más devoluciones (ranking de fallos)</li>
+    <li>(d) Ventas anuladas / devueltas con motivo agrupado</li>
+    <li>(e) Comparativa por canal (POS / IG / FB / WA / online)</li>
+    <li>(f) Margen real por venta (descuentos vs precio costo)</li>
+    <li>(g) Marcar todos los que apliquen (multi-select)</li>
+    <li>(h) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K2</span><span class="pregunta-titulo">
+    Alertas automáticas en Ventas <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Venta con descuento &gt; X% (umbral configurable)</li>
+    <li>(b) Venta con margen negativo (precio venta &lt; costo)</li>
+    <li>(c) Cliente con &gt; N devoluciones en M días (posible abuso)</li>
+    <li>(d) Producto con &gt; N devoluciones en M días (posible falla de calidad)</li>
+    <li>(e) Venta de monto inusualmente alto vs promedio</li>
+    <li>(f) Marcar todos los que apliquen (multi-select)</li>
+    <li>(g) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K3</span><span class="pregunta-titulo">
+    Exportaciones <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: ya hay export Excel/PDF/CSV en algunos reportes (Caja).</div>
+  <ul class="opciones">
+    <li>(a) Excel + PDF + CSV en cada reporte (consistente con Caja)</li>
+    <li>(b) Solo Excel y PDF (sin CSV)</li>
+    <li>(c) Solo Excel (CSV se exporta desde Excel)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ L. ABIERTOS / NOTAS ============================ -->
+<h2>L. Temas abiertos / Top 3 prioritario</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L1</span><span class="pregunta-titulo">
+    ¿Qué 3 features de Ventas son prioritarias para ustedes? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar el orden 1/2/3 entre las opciones — el resto va a backlog.</div>
+  <ul class="opciones">
+    <li>(   ) Devoluciones con NC electrónica AFIP</li>
+    <li>(   ) Re-apertura de venta despachada / corrección post-venta</li>
+    <li>(   ) CC con límite + vencimiento + bloqueo automático</li>
+    <li>(   ) Notificaciones automáticas al cliente (deuda, vencimiento, factura)</li>
+    <li>(   ) Listas de precios múltiples (mayorista / minorista)</li>
+    <li>(   ) Vencimiento de reservas + liberación automática de stock</li>
+    <li>(   ) Audit log detallado por venta</li>
+    <li>(   ) Reportes específicos de Ventas + exports</li>
+    <li>(   ) Alertas automáticas (descuento alto, margen negativo, abuso de devoluciones)</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L2</span><span class="pregunta-titulo">
+    Comentarios libres / cualquier regla que se nos haya escapado
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio Módulo Ventas · 2026-05-26<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar la implementación.
+</div>
+
+</body>
+</html>

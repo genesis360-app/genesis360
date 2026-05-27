@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2 } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -12,6 +12,7 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useCierreContable } from '@/hooks/useCierreContable'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
@@ -92,6 +93,7 @@ function haversineKmCoordsStatic(c1: string, c2: string): number | null {
 export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
+  const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
 
   // ISS-085: formatea el número de ticket por sucursal
   // Solo usa formato CODIGO-NNNN si la sucursal tiene un código explícitamente configurado
@@ -3584,6 +3586,11 @@ export default function VentasPage() {
                               ⚠ Error — Cancelar
                             </span>
                           )}
+                          {isPeriodoCerrado(v.created_at) && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 flex items-center gap-1" title={`Periodo cerrado hasta ${ultimoCierre} — venta no editable ni eliminable`}>
+                              <Lock size={10} /> Cerrado
+                            </span>
+                          )}
                         </div>
                         <span className="font-bold text-primary">${((v.total ?? 0) + (v.costo_envio ?? 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                       </div>
@@ -3968,25 +3975,31 @@ export default function VentasPage() {
                 </button>
               )}
               {['cancelada', 'pendiente'].includes(ventaDetalle.estado) && (
-                <button onClick={async () => {
-                  if (!confirm('¿Eliminar definitivamente esta venta? Esta acción no se puede deshacer.')) return
-                  const { error } = await supabase.from('ventas').delete().eq('id', ventaDetalle.id)
-                  if (error) {
-                    const msg = (error.message ?? '').toLowerCase()
-                    if (msg.includes('periodo contable cerrado') || msg.includes('período contable cerrado')) {
-                      toast.error(error.message)
-                    } else {
-                      toast.error('Error al eliminar')
+                isPeriodoCerrado(ventaDetalle.created_at) ? (
+                  <div className="w-full border-2 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 font-medium py-2 rounded-xl text-sm flex items-center justify-center gap-2">
+                    <Lock size={14} /> Periodo cerrado hasta {ultimoCierre} — no editable
+                  </div>
+                ) : (
+                  <button onClick={async () => {
+                    if (!confirm('¿Eliminar definitivamente esta venta? Esta acción no se puede deshacer.')) return
+                    const { error } = await supabase.from('ventas').delete().eq('id', ventaDetalle.id)
+                    if (error) {
+                      const msg = (error.message ?? '').toLowerCase()
+                      if (msg.includes('periodo contable cerrado') || msg.includes('período contable cerrado')) {
+                        toast.error(error.message)
+                      } else {
+                        toast.error('Error al eliminar')
+                      }
+                      return
                     }
-                    return
-                  }
-                  toast.success('Venta eliminada')
-                  setVentaDetalle(null)
-                  qc.invalidateQueries({ queryKey: ['ventas'] })
-                }}
-                  className="w-full border-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-semibold py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:border-red-200 hover:text-red-500 transition-all text-sm">
-                  Eliminar venta
-                </button>
+                    toast.success('Venta eliminada')
+                    setVentaDetalle(null)
+                    qc.invalidateQueries({ queryKey: ['ventas'] })
+                  }}
+                    className="w-full border-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-semibold py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:border-red-200 hover:text-red-500 transition-all text-sm">
+                    Eliminar venta
+                  </button>
+                )
               )}
             </div>
           </div>

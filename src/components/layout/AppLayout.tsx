@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { NotificacionesButton } from '@/components/NotificacionesButton'
 import { AiAssistant } from '@/components/AiAssistant'
 import { AyudaModal } from '@/components/AyudaModal'
@@ -499,9 +500,12 @@ export function AppLayout() {
           </div>
         )}
 
-        {/* Contenido */}
+        {/* Contenido — boundary por-ruta: si una página crashea, el menú sobrevive
+            y al navegar a otra ruta el boundary se resetea solo (key={pathname}). */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 bg-page">
-          <Outlet />
+          <ErrorBoundary inline key={pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
 
       </div>

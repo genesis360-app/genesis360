@@ -9,6 +9,7 @@ import {
   Camera, CreditCard, DollarSign, PackageCheck, QrCode, Tag,
 } from 'lucide-react'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
+import PodFotosManager from '@/components/PodFotosManager'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -125,8 +126,7 @@ export default function EnviosPage() {
   const [podModalId, setPodModalId]   = useState<string | null>(null)
   const [podForm, setPodForm]         = useState({ pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '' })
   const [savingPod, setSavingPod]     = useState(false)
-  const [uploadingFoto, setUploadingFoto] = useState(false)   // ISS-166: upload foto POD
-  const cameraInputRef = useRef<HTMLInputElement>(null)        // ISS-166: hidden file input
+  // ISS-166 (v1.8.40): el upload de foto del POD se delegó al componente PodFotosManager (migration 144).
 
   // ISS-169: Pagos courier
   const [pagosSeleccion, setPagosSeleccion] = useState<Set<string>>(new Set())
@@ -412,22 +412,6 @@ export default function EnviosPage() {
     }
   }
 
-  // ── ISS-166: Upload foto POD desde cámara ───────────────────────────────────
-  const handleFotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !podModalId) return
-    setUploadingFoto(true)
-    try {
-      const ext = file.name.split('.').pop() ?? 'jpg'
-      const path = `pod/${podModalId}/${Date.now()}.${ext}`
-      const { error: upErr } = await supabase.storage.from('etiquetas-envios').upload(path, file, { upsert: true })
-      if (upErr) throw upErr
-      const { data: signedData } = await supabase.storage.from('etiquetas-envios').createSignedUrl(path, 60 * 60 * 24 * 365)
-      if (signedData?.signedUrl) setPodForm(f => ({ ...f, pod_url: signedData.signedUrl }))
-      toast.success('Foto subida correctamente')
-    } catch (err: any) { toast.error('Error al subir la foto') }
-    finally { setUploadingFoto(false); if (cameraInputRef.current) cameraInputRef.current.value = '' }
-  }
 
   // ── ISS-169: Marcar envíos seleccionados como pagados ───────────────────────
   const marcarPagados = async () => {
@@ -1460,10 +1444,15 @@ export default function EnviosPage() {
                         className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">URL comprobante / foto</label>
-                      <input type="text" value={form.pod_url} onChange={e => setForm(f => ({ ...f, pod_url: e.target.value }))}
-                        placeholder="https://... (link a foto o documento firmado)"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Comprobantes / fotos</label>
+                      {editId ? (
+                        <PodFotosManager
+                          envioId={editId}
+                          onPrincipalChange={(url) => setForm(f => ({ ...f, pod_url: url ?? '' }))}
+                        />
+                      ) : (
+                        <p className="text-xs text-muted italic">Guardá el envío para agregar fotos del POD.</p>
+                      )}
                     </div>
                     <div className="col-span-2">
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Observaciones de entrega</label>
@@ -1522,27 +1511,12 @@ export default function EnviosPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Comprobante / foto</label>
-                {/* ISS-166: input cámara oculto */}
-                <input ref={cameraInputRef} type="file" accept="image/*" capture="environment"
-                  onChange={handleFotoCapture} className="hidden" />
-                <div className="flex gap-2">
-                  <input type="text" value={podForm.pod_url} onChange={e => setPodForm(f => ({ ...f, pod_url: e.target.value }))}
-                    placeholder="https://... (link o pegá una URL)"
-                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                  <button type="button" onClick={() => cameraInputRef.current?.click()}
-                    disabled={uploadingFoto}
-                    title="Tomar foto con la cámara"
-                    className="flex items-center gap-1.5 px-3 py-2 bg-accent/10 hover:bg-accent/20 text-accent rounded-xl text-sm font-medium transition-colors disabled:opacity-50 border border-accent/20">
-                    {uploadingFoto ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
-                    {uploadingFoto ? 'Subiendo…' : 'Foto'}
-                  </button>
-                </div>
-                {podForm.pod_url && (
-                  <a href={podForm.pod_url} target="_blank" rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-1">
-                    <ExternalLink size={11} /> Ver comprobante
-                  </a>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Comprobantes / fotos</label>
+                {podModalId && (
+                  <PodFotosManager
+                    envioId={podModalId}
+                    onPrincipalChange={(url) => setPodForm(f => ({ ...f, pod_url: url ?? '' }))}
+                  />
                 )}
               </div>
 

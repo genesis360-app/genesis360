@@ -58,7 +58,7 @@ export default function GruposEstadosPage() {
       nombre: grupo.nombre,
       descripcion: grupo.descripcion ?? '',
       es_default: grupo.es_default,
-      estados: grupo.grupo_estado_items.map(i => i.estado_id),
+      estados: (grupo.grupo_estado_items ?? []).map(i => i.estado_id),
     })
     setEditId(grupo.id)
     setShowForm(true)
@@ -246,7 +246,7 @@ export default function GruposEstadosPage() {
       ) : (
         <div className="space-y-3">
           {grupos.map(grupo => {
-            const estadosGrupo = grupo.grupo_estado_items
+            const estadosGrupo = (grupo.grupo_estado_items ?? [])
               .map(i => estados.find(e => e.id === i.estado_id))
               .filter(Boolean) as Estado[]
 

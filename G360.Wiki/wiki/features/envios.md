@@ -3,7 +3,7 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-23
+updated: 2026-05-27
 ---
 
 # Módulo Envíos
@@ -124,6 +124,21 @@ Campos en `envios` para registrar prueba de entrega:
 - Upload a bucket `etiquetas-envios/pod/{envioId}/{timestamp}.{ext}`
 - URL firmada con expiración 365 días almacenada como `pod_url`
 - Disponible en modal POD del dashboard Y en página transportista
+
+### Múltiples fotos POD (v1.10.1, migration 144)
+
+Soporte para N fotos por envío. Mantiene compatibilidad con `envios.pod_url` (la primera foto, orden=0).
+
+- **Tabla `envio_pod_fotos`**: `id, envio_id, tenant_id, url, storage_path, orden, created_at, created_by` con RLS por tenant
+- **Backfill automático** en la migration: cada envío con `pod_url` no-nulo genera fila orden=0
+- **Componente `PodFotosManager`** (`src/components/PodFotosManager.tsx`): upload múltiple desde cámara/galería con `multiple + capture="environment"`, thumbnails con badge "Principal", botón eliminar con confirm + cleanup del storage path
+- **Integración**: modal POD del dashboard + sección POD del modal de edición de envío (solo con `editId` existente)
+- **Sincronización**: al subir o eliminar, el componente actualiza `envios.pod_url` con la primera foto (orden 0). La página transportista pública sigue usando `pod_url` (no fue migrada al manager — pendiente como follow-up con SECURITY DEFINER)
+- **Storage**: bucket `etiquetas-envios` path `pod/{envioId}/{ts}_{idx}.{ext}` con signedUrl 365 días
+
+### Cron limpieza tokens transportista (v1.10.1, migration 143)
+
+pg_cron diario 07:00 UTC `cleanup_envio_tokens_transportista` que setea `token_transportista = NULL` en envíos en `entregado`/`cancelado`/`devolucion` con +30 días desde el último update. Invalida los links públicos viejos sin tocar el resto del envío. Los chofers no pueden seguir actualizando estado vía un link que ya cumplió su propósito.
 
 ---
 

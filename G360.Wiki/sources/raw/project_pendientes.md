@@ -4,13 +4,32 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.0** ✅ (HITO Caja completo) · DEV: **v1.10.0**
+Último release en PROD: **v1.10.0** ✅ (HITO Caja completo) · DEV: **v1.10.1**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.10.0 / PROD v1.10.0 (cierre sesión 2026-05-26 — HITO Pipeline Caja)
+## Estado actual DEV v1.10.1 / PROD v1.10.0 (cierre sesión 2026-05-27 — Cierre HITO v1.9.0 + quick wins Envíos)
+
+- APP_VERSION DEV: `v1.10.1` ✅
+- APP_VERSION PROD: `v1.10.0` (143-144 pendientes de deploy)
+- Migrations DEV: 001–144 ✅
+- Migrations PROD: 001–142 ✅ (143 cron limpieza tokens + 144 envio_pod_fotos pendientes)
+- **Relevamientos abiertos**: 5 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos) listos para que GO + socio respondan
+- **Cierre HITO v1.9.0**: 100% completo (candado por fila + PDF cierre) ✅
+
+### Lo producido en DEV en esta sesión (2026-05-27 — v1.10.1)
+
+- **Candado 🔒 por fila** en VentasPage e CajaPage cuando la venta/sesión/movimiento cae en periodo cerrado. Helper `isPeriodoCerrado(fecha)` ya existía en `useCierreContable.ts` — solo se aplicó en UI. Hoy solo venía el toast del trigger; ahora el usuario lo ve antes de intentar editar
+  - VentasPage: badge "Cerrado" en cada fila del historial + botón "Eliminar venta" reemplazado por banner amber "Periodo cerrado hasta YYYY-MM-DD — no editable"
+  - CajaPage: badge "Cerrado" junto al nombre de cada sesión del historial + botón "Corregir movimiento" reemplazado por candado deshabilitado
+  - RecepcionesPage: NO aplica (no tiene trigger de cierre en migration 135)
+- **PDF del cierre contable** descargable desde `CierresContablesPanel`. Botón "Descargar PDF" en el bloque expandido de cada cierre. Genera A4 con: header BRAND + datos fiscales + periodo + observaciones + tabla totales (Ventas/Gastos/Sueldos/OC) + bloque resumen (Egresos totales + Resultado neto). Usa snapshot guardado en `cierres_contables.totales JSONB` (no recalcula).
+- **Quick win Envíos · Cron limpieza tokens transportista** (migration 143): pg_cron diario 07:00 UTC que setea `envios.token_transportista = NULL` para envíos en estado entregado/cancelado/devolucion con +30 días desde el último update. Invalida links públicos viejos sin tocar el resto del envío.
+- **Quick win Envíos · Múltiples fotos POD** (migration 144): tabla `envio_pod_fotos(id, envio_id, tenant_id, url, storage_path, orden, created_at, created_by)` con RLS por tenant + backfill automático desde `envios.pod_url`. Componente nuevo `src/components/PodFotosManager.tsx` con upload múltiple desde cámara, thumbnails con badge "Principal", botón eliminar con confirm. Integrado en modal POD y modal de edición de envío. La primera foto (orden=0) sincroniza con `envios.pod_url` para retro-compatibilidad. Helper `handleFotoCapture` viejo eliminado.
+
+### Pipeline Caja completo (recorrido 2 días)
 
 - APP_VERSION DEV: `v1.10.0` ✅
 - APP_VERSION PROD: `v1.10.0` ✅ (PR #118 mergeado `c857384b`)
@@ -35,12 +54,15 @@ type: project
 
 - Fase 2.2b: L3 préstamos a empleados en RRHH (toca otro módulo, scope mayor)
 - Fase 2.3: M2/M3/M4 (UX selector + panel cajero touchscreen + sonido) + E1/E3 (visibilidad bóveda por rol + arqueo bóveda) + G5 (chips motivos)
+- Cierre HITO v1.9.0: reporte "Con/Sin correcciones" en RentabilidadPage (filtra `gastos.es_correccion`) + notificación al cerrar/reabrir periodo
 
-### Próximos módulos a relevar
+### Próximos módulos a relevar (5 HTMLs generados 2026-05-26, listos para responder)
 
-- **RRHH**: completo (puede incluir L3 préstamos)
-- **Ventas**: devoluciones / re-apertura despachada / límite ítems
-- **Clientes**: límite deuda configurable / notificación deuda
+- `relevamiento-ventas-reglas-negocio.html` — devoluciones / re-apertura / límites / CC / reservas / presupuestos / listas / canales / auditoría / reportes (12 secciones)
+- `relevamiento-rrhh-reglas-negocio.html` — empleados / nómina+SAC / vacaciones / asistencia+horas extra / documentos / supervisor (8 secciones)
+- `relevamiento-clientes-reglas-negocio.html` — alta / CC+límite+vencimiento / notificaciones / CC proveedores / segmentación / reportes (9 secciones)
+- `relevamiento-compras-reglas-negocio.html` — OC / recepción / devoluciones a proveedor / pagos+cheques / costos / servicios recurrentes (8 secciones)
+- `relevamiento-envios-reglas-negocio.html` — asignación / costos / pagos courier / POD / página transportista / integraciones / envío propio (9 secciones)
 
 ---
 

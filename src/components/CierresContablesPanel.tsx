@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Lock, Unlock, AlertTriangle, Calendar, FileText, ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
+import { Lock, Unlock, AlertTriangle, Calendar, FileText, ChevronDown, ChevronRight, Loader2, FileDown } from 'lucide-react'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
 import { supabase, CierreContable } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
-import { BTN } from '@/config/brand'
+import { BTN, BRAND } from '@/config/brand'
 import { logActividad } from '@/lib/actividadLog'
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
@@ -58,7 +60,7 @@ export default function CierresContablesPanel() {
     queryFn: async () => {
       const { data } = await supabase
         .from('cierres_contables')
-        .select('*, cerrado_por_user:users!cierres_contables_cerrado_por_fkey(nombre_display, email)')
+        .select('*, cerrado_por_user:users!cierres_contables_cerrado_por_fkey(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .order('periodo', { ascending: false })
       return (data ?? []) as (CierreContable & { cerrado_por_user?: any })[]
@@ -122,6 +124,84 @@ export default function CierresContablesPanel() {
     },
     onError: (e: any) => { toast.error(e.message); setConfirmando(false) },
   })
+
+  function generarPdfCierre(c: any) {
+    const t: any = c.totales ?? {}
+    const usuario = c.cerrado_por_user?.nombre_display ?? c.cerrado_por?.slice(0, 8) ?? '—'
+    const tInfo: any = tenant ?? {}
+    const doc = new jsPDF()
+    const w = doc.internal.pageSize.width
+
+    doc.setFillColor(30, 58, 95)
+    doc.rect(0, 0, w, 28, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(17); doc.setFont('helvetica', 'bold')
+    doc.text(BRAND.name, 14, 13)
+    doc.setFontSize(12); doc.setFont('helvetica', 'normal')
+    doc.text(`Cierre contable · ${periodoLabel(c.periodo)}`, 14, 21)
+    doc.setFontSize(9)
+    if (tInfo.nombre) doc.text(tInfo.nombre, w - 14, 10, { align: 'right' })
+    if (tInfo.cuit) doc.text(`CUIT: ${tInfo.cuit}`, w - 14, 15, { align: 'right' })
+    if (tInfo.domicilio_fiscal) doc.text(tInfo.domicilio_fiscal, w - 14, 20, { align: 'right' })
+
+    doc.setTextColor(60, 60, 60)
+    doc.setFontSize(10)
+    let yh = 38
+    doc.text(`Periodo cerrado: ${periodoLabel(c.periodo)}`, 14, yh); yh += 6
+    doc.text(`Fecha de cierre: ${new Date(c.fecha_cierre).toLocaleString('es-AR')}`, 14, yh); yh += 6
+    doc.text(`Cerrado por: ${usuario} · rol ${c.cerrado_por_rol}`, 14, yh); yh += 6
+    if (c.observaciones) {
+      const obsLines = doc.splitTextToSize(`Observaciones: ${c.observaciones}`, w - 28)
+      doc.text(obsLines, 14, yh); yh += obsLines.length * 5 + 1
+    }
+
+    const totalGastos  = Number(t.total_gastos  ?? 0)
+    const totalVentas  = Number(t.total_ventas  ?? 0)
+    const totalSueldos = Number(t.total_sueldos ?? 0)
+    const totalOc      = Number(t.total_oc      ?? 0)
+    const countGastos  = Number(t.count_gastos  ?? 0)
+    const countVentas  = Number(t.count_ventas  ?? 0)
+    const countCorr    = Number(t.count_correcciones ?? 0)
+    const egresosTot   = totalGastos + totalSueldos
+    const resultadoNet = totalVentas - egresosTot
+
+    autoTable(doc, {
+      startY: yh + 2,
+      head: [['Concepto', 'Cantidad', 'Monto']],
+      body: [
+        ['Ventas (despachadas/facturadas)', String(countVentas), formatMoneda(totalVentas)],
+        ['Gastos', `${countGastos}${countCorr ? ` (${countCorr} corr.)` : ''}`, formatMoneda(totalGastos)],
+        ['Sueldos pagados (RRHH)', '', formatMoneda(totalSueldos)],
+        ['Órdenes de compra (total emitido)', '', formatMoneda(totalOc)],
+      ],
+      styles: { fontSize: 10 },
+      headStyles: { fillColor: [30, 58, 95] },
+      columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' } },
+    })
+    let y2: number = (doc as any).lastAutoTable.finalY + 6
+
+    autoTable(doc, {
+      startY: y2,
+      body: [
+        ['Egresos totales (Gastos + RRHH)', formatMoneda(egresosTot)],
+        ['Resultado neto del periodo', formatMoneda(resultadoNet)],
+      ],
+      styles: { fontSize: 10, fontStyle: 'bold' },
+      bodyStyles: { fillColor: [240, 244, 248] },
+      columnStyles: { 1: { halign: 'right' } },
+    })
+    y2 = (doc as any).lastAutoTable.finalY + 8
+
+    doc.setFontSize(8); doc.setTextColor(120, 120, 120)
+    doc.text('Los registros del periodo quedan congelados. Correcciones se cargan como notas de corrección vinculadas al gasto original.', 14, y2, { maxWidth: w - 28 })
+
+    doc.setFontSize(8); doc.setTextColor(150, 150, 150)
+    doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, w / 2, 290, { align: 'center' })
+
+    const fileName = `cierre_${c.periodo.slice(0, 7)}.pdf`
+    doc.save(fileName)
+    logActividad({ entidad: 'cierre_contable', accion: 'descargar_pdf', entidad_nombre: periodoLabel(c.periodo), pagina: '/gastos' } as any)
+  }
 
   const reabrir = useMutation({
     mutationFn: async (id: string) => {
@@ -257,7 +337,7 @@ export default function CierresContablesPanel() {
                       <p className="text-sm font-medium text-primary">{periodoLabel(c.periodo)}</p>
                       <p className="text-xs text-muted">
                         Cerrado {new Date(c.fecha_cierre).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                        {' '}por {usuario?.nombre_display ?? usuario?.email ?? c.cerrado_por.slice(0, 8)}
+                        {' '}por {usuario?.nombre_display ?? c.cerrado_por.slice(0, 8)}
                         {' · '}rol {c.cerrado_por_rol}
                       </p>
                     </div>
@@ -287,6 +367,15 @@ export default function CierresContablesPanel() {
                           <Stat label="OC" value={formatMoneda(c.totales.total_oc)} sub="Ordenes de compra" />
                         </div>
                       )}
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); generarPdfCierre(c) }}
+                          title="Descargar PDF del cierre con snapshot de totales"
+                          className="text-xs px-3 py-1.5 rounded-lg border border-border-ds text-muted hover:text-accent hover:border-accent flex items-center gap-1.5">
+                          <FileDown size={12} /> Descargar PDF
+                        </button>
+                      </div>
                     </div>
                   )}
                 </li>

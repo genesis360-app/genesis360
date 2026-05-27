@@ -971,6 +971,45 @@ export default function GastosPage() {
       }
     }
 
+    // ISS-183 (B2) — Validar medios de pago: si se cargó alguno, deben tener tipo y cubrir el total.
+    //   - Caso borrador (todos vacíos) sigue permitido.
+    //   - Caso 1+ medio: ningún incompleto (monto sin tipo) y la suma debe coincidir con el monto del gasto.
+    const tieneMediosCargados = mediosPago.some(m => m.tipo || (parseFloat(m.monto) || 0) > 0)
+    if (tieneMediosCargados) {
+      const incompleto = mediosPago.find(m => (parseFloat(m.monto) || 0) > 0 && !m.tipo)
+      if (incompleto) {
+        toast.error('Elegí el método para cada monto cargado (o dejá todos los campos vacíos si querés guardarlo como borrador).')
+        return
+      }
+      const totalMedios = mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+      if (Math.abs(totalMedios - monto) > 0.5) {
+        toast.error(`Los métodos de pago deben sumar $${monto.toLocaleString('es-AR', { maximumFractionDigits: 2 })} (cargado: $${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 2 })}).`)
+        return
+      }
+    }
+
+    // ISS-182 (B1) — Validar comprobante obligatorio según las 4 reglas del tenant (Config → Gastos).
+    //   Reglas combinables OR: siempre / si deduce IVA / si deduce ganancias / si supera umbral monto.
+    //   Las notas de corrección quedan exentas (replican el comprobante del padre).
+    if (!correccionPadre) {
+      const tCfg: any = tenant ?? {}
+      const tieneComprobante = !!comprobanteFile || !!comprobanteExistente
+      const umbralMonto = parseFloat(tCfg.gastos_comp_monto_umbral) || 0
+      const aplicaSiempre    = tCfg.gastos_comp_siempre ?? true
+      const aplicaPorIva     = !!tCfg.gastos_comp_si_iva && !!form.iva_deducible
+      const aplicaPorGcia    = !!tCfg.gastos_comp_si_deduce_ganancias && (!!form.deduce_ganancias)
+      const aplicaPorMonto   = !!tCfg.gastos_comp_si_monto && monto > umbralMonto
+      const obligatorio = aplicaSiempre || aplicaPorIva || aplicaPorGcia || aplicaPorMonto
+      if (obligatorio && !tieneComprobante) {
+        const motivo = aplicaSiempre ? 'la regla "siempre obligatorio" está activa'
+          : aplicaPorIva ? 'el gasto deduce IVA'
+          : aplicaPorGcia ? 'el gasto deduce ganancias / es del negocio'
+          : `el monto supera el umbral configurado ($${umbralMonto.toLocaleString('es-AR')})`
+        toast.error(`Adjuntá el comprobante: ${motivo}. (Config → Gastos)`)
+        return
+      }
+    }
+
     setGuardando(true)
     try {
       const alicuotaCustom = parseFloat(form.alicuota_iva_custom) || null
@@ -1260,9 +1299,40 @@ export default function GastosPage() {
   }
   const confirmarGenerarFijo = async () => {
     if (!modalGenerarFijo) return
+    const f = modalGenerarFijo
+
+    // ISS-183 (B2) — medios de pago: si se cargó alguno, deben tener tipo y cubrir el total.
+    const tieneMediosCargadosGen = mediosPagoGenerar.some(m => m.tipo || (parseFloat(m.monto) || 0) > 0)
+    if (tieneMediosCargadosGen) {
+      const incompletoGen = mediosPagoGenerar.find(m => (parseFloat(m.monto) || 0) > 0 && !m.tipo)
+      if (incompletoGen) {
+        toast.error('Elegí el método para cada monto cargado (o dejá los campos vacíos para guardarlo sin pago).')
+        return
+      }
+      const totalMediosGen = mediosPagoGenerar.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+      if (Math.abs(totalMediosGen - (f.monto || 0)) > 0.5) {
+        toast.error(`Los métodos de pago deben sumar $${(f.monto || 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })} (cargado: $${totalMediosGen.toLocaleString('es-AR', { maximumFractionDigits: 2 })}).`)
+        return
+      }
+    }
+
+    // ISS-182 (B1) — comprobante obligatorio según las reglas del tenant (Config → Gastos)
+    {
+      const tCfg: any = tenant ?? {}
+      const tieneComprobanteGen = !!generarFile
+      const umbralMonto = parseFloat(tCfg.gastos_comp_monto_umbral) || 0
+      const aplicaSiempre  = tCfg.gastos_comp_siempre ?? true
+      const aplicaPorIva   = !!tCfg.gastos_comp_si_iva && !!f.iva_deducible
+      const aplicaPorGcia  = !!tCfg.gastos_comp_si_deduce_ganancias && !!f.deduce_ganancias
+      const aplicaPorMonto = !!tCfg.gastos_comp_si_monto && (f.monto || 0) > umbralMonto
+      if ((aplicaSiempre || aplicaPorIva || aplicaPorGcia || aplicaPorMonto) && !tieneComprobanteGen) {
+        toast.error('Adjuntá el comprobante antes de generar el gasto fijo (Config → Gastos).')
+        return
+      }
+    }
+
     setGenerandoFijo(true)
     try {
-      const f = modalGenerarFijo
       const mediosValGen = mediosPagoGenerar.filter(m => m.tipo && parseFloat(m.monto) > 0)
       const medioJson = mediosValGen.length > 0
         ? JSON.stringify(mediosValGen.map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto) })))

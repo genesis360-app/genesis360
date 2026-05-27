@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Módulo Envíos · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Módulo Envíos</h1>
+<div class="meta">
+  Genesis360 · v1.10.0 · Fecha: 26 de mayo de 2026 · Relevamiento con Gastón Otranto + socio
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas con
+  <span class="tag tag-existente">EXISTENTE</span> piden confirmar reglas ya implementadas;
+  <span class="tag tag-nuevo">NUEVO</span> piden definir reglas pendientes;
+  <span class="tag tag-cambio">CAMBIO</span> señalan contradicciones a resolver.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo:</strong> Envío propio (KM auto via Google Distance Matrix + costo_km_envio) y por tercero (couriers con tarifas configurables) ·
+  Estados <code>pendiente → despachado → en_camino → en_bodega → entregado/devolucion/cancelado</code> · POD (fecha + receptor + notas + foto via cámara) ·
+  Página pública transportista mobile-first sin login (<code>/transporte/:token</code>) · Pagos courier con selección múltiple · Bloqueo de progresión si costo no pagado ·
+  QR codes en remito (envío + venta) con SKU/LPN/Ubicación · WhatsApp click-to-chat con plantilla configurable · Pre-llenado de domicilios del cliente.
+</div>
+
+<!-- ============================ A. ASIGNACIÓN Y DESPACHO ============================ -->
+<h2>A. Asignación y despacho</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Quién crea el envío <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: DUEÑO/SUPERVISOR/CAJERO. El envío auto-se crea al cerrar venta con toggle activado.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — auto-creación desde venta + creación manual en EnviosPage</li>
+    <li>(b) Restringir creación manual a DUEÑO/SUPERVISOR (CAJERO solo via auto-creación desde venta)</li>
+    <li>(c) Permitir DEPOSITO también (que gestiona la logística)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Envío sin venta asociada <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Casos: traslado entre sucursales, envío de muestra a proveedor, devolución a proveedor.</div>
+  <ul class="opciones">
+    <li>(a) No permitir — todo envío debe partir de una venta</li>
+    <li>(b) Permitir envíos "libres" con tipo distinto (traslado_interno / muestra / dev_proveedor / otro)</li>
+    <li>(c) Permitir solo a DUEÑO/SUPERVISOR con motivo registrado</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Asignación automática de courier por zona <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Operador elige courier siempre manualmente</li>
+    <li>(b) Sugerencia automática según código postal del destino (mapping CP → courier preferido)</li>
+    <li>(c) Sugerencia + permitir override manual</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    Plazo de despacho post-venta <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">¿Cuánto tiempo tiene el local desde que se cierra la venta hasta despachar?</div>
+  <ul class="opciones">
+    <li>(a) Sin plazo formal (como hoy)</li>
+    <li>(b) Plazo configurable por tenant (ej: 24h / 48h) — alerta si se pasa</li>
+    <li>(c) Plazo por canal: presencial 24h / online 48h / mayorista 72h</li>
+    <li>(d) Plazo + bloqueo de nuevas ventas a cliente si hay envíos pendientes vencidos</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span><span class="pregunta-titulo">
+    Múltiples envíos por venta <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: 1 envío por venta (selector excluye ventas con envío asignado).</div>
+  <ul class="opciones">
+    <li>(a) Mantener — 1:1 venta-envío</li>
+    <li>(b) Permitir varios envíos por venta (productos parten en lotes distintos o por sucursales distintas)</li>
+    <li>(c) Permitir si los productos son de distintas sucursales (envío por cada sucursal)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. COSTOS Y TARIFAS ============================ -->
+<h2>B. Costos y tarifas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Jerarquía de $/km <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: <code>sucursal.costo_km_envio</code> &gt; <code>tenant.costo_envio_por_km</code> (fallback global).</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está</li>
+    <li>(b) Agregar nivel "courier" — cada courier propio tiene su tarifa</li>
+    <li>(c) Tarifa por zona/CP (no por sucursal — multi-tarifa según destino)</li>
+    <li>(d) Tarifa por horario (envío diurno vs nocturno con recargo)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Factor de ajuste KM (Haversine vs ruta real) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: Haversine × 1.35 (factor carretera) si no hay Distance Matrix.</div>
+  <ul class="opciones">
+    <li>(a) Mantener 1.35</li>
+    <li>(b) Configurable por tenant (1.2 / 1.35 / 1.5 según ciudad)</li>
+    <li>(c) Forzar Distance Matrix siempre (sin Haversine fallback) — más preciso pero más uso de API</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Costo mínimo / costo escalonado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cobro lineal KM × $/KM (como hoy)</li>
+    <li>(b) Costo mínimo configurable (ej: hasta 5km cuesta $X fijo, después $/km)</li>
+    <li>(c) Costo escalonado (0-5km = $A, 5-10km = $B, +10km = $C)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Costo del envío al cliente vs al local <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cliente paga 100% del costo calculado</li>
+    <li>(b) Cliente paga + margen configurable (ej: costo + 20% de utilidad por logística)</li>
+    <li>(c) Local subsidia hasta umbral (envío gratis si la venta supera $X)</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span><span class="pregunta-titulo">
+    Envío gratis condicional <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar — envío siempre tiene costo</li>
+    <li>(b) Configurable por monto mínimo (envío gratis si venta &gt; $X)</li>
+    <li>(c) Configurable por etiqueta de cliente (Mayorista / VIP siempre con envío gratis)</li>
+    <li>(d) Promoción temporal con fecha desde/hasta</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B6</span><span class="pregunta-titulo">
+    Costo real vs cotizado <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: campos <code>costo_cotizado</code> y <code>costo_real</code> existen pero el flujo de ajuste no está definido.</div>
+  <ul class="opciones">
+    <li>(a) Solo registrar — sin acción especial si difieren</li>
+    <li>(b) Si <code>costo_real &gt; costo_cotizado</code>: registrar diferencia como gasto adicional automático</li>
+    <li>(c) Si <code>costo_real &lt; costo_cotizado</code>: registrar a favor + posibilidad de reembolsar al cliente</li>
+    <li>(d) Ambos sentidos + aprobación de DUEÑO si la diferencia supera umbral</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. PAGOS A COURIER ============================ -->
+<h2>C. Pagos a courier</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Frecuencia de pago al courier <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: pago individual por envío con selección múltiple desde tab Pagos Courier.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — pago individual o múltiple a discreción</li>
+    <li>(b) Liquidación semanal/quincenal/mensual programada (acumula envíos y se paga en batch)</li>
+    <li>(c) Liquidación + conciliación con factura del courier</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Movimiento contable del pago al courier <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: marcar como pagado actualiza <code>costo_pagado=true</code> pero no genera gasto en módulo Gastos.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo flag, sin gasto en módulo Gastos</li>
+    <li>(b) Generar gasto automático al marcar pagado (categoría "Logística/Courier")</li>
+    <li>(c) Generar gasto + descontar de caja si efectivo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Reconciliación con factura del courier <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar — el operador concilia manualmente fuera del sistema</li>
+    <li>(b) Cargar factura del courier (PDF/CSV) y matchear contra los envíos del período</li>
+    <li>(c) (b) + alerta automática si hay diferencias entre lo facturado y lo registrado en envíos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    Quién aprueba pagos a courier <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cualquier rol con acceso a Envíos</li>
+    <li>(b) Solo DUEÑO/SUPERVISOR</li>
+    <li>(c) Umbral por monto y rol</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. POD Y CIERRE DE ENTREGA ============================ -->
+<h2>D. POD y cierre de entrega</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Datos obligatorios del POD <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: fecha + receptor + notas + foto. Ninguno obligatorio.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — todos opcionales</li>
+    <li>(b) Fecha + receptor obligatorios; foto y notas opcionales</li>
+    <li>(c) Todo obligatorio para considerar "entregado"</li>
+    <li>(d) Configurable por tenant (qué campos son requeridos)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Múltiples fotos en el POD <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: 1 foto por envío.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — 1 foto basta</li>
+    <li>(b) Permitir varias fotos (paquete + receptor + DNI del receptor + estado del paquete)</li>
+    <li>(c) Hasta N fotos configurable por tenant</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    Firma del receptor <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar — foto basta</li>
+    <li>(b) Canvas de firma en la página transportista (firma con dedo en el celular)</li>
+    <li>(c) DNI del receptor obligatorio en lugar de firma</li>
+    <li>(d) Firma + DNI ambos</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span><span class="pregunta-titulo">
+    Geolocalización del POD <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No capturar geolocalización</li>
+    <li>(b) Capturar lat/lon del celular del driver al marcar "Entregado" (validación de proximidad al destino)</li>
+    <li>(c) (b) + alerta si la geolocalización está &gt; X km del destino esperado</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D5</span><span class="pregunta-titulo">
+    No-entregado / rechazo del cliente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: estado <code>devolucion</code> existe pero el flujo de "el cliente no quiso recibir" no está bien diferenciado.</div>
+  <ul class="opciones">
+    <li>(a) Estado único "devolucion" para todos los casos</li>
+    <li>(b) Sub-estados: no_entregado (cliente ausente) / rechazado (cliente no quiso) / dirección_incorrecta</li>
+    <li>(c) Sub-estados + motivo obligatorio del catálogo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D6</span><span class="pregunta-titulo">
+    Re-intento de entrega <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar — un envío fallido se cancela y se crea uno nuevo</li>
+    <li>(b) Permitir re-intentar — el envío vuelve a estado <code>en_camino</code> con contador de intentos</li>
+    <li>(c) (b) + costo adicional si supera N intentos (re-cobro al cliente)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. PÁGINA TRANSPORTISTA ============================ -->
+<h2>E. Página pública del transportista</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    Plazo de validez del token <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: token sin expiración explícita.</div>
+  <ul class="opciones">
+    <li>(a) Sin expiración (como hoy)</li>
+    <li>(b) Expira 24h después del despacho</li>
+    <li>(c) Expira al marcar "entregado" o "devolucion"</li>
+    <li>(d) Expira N días configurable (ej: 7 días)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Acciones disponibles al transportista <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: en_camino / en_bodega / entregado / no entregado + POD.</div>
+  <ul class="opciones">
+    <li>(a) Mantener acciones actuales</li>
+    <li>(b) Agregar "Llamar al cliente" (link tel:) y "Mensaje WA" (link wa.me)</li>
+    <li>(c) Agregar reportar incidencia (rotura / problema con dirección / cliente agresivo)</li>
+    <li>(d) Todo lo anterior</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Lista de envíos múltiples del día <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: cada envío tiene su token. El driver hace 10 envíos → 10 links.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — un link por envío</li>
+    <li>(b) Crear "hoja de ruta" por chofer con N envíos del día — un único link agrupador</li>
+    <li>(c) Hoja de ruta + orden optimizado por proximidad (TSP simple)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    Identidad del transportista <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Anónimo — solo token (como hoy)</li>
+    <li>(b) Vincular cada token a un chofer registrado (catálogo de transportistas/repartidores)</li>
+    <li>(c) Pedir nombre + DNI al abrir el link (validación informal)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E5</span><span class="pregunta-titulo">
+    Notificación al cliente cuando el chofer marca "en camino" <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No notificar automáticamente</li>
+    <li>(b) WA automático con plantilla "Su pedido está en camino, llega en aprox X min"</li>
+    <li>(c) WA + link de tracking público (mapa con ubicación actualizada)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. INTEGRACIONES (COURIERS, MAPS) ============================ -->
+<h2>F. Integraciones</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    APIs de courier para tracking automático <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Mantener tracking manual (operador actualiza estado)</li>
+    <li>(b) Integrar OCA / Andreani / CorreoAR (consulta de tracking por número)</li>
+    <li>(c) (b) + cron que actualiza automáticamente estados</li>
+    <li>(d) Postergar — solo cuando haya volumen que lo justifique</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Cotización automática contra couriers <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar</li>
+    <li>(b) EF <code>courier-rates</code> que consulta APIs en paralelo (OCA / CorreoAR / Andreani / DHL) y devuelve tabla comparativa al cargar el envío</li>
+    <li>(c) Solo consulta manual con botón "Cotizar a couriers"</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    Etiquetas de courier (label printing) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar — el local imprime su propio remito</li>
+    <li>(b) Descargar etiqueta del courier (base64 desde API) e imprimir desde la app</li>
+    <li>(c) (b) + impresión directa a impresora térmica (Zebra/etc.)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F4</span><span class="pregunta-titulo">
+    WhatsApp automatizado vs click-to-chat <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: click-to-chat manual (1 clic = 1 mensaje = 1 pestaña).</div>
+  <ul class="opciones">
+    <li>(a) Mantener manual (como hoy)</li>
+    <li>(b) Migrar a WhatsApp Business API (con costos por mensaje y aprobación de plantillas)</li>
+    <li>(c) Híbrido — manual por default, automatizado para casos críticos (despacho / entrega)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. ENVÍO PROPIO ============================ -->
+<h2>G. Envío propio (delivery interno)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Catálogo de repartidores propios <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar — el repartidor se anota en notas</li>
+    <li>(b) Catálogo de repartidores (vinculados o no a empleados) + asignación por envío</li>
+    <li>(c) Catálogo + reporte de productividad por repartidor</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Vehículo / recurso usado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No registrar</li>
+    <li>(b) Asociar el envío con un recurso (moto/auto del módulo Recursos) — agrega KM al recurso</li>
+    <li>(c) (b) + cálculo de combustible consumido auto-generado como gasto</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span><span class="pregunta-titulo">
+    Hoja de ruta y planificación diaria <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar — el operador asigna manualmente</li>
+    <li>(b) Vista de calendario/lista de envíos por día y por repartidor</li>
+    <li>(c) (b) + sugerencia automática de orden por proximidad geográfica</li>
+    <li>(d) (b) + reporte de cumplimiento (envíos del día vs entregados)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. REPORTES Y ALERTAS ============================ -->
+<h2>H. Reportes y alertas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    Reportes prioritarios <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Envíos pendientes / atrasados (sin despachar tras X días)</li>
+    <li>(b) Cumplimiento por courier (tiempo medio + % entregados)</li>
+    <li>(c) Pagos a courier acumulados por mes/courier</li>
+    <li>(d) Subsidio vs ganancia por envío (margen logístico)</li>
+    <li>(e) Mapa de envíos por zona/CP del último mes</li>
+    <li>(f) Productividad de repartidores propios</li>
+    <li>(g) Marcar todos los que apliquen (multi-select)</li>
+    <li>(h) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Alertas automáticas <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Envío sin despachar tras N horas/días</li>
+    <li>(b) POD pendiente tras N días de marcado como "entregado" sin foto/datos</li>
+    <li>(c) Costo courier no pagado tras N días</li>
+    <li>(d) Diferencia importante entre costo cotizado y real</li>
+    <li>(e) Marcar todos los que apliquen</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H3</span><span class="pregunta-titulo">
+    Exportaciones <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Excel + PDF + CSV (consistente con Caja v1.10.0)</li>
+    <li>(b) Hoja de ruta PDF imprimible para el chofer</li>
+    <li>(c) Etiquetas A4 imprimibles (4/6/12 por hoja) con QR + datos del destinatario</li>
+    <li>(d) Todo lo anterior</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. ABIERTOS / PRIORIDADES ============================ -->
+<h2>I. Top 3 prioritario / temas abiertos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    ¿Qué 3 features de Envíos son prioritarias? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto va a backlog.</div>
+  <ul class="opciones">
+    <li>(   ) Pago a courier genera gasto automático + reconciliación con factura</li>
+    <li>(   ) Hoja de ruta del chofer (token único con N envíos + orden optimizado)</li>
+    <li>(   ) Catálogo de repartidores + reporte de productividad</li>
+    <li>(   ) Re-intento de entrega + sub-estados de "no entregado"</li>
+    <li>(   ) Firma electrónica + DNI del receptor en POD</li>
+    <li>(   ) Notificación al cliente "en camino" / "entregado" automática (WA)</li>
+    <li>(   ) APIs de courier (tracking automático OCA/Andreani)</li>
+    <li>(   ) Costos escalonados / mínimo / envío gratis condicional</li>
+    <li>(   ) Distribución del costo real vs cotizado (diferencia como gasto)</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    Comentarios libres
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio Módulo Envíos · 2026-05-26<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar la implementación.
+</div>
+
+</body>
+</html>

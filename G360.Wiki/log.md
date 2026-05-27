@@ -6,6 +6,30 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-27] update | v1.10.1-dev — Cierre HITO v1.9.0 + quick wins Envíos
+
+Sesión paralela al relevamiento de Ventas/RRHH/Clientes/Compras/Envíos (HTMLs generados ayer, pendientes de respuesta). Se cerraron los últimos pendientes del HITO Cierre Contable v1.9.0 + 2 quick wins del backlog de Envíos.
+
+### Cambios
+- **VentasPage**: badge ámbar 🔒 "Cerrado" en cada fila del historial cuando la venta cae en periodo contable cerrado. Botón "Eliminar venta" en el modal de detalle reemplazado por banner amber "Periodo cerrado hasta YYYY-MM-DD — no editable" para evitar errores del trigger DB.
+- **CajaPage**: badge 🔒 "Cerrado" junto al nombre de cada sesión cerrada del historial. Botón "Corregir movimiento" reemplazado por candado deshabilitado en movimientos de periodos cerrados.
+- **CierresContablesPanel**: nuevo botón "Descargar PDF" en el bloque expandido de cada cierre. Genera A4 con header BRAND + datos fiscales del tenant + periodo + observaciones + tabla snapshot (Ventas/Gastos/Sueldos/OC con counts) + bloque resumen (Egresos totales + Resultado neto). Lee de `cierres_contables.totales JSONB` (no recalcula). `logActividad('cierre_contable','descargar_pdf',…)`
+- **Cron limpieza tokens transportista** (migration 143): pg_cron `cleanup_envio_tokens_transportista` corre diario 07:00 UTC. Para envíos en `entregado`/`cancelado`/`devolucion` con +30 días, setea `token_transportista = NULL` para invalidar links públicos. Activo en DEV.
+- **Múltiples fotos POD** (migration 144): tabla `envio_pod_fotos` con RLS por tenant + backfill automático desde `envios.pod_url`. Componente `PodFotosManager` con upload múltiple desde cámara/galería (`multiple` + `capture="environment"`), thumbnails con badge "Principal" en orden 0, botón eliminar con confirm + cleanup del storage path. Integrado en modal POD y modal de edición de envío (solo si `editId` existe). La primera foto sincroniza con `envios.pod_url` para retro-compat. Helper `handleFotoCapture` viejo de ISS-166 eliminado del archivo.
+
+### Estado al cierre
+- DEV: **v1.10.1** con migrations 130-144 aplicadas
+- PROD: v1.10.0 (143-144 pendientes de deploy)
+- Cierre HITO v1.9.0: 100% completo en DEV
+- Relevamientos abiertos esperando respuesta del usuario (5 HTMLs)
+
+### Pendiente próxima sesión
+- PR `dev → main` con título `v1.10.1 — Cierre HITO + quick wins Envíos`
+- Aplicar migrations 143 + 144 en PROD antes del merge (aditivas)
+- GitHub release v1.10.1 como latest
+
+---
+
 ## [2026-05-26] update | PROD deploy v1.10.0 — Pipeline Reglas Caja CERRADO
 
 Cierre del pipeline completo de Caja con 6 versiones consecutivas (v1.9.1 → v1.10.0) en 2 días.

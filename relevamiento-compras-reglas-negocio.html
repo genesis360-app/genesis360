@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Compras (OC + Recepciones) · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Módulo Compras</h1>
+<div class="meta">
+  Genesis360 · v1.10.0 · Fecha: 26 de mayo de 2026 · Relevamiento con Gastón Otranto + socio
+  <br><em>Cubre: Órdenes de Compra (OC) · Recepciones · OC derivadas/reembolsos · Envío al proveedor</em>
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas con
+  <span class="tag tag-existente">EXISTENTE</span> piden confirmar reglas ya implementadas;
+  <span class="tag tag-nuevo">NUEVO</span> piden definir reglas pendientes;
+  <span class="tag tag-cambio">CAMBIO</span> señalan contradicciones a resolver.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo:</strong> OC con estados <code>borrador → enviada → confirmada → recibida_parcial → recibida</code> (+ cancelada) ·
+  Numeración por tenant · OC rápida desde ProductosPage · Items con precio + cantidad · Vínculo OC ↔ Recepciones · Over-receipt configurable
+  por tenant (<code>tenants.permite_over_receipt</code>) · OC derivadas con reembolso (<code>oc_padre_id</code>, <code>es_derivada</code>) ·
+  Costo envío + tiene_envio · Anticipo a proveedor (pago parcial) con badge "💰 Anticipo" + alerta N días · CC proveedores con límite +
+  bloqueo + override · Multi-sucursal por OC.
+</div>
+
+<!-- ============================ A. CREACIÓN DE OC ============================ -->
+<h2>A. Creación y aprobación de OC</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Quién puede crear OC <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: cualquier rol con acceso a Proveedores (DUEÑO, ADMIN). DEPOSITO no.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo DUEÑO/ADMIN</li>
+    <li>(b) Permitir SUPERVISOR (hasta umbral monto)</li>
+    <li>(c) Permitir DEPOSITO crear borradores (sin enviar), DUEÑO/SUPERVISOR confirma</li>
+    <li>(d) Configurable por rol y umbral monto (estilo Gastos)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Aprobación antes de enviar al proveedor <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin aprobación — el creador envía directo</li>
+    <li>(b) Aprobación si supera monto umbral configurable (estilo umbrales de Gastos)</li>
+    <li>(c) Doble validación: creador prepara → DUEÑO confirma siempre</li>
+    <li>(d) Aprobación por tipo (mercadería sin aprobación, servicios con aprobación)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    OC rápida desde ProductosPage <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: botón "OC rápida" en productos. Crea borrador o agrega a OC existente del mismo proveedor.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está</li>
+    <li>(b) Sugerencia automática de OC desde alerta stock bajo (consolidando productos de mismo proveedor)</li>
+    <li>(c) Auto-generar borrador de OC cuando varios productos del mismo proveedor están bajo stock mínimo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    Sucursal en la OC <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: <code>ordenes_compra.sucursal_id</code> opcional + <code>users.puede_ver_todas</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — sucursal opcional en OC</li>
+    <li>(b) Sucursal obligatoria si el rol del creador NO es DUEÑO/SUPERVISOR (CAJERO/DEPOSITO siempre con sucursal)</li>
+    <li>(c) Sucursal obligatoria siempre — eliminar OCs "globales"</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span><span class="pregunta-titulo">
+    Numeración OC <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: correlativo por tenant.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — correlativo único por tenant</li>
+    <li>(b) Correlativo por sucursal (reset por sucursal, prefijo S1-OC-0001)</li>
+    <li>(c) Correlativo por proveedor (cada proveedor con su contador)</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A6</span><span class="pregunta-titulo">
+    Envío de OC al proveedor <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo cambiar estado a "enviada", el envío fuera del sistema (mail manual / WA / verbal)</li>
+    <li>(b) Botón "Enviar por email" desde la OC (PDF + email al contacto del proveedor)</li>
+    <li>(c) Botón "Enviar por WA" con plantilla configurable</li>
+    <li>(d) Ambos canales (email + WA), elige el operador o se hace según contacto preferido del proveedor</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. RECEPCIÓN DE MERCADERÍA ============================ -->
+<h2>B. Recepción de mercadería</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Quién recibe <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: DUEÑO/SUPERVISOR/DEPOSITO pueden hacer recepciones.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — DUEÑO/SUPERVISOR/DEPOSITO</li>
+    <li>(b) Solo DEPOSITO en sucursales con rol DEPOSITO presente; DUEÑO/SUPERVISOR en el resto</li>
+    <li>(c) DEPOSITO recibe pero el ajuste de cantidades (over/under-receipt) requiere SUPERVISOR+</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Recepción sin OC previa <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: las recepciones se vinculan a OC. ¿Permitir recepción "espontánea" (proveedor manda sin OC)?</div>
+  <ul class="opciones">
+    <li>(a) No permitir — siempre debe haber OC primero (puede ser creada al momento)</li>
+    <li>(b) Permitir recepción libre + obligación de generar OC retroactiva</li>
+    <li>(c) Permitir solo a DUEÑO/SUPERVISOR con motivo registrado</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Over-receipt (recibo más de lo pedido) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: configurable <code>tenants.permite_over_receipt</code> (migration 051).</div>
+  <ul class="opciones">
+    <li>(a) Mantener: bool global on/off</li>
+    <li>(b) Granular por proveedor: <code>proveedores.permite_over_receipt</code></li>
+    <li>(c) Configurable + umbral % máximo (ej: permitir hasta +10% sobre pedido)</li>
+    <li>(d) Siempre requiere autorización SUPERVISOR+ in-app</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Under-receipt (recibo menos de lo pedido) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Permitir libremente — OC queda <code>recibida_parcial</code> hasta completar o cerrarse manualmente</li>
+    <li>(b) Permitir + alertar al DUEÑO si pasan N días sin completarse</li>
+    <li>(c) Permitir + bloqueo de pago hasta completar o anular el faltante</li>
+    <li>(d) Solicitar motivo del faltante obligatorio (rotura / faltante / cancelado por proveedor)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span><span class="pregunta-titulo">
+    Múltiples recepciones sobre la misma OC <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: una recepción puede vincular ítems de varias OCs, y una OC se completa con varias recepciones.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — flexibilidad total</li>
+    <li>(b) Recepción simple (1 OC → 1 recepción) — bloquear cruces</li>
+    <li>(c) Permitir cruces solo entre OCs del mismo proveedor</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B6</span><span class="pregunta-titulo">
+    Validación de precio (precio OC vs precio remito) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin validación — se usa el precio de la OC al ingresar al stock</li>
+    <li>(b) Operador puede editar precio en la recepción (con audit log)</li>
+    <li>(c) Auto-detectar diferencia entre OC y remito + pedir autorización del DUEÑO</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B7</span><span class="pregunta-titulo">
+    Comprobante de recepción (remito proveedor) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No es necesario adjuntar nada</li>
+    <li>(b) Permitir adjuntar PDF/foto del remito en la recepción</li>
+    <li>(c) Obligatorio si el monto supera X</li>
+    <li>(d) Siempre obligatorio</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B8</span><span class="pregunta-titulo">
+    LPN automático en recepción <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: la recepción crea LPN automático por línea recibida.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — LPN auto por línea</li>
+    <li>(b) Permitir agrupar varias líneas en mismo LPN (LPN Madre con sub-LPNs por SKU)</li>
+    <li>(c) Permitir LPN custom (operador define el código)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. OC DERIVADAS Y REEMBOLSOS ============================ -->
+<h2>C. OC derivadas y reembolsos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Devolución a proveedor <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: campo <code>tiene_reembolso_pendiente</code> existe pero el flujo está sin definir.</div>
+  <ul class="opciones">
+    <li>(a) Generar "OC derivada" negativa que descuenta stock + crea movimiento de reembolso</li>
+    <li>(b) Crear "devolución a proveedor" como entidad separada (similar a devoluciones de venta)</li>
+    <li>(c) Solo ajuste de inventario manual + nota en la OC original</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Forma del reembolso <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Crédito en CC del proveedor (descuenta de la deuda)</li>
+    <li>(b) Reembolso en efectivo (ingreso a caja)</li>
+    <li>(c) Reposición de mercadería (genera OC nueva por el mismo monto/cantidad)</li>
+    <li>(d) Operador elige según acuerdo con el proveedor</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Motivo de devolución a proveedor <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Texto libre</li>
+    <li>(b) Catálogo cerrado (Producto roto / Falla de fábrica / Producto incorrecto / Vencido / Otro)</li>
+    <li>(c) Catálogo + observación libre obligatoria</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    Plazo para devolver a proveedor <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin plazo</li>
+    <li>(b) Plazo configurable por proveedor (campo <code>proveedores.plazo_devolucion_dias</code>)</li>
+    <li>(c) Plazo global del tenant (ej: 7 días desde recepción)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. PAGO DE OC ============================ -->
+<h2>D. Pago de la OC</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Pago anticipado al proveedor <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: badge "💰 Anticipo" si <code>monto_pagado &gt; 0 AND recepcion_estado='pendiente'</code> + alerta N días.</div>
+  <ul class="opciones">
+    <li>(a) Mantener con badge + alerta</li>
+    <li>(b) Bloquear avance de pago si la OC no se recibió tras X días</li>
+    <li>(c) Estado nuevo <code>pagada_pendiente_recepcion</code> con escalado a DUEÑO si pasa el plazo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Pago parcial de OC <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Mantener — varios pagos parciales hasta cubrir el total</li>
+    <li>(b) Establecer schedule de pago obligatorio (X% al confirmar, X% al recibir, X% a 30 días)</li>
+    <li>(c) Configurable por OC: pagar todo de una o en hitos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    Medios de pago de OC <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: mismos métodos de Gastos (efectivo, transferencia, cheque, CC, MP).</div>
+  <ul class="opciones">
+    <li>(a) Mantener — todos los métodos disponibles</li>
+    <li>(b) Cheque tiene flujo especial (cargar nro, banco, fecha emisión/cobro, conciliación)</li>
+    <li>(c) Transferencia con adjunto de comprobante obligatorio</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span><span class="pregunta-titulo">
+    Cheques diferidos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar — cheques se cobran inmediatamente</li>
+    <li>(b) Tabla de cheques con fecha de cobro futuro + alerta antes del vencimiento</li>
+    <li>(c) Cheques pueden endosarse (pagar a otro proveedor con un cheque recibido)</li>
+    <li>(d) (b) + (c)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D5</span><span class="pregunta-titulo">
+    Permisos para registrar pago de OC <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cualquier rol con acceso a Gastos/OC</li>
+    <li>(b) Solo DUEÑO/SUPERVISOR/ADMIN</li>
+    <li>(c) Umbral por monto y rol (estilo Gastos)</li>
+    <li>(d) Doble firma obligatoria si supera umbral (registra → autoriza pago)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. INTEGRACIÓN OC ↔ STOCK + COSTOS ============================ -->
+<h2>E. Integración con stock y costos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    Actualización del precio de costo del producto <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: el precio de costo en <code>productos</code> no se actualiza automáticamente con cada recepción.</div>
+  <ul class="opciones">
+    <li>(a) No actualizar — el precio de costo se gestiona manualmente</li>
+    <li>(b) Actualizar al último precio recibido (override automático)</li>
+    <li>(c) Promedio ponderado: nuevo costo = (stock × costo_actual + recibido × costo_OC) / total</li>
+    <li>(d) Mostrar alerta "El costo cambió en X%" + operador decide actualizar o no</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Costos accesorios (envío, aduana, comisiones) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: <code>ordenes_compra.costo_envio</code> existe. Otros costos no.</div>
+  <ul class="opciones">
+    <li>(a) Mantener solo costo envío</li>
+    <li>(b) Agregar campos sueltos (envío + aduana + comisión + otros) sin distribuir al costo unitario</li>
+    <li>(c) Distribuir costos accesorios proporcionalmente al costo unitario de cada ítem (importación / costeo absorbente)</li>
+    <li>(d) Configurable por OC: distribuir o no</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Producto nuevo recibido sin alta previa <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No permitir — todo producto debe existir en catálogo antes de recibir</li>
+    <li>(b) Permitir alta rápida desde la recepción (nombre + categoría + SKU auto)</li>
+    <li>(c) Permitir solo DUEÑO/SUPERVISOR + producto entra como "Pendiente de revisión"</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    Diferencia entre OC y recepción <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo registrar la diferencia, sin acción especial</li>
+    <li>(b) Reporte "OCs con diferencias entre pedido y recepción" para gestión proveedor</li>
+    <li>(c) Calificar al proveedor automáticamente según cumplimiento de pedido</li>
+    <li>(d) (b) + (c)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. SERVICIOS Y SUSCRIPCIONES ============================ -->
+<h2>F. Servicios y suscripciones</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    Servicios recurrentes <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: <code>servicio_items</code> + <code>servicio_presupuestos</code> manuales.</div>
+  <ul class="opciones">
+    <li>(a) Mantener manual</li>
+    <li>(b) Servicio recurrente (mensual/anual) genera automáticamente gasto con frecuencia configurada</li>
+    <li>(c) Similar a "recursos recurrentes" en Gastos: genera borrador al vencer próximo período</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Catálogo de servicios <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Mantener — catálogo por proveedor (cada servicio asociado a uno)</li>
+    <li>(b) Catálogo global del tenant — luego se asigna proveedor al contratar</li>
+    <li>(c) Ambos modos (servicios genéricos + específicos por proveedor)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    Presupuestos de servicio <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: presupuesto con estado pendiente/aprobado/rechazado/convertido + PDF adjunto + crea gasto al aprobar.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está</li>
+    <li>(b) Permitir comparar varios presupuestos del mismo servicio (de distintos proveedores) lado a lado</li>
+    <li>(c) Aprobación in-app del DUEÑO si el monto supera umbral</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. REPORTES Y ALERTAS ============================ -->
+<h2>G. Reportes y alertas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Reportes prioritarios <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) OCs vencidas (sin recepción tras X días)</li>
+    <li>(b) Compras por proveedor (volumen + plazo entrega + cumplimiento)</li>
+    <li>(c) Top productos comprados (volumen + costo)</li>
+    <li>(d) Pendientes de pago a proveedores (aging)</li>
+    <li>(e) Evolución de costos de producto (gráfico precio-tiempo por SKU)</li>
+    <li>(f) OCs derivadas / devoluciones a proveedor</li>
+    <li>(g) Marcar todos los que apliquen (multi-select)</li>
+    <li>(h) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Alertas automáticas <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) OC con anticipo sin recepción tras N días (ya existe configurable)</li>
+    <li>(b) Cheque emitido próximo a vencer (si se implementan cheques diferidos)</li>
+    <li>(c) Costo de producto subió X% respecto a la última compra</li>
+    <li>(d) Producto bajo stock mínimo y sin OC pendiente</li>
+    <li>(e) Marcar todos los que apliquen</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span><span class="pregunta-titulo">
+    Exportaciones <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Excel + PDF + CSV (consistente con Caja v1.10.0)</li>
+    <li>(b) Solo Excel + PDF</li>
+    <li>(c) PDF de OC imprimible con datos del proveedor + condiciones de pago</li>
+    <li>(d) Todo lo anterior</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. ABIERTOS / PRIORIDADES ============================ -->
+<h2>H. Top 3 prioritario / temas abiertos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    ¿Qué 3 features de Compras son prioritarias? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto va a backlog.</div>
+  <ul class="opciones">
+    <li>(   ) Devolución a proveedor con NC + crédito CC</li>
+    <li>(   ) Aprobación de OC por umbral monto/rol</li>
+    <li>(   ) Envío de OC al proveedor (email/WA con plantilla)</li>
+    <li>(   ) Actualización automática de precio de costo (último/PMP)</li>
+    <li>(   ) Distribución de costos accesorios (envío/aduana) al costo unitario</li>
+    <li>(   ) Cheques diferidos con cobro/endoso</li>
+    <li>(   ) Adjunto de remito proveedor en recepción</li>
+    <li>(   ) Servicios recurrentes con generación automática</li>
+    <li>(   ) Reportes de cumplimiento proveedor + evolución de costos</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Comentarios libres
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio Módulo Compras (OC + Recepciones) · 2026-05-26<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar la implementación.
+</div>
+
+</body>
+</html>

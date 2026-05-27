@@ -1,6 +1,10 @@
 # Cierre Contable Mensual — Genesis360
 
-Estado: ✅ Implementado en DEV (v1.9.0 / migration 135) · ⏳ Pendiente deploy PROD
+Estado: ✅ Implementado completo en DEV (v1.9.0 + UX v1.10.1 / migration 135) · ✅ Triggers en PROD (135) · ⏳ Mejoras UX v1.10.1 pendientes deploy PROD
+
+## Mejoras UX v1.10.1 (2026-05-27)
+- **Candado 🔒 por fila** en VentasPage y CajaPage: badge ámbar "Cerrado" en cada fila/sesión cuya fecha cae en periodo cerrado, usando el hook `useCierreContable.isPeriodoCerrado(fecha)`. Evita el rebote del toast del trigger DB al intentar editar.
+- **PDF descargable del cierre** desde `CierresContablesPanel`: botón "Descargar PDF" en el bloque expandido. A4 con header BRAND + datos fiscales + periodo + observaciones + tabla snapshot (Ventas/Gastos/Sueldos/OC con counts) + bloque resumen (Egresos totales + Resultado neto). Lee de `cierres_contables.totales JSONB` (no recalcula al momento de descargar).
 
 ## Concepto
 

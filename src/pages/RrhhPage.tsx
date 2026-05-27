@@ -540,28 +540,31 @@ export default function RrhhPage() {
   // Mutations
   const saveEmpleado = useMutation({
     mutationFn: async (data: Partial<Empleado>) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { puesto, departamento, supervisor, ...campos } = data as any
       if (formMode === 'crear') {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { puesto, departamento, supervisor, ...campos } = data as any
-        const { error } = await supabase.from('empleados').insert({
-          tenant_id: tenant!.id,
-          ...campos,
-        })
+        // ISS-184: usar .select() + relaciones para que el row recién creado se inyecte
+        // en el cache via setQueryData en onSuccess (evita el caso "lista vacía hasta F5").
+        const { data: inserted, error } = await supabase.from('empleados')
+          .insert({ tenant_id: tenant!.id, ...campos })
+          .select('*, puesto:rrhh_puestos(id, nombre), departamento:rrhh_departamentos(id, nombre), supervisor:users!supervisor_id(id, nombre_display)')
+          .single()
         if (error) throw error
         logActividad({
           entidad: 'empleado',
-          entidad_id: '',
+          entidad_id: inserted?.id ?? '',
           entidad_nombre: nombreEmpleado(data) || 'Nuevo empleado',
           accion: 'crear',
           pagina: '/rrhh',
         })
+        return { mode: 'crear' as const, row: inserted as Empleado }
       } else if (selectedEmpleado) {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { puesto, departamento, supervisor, ...campos } = data as any
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from('empleados')
           .update(campos)
           .eq('id', selectedEmpleado.id)
+          .select('*, puesto:rrhh_puestos(id, nombre), departamento:rrhh_departamentos(id, nombre), supervisor:users!supervisor_id(id, nombre_display)')
+          .single()
         if (error) throw error
         logActividad({
           entidad: 'empleado',
@@ -570,10 +573,20 @@ export default function RrhhPage() {
           accion: 'editar',
           pagina: '/rrhh',
         })
+        return { mode: 'editar' as const, row: updated as Empleado }
       }
     },
-    onSuccess: () => {
-      toast.success(formMode === 'crear' ? 'Empleado creado' : 'Empleado actualizado')
+    onSuccess: (result) => {
+      toast.success(result?.mode === 'crear' ? 'Empleado creado' : 'Empleado actualizado')
+      // ISS-184: optimistic update — inyectar el row en la cache para que la tabla se
+      // actualice de inmediato. El invalidate posterior trae los joins frescos del server.
+      if (result?.row) {
+        qc.setQueryData<Empleado[]>(['empleados', tenant?.id], (prev) => {
+          const lista = prev ?? []
+          if (result.mode === 'crear') return [result.row, ...lista]
+          return lista.map(e => e.id === result.row.id ? result.row : e)
+        })
+      }
       qc.invalidateQueries({ queryKey: ['empleados'] })
       resetForm()
     },

@@ -6,6 +6,38 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-28] update | PROD deploy v1.10.1 — Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes
+
+Cierre del lote v1.10.1 con despliegue completo a PROD.
+
+### Deploy
+- **Migrations 143-147 aplicadas en PROD** pre-merge (regla `feedback_deploy_order_migrations_aditivas`):
+  - 143: cron limpieza `envios.token_transportista` +30d
+  - 144: tabla `envio_pod_fotos` + RLS + backfill (POD múltiples fotos)
+  - 145: fix `pagar_nomina_empleado` (saldo con traspasos)
+  - 146: `caja_traspasos.movimiento_origen_id` + `movimiento_destino_id`
+  - 147: `empleados.supervisor_id` → FK a `empleados(id)` + `get_supervisor_team_ids()` reescrita
+- **Merge `dev → main` resuelto** localmente (conflictos en wiki/brand/CajaPage por squash distinto del previo): `git checkout --ours` en cada caso porque dev ya tenía todos los cambios de main + lo nuevo de v1.10.1. Merge commit `98ca4427` en dev.
+- **PR #119 mergeado a main** (squash, commit `842d7353`)
+- **Vercel PROD auto-deploy** desde commit del merge — `dpl_BxMq3Zu9iKEoNjLBEus76jk5xfX5`
+- **GitHub release v1.10.1** creada como `latest` sobre main → https://github.com/genesis360-app/genesis360/releases/tag/v1.10.1
+- `app.genesis360.pro` sirve v1.10.1 una vez termine el build (~90s)
+
+### Score final del lote v1.10.1
+- Features cierre HITO v1.9.0: candado por fila + PDF cierre con snapshot ✅
+- Quick wins Envíos: cron tokens + múltiples fotos POD ✅
+- Bugfixes: 10 (ISS-182/183/184/195/150/186/193/156/175/176/185) ✅
+- Resiliencia: ErrorBoundary instrumentado a Sentry + boundary por-ruta ✅
+- Relevamientos abiertos: 5 HTMLs (Ventas/RRHH/Clientes/Compras/Envíos)
+
+### Pendientes para próxima sesión
+- Vincular `empleados.user_id` (UI) para reactivar "Mi Equipo" del SUPERVISOR — relevamiento RRHH A5
+- Crash intermitente "Algo salió mal" en Gastos: esperando stack real del ErrorBoundary instrumentado
+- Avanzar con U1-U9 / F1-F7 / M1-M5 (bugfixes UX + features chicas + medianas) cuando GO retome
+- Responder los 5 relevamientos abiertos con socio
+
+---
+
 ## [2026-05-27] update | v1.10.1-dev — Tanda de bugfixes (10 issues) + resiliencia ErrorBoundary
 
 Continuación de la sesión v1.10.1. Mientras los relevamientos esperan respuesta, se atacó la lista de bugs críticos priorizada con GO. Todo en DEV, parte del lote v1.10.1 (no deployado).

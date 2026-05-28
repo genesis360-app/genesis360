@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-27 — 53 páginas + 3 manuales + relevamientos (caja PDF + 5 HTML: ventas/rrhh/clientes/compras/envíos) · 8 fuentes en raw/ · DEV: 147 + 086b · PROD: 142 + 086b · **DEV v1.10.1** (cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes · migrations 143-147 pendientes de deploy) · **PROD v1.10.0** ✅*
+*Última actualización: 2026-05-28 — 53 páginas + 3 manuales + relevamientos (caja PDF + 5 HTML: ventas/rrhh/clientes/compras/envíos) · 8 fuentes en raw/ · DEV: 147 + 086b · PROD: 147 + 086b · **v1.10.1 DEV y PROD** ✅ (Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes) · 5 relevamientos abiertos esperando respuesta GO+socio*

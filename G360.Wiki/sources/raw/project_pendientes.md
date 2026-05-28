@@ -4,18 +4,20 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.0** ✅ (HITO Caja completo) · DEV: **v1.10.1**
+Último release en PROD: **v1.10.1** ✅ (Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes) · DEV: **v1.10.1**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.10.1 / PROD v1.10.0 (cierre sesión 2026-05-27 — Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes)
+## Estado actual DEV v1.10.1 / PROD v1.10.1 (cierre sesión 2026-05-28 — PROD deploy v1.10.1)
 
 - APP_VERSION DEV: `v1.10.1` ✅
-- APP_VERSION PROD: `v1.10.0` (143-147 pendientes de deploy)
+- APP_VERSION PROD: `v1.10.1` ✅ (PR #119 mergeado `842d7353`)
 - Migrations DEV: 001–147 ✅
-- Migrations PROD: 001–142 ✅ (143-147 pendientes)
+- Migrations PROD: 001–147 ✅ (143-147 aplicadas pre-merge según regla de deploy aditivo)
+- Vercel deploy PROD `dpl_BxMq3Zu9iKEoNjLBEus76jk5xfX5` desde commit del merge (state: en build → READY ~90s)
+- GitHub release v1.10.1 marcada como **latest** sobre main
 - **Relevamientos abiertos**: 5 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos) listos para que GO + socio respondan
 - **Cierre HITO v1.9.0**: 100% completo (candado por fila + PDF cierre) ✅
 
@@ -35,10 +37,12 @@ type: project
 
 **Resiliencia (no es ISS):** ErrorBoundary ahora reporta a Sentry + muestra mensaje/ID + botón copiar; boundary por-ruta en AppLayout (un crash de página ya no tumba el menú); GruposEstadosPage blindado contra `grupo_estado_items` null.
 
-### ⚠ Pendiente al deployar v1.10.1 a PROD
-- Aplicar migrations **143, 144, 145, 146, 147** en PROD (todas aditivas/idempotentes; 147 cambia FK supervisor_id — ver nota)
-- **147 nota**: al aplicar en PROD se nulean los `supervisor_id` que apunten a users sin empleado vinculado. Para reactivar "Mi Equipo" del SUPERVISOR hay que vincular `empleados.user_id` (pendiente UI — relevamiento RRHH A5)
-- PR `dev → main` v1.10.1 + GitHub release
+### ✅ Deploy v1.10.1 a PROD completo (2026-05-28)
+- Migrations **143, 144, 145, 146, 147** aplicadas en PROD pre-merge
+- PR #119 mergeado a main (squash `842d7353`)
+- Vercel auto-deploy de PROD desde commit del merge
+- GitHub release v1.10.1 marcada como `latest`
+- ⚠ Pendiente UI: vincular `empleados.user_id` para reactivar "Mi Equipo" del SUPERVISOR (relevamiento RRHH A5)
 
 ### Lo producido en DEV en esta sesión (2026-05-27 — v1.10.1)
 

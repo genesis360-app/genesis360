@@ -3,20 +3,21 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-05-27
+updated: 2026-05-28
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 27 de Mayo, 2026
+**Última actualización:** 28 de Mayo, 2026
 
 ---
 
-## v1.10.1 — Cierre HITO v1.9.0 + quick wins Envíos (DEV ✅ · PROD ⏳)
+## v1.10.1 — Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes (PROD ✅)
 
-**Estado:** desplegado en DEV. Pendiente PR a main + migrations 143-147 en PROD.
-**Fecha:** 2026-05-27
+**Estado:** desplegado en PROD ✅ (PR #119 mergeado `842d7353`, release latest, migrations 143-147 aplicadas pre-merge, Vercel deploy `dpl_BxMq3Zu9iKEoNjLBEus76jk5xfX5`)
+**Fecha:** 2026-05-28
+**Release:** [v1.10.1](https://github.com/genesis360-app/genesis360/releases/tag/v1.10.1)
 **Migrations:** 143 (cron tokens) · 144 (envio_pod_fotos) · 145 (fix saldo nómina) · 146 (FK traspasos) · 147 (supervisor=empleado)
 
 ### Cambios — features

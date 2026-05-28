@@ -207,6 +207,12 @@ export default function GastosPage() {
   // Múltiples medios de pago para gastos variables
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
 
+  // ISS-190: pago parcial de gasto
+  const [pagoGastoModal, setPagoGastoModal] = useState<{ id: string; monto: number; montoPagado: number; descripcion: string } | null>(null)
+  const [pagoParcialmonto, setPagoParcialmonto] = useState('')
+  const [pagoParcialmedio, setPagoParcialmedio] = useState('')
+  const [pagoParcialSaving, setPagoParcialSaving] = useState(false)
+
   // ── Tab OC — estado ──────────────────────────────────────────────────────
   const [ocFiltroEstadoPago, setOcFiltroEstadoPago] = useState('')
   const [ocFiltroProveedor, setOcFiltroProveedor]   = useState('')
@@ -1027,6 +1033,11 @@ export default function GastosPage() {
         ? JSON.stringify(mediosValidos.map(m => ({ tipo: m.tipo, monto: parseFloat(m.monto) })))
         : null
 
+      const montoPagado = mediosValidos.reduce((acc, m) => acc + parseFloat(m.monto), 0)
+      const estadoPago: 'pendiente' | 'parcial' | 'pagado' =
+        mediosValidos.length === 0 ? 'pendiente' :
+        Math.abs(montoPagado - monto) < 0.5 ? 'pagado' : 'parcial'
+
       const payload: any = {
         tenant_id: tenant!.id,
         descripcion: form.descripcion.trim(), monto,
@@ -1049,6 +1060,9 @@ export default function GastosPage() {
         // Migration 135 — nota de corrección
         gasto_padre_id: correccionPadre?.id ?? null,
         es_correccion: !!correccionPadre,
+        // Migration 150 — pago parcial
+        monto_pagado: montoPagado,
+        estado_pago: estadoPago,
       }
 
       const titulo = getTituloFinal()
@@ -1234,6 +1248,39 @@ export default function GastosPage() {
     qc.invalidateQueries({ queryKey: ['gastos-historial'] })
     toast.success(teniaPago ? 'Gasto eliminado · Corrección registrada en caja' : 'Gasto eliminado')
     logActividad({ entidad: 'gasto', entidad_id: id, entidad_nombre: g?.descripcion, accion: 'eliminar', pagina: '/gastos' })
+  }
+
+  // ISS-190: registrar pago parcial o completar pago de un gasto
+  const registrarPagoGasto = async () => {
+    if (!pagoGastoModal) return
+    const monto = parseFloat(pagoParcialmonto.replace(',', '.'))
+    if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    if (!pagoParcialmedio) { toast.error('Seleccioná un método de pago'); return }
+    const saldoPendiente = pagoGastoModal.monto - pagoGastoModal.montoPagado
+    if (monto > saldoPendiente + 0.5) { toast.error(`El monto supera el saldo pendiente ($${saldoPendiente.toLocaleString('es-AR', { maximumFractionDigits: 0 })})`); return }
+    setPagoParcialSaving(true)
+    try {
+      const nuevoMontoPagado = pagoGastoModal.montoPagado + monto
+      const nuevoEstado: 'parcial' | 'pagado' = nuevoMontoPagado >= pagoGastoModal.monto - 0.5 ? 'pagado' : 'parcial'
+      const { error } = await supabase.from('gastos').update({ monto_pagado: nuevoMontoPagado, estado_pago: nuevoEstado }).eq('id', pagoGastoModal.id)
+      if (error) throw error
+      const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
+      if (sesionUsar) {
+        const esEfectivo = pagoParcialmedio === 'Efectivo'
+        supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id, sesion_id: sesionUsar,
+          tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
+          concepto: esEfectivo ? `Pago gasto: ${pagoGastoModal.descripcion}` : `[${pagoParcialmedio}] Pago gasto: ${pagoGastoModal.descripcion}`,
+          monto, cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(pagoParcialmedio),
+          usuario_id: user?.id,
+        }).then(({ error: cajErr }) => { if (cajErr) console.error('caja pago parcial gasto:', cajErr.message) })
+      }
+      qc.invalidateQueries({ queryKey: ['gastos'] })
+      qc.invalidateQueries({ queryKey: ['gastos-historial'] })
+      toast.success(nuevoEstado === 'pagado' ? 'Gasto pagado completamente' : 'Pago parcial registrado')
+      setPagoGastoModal(null); setPagoParcialmonto(''); setPagoParcialmedio('')
+    } catch (e: any) { toast.error(e.message ?? 'Error al registrar pago') }
+    finally { setPagoParcialSaving(false) }
   }
 
   // ── Guardar gasto fijo ────────────────────────────────────────────────────
@@ -1675,10 +1722,13 @@ export default function GastosPage() {
                       <tr key={g.id} className="border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatFecha(g.fecha)}</td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <p className="font-medium text-gray-800 dark:text-gray-100">{g.descripcion}</p>
-                            {!g.medio_pago && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium flex-shrink-0">Borrador</span>
+                            {(g.estado_pago === 'pendiente' || (!g.estado_pago && !g.medio_pago)) && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium flex-shrink-0">Sin pagar</span>
+                            )}
+                            {g.estado_pago === 'parcial' && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 font-medium flex-shrink-0" title={`Pagado: $${Number(g.monto_pagado).toLocaleString('es-AR', { maximumFractionDigits: 0 })} / Pendiente: $${(Number(g.monto) - Number(g.monto_pagado)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}>Pago parcial</span>
                             )}
                             {g.comprobante_url && (
                               <button onClick={() => verComprobante(g.comprobante_url)} title={g.comprobante_titulo ?? 'Ver comprobante'} className="text-blue-400 hover:text-blue-600">
@@ -1703,6 +1753,13 @@ export default function GastosPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
+                            {(g.estado_pago === 'pendiente' || g.estado_pago === 'parcial' || (!g.estado_pago && !g.medio_pago)) && !isPeriodoCerrado(g.fecha) && (
+                              <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion }); setPagoParcialmonto(''); setPagoParcialmedio('') }}
+                                title="Registrar pago"
+                                className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors">
+                                <CreditCard size={14} />
+                              </button>
+                            )}
                             {isPeriodoCerrado(g.fecha) ? (
                               <button onClick={() => abrirCorreccion(g)} title="Período cerrado · crear nota de corrección"
                                 className="p-1.5 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors flex items-center gap-1 text-[11px]">
@@ -1828,8 +1885,11 @@ export default function GastosPage() {
                           {g.categoria && (
                             <span className="inline-block px-1.5 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded font-medium flex-shrink-0">{g.categoria}</span>
                           )}
-                          {!g.medio_pago && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium flex-shrink-0">Borrador</span>
+                          {(g.estado_pago === 'pendiente' || (!g.estado_pago && !g.medio_pago)) && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium flex-shrink-0">Sin pagar</span>
+                          )}
+                          {g.estado_pago === 'parcial' && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 font-medium flex-shrink-0">Pago parcial</span>
                           )}
                           {g.comprobante_url && <Paperclip size={12} className="text-blue-400 flex-shrink-0" />}
                         </div>
@@ -1883,7 +1943,13 @@ export default function GastosPage() {
                           </div>
                         )}
 
-                        <div className="flex items-center gap-2 pt-1">
+                        <div className="flex items-center gap-2 pt-1 flex-wrap">
+                          {(g.estado_pago === 'pendiente' || g.estado_pago === 'parcial' || (!g.estado_pago && !g.medio_pago)) && !isPeriodoCerrado(g.fecha) && (
+                            <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion }); setPagoParcialmonto(''); setPagoParcialmedio('') }}
+                              className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:underline">
+                              <CreditCard size={12} /> Registrar pago
+                            </button>
+                          )}
                           {isPeriodoCerrado(g.fecha) ? (
                             <button onClick={() => abrirCorreccion(g)} className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline">
                               <Lock size={12} /> Nota de corrección (período cerrado)
@@ -3145,6 +3211,59 @@ export default function GastosPage() {
             qc.invalidateQueries({ queryKey: ['autorizaciones-cc'] })
           }}
         />
+      )}
+
+      {/* ISS-190: Modal pago parcial de gasto */}
+      {pagoGastoModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Registrar pago</h3>
+              <button onClick={() => setPagoGastoModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={20} /></button>
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{pagoGastoModal.descripcion}</p>
+              <div className="flex justify-between mt-1">
+                <span>Total</span><span className="font-semibold">{formatMoneda(pagoGastoModal.monto)}</span>
+              </div>
+              {pagoGastoModal.montoPagado > 0 && (
+                <div className="flex justify-between">
+                  <span>Ya pagado</span><span className="text-green-600">{formatMoneda(pagoGastoModal.montoPagado)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-600 pt-1 mt-1">
+                <span>Saldo pendiente</span><span className="text-red-500">{formatMoneda(pagoGastoModal.monto - pagoGastoModal.montoPagado)}</span>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Monto a pagar</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0.01" step="0.01"
+                  value={pagoParcialmonto} onChange={e => setPagoParcialmonto(e.target.value)}
+                  placeholder={`Máx. $${(pagoGastoModal.monto - pagoGastoModal.montoPagado).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Método de pago</label>
+                <select value={pagoParcialmedio} onChange={e => setPagoParcialmedio(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                  <option value="">— elegir —</option>
+                  {(metodosPagoCfg as any[]).map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setPagoGastoModal(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                Cancelar
+              </button>
+              <button onClick={registrarPagoGasto} disabled={pagoParcialSaving || !pagoParcialmonto || !pagoParcialmedio}
+                className="flex-1 bg-accent hover:bg-accent/90 text-white text-sm font-semibold py-2.5 rounded-xl disabled:opacity-50">
+                {pagoParcialSaving ? 'Guardando...' : 'Registrar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -418,6 +418,9 @@ export interface Gasto {
   // Migration 135 — notas de corrección (no se aplica directo, son metadata)
   gasto_padre_id?: string | null
   es_correccion?: boolean
+  // Migration 150 — pago parcial
+  monto_pagado?: number
+  estado_pago?: 'pendiente' | 'parcial' | 'pagado'
   created_at: string
 }
 

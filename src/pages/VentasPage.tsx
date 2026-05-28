@@ -94,6 +94,9 @@ export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
+  const clienteObligatorio  = (tenant as any)?.cliente_obligatorio    ?? 'reservas'
+  const clienteCreacionInline = (tenant as any)?.cliente_creacion_inline ?? true
+  const clienteDatosMinimos = (tenant as any)?.cliente_datos_minimos   ?? 'nombre'
 
   // ISS-085: formatea el número de ticket por sucursal
   // Solo usa formato CODIGO-NNNN si la sucursal tiene un código explícitamente configurado
@@ -361,7 +364,7 @@ export default function VentasPage() {
     queryKey: ['metodos_pago_cfg', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('metodos_pago')
-        .select('id, nombre, cuenta_origen_id')
+        .select('id, nombre, cuenta_origen_id, habilitado_ventas')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       return data ?? []
     },
@@ -381,7 +384,7 @@ export default function VentasPage() {
   // Lista de medios de pago: viene de Config → Ventas → Métodos de pago (dinámica)
   // Si el tenant aún no tiene config, fallback al hardcoded
   const MEDIOS_PAGO: string[] = (metodosPagoCfg as any[]).length > 0
-    ? (metodosPagoCfg as any[]).map(m => m.nombre).filter(Boolean)
+    ? (metodosPagoCfg as any[]).filter(m => m.habilitado_ventas !== false).map(m => m.nombre).filter(Boolean)
     : MEDIOS_PAGO_FALLBACK
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
 
@@ -546,8 +549,7 @@ export default function VentasPage() {
   const registrarClienteInline = async () => {
     const { nombre, dni, telefono } = nuevoClienteForm
     if (!nombre.trim()) { toast.error('El nombre es obligatorio'); return }
-    if (!dni.trim()) { toast.error('El DNI es obligatorio'); return }
-    if (!telefono.trim()) { toast.error('El teléfono es obligatorio'); return }
+    if (clienteDatosMinimos !== 'nombre' && !dni.trim()) { toast.error('El DNI es obligatorio'); return }
     setSavingCliente(true)
     try {
       const { data, error } = await supabase.from('clientes')
@@ -1420,8 +1422,10 @@ export default function VentasPage() {
       }
     }
 
-    // Cliente obligatorio para pendiente y reservada
-    if ((estado === 'pendiente' || estado === 'reservada') && !clienteId) {
+    // Cliente obligatorio según config del tenant
+    const clienteRequerido = clienteObligatorio === 'siempre'
+      || (clienteObligatorio === 'reservas' && (estado === 'pendiente' || estado === 'reservada'))
+    if (clienteRequerido && !clienteId) {
       toast.error('Registrá o seleccioná un cliente para continuar.')
       return
     }
@@ -2982,7 +2986,7 @@ export default function VentasPage() {
                 )}
               </div>
               {/* Registrar cliente nuevo inline */}
-              {!clienteId && (
+              {!clienteId && clienteCreacionInline && (
                 nuevoClienteOpen ? (
                   <div className="border border-blue-200 dark:border-blue-700 rounded-xl p-3 space-y-2 bg-blue-50 dark:bg-blue-900/10">
                     <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Nuevo cliente</p>

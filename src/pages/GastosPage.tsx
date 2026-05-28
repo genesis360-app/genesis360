@@ -260,9 +260,9 @@ export default function GastosPage() {
     queryKey: ['metodos_pago_cfg', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('metodos_pago')
-        .select('id, nombre, cuenta_origen_id')
+        .select('id, nombre, cuenta_origen_id, habilitado_gastos')
         .eq('tenant_id', tenant!.id).eq('activo', true)
-      return data ?? []
+      return (data ?? []).filter((m: any) => m.habilitado_gastos !== false)
     },
     enabled: !!tenant,
   })
@@ -484,8 +484,8 @@ export default function GastosPage() {
     queryKey: ['metodos_pago', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('metodos_pago')
-        .select('nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('orden').order('nombre')
-      return data?.map((m: any) => m.nombre) ?? []
+        .select('nombre, habilitado_gastos').eq('tenant_id', tenant!.id).eq('activo', true).order('orden').order('nombre')
+      return (data ?? []).filter((m: any) => m.habilitado_gastos !== false).map((m: any) => m.nombre)
     },
     enabled: !!tenant,
   })

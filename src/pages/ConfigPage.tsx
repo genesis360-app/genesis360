@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -1288,6 +1288,15 @@ export default function ConfigPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  const toggleMetodoPagoFlag = useMutation({
+    mutationFn: async ({ id, field, value }: { id: string; field: 'habilitado_ventas' | 'habilitado_gastos'; value: boolean }) => {
+      const { error } = await supabase.from('metodos_pago').update({ [field]: value }).eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['metodos_pago'] }),
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   // ─── Cuentas de Origen ────────────────────────────────────────────────────
   const [nuevaCuenta, setNuevaCuenta] = useState({ nombre: '', tipo: 'banco', banco: '', alias: '', numero: '', moneda: '' })
   const [editCuentaId, setEditCuentaId] = useState<string | null>(null)
@@ -1724,6 +1733,9 @@ export default function ConfigPage() {
 
   const addUdm = async () => {
     if (!udmNombre.trim()) return
+    if ((unidadesMedida as any[]).some((u: any) => u.nombre.toLowerCase() === udmNombre.trim().toLowerCase())) {
+      toast.error('Ya existe una unidad con ese nombre'); return
+    }
     setUdmSaving(true)
     const { error } = await supabase.from('unidades_medida').insert({ tenant_id: tenant!.id, nombre: udmNombre.trim(), simbolo: udmSimbolo.trim() || null, activo: true })
     if (error) toast.error(error.message)
@@ -2953,18 +2965,21 @@ export default function ConfigPage() {
                         <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{u.nombre}</p>
                         {u.simbolo && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Símbolo: {u.simbolo}</p>}
                       </div>
-                      {canEdit && (
-                        <>
-                          <button onClick={() => { setUdmEditId(u.id); setUdmEditNombre(u.nombre); setUdmEditSimbolo(u.simbolo ?? '') }}
-                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
-                            <Pencil size={15} />
-                          </button>
-                          <button onClick={() => deleteUdm(u.id)}
-                            className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors">
-                            <Trash2 size={15} />
-                          </button>
-                        </>
-                      )}
+                      {u.predefinida
+                        ? <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded" title="Unidad predefinida del sistema — no eliminable"><Lock size={11} />Predefinida</span>
+                        : canEdit && (
+                          <>
+                            <button onClick={() => { setUdmEditId(u.id); setUdmEditNombre(u.nombre); setUdmEditSimbolo(u.simbolo ?? '') }}
+                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                              <Pencil size={15} />
+                            </button>
+                            <button onClick={() => deleteUdm(u.id)}
+                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors">
+                              <Trash2 size={15} />
+                            </button>
+                          </>
+                        )
+                      }
                     </>
                   )}
                 </div>
@@ -3376,6 +3391,16 @@ export default function ConfigPage() {
                         title={m.activo ? 'Deshabilitar' : 'Habilitar'}
                         className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${m.activo ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
                         {m.activo ? 'Activo' : 'Inactivo'}
+                      </button>
+                      <button onClick={() => canEdit && toggleMetodoPagoFlag.mutate({ id: m.id, field: 'habilitado_ventas', value: !(m.habilitado_ventas ?? true) })}
+                        title={(m.habilitado_ventas ?? true) ? 'Quitar del POS' : 'Habilitar en POS'}
+                        className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${(m.habilitado_ventas ?? true) ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                        POS
+                      </button>
+                      <button onClick={() => canEdit && toggleMetodoPagoFlag.mutate({ id: m.id, field: 'habilitado_gastos', value: !(m.habilitado_gastos ?? true) })}
+                        title={(m.habilitado_gastos ?? true) ? 'Quitar de Gastos' : 'Habilitar en Gastos'}
+                        className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${(m.habilitado_gastos ?? true) ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 hover:bg-purple-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                        Gastos
                       </button>
                       <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color, comision_pct: m.comision_pct ? String(m.comision_pct) : '', cuenta_origen_id: m.cuenta_origen_id ?? '' }) }}
                         className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">

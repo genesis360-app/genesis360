@@ -980,7 +980,7 @@ CREATE TABLE IF NOT EXISTS empleados (
   fecha_egreso    DATE,
   puesto_id       UUID REFERENCES rrhh_puestos(id) ON DELETE SET NULL,
   departamento_id UUID REFERENCES rrhh_departamentos(id) ON DELETE SET NULL,
-  supervisor_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+  supervisor_id   UUID REFERENCES empleados(id) ON DELETE SET NULL, -- migration 147
   tipo_contrato   TEXT CHECK (tipo_contrato IN ('INDEFINIDO', 'PLAZO_FIJO', 'FREELANCE', 'TEMPORAL')) DEFAULT 'INDEFINIDO',
   salario_bruto   NUMERIC(12, 2),
   activo          BOOLEAN NOT NULL DEFAULT TRUE,
@@ -999,6 +999,9 @@ CREATE INDEX idx_empleados_activo ON empleados(activo);
 CREATE INDEX idx_empleados_fecha_nacimiento ON empleados(fecha_nacimiento);
 CREATE INDEX idx_empleados_puesto ON empleados(puesto_id);
 CREATE INDEX idx_empleados_departamento ON empleados(departamento_id);
+-- migration 151: 1 user del sistema solo puede vincularse a 1 empleado por tenant
+CREATE UNIQUE INDEX IF NOT EXISTS empleados_tenant_user_unique
+  ON empleados(tenant_id, user_id) WHERE user_id IS NOT NULL;
 
 -- Triggers para timestamps
 CREATE OR REPLACE FUNCTION update_empleados_timestamp()

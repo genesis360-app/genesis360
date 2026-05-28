@@ -6,6 +6,31 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-28] update | RRHH-A5 — vinculación empleado ↔ usuario del sistema (UI + migration 151)
+
+Pendiente histórico de RRHH cerrado. Habilita "Mi Equipo" del SUPERVISOR sin scripts SQL manuales.
+
+- **Migration 151** (`151_empleados_user_id_unique.sql`): índice UNIQUE parcial `empleados(tenant_id, user_id) WHERE user_id IS NOT NULL`. Aplicado en DEV. Garantiza el invariante que asume `get_supervisor_team_ids()` (1 user ↔ 1 empleado por tenant).
+- **`src/pages/RrhhPage.tsx`**:
+  - Nueva query `tenantUsers` (id, nombre_display, email, rol) por tenant, enabled solo en tabs empleados/equipo.
+  - Selector "Usuario del sistema (opcional)" en el form de empleado, después de supervisor. Listado ordenado por nombre, deshabilita los users ya tomados por otro empleado mostrando "ya vinculado a …".
+  - Validación cliente en `handleGuardarEmpleado`: rechaza guardar si el `user_id` elegido pertenece a otro empleado.
+  - Columna nueva **Usuario** en la tabla de empleados con badge `UserCheck + nombre_display`.
+- **schema_full.sql**: índice 151 documentado y FK `empleados.supervisor_id` corregido de `users(id)` → `empleados(id)` (estaba desactualizado desde migration 147).
+- **Wiki**: `features/rrhh.md` sección nueva "Vinculación empleado ↔ usuario del sistema (RRHH-A5)". Pendiente removido de `project_pendientes.md`. Index sin cambios estructurales.
+
+Pendiente PROD: aplicar migration 151 antes del merge `dev → main` (regla `feedback_deploy_order_migrations_aditivas`).
+
+---
+
+## [2026-05-28] update | mantenimiento: trim CLAUDE.md + convención GRANT Supabase oct-2026
+
+- **CLAUDE.md trimado**: eliminadas secciones informativas ya cubiertas en el wiki (Stack, Estructura, Planes, Env vars, Deploy, Dominios, Multi-tenant). Reducción ~1.7k tokens/sesión. Se conservaron solo reglas de comportamiento, gotchas de código y IDs de Supabase.
+- **wiki/development/convenciones-codigo.md**: nueva sección "GRANT obligatorio en tablas nuevas" — a partir del 30 oct 2026 Supabase deja de auto-exponer tablas del schema `public`; toda migration con `CREATE TABLE` debe incluir `GRANT ... TO authenticated`.
+- **wiki/database/migraciones.md**: warning insertado en "Reglas de trabajo con migraciones" con el SQL de GRANT y la fecha límite.
+
+---
+
 ## [2026-05-28] update | ISS-194 — caja fuerte: solo DUEÑO por defecto (dev, pendiente PROD)
 
 - `caja_fuerte_roles` default cambia de `['DUEÑO','SUPERVISOR','SUPER_USUARIO']` a `['DUEÑO']`.

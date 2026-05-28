@@ -25,7 +25,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/devoluciones]] | Stock serializado/no-serializado, NC, caja | ✅ |
 | [[wiki/features/clientes-proveedores]] | CRM, CC, OC, domicilios · globales entre sucursales · cancelar deuda CC (ISS-107) | ✅ |
 | [[wiki/features/facturacion-afip]] | AFIP WSFE, tipos A/B/C, AfipSDK, FacturacionPage 4 tabs | ✅ DEV |
-| [[wiki/features/rrhh]] | 5 fases: empleados, nómina, vacaciones, asistencia, supervisor | ✅ |
+| [[wiki/features/rrhh]] | 5 fases: empleados, nómina, vacaciones, asistencia, supervisor · **RRHH-A5** (mig 151): selector "Usuario del sistema" en form empleado + columna Usuario en tabla, habilita "Mi Equipo" del SUPERVISOR | ✅ |
 | [[wiki/features/wms]] | Estructuras, ubicaciones, KITs, kitting, conteos, recepciones · scan ticket en RecepcionesPage (v1.8.38) | ✅ |
 | [[wiki/features/marketplace]] | API pública, webhook saliente, publicación por producto | ✅ |
 | [[wiki/features/envios]] | Propio + Courier · POD (foto cámara) · estado `en_bodega` · página pública transportista `/transporte/:token` · pestaña Pagos Courier · QR codes en remito · LPN+ubicación en panel · bloqueo si no pagado | ✅ |
@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-28 — 53 páginas + 3 manuales + relevamientos (caja PDF + 5 HTML: ventas/rrhh/clientes/compras/envíos) · 8 fuentes en raw/ · DEV: 147 + 086b · PROD: 147 + 086b · **v1.10.1 DEV y PROD** ✅ (Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes) · 5 relevamientos abiertos esperando respuesta GO+socio*
+*Última actualización: 2026-05-28 — 53 páginas + 3 manuales + relevamientos (caja PDF + 5 HTML: ventas/rrhh/clientes/compras/envíos) · 8 fuentes en raw/ · DEV: 151 + 086b · PROD: 150 + 086b · **v1.10.2 PROD** ✅ + DEV con ISS-194 (caja fuerte) + RRHH-A5 (vínculo empleado↔user) · 5 relevamientos abiertos esperando respuesta GO+socio*

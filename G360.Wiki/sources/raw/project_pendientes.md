@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.2** ✅ · DEV: **v1.10.2** + ISS-194 (sin versionar aún)
+Último release en PROD: **v1.10.2** ✅ · DEV: **v1.10.2** + ISS-194 + RRHH-A5 (sin versionar aún)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -15,11 +15,11 @@ type: project
 | | DEV | PROD |
 |---|---|---|
 | APP_VERSION | `v1.10.2` | `v1.10.2` |
-| Migrations | 001–150 ✅ | 001–150 ✅ |
-| Branch | `dev` (1 commit adelante: ISS-194) | `main` (commit `cc5c2073`) |
+| Migrations | 001–151 ✅ | 001–150 ✅ |
+| Branch | `dev` (2 commits adelante: ISS-194 + RRHH-A5) | `main` (commit `cc5c2073`) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.10.2 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (ISS-194 no requiere migration)
+**Migrations DEV pendientes de aplicar en PROD:** 151 (RRHH-A5 UNIQUE empleados.user_id) — aplicar antes del merge `dev → main` ([[feedback_deploy_order_migrations_aditivas]]).
 
 ---
 
@@ -38,13 +38,18 @@ type: project
 
 | Área | Descripción |
 |---|---|
-| RRHH | Vincular `empleados.user_id` en UI para reactivar "Mi Equipo" del SUPERVISOR (relevamiento RRHH A5) |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
 | Relevamientos | 5 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos) esperando respuestas de GO + socio |
 
 ---
 
 ## Historial de lotes 2026-05-28
+
+### Lote 3 — RRHH-A5 vinculación empleado ↔ usuario
+
+| ID | Módulo | Fix | Migration |
+|---|---|---|---|
+| RRHH-A5 | RRHH | Selector "Usuario del sistema" en form empleado + columna "Usuario" en tabla + validación duplicados client-side. Habilita "Mi Equipo" del SUPERVISOR sin tocar la BD a mano | 151 |
 
 ### Lote 1 — commit `f96fd4d1` · release `dev-2026-05-28-lote-iss`
 

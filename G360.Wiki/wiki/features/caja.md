@@ -331,7 +331,7 @@ Resultado del relevamiento con Gastón Otranto + socio (2026-05-25, respuestas A
 
 Respuestas A-I implementadas parcialmente. Implementación completa requiere:
 
-- **C2**: enviar mail al DUEÑO con detalle del cierre + sacar download automático del PDF
+- **C2**: ✅ mail al DUEÑO implementado + PDF automático al cerrar eliminado (v1.10.2) — PDF disponible manualmente desde historial
 - **B7**: doble validación al cierre (modal con login del 2do usuario)
 - **E1**: restricción de visibilidad del saldo de bóveda solo al DUEÑO (UI por rol)
 - **B4 + B5 + B6**: clave maestra ampliada (cerrar ajena + abrir con diferencia + anular movimientos)

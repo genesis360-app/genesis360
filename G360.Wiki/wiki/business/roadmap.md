@@ -15,8 +15,9 @@ updated: 2026-05-28
 
 ## v1.10.2 — Bugfixes ISS-152/173 + caja sin PDF automático (PROD ✅)
 
-**Estado:** desplegado en PROD ✅
+**Estado:** desplegado en PROD ✅ (PR #120 mergeado `cc5c2073`, release latest, migrations 148-150 aplicadas pre-merge)
 **Fecha:** 2026-05-28
+**Release:** [v1.10.2](https://github.com/genesis360-app/genesis360/releases/tag/v1.10.2)
 **Migrations:** 148 (unidades predefinidas) · 149 (habilitado_ventas/gastos en métodos pago) · 150 (monto_pagado/estado_pago en gastos)
 
 ### Cambios

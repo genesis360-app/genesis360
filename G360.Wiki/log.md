@@ -6,6 +6,24 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-28] update | lote ISS-140/141/149/152/172/173/177/179/181 — 8 bugfixes (dev)
+
+8 issues resueltos en un solo commit sobre `dev` (`f96fd4d1`), sin deploy a PROD.
+
+- **ISS-140/141**: Scrollbar oculto en sub-tabs Config (Ventas e Inventario) — `[scrollbar-width:none]`
+- **ISS-149**: Descuento OC acepta `$` o `%` con toggle en GastosPage
+- **ISS-152**: `cajasAbiertasOC` filtra por sucursal activa (client-side filter sobre join)
+- **ISS-172**: Haversine km redondeado a entero para consistencia con Distance Matrix
+- **ISS-173**: Label reserva: "Ya cobrado" → "Seña cobrada" cuando saldo > 0.5
+- **ISS-177**: Campo $/km en VentasPage cambiado a solo lectura (div en lugar de input)
+- **ISS-179**: Formulario crear Ubicación incluye todos los campos: sucursal, mono-SKU, dims WMS
+- **ISS-181**: Reglas comprobante mutuamente excluyentes (radio) + texto descriptivo mejorado
+- **ISS-194**: Confirmado ya implementado (toggle SUPERVISOR boveda en Config → Caja)
+
+Pendientes del backlog: ISS-127, ISS-135, ISS-137, ISS-142, ISS-174, ISS-178, ISS-180, ISS-190 + 5 relevamientos.
+
+---
+
 ## [2026-05-28] update | PROD deploy v1.10.1 — Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes
 
 Cierre del lote v1.10.1 con despliegue completo a PROD.

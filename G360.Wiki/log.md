@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-28] update | lote ISS-135/142/180/190 + migrations 148-150 (dev)
+
+4 issues resueltos en 2 commits sobre `dev`, con 3 migrations aplicadas en DEV.
+
+- **ISS-135**: `metodos_pago` ahora tienen `habilitado_ventas` + `habilitado_gastos` (migration 149). ConfigPage muestra toggles "POS" y "Gastos" por método. VentasPage y GastosPage filtran según el flag.
+- **ISS-142**: `cliente_obligatorio` / `cliente_creacion_inline` / `cliente_datos_minimos` del tenant conectados al POS en VentasPage — ya no hardcodeados.
+- **ISS-180**: `predefinida` en `unidades_medida` (migration 148). 6 unidades predefinidas seed-eadas por tenant. ConfigPage bloquea edición/borrado y valida duplicados antes de insertar.
+- **ISS-190**: `monto_pagado` + `estado_pago` en `gastos` (migration 150). Badges "Sin pagar"/"Pago parcial" en tabla y mobile. Modal para registrar pago parcial con movimiento en caja.
+
+Commits: `07d306c5` (ISS-135/142/180) · `9ba1e3f9` (ISS-190)
+
+---
+
 ## [2026-05-28] update | lote ISS-140/141/149/152/172/173/177/179/181 — 8 bugfixes (dev)
 
 8 issues resueltos en un solo commit sobre `dev` (`f96fd4d1`), sin deploy a PROD.

@@ -29,19 +29,14 @@ Lista completa con IDs reales, organizada por tamaño estimado de implementació
 | ISS-181 | Config | Texto más claro + reglas comprobante son mutuamente excluyentes |
 | ISS-194 | Caja | Toggle SUPERVISOR puede ver bóveda **ya existía** en Config → tab Caja → Permisos |
 
-### Pendientes — bugs de lógica
+### ✅ Resueltos en lote 2026-05-28 sesión 2 (commits 07d306c5 + 9ba1e3f9)
 
-| ID | Módulo | Descripción |
-|---|---|---|
-| ISS-190 | Gastos | Pago parcial de gasto sin indicador visual — requiere migration para `monto_pagado` en gastos + nueva lógica |
-
-### Pendientes — mejoras medianas
-
-| ID | Módulo | Descripción |
-|---|---|---|
-| ISS-135 | Configuración | Métodos de pago: toggles "Habilitado para Ventas" y "Habilitado para Gastos" independientes — requiere migration |
-| ISS-142 | Configuración | Config Operativa de Ventas no conectada: "¿Cuándo se requiere cliente?" y "Datos mínimos requeridos" hardcodeados |
-| ISS-180 | Configuración | Unidades de medida: mostrar defaults (no eliminables) + validar sin duplicados |
+| ID | Módulo | Fix | Migration |
+|---|---|---|---|
+| ISS-135 | Config | Métodos de pago: toggles POS/Gastos en ConfigPage; VentasPage y GastosPage filtran por flag | 149 |
+| ISS-142 | Config + Ventas | `cliente_obligatorio`/`creacion_inline`/`datos_minimos` conectados al POS — ya no hardcodeados | — |
+| ISS-180 | Config | Unidades predefinidas (lock icon, no eliminables) + validación duplicados antes de insertar | 148 |
+| ISS-190 | Gastos | Badges "Sin pagar"/"Pago parcial" + modal para registrar pago parcial con movimiento en caja | 150 |
 
 ### Pendientes — features grandes
 

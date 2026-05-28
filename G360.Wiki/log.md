@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-28] update | ISS-194 — caja fuerte: solo DUEÑO por defecto (dev, pendiente PROD)
+
+- `caja_fuerte_roles` default cambia de `['DUEÑO','SUPERVISOR','SUPER_USUARIO']` a `['DUEÑO']`.
+- SUPERVISOR y SUPER_USUARIO aparecen ahora en la lista de toggles habilitables (junto a CAJERO/CONTADOR/DEPOSITO/RRHH). ADMIN no tiene acceso.
+- Tenants existentes con el valor viejo guardado en DB conservan su configuración actual; deben desactivar manualmente desde Config → Caja.
+- Commit `62997596` en dev. Pendiente deploy a PROD (sin migration, solo cambio de código).
+
+---
+
 ## [2026-05-28] update | v1.10.2 — bugfixes ISS-152/173 + caja sin PDF automático → PROD
 
 - **ISS-152**: `sesionesAbiertas` en GastosPage ahora incluye `sucursalId` en queryKey y filtra client-side. `cajasAbiertasOC` corrige filtro estricto. El "nuevo gasto" ya no muestra cajas de otras sucursales.

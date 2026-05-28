@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.2** ✅ · DEV: **v1.10.2**
+Último release en PROD: **v1.10.2** ✅ · DEV: **v1.10.2** + ISS-194 (sin versionar aún)
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -16,10 +16,10 @@ type: project
 |---|---|---|
 | APP_VERSION | `v1.10.2` | `v1.10.2` |
 | Migrations | 001–150 ✅ | 001–150 ✅ |
-| Branch | `dev` | `main` |
+| Branch | `dev` (1 commit adelante: ISS-194) | `main` (commit `cc5c2073`) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.10.2 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (ISS-194 no requiere migration)
 
 ---
 
@@ -58,7 +58,7 @@ type: project
 | ISS-177 | Ventas | $/km modal envío es read-only |
 | ISS-179 | Config | Form crear ubicación incluye sucursal, Mono-SKU y dims WMS |
 | ISS-181 | Config | Comprobantes: reglas mutuamente excluyentes + texto más claro |
-| ISS-194 | Caja | Confirmado ya implementado (toggle SUPERVISOR boveda) |
+| ISS-194 | Caja | ~~Confirmado ya implementado~~ **REFIX**: default `caja_fuerte_roles=['DUEÑO']`; SUPERVISOR/SUPER_USUARIO como toggles habilitables |
 
 ### Lote 2 — commits `07d306c5` + `9ba1e3f9` · release `dev-2026-05-28-lote2-iss`
 
@@ -78,3 +78,5 @@ Checklist obligatorio:
 2. PR `dev → main` con título `vX.Y.Z — descripción`
 3. GitHub release `vX.Y.Z` sobre `main` como `--latest`
 4. Actualizar este archivo + `log.md` + `roadmap.md`
+
+**Nota para tenants existentes (ISS-194):** al deployar, avisar que deben ir a Config → Caja → Acceso a Caja Fuerte y desactivar SUPERVISOR/SUPER_USUARIO si no los quieren habilitados (el valor viejo queda guardado en DB).

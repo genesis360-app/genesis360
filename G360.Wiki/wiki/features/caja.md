@@ -172,10 +172,12 @@ diferencia_apertura DECIMAL        -- monto_apertura - monto_sugerido
 
 ## Tab Caja Fuerte — v1.5.0
 
-Visible para roles en `tenants.caja_fuerte_roles` (default: `['OWNER','SUPERVISOR','ADMIN']`):
-- Historial de depósitos (movimientos tipo `ingreso_traspaso`)
-- Sin saldo mostrado (solo historial)
-- Botón "Depositar" → modal existente de traspaso
+Visible para roles en `tenants.caja_fuerte_roles` (default: `['DUEÑO']`):
+- Saldo por cuenta de origen (bóveda discriminada)
+- Historial de retiros (privado, solo DUEÑO/roles con acceso)
+- Botón "Depositar" y "Extraer" según permisos del rol
+
+**v1.10.2 (ISS-194):** default cambia a solo `['DUEÑO']`. SUPERVISOR y SUPER_USUARIO son opciones habilitables desde Config → Caja. ADMIN no tiene acceso por defecto ni como opción.
 
 **Trigger `fn_crear_caja_fuerte`**: crea automáticamente la caja fuerte para tenants nuevos.
 
@@ -183,9 +185,9 @@ Visible para roles en `tenants.caja_fuerte_roles` (default: `['OWNER','SUPERVISO
 
 ## Tab Configuración de Caja — v1.5.0
 
-Visible solo para OWNER y SUPERVISOR:
+Visible solo para DUEÑO y SUPERVISOR:
 - **Soft delete de cajas operativas** (deshabilitado si hay sesión activa)
-- **Checkboxes de roles** que pueden acceder a la Caja Fuerte (`tenants.caja_fuerte_roles`)
+- **Toggles de roles** que pueden acceder a la Caja Fuerte (`tenants.caja_fuerte_roles`): SUPERVISOR · SUPER_USUARIO · CAJERO · CONTADOR · DEPOSITO · RRHH
 
 ---
 

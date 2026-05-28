@@ -692,6 +692,15 @@ export default function ConfigPage() {
   const [newUbicNombre, setNewUbicNombre] = useState('')
   const [newUbicDesc, setNewUbicDesc] = useState('')
   const [newUbicPrioridad, setNewUbicPrioridad] = useState('0')
+  const [newUbicSucursalId, setNewUbicSucursalId] = useState<string>('')
+  const [newUbicMonoSku, setNewUbicMonoSku] = useState(false)
+  const [newUbicWmsOpen, setNewUbicWmsOpen] = useState(false)
+  const [newUbicTipo, setNewUbicTipo] = useState('')
+  const [newUbicAlto, setNewUbicAlto] = useState('')
+  const [newUbicAncho, setNewUbicAncho] = useState('')
+  const [newUbicLargo, setNewUbicLargo] = useState('')
+  const [newUbicPeso, setNewUbicPeso] = useState('')
+  const [newUbicPallets, setNewUbicPallets] = useState('')
   const [editUbicId, setEditUbicId] = useState<string | null>(null)
   const [editUbicNombre, setEditUbicNombre] = useState('')
   const [editUbicDesc, setEditUbicDesc] = useState('')
@@ -709,12 +718,28 @@ export default function ConfigPage() {
 
   const addUbicacion = async () => {
     if (!newUbicNombre.trim()) return
-    const { error } = await supabase.from('ubicaciones').insert({ tenant_id: tenant!.id, nombre: newUbicNombre.trim(), descripcion: newUbicDesc || null, prioridad: parseInt(newUbicPrioridad) || 0, sucursal_id: sucursalId || null })
+    const sucId = newUbicSucursalId || sucursalId || null
+    const { error } = await supabase.from('ubicaciones').insert({
+      tenant_id: tenant!.id,
+      nombre: newUbicNombre.trim(),
+      descripcion: newUbicDesc || null,
+      prioridad: parseInt(newUbicPrioridad) || 0,
+      sucursal_id: sucId,
+      mono_sku: newUbicMonoSku,
+      tipo_ubicacion: newUbicTipo || null,
+      alto_cm: newUbicAlto ? parseFloat(newUbicAlto) : null,
+      ancho_cm: newUbicAncho ? parseFloat(newUbicAncho) : null,
+      largo_cm: newUbicLargo ? parseFloat(newUbicLargo) : null,
+      peso_max_kg: newUbicPeso ? parseFloat(newUbicPeso) : null,
+      capacidad_pallets: newUbicPallets ? parseInt(newUbicPallets) : null,
+    })
     if (error) { toast.error(error.message); return }
     toast.success('Ubicación agregada')
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
     logActividad({ entidad: 'ubicacion', entidad_nombre: newUbicNombre.trim(), accion: 'crear', pagina: '/configuracion' })
     setNewUbicNombre(''); setNewUbicDesc(''); setNewUbicPrioridad('0')
+    setNewUbicSucursalId(''); setNewUbicMonoSku(false); setNewUbicWmsOpen(false)
+    setNewUbicTipo(''); setNewUbicAlto(''); setNewUbicAncho(''); setNewUbicLargo(''); setNewUbicPeso(''); setNewUbicPallets('')
   }
   const startEditUbic = (u: any) => {
     setEditUbicId(u.id)
@@ -1766,7 +1791,7 @@ export default function ConfigPage() {
     active: T,
     setActive: (v: T) => void
   ) => (
-    <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+    <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
       {items.map(({ id, label, icon: Icon }) => (
         <button key={id} onClick={() => setActive(id)}
           className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all whitespace-nowrap
@@ -2206,7 +2231,7 @@ export default function ConfigPage() {
       {tab === 'inventario' && (
         <div className="space-y-4">
           {/* sub-tab nav */}
-          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
             {([
               { id: 'reglas' as InvSubTab, label: 'Reglas de stock', icon: Timer },
               { id: 'categorias' as InvSubTab, label: 'Categorías', icon: Tag },
@@ -2290,6 +2315,7 @@ export default function ConfigPage() {
                 className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Prioridad" value={newUbicPrioridad}
                 onChange={e => setNewUbicPrioridad(e.target.value)}
+                title="Prioridad de rebaje (menor = primero)"
                 className="w-24 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
               <button onClick={addUbicacion} disabled={!newUbicNombre.trim()}
                 className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
@@ -2299,6 +2325,42 @@ export default function ConfigPage() {
             <input type="text" placeholder="Descripción (opcional)" value={newUbicDesc}
               onChange={e => setNewUbicDesc(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+            {sucursales.length > 1 && (
+              <select value={newUbicSucursalId} onChange={e => setNewUbicSucursalId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-primary">
+                <option value="">Global (todas las sucursales)</option>
+                {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+              </select>
+            )}
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-gray-600 dark:text-gray-400">
+                <input type="checkbox" checked={newUbicMonoSku} onChange={e => setNewUbicMonoSku(e.target.checked)} className="w-3.5 h-3.5 rounded accent-accent" />
+                <Tag size={11} /> Mono-SKU
+              </label>
+              <button type="button" onClick={() => setNewUbicWmsOpen(v => !v)}
+                className="flex items-center gap-1 text-xs text-purple-500 dark:text-purple-400 hover:text-purple-700">
+                <Ruler size={11} /> Dimensiones WMS
+                <ChevronRight size={11} className={`transition-transform ${newUbicWmsOpen ? 'rotate-90' : ''}`} />
+              </button>
+            </div>
+            {newUbicWmsOpen && (
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                <select value={newUbicTipo} onChange={e => setNewUbicTipo(e.target.value)}
+                  className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  <option value="">Tipo de ubicación (opcional)</option>
+                  <option value="picking">Picking</option>
+                  <option value="bulk">Bulk / Reserva</option>
+                  <option value="estiba">Estiba / Pallet rack</option>
+                  <option value="camara">Cámara frigorífica</option>
+                  <option value="cross_dock">Cross-dock</option>
+                </select>
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Alto (cm)" value={newUbicAlto} onChange={e => setNewUbicAlto(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Ancho (cm)" value={newUbicAncho} onChange={e => setNewUbicAncho(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Largo (cm)" value={newUbicLargo} onChange={e => setNewUbicLargo(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Peso máx (kg)" value={newUbicPeso} onChange={e => setNewUbicPeso(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Cap. pallets" value={newUbicPallets} onChange={e => setNewUbicPallets(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+              </div>
+            )}
           </div>
 
           {/* Buscador */}
@@ -2969,7 +3031,7 @@ export default function ConfigPage() {
               <Receipt size={18} className="text-accent" /> Cuándo es obligatorio adjuntar comprobante
             </h2>
             <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
-              Si <strong>cualquier</strong> regla activa aplica al gasto, el comprobante será obligatorio para guardarlo.
+              Activá <strong>una</strong> regla para exigir comprobante en esos gastos. Sin ninguna regla activa, no se solicitará comprobante obligatorio.
             </p>
 
             {[
@@ -2977,9 +3039,9 @@ export default function ConfigPage() {
               { v: gCompSiIva,       s: setGCompSiIva,       label: 'Si el gasto deduce IVA',                    desc: 'iva_deducible o conciliado_iva marcados.' },
               { v: gCompSiGanancias, s: setGCompSiGanancias, label: 'Si deduce ganancias o es gasto del negocio', desc: 'deduce_ganancias o gasto_negocio marcados.' },
               { v: gCompSiMonto,     s: setGCompSiMonto,     label: 'Si supera un monto umbral',                  desc: 'Solo se pide comprobante por arriba del monto definido.' },
-            ].map((r, i) => (
+            ].map((r, i, arr) => (
               <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                <button onClick={() => canEdit && r.s(!r.v)} disabled={!canEdit} className="flex-shrink-0 mt-0.5">
+                <button onClick={() => { if (!canEdit) return; const newVal = !r.v; arr.forEach((x, j) => x.s(j === i ? newVal : false)) }} disabled={!canEdit} className="flex-shrink-0 mt-0.5">
                   {r.v ? <ToggleRight size={26} className="text-accent" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
                 </button>
                 <div className="flex-1 min-w-0">

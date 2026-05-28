@@ -218,6 +218,7 @@ export default function GastosPage() {
   const [ocGuardando, setOcGuardando]               = useState(false)
   const [ocExpandedId, setOcExpandedId]             = useState<string | null>(null)
   const [ocDescuento, setOcDescuento]               = useState('0')
+  const [ocDescuentoTipo, setOcDescuentoTipo]       = useState<'monto' | 'pct'>('monto')
   const [ocCajaSeleccionadaId, setOcCajaSeleccionadaId] = useState<string | null>(null)
   // ISS-096: comprobante de pago en OC
   const [ocSubiendoFile, setOcSubiendoFile]         = useState(false)
@@ -467,11 +468,13 @@ export default function GastosPage() {
   })
 
   const { data: cajasAbiertasOC = [] } = useQuery({
-    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, cajas(nombre)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
-      return data ?? []
+        .select('id, cajas(nombre, sucursal_id)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
+      if (!sucursalId) return data ?? []
+      // Filtrar por sucursal activa (gotcha: no se puede filtrar por joined table en Supabase JS)
+      return (data ?? []).filter((s: any) => !s.cajas?.sucursal_id || s.cajas.sucursal_id === sucursalId)
     },
     enabled: !!tenant && tab === 'oc',
   })
@@ -639,7 +642,8 @@ export default function GastosPage() {
     setOcGuardando(true)
     try {
       const total = calcMontoTotalOC(ocSeleccionada)
-      const descuentoNum = parseFloat(ocDescuento) || 0
+      const rawDescuento = parseFloat(ocDescuento) || 0
+      const descuentoNum = ocDescuentoTipo === 'pct' ? Math.round(total * rawDescuento / 100 * 100) / 100 : rawDescuento
       const saldo = total - Number(ocSeleccionada.monto_pagado ?? 0) - Number(ocSeleccionada.monto_descuento ?? 0) - descuentoNum
 
       // Usar la caja seleccionada en el modal, o la primera disponible si hay solo una
@@ -752,7 +756,7 @@ export default function GastosPage() {
       setOcModalId(null)
       setOcMediosPago([{ tipo: 'Transferencia', monto: '' }])
       setOcPagoCondiciones('')
-      setOcDescuento('0')
+      setOcDescuento('0'); setOcDescuentoTipo('monto')
       setOcCajaSeleccionadaId(null)
       qc.invalidateQueries({ queryKey: ['oc-gastos', tenant?.id] })
       qc.invalidateQueries({ queryKey: ['proveedor-cc', ocSeleccionada.proveedor_id] })
@@ -2847,7 +2851,7 @@ export default function GastosPage() {
                         </div>
                       </div>
                       {oc.estado_pago !== 'pagada' && (
-                        <button onClick={() => { setOcModalId(oc.id); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones(''); setOcDescuento('0'); setOcCajaSeleccionadaId(null) }}
+                        <button onClick={() => { setOcModalId(oc.id); setOcMediosPago([{tipo:'Transferencia',monto:''}]); setOcPagoDias('30'); setOcPagoCondiciones(''); setOcDescuento('0'); setOcDescuentoTipo('monto'); setOcCajaSeleccionadaId(null) }}
                           className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/90 transition-all">
                           <DollarSign size={12} /> Pagar / CC
                         </button>
@@ -2979,17 +2983,25 @@ export default function GastosPage() {
                     <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Total OC</span><span className="font-semibold">${calcMontoTotalOC(ocSeleccionada).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
                     {Number(ocSeleccionada.monto_pagado) > 0 && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Ya pagado</span><span className="text-green-600">${Number(ocSeleccionada.monto_pagado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>}
                     {Number(ocSeleccionada.monto_descuento ?? 0) > 0 && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Descuento previo</span><span className="text-blue-500">-${Number(ocSeleccionada.monto_descuento).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>}
-                    {parseFloat(ocDescuento) > 0 && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Descuento nuevo</span><span className="text-blue-500">-${parseFloat(ocDescuento).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>}
-                    <div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-600 pt-1 mt-1"><span>Saldo pendiente</span><span className="text-red-500">${Math.max(0, calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0) - Number(ocSeleccionada.monto_descuento ?? 0) - (parseFloat(ocDescuento) || 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
+                    {(() => { const t = calcMontoTotalOC(ocSeleccionada); const raw = parseFloat(ocDescuento) || 0; const desc = ocDescuentoTipo === 'pct' ? Math.round(t * raw / 100 * 100) / 100 : raw; const saldoFinal = Math.max(0, t - Number(ocSeleccionada.monto_pagado ?? 0) - Number(ocSeleccionada.monto_descuento ?? 0) - desc); return (<>{desc > 0 && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Descuento nuevo{ocDescuentoTipo === 'pct' ? ` (${raw}%)` : ''}</span><span className="text-blue-500">-${desc.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>}<div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-600 pt-1 mt-1"><span>Saldo pendiente</span><span className="text-red-500">${saldoFinal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div></>) })()}
                   </div>
 
-                  {/* ISS-132: descuento del proveedor */}
+                  {/* ISS-132 / ISS-149: descuento del proveedor ($ o %) */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Descuento del proveedor ($)</label>
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={ocDescuento}
-                      onChange={e => setOcDescuento(e.target.value)}
-                      placeholder="0"
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Descuento del proveedor</label>
+                      <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-gray-600 text-xs">
+                        <button onClick={() => setOcDescuentoTipo('monto')} className={`px-2 py-0.5 ${ocDescuentoTipo === 'monto' ? 'bg-accent text-white' : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50'}`}>$</button>
+                        <button onClick={() => setOcDescuentoTipo('pct')} className={`px-2 py-0.5 ${ocDescuentoTipo === 'pct' ? 'bg-accent text-white' : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50'}`}>%</button>
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">{ocDescuentoTipo === 'pct' ? '%' : '$'}</span>
+                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={ocDescuentoTipo === 'pct' ? 100 : undefined} value={ocDescuento}
+                        onChange={e => setOcDescuento(e.target.value)}
+                        placeholder="0"
+                        className="w-full pl-7 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">El descuento reduce el saldo sin requerir pago.</p>
                   </div>
 

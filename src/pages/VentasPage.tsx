@@ -87,7 +87,7 @@ function haversineKmCoordsStatic(c1: string, c2: string): number | null {
   const dLon = (lon2 - lon1) * Math.PI / 180
   const a = Math.sin(dLat / 2) ** 2
     + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
-  return Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.35 * 10) / 10
+  return Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.35)
 }
 
 export default function VentasPage() {
@@ -3140,10 +3140,9 @@ export default function VentasPage() {
                             </div>
                             <div>
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">$/km</label>
-                              <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
-                                value={precioPorKmVenta} onChange={e => setPrecioPorKmVenta(e.target.value)}
-                                placeholder="0"
-                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <div className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 select-none">
+                                {precioPorKmVenta || '—'}
+                              </div>
                             </div>
                           </div>
                           {costoEnvioNum > 0 && (
@@ -3742,7 +3741,7 @@ export default function VentasPage() {
                 return (
                   <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2 space-y-1.5">
                     <div className="flex justify-between text-sm">
-                      <span className="text-blue-700 dark:text-blue-300">Ya cobrado</span>
+                      <span className="text-blue-700 dark:text-blue-300">{saldo > 0.5 ? 'Seña cobrada' : 'Ya cobrado'}</span>
                       <span className="font-semibold text-blue-700 dark:text-blue-300">${(ventaDetalle.monto_pagado ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                     </div>
                     {saldo > 0.5 && (

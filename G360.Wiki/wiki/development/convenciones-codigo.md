@@ -147,7 +147,26 @@ CREATE POLICY "policy_name" ON tabla
 6. resto de tablas
 7. triggers
 8. políticas RLS
+9. GRANTs
 ```
+
+---
+
+## GRANT obligatorio en tablas nuevas
+
+> [!WARNING] A partir del **30 de octubre de 2026**, Supabase deja de auto-exponer tablas nuevas del schema `public` a los roles PostgREST. Sin GRANT explícito, `supabase-js` no puede consultar la tabla (la request falla silenciosamente con 0 resultados o error 403).
+
+Toda migration que haga `CREATE TABLE` debe incluir al final:
+
+```sql
+-- Para tablas con RLS habilitado (casi todas)
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.nombre_tabla TO authenticated;
+
+-- Solo si la tabla necesita acceso anon (páginas públicas sin auth)
+-- GRANT SELECT ON public.nombre_tabla TO anon;
+```
+
+El GRANT habilita a PostgREST para rutear las requests. Las policies RLS siguen controlando qué datos devuelve cada query — el GRANT no bypasea RLS.
 
 ---
 

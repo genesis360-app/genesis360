@@ -3,17 +3,109 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-05-26
+updated: 2026-05-27
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 26 de Mayo, 2026
+**Última actualización:** 27 de Mayo, 2026
 
 ---
 
-## v1.9.2 — Caja Tanda 1.5: Bóveda como billetera del negocio + Extraer dinero (DEV ✅)
+## v1.10.1 — Cierre HITO v1.9.0 + quick wins Envíos (DEV ✅ · PROD ⏳)
+
+**Estado:** desplegado en DEV. Pendiente PR a main + migrations 143-147 en PROD.
+**Fecha:** 2026-05-27
+**Migrations:** 143 (cron tokens) · 144 (envio_pod_fotos) · 145 (fix saldo nómina) · 146 (FK traspasos) · 147 (supervisor=empleado)
+
+### Cambios — features
+- **Candado 🔒 por fila** en VentasPage y CajaPage: badge ámbar "Cerrado" en cada fila/sesión que cae en periodo contable cerrado, usando `useCierreContable.isPeriodoCerrado(fecha)`. Evita el rebote del toast del trigger DB.
+- **PDF descargable del cierre contable** desde `CierresContablesPanel`: header BRAND + datos fiscales + periodo + snapshot tabla (Ventas/Gastos/Sueldos/OC) + resumen (Egresos + Resultado neto). Lee de `cierres_contables.totales JSONB`.
+- **Cron limpieza tokens transportista** (migration 143): pg_cron diario 07:00 UTC. NULL en `envios.token_transportista` para envíos entregados/cancelados/devolucion con +30 días.
+- **Múltiples fotos POD** (migration 144): tabla `envio_pod_fotos` con RLS + backfill + componente `PodFotosManager` con upload múltiple, thumbnails y eliminar. Integrado en modal POD y modal de edición. Sincroniza la primera foto (orden 0) con `envios.pod_url` para retro-compat.
+
+### Cambios — bugfixes (10 issues)
+- **ISS-182/183** (Gastos): comprobante obligatorio + medios de pago que cubran el total se validan al guardar.
+- **ISS-184** (RRHH): empleados aparecen al instante tras crear (optimistic update).
+- **ISS-195** (Cierre): cierres visibles en historial (quitado `users.email` inexistente del select).
+- **ISS-150** (Recepción): precio costo no editable si la OC ya está pagada.
+- **ISS-186** (RRHH/Caja) · migration 145: pagar nómina desde bóveda/caja considera traspasos en el saldo.
+- **ISS-193** (Caja) · migration 146: corregir un traspaso ajusta la caja origen.
+- **ISS-156/175/176** (Envíos): envío cobrado en venta no figura en Pagos Courier; `/transporte` valida pago.
+- **ISS-185** (RRHH) · migration 147: supervisor del empleado = otro empleado (FK a empleados).
+
+### Resiliencia
+- ErrorBoundary reporta a Sentry + muestra detalle/ID + boundary por-ruta (un crash de página no tumba el menú).
+
+---
+
+## v1.10.0 — HITO Pipeline Reglas Caja CERRADO (PROD ✅)
+
+**Estado:** desplegado en PROD ✅ (PR #118 mergeado `c857384b`, release latest, migrations 136-142 aplicadas)
+**Fecha:** 2026-05-26
+**Release:** [v1.10.0](https://github.com/genesis360-app/genesis360/releases/tag/v1.10.0)
+
+### Cierre del pipeline Caja
+
+8 de 8 decisiones críticas del relevamiento (PDF `relevamiento-caja-reglas-negocio.pdf`) implementadas en 6 versiones consecutivas durante 2 días.
+
+### Migration 142 (esta versión)
+- Vista `vw_caja_resumen_diario` (día/caja/sucursal) — sesiones, apertura, ingresos/egresos/ventas, saldo sistema, conteo real, diferencias. Excluye caja fuerte
+- Vista `vw_caja_mensual_por_sucursal` (mes/sucursal) — totales, cajas activas, cajeros distintos. Alineada con cierre contable
+
+### Componente `<CajaReportes />` (nuevo)
+4 sub-tabs en CajaPage → tab Reportes:
+- (a) Diario por caja con filtros fecha + sucursal
+- (b) Diario consolidado de todas las cajas
+- (c) Mensual por sucursal
+- (d) Por cajero (volumen + diferencias 30 días)
+
+3 exports en cada reporte: Excel · PDF · CSV (con BOM utf-8 para Excel ES)
+
+### Fixes adicionales en la sesión
+- ConfigPage tab Facturación: toggle auto-guarda con `setTenant(data)` para persistir
+- VentasPage: caja predeterminada se pre-selecciona con `useMemo` (sin race con `useEffect`)
+- VentasPage: medios de pago dinámicos desde `metodos_pago` (eliminada constante hardcodeada con "Otro" genérico)
+- Bóveda: backfill fuzzy + helper `cuentaOrigenDeMetodo` tolerante a variantes de nombre (sin tildes/sin "de")
+
+---
+
+## v1.9.5 — Caja Fase 2.2a: Operaciones especiales (PROD ✅ vía v1.10.0)
+
+**Fecha:** 2026-05-26 · L1/L4/L5/B7/G1 sin migration nueva
+- L4: bloqueo cambio sucursal con caja propia abierta (AppLayout)
+- L1: selector caja en devolución con efectivo (VentasPage)
+- L5: cadena anulación según estado (caja abierta/cerrada/periodo cerrado)
+- G1: botón "Corregir" en movimientos manuales con audit log
+- B7: doble validación al cierre con cliente Supabase secundario (sin romper sesión)
+
+---
+
+## v1.9.4 — Caja Fase 2.1: Ticket cierre + Diferencias (PROD ✅ vía v1.10.0)
+
+**Fecha:** 2026-05-26 · Migration 141
+- `caja_sesiones.numero` correlativo por sucursal con trigger (K3)
+- `caja_sesiones.snapshot_totales` JSONB para regenerar ticket idéntico (K2)
+- `tenants.diferencia_caja_umbral/alerta_roles/alerta_canales` (B1/B2/B3)
+- Vista `vw_diferencias_por_cajero` 30 días (B4)
+- Ticket PDF ampliado A4 + formato térmico 80mm (C1+C3)
+- Movimiento "Diferencia caja" asociado al cajero responsable
+
+---
+
+## v1.9.3 — Caja Fase 2.0: Permisos + Roles (PROD ✅ vía v1.10.0)
+
+**Fecha:** 2026-05-26 · Migration 140
+- `caja_sesiones.abierta_por` (A2)
+- `tenants.config_caja JSONB` para permisos opcionales
+- RPCs `requiere_clave_maestra` y `verificar_clave_maestra` SECURITY DEFINER (B5)
+- Helper `src/lib/cajaPermisos.ts` con matriz J3 completa
+- CONTADOR read-only · Abrir a nombre de cajero · Banner caja olvidada 24h · Clave maestra al cerrar ajena · Mail al DUEÑO al cierre
+
+---
+
+## v1.9.2 — Caja Tanda 1.5: Bóveda como billetera del negocio + Extraer dinero (PROD ✅ vía v1.10.0)
 
 **Estado:** desplegado en DEV ✅ ([Vercel READY](https://genesis360-git-dev-tongas86s-projects.vercel.app) · commit `45e46cc7` · migrations 137+138 aplicadas)
 **Fecha:** 2026-05-25

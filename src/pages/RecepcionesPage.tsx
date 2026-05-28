@@ -120,6 +120,8 @@ export default function RecepcionesPage() {
   // ── Form state ──────────────────────────────────────────────────────────────
   const [fProveedorId, setFProveedorId] = useState(provIdFromUrl ?? '')
   const [fOcId, setFOcId] = useState(ocIdFromUrl ?? '')
+  // ISS-150: si la OC viene ya pagada, el precio costo es inmutable y se muestra como label
+  const [ocPagada, setOcPagada] = useState(false)
   const [fSucursalId, setFSucursalId] = useState(sucursalCtx ?? '')
   const [fNotas, setFNotas] = useState('')
   const [items, setItems] = useState<FormItem[]>([])
@@ -230,15 +232,16 @@ export default function RecepcionesPage() {
   // ── Pre-populate desde OC ──────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!fOcId) return
+    if (!fOcId) { setOcPagada(false); return }
     const cargarOC = async () => {
       const { data: oc } = await supabase
         .from('ordenes_compra')
-        .select('proveedor_id, orden_compra_items(id, cantidad, precio_unitario, productos(id, nombre, sku, tiene_series, tiene_lote, tiene_vencimiento, tiene_pais_origen, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, unidad_medida, precio_costo))')
+        .select('proveedor_id, estado_pago, orden_compra_items(id, cantidad, precio_unitario, productos(id, nombre, sku, tiene_series, tiene_lote, tiene_vencimiento, tiene_pais_origen, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, unidad_medida, precio_costo))')
         .eq('id', fOcId)
         .single()
       if (!oc) return
       if (oc.proveedor_id) setFProveedorId(oc.proveedor_id)
+      setOcPagada((oc as any).estado_pago === 'pagada')
       const ocItems = (oc as any).orden_compra_items ?? []
       if (ocItems.length > 0) {
         const itemsConEstructura = await Promise.all(ocItems.map(async (it: any) => {
@@ -1215,12 +1218,20 @@ export default function RecepcionesPage() {
                         </div>
                       )}
                       <div>
-                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Precio costo</label>
-                        <input type="number" min="0" value={it.precio_costo}
-                          onChange={e => updItem(it._key, { precio_costo: e.target.value })}
-                          onWheel={e => e.currentTarget.blur()}
-                          placeholder={String(it.precio_costo_default)}
-                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          Precio costo {ocPagada && <span className="text-amber-600 dark:text-amber-400">· OC pagada (no editable)</span>}
+                        </label>
+                        {ocPagada ? (
+                          <div className="w-full px-2 py-1.5 border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs text-amber-700 dark:text-amber-400 font-mono">
+                            ${Number(it.precio_costo || it.precio_costo_default || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                          </div>
+                        ) : (
+                          <input type="number" min="0" value={it.precio_costo}
+                            onChange={e => updItem(it._key, { precio_costo: e.target.value })}
+                            onWheel={e => e.currentTarget.blur()}
+                            placeholder={String(it.precio_costo_default)}
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                        )}
                       </div>
                       {it.tiene_series && (
                         <div className="col-span-2 sm:col-span-3">

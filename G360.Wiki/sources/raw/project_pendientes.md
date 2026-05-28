@@ -4,13 +4,90 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.9.0** ✅ · DEV: **v1.10.0** (HITO)
+Último release en PROD: **v1.10.0** ✅ (HITO Caja completo) · DEV: **v1.10.1**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV v1.9.2 / PROD v1.9.0 (cierre sesión 2026-05-25 — Caja Tanda 1 + 1.5)
+## Estado actual DEV v1.10.1 / PROD v1.10.0 (cierre sesión 2026-05-27 — Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes)
+
+- APP_VERSION DEV: `v1.10.1` ✅
+- APP_VERSION PROD: `v1.10.0` (143-147 pendientes de deploy)
+- Migrations DEV: 001–147 ✅
+- Migrations PROD: 001–142 ✅ (143-147 pendientes)
+- **Relevamientos abiertos**: 5 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos) listos para que GO + socio respondan
+- **Cierre HITO v1.9.0**: 100% completo (candado por fila + PDF cierre) ✅
+
+### Bugfixes resueltos en DEV esta sesión (parte del lote v1.10.1)
+
+| ID | Módulo | Fix | Migration |
+|---|---|---|---|
+| ISS-182 | Gastos | Comprobante obligatorio se valida al guardar según reglas del tenant (antes dejaba crear sin él) | — |
+| ISS-183 | Gastos | Medios de pago deben cubrir exactamente el total y tener tipo definido (antes guardaba con medio sin definir) | — |
+| ISS-184 | RRHH | Empleados aparecen al instante tras crear (optimistic update + select con joins; antes requería F5) | — |
+| ISS-195 | Gastos | Cierre contable invisible en historial — el select pedía `users.email` (no existe). Removido | — |
+| ISS-150 | Recepción | Precio costo no editable (label) si la OC ya está pagada | — |
+| ISS-186 | RRHH | Pagar nómina desde bóveda/caja ya no da "saldo insuficiente" — el saldo ahora incluye traspasos | 145 |
+| ISS-193 | Caja | Corregir un traspaso refleja la diferencia en la caja origen (FK movimientos + ajuste contraparte) | 146 |
+| ISS-156/175/176 | Envíos | Envío cobrado en la venta nace `costo_pagado=true` → no figura en Pagos Courier; propio excluido del tab; `/transporte` valida pago antes de avanzar estado | — |
+| ISS-185 | RRHH | Supervisor del empleado ahora es OTRO empleado (FK a empleados, no users); organigrama 100% RRHH; self-service mapea `empleados.user_id` | 147 |
+
+**Resiliencia (no es ISS):** ErrorBoundary ahora reporta a Sentry + muestra mensaje/ID + botón copiar; boundary por-ruta en AppLayout (un crash de página ya no tumba el menú); GruposEstadosPage blindado contra `grupo_estado_items` null.
+
+### ⚠ Pendiente al deployar v1.10.1 a PROD
+- Aplicar migrations **143, 144, 145, 146, 147** en PROD (todas aditivas/idempotentes; 147 cambia FK supervisor_id — ver nota)
+- **147 nota**: al aplicar en PROD se nulean los `supervisor_id` que apunten a users sin empleado vinculado. Para reactivar "Mi Equipo" del SUPERVISOR hay que vincular `empleados.user_id` (pendiente UI — relevamiento RRHH A5)
+- PR `dev → main` v1.10.1 + GitHub release
+
+### Lo producido en DEV en esta sesión (2026-05-27 — v1.10.1)
+
+- **Candado 🔒 por fila** en VentasPage e CajaPage cuando la venta/sesión/movimiento cae en periodo cerrado. Helper `isPeriodoCerrado(fecha)` ya existía en `useCierreContable.ts` — solo se aplicó en UI. Hoy solo venía el toast del trigger; ahora el usuario lo ve antes de intentar editar
+  - VentasPage: badge "Cerrado" en cada fila del historial + botón "Eliminar venta" reemplazado por banner amber "Periodo cerrado hasta YYYY-MM-DD — no editable"
+  - CajaPage: badge "Cerrado" junto al nombre de cada sesión del historial + botón "Corregir movimiento" reemplazado por candado deshabilitado
+  - RecepcionesPage: NO aplica (no tiene trigger de cierre en migration 135)
+- **PDF del cierre contable** descargable desde `CierresContablesPanel`. Botón "Descargar PDF" en el bloque expandido de cada cierre. Genera A4 con: header BRAND + datos fiscales + periodo + observaciones + tabla totales (Ventas/Gastos/Sueldos/OC) + bloque resumen (Egresos totales + Resultado neto). Usa snapshot guardado en `cierres_contables.totales JSONB` (no recalcula).
+- **Quick win Envíos · Cron limpieza tokens transportista** (migration 143): pg_cron diario 07:00 UTC que setea `envios.token_transportista = NULL` para envíos en estado entregado/cancelado/devolucion con +30 días desde el último update. Invalida links públicos viejos sin tocar el resto del envío.
+- **Quick win Envíos · Múltiples fotos POD** (migration 144): tabla `envio_pod_fotos(id, envio_id, tenant_id, url, storage_path, orden, created_at, created_by)` con RLS por tenant + backfill automático desde `envios.pod_url`. Componente nuevo `src/components/PodFotosManager.tsx` con upload múltiple desde cámara, thumbnails con badge "Principal", botón eliminar con confirm. Integrado en modal POD y modal de edición de envío. La primera foto (orden=0) sincroniza con `envios.pod_url` para retro-compatibilidad. Helper `handleFotoCapture` viejo eliminado.
+
+### Pipeline Caja completo (recorrido 2 días)
+
+- APP_VERSION DEV: `v1.10.0` ✅
+- APP_VERSION PROD: `v1.10.0` ✅ (PR #118 mergeado `c857384b`)
+- Migrations DEV: 001–142 ✅
+- Migrations PROD: 001–142 ✅
+- Vercel deploy PROD `dpl_SKeSdLV75LfW2u2cnMWuMq5vLBLe` desde commit del merge
+- GitHub release v1.10.0 actualizada como **latest** sobre main
+- **Pipeline Reglas Caja: CERRADO** — 8 de 8 decisiones críticas implementadas (100%)
+
+### Pipeline Caja completo (recorrido 2 días)
+
+| Versión | Foco | Migrations |
+|---|---|---|
+| **v1.9.1** | Tanda 1 (F1/H1/G2/D3) — cajas por moneda + Cuentas de Origen + sin egreso manual + arqueo pre-cierre | 136 |
+| **v1.9.2** | Tanda 1.5 (E4/E5) — bóveda billetera + extraer dinero solo DUEÑO + historial privado | 137 + 138 |
+| **v1.9.3** | Fase 2.0 (J/B5/B6/A2/A4/C2) — permisos + CONTADOR read-only + abrir a nombre + clave maestra + mail al cierre | 140 |
+| **v1.9.4** | Fase 2.1 (C1/C3/K2/K3/B1-B4) — ticket cierre A4/térmico + numeración + snapshot + alertas configurables | 141 |
+| **v1.9.5** | Fase 2.2a (L1/L4/L5/B7/G1) — selector caja devolución + bloqueo sucursal + cadena anulación + corregir movs + doble validación | — |
+| **v1.10.0** | HITO Fase 2.4 (I1/I2) — 4 reportes + 3 exports | 142 |
+
+### Pendientes opcionales (no críticos)
+
+- Fase 2.2b: L3 préstamos a empleados en RRHH (toca otro módulo, scope mayor)
+- Fase 2.3: M2/M3/M4 (UX selector + panel cajero touchscreen + sonido) + E1/E3 (visibilidad bóveda por rol + arqueo bóveda) + G5 (chips motivos)
+- Cierre HITO v1.9.0: reporte "Con/Sin correcciones" en RentabilidadPage (filtra `gastos.es_correccion`) + notificación al cerrar/reabrir periodo
+
+### Próximos módulos a relevar (5 HTMLs generados 2026-05-26, listos para responder)
+
+- `relevamiento-ventas-reglas-negocio.html` — devoluciones / re-apertura / límites / CC / reservas / presupuestos / listas / canales / auditoría / reportes (12 secciones)
+- `relevamiento-rrhh-reglas-negocio.html` — empleados / nómina+SAC / vacaciones / asistencia+horas extra / documentos / supervisor (8 secciones)
+- `relevamiento-clientes-reglas-negocio.html` — alta / CC+límite+vencimiento / notificaciones / CC proveedores / segmentación / reportes (9 secciones)
+- `relevamiento-compras-reglas-negocio.html` — OC / recepción / devoluciones a proveedor / pagos+cheques / costos / servicios recurrentes (8 secciones)
+- `relevamiento-envios-reglas-negocio.html` — asignación / costos / pagos courier / POD / página transportista / integraciones / envío propio (9 secciones)
+
+---
+
+## Estado anterior DEV v1.9.2 / PROD v1.9.0 (cierre sesión 2026-05-25 — Caja Tanda 1 + 1.5)
 
 - APP_VERSION DEV: `v1.9.2` en `src/config/brand.ts`
 - APP_VERSION PROD: `v1.9.0` (PR pendiente)

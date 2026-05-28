@@ -3,7 +3,7 @@ title: Módulo RRHH
 category: features
 tags: [rrhh, empleados, nomina, vacaciones, asistencia, capacitaciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-04-30
+updated: 2026-05-27
 ---
 
 # Módulo RRHH
@@ -146,12 +146,20 @@ calcular_dias_habiles(desde, hasta) SQL
 
 ---
 
-## Phase 5 — Supervisor Self-Service (v0.35.0 · migration 024)
+## Organigrama basado en empleados (ISS-185 · migration 147)
+
+Desde migration 147, `empleados.supervisor_id` es **FK a `empleados(id)`** (antes apuntaba a `users(id)`). El árbol organizacional se arma 100% con empleados de RRHH, tengan o no usuario del sistema. El selector de supervisor en la ficha del empleado lista empleados activos (excluye al propio empleado para evitar auto-supervisión).
+
+Para que el **self-service del SUPERVISOR** funcione, su empleado debe estar vinculado a su usuario vía `empleados.user_id`. `get_supervisor_team_ids()` mapea `auth.uid()` → `empleados.user_id` → `supervisor_id`. Sin esa vinculación, "Mi Equipo" aparece vacío (pendiente UI de vinculación — relevamiento RRHH A5).
+
+> [!NOTE] ISS-184: el alta de empleado hace optimistic update (`setQueryData`) + `.select()` con joins, así el nuevo empleado aparece al instante sin recargar.
+
+## Phase 5 — Supervisor Self-Service (v0.35.0 · migration 024 · actualizado migration 147)
 
 **Función SQL:**
 ```sql
 get_supervisor_team_ids() SECURITY DEFINER STABLE
--- Retorna IDs de empleados donde supervisor_id = auth.uid()
+-- v147: retorna empleados donde supervisor_id = (empleado vinculado a auth.uid() via user_id)
 ```
 
 **RLS SUPERVISOR** (políticas PERMISSIVE, se suman a las existentes):

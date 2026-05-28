@@ -69,8 +69,15 @@ export default function TransportistePage() {
     load()
   }, [token])
 
+  // ISS-176: el envío con costo de courier pendiente de pago no puede avanzar (igual que en EnviosPage)
+  const pagoPendiente = !!envio && Number(envio.costo_cotizado ?? 0) > 0 && !envio.costo_pagado
+
   const avanzarEstado = async (nuevoEstado: EstadoEnvio) => {
     if (!token) return
+    if (pagoPendiente) {
+      toast.error('Este envío tiene un pago pendiente. Contactá al local antes de actualizar el estado.')
+      return
+    }
     setSaving(true)
     const podData = nuevoEstado === 'entregado' ? {
       p_pod_fecha: podFecha || null,
@@ -194,6 +201,17 @@ export default function TransportistePage() {
           </div>
         )}
 
+        {/* Aviso pago pendiente (ISS-176) */}
+        {!terminado && pagoPendiente && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-2.5">
+            <AlertTriangle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-red-800 text-sm">Envío pendiente de pago</p>
+              <p className="text-red-700 text-xs mt-0.5">No se puede actualizar el estado hasta que el local registre el pago del envío. Contactalos antes de continuar.</p>
+            </div>
+          </div>
+        )}
+
         {/* Sección de acciones */}
         {!terminado ? (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
@@ -202,7 +220,7 @@ export default function TransportistePage() {
             <div className="grid grid-cols-2 gap-2">
               {ESTADOS_DISPONIBLES.map(cfg => (
                 <button key={cfg.estado} onClick={() => avanzarEstado(cfg.estado)}
-                  disabled={saving || envio.estado === cfg.estado}
+                  disabled={saving || envio.estado === cfg.estado || pagoPendiente}
                   className={`flex flex-col items-center gap-1.5 py-4 rounded-xl text-white font-semibold text-sm transition-all ${cfg.bg} disabled:opacity-40`}>
                   {cfg.icon}
                   {cfg.label}

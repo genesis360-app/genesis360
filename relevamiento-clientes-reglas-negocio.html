@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Módulo Clientes · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Módulo Clientes</h1>
+<div class="meta">
+  Genesis360 · v1.10.0 · Fecha: 26 de mayo de 2026 · Relevamiento con Gastón Otranto + socio
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas con
+  <span class="tag tag-existente">EXISTENTE</span> piden confirmar reglas ya implementadas;
+  <span class="tag tag-nuevo">NUEVO</span> piden definir reglas pendientes;
+  <span class="tag tag-cambio">CAMBIO</span> señalan contradicciones a resolver entre lo relevado antes y lo que ya está en código.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo:</strong> Clientes globales por tenant (no por sucursal) · DNI único · Búsqueda por nombre o DNI · Domicilios múltiples con principal ⭐ · CC habilitada por cliente con límite + plazo · Pago inline FIFO · Registro inline desde checkout · Cumpleaños (badge 🎂) · Etiquetas múltiples · Datos AFIP (CUIT + condición IVA) · Tab "Cuenta Corriente" con KPIs · Botón WA recordatorio · Notas append-only por cliente.
+</div>
+
+<!-- ============================ A. ALTA Y DATOS DE CLIENTE ============================ -->
+<h2>A. Alta y datos del cliente</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Campos obligatorios al alta <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: nombre + DNI + teléfono. Email y dirección opcionales.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — nombre + DNI + teléfono obligatorios</li>
+    <li>(b) Aceptar sin DNI (cliente eventual sin identificación)</li>
+    <li>(c) Cliente eventual = nombre solamente (DNI/teléfono opcional, no se guarda en historial general)</li>
+    <li>(d) Distinguir "Consumidor final" (sin datos) vs "Cliente regular" (con todos los datos)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    DNI único por tenant <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: UNIQUE(tenant_id, dni) WHERE dni NOT NULL.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — un DNI = un cliente</li>
+    <li>(b) Permitir duplicados pero con alerta visual al cargar (sugerencia "¿es el mismo cliente X?")</li>
+    <li>(c) DNI obligatorio único + CUIT opcional único (separado)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    CUIT/CUIL del cliente <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: <code>cuit_receptor</code> y <code>condicion_iva_receptor</code> son opcionales, solo para facturación AFIP.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — opcionales, solo si se factura</li>
+    <li>(b) Validar CUIT con check digit al cargar</li>
+    <li>(c) Auto-rellenar condición IVA consultando AFIP por CUIT (servicio externo)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    Clientes globales vs por sucursal <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: clientes globales — un mismo cliente compra en cualquier sucursal del tenant.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — clientes globales del tenant</li>
+    <li>(b) Permitir tag "cliente preferente de sucursal X" sin restringir compras</li>
+    <li>(c) Restringir clientes por sucursal (un cliente compra solo en la sucursal donde fue dado de alta)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span><span class="pregunta-titulo">
+    Importación masiva de clientes <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: importación por CSV con validación de DNI.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está</li>
+    <li>(b) Importación + detección de duplicados (match por DNI/teléfono/email) con merge</li>
+    <li>(c) Importación + permitir agregar etiquetas en el CSV (segmentación rápida)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A6</span><span class="pregunta-titulo">
+    Baja de cliente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: no hay baja explícita (sin <code>activo</code>) — los clientes permanecen visibles siempre.</div>
+  <ul class="opciones">
+    <li>(a) No implementar baja</li>
+    <li>(b) Soft delete (campo <code>activo</code>) — oculta en búsqueda pero conserva historial</li>
+    <li>(c) Soft delete + razón de baja (mudó, cerró, conflicto)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. CUENTA CORRIENTE (LÍMITES Y VENCIMIENTO) ============================ -->
+<h2>B. Cuenta corriente — límites y vencimiento</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Habilitar CC por cliente <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: toggle <code>cuenta_corriente_habilitada</code> + <code>limite_credito</code> + <code>plazo_pago_dias</code> en la ficha. Sin enforcement automático.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo configurar, sin enforcement (depende del cajero)</li>
+    <li>(b) Activar enforcement: si supera <code>limite_credito</code> bloquear nueva venta CC</li>
+    <li>(c) Enforcement + override con clave maestra del DUEÑO</li>
+    <li>(d) Configurable por tenant: enforce/avisar/permitir</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Quién habilita la CC del cliente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cualquier rol con acceso a Clientes (como hoy: OWNER, SUPERVISOR, CAJERO)</li>
+    <li>(b) Solo DUEÑO/SUPERVISOR — CAJERO solo carga datos básicos</li>
+    <li>(c) Solo DUEÑO — la CC es decisión exclusiva del dueño</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Vencimiento de la deuda <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: campo <code>plazo_pago_dias</code> existe pero no se aplica.</div>
+  <ul class="opciones">
+    <li>(a) Sin vencimiento (como hoy — el plazo es solo referencial)</li>
+    <li>(b) Aplicar <code>plazo_pago_dias</code> como fecha de vencimiento por venta</li>
+    <li>(c) Vencimiento + interés por mora configurable (% mensual sobre saldo vencido)</li>
+    <li>(d) Vencimiento sin interés, pero bloquea nuevas CC al vencer</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Política de morosidad <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cliente moroso: no puede hacer nuevas ventas CC pero sí efectivo</li>
+    <li>(b) Cliente moroso: no puede hacer ninguna venta hasta saldar</li>
+    <li>(c) Cliente moroso: alerta al cajero al seleccionarlo, sin bloqueo</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span><span class="pregunta-titulo">
+    Forma de cobranza <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: pago inline desde ficha del cliente (FIFO sobre ventas con saldo).</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo desde ficha</li>
+    <li>(b) Agregar "Pagar deuda" como botón en el POS al elegir cliente con deuda</li>
+    <li>(c) Cobranza desde Caja: tab dedicado "Cobranzas CC" con selección múltiple</li>
+    <li>(d) Permitir cobranza parcial sobre venta específica (no solo FIFO)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B6</span><span class="pregunta-titulo">
+    Cancelar deuda (condonación) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: ISS-107 (v1.8.23) — botón "Cancelar deuda" en CC, sin movimiento en caja. DUEÑO/SUPERVISOR.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — DUEÑO/SUPERVISOR cancela sin movimiento en caja</li>
+    <li>(b) Cancelar genera gasto automático "Deudores incobrables" para reportes</li>
+    <li>(c) Cancelar + motivo obligatorio del catálogo</li>
+    <li>(d) Cancelar + audit log + clave maestra del DUEÑO</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B7</span><span class="pregunta-titulo">
+    Tope de deuda global <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No es necesario</li>
+    <li>(b) Umbral fijo configurable por tenant (ej: alerta DUEÑO si total CC pendiente &gt; $500.000)</li>
+    <li>(c) Porcentaje del flujo mensual (ej: deuda &gt; 30% de ventas del mes → alerta)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B8</span><span class="pregunta-titulo">
+    Estado de cuenta del cliente <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: tab CC en ClientesPage con KPIs y lista.</div>
+  <ul class="opciones">
+    <li>(a) Mantener vista actual</li>
+    <li>(b) Generar PDF "Estado de cuenta" descargable + envío por email/WA</li>
+    <li>(c) Portal del cliente: link público con token para que el cliente vea su estado sin login</li>
+    <li>(d) Todos los anteriores</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. NOTIFICACIONES AL CLIENTE ============================ -->
+<h2>C. Notificaciones al cliente</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Notificar al registrar deuda nueva (venta CC) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No notificar (como hoy)</li>
+    <li>(b) Email automático con detalle de la venta y saldo total</li>
+    <li>(c) WhatsApp con link a estado de cuenta</li>
+    <li>(d) Email + WhatsApp (ambos)</li>
+    <li>(e) Configurable por tenant en Config → Clientes</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Recordatorio antes del vencimiento <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin recordatorio</li>
+    <li>(b) N días antes (configurable, ej: 3 días)</li>
+    <li>(c) Recordatorio por canal preferido del cliente (email o WA según ficha)</li>
+    <li>(d) Recordatorio + plantilla configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Notificación al vencer / escalado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Aviso el día del vencimiento</li>
+    <li>(b) Aviso al vencer + recordatorio cada 7 días si sigue impaga</li>
+    <li>(c) Aviso + escalado interno al DUEÑO/SUPERVISOR si pasa X días vencido</li>
+    <li>(d) Sin escalado automático — gestión manual</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    Confirmación de pago al cliente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No notificar — solo se carga en el sistema</li>
+    <li>(b) Comprobante de pago automático por email al registrar pago CC</li>
+    <li>(c) Comprobante + agradecimiento por WhatsApp</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C5</span><span class="pregunta-titulo">
+    Cumpleaños del cliente <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: badge 🎂 en ficha. Sin notificación automática.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo visual</li>
+    <li>(b) Notificación automática al cliente con saludo + cupón configurable</li>
+    <li>(c) Notificación al DUEÑO con lista de cumpleañeros del día para acción manual</li>
+    <li>(d) Ambos</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C6</span><span class="pregunta-titulo">
+    Marketing / promociones a clientes <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar campañas masivas</li>
+    <li>(b) Envío masivo por email/WA filtrando por etiquetas (ej: "VIP", "Mayorista", "Inactivo 60d")</li>
+    <li>(c) Campañas automáticas (cliente sin compras hace X días → mensaje de reactivación)</li>
+    <li>(d) Solo segmentación + export para enviar manualmente desde otra herramienta</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. PROVEEDORES Y CC ============================ -->
+<h2>D. Cuenta corriente con proveedores</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Habilitar CC con proveedor <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy (v1.8.44): <code>limite_cc</code> + bloqueo OC con CC al alcanzar el límite + override DUEÑO en <code>autorizaciones_cc</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está</li>
+    <li>(b) Permitir override sin clave maestra (solo audit log)</li>
+    <li>(c) Notificación al DUEÑO cuando se aproxima al límite (80%, 90%, 100%)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Vencimiento de la deuda con proveedor <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy (v1.6.0): <code>plazo_pago_dias</code> en proveedores + <code>proveedor_cc_movimientos.fecha_vencimiento</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener visualización actual sin alertas</li>
+    <li>(b) Notificar al DUEÑO N días antes del vencimiento de una OC con CC</li>
+    <li>(c) Bloqueo automático de nuevas OC CC al proveedor si hay deuda vencida (ya implementado)</li>
+    <li>(d) (b) + (c) combinados</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    Estado de cuenta del proveedor <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Vista actual basta (modal CC con saldo + historial)</li>
+    <li>(b) PDF "Estado de cuenta proveedor" descargable</li>
+    <li>(c) Reporte consolidado de todas las CC pendientes con proveedores (vencimientos próximos)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span><span class="pregunta-titulo">
+    Notas de crédito / ajustes con proveedor <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: tabla <code>proveedor_cc_movimientos</code> soporta tipo <code>nota_credito</code> y <code>ajuste</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo registro manual desde modal CC</li>
+    <li>(b) Generar nota de crédito automática al registrar una devolución a proveedor</li>
+    <li>(c) NC con número correlativo y comprobante adjunto (PDF/imagen)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D5</span><span class="pregunta-titulo">
+    Pagos parciales y compensación <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Pago parcial: distribuye FIFO sobre OCs pendientes (como en clientes)</li>
+    <li>(b) Pago parcial: operador elige a qué OC asignar el pago</li>
+    <li>(c) Ambos modos disponibles (FIFO o manual, elige el operador)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D6</span><span class="pregunta-titulo">
+    Datos bancarios del proveedor <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: campos <code>banco</code> y <code>cbu</code> sueltos en <code>proveedores</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — 1 CBU por proveedor</li>
+    <li>(b) Múltiples cuentas bancarias por proveedor (CBU + alias + banco + titular, múltiples)</li>
+    <li>(c) Datos bancarios obligatorios si el proveedor recibe pagos por transferencia</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. PROVEEDOR-PRODUCTOS Y SERVICIOS ============================ -->
+<h2>E. Productos y servicios del proveedor</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    Vínculo proveedor ↔ producto <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: <code>proveedor_productos(precio_compra, cantidad_minima)</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — un producto puede tener varios proveedores con precios distintos</li>
+    <li>(b) Marcar "proveedor principal" del producto (sugerido al hacer OC)</li>
+    <li>(c) Histórico de precios de compra por proveedor (gráfico evolutivo)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Servicios contratados <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: tabla <code>servicio_items</code> + <code>servicio_presupuestos</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — presupuesto manual + aprobación + creación de gasto</li>
+    <li>(b) Recurrencia (servicio mensual fijo) con generación automática del gasto</li>
+    <li>(c) Catálogo de servicios global (no por proveedor) + asignación a proveedor cuando se contrata</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Contactos del proveedor <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: tabla <code>proveedor_contactos</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — contactos múltiples por proveedor (nombre, cargo, teléfono, email)</li>
+    <li>(b) Marcar contacto "principal" + contacto "para urgencias/reclamos"</li>
+    <li>(c) Vincular contacto al canal preferido (WA, email) para envío de OC</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    Evaluación de proveedores <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar</li>
+    <li>(b) Calificación 1-5 estrellas por OC entregada (atraso, calidad, atención)</li>
+    <li>(c) Score automático en base a tiempo de entrega real vs prometido</li>
+    <li>(d) Reporte "Ranking de proveedores" en dashboard</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. SEGMENTACIÓN Y FIDELIZACIÓN ============================ -->
+<h2>F. Segmentación y fidelización de clientes</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    Etiquetas / tags <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: array <code>etiquetas TEXT[]</code> libre por cliente.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — libre por tenant</li>
+    <li>(b) Catálogo de etiquetas predefinidas + libres (con autocomplete)</li>
+    <li>(c) Etiquetas con color asignable</li>
+    <li>(d) Categorías estructuradas (Cliente VIP / Mayorista / Empleado / Lista X) con reglas asociadas</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Programa de fidelización (puntos) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar</li>
+    <li>(b) Implementar: 1 punto cada $X gastado, canjeables por descuento</li>
+    <li>(c) Niveles (Bronce/Plata/Oro) según volumen anual, con descuento auto-aplicado</li>
+    <li>(d) Diferir — backlog para más adelante</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    Listas de precios por cliente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Misma pregunta que en relevamiento Ventas G2 — confirmar acá si la respuesta es lista por etiqueta o por cliente directo.</div>
+  <ul class="opciones">
+    <li>(a) Lista por etiqueta (Mayorista, Empleado) — se asigna la etiqueta al cliente</li>
+    <li>(b) Lista por cliente individual (campo <code>cliente.lista_id</code>)</li>
+    <li>(c) Lista auto-asignada por volumen mensual</li>
+    <li>(d) No usar listas — descuento manual por cliente</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F4</span><span class="pregunta-titulo">
+    Historial de cambios del cliente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo notas append-only (como hoy)</li>
+    <li>(b) Audit log de cambios de datos (quién cambió teléfono, dirección, CC, etc.)</li>
+    <li>(c) Línea de tiempo unificada en ficha (notas + cambios + ventas + pagos + comunicaciones WA/email)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. REPORTES Y ALERTAS ============================ -->
+<h2>G. Reportes y alertas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Reportes prioritarios <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Top clientes por volumen del mes/año</li>
+    <li>(b) Clientes inactivos (sin compras hace X días)</li>
+    <li>(c) Clientes con deuda vencida (aging: 0-30 / 31-60 / 61-90 / +90 días)</li>
+    <li>(d) Cohort: clientes nuevos por mes y retención</li>
+    <li>(e) Top proveedores por compras + plazo promedio de entrega</li>
+    <li>(f) Marcar todos los que apliquen (multi-select)</li>
+    <li>(g) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Alertas automáticas <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cliente con deuda vencida (en Alertas centrales)</li>
+    <li>(b) Cliente VIP sin compras hace X días</li>
+    <li>(c) Cliente nuevo registrado con DNI duplicado/sospechoso</li>
+    <li>(d) Proveedor con CC pendiente y vencida</li>
+    <li>(e) Marcar todos los que apliquen</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span><span class="pregunta-titulo">
+    Exportaciones <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Excel + PDF + CSV (consistente con Caja v1.10.0)</li>
+    <li>(b) Solo Excel + PDF</li>
+    <li>(c) Export con/sin datos sensibles (DNI/CUIT) según rol</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. PERMISOS ============================ -->
+<h2>H. Permisos por rol</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    Quién puede ver datos sensibles del cliente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Todos los roles con acceso a Clientes ven todo</li>
+    <li>(b) CAJERO no ve CUIT/condición IVA (solo DUEÑO/SUPERVISOR/CONTADOR)</li>
+    <li>(c) CAJERO no ve límite de crédito ni deuda total (solo deuda de la venta en curso)</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Acceso de SUPER_USUARIO / CONTADOR <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) CONTADOR sin acceso a Clientes (como hoy)</li>
+    <li>(b) CONTADOR read-only: ve CC, historial, datos fiscales</li>
+    <li>(c) CONTADOR puede editar datos fiscales (CUIT, IVA) pero no el resto</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. ABIERTOS / PRIORIDADES ============================ -->
+<h2>I. Top 3 prioritario / temas abiertos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    ¿Qué 3 features de Clientes son prioritarias? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto va a backlog.</div>
+  <ul class="opciones">
+    <li>(   ) Enforcement de límite CC + bloqueo automático con override</li>
+    <li>(   ) Vencimiento de deuda + recordatorios automáticos al cliente</li>
+    <li>(   ) Notificación al cliente al registrar deuda / pago / venta nueva</li>
+    <li>(   ) Estado de cuenta PDF + portal público sin login</li>
+    <li>(   ) Marketing masivo por etiqueta (email/WA bulk)</li>
+    <li>(   ) Programa de fidelización por puntos / niveles</li>
+    <li>(   ) Listas de precios por cliente/etiqueta</li>
+    <li>(   ) Reportes aging + top clientes + inactivos</li>
+    <li>(   ) Audit log de cambios en datos del cliente</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    Comentarios libres
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio Módulo Clientes · 2026-05-26<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar la implementación.
+</div>
+
+</body>
+</html>

@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Módulo RRHH · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Módulo RRHH</h1>
+<div class="meta">
+  Genesis360 · v1.10.0 · Fecha: 26 de mayo de 2026 · Relevamiento con Gastón Otranto + socio
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas con
+  <span class="tag tag-existente">EXISTENTE</span> piden confirmar reglas ya implementadas;
+  <span class="tag tag-nuevo">NUEVO</span> piden definir reglas pendientes;
+  <span class="tag tag-cambio">CAMBIO</span> señalan contradicciones a resolver entre lo relevado antes y lo que ya está en código.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo:</strong> 5 fases en producción · Empleados (DNI/CUIL único, soft delete) · Nómina con conceptos + items + pagado a caja · Vacaciones con aprobación · Asistencia (presente/ausente/tardanza/licencia) · Documentos (bucket privado, 10MB) · Capacitaciones con certificado · Self-service supervisor (Mi Equipo) · Feriados nacionales AR · Notificación de cumpleaños cron diario.
+</div>
+
+<!-- ============================ A. EMPLEADOS ============================ -->
+<h2>A. Empleados</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Alta de empleado — campos obligatorios <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: nombre, DNI/CUIL (único por tenant), salario_bruto. Resto opcional.</div>
+  <ul class="opciones">
+    <li>(a) Mantener mínimos actuales</li>
+    <li>(b) Agregar email + teléfono obligatorios</li>
+    <li>(c) Agregar fecha de ingreso obligatoria (clave para liquidación)</li>
+    <li>(d) Agregar puesto + departamento obligatorios</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Baja de empleado <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: soft delete (<code>activo=false</code>). Datos quedan en historial.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo soft delete</li>
+    <li>(b) Agregar campo "Fecha de egreso" y motivo (renuncia / despido con causa / sin causa / fin contrato)</li>
+    <li>(c) Calcular automáticamente liquidación final (vacaciones no gozadas + SAC proporcional + indemnización)</li>
+    <li>(d) Permitir reactivar empleado dado de baja (mismo registro vs nuevo)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Tipo de contrato <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: campo libre o sin distinción. Útil para reglas de liquidación / vacaciones.</div>
+  <ul class="opciones">
+    <li>(a) Catálogo cerrado: relación de dependencia / monotributista / pasantía / plazo fijo / temporada</li>
+    <li>(b) Solo distinguir "Relación de dependencia" vs "Externo" (monotributista/factura)</li>
+    <li>(c) Texto libre por empleado</li>
+    <li>(d) No aplica todavía — diferir</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    Datos bancarios del empleado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No guardar (pago por efectivo o transferencia manual)</li>
+    <li>(b) Guardar CBU/Alias en ficha del empleado, opcional</li>
+    <li>(c) Guardar CBU/Alias obligatorio si el empleado cobra por transferencia</li>
+    <li>(d) Guardar CBU/Alias + banco + tipo cuenta + nombre titular (datos completos)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span><span class="pregunta-titulo">
+    Vincular empleado ↔ user (login) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: tabla <code>empleados</code> separada de <code>users</code>. Sin vínculo formal.</div>
+  <ul class="opciones">
+    <li>(a) Mantener separadas — empleado puede o no ser user del sistema</li>
+    <li>(b) Agregar campo opcional <code>empleados.user_id</code> para vincular cuando aplica (cajero/dueño)</li>
+    <li>(c) Empleado y user obligatoriamente vinculados (cada user es un empleado y viceversa)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. NÓMINA Y LIQUIDACIONES ============================ -->
+<h2>B. Nómina y liquidaciones</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Frecuencia de liquidación <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: liquidación por <code>periodo DATE</code> (YYYY-MM-01) → mensual.</div>
+  <ul class="opciones">
+    <li>(a) Solo mensual (como hoy)</li>
+    <li>(b) Mensual + quincenal (configurable por empleado)</li>
+    <li>(c) Mensual + quincenal + semanal</li>
+    <li>(d) Configurable libremente (cada X días)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Generación de la liquidación <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: botón "Generar nómina del mes" crea borradores con sueldo base para todos los activos.</div>
+  <ul class="opciones">
+    <li>(a) Manual con botón (como hoy)</li>
+    <li>(b) Auto el primer día hábil del mes (cron) con notificación</li>
+    <li>(c) Manual + asistente que sugiere ajustes según asistencia del mes (descuentos por ausencia, plus por presentismo)</li>
+    <li>(d) Auto + asistencia integrada (cálculo de descuentos por ausencia inyectado)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Catálogo de conceptos (haberes / descuentos) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: tabla <code>rrhh_conceptos</code> editable por tenant.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — el tenant arma su catálogo desde cero</li>
+    <li>(b) Pre-cargar catálogo base AR (Sueldo básico, Antigüedad, Presentismo, Jubilación, Obra Social, Ley 19.032, Sindicato)</li>
+    <li>(c) Catálogo base + permitir editar/desactivar/agregar custom</li>
+    <li>(d) Catálogo base por país (AR / UY / CL / MX / etc., siguiendo <code>tenants.moneda</code>)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Cálculo automático de aportes/retenciones (AR) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: el operador agrega cada item manualmente.</div>
+  <ul class="opciones">
+    <li>(a) Mantener manual</li>
+    <li>(b) Auto-calcular jubilación (11%), obra social (3%), Ley 19.032 (3%) sobre sueldo bruto si el empleado es "relación de dependencia"</li>
+    <li>(c) Auto + permitir override por liquidación</li>
+    <li>(d) Auto + cálculo de SAC (mitad junio / mitad diciembre) automático</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span><span class="pregunta-titulo">
+    Aguinaldo / SAC <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Generar nómina de aguinaldo en junio y diciembre con un botón aparte</li>
+    <li>(b) Calcular SAC proporcional cada mes (1/12) y pagarlo en los meses correspondientes</li>
+    <li>(c) Calcular SAC de cada empleado según mejor sueldo del semestre (como ley AR)</li>
+    <li>(d) Manual — el operador genera el SAC como un concepto más</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B6</span><span class="pregunta-titulo">
+    Recibo de sueldo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: tabla expandible en UI muestra los ítems, sin PDF imprimible/firmable.</div>
+  <ul class="opciones">
+    <li>(a) PDF imprimible básico (sin firma electrónica) — empleado firma físicamente</li>
+    <li>(b) PDF + email automático al empleado al marcar pagado</li>
+    <li>(c) PDF + firma electrónica básica (token + IP + timestamp)</li>
+    <li>(d) PDF + portal del empleado donde ve y firma sus recibos</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B7</span><span class="pregunta-titulo">
+    Medios de pago de nómina <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: efectivo / transferencia / MP. Efectivo descuenta de caja, otros son informativos.</div>
+  <ul class="opciones">
+    <li>(a) Mantener catálogo actual</li>
+    <li>(b) Agregar cheque y tarjeta prepaga corporativa</li>
+    <li>(c) Configurable por tenant (igual que métodos de pago en Ventas)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B8</span><span class="pregunta-titulo">
+    Permisos para liquidar / pagar <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: rol RRHH y DUEÑO. Sin restricción adicional.</div>
+  <ul class="opciones">
+    <li>(a) RRHH y DUEÑO sin restricción (como hoy)</li>
+    <li>(b) RRHH puede liquidar (preparar) pero solo DUEÑO/ADMIN puede marcar "pagado"</li>
+    <li>(c) RRHH liquida + paga pero por encima de monto X requiere autorización DUEÑO</li>
+    <li>(d) Doble validación obligatoria para cualquier pago de nómina (RRHH prepara → DUEÑO firma)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B9</span><span class="pregunta-titulo">
+    Salario en USD / multi-moneda <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo moneda local (la del tenant)</li>
+    <li>(b) Salario en USD opcional por empleado, se paga en moneda local convertido al día</li>
+    <li>(c) Salario en USD opcional + paga puede ser en USD o local (elección del operador)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B10</span><span class="pregunta-titulo">
+    Anticipos y préstamos a empleados <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Pendiente de Caja Fase 2.2b (L3). Cómo se modela y descuenta.</div>
+  <ul class="opciones">
+    <li>(a) Anticipo simple: egreso en caja + descuento automático en próxima liquidación</li>
+    <li>(b) Préstamos en cuotas: tabla <code>rrhh_prestamos</code> con N cuotas + descuento mensual hasta saldar</li>
+    <li>(c) Ambos — anticipo (1 vez) y préstamo (multi-cuota), elige el operador</li>
+    <li>(d) No implementar — los anticipos se manejan como gasto suelto</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. VACACIONES ============================ -->
+<h2>C. Vacaciones</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Cálculo de días por año <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: <code>dias_totales</code> manual por empleado y año.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — el operador carga días al inicio del año</li>
+    <li>(b) Auto-calcular según antigüedad (AR LCT 20.744: 14/21/28/35 días)</li>
+    <li>(c) Auto + permitir override manual por empleado/año</li>
+    <li>(d) Configurable por tenant (catálogo de tramos)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Quién aprueba <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: DUEÑO/RRHH desde "Vacaciones"; SUPERVISOR desde "Mi Equipo".</div>
+  <ul class="opciones">
+    <li>(a) Mantener — SUPERVISOR aprueba su equipo, DUEÑO/RRHH aprueba a todos</li>
+    <li>(b) SUPERVISOR pre-aprueba, DUEÑO/RRHH confirma definitivo</li>
+    <li>(c) Solo DUEÑO/RRHH aprueban — SUPERVISOR solo ve</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Plazo mínimo de aviso <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin plazo — se puede pedir el día anterior</li>
+    <li>(b) Plazo fijo configurable (ej: solicitar con 30 días de antelación)</li>
+    <li>(c) Solo alerta visual si no cumple el plazo, sin bloqueo</li>
+    <li>(d) Plazo configurable por puesto/departamento</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    Conflicto de fechas (varios empleados pidiendo la misma semana) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No validar — cualquier solicitud se acepta</li>
+    <li>(b) Alerta visual al aprobar si hay otros aprobados en el mismo período</li>
+    <li>(c) Bloqueo configurable: máximo N empleados de vacaciones simultáneamente por departamento/sucursal</li>
+    <li>(d) Calendario visual con superposiciones marcadas</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C5</span><span class="pregunta-titulo">
+    Vacaciones partidas (en bloques) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin restricción — cualquier división</li>
+    <li>(b) Mínimo N días por bloque (ej: bloques de 7+ días)</li>
+    <li>(c) Máximo N bloques por año (ej: hasta 2 períodos)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C6</span><span class="pregunta-titulo">
+    Días remanentes que se arrastran al año siguiente <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: campo <code>remanente_anterior</code> en <code>rrhh_vacaciones_saldo</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — el operador carga el remanente manualmente al inicio del año</li>
+    <li>(b) Auto-calcular: días totales del año X − usados = remanente para X+1</li>
+    <li>(c) Auto + límite (ej: máximo 5 días arrastrables por año)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C7</span><span class="pregunta-titulo">
+    Vacaciones pagas en nómina <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Se pagan dentro del sueldo normal del mes (no concepto especial)</li>
+    <li>(b) Se generan automáticamente como concepto "Vacaciones" en el sueldo del mes del inicio</li>
+    <li>(c) Recibo de vacaciones aparte (pago anticipado antes del inicio)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. ASISTENCIA ============================ -->
+<h2>D. Asistencia</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Registro de asistencia <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: registro manual por día con estado y hora.</div>
+  <ul class="opciones">
+    <li>(a) Mantener registro manual</li>
+    <li>(b) Agregar fichado (clock-in/clock-out) desde el celular del empleado</li>
+    <li>(c) Fichado con foto (selfie + geolocalización) para evitar suplantaciones</li>
+    <li>(d) Fichado por QR del local (escanea código de la sucursal con su celular)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Horario de trabajo configurado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sin horario configurado — solo se registra estado</li>
+    <li>(b) Horario por empleado (entrada / salida / días de la semana)</li>
+    <li>(c) Horarios rotativos (turnos mañana/tarde/noche) configurables</li>
+    <li>(d) Plantillas de horario que se asignan a empleados (M-F 9-18, S 9-13, etc.)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    Tardanza y descuento <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo registrar tardanza, sin descuento automático</li>
+    <li>(b) Descuento automático proporcional (minutos tarde × sueldo/hora)</li>
+    <li>(c) Descuento configurable por tenant (umbral de minutos tolerados, % descuento)</li>
+    <li>(d) Tolerancia configurable + descuento progresivo (1ra vez aviso, 2da descuento)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span><span class="pregunta-titulo">
+    Ausencias <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Estados actuales (ausente / licencia) — sin distinción mayor</li>
+    <li>(b) Subdividir licencias: médica, paga, no paga, paternidad/maternidad, familiar enfermo, exámenes</li>
+    <li>(c) Adjuntar comprobante (certificado médico) opcional/obligatorio por tipo</li>
+    <li>(d) Conectar ausencias con descuentos automáticos en la nómina (vinculado a D3)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D5</span><span class="pregunta-titulo">
+    Horas extra <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No registrar — se manejan informalmente</li>
+    <li>(b) Registrar como "horas extra" con multiplicador (50% / 100% según día/horario)</li>
+    <li>(c) Registrar + calcular automáticamente en nómina como concepto separado</li>
+    <li>(d) Aprobación previa por SUPERVISOR antes de generar las horas</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D6</span><span class="pregunta-titulo">
+    Feriados <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: tabla <code>rrhh_feriados</code> + botón bulk AR 2026.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está</li>
+    <li>(b) Cargar feriados de varios años (2026, 2027, 2028) en bloque</li>
+    <li>(c) API de feriados externa (ej: api.argentinadatos.com) con sync anual automático</li>
+    <li>(d) Diferenciar feriado nacional / provincial / personalizado (ya está el campo) + reglas de pago (doble, triple)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. DOCUMENTOS Y CAPACITACIONES ============================ -->
+<h2>E. Documentos y capacitaciones</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    Documentos obligatorios al alta <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Ninguno — todos opcionales</li>
+    <li>(b) Catálogo configurable de "documentos requeridos" (contrato, DNI, CV, libreta sanitaria) — alerta si faltan</li>
+    <li>(c) Bloquear pago de nómina si faltan documentos obligatorios</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Vencimiento de documentos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Útil para libretas sanitarias, ART, contratos a plazo, registros profesionales.</div>
+  <ul class="opciones">
+    <li>(a) No aplicar vencimiento</li>
+    <li>(b) Agregar <code>fecha_vencimiento</code> al documento + alerta N días antes</li>
+    <li>(c) Vencimiento + escalado (alerta al empleado + supervisor + DUEÑO)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Capacitaciones obligatorias <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: tabla con estados planificada/en_curso/completada/cancelada.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — todas voluntarias/discrecionales</li>
+    <li>(b) Marcar capacitación como "obligatoria por puesto" — alerta al alta si falta</li>
+    <li>(c) Vencimiento de capacitación (ej: curso seguridad cada 2 años) con re-recordatorio automático</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    Costo de capacitaciones <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No registrar costo</li>
+    <li>(b) Campo costo + medio de pago + integración con Gastos (auto-genera gasto al confirmar pago)</li>
+    <li>(c) Reporte "Inversión en capacitación por empleado/año" para Dashboard RRHH</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. SUPERVISOR / SELF-SERVICE ============================ -->
+<h2>F. Supervisor y self-service</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    Permisos SUPERVISOR en Mi Equipo <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: ve asistencia/vacaciones/cumpleaños/equipo. Aprueba vacaciones.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está</li>
+    <li>(b) Agregar registro de asistencia (SUPERVISOR ficha por su equipo)</li>
+    <li>(c) Agregar evaluación de desempeño (ver E5/F4) por empleado</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Portal del empleado (auto-servicio) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar — todo lo hace RRHH</li>
+    <li>(b) Implementar: empleado solicita vacaciones y descarga recibos desde su login</li>
+    <li>(c) (b) + cargar sus propios documentos (DNI, certificados)</li>
+    <li>(d) (b) + (c) + ver/firmar recibos electrónicos</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    Notificaciones <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: cumpleaños diario via EF + cron. Sin otras notificaciones.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — solo cumpleaños</li>
+    <li>(b) Agregar: vacaciones próximas a vencer documento, próximo a cumplir 6 meses, etc.</li>
+    <li>(c) Notificaciones para todo el ciclo del empleado (alta / cumpleaños / aniversario / vacaciones próximas / contrato a vencer)</li>
+    <li>(d) Configurable por tenant qué notificaciones se envían</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F4</span><span class="pregunta-titulo">
+    Evaluación de desempeño <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No implementar</li>
+    <li>(b) Formulario simple periódico (trimestral/semestral) con escala 1-5 + comentarios</li>
+    <li>(c) Evaluación 360° (auto-evaluación + supervisor + pares)</li>
+    <li>(d) Implementar más adelante</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. REPORTES Y ALERTAS ============================ -->
+<h2>G. Reportes y alertas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Reportes prioritarios <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Costo laboral mensual por departamento/sucursal</li>
+    <li>(b) Asistencia consolidada (presentes/tardanzas/ausencias) por período + empleado</li>
+    <li>(c) Vacaciones gozadas / pendientes por empleado y año</li>
+    <li>(d) Antigüedad y rotación (altas/bajas, promedio de permanencia)</li>
+    <li>(e) Cumpleaños y aniversarios del mes</li>
+    <li>(f) Recibos pendientes de pagar / pagados del mes</li>
+    <li>(g) Marcar todos los que apliquen (multi-select)</li>
+    <li>(h) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Exportaciones <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: export Excel de asistencia mensual + nómina histórica.</div>
+  <ul class="opciones">
+    <li>(a) Mantener — Excel solamente</li>
+    <li>(b) Excel + PDF + CSV (consistente con Caja v1.10.0)</li>
+    <li>(c) Excel + integración directa con sistemas externos (libro sueldos AFIP)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. ABIERTOS / PRIORIDADES ============================ -->
+<h2>H. Top 3 prioritario / temas abiertos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    ¿Qué 3 features de RRHH son prioritarias? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 entre las opciones — el resto va a backlog.</div>
+  <ul class="opciones">
+    <li>(   ) Cálculo automático de aportes/retenciones AR + SAC</li>
+    <li>(   ) Recibo de sueldo PDF + email automático al empleado</li>
+    <li>(   ) Fichado de asistencia desde el celular (clock-in/out + foto/QR)</li>
+    <li>(   ) Préstamos y anticipos con descuento automático en nómina</li>
+    <li>(   ) Horas extra con multiplicador</li>
+    <li>(   ) Liquidación final (egreso) con cálculo automático de vacaciones + SAC + indemnización</li>
+    <li>(   ) Portal del empleado para auto-servicio</li>
+    <li>(   ) Reportes de costo laboral + asistencia + rotación</li>
+    <li>(   ) Vencimiento de documentos (libreta sanitaria, contrato) + alertas</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Comentarios libres / reglas que se escaparon
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio Módulo RRHH · 2026-05-26<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar la implementación.
+</div>
+
+</body>
+</html>

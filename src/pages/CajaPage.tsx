@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useCierreContable } from '@/hooks/useCierreContable'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
@@ -58,6 +59,7 @@ function extraerMedioPago(tipo: string, concepto: string): string {
 
 export default function CajaPage() {
   const { tenant, user, sucursales } = useAuthStore()
+  const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
@@ -827,6 +829,27 @@ export default function CajaPage() {
       const nuevoMonto = parseFloat(corregirMonto)
       if (!nuevoMonto || nuevoMonto <= 0) throw new Error('Ingresá un monto válido')
       if (!corregirConcepto.trim()) throw new Error('Ingresá un concepto')
+      const montoOriginal = Number(corregirMov.monto)
+
+      // ISS-193 — Detectar si el movimiento es destino (u origen) de un traspaso entre cajas.
+      // Si lo es, hay que reflejar la diferencia en la caja origen también para que ambas cuadren.
+      let traspasoRel: any = null
+      let propagarAOrigen = false
+      let propagarADestino = false
+      if (corregirMov.tipo === 'ingreso') {
+        const { data: tDest } = await supabase.from('caja_traspasos')
+          .select('id, sesion_origen_id, monto, concepto')
+          .eq('movimiento_destino_id', corregirMov.id)
+          .maybeSingle()
+        if (tDest) { traspasoRel = tDest; propagarAOrigen = true }
+      } else if (corregirMov.tipo === 'egreso') {
+        const { data: tOrg } = await supabase.from('caja_traspasos')
+          .select('id, sesion_destino_id, monto, concepto')
+          .eq('movimiento_origen_id', corregirMov.id)
+          .maybeSingle()
+        if (tOrg) { traspasoRel = tOrg; propagarADestino = true }
+      }
+
       // 1) Insertar reversión del original (mismo tipo opuesto)
       const tipoReverso = corregirMov.tipo === 'ingreso' ? 'egreso' : 'ingreso'
       const { error: e1 } = await supabase.from('caja_movimientos').insert({
@@ -834,20 +857,65 @@ export default function CajaPage() {
         sesion_id: corregirMov.sesion_id,
         tipo: tipoReverso,
         concepto: `[Reversión] ${corregirMov.concepto}`,
-        monto: Number(corregirMov.monto),
+        monto: montoOriginal,
         usuario_id: user?.id,
       })
       if (e1) throw e1
       // 2) Insertar nuevo movimiento con valores corregidos
-      const { error: e2 } = await supabase.from('caja_movimientos').insert({
+      const { data: movNuevo, error: e2 } = await supabase.from('caja_movimientos').insert({
         tenant_id: tenant!.id,
         sesion_id: corregirMov.sesion_id,
-        tipo: corregirMov.tipo,  // mismo tipo (ingreso)
+        tipo: corregirMov.tipo,
         concepto: `[Corregido] ${corregirConcepto.trim()}`,
         monto: nuevoMonto,
         usuario_id: user?.id,
-      })
+      }).select('id').single()
       if (e2) throw e2
+
+      // 3) ISS-193 — Propagar la diferencia a la caja contraparte del traspaso (si aplica)
+      if (traspasoRel && (propagarAOrigen || propagarADestino)) {
+        const contraSesionId = propagarAOrigen ? traspasoRel.sesion_origen_id : traspasoRel.sesion_destino_id
+        const diferencia = nuevoMonto - montoOriginal // si destino recibió MENOS, diferencia<0 → la origen recupera plata
+        const conceptoBase = corregirConcepto.trim()
+
+        if (Math.abs(diferencia) > 0.01) {
+          // La sesión contraparte debe estar abierta para registrarle el ajuste
+          const { data: sesionContraparte } = await supabase.from('caja_sesiones')
+            .select('id, estado, cajas(nombre)')
+            .eq('id', contraSesionId)
+            .maybeSingle()
+          if (!sesionContraparte || (sesionContraparte as any).estado !== 'abierta') {
+            const nombreCaja = (sesionContraparte as any)?.cajas?.nombre ?? 'la otra'
+            throw new Error(`No se puede corregir: la caja contraparte del traspaso ("${nombreCaja}") está cerrada. Tiene que estar abierta para reflejar la diferencia de $${Math.abs(diferencia).toLocaleString('es-AR')}.`)
+          }
+          // Si destino recibió menos (diferencia<0): la origen recupera plata → ingreso en origen
+          // Si destino recibió más  (diferencia>0): la origen pone plata extra → egreso  en origen
+          // Análogo si propagás desde el origen al destino.
+          let tipoAjuste: 'ingreso' | 'egreso'
+          if (propagarAOrigen) {
+            tipoAjuste = diferencia < 0 ? 'ingreso' : 'egreso'
+          } else {
+            // si la corrección fue en el origen (egreso ajustado), la diferencia se traslada al destino
+            // diferencia<0 significa egreso menor: la destino debe recibir menos → egreso en destino
+            tipoAjuste = diferencia < 0 ? 'egreso' : 'ingreso'
+          }
+          const { error: e3 } = await supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id,
+            sesion_id: contraSesionId,
+            tipo: tipoAjuste,
+            concepto: `[Ajuste traspaso] ${conceptoBase} · diferencia ${diferencia > 0 ? '+' : ''}${diferencia.toLocaleString('es-AR')}`,
+            monto: Math.abs(diferencia),
+            usuario_id: user?.id,
+          })
+          if (e3) throw e3
+        }
+
+        // 4) Actualizar el monto del traspaso para mantener consistencia + apuntar al nuevo movimiento
+        const updatePayload: any = { monto: nuevoMonto }
+        if (propagarAOrigen)  updatePayload.movimiento_destino_id = movNuevo?.id ?? null
+        if (propagarADestino) updatePayload.movimiento_origen_id  = movNuevo?.id ?? null
+        await supabase.from('caja_traspasos').update(updatePayload).eq('id', traspasoRel.id)
+      }
     },
     onSuccess: () => {
       toast.success('Movimiento corregido')
@@ -876,24 +944,26 @@ export default function CajaPage() {
       const nombreDestino = sesDestino?.cajas?.nombre ?? 'otra caja'
       const nombreOrigen = cajaActual?.nombre ?? 'esta caja'
       // Egreso en origen
-      const { error: e1 } = await supabase.from('caja_movimientos').insert({
+      const { data: movOrigen, error: e1 } = await supabase.from('caja_movimientos').insert({
         tenant_id: tenant!.id, sesion_id: sesionActiva.id,
         tipo: 'egreso', concepto: `${concepto} → ${nombreDestino}`,
         monto, usuario_id: user!.id,
-      })
+      }).select('id').single()
       if (e1) throw e1
       // Ingreso en destino
-      const { error: e2 } = await supabase.from('caja_movimientos').insert({
+      const { data: movDestino, error: e2 } = await supabase.from('caja_movimientos').insert({
         tenant_id: tenant!.id, sesion_id: traspasoDestinoSesionId,
         tipo: 'ingreso', concepto: `${concepto} ← ${nombreOrigen}`,
         monto, usuario_id: user!.id,
-      })
+      }).select('id').single()
       if (e2) throw e2
-      // Registro en tabla de traspasos
+      // Registro en tabla de traspasos + FK a los movimientos para propagar correcciones (ISS-193)
       const { error: e3 } = await supabase.from('caja_traspasos').insert({
         tenant_id: tenant!.id,
         sesion_origen_id: sesionActiva.id,
         sesion_destino_id: traspasoDestinoSesionId,
+        movimiento_origen_id:  movOrigen?.id  ?? null,
+        movimiento_destino_id: movDestino?.id ?? null,
         monto, concepto: concepto || null, usuario_id: user!.id,
       })
       if (e3) throw e3
@@ -1703,12 +1773,18 @@ export default function CajaPage() {
                               </span>
                               {/* G1 — Corregir: solo en ingresos manuales (sin #venta), si rol tiene permiso */}
                               {puedeEditarMovimiento && m.tipo === 'ingreso' && !numVenta && !m.concepto.startsWith('[Reversión]') && !m.concepto.startsWith('[Corregido]') && !m.concepto.startsWith('[Diferencia caja]') && (
-                                <button
-                                  onClick={() => { setCorregirMov(m); setCorregirMonto(String(m.monto)); setCorregirConcepto(m.concepto) }}
-                                  title="Corregir este movimiento"
-                                  className="p-1 text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 transition-colors">
-                                  <RotateCcw size={12} />
-                                </button>
+                                isPeriodoCerrado(m.created_at) ? (
+                                  <span title={`Periodo contable cerrado hasta ${ultimoCierre} — movimiento no modificable`} className="p-1 text-amber-400 cursor-not-allowed">
+                                    <Lock size={12} />
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => { setCorregirMov(m); setCorregirMonto(String(m.monto)); setCorregirConcepto(m.concepto) }}
+                                    title="Corregir este movimiento"
+                                    className="p-1 text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 transition-colors">
+                                    <RotateCcw size={12} />
+                                  </button>
+                                )
                               )}
                             </div>
                           </div>
@@ -2289,7 +2365,14 @@ export default function CajaPage() {
                 <div className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="font-semibold text-gray-800 dark:text-gray-100">{s.cajas?.nombre}</p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-gray-800 dark:text-gray-100">{s.cajas?.nombre}</p>
+                        {isPeriodoCerrado(s.abierta_at) && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 flex items-center gap-1" title={`Periodo contable cerrado hasta ${ultimoCierre} — sesión y movimientos congelados`}>
+                            <Lock size={9} /> Cerrado
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                         <Clock size={11} className="inline mr-1" />
                         {new Date(s.abierta_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })} →&nbsp;

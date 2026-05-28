@@ -6,6 +6,100 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-27] update | v1.10.1-dev — Tanda de bugfixes (10 issues) + resiliencia ErrorBoundary
+
+Continuación de la sesión v1.10.1. Mientras los relevamientos esperan respuesta, se atacó la lista de bugs críticos priorizada con GO. Todo en DEV, parte del lote v1.10.1 (no deployado).
+
+### Bugfixes
+- **ISS-182/183 (Gastos)**: `guardar()` y `confirmarGenerarFijo()` ahora validan comprobante obligatorio (según las 4 reglas del tenant) y que los medios de pago cubran exactamente el total con tipo definido. Antes dejaba crear gastos sin comprobante y con medios sin definir.
+- **ISS-184 (RRHH)**: la mutation de empleados usa `.select()` con joins + optimistic update via `setQueryData` → el empleado aparece al instante (antes "No hay empleados" hasta F5).
+- **ISS-195 (Gastos/Cierre)**: el panel de cierres no listaba nada porque el select pedía `users.email` (columna inexistente; el email vive en auth.users). Removido de `CierresContablesPanel`.
+- **ISS-150 (Recepción)**: al recibir una OC ya pagada, el precio costo se muestra como label "OC pagada (no editable)" en vez de input.
+- **ISS-186 (RRHH/Caja)** · migration 145: `pagar_nomina_empleado` calculaba saldo sin contar `ingreso_traspaso`/`egreso_traspaso`. La bóveda (que recibe por traspaso) daba "saldo insuficiente". Alineado con la lógica del frontend.
+- **ISS-193 (Caja)** · migration 146: `caja_traspasos` ahora guarda `movimiento_origen_id`/`movimiento_destino_id`. Al corregir un traspaso recibido, se inserta el ajuste de la diferencia en la caja origen (si está abierta; si no, error claro). Traspasos viejos sin FK no se propagan.
+- **ISS-156/175/176 (Envíos)**: el envío cuyo costo cobró el cliente en la venta nace `costo_pagado=true` (propio siempre; tercero si la venta se despachó). Tab Pagos Courier excluye `Envío propio`. `/transporte` valida pago: banner rojo + botones de avance deshabilitados si el costo está pendiente (`get_envio_by_token` ya exponía `costo_cotizado`/`costo_pagado`).
+- **ISS-185 (RRHH)** · migration 147: `empleados.supervisor_id` re-apuntado de `users(id)` a `empleados(id)`. El organigrama se arma con empleados de RRHH. `get_supervisor_team_ids()` reescrita para mapear `auth.uid()` → `empleados.user_id` → `supervisor_id`. Selector de supervisor lista empleados (excluye al editado). Los 8 supervisor_id viejos (a users) se nulearon. **Mi Equipo del SUPERVISOR queda vacío hasta vincular `empleados.user_id`** (pendiente UI — relevamiento A5).
+
+### Resiliencia (Heisenbug "Algo salió mal" reportado por GO)
+- ErrorBoundary: antes solo `console.error`. Ahora reporta a **Sentry** (con componentStack) + muestra el mensaje del error + Sentry ID + botón "Copiar detalle". Esto permite diagnosticar los crashes intermitentes que GO reportó en Config→Estados/Grupos y Gastos.
+- **Boundary por-ruta** en AppLayout (`<ErrorBoundary inline key={pathname}>` alrededor del `<Outlet />`): un crash de página ya no tumba toda la app — el menú sobrevive y al navegar se resetea.
+- `GruposEstadosPage`: blindado `grupo_estado_items ?? []` (causa probable del crash en esa pantalla).
+- **Pendiente diagnóstico**: el crash en Gastos no se identificó a ojo — necesita el stack real que el boundary ahora captura.
+
+### Estado al cierre
+- DEV: v1.10.1 con migrations 130-147
+- PROD: v1.10.0 (143-147 pendientes)
+- Lote v1.10.1 listo para PR `dev→main` cuando GO decida deployar
+
+---
+
+## [2026-05-27] update | v1.10.1-dev — Cierre HITO v1.9.0 + quick wins Envíos
+
+Sesión paralela al relevamiento de Ventas/RRHH/Clientes/Compras/Envíos (HTMLs generados ayer, pendientes de respuesta). Se cerraron los últimos pendientes del HITO Cierre Contable v1.9.0 + 2 quick wins del backlog de Envíos.
+
+### Cambios
+- **VentasPage**: badge ámbar 🔒 "Cerrado" en cada fila del historial cuando la venta cae en periodo contable cerrado. Botón "Eliminar venta" en el modal de detalle reemplazado por banner amber "Periodo cerrado hasta YYYY-MM-DD — no editable" para evitar errores del trigger DB.
+- **CajaPage**: badge 🔒 "Cerrado" junto al nombre de cada sesión cerrada del historial. Botón "Corregir movimiento" reemplazado por candado deshabilitado en movimientos de periodos cerrados.
+- **CierresContablesPanel**: nuevo botón "Descargar PDF" en el bloque expandido de cada cierre. Genera A4 con header BRAND + datos fiscales del tenant + periodo + observaciones + tabla snapshot (Ventas/Gastos/Sueldos/OC con counts) + bloque resumen (Egresos totales + Resultado neto). Lee de `cierres_contables.totales JSONB` (no recalcula). `logActividad('cierre_contable','descargar_pdf',…)`
+- **Cron limpieza tokens transportista** (migration 143): pg_cron `cleanup_envio_tokens_transportista` corre diario 07:00 UTC. Para envíos en `entregado`/`cancelado`/`devolucion` con +30 días, setea `token_transportista = NULL` para invalidar links públicos. Activo en DEV.
+- **Múltiples fotos POD** (migration 144): tabla `envio_pod_fotos` con RLS por tenant + backfill automático desde `envios.pod_url`. Componente `PodFotosManager` con upload múltiple desde cámara/galería (`multiple` + `capture="environment"`), thumbnails con badge "Principal" en orden 0, botón eliminar con confirm + cleanup del storage path. Integrado en modal POD y modal de edición de envío (solo si `editId` existe). La primera foto sincroniza con `envios.pod_url` para retro-compat. Helper `handleFotoCapture` viejo de ISS-166 eliminado del archivo.
+
+### Estado al cierre
+- DEV: **v1.10.1** con migrations 130-144 aplicadas
+- PROD: v1.10.0 (143-144 pendientes de deploy)
+- Cierre HITO v1.9.0: 100% completo en DEV
+- Relevamientos abiertos esperando respuesta del usuario (5 HTMLs)
+
+### Pendiente próxima sesión
+- PR `dev → main` con título `v1.10.1 — Cierre HITO + quick wins Envíos`
+- Aplicar migrations 143 + 144 en PROD antes del merge (aditivas)
+- GitHub release v1.10.1 como latest
+
+---
+
+## [2026-05-26] update | PROD deploy v1.10.0 — Pipeline Reglas Caja CERRADO
+
+Cierre del pipeline completo de Caja con 6 versiones consecutivas (v1.9.1 → v1.10.0) en 2 días.
+
+### Deploy
+- **Migrations 136–142 aplicadas en PROD** (7 migrations aditivas idempotentes)
+  - 136: cajas.moneda + cuentas_origen + cuenta_origen_id en metodos_pago/caja_movimientos + vw_boveda_cuentas + seed
+  - 137: boveda_retiros + RLS solo DUEÑO/ADMIN/SUPER_USUARIO + backfill cuenta_origen_id
+  - 138: auto-seed cuentas_origen por método no-efectivo
+  - 139: backfill fuzzy con normalización (sin tildes/sin "de")
+  - 140: caja_sesiones.abierta_por + tenants.config_caja JSONB + RPCs requiere_clave_maestra y verificar_clave_maestra
+  - 141: caja_sesiones.numero correlativo + snapshot_totales + tenants.diferencia_caja_* + vw_diferencias_por_cajero
+  - 142: vw_caja_resumen_diario + vw_caja_mensual_por_sucursal
+- **PR #118 mergeado** en main (squash, commit `c857384b`)
+- **Vercel PROD** auto-deploy en estado BUILDING (`dpl_SKeSdLV75LfW2u2cnMWuMq5vLBLe` desde commit del merge)
+- **GitHub release v1.10.0** actualizada como **latest** apuntando a main
+- `app.genesis360.pro` servirá v1.10.0 una vez termine el build (~90s)
+
+### Score final del pipeline Caja
+**8 de 8 decisiones críticas implementadas (100%)** ✅
+
+Recorrido completo:
+- v1.9.1 Tanda 1 (F1/H1/G2/D3): cajas por moneda + Cuentas de Origen + sin egreso manual + arqueo pre-cierre
+- v1.9.2 Tanda 1.5 (E4/E5): bóveda como billetera + extraer dinero solo DUEÑO + historial privado
+- v1.9.3 Fase 2.0 (J1/J3/B5/B6/A2/A4/C2): permisos + CONTADOR read-only + abrir a nombre de cajero + clave maestra + mail al cierre
+- v1.9.4 Fase 2.1 (C1/C3/K2/K3/B1-B4): ticket cierre A4/térmico + numeración correlativa + snapshot + umbral diferencia + alertas configurables
+- v1.9.5 Fase 2.2a (L1/L4/L5/B7/G1): selector caja devolución + bloqueo sucursal + cadena anulación + corregir movs + doble validación cierre
+- v1.10.0 HITO Fase 2.4 (I1/I2): 4 reportes (diario/consolidado/mensual/por cajero) + 3 exports (Excel/PDF/CSV)
+
+### Estado al cierre
+- DEV: v1.10.0 con migrations 130-142
+- PROD: v1.10.0 con migrations 130-142 ✅ (en deploy)
+- **Pipeline Reglas Caja: CERRADO** (todas las decisiones priorizadas del relevamiento implementadas)
+- Pendientes opcionales no críticos: Fase 2.2b (L3 préstamos RRHH), Fase 2.3 (M2/M3/M4 + E1/E3 + G5)
+
+### Fixes adicionales en la sesión
+- ConfigPage tab Facturación: toggle auto-guarda + botón datos fiscales + `setTenant(data)` para sincronizar store
+- VentasPage: caja predeterminada se pre-selecciona automáticamente (useMemo en lugar de useEffect con race)
+- VentasPage: medios de pago dinámicos desde tabla `metodos_pago` (eliminada constante hardcodeada con "Otro" genérico)
+- Bóveda: backfill fuzzy de cuenta_origen_id + helper `cuentaOrigenDeMetodo` tolerante (lowercase + sin tildes + sin "de")
+
+---
+
 ## [2026-05-26] update | v1.10.0-dev — HITO Caja Fase 2.4 — Reportes (I1/I2)
 
 Cierre del pipeline de Reportes con 4 vistas + 3 exports (Excel/PDF/CSV).

@@ -13,6 +13,19 @@ updated: 2026-05-28
 
 ---
 
+## v1.10.2 — Bugfixes ISS-152/173 + caja sin PDF automático (PROD ✅)
+
+**Estado:** desplegado en PROD ✅
+**Fecha:** 2026-05-28
+**Migrations:** 148 (unidades predefinidas) · 149 (habilitado_ventas/gastos en métodos pago) · 150 (monto_pagado/estado_pago en gastos)
+
+### Cambios
+- **ISS-152** (Gastos): selector de caja en nuevo gasto filtra estrictamente por sucursal activa — nunca muestra cajas de otras sucursales.
+- **ISS-173** (Ventas): `monto_pagado` en reservas con pago parcial (seña) se calcula desde los medios reales ingresados, no desde `total − CC`. Corrige "Ya cobrado" cuando solo se cobró una seña.
+- **Caja**: elimina descarga automática de PDF al cerrar sesión. El PDF de cierre sigue disponible manualmente desde el historial.
+
+---
+
 ## v1.10.1 — Cierre HITO v1.9.0 + quick wins Envíos + 10 bugfixes (PROD ✅)
 
 **Estado:** desplegado en PROD ✅ (PR #119 mergeado `842d7353`, release latest, migrations 143-147 aplicadas pre-merge, Vercel deploy `dpl_BxMq3Zu9iKEoNjLBEus76jk5xfX5`)

@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.1** ✅ · DEV: **v1.10.1** + lote bugfixes 2026-05-28 (sin versionar aún)
+Último release en PROD: **v1.10.2** ✅ · DEV: **v1.10.2**
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,16 +14,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.10.1` | `v1.10.1` |
-| Migrations | 001–150 ✅ | 001–147 ✅ |
-| Branch | `dev` (adelantado 5 commits desde last merge) | `main` (commit `842d7353`) |
-| Vercel | preview auto desde `dev` | PROD dpl `BxMq3Zu9iKEoNjLBEus76jk5xfX5` |
+| APP_VERSION | `v1.10.2` | `v1.10.2` |
+| Migrations | 001–150 ✅ | 001–150 ✅ |
+| Branch | `dev` | `main` |
+| Vercel | preview auto desde `dev` | PROD deploy v1.10.2 |
 
-**Migrations DEV pendientes de aplicar en PROD antes del próximo PR:** 148, 149, 150
-
-- 148: `predefinida` en `unidades_medida` + seed trigger actualizado
-- 149: `habilitado_ventas` + `habilitado_gastos` en `metodos_pago`
-- 150: `monto_pagado` + `estado_pago` en `gastos` (trigger `trg_gastos_cierre` fue deshabilitado durante backfill — ya re-habilitado)
+**Migrations DEV pendientes de aplicar en PROD:** ninguna
 
 ---
 
@@ -78,8 +74,7 @@ type: project
 ## Para el próximo deploy a PROD
 
 Checklist obligatorio:
-1. Aplicar migrations **148, 149, 150** en PROD antes de mergear
-2. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.2` (o v1.11.0 si se agrega feature)
-3. PR `dev → main` con título `vX.Y.Z — descripción`
-4. GitHub release `vX.Y.Z` sobre `main` como `--latest`
-5. Actualizar este archivo + `log.md` + `roadmap.md`
+1. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.3` (o v1.11.0 si se agrega feature)
+2. PR `dev → main` con título `vX.Y.Z — descripción`
+3. GitHub release `vX.Y.Z` sobre `main` como `--latest`
+4. Actualizar este archivo + `log.md` + `roadmap.md`

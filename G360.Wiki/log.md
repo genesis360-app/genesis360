@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-28] update | v1.10.2 — bugfixes ISS-152/173 + caja sin PDF automático → PROD
+
+- **ISS-152**: `sesionesAbiertas` en GastosPage ahora incluye `sucursalId` en queryKey y filtra client-side. `cajasAbiertasOC` corrige filtro estricto. El "nuevo gasto" ya no muestra cajas de otras sucursales.
+- **ISS-173**: `monto_pagado` al crear reserva con pago parcial usa suma real de medios no-CC. Corrige "Ya cobrado" cuando se cobró seña parcial.
+- **Caja**: eliminada descarga automática de PDF al cerrar sesión. Disponible manual desde historial.
+- Deploy: migrations 148-150 aplicadas en PROD, PR `dev→main`, release v1.10.2 como `--latest`.
+
+---
+
 ## [2026-05-28] update | lote ISS-135/142/180/190 + migrations 148-150 (dev)
 
 4 issues resueltos en 2 commits sobre `dev`, con 3 migrations aplicadas en DEV.

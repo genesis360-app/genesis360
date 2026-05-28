@@ -1482,7 +1482,17 @@ export default function VentasPage() {
         total,
         // ISS-090: CC como medio de pago parcial; ISS-105: monto_pagado incluye costo envío
         medio_pago: serializeMediosPago(mediosPago, totalConEnvio),
-        monto_pagado: estado === 'pendiente' ? 0 : Math.min(Math.max(0, totalConEnvio - montoCC), totalConEnvio),
+        monto_pagado: estado === 'pendiente' ? 0 : (() => {
+          const filled = mediosPago.filter(m => m.tipo)
+          // Auto-complete: único medio sin monto → se cobra el total
+          if (filled.length === 1 && !filled[0].monto) {
+            return filled[0].tipo !== 'Cuenta Corriente' ? totalConEnvio : 0
+          }
+          return Math.min(
+            filled.filter(m => m.tipo !== 'Cuenta Corriente').reduce((s, m) => s + (parseFloat(m.monto) || 0), 0),
+            totalConEnvio
+          )
+        })(),
         es_cuenta_corriente: modoCC,
         notas: notas || null,
         usuario_id: user?.id,

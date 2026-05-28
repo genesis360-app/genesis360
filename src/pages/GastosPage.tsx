@@ -251,12 +251,13 @@ export default function GastosPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: sesionesAbiertas = [] } = useQuery({
-    queryKey: ['caja-sesiones-abiertas', tenant?.id],
+    queryKey: ['caja-sesiones-abiertas', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, caja_id, usuario_id, monto_apertura, cajas(nombre, es_caja_fuerte, moneda), abrio:usuario_id(nombre_display)')
+        .select('id, caja_id, usuario_id, monto_apertura, cajas(nombre, es_caja_fuerte, moneda, sucursal_id), abrio:usuario_id(nombre_display)')
         .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
-      return data ?? []
+      if (!sucursalId) return data ?? []
+      return (data ?? []).filter((s: any) => s.cajas?.sucursal_id === sucursalId)
     },
     enabled: !!tenant, refetchInterval: 60_000,
   })
@@ -479,8 +480,7 @@ export default function GastosPage() {
       const { data } = await supabase.from('caja_sesiones')
         .select('id, cajas(nombre, sucursal_id)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
       if (!sucursalId) return data ?? []
-      // Filtrar por sucursal activa (gotcha: no se puede filtrar por joined table en Supabase JS)
-      return (data ?? []).filter((s: any) => !s.cajas?.sucursal_id || s.cajas.sucursal_id === sucursalId)
+      return (data ?? []).filter((s: any) => s.cajas?.sucursal_id === sucursalId)
     },
     enabled: !!tenant && tab === 'oc',
   })

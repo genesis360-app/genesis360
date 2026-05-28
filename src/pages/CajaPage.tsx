@@ -709,23 +709,7 @@ export default function CajaPage() {
         valor_nuevo: `Saldo: ${formatMoneda(saldoActual)}${diferencia !== null ? ` | Diferencia: ${formatMoneda(diferencia)}` : ''}`,
         pagina: '/caja',
       })
-      const closedSesion = {
-        ...sesionActiva,
-        cajas: { nombre: cajaActual?.nombre ?? 'Caja' },
-        monto_cierre: saldoActual,
-        total_ingresos: totalIngresos,
-        total_egresos: totalEgresos,
-        monto_real_cierre: montoRealCierre !== '' ? montoRealNum : null,
-        diferencia_cierre: diferencia ?? 0,
-        notas_cierre: notasCierre || null,
-        cerrada_at: new Date().toISOString(),
-        abrio: (sesionActiva as any)?.abrio,
-        cerrado_por: { nombre_display: user?.nombre_display ?? '—' },
-      }
-      // C2 — CAJERO no descarga PDF (no debe ver el ticket de cierre).
-      // DUEÑO/SUPERVISOR/CONTADOR sí descargan localmente.
       const esCajeroPuro = user?.rol === 'CAJERO'
-      if (!esCajeroPuro) imprimirCierre(closedSesion)
       // C2 — Mail al DUEÑO con detalle del cierre (siempre)
       // B1/B2/B3 — Alertas adicionales por diferencia según config del tenant
       void (async () => {
@@ -788,7 +772,7 @@ export default function CajaPage() {
           }
         }
       })()
-      toast.success(esCajeroPuro ? 'Caja cerrada · El DUEÑO recibirá el detalle por email' : 'Caja cerrada · PDF descargado')
+      toast.success(esCajeroPuro ? 'Caja cerrada · El DUEÑO recibirá el detalle por email' : 'Caja cerrada')
       qc.invalidateQueries({ queryKey: ['sesion-activa'] })
       qc.invalidateQueries({ queryKey: ['historial-sesiones'] })
       setShowCierre(false); setNotasCierre(''); setMontoRealCierre(''); setClaveMaestraCierre('')

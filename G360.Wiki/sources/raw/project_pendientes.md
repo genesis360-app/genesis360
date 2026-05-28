@@ -10,6 +10,59 @@ type: project
 
 ---
 
+## Backlog GO — issues relevados 2026-05-28
+
+Lista completa con IDs reales, organizada por tamaño estimado de implementación.
+
+### ✅ Resueltos en lote 2026-05-28 (commit f96fd4d1)
+
+| ID | Módulo | Fix |
+|---|---|---|
+| ISS-140 | Config | Scrollbar oculto en sub-tabs Ventas (`[scrollbar-width:none]`) |
+| ISS-141 | Config | Scrollbar oculto en sub-tabs Inventario |
+| ISS-149 | Gastos | Descuento OC acepta $ o % con toggle en modal de pago |
+| ISS-152 | Gastos | `cajasAbiertasOC` filtra por sucursal activa (client-side) |
+| ISS-172 | Envíos | KM redondeado a entero en haversine — resultado siempre consistente |
+| ISS-173 | Ventas | Label "Ya cobrado" → "Seña cobrada" cuando hay saldo pendiente. Aviso devolución al cancelar ya estaba |
+| ISS-177 | Ventas | $/km en modal envío es read-only (toma valor de Config) |
+| ISS-179 | Config | Form crear ubicación incluye sucursal, Mono-SKU y dims WMS desde el inicio |
+| ISS-181 | Config | Texto más claro + reglas comprobante son mutuamente excluyentes |
+| ISS-194 | Caja | Toggle SUPERVISOR puede ver bóveda **ya existía** en Config → tab Caja → Permisos |
+
+### Pendientes — bugs de lógica
+
+| ID | Módulo | Descripción |
+|---|---|---|
+| ISS-190 | Gastos | Pago parcial de gasto sin indicador visual — requiere migration para `monto_pagado` en gastos + nueva lógica |
+
+### Pendientes — mejoras medianas
+
+| ID | Módulo | Descripción |
+|---|---|---|
+| ISS-135 | Configuración | Métodos de pago: toggles "Habilitado para Ventas" y "Habilitado para Gastos" independientes — requiere migration |
+| ISS-142 | Configuración | Config Operativa de Ventas no conectada: "¿Cuándo se requiere cliente?" y "Datos mínimos requeridos" hardcodeados |
+| ISS-180 | Configuración | Unidades de medida: mostrar defaults (no eliminables) + validar sin duplicados |
+
+### Pendientes — features grandes
+
+| ID | Módulo | Descripción | Complejidad |
+|---|---|---|---|
+| ISS-127 | Config + Inventario | Perfiles de códigos de barra/QR compuestos: configurar campos y escanear en ingreso/rebaje | Alta |
+| ISS-137 | Config | Evaluación: integración Google Drive como almacenamiento propio | Requiere evaluación |
+| ISS-174 | Ventas + Envíos | Servicio de envío como select + cotización automática por API courier | Alta |
+| ISS-178 | Ventas + Config | Rangos horarios para entrega configurables en Config/Envíos | Media-alta |
+
+### Features grandes (requieren relevamiento o diseño previo)
+
+| ID | Módulo | Descripción | Complejidad |
+|---|---|---|---|
+| ISS-127 | Configuración + Inventario | Perfiles de códigos de barra/QR compuestos: configurar campos (SKU, Lote, Vencimiento, Cantidad, etc.) y leer/escribir ese código en ingreso y rebaje de stock | Alta — nuevo subsistema |
+| ISS-137 | Configuración | Evaluación: integración con Google Drive como almacenamiento propio del cliente para documentos/imágenes | Requiere evaluación primero |
+| ISS-174 | Ventas + Envíos | Servicio de envío debe ser select (igual que en módulo Envíos) + cotización automática por API de cada courier (precio + disponibilidad según servicio, direcciones y fecha) | Alta — depende APIs externas |
+| ISS-178 | Ventas + Configuración | Rango horario acordado para entrega: selector en modal envío de Ventas. Rangos configurables en Config/Envíos con defaults (8-13, 13-18, 18-22), editables/eliminables | Media-alta |
+
+---
+
 ## Estado actual DEV v1.10.1 / PROD v1.10.1 (cierre sesión 2026-05-28 — PROD deploy v1.10.1)
 
 - APP_VERSION DEV: `v1.10.1` ✅

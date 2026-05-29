@@ -295,12 +295,14 @@ Aplica en 5 puntos de `VentasPage.tsx`:
 - Antes solo aceptaba: `POS`, `MELI`, `TiendaNube`, `Shopify`, `WooCommerce`, `MP`
 - Fix: creaba ventas en esos canales pero fallaba al guardar en DB
 
-### Descuento máximo por rol en POS (v1.8.34)
+### Descuento máximo por rol en POS (v1.8.34 · actualizado C3 2026-05-29)
 - En **Configuración → Ventas → Descuentos**: campo `descuento_max_cajero_pct` y `descuento_max_supervisor_pct`
 - Al completar una venta en el POS:
   - Si el rol tiene límite configurado y un ítem supera ese %, el campo se marca en rojo con "máx X%"
   - Al intentar confirmar: bloquea con toast "Descuento del X% supera el límite permitido"
 - El DUEÑO nunca tiene límite
+
+**C3 (relevamiento Ventas A-D, 2026-05-29) — CAJERO bloqueado**: los inputs de descuento por ítem y descuento general aparecen `disabled` para `user.rol === 'CAJERO'` (constante `descuentoBloqueadoCajero` en `VentasPage.tsx`). Labels y placeholders se mantienen pero con opacity-60 y badge "Bloqueado / bloqueado para CAJERO". Si necesita aplicar un descuento, lo hace un SUPERVISOR/DUEÑO. Pendiente del mismo C3: descuentos automáticos por medio de pago + umbral por monto configurable para SUPERVISOR (feature mayor, no en este lote).
 
 ### ISS-085 — Número de ticket por sucursal (migration 108)
 - `sucursales.codigo TEXT`: código corto configurable (ej: "S1", "CC", "N")

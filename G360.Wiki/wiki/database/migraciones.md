@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-151)
+# Historial de Migraciones (001-152)
 
-**Total al 2026-05-28:** 151 archivos de migración + 086b correctivo.  
+**Total al 2026-05-29:** 152 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -215,6 +215,7 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 149 | `149_metodos_pago_habilitado_ventas_gastos.sql` | **ISS-135** · `habilitado_ventas` + `habilitado_gastos` en `metodos_pago` (default `true`). ConfigPage muestra toggles POS/Gastos por método. VentasPage y GastosPage filtran por estos flags |
 | 150 | `150_gastos_pago_parcial.sql` | **ISS-190** · `monto_pagado NUMERIC` + `estado_pago TEXT` (`pendiente/parcial/pagado`) en `gastos`. Backfill: gastos con `medio_pago` → `pagado`; sin medio → `pendiente`. Índice por `(tenant_id, estado_pago)` |
 | 151 | `151_empleados_user_id_unique.sql` | **RRHH-A5** · UNIQUE parcial `empleados(tenant_id, user_id) WHERE user_id IS NOT NULL`. Garantiza que un user del sistema esté vinculado a un único empleado por tenant. Habilita "Mi Equipo" del SUPERVISOR (`get_supervisor_team_ids` mapea `auth.uid()` → `empleados.user_id` unívocamente) |
+| 152 | `152_envios_rangos_horarios.sql` | **ISS-178** · `tenants.envio_rangos_horarios JSONB NOT NULL DEFAULT` con seed de 3 rangos típicos (8-13/13-18/18-22) + `envios.rango_horario_desde/hasta TIME` (snapshot al momento del envío, no rompe si después se borra el rango). Editable en Config → Envíos, selector en modal de envío de VentasPage y form de EnviosPage |
 
 ---
 

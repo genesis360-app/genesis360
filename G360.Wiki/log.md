@@ -6,6 +6,51 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-29] update | v1.10.4 PROD — ISS-178 + C3/A7 → PROD
+
+Cierre del tren acumulado en DEV (2 commits desde v1.10.3). Sin breaking change.
+
+- **Migration 152 aplicada en PROD** pre-merge (validado: las 3 columnas no existían). Regla `feedback_deploy_order_migrations_aditivas`.
+- **Bump APP_VERSION** a `v1.10.4` en `src/config/brand.ts`.
+- **Merge `dev → main`** + release `v1.10.4` `--latest` en GitHub.
+- Contenido: ISS-178 (rangos horarios de entrega — Config + VentasPage + EnviosPage), C3 parcial (CAJERO bloqueado para descuentos en POS), A7 (radio destino stock en modal devolución).
+
+---
+
+## [2026-05-29] update | Lote 6 — C3 + A7 del relevamiento Ventas
+
+Dos puntos cerrados del relevamiento Ventas A-D (ver `G360.Wiki/sources/raw/relevamiento_ventas_respuestas.md`). Sin schema change, sin migration.
+
+**C3 (parcial) — CAJERO bloqueado para descuentos** (`src/pages/VentasPage.tsx`)
+- Nueva constante `descuentoBloqueadoCajero = user?.rol === 'CAJERO'`.
+- 4 controles del POS quedan `disabled` con tooltip "Pedile al SUPERVISOR/DUEÑO": input descuento por ítem + toggle %/$ por ítem + input descuento general + toggle %/$ global.
+- Labels muestran "— bloqueado para CAJERO" / "Bloqueado" y el contenedor se atenúa con `opacity-60`.
+- Lo más complejo de C3 queda pendiente como feature mayor (descuentos automáticos por medio de pago + umbral por monto para SUPERVISOR).
+
+**A7 — Destino del stock en devolución** (`src/pages/VentasPage.tsx`)
+- Nuevo estado `devDestinoStock: 'dev' | 'vendible'` (default `'dev'`). Reset al abrir el modal.
+- Radio en el modal de devolución debajo del campo Motivo con 2 opciones: "Dejar en DEV para revisión" (default — flujo previo, va a `ubicDevId`/`estadoDevId`) y "Reintegrar a stock vendible" (`ubicacion_id: null` + `estado_id = primer estados_inventario.es_disponible_venta`, aparece en alerta "Inventario sin ubicación").
+- Solo afecta a items no serializados; los serializados siempre reactivan a su línea original.
+- Validación: si elige "vendible" pero no hay estado `es_disponible_venta = true` configurado, toast de error sugiriendo cargarlo o elegir "Dejar en DEV".
+
+Wiki: `ventas-pos.md` (sección C3 dentro de Descuentos), `devoluciones.md` (sección A7 nueva en Flujo de devolución), `project_pendientes.md` (Lote 6 en historial), `index.md`.
+
+---
+
+## [2026-05-29] update | ISS-178 — rangos horarios de entrega configurables (mig 152)
+
+Feature acotada, sin dependencias externas. Habilita que el operador elija un rango horario predefinido (8-13 / 13-18 / 18-22) en lugar de tipear una hora exacta — más alineado con el flujo real de coordinación con clientes.
+
+- **Migration 152** (`152_envios_rangos_horarios.sql`): `tenants.envio_rangos_horarios JSONB NOT NULL DEFAULT` con seed de 3 rangos típicos + `envios.rango_horario_desde/hasta TIME` (snapshot). Aplicada en DEV.
+- **ConfigPage tab Envíos**: nueva card "Rangos horarios para entrega" con CRUD inline (agregar, editar via inputs `<input type="time">`, eliminar). Defaults visibles inmediatamente.
+- **VentasPage modal de envío**: selector "Rango horario" al lado del campo "Fecha de entrega acordada". Reset post-venta.
+- **EnviosPage**: form de edición agrega selector "Rango horario" junto a "Hora acordada" (coexisten). Tabla muestra el rango como badge accent debajo de la fecha. Reconstrucción del `idx` matcheando `desde+hasta` contra la config actual del tenant.
+- Wiki: `envios.md` sección nueva en Configuración, `migraciones.md` entrada 152, `project_pendientes.md` (ISS-178 removido de features grandes, agregado a Lote 5), `index.md`.
+
+Pendiente PROD: aplicar mig 152 antes del merge `dev → main` ([[feedback_deploy_order_migrations_aditivas]]).
+
+---
+
 ## [2026-05-29] update | v1.10.3 PROD — ISS-194 caja fuerte + RRHH-A5 + 3 bugs UX → PROD
 
 Cierre del tren acumulado en DEV (3 commits desde v1.10.2). Sin breaking change.

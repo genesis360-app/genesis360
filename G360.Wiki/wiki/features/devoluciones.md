@@ -3,7 +3,7 @@ title: Devoluciones
 category: features
 tags: [devoluciones, stock, nota-credito, caja, serializado]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-05-29
 ---
 
 # Devoluciones
@@ -33,10 +33,19 @@ Disponible para ventas en estado `despachada` o `facturada`.
 
 ### Stock no serializado
 
-1. Crea nueva `inventario_lineas` en la ubicación DEV con el estado DEV
+1. Crea nueva `inventario_lineas` con destino según selección del operador (ver "Destino del stock devuelto" abajo)
 2. `notas = "Devolución de venta #N"` (o `"Devolución de LPN {lpn_original}"`)
 3. Trigger recalcula `stock_actual` automáticamente
 4. Registra movimiento tipo `ingreso`
+
+### A7 — Destino del stock devuelto (2026-05-29)
+
+El modal de devolución tiene un radio con 2 opciones (default **DEV**):
+
+- **Dejar en DEV para revisión** (default): la línea va a `ubicacion_id = ubicDevId` con `estado_id = estadoDevId`. Queda excluida de venta hasta decisión manual. Es el flujo previo.
+- **Reintegrar a stock vendible**: la línea queda con `ubicacion_id = NULL` y `estado_id = primer estados_inventario.es_disponible_venta = true`. Entra al stock disponible inmediatamente; aparece en la alerta "Inventario sin ubicación" para que el operador la asigne a la ubicación correcta.
+
+No aplica a items serializados — esos siempre reactivan a su línea original (mantienen ubicación y estado previos al despacho).
 
 ### Stock serializado
 

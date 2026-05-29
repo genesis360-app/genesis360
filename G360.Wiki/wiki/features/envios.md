@@ -3,7 +3,7 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-27
+updated: 2026-05-29
 ---
 
 # Módulo Envíos
@@ -85,6 +85,15 @@ Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.
 - Campo `tenants.costo_envio_por_km` — valor global para todas las sucursales
 - **Jerarquía**: `sucursal.costo_km_envio` tiene prioridad; si está vacío, se usa el global
 - Útil para negocios donde todas las sucursales tienen el mismo precio por km
+
+### Rangos horarios de entrega (ISS-178 · migration 152 · 2026-05-29)
+
+`tenants.envio_rangos_horarios JSONB NOT NULL DEFAULT` con seed de 3 rangos (8-13 / 13-18 / 18-22). Array de objetos `{desde:"HH:MM", hasta:"HH:MM"}`.
+
+- **Config → Envíos**: card nueva "Rangos horarios para entrega" con CRUD inline (agregar, editar inputs `<input type="time">`, eliminar). Sin tope técnico de cantidad de rangos.
+- **VentasPage modal envío**: selector "Rango horario" al lado del campo "Fecha de entrega acordada". Lista los rangos del tenant; opción "Sin definir" como default. Disabled cuando no hay rangos cargados.
+- **EnviosPage**: el form de edición agrega selector "Rango horario" junto a "Hora acordada" (son alternativas, ambas pueden coexistir). La tabla muestra el rango con badge accent debajo de la fecha/hora.
+- **Snapshot**: al guardar el envío se persisten `envios.rango_horario_desde/hasta TIME` con los valores del rango elegido. Si después se borra el rango de la config, el envío conserva intacto lo acordado. Al editar, se reconstruye el `idx` haciendo match `desde+hasta` contra la config actual (si el rango fue borrado, queda "Sin definir").
 
 ### Google Maps (env var requerida)
 ```

@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.3** ✅ (ISS-194 + RRHH-A5 + lote bugs UX) · DEV alineado con PROD
+Último release en PROD: **v1.10.4** ✅ (ISS-178 rangos horarios + C3/A7 relevamiento Ventas) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,10 +14,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.10.3` | `v1.10.3` |
-| Migrations | 001–151 ✅ | 001–151 ✅ |
-| Branch | `dev` alineado con `main` | `main` (release v1.10.3) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.10.3 |
+| APP_VERSION | `v1.10.4` | `v1.10.4` |
+| Migrations | 001–152 ✅ | 001–152 ✅ |
+| Branch | `dev` alineado con `main` | `main` (release v1.10.4) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.10.4 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna
 
@@ -34,7 +34,6 @@ type: project
 | ISS-130 | Inventario + Ventas | Comandos por voz: hablarle a la app para rebajar/ingresar (SKU, cantidad, estado, ubicación, lote, fecha) y consultar ("¿qué hay en ubicación X?"). Web Speech API + parseo intenciones | Alta — UX nueva, requiere prototipo |
 | ISS-137 | Config | Evaluación: integración con Google Drive como almacenamiento propio del cliente para documentos/imágenes | Requiere evaluación primero |
 | ISS-174 | Ventas + Envíos | Servicio de envío como select (igual que en módulo Envíos) + cotización automática por API de cada courier (precio + disponibilidad según servicio, dirección y fecha) | Alta — depende APIs externas |
-| ISS-178 | Ventas + Config | Rango horario acordado para entrega: selector en modal envío de Ventas. Rangos configurables en Config/Envíos con defaults (8-13, 13-18, 18-22), editables/eliminables | Media-alta |
 
 ### Bugs / mejoras UX puntuales
 
@@ -62,6 +61,21 @@ type: project
 | ID | Módulo | Fix | Migration |
 |---|---|---|---|
 | RRHH-A5 | RRHH | Selector "Usuario del sistema" en form empleado + columna "Usuario" en tabla + validación duplicados client-side. Habilita "Mi Equipo" del SUPERVISOR sin tocar la BD a mano | 151 |
+
+### Lote 6 — C3 + A7 (relevamiento Ventas A-D)
+
+Implementación de 2 puntos cerrados del relevamiento Ventas (ver `relevamiento_ventas_respuestas.md`).
+
+| ID | Módulo | Fix |
+|---|---|---|
+| C3 (parcial) | Ventas / POS | CAJERO ya no puede editar/colocar descuento por ítem ni descuento general en VentasPage. Inputs `disabled` con tooltip "Bloqueado para CAJERO. Pedile al SUPERVISOR/DUEÑO". Constante `descuentoBloqueadoCajero`. **Pendiente del mismo C3** (feature mayor): descuentos automáticos por medio de pago + umbral por monto configurable para SUPERVISOR |
+| A7 | Devoluciones | Radio "Dejar en DEV para revisión" / "Reintegrar a stock vendible" en modal de devolución, default DEV. Vendible: línea sin ubicación + `estado_id = primer es_disponible_venta`. No aplica a items serializados (siempre re-activan a su línea) |
+
+### Lote 5 — ISS-178 rangos horarios entrega
+
+| ID | Módulo | Fix | Migration |
+|---|---|---|---|
+| ISS-178 | Ventas + Envíos + Config | `tenants.envio_rangos_horarios JSONB` con defaults 8-13/13-18/18-22 + `envios.rango_horario_desde/hasta TIME` (snapshot). CRUD en Config → Envíos, selector en modal envío de VentasPage y form de EnviosPage. Tabla de Envíos muestra el rango como badge accent | 152 |
 
 ### Lote 4 — 3 bugs UX (ISS-080, ISS-108, ISS-148)
 
@@ -99,7 +113,7 @@ type: project
 ## Para el próximo deploy a PROD
 
 Checklist obligatorio:
-1. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.4` (o v1.11.0 si se agrega feature)
+1. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.5` (o v1.11.0 si se agrega feature)
 2. PR `dev → main` con título `vX.Y.Z — descripción`
 3. GitHub release `vX.Y.Z` sobre `main` como `--latest`
 4. Actualizar este archivo + `log.md` + `roadmap.md`

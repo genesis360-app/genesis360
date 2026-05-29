@@ -435,6 +435,12 @@ export default function ConfigPage() {
   const [bizWAPlantilla, setBizWAPlantilla] = useState<string>((tenant as any)?.whatsapp_plantilla ?? '')
   // Envíos
   const [bizCostoKm, setBizCostoKm] = useState<string>(String((tenant as any)?.costo_envio_por_km ?? ''))
+  // ISS-178 — Rangos horarios de entrega
+  const [bizEnvioRangos, setBizEnvioRangos] = useState<Array<{ desde: string; hasta: string }>>(
+    Array.isArray((tenant as any)?.envio_rangos_horarios)
+      ? (tenant as any).envio_rangos_horarios.map((r: any) => ({ desde: String(r.desde ?? ''), hasta: String(r.hasta ?? '') }))
+      : [{ desde: '08:00', hasta: '13:00' }, { desde: '13:00', hasta: '18:00' }, { desde: '18:00', hasta: '22:00' }]
+  )
 
   // Fase 2 — identidad
   const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
@@ -556,6 +562,7 @@ export default function ConfigPage() {
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
       whatsapp_plantilla: bizWAPlantilla.trim() || null,
       costo_envio_por_km: bizCostoKm ? parseFloat(bizCostoKm) : null,
+      envio_rangos_horarios: bizEnvioRangos.filter(r => r.desde && r.hasta),
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
       cuit: bizCuit.trim() || null,
@@ -3015,6 +3022,56 @@ export default function ConfigPage() {
               </div>
             )}
           </div>
+
+          {/* ISS-178 — Rangos horarios de entrega */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Clock size={18} className="text-accent" /> Rangos horarios para entrega
+            </h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
+              El operador elige uno de estos rangos al cargar el envío en una venta. Defaults: 8-13 / 13-18 / 18-22. Editables y eliminables.
+            </p>
+            <div className="space-y-2">
+              {bizEnvioRangos.map((r, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input type="time" value={r.desde} disabled={!canEdit}
+                    onChange={e => setBizEnvioRangos(arr => arr.map((x, j) => j === i ? { ...x, desde: e.target.value } : x))}
+                    className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  <span className="text-gray-400">a</span>
+                  <input type="time" value={r.hasta} disabled={!canEdit}
+                    onChange={e => setBizEnvioRangos(arr => arr.map((x, j) => j === i ? { ...x, hasta: e.target.value } : x))}
+                    className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  <span className="text-xs text-gray-400 ml-1">
+                    {r.desde && r.hasta ? `${r.desde} – ${r.hasta}` : 'incompleto'}
+                  </span>
+                  {canEdit && (
+                    <button onClick={() => setBizEnvioRangos(arr => arr.filter((_, j) => j !== i))}
+                      className="ml-auto text-red-500 hover:text-red-700 text-xs">
+                      Eliminar
+                    </button>
+                  )}
+                </div>
+              ))}
+              {bizEnvioRangos.length === 0 && (
+                <p className="text-xs text-gray-400 italic">Sin rangos cargados. El selector de rango en el modal de envío quedará deshabilitado.</p>
+              )}
+            </div>
+            {canEdit && (
+              <div className="flex justify-between items-center pt-1">
+                <button
+                  onClick={() => setBizEnvioRangos(arr => [...arr, { desde: '', hasta: '' }])}
+                  className="text-xs text-accent hover:underline"
+                >
+                  + Agregar rango
+                </button>
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+
           {canEdit && (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
               <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">

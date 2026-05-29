@@ -156,6 +156,8 @@ export default function VentasPage() {
   const [envioOrigenGeoError, setEnvioOrigenGeoError] = useState(false)    // origen no geocodificable
   const [envioDestinoGeoError, setEnvioDestinoGeoError] = useState(false)  // destino no geocodificable
   const [envioFechaVenta, setEnvioFechaVenta] = useState('')
+  // ISS-178 — Rango horario de entrega (índice del rango seleccionado en tenant.envio_rangos_horarios)
+  const [envioRangoHorarioIdx, setEnvioRangoHorarioIdx] = useState<string>('')
   const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
@@ -191,6 +193,8 @@ export default function VentasPage() {
   const [devItems, setDevItems] = useState<DevItem[]>([])
   const [devMotivo, setDevMotivo] = useState('')
   const [devMediosPago, setDevMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
+  // A7 (relevamiento Ventas A-D): destino del stock devuelto — DEV (revisión) o vendible directo. Default DEV.
+  const [devDestinoStock, setDevDestinoStock] = useState<'dev' | 'vendible'>('dev')
   // L1 — caja específica para egreso efectivo en devolución
   const [devCajaSesionId, setDevCajaSesionId] = useState<string>('')
   const [devSaving, setDevSaving] = useState(false)
@@ -1348,6 +1352,9 @@ export default function VentasPage() {
   }
 
   const subtotal = cart.reduce((acc, item) => acc + getItemSubtotal(item), 0)
+  // C3 (relevamiento Ventas A-D): CAJERO no puede colocar/editar descuentos por ítem ni global.
+  // Si necesita aplicar uno, lo hace un SUPERVISOR/DUEÑO.
+  const descuentoBloqueadoCajero = user?.rol === 'CAJERO'
   const descTotalVal = parseFloat(descuentoTotal) || 0
   const descTotalMonto = descuentoTotalTipo === 'pct' ? subtotal * descTotalVal / 100 : descTotalVal
   const descCombosMulti = combosActivosMulti.reduce((s, c) => s + c.monto, 0)
@@ -1738,6 +1745,11 @@ export default function VentasPage() {
         // - Envío por tercero: si la venta se despachó (cobrada al 100%), el costo ya se cobró → saldado.
         //   Si es reserva (pago parcial), queda pendiente hasta el despacho.
         const envioYaSaldado = envioTransporte === 'propio' || (estado === 'despachada' && costoEnvioNum > 0)
+        // ISS-178: snapshot del rango horario elegido (si hay)
+        const rangosTenant: Array<{ desde: string; hasta: string }> = Array.isArray((tenant as any)?.envio_rangos_horarios)
+          ? (tenant as any).envio_rangos_horarios
+          : []
+        const rangoElegido = envioRangoHorarioIdx !== '' ? rangosTenant[Number(envioRangoHorarioIdx)] : null
         await supabase.from('envios').insert({
           tenant_id: tenant!.id,
           venta_id: venta.id,
@@ -1749,6 +1761,8 @@ export default function VentasPage() {
           costo_cotizado: costoEnvioNum > 0 ? costoEnvioNum : null,
           costo_pagado: envioYaSaldado,
           fecha_entrega_acordada: envioFechaVenta || null,
+          rango_horario_desde: rangoElegido?.desde || null,
+          rango_horario_hasta: rangoElegido?.hasta || null,
           courier: envioTransporte === 'tercero' ? (envioCourier || null) : 'Envío propio',
           servicio: envioTransporte === 'tercero' ? (envioServicio.trim() || null) : null,
         })
@@ -1762,7 +1776,7 @@ export default function VentasPage() {
       setRequiereEnvio(false)
       setEnvioTransporte('propio'); setEnvioCourier(''); setEnvioServicio('')
       setCostoEnvioVenta(''); setEnvioTipoVenta('monto'); setEnvioKmVenta('')
-      setPrecioPorKmVenta(''); setEnvioDestinoVenta(''); setEnvioOrigenVenta('')
+      setPrecioPorKmVenta(''); setEnvioDestinoVenta(''); setEnvioOrigenVenta(''); setEnvioRangoHorarioIdx('')
       setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
@@ -1919,6 +1933,7 @@ export default function VentasPage() {
     setDevMotivo('')
     setDevMediosPago([{ tipo: '', monto: '' }])
     setDevCajaSesionId(sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : '')
+    setDevDestinoStock('dev')
     setDevolucionVenta(venta)
   }
 
@@ -2025,6 +2040,20 @@ export default function VentasPage() {
     const ubicDevId = ubicDevData.id
     const estadoDevId = estadoDevData.id
 
+    // A7: si el operador eligió "vendible", buscar primer estado disponible para la venta
+    // (la línea queda sin ubicación — el dueño después la mueve si quiere). Solo aplica
+    // a items no serializados; los serializados re-activan a su línea original siempre.
+    let estadoVendibleId: string | null = null
+    if (devDestinoStock === 'vendible') {
+      const { data: estadoVendData } = await supabase.from('estados_inventario')
+        .select('id').eq('tenant_id', tenant.id).eq('es_disponible_venta', true).limit(1).maybeSingle()
+      if (!estadoVendData) {
+        toast.error('No hay estado disponible para venta configurado. Cargá uno en Configuración → Estados o elegí "Dejar en DEV".')
+        return
+      }
+      estadoVendibleId = estadoVendData.id
+    }
+
     // Calcular monto total de la devolución
     const montoTotal = itemsADevolver.reduce((acc, i) => {
       const cant = i.tiene_series ? i.series_seleccionadas.length : i.cantidad_devolver
@@ -2109,15 +2138,23 @@ export default function VentasPage() {
             await supabase.from('productos').update({ stock_actual: prodData.stock_actual + cantDev }).eq('id', item.producto_id)
           }
         } else {
-          // No serializado: crear nueva inventario_lineas en ubicación DEV
-          const { data: linea, error: lineaErr } = await supabase.from('inventario_lineas').insert({
+          // No serializado: crear nueva inventario_lineas.
+          // A7: si devDestinoStock === 'vendible', la línea va al stock disponible (sin ubicación
+          // específica, el operador la mueve después). Si no, va a la ubicación DEV para revisión.
+          const lineaPayload: any = {
             tenant_id: tenant.id,
             producto_id: item.producto_id,
             cantidad: cantDev,
-            ubicacion_id: ubicDevId,
-            estado_id: estadoDevId,
-            notas: `Devolución de venta #${devolucionVenta.numero}`,
-          }).select().single()
+            notas: `Devolución de venta #${devolucionVenta.numero}${devDestinoStock === 'vendible' ? ' — reintegrado a stock vendible' : ''}`,
+          }
+          if (devDestinoStock === 'vendible' && estadoVendibleId) {
+            lineaPayload.estado_id = estadoVendibleId
+            // ubicacion_id queda null → aparece en alerta "Inventario sin ubicación"
+          } else {
+            lineaPayload.ubicacion_id = ubicDevId
+            lineaPayload.estado_id = estadoDevId
+          }
+          const { data: linea, error: lineaErr } = await supabase.from('inventario_lineas').insert(lineaPayload).select().single()
           if (lineaErr) throw lineaErr
           // Movimiento de ingreso
           const { data: prodData } = await supabase.from('productos').select('stock_actual').eq('id', item.producto_id).single()
@@ -2836,9 +2873,12 @@ export default function VentasPage() {
                         </div>
 
                         {/* Descuento con toggle % / $ */}
+                        {/* C3 (relevamiento Ventas A-D): CAJERO no puede colocar/editar descuentos
+                            por ítem ni global. Si necesita aplicar uno, lo hace un SUPERVISOR/DUEÑO. */}
                         <div className="flex flex-col items-end gap-0.5">
                           <div className={`flex items-center border rounded-lg overflow-hidden w-28 ${
                             (() => {
+                              if (descuentoBloqueadoCajero) return 'border-gray-200 dark:border-gray-700 opacity-60'
                               const rolItem = user?.rol
                               const limiteItem = rolItem === 'CAJERO' ? (tenant as any)?.descuento_max_cajero_pct : rolItem === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
                               return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
@@ -2848,14 +2888,20 @@ export default function VentasPage() {
                           }`}>
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={item.descuento}
                               onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
-                              className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none" placeholder="0" />
+                              disabled={descuentoBloqueadoCajero}
+                              title={descuentoBloqueadoCajero ? 'Descuentos bloqueados para CAJERO. Pedile al SUPERVISOR/DUEÑO.' : undefined}
+                              className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:cursor-not-allowed" placeholder="0" />
                             <button onClick={() => updateItem(idx, 'descuento_tipo', item.descuento_tipo === 'pct' ? 'monto' : 'pct')}
-                              title="Cambiar tipo de descuento (% o $)"
-                              className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors">
+                              disabled={descuentoBloqueadoCajero}
+                              title={descuentoBloqueadoCajero ? 'Descuentos bloqueados para CAJERO' : 'Cambiar tipo de descuento (% o $)'}
+                              className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors disabled:cursor-not-allowed disabled:hover:bg-gray-100">
                               {item.descuento_tipo === 'pct' ? '%' : '$'}
                             </button>
                           </div>
                           {(() => {
+                            if (descuentoBloqueadoCajero) {
+                              return <span className="text-[10px] text-gray-400 dark:text-gray-500">Bloqueado</span>
+                            }
                             const rolItem = user?.rol
                             const limiteItem = rolItem === 'CAJERO' ? (tenant as any)?.descuento_max_cajero_pct : rolItem === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
                             return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
@@ -3035,14 +3081,19 @@ export default function VentasPage() {
             {modoVenta !== 'pendiente' && cart.length > 0 && (
               <div className="bg-surface rounded-xl p-4 shadow-sm border border-border-ds space-y-3">
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento general</label>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Descuento general
+                    {descuentoBloqueadoCajero && (
+                      <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500 italic">— bloqueado para CAJERO</span>
+                    )}
+                  </label>
                   {descTotalVal > 0 && cart.some(i => i.descuento > 0) && (
                     <div className="mb-1.5 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-lg px-2.5 py-1.5">
                       <span>⚠️</span>
                       <span>Hay descuentos por producto <strong>y</strong> descuento general activos</span>
                     </div>
                   )}
-                  <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                  <div className={`flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden ${descuentoBloqueadoCajero ? 'opacity-60' : ''}`}>
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0"
                       max={descuentoTotalTipo === 'pct' ? 100 : subtotal}
                       value={descuentoTotal}
@@ -3051,11 +3102,14 @@ export default function VentasPage() {
                         const max = descuentoTotalTipo === 'pct' ? 100 : subtotal
                         setDescuentoTotal(String(Math.min(v, max) || e.target.value))
                       }}
+                      disabled={descuentoBloqueadoCajero}
+                      title={descuentoBloqueadoCajero ? 'Descuentos bloqueados para CAJERO. Pedile al SUPERVISOR/DUEÑO.' : undefined}
                       placeholder="0"
-                      className="flex-1 px-3 py-2.5 text-sm focus:outline-none" />
+                      className="flex-1 px-3 py-2.5 text-sm focus:outline-none disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:cursor-not-allowed" />
                     <button onClick={() => setDescuentoTotalTipo(t => t === 'pct' ? 'monto' : 'pct')}
-                      title="Cambiar tipo de descuento (% o $)"
-                      className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-400 text-sm font-bold border-l border-gray-200 dark:border-gray-700 transition-colors min-w-10">
+                      disabled={descuentoBloqueadoCajero}
+                      title={descuentoBloqueadoCajero ? 'Descuentos bloqueados para CAJERO' : 'Cambiar tipo de descuento (% o $)'}
+                      className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-400 text-sm font-bold border-l border-gray-200 dark:border-gray-700 transition-colors min-w-10 disabled:cursor-not-allowed disabled:hover:bg-gray-100">
                       {descuentoTotalTipo === 'pct' ? '%' : '$'}
                     </button>
                   </div>
@@ -3240,11 +3294,34 @@ export default function VentasPage() {
                         )}
                       </div>
 
-                      {/* Fecha de entrega acordada con el cliente */}
-                      <div>
-                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega acordada</label>
-                        <input type="date" value={envioFechaVenta} onChange={e => setEnvioFechaVenta(e.target.value)}
-                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      {/* Fecha + rango horario de entrega acordados (ISS-178) */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega acordada</label>
+                          <input type="date" value={envioFechaVenta} onChange={e => setEnvioFechaVenta(e.target.value)}
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Rango horario</label>
+                          {(() => {
+                            const rangos: Array<{ desde: string; hasta: string }> = Array.isArray((tenant as any)?.envio_rangos_horarios)
+                              ? (tenant as any).envio_rangos_horarios
+                              : []
+                            return (
+                              <select
+                                value={envioRangoHorarioIdx}
+                                onChange={e => setEnvioRangoHorarioIdx(e.target.value)}
+                                disabled={rangos.length === 0}
+                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800"
+                              >
+                                <option value="">{rangos.length === 0 ? 'Sin rangos configurados' : 'Sin definir'}</option>
+                                {rangos.map((r, i) => (
+                                  <option key={i} value={String(i)}>{r.desde} – {r.hasta}</option>
+                                ))}
+                              </select>
+                            )
+                          })()}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -4109,6 +4186,41 @@ export default function VentasPage() {
                 <input type="text" value={devMotivo} onChange={e => setDevMotivo(e.target.value)}
                   placeholder="Producto dañado, talla incorrecta..."
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              </div>
+
+              {/* A7 — Destino del stock devuelto (no aplica a series — esas siempre vuelven a su línea original) */}
+              <div>
+                <label className="block text-sm font-medium text-primary mb-1.5">Destino del stock devuelto</label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <label className={`flex items-start gap-2 px-3 py-2 border rounded-lg cursor-pointer flex-1 transition-colors ${devDestinoStock === 'dev' ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}>
+                    <input
+                      type="radio"
+                      name="dev-destino"
+                      value="dev"
+                      checked={devDestinoStock === 'dev'}
+                      onChange={() => setDevDestinoStock('dev')}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-primary">Dejar en DEV para revisión</p>
+                      <p className="text-[11px] text-muted">Va a la ubicación de devoluciones, excluida de venta. Default.</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-start gap-2 px-3 py-2 border rounded-lg cursor-pointer flex-1 transition-colors ${devDestinoStock === 'vendible' ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}>
+                    <input
+                      type="radio"
+                      name="dev-destino"
+                      value="vendible"
+                      checked={devDestinoStock === 'vendible'}
+                      onChange={() => setDevDestinoStock('vendible')}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-primary">Reintegrar a stock vendible</p>
+                      <p className="text-[11px] text-muted">Entra como disponible para venta, sin ubicación (asignar después).</p>
+                    </div>
+                  </label>
+                </div>
               </div>
 
               {/* L1 — Selector de caja para el egreso efectivo */}

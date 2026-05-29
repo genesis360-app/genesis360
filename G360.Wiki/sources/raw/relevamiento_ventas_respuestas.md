@@ -25,7 +25,7 @@ updated: 2026-05-28
 | A4 | **C + texto libre opcional** | Catálogo cerrado (Falla / Cambio de talle / Arrepentimiento / Garantía / Otro) + observación libre **opcional** (no obligatoria). Seed catálogo por tenant; editable en Config → Ventas. |
 | A5 | **A reforzado** | El operador elige el medio para el reintegro **+ selecciona la cuenta de origen** desde donde sale el dinero. Aclaración GO: "los medios de pago son solo para ventas; para devoluciones lo que importa es la cuenta de origen". Implementación: ya está el decoupling (mig 137); reusar `cuenta_origen_id` en el flujo de devolución. |
 | A6 | **A** | Mantener bloqueo de devolución en efectivo si la caja está cerrada. Sin cambios. |
-| A7 | **B con DEV default** | Modal de devolución muestra 2 radios: "Reintegrar a stock vendible" / "Dejar en DEV para evaluación", **default = DEV**. Operador decide. |
+| A7 | **B con DEV default** | ✅ **Implementado v1.10.4 (PROD)** — radio "Dejar en DEV" / "Reintegrar a stock vendible" en modal de devolución, default DEV. Vendible: línea sin ubicación + `estado_id = primer es_disponible_venta` (aparece en alerta "Inventario sin ubicación"). Solo aplica a items no serializados. |
 | A8 | **A** | Series devueltas re-activan en la línea original. Sin cambios. |
 | A9 | **B** | PDF + email automático al cliente al confirmar la devolución (si el cliente tiene email cargado). |
 | A10 | **A** ⚠ | NC electrónica AFIP automática al confirmar devolución de venta facturada. **Ver recomendación abajo** (manejo de error AFIP). |
@@ -53,7 +53,7 @@ updated: 2026-05-28
 |---|---|---|
 | C1 | **A** | Sin límite de ítems por venta. Sin cambios. |
 | C2 | **A** | Sin límite de monto por venta. Sin autorización adicional. |
-| C3 | **A extendida** | Descuento **sin límite** para DUEÑO · **configurable por monto/porcentaje** para SUPERVISOR · **bloqueado** para CAJERO (no puede colocar ni editar descuentos por ítem ni globales). **Nuevo**: configurar descuentos automáticos por medio de pago (ej: 10% off en efectivo). Tabla nueva o JSONB en tenants. |
+| C3 | **A extendida** | ⚠ **Parcialmente en PROD v1.10.4** — bloqueo CAJERO ya implementado (inputs `disabled` en POS). Pendiente del mismo C3 (feature mayor): descuentos automáticos por medio de pago + umbral por monto configurable para SUPERVISOR. |
 | C4 | **D primero + C segundo** | Solo permitir venta bajo costo si el descuento global compensa (margen total ≥ 0); si margen total negativo, bloquear salvo autorización SUPERVISOR+. UX: alerta + bloqueo según contexto. |
 | C5 | **D refinada** | Configurable por tenant en Config → Ventas (default OFF). **Aclaración GO**: stock negativo **solo en estados Reservar/Presupuestar**, **nunca en Venta Directa** ni en Despachar (incluso si la reserva está 100% pagada). Implementación: flag `tenants.permitir_reserva_sin_stock BOOLEAN` + bloqueo duro en despacho. |
 | C6 | **B** | Flag por producto `requiere_validacion` que pide DNI/edad/receta antes de agregar al carrito. Nuevo en `productos`. |

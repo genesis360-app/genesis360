@@ -68,6 +68,8 @@ interface FormEnvio {
   peso_kg: string; largo_cm: string; ancho_cm: string; alto_cm: string
   costo_cotizado: string; fecha_entrega_acordada: string
   hora_entrega_acordada: string; zona_entrega: string; notas: string
+  // ISS-178 — Rango horario: índice del array tenant.envio_rangos_horarios o '' para sin definir
+  rango_horario_idx: string
   // POD — Prueba de entrega
   pod_fecha: string; pod_receptor: string; pod_notas: string; pod_url: string
 }
@@ -79,6 +81,7 @@ const FORM_VACIO: FormEnvio = {
   costo_cotizado: '', fecha_entrega_acordada: '', hora_entrega_acordada: '',
   zona_entrega: '', notas: '',
   pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '',
+  rango_horario_idx: '',
 }
 
 export default function EnviosPage() {
@@ -309,6 +312,19 @@ export default function EnviosPage() {
         costo_cotizado: form.costo_cotizado ? parseFloat(form.costo_cotizado) : null,
         fecha_entrega_acordada: form.fecha_entrega_acordada || null,
         hora_entrega_acordada: form.hora_entrega_acordada || null,
+        // ISS-178 — snapshot del rango horario elegido (si se seleccionó)
+        rango_horario_desde: (() => {
+          const rangos: Array<{ desde: string; hasta: string }> = Array.isArray((tenant as any)?.envio_rangos_horarios)
+            ? (tenant as any).envio_rangos_horarios : []
+          const r = form.rango_horario_idx !== '' ? rangos[Number(form.rango_horario_idx)] : null
+          return r?.desde || null
+        })(),
+        rango_horario_hasta: (() => {
+          const rangos: Array<{ desde: string; hasta: string }> = Array.isArray((tenant as any)?.envio_rangos_horarios)
+            ? (tenant as any).envio_rangos_horarios : []
+          const r = form.rango_horario_idx !== '' ? rangos[Number(form.rango_horario_idx)] : null
+          return r?.hasta || null
+        })(),
         zona_entrega: form.zona_entrega.trim() || null,
         notas: form.notas.trim() || null,
         pod_fecha: form.pod_fecha || null,
@@ -600,6 +616,14 @@ export default function EnviosPage() {
       zona_entrega: e.zona_entrega ?? '', notas: e.notas ?? '',
       pod_fecha: e.pod_fecha ?? '', pod_receptor: e.pod_receptor ?? '',
       pod_notas: e.pod_notas ?? '', pod_url: e.pod_url ?? '',
+      // ISS-178 — buscar el índice del rango que matchea (desde+hasta) en la config actual del tenant
+      rango_horario_idx: (() => {
+        const rangos: Array<{ desde: string; hasta: string }> = Array.isArray((tenant as any)?.envio_rangos_horarios)
+          ? (tenant as any).envio_rangos_horarios : []
+        if (!e.rango_horario_desde || !e.rango_horario_hasta) return ''
+        const idx = rangos.findIndex(r => r.desde === e.rango_horario_desde?.slice(0,5) && r.hasta === e.rango_horario_hasta?.slice(0,5))
+        return idx >= 0 ? String(idx) : ''
+      })(),
     })
     setShowModal(true)
   }
@@ -775,6 +799,11 @@ export default function EnviosPage() {
                             <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden xl:table-cell whitespace-nowrap">
                               {e.fecha_entrega_acordada ? formatFecha(e.fecha_entrega_acordada) : '—'}
                               {e.hora_entrega_acordada && <span className="ml-1">{e.hora_entrega_acordada.slice(0,5)}</span>}
+                              {e.rango_horario_desde && e.rango_horario_hasta && (
+                                <span className="block text-[11px] text-accent">
+                                  {e.rango_horario_desde.slice(0,5)} – {e.rango_horario_hasta.slice(0,5)}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-1 justify-end">
@@ -1400,6 +1429,27 @@ export default function EnviosPage() {
                   <input type="time" value={form.hora_entrega_acordada}
                     onChange={e => setForm(f => ({ ...f, hora_entrega_acordada: e.target.value }))}
                     className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                {/* ISS-178 — Rango horario (alternativa a la hora exacta) */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Rango horario</label>
+                  {(() => {
+                    const rangos: Array<{ desde: string; hasta: string }> = Array.isArray((tenant as any)?.envio_rangos_horarios)
+                      ? (tenant as any).envio_rangos_horarios : []
+                    return (
+                      <select
+                        value={form.rango_horario_idx}
+                        onChange={e => setForm(f => ({ ...f, rango_horario_idx: e.target.value }))}
+                        disabled={rangos.length === 0}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800"
+                      >
+                        <option value="">{rangos.length === 0 ? 'Sin rangos configurados' : 'Sin definir'}</option>
+                        {rangos.map((r, i) => (
+                          <option key={i} value={String(i)}>{r.desde} – {r.hasta}</option>
+                        ))}
+                      </select>
+                    )
+                  })()}
                 </div>
               </div>
 

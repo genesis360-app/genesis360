@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-29] update | ISS-178 — rangos horarios de entrega configurables (mig 152)
+
+Feature acotada, sin dependencias externas. Habilita que el operador elija un rango horario predefinido (8-13 / 13-18 / 18-22) en lugar de tipear una hora exacta — más alineado con el flujo real de coordinación con clientes.
+
+- **Migration 152** (`152_envios_rangos_horarios.sql`): `tenants.envio_rangos_horarios JSONB NOT NULL DEFAULT` con seed de 3 rangos típicos + `envios.rango_horario_desde/hasta TIME` (snapshot). Aplicada en DEV.
+- **ConfigPage tab Envíos**: nueva card "Rangos horarios para entrega" con CRUD inline (agregar, editar via inputs `<input type="time">`, eliminar). Defaults visibles inmediatamente.
+- **VentasPage modal de envío**: selector "Rango horario" al lado del campo "Fecha de entrega acordada". Reset post-venta.
+- **EnviosPage**: form de edición agrega selector "Rango horario" junto a "Hora acordada" (coexisten). Tabla muestra el rango como badge accent debajo de la fecha. Reconstrucción del `idx` matcheando `desde+hasta` contra la config actual del tenant.
+- Wiki: `envios.md` sección nueva en Configuración, `migraciones.md` entrada 152, `project_pendientes.md` (ISS-178 removido de features grandes, agregado a Lote 5), `index.md`.
+
+Pendiente PROD: aplicar mig 152 antes del merge `dev → main` ([[feedback_deploy_order_migrations_aditivas]]).
+
+---
+
 ## [2026-05-29] update | v1.10.3 PROD — ISS-194 caja fuerte + RRHH-A5 + 3 bugs UX → PROD
 
 Cierre del tren acumulado en DEV (3 commits desde v1.10.2). Sin breaking change.

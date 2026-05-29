@@ -156,6 +156,8 @@ export default function VentasPage() {
   const [envioOrigenGeoError, setEnvioOrigenGeoError] = useState(false)    // origen no geocodificable
   const [envioDestinoGeoError, setEnvioDestinoGeoError] = useState(false)  // destino no geocodificable
   const [envioFechaVenta, setEnvioFechaVenta] = useState('')
+  // ISS-178 — Rango horario de entrega (índice del rango seleccionado en tenant.envio_rangos_horarios)
+  const [envioRangoHorarioIdx, setEnvioRangoHorarioIdx] = useState<string>('')
   const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
@@ -1738,6 +1740,11 @@ export default function VentasPage() {
         // - Envío por tercero: si la venta se despachó (cobrada al 100%), el costo ya se cobró → saldado.
         //   Si es reserva (pago parcial), queda pendiente hasta el despacho.
         const envioYaSaldado = envioTransporte === 'propio' || (estado === 'despachada' && costoEnvioNum > 0)
+        // ISS-178: snapshot del rango horario elegido (si hay)
+        const rangosTenant: Array<{ desde: string; hasta: string }> = Array.isArray((tenant as any)?.envio_rangos_horarios)
+          ? (tenant as any).envio_rangos_horarios
+          : []
+        const rangoElegido = envioRangoHorarioIdx !== '' ? rangosTenant[Number(envioRangoHorarioIdx)] : null
         await supabase.from('envios').insert({
           tenant_id: tenant!.id,
           venta_id: venta.id,
@@ -1749,6 +1756,8 @@ export default function VentasPage() {
           costo_cotizado: costoEnvioNum > 0 ? costoEnvioNum : null,
           costo_pagado: envioYaSaldado,
           fecha_entrega_acordada: envioFechaVenta || null,
+          rango_horario_desde: rangoElegido?.desde || null,
+          rango_horario_hasta: rangoElegido?.hasta || null,
           courier: envioTransporte === 'tercero' ? (envioCourier || null) : 'Envío propio',
           servicio: envioTransporte === 'tercero' ? (envioServicio.trim() || null) : null,
         })
@@ -1762,7 +1771,7 @@ export default function VentasPage() {
       setRequiereEnvio(false)
       setEnvioTransporte('propio'); setEnvioCourier(''); setEnvioServicio('')
       setCostoEnvioVenta(''); setEnvioTipoVenta('monto'); setEnvioKmVenta('')
-      setPrecioPorKmVenta(''); setEnvioDestinoVenta(''); setEnvioOrigenVenta('')
+      setPrecioPorKmVenta(''); setEnvioDestinoVenta(''); setEnvioOrigenVenta(''); setEnvioRangoHorarioIdx('')
       setPreVentaId(null)
       if (cartDraftKey) localStorage.removeItem(cartDraftKey)
       setScannerOpen(false)
@@ -3240,11 +3249,34 @@ export default function VentasPage() {
                         )}
                       </div>
 
-                      {/* Fecha de entrega acordada con el cliente */}
-                      <div>
-                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega acordada</label>
-                        <input type="date" value={envioFechaVenta} onChange={e => setEnvioFechaVenta(e.target.value)}
-                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      {/* Fecha + rango horario de entrega acordados (ISS-178) */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega acordada</label>
+                          <input type="date" value={envioFechaVenta} onChange={e => setEnvioFechaVenta(e.target.value)}
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Rango horario</label>
+                          {(() => {
+                            const rangos: Array<{ desde: string; hasta: string }> = Array.isArray((tenant as any)?.envio_rangos_horarios)
+                              ? (tenant as any).envio_rangos_horarios
+                              : []
+                            return (
+                              <select
+                                value={envioRangoHorarioIdx}
+                                onChange={e => setEnvioRangoHorarioIdx(e.target.value)}
+                                disabled={rangos.length === 0}
+                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800"
+                              >
+                                <option value="">{rangos.length === 0 ? 'Sin rangos configurados' : 'Sin definir'}</option>
+                                {rangos.map((r, i) => (
+                                  <option key={i} value={String(i)}>{r.desde} – {r.hasta}</option>
+                                ))}
+                              </select>
+                            )
+                          })()}
+                        </div>
                       </div>
                     </div>
                   )}

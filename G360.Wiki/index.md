@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-28 — 53 páginas + 3 manuales + relevamientos (caja PDF + 5 HTML: ventas/rrhh/clientes/compras/envíos · Ventas A-D respondido) · 9 fuentes en raw/ · DEV: 151 + 086b · PROD: 150 + 086b · **v1.10.2 PROD** ✅ + DEV con ISS-194 (caja fuerte) + RRHH-A5 (vínculo empleado↔user) + lote 3 bugs UX (alertas-sucursal / header-mobile / recursos-ubicación) · 5 relevamientos abiertos esperando respuesta GO+socio*
+*Última actualización: 2026-05-29 — 53 páginas + 3 manuales + relevamientos (caja PDF + 5 HTML: ventas/rrhh/clientes/compras/envíos · Ventas A-D respondido) · 9 fuentes en raw/ · DEV: 151 + 086b · PROD: 151 + 086b · **v1.10.3 PROD** ✅ (ISS-194 caja fuerte + RRHH-A5 vínculo empleado↔user + 3 bugs UX) · 5 relevamientos abiertos esperando respuesta GO+socio*

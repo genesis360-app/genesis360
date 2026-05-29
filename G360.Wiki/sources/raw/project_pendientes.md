@@ -4,22 +4,22 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.2** ✅ · DEV: **v1.10.2** + ISS-194 + RRHH-A5 + ISS-080/108/148 (sin versionar aún)
+Último release en PROD: **v1.10.3** ✅ (ISS-194 + RRHH-A5 + lote bugs UX) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV / PROD — cierre sesión 2026-05-28
+## Estado actual DEV / PROD — cierre sesión 2026-05-29
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.10.2` | `v1.10.2` |
-| Migrations | 001–151 ✅ | 001–150 ✅ |
-| Branch | `dev` (3 commits adelante: ISS-194 + RRHH-A5 + lote 3 bugs UX) | `main` (commit `cc5c2073`) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.10.2 |
+| APP_VERSION | `v1.10.3` | `v1.10.3` |
+| Migrations | 001–151 ✅ | 001–151 ✅ |
+| Branch | `dev` alineado con `main` | `main` (release v1.10.3) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.10.3 |
 
-**Migrations DEV pendientes de aplicar en PROD:** 151 (RRHH-A5 UNIQUE empleados.user_id) — aplicar antes del merge `dev → main` ([[feedback_deploy_order_migrations_aditivas]]).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna
 
 ---
 
@@ -99,7 +99,7 @@ type: project
 ## Para el próximo deploy a PROD
 
 Checklist obligatorio:
-1. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.3` (o v1.11.0 si se agrega feature)
+1. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.4` (o v1.11.0 si se agrega feature)
 2. PR `dev → main` con título `vX.Y.Z — descripción`
 3. GitHub release `vX.Y.Z` sobre `main` como `--latest`
 4. Actualizar este archivo + `log.md` + `roadmap.md`

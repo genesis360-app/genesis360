@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-29] update | v1.10.3 PROD — ISS-194 caja fuerte + RRHH-A5 + 3 bugs UX → PROD
+
+Cierre del tren acumulado en DEV (3 commits desde v1.10.2). Sin breaking change.
+
+- **Migration 151 aplicada en PROD** pre-merge (UNIQUE parcial `empleados(tenant_id, user_id)`). Validado sin duplicados antes (regla `feedback_deploy_order_migrations_aditivas`).
+- **Bump APP_VERSION** a `v1.10.3` en `src/config/brand.ts`.
+- **Merge `dev → main`** + release `v1.10.3` `--latest` en GitHub.
+- Contenido: ISS-194 (caja fuerte default solo DUEÑO + toggles), RRHH-A5 (selector usuario en form empleado), ISS-080 (alertas filtra por sucursal), ISS-108 (selector sucursal mobile), ISS-148 (UbicacionPicker en Recursos).
+
+---
+
 ## [2026-05-28] update | lote 3 bugs UX — ISS-080, ISS-108, ISS-148
 
 Lote de 3 bugs/mejoras de baja complejidad enfocadas en multi-sucursal y UX. Sin schema change.

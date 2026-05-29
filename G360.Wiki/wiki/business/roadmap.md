@@ -3,13 +3,28 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-05-28
+updated: 2026-05-29
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 28 de Mayo, 2026
+**Última actualización:** 29 de Mayo, 2026
+
+---
+
+## v1.10.3 — ISS-194 caja fuerte + RRHH-A5 + 3 bugs UX (PROD ✅)
+
+**Estado:** desplegado en PROD ✅
+**Fecha:** 2026-05-29
+**Migration:** 151 (UNIQUE parcial `empleados(tenant_id, user_id)`) aplicada en PROD pre-merge
+
+### Cambios
+- **ISS-194** (Caja): `caja_fuerte_roles` default a `['DUEÑO']` (antes incluía SUPERVISOR + SUPER_USUARIO). Estos 2 roles aparecen como toggles habilitables en Config → Caja → Acceso a Caja Fuerte. ADMIN sin acceso. Tenants existentes con el valor viejo conservan su configuración — deben desactivar manualmente si lo prefieren.
+- **RRHH-A5** (RRHH · mig 151): selector "Usuario del sistema (opcional)" en el form de empleado + columna "Usuario" en la tabla + validación cliente de duplicados. Habilita "Mi Equipo" del SUPERVISOR sin tocar la BD a mano — antes había que poblar `empleados.user_id` por SQL.
+- **ISS-080** (Alertas): AlertasPage filtra por sucursal activa todas las secciones. Cruce client-side para `alertas` (vs PSMSS + `inventario_lineas` en la sucursal) y productos sin categoría (productos con stock activo en la sucursal). Sin schema change — la deuda técnica de `alertas` global queda documentada.
+- **ISS-108** (Header / Mobile): selector de sucursal visible en celular. Ícono `Building2` + nombre truncado + `<select>` transparente superpuesto si el usuario `puedeVerTodas`. Antes el selector era `hidden sm:flex` y desaparecía bajo 640px.
+- **ISS-148** (Recursos): componente `UbicacionPicker` reemplaza al input libre en los 3 puntos (form crear/editar, modal "Asignar ubicación", edit inline). Select con opciones del histórico filtradas por sucursal + opción "+ Nueva ubicación..." para typing puntual. Sin schema change.
 
 ---
 

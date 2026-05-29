@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.3** ✅ (ISS-194 + RRHH-A5 + lote bugs UX) · DEV: **v1.10.3** + ISS-178 + C3/A7 relevamiento Ventas (sin versionar)
+Último release en PROD: **v1.10.4** ✅ (ISS-178 rangos horarios + C3/A7 relevamiento Ventas) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,12 +14,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.10.3` | `v1.10.3` |
-| Migrations | 001–152 ✅ | 001–151 ✅ |
-| Branch | `dev` (2 commits adelante: ISS-178 + C3/A7) | `main` (release v1.10.3) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.10.3 |
+| APP_VERSION | `v1.10.4` | `v1.10.4` |
+| Migrations | 001–152 ✅ | 001–152 ✅ |
+| Branch | `dev` alineado con `main` | `main` (release v1.10.4) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.10.4 |
 
-**Migrations DEV pendientes de aplicar en PROD:** 152 (`envio_rangos_horarios`) — aplicar antes del merge `dev → main` ([[feedback_deploy_order_migrations_aditivas]]).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna
 
 ---
 
@@ -113,7 +113,7 @@ Implementación de 2 puntos cerrados del relevamiento Ventas (ver `relevamiento_
 ## Para el próximo deploy a PROD
 
 Checklist obligatorio:
-1. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.4` (o v1.11.0 si se agrega feature)
+1. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.5` (o v1.11.0 si se agrega feature)
 2. PR `dev → main` con título `vX.Y.Z — descripción`
 3. GitHub release `vX.Y.Z` sobre `main` como `--latest`
 4. Actualizar este archivo + `log.md` + `roadmap.md`

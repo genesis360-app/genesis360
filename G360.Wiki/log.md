@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-29] update | v1.10.4 PROD — ISS-178 + C3/A7 → PROD
+
+Cierre del tren acumulado en DEV (2 commits desde v1.10.3). Sin breaking change.
+
+- **Migration 152 aplicada en PROD** pre-merge (validado: las 3 columnas no existían). Regla `feedback_deploy_order_migrations_aditivas`.
+- **Bump APP_VERSION** a `v1.10.4` en `src/config/brand.ts`.
+- **Merge `dev → main`** + release `v1.10.4` `--latest` en GitHub.
+- Contenido: ISS-178 (rangos horarios de entrega — Config + VentasPage + EnviosPage), C3 parcial (CAJERO bloqueado para descuentos en POS), A7 (radio destino stock en modal devolución).
+
+---
+
 ## [2026-05-29] update | Lote 6 — C3 + A7 del relevamiento Ventas
 
 Dos puntos cerrados del relevamiento Ventas A-D (ver `G360.Wiki/sources/raw/relevamiento_ventas_respuestas.md`). Sin schema change, sin migration.

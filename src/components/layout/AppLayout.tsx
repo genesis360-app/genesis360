@@ -399,46 +399,75 @@ export function AppLayout() {
                 ? (sucursales.find(s => s.id === sucursalId)?.nombre ?? '—')
                 : null
 
+              const etiquetaMobile = nombreSucursal ?? (puedeVerTodas ? 'Todas' : 'Sin suc.')
+              const puedeCambiarMobile = puedeVerTodas && (enRutaConTodas || enRutaSoloSucursal)
+
               return (
-                <div className="hidden sm:flex items-center gap-1.5 mr-1">
-                  <Building2 size={14} className="text-muted flex-shrink-0" />
-                  {puedeVerTodas && enRutaConTodas ? (
-                    // Selector completo: Todas + cada sucursal
-                    <select
-                      value={sucursalId ?? ''}
-                      onChange={e => handleCambiarSucursal(e.target.value || null)}
-                      className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
-                      title="Filtrar por sucursal"
-                    >
-                      <option value="">Todas las sucursales</option>
-                      {sucursales.map(s => (
-                        <option key={s.id} value={s.id}>{s.nombre}</option>
-                      ))}
-                    </select>
-                  ) : puedeVerTodas && enRutaSoloSucursal ? (
-                    // Selector sin "Todas": obliga a elegir una sucursal específica
-                    <select
-                      value={sucursalId ?? ''}
-                      onChange={e => handleCambiarSucursal(e.target.value || null)}
-                      className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
-                      title="Seleccioná una sucursal"
-                    >
-                      <option value="" disabled>Seleccioná sucursal</option>
-                      {sucursales.map(s => (
-                        <option key={s.id} value={s.id}>{s.nombre}</option>
-                      ))}
-                    </select>
-                  ) : nombreSucursal ? (
-                    // Read-only: muestra la sucursal asignada
-                    <span className="text-xs font-medium text-primary dark:text-white truncate max-w-[140px]">
-                      {nombreSucursal}
+                <>
+                  {/* ISS-108 — Mobile (<640px): ícono + nombre. Si puede cambiar, <select> transparente encima */}
+                  <div className="relative sm:hidden flex items-center gap-1 mr-1">
+                    <Building2 size={14} className="text-muted flex-shrink-0" />
+                    <span className={`text-xs font-medium truncate max-w-[90px] ${nombreSucursal ? 'text-primary dark:text-white' : puedeVerTodas ? 'text-muted' : 'text-orange-500'}`}>
+                      {etiquetaMobile}
                     </span>
-                  ) : puedeVerTodas ? (
-                    <span className="text-xs font-medium text-muted truncate max-w-[140px]">Todas las suc.</span>
-                  ) : (
-                    <span className="text-xs text-orange-500 font-medium">Sin sucursal</span>
-                  )}
-                </div>
+                    {puedeCambiarMobile && (
+                      <select
+                        value={sucursalId ?? ''}
+                        onChange={e => handleCambiarSucursal(e.target.value || null)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        title="Cambiar sucursal"
+                        aria-label="Cambiar sucursal"
+                      >
+                        {enRutaConTodas && <option value="">Todas las sucursales</option>}
+                        {enRutaSoloSucursal && !sucursalId && <option value="" disabled>Seleccioná sucursal</option>}
+                        {sucursales.map(s => (
+                          <option key={s.id} value={s.id}>{s.nombre}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Desktop / tablet (≥640px) */}
+                  <div className="hidden sm:flex items-center gap-1.5 mr-1">
+                    <Building2 size={14} className="text-muted flex-shrink-0" />
+                    {puedeVerTodas && enRutaConTodas ? (
+                      // Selector completo: Todas + cada sucursal
+                      <select
+                        value={sucursalId ?? ''}
+                        onChange={e => handleCambiarSucursal(e.target.value || null)}
+                        className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
+                        title="Filtrar por sucursal"
+                      >
+                        <option value="">Todas las sucursales</option>
+                        {sucursales.map(s => (
+                          <option key={s.id} value={s.id}>{s.nombre}</option>
+                        ))}
+                      </select>
+                    ) : puedeVerTodas && enRutaSoloSucursal ? (
+                      // Selector sin "Todas": obliga a elegir una sucursal específica
+                      <select
+                        value={sucursalId ?? ''}
+                        onChange={e => handleCambiarSucursal(e.target.value || null)}
+                        className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
+                        title="Seleccioná una sucursal"
+                      >
+                        <option value="" disabled>Seleccioná sucursal</option>
+                        {sucursales.map(s => (
+                          <option key={s.id} value={s.id}>{s.nombre}</option>
+                        ))}
+                      </select>
+                    ) : nombreSucursal ? (
+                      // Read-only: muestra la sucursal asignada
+                      <span className="text-xs font-medium text-primary dark:text-white truncate max-w-[140px]">
+                        {nombreSucursal}
+                      </span>
+                    ) : puedeVerTodas ? (
+                      <span className="text-xs font-medium text-muted truncate max-w-[140px]">Todas las suc.</span>
+                    ) : (
+                      <span className="text-xs text-orange-500 font-medium">Sin sucursal</span>
+                    )}
+                  </div>
+                </>
               )
             })()}
 

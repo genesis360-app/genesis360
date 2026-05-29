@@ -3,7 +3,7 @@ title: Recursos
 category: features
 tags: [recursos, patrimonio, ubicaciones, recurrentes, gastos, capitalizacion]
 sources: [CLAUDE.md]
-updated: 2026-05-25
+updated: 2026-05-28
 ---
 
 # Recursos
@@ -78,8 +78,18 @@ Recursos con estado `pendiente_adquisicion`. Incluye botón "Marcar como adquiri
 Vista de todos los recursos activos/pendientes **agrupados por su campo `ubicacion`**:
 - Grupos ordenados A-Z, "Sin ubicación" al final
 - Cada recurso muestra nombre, categoría, estado, badge recurrente
-- Edición inline de la ubicación (lápiz → input → Enter/Escape)
+- Edición inline de la ubicación (lápiz → selector → Check/X)
 - Banner ámbar si hay recurrentes vencidos/próximos en la sucursal
+
+### ISS-148 — Selector de ubicación (2026-05-28)
+
+`recursos.ubicacion` sigue siendo `TEXT`, pero la UI ya no permite escritura libre. En lugar de un `<input>` se usa el componente `UbicacionPicker` en los 3 puntos donde se elegía ubicación (form crear/editar recurso, modal "Asignar ubicación" del tab Ubicaciones, edit inline del tab Ubicaciones).
+
+- **Opciones**: derivadas del histórico de `recursos.ubicacion` distinct, filtradas por la sucursal activa (la query principal de `recursos` ya aplica `applyFilter`).
+- **Crear ubicación nueva**: opción especial `+ Nueva ubicación...` que muestra un input temporal. La ubicación queda disponible para los próximos recursos en cuanto se guarda el primero que la use.
+- **Sin ubicación**: opción `— Sin ubicación —` (envía `null` al backend).
+
+> [!NOTE] No se agregó tabla catálogo: el set de ubicaciones es chico en la práctica y se mantiene auto-gestionado por el histórico. Si más adelante hace falta renombrar/limpiar masivo, se vuelve catálogo.
 
 ---
 

@@ -114,7 +114,7 @@ applyFilter(query)
 - Visible solo cuando `sucursales.length > 0`
 - Primera opción: "Todas las sucursales" (value `''` → sucursalId `null`)
 - `useEffect` auto-selecciona la primera sucursal solo si no hay preferencia guardada en localStorage
-- En mobile: `hidden sm:flex`
+- **Mobile (ISS-108, 2026-05-28)**: ícono `Building2` + nombre truncado (max 90px) siempre visible. Si el usuario `puedeVerTodas`, se superpone un `<select>` transparente que permite cambiar de sucursal con un tap. Antes el bloque era `hidden sm:flex` y desaparecía por completo en celular.
 
 ---
 

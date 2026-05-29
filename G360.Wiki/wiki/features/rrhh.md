@@ -3,7 +3,7 @@ title: Módulo RRHH
 category: features
 tags: [rrhh, empleados, nomina, vacaciones, asistencia, capacitaciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-27
+updated: 2026-05-28
 ---
 
 # Módulo RRHH
@@ -150,7 +150,17 @@ calcular_dias_habiles(desde, hasta) SQL
 
 Desde migration 147, `empleados.supervisor_id` es **FK a `empleados(id)`** (antes apuntaba a `users(id)`). El árbol organizacional se arma 100% con empleados de RRHH, tengan o no usuario del sistema. El selector de supervisor en la ficha del empleado lista empleados activos (excluye al propio empleado para evitar auto-supervisión).
 
-Para que el **self-service del SUPERVISOR** funcione, su empleado debe estar vinculado a su usuario vía `empleados.user_id`. `get_supervisor_team_ids()` mapea `auth.uid()` → `empleados.user_id` → `supervisor_id`. Sin esa vinculación, "Mi Equipo" aparece vacío (pendiente UI de vinculación — relevamiento RRHH A5).
+Para que el **self-service del SUPERVISOR** funcione, su empleado debe estar vinculado a su usuario vía `empleados.user_id`. `get_supervisor_team_ids()` mapea `auth.uid()` → `empleados.user_id` → `supervisor_id`. Sin esa vinculación, "Mi Equipo" aparece vacío.
+
+### Vinculación empleado ↔ usuario del sistema (RRHH-A5 · migration 151)
+
+El formulario de empleado (tab Empleados) incluye un selector **"Usuario del sistema (opcional)"** debajo del selector de supervisor. Lista los users del tenant ordenados por `nombre_display`, deshabilita los ya vinculados a otro empleado (con leyenda "ya vinculado a …") y permite "Sin vincular". La tabla de empleados muestra un badge azul `UserCheck + nombre_display` en la columna **Usuario** cuando hay vinculación.
+
+Validaciones:
+- **Cliente** (`handleGuardarEmpleado` en `src/pages/RrhhPage.tsx`): rechaza guardar si el `user_id` elegido ya pertenece a otro empleado del mismo tenant.
+- **BD** (migration 151): índice UNIQUE parcial `empleados(tenant_id, user_id) WHERE user_id IS NOT NULL` (no bloquea N empleados sin usuario, que es el caso default).
+
+> Decisión de diseño A5(b): `empleados.user_id` queda opcional. Se relaciona solo cuando aplica (DUEÑO/SUPERVISOR/CAJERO/CONTADOR/RRHH/DEPÓSITO usan el sistema). Empleados que no usan la app (operarios) quedan sin vincular.
 
 > [!NOTE] ISS-184: el alta de empleado hace optimistic update (`setQueryData`) + `.select()` con joins, así el nuevo empleado aparece al instante sin recargar.
 

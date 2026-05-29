@@ -20,17 +20,58 @@ export default function AlertasPage() {
   const fechaLimite = new Date()
   fechaLimite.setDate(fechaLimite.getDate() - RESERVAS_DIAS_LIMITE)
 
+  // ISS-080: las alertas viven a nivel tenant (no tienen sucursal_id) y son
+  // disparadas por productos.stock_actual global. Cuando hay una sucursal
+  // activa, filtramos client-side para mostrar SOLO alertas que aplican a esa
+  // sucursal (stock_minimo: usando stock por sucursal vs PSMSS o mínimo global).
   const { data: alertas = [], isLoading } = useQuery({
-    queryKey: ['alertas-page', tenant?.id],
+    queryKey: ['alertas-page', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('alertas')
-        .select('*, productos(nombre,sku,stock_actual,stock_minimo)')
+        .select('*, productos(id,nombre,sku,stock_actual,stock_minimo)')
         .eq('tenant_id', tenant!.id)
         .eq('resuelta', false)
         .order('created_at', { ascending: false })
       if (error) throw error
-      return data as Alerta[]
+      const all = (data ?? []) as Alerta[]
+      if (!sucursalId || all.length === 0) return all
+
+      const productoIds = Array.from(new Set(all.map(a => (a as any).producto_id).filter(Boolean)))
+      if (productoIds.length === 0) return all
+
+      const [{ data: lineas }, { data: psmss }] = await Promise.all([
+        supabase
+          .from('inventario_lineas')
+          .select('producto_id, cantidad, ubicacion:ubicaciones!inner(sucursal_id)')
+          .eq('tenant_id', tenant!.id)
+          .eq('activo', true)
+          .in('producto_id', productoIds)
+          .eq('ubicacion.sucursal_id', sucursalId),
+        supabase
+          .from('producto_stock_minimo_sucursal')
+          .select('producto_id, stock_minimo')
+          .eq('tenant_id', tenant!.id)
+          .eq('sucursal_id', sucursalId)
+          .in('producto_id', productoIds),
+      ])
+
+      const stockEnSuc: Record<string, number> = {}
+      for (const l of (lineas ?? []) as any[]) {
+        stockEnSuc[l.producto_id] = (stockEnSuc[l.producto_id] ?? 0) + Number(l.cantidad ?? 0)
+      }
+      const minEnSuc: Record<string, number> = {}
+      for (const p of (psmss ?? []) as any[]) {
+        minEnSuc[p.producto_id] = Number(p.stock_minimo ?? 0)
+      }
+
+      return all.filter(a => {
+        if (a.tipo !== 'stock_minimo') return true
+        const productoId = (a as any).producto_id
+        const actual = stockEnSuc[productoId] ?? 0
+        const minimo = minEnSuc[productoId] ?? Number((a as any).productos?.stock_minimo ?? 0)
+        return actual <= minimo
+      })
     },
     enabled: !!tenant,
   })
@@ -51,8 +92,12 @@ export default function AlertasPage() {
     enabled: !!tenant,
   })
 
+  // ISS-080: `productos` no tiene sucursal_id (catálogo es del tenant). Si hay
+  // sucursal activa, mostramos solo los productos sin categoría que tengan
+  // inventario en esa sucursal — un producto sin stock en la sucursal no es
+  // accionable desde ahí.
   const { data: sinCategoria = [], isLoading: loadingSinCategoria } = useQuery({
-    queryKey: ['productos-sin-categoria', tenant?.id],
+    queryKey: ['productos-sin-categoria', tenant?.id, sucursalId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('productos')
@@ -62,7 +107,20 @@ export default function AlertasPage() {
         .is('categoria_id', null)
         .order('nombre')
       if (error) throw error
-      return data ?? []
+      const all = data ?? []
+      if (!sucursalId || all.length === 0) return all
+
+      const { data: lineas } = await supabase
+        .from('inventario_lineas')
+        .select('producto_id, ubicacion:ubicaciones!inner(sucursal_id)')
+        .eq('tenant_id', tenant!.id)
+        .eq('activo', true)
+        .gt('cantidad', 0)
+        .in('producto_id', all.map(p => p.id))
+        .eq('ubicacion.sucursal_id', sucursalId)
+
+      const enSuc = new Set<string>((lineas ?? []).map((l: any) => l.producto_id))
+      return all.filter(p => enSuc.has(p.id))
     },
     enabled: !!tenant,
   })

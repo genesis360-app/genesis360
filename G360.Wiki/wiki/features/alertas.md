@@ -3,7 +3,7 @@ title: Alertas
 category: features
 tags: [alertas, stock-minimo, lpn-vencidos, reservas, categorias, sucursal]
 sources: [CLAUDE.md]
-updated: 2026-05-13
+updated: 2026-05-28
 ---
 
 # Alertas
@@ -119,10 +119,19 @@ La EF `monitoring-check` incluye stock crítico y reservas viejas en el email di
 | OCs próximas a vencer (`ordenes_compra`) | ✅ `applyFilter` |
 | LPNs vencidos (`inventario_lineas`) | ✅ `applyFilter` |
 | Clientes con deuda (`ventas`) | ✅ `applyFilter` |
-| Alertas de stock (`alertas`) | ⚠️ Sin `sucursal_id` — tabla creada sin esa columna, pendiente migration |
-| Productos sin categoría (`productos`) | — Catálogo global, no aplica filtro |
+| Alertas de stock (`alertas`) | ✅ Cruce client-side por sucursal (ISS-080) |
+| Productos sin categoría (`productos`) | ✅ Cruce client-side por sucursal (ISS-080) |
 
-> [!NOTE] La tabla `alertas` (stock mínimo) no tiene `sucursal_id` — se ve en todas las vistas. Requiere migration para agregar la columna y actualizar el trigger `check_stock_minimo`.
+### ISS-080 — Filtrado por sucursal de tablas sin `sucursal_id` (2026-05-28)
+
+Las tablas `alertas` y `productos` no tienen `sucursal_id` (alertas viene del trigger global, productos es catálogo del tenant). Cuando hay sucursal activa, `AlertasPage` ahora:
+
+- **Stock mínimo**: para cada alerta, suma `inventario_lineas.cantidad` del producto en la sucursal activa (JOIN a `ubicaciones.sucursal_id`) y compara con `producto_stock_minimo_sucursal` (PSMSS — override por sucursal, mig 052) o con `productos.stock_minimo` como fallback. La alerta solo aparece si el stock en esa sucursal está al o bajo el mínimo.
+- **Sin categoría**: filtra los productos sin categoría que tengan al menos una `inventario_lineas` activa con cantidad > 0 en la sucursal activa.
+
+Si no hay sucursal seleccionada (vista global con `puede_ver_todas`), se muestran todas las alertas como antes.
+
+> [!NOTE] Esto evita el ruido de ver alertas de stock crítico de otra sucursal. Como solución pragmática sin schema change. Pendiente futuro: agregar `sucursal_id` a `alertas` + reescribir trigger `check_stock_minimo` para disparar por sucursal+producto.
 
 ---
 

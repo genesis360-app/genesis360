@@ -128,6 +128,7 @@ gastos_fijos(
 El modal "Registrar gasto" ahora incluye:
 - **Selector de caja**: igual que gastos variables (badge ★ si hay default claro, dropdown si múltiples)
 - Al registrar: crea `egreso` (efectivo) o `egreso_informativo` (no-efectivo) en la caja seleccionada
+- **v1.10.2**: selector filtra estrictamente por sucursal activa — nunca muestra cajas de otras sucursales (aplica a nuevo gasto, gasto fijo y pago de OC)
 
 ---
 

@@ -107,6 +107,7 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 - Al despachar con saldo > $0.50 → modal muestra Total / Ya cobrado / Saldo a cobrar
 - `monto_pagado` se acumula con `acumularMediosPago()`
 - `validarDespacho()` bloquea en UI y en `mutationFn`
+- **v1.10.2**: `monto_pagado` al crear reserva con seña parcial se calcula desde la suma real de los medios no-CC ingresados (no desde `total − CC`). Corregía "Ya cobrado" cuando solo se cobró una seña parcial.
 
 ---
 

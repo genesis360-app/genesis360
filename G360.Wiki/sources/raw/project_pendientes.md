@@ -4,20 +4,20 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.2** ✅ · DEV: **v1.10.2**
+Último release en PROD: **v1.10.3** ✅ (ISS-194 + RRHH-A5 + lote bugs UX) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
 ---
 
-## Estado actual DEV / PROD — cierre sesión 2026-05-28
+## Estado actual DEV / PROD — cierre sesión 2026-05-29
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.10.2` | `v1.10.2` |
-| Migrations | 001–150 ✅ | 001–150 ✅ |
-| Branch | `dev` | `main` |
-| Vercel | preview auto desde `dev` | PROD deploy v1.10.2 |
+| APP_VERSION | `v1.10.3` | `v1.10.3` |
+| Migrations | 001–151 ✅ | 001–151 ✅ |
+| Branch | `dev` alineado con `main` | `main` (release v1.10.3) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.10.3 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna
 
@@ -29,22 +29,47 @@ type: project
 
 | ID | Módulo | Descripción | Complejidad |
 |---|---|---|---|
+| ISS-073 | TiendaNube + Ventas + Envíos + Clientes | Sincronización completa de flujo TN: la orden TN crea automáticamente venta Genesis (con `numero` = número TN para trazabilidad) + cliente nuevo con datos y domicilio si no existe + envío en estado `pendiente` con datos del comprador. Estados sincronizados bidireccional: pendiente_pago → pagada → empaquetada → despachada → entregada / devuelta. Hoy: solo rebaja stock. | Alta — webhook + estado-machine + creación multi-entidad transaccional |
 | ISS-127 | Config + Inventario | Perfiles de códigos de barra/QR compuestos: configurar campos (SKU, Lote, Vencimiento, Cantidad, etc.) y leer/escribir ese código en ingreso y rebaje de stock | Alta — nuevo subsistema |
+| ISS-130 | Inventario + Ventas | Comandos por voz: hablarle a la app para rebajar/ingresar (SKU, cantidad, estado, ubicación, lote, fecha) y consultar ("¿qué hay en ubicación X?"). Web Speech API + parseo intenciones | Alta — UX nueva, requiere prototipo |
 | ISS-137 | Config | Evaluación: integración con Google Drive como almacenamiento propio del cliente para documentos/imágenes | Requiere evaluación primero |
 | ISS-174 | Ventas + Envíos | Servicio de envío como select (igual que en módulo Envíos) + cotización automática por API de cada courier (precio + disponibilidad según servicio, dirección y fecha) | Alta — depende APIs externas |
 | ISS-178 | Ventas + Config | Rango horario acordado para entrega: selector en modal envío de Ventas. Rangos configurables en Config/Envíos con defaults (8-13, 13-18, 18-22), editables/eliminables | Media-alta |
+
+### Bugs / mejoras UX puntuales
+
+| ID | Módulo | Descripción | Estado |
+|---|---|---|---|
+| ISS-075 | Historial | Faltan detalles: usuario que ejecutó, ubicación origen → destino en movimientos manuales, cambio de LPN, para ventas mostrar de qué ubicación/LPN se despachó cada ítem. Hoy `actividad_log` registra acción genérica pero no el `diff` por línea | Pendiente |
+| ISS-080 | Alertas | Filtrar por sucursal todas las queries de AlertasPage | ✅ Resuelto 2026-05-28 — cruce client-side con `inventario_lineas`+`PSMSS` para stock; cruce con `inventario_lineas` para productos sin categoría |
+| ISS-108 | Header / Mobile | Selector de sucursal invisible en celular | ✅ Resuelto 2026-05-28 — bloque mobile con ícono Building2 + nombre + `<select>` transparente superpuesto |
+| ISS-148 | Recursos | Input texto libre para ubicación | ✅ Resuelto 2026-05-28 — componente `UbicacionPicker` (select con opciones del histórico de la sucursal + opción "+ Nueva ubicación") en form crear/editar, modal asignar y edit inline |
+| ISS-151 | Dashboard + CC | Dashboard pestaña "todo" suma "Cancelación CC" como método de pago (debería ser cobro real de deuda, no un nuevo ingreso) → distorsiona la ganancia del día. **Además** al cancelar una CC, la venta original debe volver a estado "falta pagar" tipo reserva (hoy queda `despachada` y `monto_pagado` total). Después se cobra por otro medio o se anula la venta. | Pendiente — requiere alineación de modelo antes de implementar |
 
 ### Deuda técnica / pendientes abiertos
 
 | Área | Descripción |
 |---|---|
-| RRHH | Vincular `empleados.user_id` en UI para reactivar "Mi Equipo" del SUPERVISOR (relevamiento RRHH A5) |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
-| Relevamientos | 5 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos) esperando respuestas de GO + socio |
+| Relevamientos | 5 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos) esperando respuestas de GO + socio. Ventas A-D ya respondido (ver `relevamiento_ventas_respuestas.md`), faltan E-L |
 
 ---
 
 ## Historial de lotes 2026-05-28
+
+### Lote 3 — RRHH-A5 vinculación empleado ↔ usuario
+
+| ID | Módulo | Fix | Migration |
+|---|---|---|---|
+| RRHH-A5 | RRHH | Selector "Usuario del sistema" en form empleado + columna "Usuario" en tabla + validación duplicados client-side. Habilita "Mi Equipo" del SUPERVISOR sin tocar la BD a mano | 151 |
+
+### Lote 4 — 3 bugs UX (ISS-080, ISS-108, ISS-148)
+
+| ID | Módulo | Fix |
+|---|---|---|
+| ISS-080 | Alertas | AlertasPage filtra por sucursal activa. Queries con `sucursal_id` ya filtraban; nuevo cruce client-side para `alertas` (vs PSMSS + inventario_lineas en la sucursal) y `productos sin categoría` (productos con stock en la sucursal). Sin schema change |
+| ISS-108 | Header / Mobile | Bloque nuevo `sm:hidden` con ícono `Building2` + nombre truncado + `<select>` transparente superpuesto (solo si `puedeVerTodas`). Antes el selector desaparecía en < 640px |
+| ISS-148 | Recursos | Componente `UbicacionPicker` (select con opciones del histórico filtradas por sucursal + opción "+ Nueva ubicación"). Aplicado en form crear/editar, modal "Asignar ubicación" y edit inline del tab Ubicaciones. Reemplaza al `<input>` libre |
 
 ### Lote 1 — commit `f96fd4d1` · release `dev-2026-05-28-lote-iss`
 
@@ -58,7 +83,7 @@ type: project
 | ISS-177 | Ventas | $/km modal envío es read-only |
 | ISS-179 | Config | Form crear ubicación incluye sucursal, Mono-SKU y dims WMS |
 | ISS-181 | Config | Comprobantes: reglas mutuamente excluyentes + texto más claro |
-| ISS-194 | Caja | Confirmado ya implementado (toggle SUPERVISOR boveda) |
+| ISS-194 | Caja | ~~Confirmado ya implementado~~ **REFIX**: default `caja_fuerte_roles=['DUEÑO']`; SUPERVISOR/SUPER_USUARIO como toggles habilitables |
 
 ### Lote 2 — commits `07d306c5` + `9ba1e3f9` · release `dev-2026-05-28-lote2-iss`
 
@@ -74,7 +99,9 @@ type: project
 ## Para el próximo deploy a PROD
 
 Checklist obligatorio:
-1. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.3` (o v1.11.0 si se agrega feature)
+1. Bump `APP_VERSION` en `src/config/brand.ts` a `v1.10.4` (o v1.11.0 si se agrega feature)
 2. PR `dev → main` con título `vX.Y.Z — descripción`
 3. GitHub release `vX.Y.Z` sobre `main` como `--latest`
 4. Actualizar este archivo + `log.md` + `roadmap.md`
+
+**Nota para tenants existentes (ISS-194):** al deployar, avisar que deben ir a Config → Caja → Acceso a Caja Fuerte y desactivar SUPERVISOR/SUPER_USUARIO si no los quieren habilitados (el valor viejo queda guardado en DB).

@@ -6,6 +6,63 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-29] update | v1.10.3 PROD — ISS-194 caja fuerte + RRHH-A5 + 3 bugs UX → PROD
+
+Cierre del tren acumulado en DEV (3 commits desde v1.10.2). Sin breaking change.
+
+- **Migration 151 aplicada en PROD** pre-merge (UNIQUE parcial `empleados(tenant_id, user_id)`). Validado sin duplicados antes (regla `feedback_deploy_order_migrations_aditivas`).
+- **Bump APP_VERSION** a `v1.10.3` en `src/config/brand.ts`.
+- **Merge `dev → main`** + release `v1.10.3` `--latest` en GitHub.
+- Contenido: ISS-194 (caja fuerte default solo DUEÑO + toggles), RRHH-A5 (selector usuario en form empleado), ISS-080 (alertas filtra por sucursal), ISS-108 (selector sucursal mobile), ISS-148 (UbicacionPicker en Recursos).
+
+---
+
+## [2026-05-28] update | lote 3 bugs UX — ISS-080, ISS-108, ISS-148
+
+Lote de 3 bugs/mejoras de baja complejidad enfocadas en multi-sucursal y UX. Sin schema change.
+
+- **ISS-080** (`src/pages/AlertasPage.tsx`): AlertasPage ahora filtra por sucursal activa **todas** las secciones. Las queries con `sucursal_id` ya filtraban (reservas viejas, OCs, LPN, inventario). Las 2 que no tenían columna (`alertas` y `productos sin categoría`) ahora cruzan client-side: para stock mínimo se suma `inventario_lineas.cantidad` del producto en la sucursal (JOIN a `ubicaciones.sucursal_id`) y se compara con `producto_stock_minimo_sucursal` o el global. Para sin categoría, se muestran solo los que tienen al menos una `inventario_lineas` activa en la sucursal.
+- **ISS-108** (`src/components/layout/AppLayout.tsx`): Header mobile (< 640px). Bloque nuevo `sm:hidden` con ícono `Building2` + nombre de sucursal truncado. Si `puedeVerTodas`, `<select>` transparente superpuesto que permite cambiar con un tap. Antes el bloque era `hidden sm:flex` y desaparecía por completo en celular.
+- **ISS-148** (`src/pages/RecursosPage.tsx`): Nuevo componente interno `UbicacionPicker` reemplaza al `<input>` libre en los 3 puntos donde se elegía ubicación: form crear/editar recurso, modal "Asignar ubicación" del tab Ubicaciones, edit inline. Opciones derivadas del histórico (`recursos.ubicacion` distinct, filtrado por sucursal vía `applyFilter`) + opción especial "+ Nueva ubicación..." para typing puntual. Sin schema change ni tabla catálogo.
+
+Wiki: `alertas.md` (sección ISS-080 reemplaza la nota anterior), `recursos.md` (sección ISS-148 en Ubicaciones), `multi-sucursal.md` (selector mobile actualizado), `project_pendientes.md` (los 3 marcados como Resueltos, nuevo Lote 4 en historial).
+
+---
+
+## [2026-05-28] update | RRHH-A5 — vinculación empleado ↔ usuario del sistema (UI + migration 151)
+
+Pendiente histórico de RRHH cerrado. Habilita "Mi Equipo" del SUPERVISOR sin scripts SQL manuales.
+
+- **Migration 151** (`151_empleados_user_id_unique.sql`): índice UNIQUE parcial `empleados(tenant_id, user_id) WHERE user_id IS NOT NULL`. Aplicado en DEV. Garantiza el invariante que asume `get_supervisor_team_ids()` (1 user ↔ 1 empleado por tenant).
+- **`src/pages/RrhhPage.tsx`**:
+  - Nueva query `tenantUsers` (id, nombre_display, email, rol) por tenant, enabled solo en tabs empleados/equipo.
+  - Selector "Usuario del sistema (opcional)" en el form de empleado, después de supervisor. Listado ordenado por nombre, deshabilita los users ya tomados por otro empleado mostrando "ya vinculado a …".
+  - Validación cliente en `handleGuardarEmpleado`: rechaza guardar si el `user_id` elegido pertenece a otro empleado.
+  - Columna nueva **Usuario** en la tabla de empleados con badge `UserCheck + nombre_display`.
+- **schema_full.sql**: índice 151 documentado y FK `empleados.supervisor_id` corregido de `users(id)` → `empleados(id)` (estaba desactualizado desde migration 147).
+- **Wiki**: `features/rrhh.md` sección nueva "Vinculación empleado ↔ usuario del sistema (RRHH-A5)". Pendiente removido de `project_pendientes.md`. Index sin cambios estructurales.
+
+Pendiente PROD: aplicar migration 151 antes del merge `dev → main` (regla `feedback_deploy_order_migrations_aditivas`).
+
+---
+
+## [2026-05-28] update | mantenimiento: trim CLAUDE.md + convención GRANT Supabase oct-2026
+
+- **CLAUDE.md trimado**: eliminadas secciones informativas ya cubiertas en el wiki (Stack, Estructura, Planes, Env vars, Deploy, Dominios, Multi-tenant). Reducción ~1.7k tokens/sesión. Se conservaron solo reglas de comportamiento, gotchas de código y IDs de Supabase.
+- **wiki/development/convenciones-codigo.md**: nueva sección "GRANT obligatorio en tablas nuevas" — a partir del 30 oct 2026 Supabase deja de auto-exponer tablas del schema `public`; toda migration con `CREATE TABLE` debe incluir `GRANT ... TO authenticated`.
+- **wiki/database/migraciones.md**: warning insertado en "Reglas de trabajo con migraciones" con el SQL de GRANT y la fecha límite.
+
+---
+
+## [2026-05-28] update | ISS-194 — caja fuerte: solo DUEÑO por defecto (dev, pendiente PROD)
+
+- `caja_fuerte_roles` default cambia de `['DUEÑO','SUPERVISOR','SUPER_USUARIO']` a `['DUEÑO']`.
+- SUPERVISOR y SUPER_USUARIO aparecen ahora en la lista de toggles habilitables (junto a CAJERO/CONTADOR/DEPOSITO/RRHH). ADMIN no tiene acceso.
+- Tenants existentes con el valor viejo guardado en DB conservan su configuración actual; deben desactivar manualmente desde Config → Caja.
+- Commit `62997596` en dev. Pendiente deploy a PROD (sin migration, solo cambio de código).
+
+---
+
 ## [2026-05-28] update | v1.10.2 — bugfixes ISS-152/173 + caja sin PDF automático → PROD
 
 - **ISS-152**: `sesionesAbiertas` en GastosPage ahora incluye `sucursalId` en queryKey y filtra client-side. `cajasAbiertasOC` corrige filtro estricto. El "nuevo gasto" ya no muestra cajas de otras sucursales.

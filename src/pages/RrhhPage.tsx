@@ -506,6 +506,22 @@ export default function RrhhPage() {
     enabled: !!tenant,
   })
 
+  // RRHH-A5: usuarios del sistema disponibles para vincular a un empleado.
+  // Habilita "Mi Equipo" del SUPERVISOR (get_supervisor_team_ids mapea auth.uid()
+  // → empleados.user_id → supervisor_id). Migration 151 garantiza unicidad.
+  const { data: tenantUsers = [] } = useQuery({
+    queryKey: ['tenant-users-link', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('users')
+        .select('id, nombre_display, email, rol')
+        .eq('tenant_id', tenant!.id)
+        .order('nombre_display')
+      if (error) throw error
+      return (data ?? []) as Array<{ id: string; nombre_display: string | null; email: string; rol: string }>
+    },
+    enabled: !!tenant && (activeTab === 'empleados' || activeTab === 'equipo'),
+  })
+
   // Feriados query
   const { data: feriados = [], refetch: refetchFeriados } = useQuery({
     queryKey: ['rrhh_feriados', tenant?.id],
@@ -1134,6 +1150,13 @@ export default function RrhhPage() {
       toast.error('Fecha de ingreso es requerida')
       return
     }
+    if (formData.user_id) {
+      const yaVinculado = empleados.find(e => e.user_id === formData.user_id && e.id !== selectedEmpleado?.id)
+      if (yaVinculado) {
+        toast.error(`Ese usuario ya está vinculado a ${nombreEmpleado(yaVinculado)}`)
+        return
+      }
+    }
     saveEmpleado.mutate(formData)
   }
 
@@ -1629,6 +1652,29 @@ export default function RrhhPage() {
                       ))}
                   </select>
 
+                  <div className="col-span-2">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                      Usuario del sistema (opcional)
+                      <span className="ml-1 text-gray-400 dark:text-gray-500">— vincular para habilitar "Mi Equipo" si es SUPERVISOR</span>
+                    </label>
+                    <select
+                      value={formData.user_id ?? ''}
+                      onChange={(e) => setFormData({ ...formData, user_id: e.target.value || null })}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg w-full"
+                    >
+                      <option value="">Sin vincular</option>
+                      {tenantUsers.map((u) => {
+                        const vinculadoOtro = empleados.find(e => e.user_id === u.id && e.id !== selectedEmpleado?.id)
+                        const label = `${u.nombre_display || u.email} — ${u.rol}${vinculadoOtro ? ` · ya vinculado a ${nombreEmpleado(vinculadoOtro)}` : ''}`
+                        return (
+                          <option key={u.id} value={u.id} disabled={!!vinculadoOtro}>
+                            {label}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+
                   <select
                     value={formData.tipo_contrato ?? 'INDEFINIDO'}
                     onChange={(e) => setFormData({ ...formData, tipo_contrato: e.target.value })}
@@ -1684,6 +1730,7 @@ export default function RrhhPage() {
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Teléfono</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Puesto</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Departamento</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Usuario</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Ingreso</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Estado</th>
                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300">Acciones</th>
@@ -1697,6 +1744,18 @@ export default function RrhhPage() {
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{emp.tel_personal || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{emp.puesto?.nombre || '-'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{emp.departamento?.nombre || '-'}</td>
+                      <td className="px-4 py-3 text-sm">
+                        {(() => {
+                          if (!emp.user_id) return <span className="text-gray-400 dark:text-gray-500">-</span>
+                          const u = tenantUsers.find(x => x.id === emp.user_id)
+                          const label = u ? (u.nombre_display || u.email) : 'Usuario'
+                          return (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                              <UserCheck size={11} /> {label}
+                            </span>
+                          )
+                        })()}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{format(new Date(emp.fecha_ingreso), 'dd/MM/yyyy', { locale: es })}</td>
                       <td className="px-4 py-3 text-sm">
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${emp.activo ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>

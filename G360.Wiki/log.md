@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-28] update | lote 3 bugs UX — ISS-080, ISS-108, ISS-148
+
+Lote de 3 bugs/mejoras de baja complejidad enfocadas en multi-sucursal y UX. Sin schema change.
+
+- **ISS-080** (`src/pages/AlertasPage.tsx`): AlertasPage ahora filtra por sucursal activa **todas** las secciones. Las queries con `sucursal_id` ya filtraban (reservas viejas, OCs, LPN, inventario). Las 2 que no tenían columna (`alertas` y `productos sin categoría`) ahora cruzan client-side: para stock mínimo se suma `inventario_lineas.cantidad` del producto en la sucursal (JOIN a `ubicaciones.sucursal_id`) y se compara con `producto_stock_minimo_sucursal` o el global. Para sin categoría, se muestran solo los que tienen al menos una `inventario_lineas` activa en la sucursal.
+- **ISS-108** (`src/components/layout/AppLayout.tsx`): Header mobile (< 640px). Bloque nuevo `sm:hidden` con ícono `Building2` + nombre de sucursal truncado. Si `puedeVerTodas`, `<select>` transparente superpuesto que permite cambiar con un tap. Antes el bloque era `hidden sm:flex` y desaparecía por completo en celular.
+- **ISS-148** (`src/pages/RecursosPage.tsx`): Nuevo componente interno `UbicacionPicker` reemplaza al `<input>` libre en los 3 puntos donde se elegía ubicación: form crear/editar recurso, modal "Asignar ubicación" del tab Ubicaciones, edit inline. Opciones derivadas del histórico (`recursos.ubicacion` distinct, filtrado por sucursal vía `applyFilter`) + opción especial "+ Nueva ubicación..." para typing puntual. Sin schema change ni tabla catálogo.
+
+Wiki: `alertas.md` (sección ISS-080 reemplaza la nota anterior), `recursos.md` (sección ISS-148 en Ubicaciones), `multi-sucursal.md` (selector mobile actualizado), `project_pendientes.md` (los 3 marcados como Resueltos, nuevo Lote 4 en historial).
+
+---
+
 ## [2026-05-28] update | RRHH-A5 — vinculación empleado ↔ usuario del sistema (UI + migration 151)
 
 Pendiente histórico de RRHH cerrado. Habilita "Mi Equipo" del SUPERVISOR sin scripts SQL manuales.

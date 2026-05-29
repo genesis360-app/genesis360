@@ -67,6 +67,55 @@ function proximoAlerta(r: Recurso): 'vencido' | 'proximo' | null {
   return null
 }
 
+// ISS-148 — Selector de ubicación de recurso.
+// Reemplaza al input de texto libre: las opciones salen del histórico de
+// ubicaciones ya cargadas por el tab "Ubicaciones" (filtradas por sucursal
+// activa vía applyFilter en la query principal de recursos). Si el operador
+// necesita una ubicación nueva, elige "+ Nueva..." y la tipea — pasa a estar
+// disponible en cuanto se guarda el recurso.
+function UbicacionPicker({ value, onChange, opciones, size = 'md', autoFocus = false }:
+  { value: string; onChange: (v: string) => void; opciones: string[]; size?: 'sm' | 'md'; autoFocus?: boolean }) {
+  const yaExiste = !value || opciones.includes(value)
+  const [modo, setModo] = useState<'select' | 'nueva'>(yaExiste ? 'select' : 'nueva')
+  const cls = size === 'sm'
+    ? 'text-xs border border-border-ds rounded px-2 py-1 bg-surface text-primary focus:outline-none focus:border-accent'
+    : 'w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary'
+
+  if (modo === 'nueva') {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          autoFocus={autoFocus}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Nombre de la nueva ubicación"
+          className={size === 'sm' ? `${cls} w-32` : cls}
+        />
+        {opciones.length > 0 && (
+          <button type="button" onClick={() => { onChange(''); setModo('select') }}
+            className="text-[10px] text-muted hover:text-primary px-1" title="Volver al listado">↶</button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={e => {
+        const v = e.target.value
+        if (v === '__nueva__') { onChange(''); setModo('nueva'); return }
+        onChange(v)
+      }}
+      className={cls}
+    >
+      <option value="">— Sin ubicación —</option>
+      {opciones.map(o => <option key={o} value={o}>{o}</option>)}
+      <option value="__nueva__">+ Nueva ubicación...</option>
+    </select>
+  )
+}
+
 // ── Componente ────────────────────────────────────────────────────────────────
 export default function RecursosPage() {
   const { tenant, user } = useAuthStore()
@@ -184,6 +233,12 @@ export default function RecursosPage() {
     if (b === '—Sin ubicación—') return -1
     return a.localeCompare(b)
   })
+
+  // ISS-148 — Catálogo derivado de ubicaciones ya cargadas (recursos visibles
+  // están filtrados por sucursal vía applyFilter en la query principal).
+  const ubicacionesDisponibles = Array.from(
+    new Set(recursos.map(r => r.ubicacion?.trim()).filter((v): v is string => !!v))
+  ).sort((a, b) => a.localeCompare(b))
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const guardar = useMutation({
@@ -591,16 +646,12 @@ export default function RecursosPage() {
                       {/* Inline edit ubicación */}
                       {editUbic?.id === r.id ? (
                         <div className="flex items-center gap-1 shrink-0">
-                          <input
+                          <UbicacionPicker
+                            size="sm"
                             autoFocus
                             value={editUbic.valor}
-                            onChange={e => setEditUbic({ id: r.id, valor: e.target.value })}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') actualizarUbicacion.mutate({ id: r.id, ubicacion: editUbic.valor })
-                              if (e.key === 'Escape') setEditUbic(null)
-                            }}
-                            placeholder="Ej: Depósito, Oficina..."
-                            className="text-xs border border-border-ds rounded px-2 py-1 bg-surface text-primary w-32 focus:outline-none focus:border-accent"
+                            onChange={v => setEditUbic({ id: r.id, valor: v })}
+                            opciones={ubicacionesDisponibles}
                           />
                           <button onClick={() => actualizarUbicacion.mutate({ id: r.id, ubicacion: editUbic.valor })}
                             className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
@@ -671,17 +722,10 @@ export default function RecursosPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-muted mb-1 block">Ubicación *</label>
-                <input
+                <UbicacionPicker
                   value={ubicModalValor}
-                  onChange={e => setUbicModalValor(e.target.value)}
-                  placeholder="ej. Depósito, Oficina, Sala de reuniones..."
-                  className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary"
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && ubicModalRecursoId && ubicModalValor.trim()) {
-                      actualizarUbicacion.mutate({ id: ubicModalRecursoId, ubicacion: ubicModalValor })
-                      setShowUbicModal(false)
-                    }
-                  }}
+                  onChange={setUbicModalValor}
+                  opciones={ubicacionesDisponibles}
                 />
               </div>
             </div>
@@ -770,9 +814,11 @@ export default function RecursosPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-muted mb-1 block">Ubicación</label>
-                  <input value={form.ubicacion} onChange={e => setForm(f => ({ ...f, ubicacion: e.target.value }))}
-                    className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary"
-                    placeholder="ej. Depósito, Oficina..." />
+                  <UbicacionPicker
+                    value={form.ubicacion}
+                    onChange={v => setForm(f => ({ ...f, ubicacion: v }))}
+                    opciones={ubicacionesDisponibles}
+                  />
                 </div>
                 {form.estado !== 'pendiente_adquisicion' && (
                   <div>

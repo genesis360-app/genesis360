@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.11.3 — Cierre Trazabilidad-extendida: devoluciones + recall por producto (DEV)
+## v1.11.3 — Cierre Trazabilidad-extendida: devoluciones + recall por producto (PROD ✅)
 
 Completa la Trazabilidad-extendida (sin migration, solo código sobre mig 155). Las **devoluciones** ahora se registran en `/historial` (`tipo_transaccion='devolucion'`, agrupadas por transacción, con producto_id + LPN → entran al recall de la unidad). La transición reserva→despacho/devuelta queda clasificada. El filtro "Trazá una unidad" suma búsqueda por **producto (nombre/SKU)** además de LPN/serie.
 

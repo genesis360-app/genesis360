@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.11.2** ✅ (Trazabilidad-extendida /historial grado WMS [mig 155] + aislamiento por sucursal: guard setSucursal + rótulo "Stock total todas las sucursales") · DEV alineado con PROD
+Último release en PROD: **v1.11.3** ✅ (cierre Trazabilidad-extendida: devoluciones en /historial + reserva→despacho/devuelta clasificadas + recall por producto · solo código sobre mig 155) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,14 +14,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.3` (cierre trazabilidad, sin deployar) | `v1.11.2` |
+| APP_VERSION | `v1.11.3` | `v1.11.3` |
 | Migrations | 001–**155** ✅ | 001–**155** ✅ |
-| Branch | `dev` **adelante de** `main` (v1.11.3 sin deployar) | `main` (release v1.11.2) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.11.2 |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.11.3) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.11.3 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (v1.11.3 es solo código, usa columnas de mig 155 ya en PROD).
-
-**🔜 En DEV pendiente de deploy a PROD (v1.11.3):** cierre de Trazabilidad-extendida — devoluciones en `/historial` + reserva→despacho/devuelta clasificadas + filtro recall por producto. Solo código.
+**Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
 **Deployado en v1.11.2 (2026-05-30):**
 - **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.

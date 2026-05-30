@@ -6,9 +6,9 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-05-30] update | v1.11.3 — cierre Trazabilidad-extendida: devoluciones + recall por producto (en DEV)
+## [2026-05-30] update | v1.11.3 PROD — cierre Trazabilidad-extendida: devoluciones + recall por producto
 
-Cierre de los pendientes futuros de la Trazabilidad-extendida. **Solo código** (usa columnas de mig 155 ya en PROD), en DEV sin deployar.
+Cierre de los pendientes futuros de la Trazabilidad-extendida. **Solo código** (usa columnas de mig 155 ya en PROD). Deployado a PROD (PR #127, release v1.11.3).
 
 - **Devoluciones en `/historial`**: antes la mutación de devolución (`VentasPage`) no llamaba `logActividad` → las devoluciones no aparecían. Ahora cada ítem reintegrado emite una fila `tipo_transaccion='devolucion'`, agrupadas por `transaccion_id` (1 por devolución), con `producto_id` + LPN de la nueva línea (no-serie) → entran al recall de la unidad. Render legible (`describir` campo `devolución` → "Devolvió N u de Venta #X").
 - **Clasificación de estados**: la transición `cambiarEstado` (reserva→despacho, venta→devuelta) ahora tag `tipo_transaccion` (`venta`/`devolucion`) + `sucursal_id`.

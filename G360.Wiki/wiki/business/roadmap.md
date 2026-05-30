@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.11.3 — Cierre Trazabilidad-extendida: devoluciones + recall por producto (DEV)
+
+Completa la Trazabilidad-extendida (sin migration, solo código sobre mig 155). Las **devoluciones** ahora se registran en `/historial` (`tipo_transaccion='devolucion'`, agrupadas por transacción, con producto_id + LPN → entran al recall de la unidad). La transición reserva→despacho/devuelta queda clasificada. El filtro "Trazá una unidad" suma búsqueda por **producto (nombre/SKU)** además de LPN/serie.
+
 ## v1.11.2 — Trazabilidad-extendida (/historial grado WMS) + aislamiento sucursal (PROD ✅)
 
 Release que junta tres frentes. **Trazabilidad-extendida (mig 155)**: `actividad_log` pasa a ledger grado WMS (Manhattan/Blue Yonder) con `transaccion_id` + snapshots LPN/lote/serie. `/historial` (a) consolida las N filas de una acción en 1 transacción (cabecera + detalle), (b) suma filtro de recall "Trazá una unidad" por LPN/serie cruzando con `venta_item_despachos`, (c) export del set filtrado completo. **Aislamiento por sucursal**: guard de `setSucursal` (3ª capa cliente) + rótulo "Stock total (todas las sucursales)" en vista global. Decisión de diseño: ledger inmutable write-time, no heurística read-time.

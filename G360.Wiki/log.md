@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | v1.11.3 — cierre Trazabilidad-extendida: devoluciones + recall por producto (en DEV)
+
+Cierre de los pendientes futuros de la Trazabilidad-extendida. **Solo código** (usa columnas de mig 155 ya en PROD), en DEV sin deployar.
+
+- **Devoluciones en `/historial`**: antes la mutación de devolución (`VentasPage`) no llamaba `logActividad` → las devoluciones no aparecían. Ahora cada ítem reintegrado emite una fila `tipo_transaccion='devolucion'`, agrupadas por `transaccion_id` (1 por devolución), con `producto_id` + LPN de la nueva línea (no-serie) → entran al recall de la unidad. Render legible (`describir` campo `devolución` → "Devolvió N u de Venta #X").
+- **Clasificación de estados**: la transición `cambiarEstado` (reserva→despacho, venta→devuelta) ahora tag `tipo_transaccion` (`venta`/`devolucion`) + `sucursal_id`.
+- **Recall por producto**: `HistorialPage` suma input "Producto (nombre o SKU)" al panel "Trazá una unidad". Resuelve nombre/SKU → `producto_id` y cruza tanto los snapshots `producto_id` del ledger (`.or(producto_id.in.(...),entidad_nombre.ilike)`) como `venta_item_despachos.producto_id`. Incluido en el export.
+- Typecheck `tsc --noEmit` OK. Wiki: `reportes-metricas.md`, `project_pendientes.md`, `roadmap.md`, `log.md`. Bump `APP_VERSION` v1.11.3.
+
+---
+
 ## [2026-05-30] update | v1.11.2 PROD — Trazabilidad-extendida /historial grado WMS (mig 155) + aislamiento sucursal
 
 Pedido GO: que `/historial` sea el hub único de trazabilidad para recall/auditoría, "igual o mejor que un WMS como Manhattan / Blue Yonder". Decisión de diseño consensuada: **ledger inmutable con `transaccion_id` write-time**, NO heurística read-time (frágil/no auditable). **Deployado a PROD como v1.11.2** (mig 155 aplicada en DEV y PROD; release junta también el aislamiento por sucursal v1.11.2-candidato: guard setSucursal + rótulo stock global).

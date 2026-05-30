@@ -19,6 +19,7 @@ type Filtros = {
   buscar: string
   lpn: string         // trazabilidad por unidad (recall)
   serie: string
+  producto: string    // recall por producto (nombre o SKU)
 }
 
 // Una "transacción": una o varias filas de actividad_log que comparten transaccion_id.
@@ -94,6 +95,8 @@ function describir(log: any): string {
       if (!campo) return `Editó ${entidad} ${nombre}`
       if (campo === 'traslado')
         return `Trasladó ${entidad} ${nombre}: ${log.valor_anterior ?? '—'} → ${log.valor_nuevo ?? '—'}`
+      if (campo === 'devolución')
+        return `Devolvió ${log.valor_nuevo ?? ''} de ${entidad} ${nombre}${log.valor_anterior ? ` — ${log.valor_anterior}` : ''}`
       if (log.valor_anterior && log.valor_nuevo)
         return `Editó ${campo} de ${entidad} ${nombre}: "${log.valor_anterior}" → "${log.valor_nuevo}"`
       if (log.valor_nuevo)
@@ -130,7 +133,7 @@ function agruparTransacciones(logs: any[]): Transaccion[] {
   return out
 }
 
-const FILTROS_VACIOS: Filtros = { entidad: '', accion: '', tipo: '', usuario_id: '', desde: '', hasta: '', buscar: '', lpn: '', serie: '' }
+const FILTROS_VACIOS: Filtros = { entidad: '', accion: '', tipo: '', usuario_id: '', desde: '', hasta: '', buscar: '', lpn: '', serie: '', producto: '' }
 const PAGE_SIZES = [20, 50, 75, 100]
 
 export default function HistorialPage() {
@@ -150,13 +153,24 @@ export default function HistorialPage() {
   // Rol check
   const puedeVer = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
 
-  // Modo "trazá una unidad" (recall): al filtrar por LPN o serie traemos TODA la
-  // historia de esa unidad (sin paginar) y la cruzamos con venta_item_despachos.
-  const unitMode = !!(filtros.lpn.trim() || filtros.serie.trim())
+  // Modo "trazá una unidad" (recall): al filtrar por LPN / serie / producto traemos
+  // TODA la historia de esa unidad (sin paginar) cruzando con venta_item_despachos.
+  const unitMode = !!(filtros.lpn.trim() || filtros.serie.trim() || filtros.producto.trim())
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['actividad_log', tenant?.id, filtros, page, pageSize, unitMode],
     queryFn: async () => {
+      // Recall por producto: resolver nombre/SKU → ids (para cruzar con los snapshots producto_id)
+      let productoIds: string[] = []
+      if (filtros.producto.trim()) {
+        const { data: prods } = await supabase.from('productos')
+          .select('id')
+          .eq('tenant_id', tenant!.id)
+          .or(`nombre.ilike.%${filtros.producto}%,sku.ilike.%${filtros.producto}%`)
+          .limit(100)
+        productoIds = (prods ?? []).map((p: any) => p.id)
+      }
+
       let q = supabase.from('actividad_log')
         .select('*', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
@@ -171,6 +185,12 @@ export default function HistorialPage() {
       if (filtros.buscar)     q = q.ilike('entidad_nombre', `%${filtros.buscar}%`)
       if (filtros.lpn)        q = q.ilike('lpn', `%${filtros.lpn}%`)
       if (filtros.serie)      q = q.ilike('nro_serie', `%${filtros.serie}%`)
+      if (filtros.producto) {
+        // Filas con producto_id snapshot O filas legacy que solo tienen el nombre.
+        const ors = [`entidad_nombre.ilike.%${filtros.producto}%`]
+        if (productoIds.length) ors.unshift(`producto_id.in.(${productoIds.join(',')})`)
+        q = q.or(ors.join(','))
+      }
 
       if (unitMode) q = q.limit(1000)
       else          q = q.range(page * pageSize, (page + 1) * pageSize - 1)
@@ -182,11 +202,14 @@ export default function HistorialPage() {
       // Fase 2 — cruce con despachos de venta para reconstruir la historia de la unidad.
       if (unitMode) {
         let dq = supabase.from('venta_item_despachos')
-          .select('id, venta_id, lpn, nro_serie, cantidad, ubicacion_nombre, origen, created_at, ventas(numero)')
+          .select('id, venta_id, producto_id, lpn, nro_serie, cantidad, ubicacion_nombre, origen, created_at, ventas(numero)')
           .eq('tenant_id', tenant!.id)
         if (filtros.lpn)   dq = dq.ilike('lpn', `%${filtros.lpn}%`)
         if (filtros.serie) dq = dq.ilike('nro_serie', `%${filtros.serie}%`)
-        const { data: desp } = await dq.limit(1000)
+        if (filtros.producto && productoIds.length) dq = dq.in('producto_id', productoIds)
+        // Si se filtra solo por producto sin matches de id, no traer despachos.
+        const skipDesp = !!filtros.producto && !filtros.lpn && !filtros.serie && productoIds.length === 0
+        const { data: desp } = skipDesp ? { data: [] } : await dq.limit(1000)
         const synth = (desp ?? []).map((d: any) => ({
           id: `desp-${d.id}`,
           created_at: d.created_at,
@@ -265,6 +288,14 @@ export default function HistorialPage() {
       if (filtros.buscar)     q = q.ilike('entidad_nombre', `%${filtros.buscar}%`)
       if (filtros.lpn)        q = q.ilike('lpn', `%${filtros.lpn}%`)
       if (filtros.serie)      q = q.ilike('nro_serie', `%${filtros.serie}%`)
+      if (filtros.producto) {
+        const { data: prods } = await supabase.from('productos').select('id').eq('tenant_id', tenant.id)
+          .or(`nombre.ilike.%${filtros.producto}%,sku.ilike.%${filtros.producto}%`).limit(100)
+        const ids = (prods ?? []).map((p: any) => p.id)
+        const ors = [`entidad_nombre.ilike.%${filtros.producto}%`]
+        if (ids.length) ors.unshift(`producto_id.in.(${ids.join(',')})`)
+        q = q.or(ors.join(','))
+      }
 
       const { data } = await q
       const rows = (data ?? []).map((l: any) => ({
@@ -395,7 +426,13 @@ export default function HistorialPage() {
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
               <ScanLine size={13} /> Trazá una unidad (recall)
             </p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Producto (nombre o SKU)</label>
+                <input type="text" placeholder="Producto..." value={filtros.producto}
+                  onChange={e => { setFiltros(f => ({ ...f, producto: e.target.value })); setPage(0) }}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">LPN</label>
                 <input type="text" placeholder="LPN-XXXX" value={filtros.lpn}

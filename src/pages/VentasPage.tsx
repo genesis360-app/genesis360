@@ -1581,7 +1581,10 @@ export default function VentasPage() {
       // ISS-075: acumular el desglose de despacho por LPN/ubicación (solo despachada)
       const despachoRows: any[] = []
       const _hoy = new Date().toISOString().split('T')[0]
-      await Promise.all(cart.map(async (item, i) => {
+      // Procesamiento SECUENCIAL (no Promise.all): si el mismo producto está en varias
+      // líneas del carrito, el rebaje en paralelo leería el mismo stock y se pisaría (race).
+      for (let i = 0; i < cart.length; i++) {
+        const item = cart[i]
         const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
         const ventaItemId = insertedItems![i].id
 
@@ -1668,7 +1671,7 @@ export default function VentasPage() {
           }
           if (restante > 0.0001) throw new Error(`Stock insuficiente para "${item.nombre}" en esta sucursal.`)
         }
-      }))
+      }
 
       // ISS-075: persistir el desglose de despacho (fire-and-forget, no bloquea la venta)
       if (estado === 'despachada' && despachoRows.length > 0) {
@@ -1677,30 +1680,37 @@ export default function VentasPage() {
         })
       }
 
-      // ─── Fase 3: stock_actual + movimientos en paralelo (solo despachada) ────
+      // ─── Fase 3: movimientos de stock (solo despachada) ──────────────────────
+      // IMPORTANTE: el trigger `lineas_recalcular_stock` ya recalculó productos.stock_actual
+      // tras la Fase 2. NO lo actualizamos manualmente acá (hacerlo pisaba el valor correcto
+      // con un cálculo paralelo → race). Solo registramos los movimientos para el historial,
+      // agregando cantidades por producto (si el mismo producto está en varias líneas del carrito).
       if (estado === 'despachada') {
-        const productIds = [...new Set(cart.filter(i => !i.tiene_series).map(i => i.producto_id))]
+        const cantPorProducto: Record<string, number> = {}
+        for (const item of cart.filter(i => !i.tiene_series)) {
+          cantPorProducto[item.producto_id] = (cantPorProducto[item.producto_id] ?? 0) + item.cantidad
+        }
+        const productIds = Object.keys(cantPorProducto)
         if (productIds.length > 0) {
           const { data: prodsData } = await supabase.from('productos')
             .select('id, stock_actual, stock_minimo, nombre, sku').in('id', productIds)
           const prodMap = Object.fromEntries((prodsData ?? []).map(p => [p.id, p]))
           const movimientosRows: any[] = []
-          await Promise.all(cart.filter(i => !i.tiene_series).map(async item => {
-            const cant = item.cantidad
-            const prodData = prodMap[item.producto_id]
-            if (!prodData) return
-            const stockAntes = prodData.stock_actual
-            const stockDespues = Math.max(0, stockAntes - cant)
-            await supabase.from('productos').update({ stock_actual: stockDespues }).eq('id', item.producto_id)
+          for (const productoId of productIds) {
+            const prodData = prodMap[productoId]
+            if (!prodData) continue
+            const cant = cantPorProducto[productoId]
+            const stockDespues = prodData.stock_actual            // ya recalculado por el trigger
+            const stockAntes = stockDespues + cant                // reconstruido para el registro
             movimientosRows.push({
-              tenant_id: tenant!.id, producto_id: item.producto_id, tipo: 'rebaje', cantidad: cant,
+              tenant_id: tenant!.id, producto_id: productoId, tipo: 'rebaje', cantidad: cant,
               stock_antes: stockAntes, stock_despues: stockDespues,
               motivo: `Venta #${venta.numero}`, usuario_id: user?.id, venta_id: venta.id,
               sucursal_id: sucursalId || null,
             })
             if (stockDespues <= (prodData.stock_minimo ?? 0))
               stockAlertas.push({ nombre: prodData.nombre, sku: prodData.sku ?? '', stock_actual: stockDespues, stock_minimo: prodData.stock_minimo ?? 0 })
-          }))
+          }
           if (movimientosRows.length > 0)
             await supabase.from('movimientos_stock').insert(movimientosRows)
         }

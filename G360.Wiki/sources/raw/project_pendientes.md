@@ -63,9 +63,18 @@ Decisiones para implementar (no implementado aún):
 
 **Fix:** rebaje en 2 fases ([VentasPage.tsx Fase 2](src/pages/VentasPage.tsx)) — **Fase A** honra `item.lpn_fuentes` con cantidades exactas por LPN y en orden; **Fase B** completa por sort solo si quedó faltante (stock cambiado). Ahora el rebaje siempre coincide con los badges de LPN del carrito.
 
-**Limitación conocida pendiente:** la transición **reserva → despacho** (`cambiarEstado`) sigue rebajando por sort y no persiste la selección manual de LPN (venta_items solo guarda el `linea_id` principal). Afecta solo a reservas con selección manual multi-LPN, no a venta directa.
+**BUG-RACE (mismo producto en varias líneas del carrito):** además del sort, había una **race condition**. La Fase 2 y Fase 3 de `registrarVenta` corrían en `Promise.all` (paralelo). Con el mismo producto en 2 líneas del carrito, ambas leían el mismo stock inicial y se pisaban → distribución de rebaje por LPN incorrecta y `stock_actual` desfasado. Detectado en Venta #198 (2 movimientos leyeron `stock_antes=35` ambos).
 
-**Dato:** la Venta #196 (prueba) quedó con stock desfasado por el bug previo — corregir manualmente con Mover/Editar LPN si se quiere.
+**Causa de fondo:** el trigger `lineas_recalcular_stock` → `recalcular_stock(producto_id)` ya setea `stock_actual = SUM(cantidad de líneas activas)` (o COUNT de series activas). El update **manual** de `stock_actual` en Fase 3 de `registrarVenta` peleaba contra el trigger y lo pisaba con un valor racy.
+
+**Fix (en DEV):**
+1. Fase 2 ahora es **secuencial** (`for` en vez de `Promise.all`) → sin race entre líneas del mismo producto.
+2. Fase 3 **ya no actualiza `stock_actual` manualmente** (lo hace el trigger); solo registra movimientos, **agregados por producto** (un movimiento por producto con la cantidad total). `stock_antes` se reconstruye desde el `stock_actual` post-trigger.
+3. Esto además **auto-corrige** desfases históricos: al dejar el trigger como única fuente, `stock_actual` converge a la suma real de líneas.
+
+**Limitación conocida pendiente:** la transición **reserva → despacho** (`cambiarEstado`) (a) no persiste la selección manual de LPN (venta_items solo guarda `linea_id` principal) y (b) **también** actualiza `stock_actual` manualmente (mismo anti-patrón vs trigger — revisar y migrar al patrón de Fase 3). Afecta solo a reservas, no a venta directa.
+
+**Datos de prueba con stock desfasado:** Ventas #196 y #198 (Almacén Jorgito) quedaron con distribución por LPN incorrecta y/o `stock_actual` −1. Corregible con un recalc global (`recalcular_stock` por producto) + ajuste manual de líneas si importa la ubicación exacta.
 
 ### Deuda técnica / pendientes abiertos
 

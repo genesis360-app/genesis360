@@ -85,6 +85,19 @@ export default function MovimientosPage() {
     enabled: !!tenant,
   })
 
+  // ISS-075: desglose por LPN de un movimiento de venta (abarca varios LPN, no tiene linea_id única)
+  const { data: despachosMov = [] } = useQuery({
+    queryKey: ['movimiento-despachos', movDetalle?.venta_id],
+    queryFn: async () => {
+      const { data } = await supabase.from('venta_item_despachos')
+        .select('lpn, ubicacion_nombre, cantidad, nro_serie')
+        .eq('venta_id', movDetalle!.venta_id)
+        .order('created_at', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!movDetalle?.venta_id,
+  })
+
   const { data: productosBusqueda = [] } = useQuery({
     queryKey: ['productos-busqueda', tenant?.id, form.productoSearch],
     queryFn: async () => {
@@ -645,12 +658,27 @@ export default function MovimientosPage() {
                         </div>
                       )}
                     </>
+                  ) : movDetalle.venta_id && (despachosMov as any[]).length > 0 ? (
+                    <div className="col-span-2">
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-1.5">Surtido desde (LPN / ubicación)</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(despachosMov as any[]).map((d: any, di: number) => (
+                          <span key={di} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
+                            {d.nro_serie
+                              ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
+                              : <>{d.cantidad}u{d.lpn ? ` · ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   ) : (
                     <div className="col-span-2">
                       <p className="text-xs text-amber-500 italic">
                         {movDetalle.linea_id
                           ? 'La línea de inventario asociada ya no está disponible'
-                          : 'Sin línea asociada — movimiento registrado antes del sistema de trazabilidad'}
+                          : movDetalle.venta_id
+                            ? 'Venta anterior al registro de desglose por LPN'
+                            : 'Sin línea asociada — movimiento registrado antes del sistema de trazabilidad'}
                       </p>
                     </div>
                   )}

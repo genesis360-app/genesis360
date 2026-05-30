@@ -3,7 +3,7 @@ title: Multi-Sucursal
 category: features
 tags: [sucursales, multi-sucursal, filtros, selector, roles, stock-por-sucursal]
 sources: [CLAUDE.md]
-updated: 2026-05-13
+updated: 2026-05-30
 ---
 
 # Multi-Sucursal
@@ -94,8 +94,8 @@ applyFilter(query)
 
 | Módulo/página | Estado | Acción requerida |
 |---|---|---|
-| InventarioPage | ✅ filtra | — |
-| MovimientosPage | ✅ filtra | — |
+| InventarioPage | ✅ filtra | — (incluye tab Historial de movimientos + Agregar/Quitar stock) |
+| ~~MovimientosPage~~ | 🗑️ eliminada v1.11.1 | Era huérfana (`/movimientos` redirige a `/inventario`). La UI vive en InventarioPage |
 | VentasPage | ✅ filtra | — |
 | GastosPage | ✅ filtra | — |
 | CajaPage | ✅ filtra | — |
@@ -242,6 +242,27 @@ const puedeVerTodas =
 
 ---
 
+## Aislamiento por sucursal — enforcement (v1.11.2-dev · 2026-05-30)
+
+**Requerimiento (GO):** un usuario que trabaja en una sola sucursal (CAJERO y cualquier rol con `puede_ver_todas = false`) **nunca** debe poder ver ni operar datos de otra sucursal. Alternar / ver "Todas" es facultad solo del **DUEÑO** y de los roles que el dueño habilite explícitamente (`puede_ver_todas = true`).
+
+### Triple blindaje (cliente)
+
+1. **Fijado al cargar** (`authStore.loadUserData`): `effectiveSucursalId = puedeVerTodas ? validSucursalId : (userData.sucursal_id ?? null)`. Un usuario sin vista global **ignora el localStorage** y queda en su sucursal asignada.
+2. **Selector oculto** (`AppLayout`): el control de sucursal del header solo se muestra/habilita con `puedeVerTodas`. Los demás ven un label fijo de solo lectura.
+3. **`setSucursal` guard** (v1.11.2): `if (!get().puedeVerTodas) return` — ignora cualquier intento de cambio aunque se invoque por código. Es la tercera capa.
+
+### Display "Agregar Stock / Rebaje" (v1.11.2)
+
+- Con sucursal activa (o destino elegido en vista global) → **"Stock en sucursal: X"** (valor de esa sucursal, query reactiva `stockEnSucursal`).
+- En vista global "Todas" → **"Stock total (todas las sucursales): X"** (rótulo explícito para no confundir el global con el de la sucursal). Solo lo ven roles con `puedeVerTodas`.
+
+### ⚠️ Limitación conocida — RLS es por TENANT, no por sucursal
+
+El triple blindaje es **del lado del cliente (la app)**. La RLS de la DB filtra por `tenant_id`, **no** por `sucursal_id`. Un usuario técnico con las credenciales podría, vía API directa, consultar datos de otra sucursal del mismo tenant. Para que el aislamiento sea **imposible a nivel servidor** hay que agregar **RLS por sucursal** en las tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …), cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. **Pendiente** — ver `project_pendientes.md` → "Aislamiento por sucursal a nivel RLS".
+
+---
+
 ## Selector de sucursal por módulo (v1.8.18 — 2026-05-13)
 
 El header muestra distinto control según la ruta activa:
@@ -289,6 +310,10 @@ async function getStockAntesSucursal(productoId: string, efectivaSucId: string |
 **`sucursal_id` ahora se guarda en** todos los inserts de `movimientos_stock` e `inventario_lineas` (kitting, des-kitting, autorizaciones, masivo inline).
 
 **Display en formularios:** "Stock en sucursal: X" cuando hay sucursal activa (reactivo, `staleTime: 0`). Columnas "Stock prev./Stock nuevo" ocultadas en tabs Agregar/Quitar — solo visibles en Historial.
+
+### Extensión a movimientos de venta (v1.11.1 · ISS-075)
+
+Los movimientos generados por una **venta** (`registrarVenta` Fase 3 + transición reserva→despacho) ahora registran `stock_antes/despues` con el **stock vendible de la sucursal de la venta** (`stockVendibleSucursal`: líneas activas con estado `es_disponible_venta` + ubicación pickeable en esa sucursal), no el total global del producto. Además se removió el update manual de `productos.stock_actual` en esos flujos: lo maneja el trigger `lineas_recalcular_stock` (`stock_actual = SUM líneas activas`) — el update manual peleaba con el trigger y desincronizaba/doble-restaba. Ver `project_pendientes.md` → BUG-RACE.
 
 ---
 

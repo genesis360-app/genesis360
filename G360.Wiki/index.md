@@ -32,7 +32,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/notificaciones]] | Tabla real, campana, email, diferencia apertura caja — v1.5.0 | ✅ |
 | [[wiki/features/suscripciones-planes]] | Planes Free/Básico/Pro/Enterprise, trial, Mercado Pago | ✅ |
 | [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku (scan-product) + scan-ticket IA (v1.8.38): ticket supermercado → recepciones + productos | ✅ |
-| [[wiki/features/multi-sucursal]] | Selector, roles, stock · SucursalesPage consolidada v1.8.38 (todos los campos en un modal) · backfill 114–117 · filtros estrictos · cajas por sucursal | ✅ |
+| [[wiki/features/multi-sucursal]] | Selector, roles, stock · SucursalesPage consolidada v1.8.38 (todos los campos en un modal) · backfill 114–117 · filtros estrictos · cajas por sucursal · **aislamiento por sucursal** (triple blindaje cliente + RLS-por-sucursal pendiente) v1.11.2-dev | ✅ |
 | [[wiki/features/alertas]] | Stock bajo, LPNs vencidos, reservas viejas, sin categoría, deuda · filtro por sucursal | ✅ |
 | [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos · ISS-111/112/114 fixes · **v1.8.45**: capitalización (`capitaliza_recurso`) + card "Mantenimiento acumulado" + chips Mantto/Cap en cada card | ✅ |
 | [[wiki/features/reportes-metricas]] | Dashboard 9 áreas, SQL Runner, aging individual · fix categoria FK (KPIs en 0) · filtro sucursal inclusivo + banner · nueva nav (area+sub-tabs) | ✅ |

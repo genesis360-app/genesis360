@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | Aislamiento por sucursal + stock display Agregar Stock (en DEV, v1.11.2-candidato)
+
+Cierre de sesión. Cambios en DEV **sin deployar a PROD** (esperan validación de GO → v1.11.2).
+
+- **Display Agregar Stock/Rebaje**: en vista global "Todas" el form mostraba "Stock total" (global) sin aclarar; ahora rotula **"Stock total (todas las sucursales)"**. Con sucursal activa o destino elegido ya mostraba "Stock en sucursal". No es bug — es la vista global.
+- **Aislamiento por sucursal (pedido GO)**: un usuario sin `puedeVerTodas` (CAJERO, roles no habilitados) no debe poder ver/operar otra sucursal. **Triple blindaje cliente**: (1) fijado a su sucursal al cargar (`effectiveSucursalId`), (2) selector de header oculto, (3) **nuevo guard en `setSucursal`** (`if (!get().puedeVerTodas) return`). Documentado en `multi-sucursal.md` → "Aislamiento por sucursal — enforcement".
+- **Limitación marcada**: la RLS es por `tenant_id`, no por `sucursal_id` → el aislamiento real (a prueba de API directa) requiere **RLS por sucursal**. Agregado a `project_pendientes.md` (Deuda técnica) como pendiente grande.
+- Commits en dev: rótulo stock (`9b18734a`), guard setSucursal (`71bec577`). Pendiente bump v1.11.2 + merge a main cuando GO valide.
+
+---
+
 ## [2026-05-30] update | v1.11.1 PROD — patch ISS-075 (manual/auto + stock vendible + Inventario→Historial)
 
 Patch correctivo tras QA de GO sobre v1.11.0. Sin migrations nuevas.

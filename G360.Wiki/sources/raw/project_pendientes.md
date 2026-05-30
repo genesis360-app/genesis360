@@ -10,18 +10,23 @@ type: project
 
 ---
 
-## Estado actual DEV / PROD — cierre sesión 2026-05-29
+## Estado actual DEV / PROD — cierre sesión 2026-05-30
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.1` | `v1.11.1` |
+| APP_VERSION | `v1.11.1` (+ commits v1.11.2-candidato) | `v1.11.1` |
 | Migrations | 001–154 ✅ | 001–154 ✅ |
-| Branch | `dev` alineado con `main` | `main` (release v1.11.1) |
+| Branch | `dev` **adelante de** `main` (3 commits sin deployar) | `main` (release v1.11.1) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.11.1 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (v1.11.1 no agrega migrations)
+**Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
-**Post-deploy PROD:** correr recalc global de `stock_actual` (`PERFORM recalcular_stock(id)` por producto) para sanear desfases históricos del bug de doble-update.
+**🔜 En DEV pendiente de deploy a PROD (v1.11.2 cuando GO valide):**
+- Rótulo explícito "Stock total (todas las sucursales)" en Agregar Stock/Rebaje (vista global).
+- **Guard de `setSucursal`**: usuario sin `puedeVerTodas` no puede cambiar de sucursal (3ª capa de aislamiento). Ver `multi-sucursal.md` → "Aislamiento por sucursal — enforcement".
+- (Bump `APP_VERSION` a v1.11.2 al deployar.)
+
+**Recalc global de `stock_actual`** ya corrido en DEV (113 prod.) y PROD (21 prod.) — 0 desfasados.
 
 ---
 
@@ -89,6 +94,7 @@ Visión: `/historial` (HistorialPage) debe ser el **hub único de trazabilidad c
 
 | Área | Descripción |
 |---|---|
+| **Aislamiento por sucursal a nivel RLS** | **Pedido GO 2026-05-30.** Hoy el aislamiento por sucursal es **solo cliente** (triple blindaje: fijado al cargar + selector oculto + guard de `setSucursal`). La RLS de la DB es por `tenant_id`, no por `sucursal_id` → un usuario técnico con credenciales podría leer otra sucursal vía API directa. Para que sea **imposible a nivel servidor**: RLS por sucursal en tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …) cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. Cambio grande (políticas en N tablas) — diseñar antes. Detalle en `multi-sucursal.md`. |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
 | Relevamientos | 5 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos) esperando respuestas de GO + socio. Ventas A-D ya respondido (ver `relevamiento_ventas_respuestas.md`), faltan E-L |
 

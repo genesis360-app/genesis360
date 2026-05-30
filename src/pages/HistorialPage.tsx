@@ -154,7 +154,7 @@ export default function HistorialPage() {
     queryFn: async () => {
       const [{ data: items }, { data: despachos }] = await Promise.all([
         supabase.from('venta_items').select('id, cantidad, precio_unitario, subtotal, productos(nombre, sku)').eq('venta_id', ventaSelId),
-        supabase.from('venta_item_despachos').select('venta_item_id, lpn, ubicacion_nombre, cantidad, nro_serie').eq('venta_id', ventaSelId).order('created_at', { ascending: true }),
+        supabase.from('venta_item_despachos').select('venta_item_id, lpn, ubicacion_nombre, cantidad, nro_serie, origen').eq('venta_id', ventaSelId).order('created_at', { ascending: true }),
       ])
       return { items: (items ?? []) as any[], despachos: (despachos ?? []) as any[] }
     },
@@ -464,6 +464,7 @@ export default function HistorialPage() {
                                     {d.nro_serie
                                       ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
                                       : <>{d.cantidad}u{d.lpn ? ` · ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                                    {d.origen && <span className="ml-1 text-gray-400 dark:text-gray-500">· {d.origen}</span>}
                                   </span>
                                 ))}
                               </div>

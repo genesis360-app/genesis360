@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | v1.11.0 PROD — ISS-075 trazabilidad + ISS-151 CC + fix race rebaje + log de asignación
+
+Release grande. Cierre de toda la sesión 075/151 + bugs encontrados en QA → PROD.
+
+- **Feature log de asignación (mig 154)**: `venta_item_despachos.origen` (`manual`/`auto`) + `tenants.trazabilidad_asignacion` (toggle en Config → Inventario, default ON). El desglose ahora indica si cada LPN lo eligió el operador o la regla de rebaje.
+- **Trazabilidad en /historial**: el detalle de una venta en HistorialPage trae `venta_items` + `venta_item_despachos` y muestra, por ítem, de qué LPN/ubicación/serie salió cada unidad (con `origen`). También en VentasPage (detalle) y MovimientosPage (detalle de movimiento de venta).
+- **Fix race condition (crítico)**: `registrarVenta` procesaba las líneas del carrito en `Promise.all`. Con el mismo producto en 2 líneas, el rebaje se pisaba (race). Ahora **secuencial**. Además Fase 3 (y el B1 de reserva→despacho) **ya no actualizan `stock_actual` a mano** — lo hace el trigger `lineas/series_recalcular_stock` (`stock_actual = SUM líneas activas`). El update manual peleaba con el trigger y desincronizaba/doble-restaba.
+- **Recalc global** de `stock_actual` corrido en DEV (113 productos, 0 desfasados) y en PROD post-deploy.
+- **Versión** `v1.11.0` (feature). Migrations 153+154 aplicadas en PROD antes del merge ([[feedback_deploy_order_migrations_aditivas]]).
+- Pendiente futuro: Trazabilidad-extendida (consolidar todas las transacciones en /historial) — ver `project_pendientes.md`.
+
+---
+
 ## [2026-05-29] update | ISS-075 despacho por LPN (mig 153) + ISS-151 impl + fix BUG-LPN manual — todo en DEV
 
 **ISS-075 — implementado en DEV** (mig 153 aplicada en DEV, pendiente PROD):

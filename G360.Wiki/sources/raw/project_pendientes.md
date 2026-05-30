@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.4** ✅ (ISS-178 rangos horarios + C3/A7 relevamiento Ventas) · DEV alineado con PROD
+Último release en PROD: **v1.11.0** ✅ (ISS-075 trazabilidad despacho por LPN + ISS-151 condonar/revertir CC + fix race rebaje) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,12 +14,14 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.10.4` | `v1.10.4` |
-| Migrations | 001–153 ✅ | 001–152 ✅ |
-| Branch | `dev` (ISS-075 en curso) | `main` (release v1.10.4) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.10.4 |
+| APP_VERSION | `v1.11.0` | `v1.11.0` |
+| Migrations | 001–154 ✅ | 001–154 ✅ |
+| Branch | `dev` alineado con `main` | `main` (release v1.11.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.11.0 |
 
-**Migrations DEV pendientes de aplicar en PROD:** **153** (`venta_item_despachos`, ISS-075) — aplicar antes del próximo merge `dev → main` ([[feedback_deploy_order_migrations_aditivas]])
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (153+154 aplicadas en el deploy v1.11.0)
+
+**Post-deploy PROD:** correr recalc global de `stock_actual` (`PERFORM recalcular_stock(id)` por producto) para sanear desfases históricos del bug de doble-update.
 
 ---
 
@@ -39,7 +41,7 @@ type: project
 
 | ID | Módulo | Descripción | Estado |
 |---|---|---|---|
-| ISS-075 | Historial | Trazabilidad de despacho y movimientos. **🔄 En DEV (mig 153)**: (1) nueva tabla `venta_item_despachos` con desglose por LPN/ubicación de cada ítem vendido (capturado en `registrarVenta` Fase 2 + transición reserva→despacho); (2) modal detalle de venta muestra el desglose por LPN; (3) ingreso/rebaje manual (MovimientosPage) ahora se vuelcan al `actividad_log` con acciones `ingreso_stock`/`rebaje_stock` (origen/destino + ubicación + LPN); (4) traslado LpnAccionesModal enriquecido con ubicación origen. **Ya existía**: cambio LPN/ubicación/lote/venc en edición LPN. **Pendiente**: ISS-075 ya cubre lo solicitado; falta deploy a PROD | 🔄 DEV |
+| ISS-075 | Historial | Trazabilidad de despacho y movimientos. **✅ v1.11.0 (mig 153+154)**: (1) tabla `venta_item_despachos` con desglose por LPN/ubicación/serie de cada ítem vendido + campo `origen` (`manual`/`auto`); (2) detalle de venta (VentasPage), detalle de movimiento (MovimientosPage) y **/historial** (HistorialPage) muestran el desglose completo por LPN; (3) ingreso/rebaje manual se vuelcan al `actividad_log` (`ingreso_stock`/`rebaje_stock`); (4) traslado con ubicación origen→destino; (5) toggle `tenants.trazabilidad_asignacion` en Config → Inventario. **Pendiente futuro**: consolidar aún más el /historial (ver nota Trazabilidad-extendida abajo) | ✅ v1.11.0 |
 | ISS-080 | Alertas | Filtrar por sucursal todas las queries de AlertasPage | ✅ Resuelto 2026-05-28 — cruce client-side con `inventario_lineas`+`PSMSS` para stock; cruce con `inventario_lineas` para productos sin categoría |
 | ISS-108 | Header / Mobile | Selector de sucursal invisible en celular | ✅ Resuelto 2026-05-28 — bloque mobile con ícono Building2 + nombre + `<select>` transparente superpuesto |
 | ISS-148 | Recursos | Input texto libre para ubicación | ✅ Resuelto 2026-05-28 — componente `UbicacionPicker` (select con opciones del histórico de la sucursal + opción "+ Nueva ubicación") en form crear/editar, modal asignar y edit inline |
@@ -74,7 +76,14 @@ Decisiones para implementar (no implementado aún):
 
 **Limitación conocida pendiente:** la transición **reserva → despacho** (`cambiarEstado`) (a) no persiste la selección manual de LPN (venta_items solo guarda `linea_id` principal) y (b) **también** actualiza `stock_actual` manualmente (mismo anti-patrón vs trigger — revisar y migrar al patrón de Fase 3). Afecta solo a reservas, no a venta directa.
 
-**Datos de prueba con stock desfasado:** Ventas #196 y #198 (Almacén Jorgito) quedaron con distribución por LPN incorrecta y/o `stock_actual` −1. Corregible con un recalc global (`recalcular_stock` por producto) + ajuste manual de líneas si importa la ubicación exacta.
+**Datos de prueba con stock desfasado:** Ventas #196 y #198 (Almacén Jorgito) quedaron con distribución por LPN incorrecta y/o `stock_actual` −1. **Recalc global corrido en DEV** (113 productos, 0 desfasados). En PROD correr el recalc post-deploy.
+
+### Trazabilidad-extendida (futuro — pedido GO 2026-05-30)
+
+Visión: `/historial` (HistorialPage) debe ser el **hub único de trazabilidad completa** para recall / auditoría / análisis. Ya muestra el desglose de despacho por venta (v1.11.0). Falta consolidar:
+- Mostrar el detalle completo de cada transacción (no solo ventas): edición de LPN (lote/venc/estado/ubicación origen→destino), traslados, ingresos/rebajes — hoy están en `actividad_log` como filas por-campo separadas; consolidarlas por "transacción".
+- Filtro por producto/LPN/serie para reconstruir la historia de una unidad puntual.
+- Export completo para recall.
 
 ### Deuda técnica / pendientes abiertos
 

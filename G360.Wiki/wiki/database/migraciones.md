@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-153)
+# Historial de Migraciones (001-154)
 
-**Total al 2026-05-29:** 153 archivos de migración + 086b correctivo (153 solo en DEV).  
+**Total al 2026-05-30:** 154 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -216,7 +216,8 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 150 | `150_gastos_pago_parcial.sql` | **ISS-190** · `monto_pagado NUMERIC` + `estado_pago TEXT` (`pendiente/parcial/pagado`) en `gastos`. Backfill: gastos con `medio_pago` → `pagado`; sin medio → `pendiente`. Índice por `(tenant_id, estado_pago)` |
 | 151 | `151_empleados_user_id_unique.sql` | **RRHH-A5** · UNIQUE parcial `empleados(tenant_id, user_id) WHERE user_id IS NOT NULL`. Garantiza que un user del sistema esté vinculado a un único empleado por tenant. Habilita "Mi Equipo" del SUPERVISOR (`get_supervisor_team_ids` mapea `auth.uid()` → `empleados.user_id` unívocamente) |
 | 152 | `152_envios_rangos_horarios.sql` | **ISS-178** · `tenants.envio_rangos_horarios JSONB NOT NULL DEFAULT` con seed de 3 rangos típicos (8-13/13-18/18-22) + `envios.rango_horario_desde/hasta TIME` (snapshot al momento del envío, no rompe si después se borra el rango). Editable en Config → Envíos, selector en modal de envío de VentasPage y form de EnviosPage |
-| 153 | `153_venta_item_despachos.sql` | **ISS-075** · Nueva tabla `venta_item_despachos`: desglose de despacho por LPN/ubicación de cada `venta_item` (una fila por porción/línea de origen o por serie). Campos texto (`lpn`, `ubicacion_nombre`, `nro_serie`) = snapshot intacto ante edición/borrado del LPN. RLS por tenant. Capturada en `registrarVenta` Fase 2 + transición reserva→despacho. **Pendiente de aplicar en PROD** |
+| 153 | `153_venta_item_despachos.sql` | **ISS-075** · Nueva tabla `venta_item_despachos`: desglose de despacho por LPN/ubicación de cada `venta_item` (una fila por porción/línea de origen o por serie). Campos texto (`lpn`, `ubicacion_nombre`, `nro_serie`) = snapshot intacto ante edición/borrado del LPN. RLS por tenant. Capturada en `registrarVenta` Fase 2 + transición reserva→despacho |
+| 154 | `154_trazabilidad_asignacion_stock.sql` | **ISS-075** · `venta_item_despachos.origen TEXT` (`manual`/`auto`: si el LPN lo eligió el operador o la regla de rebaje del sistema) + `tenants.trazabilidad_asignacion BOOLEAN DEFAULT TRUE` (toggle en Config → Inventario para activar/desactivar el registro del desglose) |
 
 ---
 

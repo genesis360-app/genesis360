@@ -9,9 +9,15 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 29 de Mayo, 2026
+**Última actualización:** 30 de Mayo, 2026
 
 ---
+
+## v1.11.0 — ISS-075 trazabilidad despacho por LPN + ISS-151 CC + fix race rebaje (PROD ✅)
+
+- **ISS-075** — trazabilidad de despacho: tabla `venta_item_despachos` (desglose por LPN/ubicación/serie de cada ítem vendido + `origen` manual/auto). Visible en detalle de venta, detalle de movimiento y `/historial`. Ingreso/rebaje manual al `actividad_log`. Toggle en Config → Inventario. Migrations 153+154.
+- **ISS-151** — Cuenta Corriente: Condonar (write-off) + Revertir (restaura deuda), solo DUEÑO/SUPERVISOR/ADMIN. Dashboard excluye pseudo-métodos (CC/condonación) del mix de medios de pago.
+- **Fix race condition (crítico)**: rebaje de venta era paralelo (`Promise.all`) → con el mismo producto en varias líneas del carrito se pisaba. Ahora secuencial. `stock_actual` lo maneja solo el trigger (se removió el update manual que lo desincronizaba). Recalc global de saneo.
 
 ## v1.10.4 — ISS-178 rangos horarios + C3/A7 relevamiento Ventas (PROD ✅)
 

@@ -90,7 +90,7 @@ export default function MovimientosPage() {
     queryKey: ['movimiento-despachos', movDetalle?.venta_id],
     queryFn: async () => {
       const { data } = await supabase.from('venta_item_despachos')
-        .select('lpn, ubicacion_nombre, cantidad, nro_serie')
+        .select('lpn, ubicacion_nombre, cantidad, nro_serie, origen')
         .eq('venta_id', movDetalle!.venta_id)
         .order('created_at', { ascending: true })
       return data ?? []
@@ -667,6 +667,7 @@ export default function MovimientosPage() {
                             {d.nro_serie
                               ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
                               : <>{d.cantidad}u{d.lpn ? ` · ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                            {d.origen && <span className="text-gray-400 dark:text-gray-500"> · {d.origen}</span>}
                           </span>
                         ))}
                       </div>

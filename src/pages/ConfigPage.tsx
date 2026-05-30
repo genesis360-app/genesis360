@@ -414,6 +414,7 @@ export default function ConfigPage() {
   const [bizTipoPersonalizado, setBizTipoPersonalizado] = useState(_enLista ? '' : _currentTipo)
   const [bizRegla, setBizRegla] = useState(tenant?.regla_inventario ?? 'FIFO')
   const [bizOverReceipt, setBizOverReceipt] = useState(tenant?.permite_over_receipt ?? false)
+  const [bizTrazaAsignacion, setBizTrazaAsignacion] = useState((tenant as any)?.trazabilidad_asignacion ?? true)
   const [bizTimeout, setBizTimeout] = useState<string>(
     tenant?.session_timeout_minutes != null ? String(tenant.session_timeout_minutes) : 'nunca'
   )
@@ -559,6 +560,7 @@ export default function ConfigPage() {
     const updatePayload: any = {
       nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla,
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
+      trazabilidad_asignacion: bizTrazaAsignacion,
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
       whatsapp_plantilla: bizWAPlantilla.trim() || null,
       costo_envio_por_km: bizCostoKm ? parseFloat(bizCostoKm) : null,
@@ -2292,6 +2294,19 @@ export default function ConfigPage() {
                     ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
                   <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform
                     ${bizOverReceipt ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Trazabilidad de asignación de stock</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Registra de qué LPN/ubicación/serie se surtió cada unidad de cada venta, y si fue selección manual o automática. Permite seguir el rastro completo (recall, auditoría) desde Historial y el detalle de venta.</p>
+                </div>
+                <button type="button" disabled={!canEdit} onClick={() => setBizTrazaAsignacion((p: boolean) => !p)}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none
+                    ${bizTrazaAsignacion ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}
+                    ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform
+                    ${bizTrazaAsignacion ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
               </div>
               {canEdit && (

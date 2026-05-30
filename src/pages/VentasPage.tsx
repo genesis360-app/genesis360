@@ -804,7 +804,7 @@ export default function VentasPage() {
     queryKey: ['venta-despachos', ventaDetalle?.id],
     queryFn: async () => {
       const { data } = await supabase.from('venta_item_despachos')
-        .select('venta_item_id, lpn, ubicacion_nombre, cantidad, nro_serie')
+        .select('venta_item_id, lpn, ubicacion_nombre, cantidad, nro_serie, origen')
         .eq('venta_id', ventaDetalle!.id)
         .order('created_at', { ascending: true })
       return data ?? []
@@ -1606,7 +1606,7 @@ export default function VentasPage() {
                 tenant_id: tenant!.id, venta_id: venta.id, venta_item_id: ventaItemId, producto_id: item.producto_id,
                 linea_id: s?.linea_id ?? null, lpn: s?.lpn ?? null,
                 ubicacion_id: s?.ubicacion_id ?? null, ubicacion_nombre: s?.ubicacion_nombre ?? null,
-                cantidad: 1, nro_serie: s?.nro_serie ?? null,
+                cantidad: 1, nro_serie: s?.nro_serie ?? null, origen: 'manual',
               })
             }
           }
@@ -1629,7 +1629,7 @@ export default function VentasPage() {
 
           // Consume hasta `qty` unidades de una línea concreta. Muta el objeto in-memory
           // para que la fase de fallback no vuelva a contar lo ya consumido.
-          const consumirLinea = async (linea: any, qty: number): Promise<number> => {
+          const consumirLinea = async (linea: any, qty: number, origen: 'manual' | 'auto'): Promise<number> => {
             if (qty <= 0) return 0
             if (estado === 'reservada') {
               const areservar = Math.min((linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0), qty)
@@ -1644,37 +1644,39 @@ export default function VentasPage() {
             const nuevaCant = linea.cantidad - rebajar
             await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
             linea.cantidad = nuevaCant
-            // ISS-075: una fila de despacho por LPN consumido (snapshot)
+            // ISS-075: una fila de despacho por LPN consumido (snapshot + origen manual/auto)
             despachoRows.push({
               tenant_id: tenant!.id, venta_id: venta.id, venta_item_id: ventaItemId, producto_id: item.producto_id,
               linea_id: linea.id, lpn: linea.lpn ?? null,
               ubicacion_id: linea.ubicacion_id ?? null, ubicacion_nombre: linea.ubicaciones?.nombre ?? null,
-              cantidad: rebajar, nro_serie: null,
+              cantidad: rebajar, nro_serie: null, origen,
             })
             return rebajar
           }
 
           let restante = cant
           // Fase A — ISS-075: honrar la selección manual de LPN del carrito (item.lpn_fuentes),
-          // respetando las cantidades exactas que el usuario asignó a cada LPN, en orden.
+          // respetando las cantidades exactas que el usuario asignó a cada LPN, en orden. origen='manual'.
           const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
           for (const f of (item.lpn_fuentes ?? [])) {
             if (restante <= 0) break
             const linea = lineaById[f.linea_id]
             if (!linea) continue   // la línea elegida ya no tiene stock → se cubre en la Fase B
-            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante))
+            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante), 'manual')
           }
-          // Fase B — fallback por orden de sort para cubrir cualquier faltante
+          // Fase B — fallback por orden de sort (regla de rebaje del sistema). origen='auto'.
           for (const linea of lineas) {
             if (restante <= 0) break
-            restante -= await consumirLinea(linea, restante)
+            restante -= await consumirLinea(linea, restante, 'auto')
           }
           if (restante > 0.0001) throw new Error(`Stock insuficiente para "${item.nombre}" en esta sucursal.`)
         }
       }
 
       // ISS-075: persistir el desglose de despacho (fire-and-forget, no bloquea la venta)
-      if (estado === 'despachada' && despachoRows.length > 0) {
+      // Gate por toggle del tenant (Config → Inventario → Trazabilidad de asignación de stock)
+      const trazaAsignacionOn = (tenant as any)?.trazabilidad_asignacion !== false
+      if (trazaAsignacionOn && estado === 'despachada' && despachoRows.length > 0) {
         void supabase.from('venta_item_despachos').insert(despachoRows).then(({ error }) => {
           if (error) console.warn('No se pudo registrar el desglose de despacho:', error.message)
         })
@@ -2425,7 +2427,7 @@ export default function VentasPage() {
                 linea_id: s.linea_id ?? null, lpn: s.inventario_lineas?.lpn ?? null,
                 ubicacion_id: s.inventario_lineas?.ubicacion_id ?? null,
                 ubicacion_nombre: s.inventario_lineas?.ubicaciones?.nombre ?? null,
-                cantidad: 1, nro_serie: s.nro_serie ?? null,
+                cantidad: 1, nro_serie: s.nro_serie ?? null, origen: 'manual',
               })
             }
             // Desactivar series y quitar reserva
@@ -2460,17 +2462,18 @@ export default function VentasPage() {
                 tenant_id: tenant!.id, venta_id: ventaId, venta_item_id: item.id, producto_id: item.producto_id,
                 linea_id: linea.id, lpn: (linea as any).lpn ?? null,
                 ubicacion_id: (linea as any).ubicacion_id ?? null, ubicacion_nombre: (linea as any).ubicaciones?.nombre ?? null,
-                cantidad: rebajar, nro_serie: null,
+                cantidad: rebajar, nro_serie: null, origen: 'auto',
               })
             }
           }
-          // B1: Sincronizar stock_actual y registrar movimiento
+          // B1: Registrar movimiento. NO actualizamos stock_actual a mano: el trigger
+          // (lineas/series_recalcular_stock) ya lo recalculó tras la rebaja de arriba.
+          // Actualizarlo acá restaría DE NUEVO (doble resta). stock_antes se reconstruye.
           const { data: prodData } = await supabase.from('productos')
             .select('stock_actual').eq('id', item.producto_id).single()
           if (prodData) {
-            const stockAntes = prodData.stock_actual
-            const stockDespues = Math.max(0, stockAntes - item.cantidad)
-            await supabase.from('productos').update({ stock_actual: stockDespues }).eq('id', item.producto_id)
+            const stockDespues = prodData.stock_actual            // ya recalculado por el trigger
+            const stockAntes = stockDespues + item.cantidad       // reconstruido para el registro
             await supabase.from('movimientos_stock').insert({
               tenant_id: tenant!.id,
               producto_id: item.producto_id,
@@ -2484,8 +2487,8 @@ export default function VentasPage() {
             })
           }
         }
-        // ISS-075: persistir el desglose de despacho (fire-and-forget)
-        if (despachoRows.length > 0) {
+        // ISS-075: persistir el desglose de despacho (fire-and-forget, gate por toggle del tenant)
+        if ((tenant as any)?.trazabilidad_asignacion !== false && despachoRows.length > 0) {
           void supabase.from('venta_item_despachos').insert(despachoRows).then(({ error }) => {
             if (error) console.warn('No se pudo registrar el desglose de despacho:', error.message)
           })
@@ -3875,6 +3878,7 @@ export default function VentasPage() {
                               {d.nro_serie
                                 ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
                                 : <>{d.cantidad}u{d.lpn ? ` · LPN ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                              {d.origen && <span className="text-gray-400 dark:text-gray-500">· {d.origen}</span>}
                             </span>
                           ))}
                         </div>

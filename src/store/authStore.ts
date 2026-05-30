@@ -22,7 +22,7 @@ interface AuthState {
   loadUserData: (authUserId: string) => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   tenant: null,
   sucursales: [],
@@ -37,6 +37,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) => set({ user }),
   setTenant: (tenant) => set({ tenant }),
   setSucursal: (id) => {
+    // Seguridad: un usuario sin vista global NO puede cambiar de sucursal — queda fijado
+    // a la suya asignada. Evita que vea (o cargue stock en) otra sucursal. Solo DUEÑO y
+    // roles habilitados (puedeVerTodas) pueden alternar o elegir "Todas".
+    if (!get().puedeVerTodas) return
     localStorage.setItem('sucursal-id', id ?? '__global__')
     set({ sucursalId: id })
   },

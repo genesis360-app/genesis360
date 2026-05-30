@@ -2604,7 +2604,7 @@ export default function InventarioPage() {
                         <p className="text-xs text-gray-400 dark:text-gray-500">
                           {selectedProduct.sku} | {effSucursalIngreso
                             ? <>Stock en sucursal: <span className="font-semibold text-primary">{stockEnSucursal ?? '…'}</span></>
-                            : <>Stock total: {(selectedProduct as any).stock_actual}</>}
+                            : <>Stock total (todas las sucursales): {(selectedProduct as any).stock_actual}</>}
                         </p>
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {(selectedProduct as any).tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1.5 py-0.5 rounded">Nº serie</span>}
@@ -2964,7 +2964,7 @@ export default function InventarioPage() {
                         <p className="text-xs text-gray-400 dark:text-gray-500">
                           {selectedProduct.sku} | {sucursalId
                             ? <>Stock en sucursal: <span className="font-semibold text-primary">{stockEnSucursal ?? '…'}</span></>
-                            : <>Stock total: {(selectedProduct as any).stock_actual}</>}
+                            : <>Stock total (todas las sucursales): {(selectedProduct as any).stock_actual}</>}
                         </p>
                         <div className="flex gap-1 mt-1 flex-wrap">
                           {(selectedProduct as any).tiene_series && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-600 px-1.5 py-0.5 rounded">Nº serie</span>}

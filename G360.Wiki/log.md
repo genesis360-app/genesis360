@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | v1.11.2 PROD — Trazabilidad-extendida /historial grado WMS (mig 155) + aislamiento sucursal
+
+Pedido GO: que `/historial` sea el hub único de trazabilidad para recall/auditoría, "igual o mejor que un WMS como Manhattan / Blue Yonder". Decisión de diseño consensuada: **ledger inmutable con `transaccion_id` write-time**, NO heurística read-time (frágil/no auditable). **Deployado a PROD como v1.11.2** (mig 155 aplicada en DEV y PROD; release junta también el aislamiento por sucursal v1.11.2-candidato: guard setSucursal + rótulo stock global).
+
+- **Mig 155** (`155_actividad_log_ledger.sql`, aditiva): `actividad_log` += `transaccion_id`, `tipo_transaccion`, `producto_id`, `lpn`, `nro_serie`, `lote`, `sucursal_id` (todas nullables/snapshot). Sin backfill: filas legacy quedan con `transaccion_id` NULL = evento único. Índices por transacción + unidad (producto/lpn/serie). Aplicada en DEV + `schema_full.sql`.
+- **logActividad** (`actividadLog.ts`): nuevos campos opcionales + helper `nuevaTransaccion()` (`crypto.randomUUID()`). Tipo `TipoTransaccion`.
+- **Call-sites**: `LpnAccionesModal` edición de LPN ahora genera **1 `transaccion_id`** para todas las filas (antes hasta 7 sueltas) + clasifica `tipo_transaccion` y snapshots (lpn/serie/lote) en traslado/eliminación/serie. `InventarioPage` ingreso/rebaje y `VentasPage` creación de venta también clasifican tipo + snapshots.
+- **HistorialPage (3 fases)**: (1) **consolida** filas por `transaccion_id` en 1 tarjeta ("Editó LPN X — N cambios") con detalle campo por campo en el modal (cabecera+detalle); (2) **filtro recall** "Trazá una unidad" por LPN/serie que cruza `actividad_log` + `venta_item_despachos` y muestra la historia completa sin paginar; (3) **export** del set filtrado completo (hasta 10k filas) con columnas del ledger. Nuevo filtro "Transacción" (tipo WMS).
+- Typecheck `tsc --noEmit` OK. Wiki: `reportes-metricas.md`, `migraciones.md`, `project_pendientes.md`, `index.md`, `log.md`.
+- **Pendiente futuro**: `transaccion_id` en devoluciones y reserva→despacho; filtro de unidad por `producto_id` además de LPN/serie.
+
+---
+
 ## [2026-05-30] update | Aislamiento por sucursal + stock display Agregar Stock (en DEV, v1.11.2-candidato)
 
 Cierre de sesión. Cambios en DEV **sin deployar a PROD** (esperan validación de GO → v1.11.2).

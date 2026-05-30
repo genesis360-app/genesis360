@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.11.1** ✅ (patch ISS-075: manual/auto correcto + stock vendible por sucursal en movimiento + desglose LPN en Inventario→Historial + log de ingreso/rebaje manual + borrada MovimientosPage huérfana) · DEV alineado con PROD
+Último release en PROD: **v1.11.2** ✅ (Trazabilidad-extendida /historial grado WMS [mig 155] + aislamiento por sucursal: guard setSucursal + rótulo "Stock total todas las sucursales") · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,17 +14,17 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.1` (+ commits v1.11.2-candidato) | `v1.11.1` |
-| Migrations | 001–154 ✅ | 001–154 ✅ |
-| Branch | `dev` **adelante de** `main` (3 commits sin deployar) | `main` (release v1.11.1) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.11.1 |
+| APP_VERSION | `v1.11.2` | `v1.11.2` |
+| Migrations | 001–**155** ✅ | 001–**155** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.11.2) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.11.2 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
-**🔜 En DEV pendiente de deploy a PROD (v1.11.2 cuando GO valide):**
+**Deployado en v1.11.2 (2026-05-30):**
+- **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.
 - Rótulo explícito "Stock total (todas las sucursales)" en Agregar Stock/Rebaje (vista global).
 - **Guard de `setSucursal`**: usuario sin `puedeVerTodas` no puede cambiar de sucursal (3ª capa de aislamiento). Ver `multi-sucursal.md` → "Aislamiento por sucursal — enforcement".
-- (Bump `APP_VERSION` a v1.11.2 al deployar.)
 
 **Recalc global de `stock_actual`** ya corrido en DEV (113 prod.) y PROD (21 prod.) — 0 desfasados.
 
@@ -83,12 +83,17 @@ Decisiones para implementar (no implementado aún):
 
 **Datos de prueba con stock desfasado:** Ventas #196 y #198 (Almacén Jorgito) quedaron con distribución por LPN incorrecta y/o `stock_actual` −1. **Recalc global corrido en DEV** (113 productos, 0 desfasados). En PROD correr el recalc post-deploy.
 
-### Trazabilidad-extendida (futuro — pedido GO 2026-05-30)
+### Trazabilidad-extendida — ✅ implementado en DEV (mig 155, 2026-05-30)
 
-Visión: `/historial` (HistorialPage) debe ser el **hub único de trazabilidad completa** para recall / auditoría / análisis. Ya muestra el desglose de despacho por venta (v1.11.0). Falta consolidar:
-- Mostrar el detalle completo de cada transacción (no solo ventas): edición de LPN (lote/venc/estado/ubicación origen→destino), traslados, ingresos/rebajes — hoy están en `actividad_log` como filas por-campo separadas; consolidarlas por "transacción".
-- Filtro por producto/LPN/serie para reconstruir la historia de una unidad puntual.
-- Export completo para recall.
+Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único de trazabilidad grado WMS** (Manhattan / Blue Yonder) para recall / auditoría / análisis. **Implementado en DEV** (mig 155, pendiente deploy PROD):
+
+- ✅ **Consolidar por transacción**: `actividad_log` pasa a ledger con `transaccion_id` (+ `tipo_transaccion`, `producto_id`, `lpn`, `nro_serie`, `lote`, `sucursal_id`). Las N filas de una acción (ej: editar LPN con 4 campos) comparten id → 1 tarjeta en `/historial` ("Editó LPN X — 4 cambios"), expandible campo por campo. Filas legacy (`transaccion_id` NULL) siguen como evento único. Helper `nuevaTransaccion()` en `actividadLog.ts`.
+- ✅ **Filtro por LPN/serie (recall)**: panel "Trazá una unidad" reconstruye la historia completa de una unidad cruzando `actividad_log` + `venta_item_despachos`, sin paginar.
+- ✅ **Export completo**: Excel del set filtrado completo (no solo la página, hasta 10k filas) con columnas del ledger.
+
+**Decisión de diseño** (GO preguntó cómo igualar/superar un WMS tier-1): se eligió `transaccion_id` write-time (ledger inmutable, auditable), **no** heurística read-time por minuto (frágil, no auditable para recall). Snapshots de LPN/lote/serie desde el día 1.
+
+**Pendiente futuro**: registrar `transaccion_id` también en devoluciones y en reserva→despacho; trazar por `producto_id` además de LPN/serie (hoy el filtro de unidad usa LPN/serie).
 
 ### Deuda técnica / pendientes abiertos
 

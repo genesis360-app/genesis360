@@ -982,7 +982,7 @@ export default function InventarioPage() {
 
       // ISS-075: datos para el log del Historial (se capturan antes de cerrar/reset el modal)
       const ubicNombre = form.ubicacionId ? (ubicaciones as any[]).find((u: any) => u.id === form.ubicacionId)?.nombre : null
-      return { nombre: (selectedProduct as any).nombre, cant, unidad: (selectedProduct as any).unidad_medida, lineaId: linea.id, ubicNombre, lpn: linea.lpn, motivo: form.motivo }
+      return { nombre: (selectedProduct as any).nombre, cant, unidad: (selectedProduct as any).unidad_medida, lineaId: linea.id, ubicNombre, lpn: linea.lpn, motivo: form.motivo, productoId: selectedProduct.id, lote: linea.nro_lote ?? null, sucursalId: sucursalId || null }
     },
     onSuccess: (data: any) => {
       toast.success('Ingreso registrado')
@@ -992,6 +992,7 @@ export default function InventarioPage() {
         entidad: 'inventario_linea', entidad_id: data?.lineaId, entidad_nombre: data?.nombre ?? '',
         accion: 'ingreso_stock', campo: `${data?.cant} ${data?.unidad ?? 'u'}`,
         valor_nuevo: destino, valor_anterior: data?.motivo || null, pagina: '/inventario',
+        tipo_transaccion: 'ingreso', producto_id: data?.productoId, lpn: data?.lpn ?? null, lote: data?.lote, sucursal_id: data?.sucursalId,
       })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -1044,7 +1045,7 @@ export default function InventarioPage() {
 
       // ISS-075: datos para el log del Historial (origen: ubicación + LPN de la línea rebajada)
       const ubicOrigen = (rebajeLinea as any).ubicaciones?.nombre ?? null
-      return { nombre: (selectedProduct as any).nombre, cant, unidad: (selectedProduct as any).unidad_medida, lineaId: rebajeLinea.id, ubicOrigen, lpn: rebajeLinea.lpn, motivo: rebajeMotivo }
+      return { nombre: (selectedProduct as any).nombre, cant, unidad: (selectedProduct as any).unidad_medida, lineaId: rebajeLinea.id, ubicOrigen, lpn: rebajeLinea.lpn, motivo: rebajeMotivo, productoId: selectedProduct.id, lote: rebajeLinea.nro_lote ?? null, sucursalId: sucursalId || null }
     },
     onSuccess: (data: any) => {
       toast.success('Rebaje registrado')
@@ -1054,6 +1055,7 @@ export default function InventarioPage() {
         entidad: 'inventario_linea', entidad_id: data?.lineaId, entidad_nombre: data?.nombre ?? '',
         accion: 'rebaje_stock', campo: `${data?.cant} ${data?.unidad ?? 'u'}`,
         valor_anterior: origen, valor_nuevo: data?.motivo || null, pagina: '/inventario',
+        tipo_transaccion: 'rebaje', producto_id: data?.productoId, lpn: data?.lpn ?? null, lote: data?.lote, sucursal_id: data?.sucursalId,
       })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })

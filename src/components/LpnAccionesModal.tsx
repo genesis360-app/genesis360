@@ -7,7 +7,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import type { Sucursal } from '@/lib/supabase'
-import { logActividad } from '@/lib/actividadLog'
+import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { LpnQR } from '@/components/LpnQR'
 import toast from 'react-hot-toast'
 import type { ProductoEstructura } from '@/lib/supabase'
@@ -220,25 +220,34 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         )
       }
 
-      // Audit log: loguear cada campo modificado
+      // Audit log: una sola transacción (mig 155) agrupa todos los campos
+      // modificados en esta edición. Snapshots de LPN/serie/lote para recall.
       const resolveNombre = (lista: any[], id: string) => lista.find((x: any) => x.id === id)?.nombre ?? id
       const oldLpn = linea.lpn ?? ''
       const newLpn = editForm.lpn || linea.lpn
+      const txId = nuevaTransaccion()
+      const ledger = {
+        entidad: 'inventario_linea' as const, entidad_id: linea.id, entidad_nombre: producto.nombre,
+        pagina: '/inventario', transaccion_id: txId, tipo_transaccion: 'edicion' as const,
+        producto_id: producto.id, lpn: newLpn ?? null, nro_serie: null as string | null,
+        lote: (editForm.nro_lote || linea.nro_lote) ?? null,
+        sucursal_id: (editForm.sucursal_id || linea.sucursal_id) ?? null,
+      }
       if (oldLpn !== newLpn)
-        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'lpn', valor_anterior: oldLpn, valor_nuevo: newLpn, pagina: '/inventario' })
+        logActividad({ ...ledger, accion: 'editar', campo: 'lpn', valor_anterior: oldLpn, valor_nuevo: newLpn })
       if (!tieneSeries && cantNueva !== cantVieja)
-        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'cantidad', valor_anterior: String(cantVieja), valor_nuevo: String(cantNueva), pagina: '/inventario' })
+        logActividad({ ...ledger, accion: 'editar', campo: 'cantidad', valor_anterior: String(cantVieja), valor_nuevo: String(cantNueva) })
       if ((editForm.estado_id || '') !== (linea.estado_id || ''))
-        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'cambio_estado', campo: 'estado', valor_anterior: linea.estado_id ? resolveNombre(estados, linea.estado_id) : null, valor_nuevo: editForm.estado_id ? resolveNombre(estados, editForm.estado_id) : null, pagina: '/inventario' })
+        logActividad({ ...ledger, accion: 'cambio_estado', campo: 'estado', valor_anterior: linea.estado_id ? resolveNombre(estados, linea.estado_id) : null, valor_nuevo: editForm.estado_id ? resolveNombre(estados, editForm.estado_id) : null })
       if ((editForm.ubicacion_id || '') !== (linea.ubicacion_id || ''))
-        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'ubicacion', valor_anterior: linea.ubicacion_id ? resolveNombre(ubicaciones, linea.ubicacion_id) : null, valor_nuevo: editForm.ubicacion_id ? resolveNombre(ubicaciones, editForm.ubicacion_id) : null, pagina: '/inventario' })
+        logActividad({ ...ledger, accion: 'editar', campo: 'ubicacion', valor_anterior: linea.ubicacion_id ? resolveNombre(ubicaciones, linea.ubicacion_id) : null, valor_nuevo: editForm.ubicacion_id ? resolveNombre(ubicaciones, editForm.ubicacion_id) : null })
       if ((editForm.sucursal_id || '') !== (linea.sucursal_id || ''))
-        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'sucursal', valor_anterior: linea.sucursal_id ? resolveNombre(sucursales as any[], linea.sucursal_id) : null, valor_nuevo: editForm.sucursal_id ? resolveNombre(sucursales as any[], editForm.sucursal_id) : null, pagina: '/inventario' })
+        logActividad({ ...ledger, accion: 'editar', campo: 'sucursal', valor_anterior: linea.sucursal_id ? resolveNombre(sucursales as any[], linea.sucursal_id) : null, valor_nuevo: editForm.sucursal_id ? resolveNombre(sucursales as any[], editForm.sucursal_id) : null })
       if ((editForm.nro_lote || '') !== (linea.nro_lote || ''))
-        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'nro_lote', valor_anterior: linea.nro_lote ?? null, valor_nuevo: editForm.nro_lote || null, pagina: '/inventario' })
+        logActividad({ ...ledger, accion: 'editar', campo: 'nro_lote', valor_anterior: linea.nro_lote ?? null, valor_nuevo: editForm.nro_lote || null })
       const oldVenc = linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : ''
       if ((editForm.fecha_vencimiento || '') !== oldVenc)
-        logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'fecha_vencimiento', valor_anterior: oldVenc || null, valor_nuevo: editForm.fecha_vencimiento || null, pagina: '/inventario' })
+        logActividad({ ...ledger, accion: 'editar', campo: 'fecha_vencimiento', valor_anterior: oldVenc || null, valor_nuevo: editForm.fecha_vencimiento || null })
     },
     onSuccess: (result: any) => {
       if (result?.esAutorizacion) {
@@ -290,7 +299,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
       const ubicNombre = (ubicaciones as any[]).find(u => u.id === ubicDestino)?.nombre ?? ubicDestino
       const ubicOrigen = (linea.ubicaciones?.nombre ?? (ubicaciones as any[]).find(u => u.id === linea.ubicacion_id)?.nombre) || 'sin ubicación'
-      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'traslado', valor_anterior: `${ubicOrigen} · ${linea.lpn} (${linea.cantidad} u.)`, valor_nuevo: `${ubicNombre} · ${newLpn} (${cant} u.)`, pagina: '/inventario' })
+      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'traslado', valor_anterior: `${ubicOrigen} · ${linea.lpn} (${linea.cantidad} u.)`, valor_nuevo: `${ubicNombre} · ${newLpn} (${cant} u.)`, pagina: '/inventario', tipo_transaccion: 'traslado', producto_id: producto.id, lpn: newLpn, lote: linea.nro_lote ?? null, sucursal_id: sucursalFinal })
     },
     onSuccess: () => { toast.success('Stock movido — nuevo LPN creado'); invalidar(); onClose() },
     onError: (e: Error) => toast.error(e.message),
@@ -321,7 +330,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (cantEliminada > 0) {
         await registrarMovimiento('rebaje', cantEliminada, `Eliminación del LPN ${linea.lpn}`, stockAntes, Math.max(0, stockAntes - cantEliminada))
       }
-      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'eliminar', valor_anterior: `LPN ${linea.lpn} (${cantEliminada} u.)`, pagina: '/inventario' })
+      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'eliminar', valor_anterior: `LPN ${linea.lpn} (${cantEliminada} u.)`, pagina: '/inventario', tipo_transaccion: 'eliminacion', producto_id: producto.id, lpn: linea.lpn ?? null, lote: linea.nro_lote ?? null, sucursal_id: linea.sucursal_id ?? null })
     },
     onSuccess: (result: any) => {
       if (result?.esAutorizacion) {
@@ -354,7 +363,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
       const stockAntes = prodAntes?.stock_actual ?? 0
       await registrarMovimiento('ingreso', 1, `Serie ${newSerie.trim()} agregada al LPN ${linea.lpn}`, stockAntes, stockAntes + 1)
-      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie', valor_nuevo: newSerie.trim(), pagina: '/inventario' })
+      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'serie', valor_nuevo: newSerie.trim(), pagina: '/inventario', tipo_transaccion: 'ingreso', producto_id: producto.id, lpn: linea.lpn ?? null, nro_serie: newSerie.trim(), lote: linea.nro_lote ?? null, sucursal_id: linea.sucursal_id ?? null })
     },
     onSuccess: () => { toast.success('Serie agregada'); setNewSerie(''); invalidar() },
     onError: (e: Error) => toast.error(e.message),

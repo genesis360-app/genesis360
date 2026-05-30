@@ -847,11 +847,23 @@ CREATE TABLE IF NOT EXISTS actividad_log (
   valor_anterior  TEXT,
   valor_nuevo     TEXT,
   pagina          TEXT,
+  -- Ledger / trazabilidad-extendida (mig 155)
+  transaccion_id    UUID,   -- cabecera logica: agrupa las filas de UNA accion del usuario
+  tipo_transaccion  TEXT,   -- ingreso/rebaje/traslado/ajuste/edicion/venta/devolucion/eliminacion
+  producto_id       UUID,
+  lpn               TEXT,   -- snapshot del LPN afectado (recall por unidad)
+  nro_serie         TEXT,   -- snapshot de la serie afectada
+  lote              TEXT,   -- snapshot del lote afectado
+  sucursal_id       UUID,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS actividad_log_tenant_idx  ON actividad_log (tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS actividad_log_entidad_idx ON actividad_log (tenant_id, entidad);
 CREATE INDEX IF NOT EXISTS actividad_log_usuario_idx ON actividad_log (tenant_id, usuario_id);
+CREATE INDEX IF NOT EXISTS actividad_log_transaccion_idx ON actividad_log (transaccion_id);
+CREATE INDEX IF NOT EXISTS actividad_log_producto_idx ON actividad_log (tenant_id, producto_id);
+CREATE INDEX IF NOT EXISTS actividad_log_lpn_idx       ON actividad_log (tenant_id, lpn);
+CREATE INDEX IF NOT EXISTS actividad_log_serie_idx     ON actividad_log (tenant_id, nro_serie);
 ALTER TABLE actividad_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "actividad_log_insert" ON actividad_log
   FOR INSERT WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));

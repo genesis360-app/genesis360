@@ -133,9 +133,21 @@ Formatos: **Excel** (XLSX) · **PDF** (jsPDF + jspdf-autotable)
 `src/pages/HistorialPage.tsx` (`/historial`) — **Acceso:** Plan Básico+
 
 - Log de `actividad_log` (audit trail completo)
-- Filtros: fecha / categoría / tipo / motivo
+- Filtros: fecha / entidad / **transacción (tipo WMS)** / acción / usuario / nombre
 - Filas clickeables → modal detalle (entidad, ID, acción, valor anterior/nuevo, usuario)
 - Paginación: selector 20/50/75/100 + primera/última página
+
+### Trazabilidad-extendida — hub de recall (mig 155)
+
+Objetivo (pedido GO 2026-05-30): que `/historial` sea el **hub único de trazabilidad grado WMS** (Manhattan / Blue Yonder). La tabla `actividad_log` pasó de log plano a **ledger trazable** con 7 columnas nuevas: `transaccion_id`, `tipo_transaccion`, `producto_id`, `lpn`, `nro_serie`, `lote`, `sucursal_id` (todas snapshot, retrocompatible — filas legacy quedan con `transaccion_id = NULL`).
+
+**1. Consolidación por transacción** — una acción del usuario que toca N campos (ej: editar un LPN cambiando lote + vencimiento + ubicación) genera N filas que comparten `transaccion_id`. `/historial` las agrupa en **una sola tarjeta** ("Editó LPN X — 3 cambios: lote, vencimiento, ubicación"), expandible en el modal con el detalle campo por campo (cabecera + detalle). Antes eran N eventos sueltos. Helper `nuevaTransaccion()` en `actividadLog.ts` genera el id; los call-sites (`LpnAccionesModal`, `InventarioPage`, `VentasPage`) lo pasan a cada `logActividad()` de la misma acción.
+
+**2. Trazabilidad por unidad (recall)** — filtro "Trazá una unidad" por **LPN o N° de serie**. Reconstruye la historia completa de esa unidad cruzando `actividad_log` (ingresos, traslados, ediciones, eliminaciones) con `venta_item_despachos` (de qué LPN/ubicación se despachó en cada venta). En este modo se muestra todo sin paginar, ordenado cronológicamente.
+
+**3. Export completo** — el botón Excel exporta el **set filtrado completo** (no solo la página visible, hasta 10.000 filas) con las columnas del ledger (Tipo, LPN, Serie, Lote, Transacción).
+
+`tipo_transaccion`: `ingreso` · `rebaje` · `traslado` · `ajuste` · `edicion` · `venta` · `devolucion` · `eliminacion`.
 
 ### ISS-075 — Movimientos de stock en el Historial (mig 153)
 

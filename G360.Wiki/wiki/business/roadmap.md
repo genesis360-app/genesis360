@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.11.2 — Trazabilidad-extendida (/historial grado WMS) + aislamiento sucursal (PROD ✅)
+
+Release que junta tres frentes. **Trazabilidad-extendida (mig 155)**: `actividad_log` pasa a ledger grado WMS (Manhattan/Blue Yonder) con `transaccion_id` + snapshots LPN/lote/serie. `/historial` (a) consolida las N filas de una acción en 1 transacción (cabecera + detalle), (b) suma filtro de recall "Trazá una unidad" por LPN/serie cruzando con `venta_item_despachos`, (c) export del set filtrado completo. **Aislamiento por sucursal**: guard de `setSucursal` (3ª capa cliente) + rótulo "Stock total (todas las sucursales)" en vista global. Decisión de diseño: ledger inmutable write-time, no heurística read-time.
+
 ## v1.11.1 — Patch ISS-075: manual/auto + stock vendible por sucursal + Inventario→Historial (PROD ✅)
 
 Correctivo tras QA. Sin migrations. (a) `origen` manual/auto correcto (solo LPN elegidos por el operador son manual); (b) stock del movimiento de venta = vendible en la sucursal (no el total global); (c) desglose por LPN en el modal de Inventario→Historial (vivía en InventarioPage, no en la huérfana MovimientosPage, que se eliminó); (d) ingreso/rebaje manual al Historial de actividad portado a InventarioPage.

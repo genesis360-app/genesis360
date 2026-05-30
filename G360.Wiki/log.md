@@ -6,6 +6,30 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | v1.11.2 PROD — Trazabilidad-extendida /historial grado WMS (mig 155) + aislamiento sucursal
+
+Pedido GO: que `/historial` sea el hub único de trazabilidad para recall/auditoría, "igual o mejor que un WMS como Manhattan / Blue Yonder". Decisión de diseño consensuada: **ledger inmutable con `transaccion_id` write-time**, NO heurística read-time (frágil/no auditable). **Deployado a PROD como v1.11.2** (mig 155 aplicada en DEV y PROD; release junta también el aislamiento por sucursal v1.11.2-candidato: guard setSucursal + rótulo stock global).
+
+- **Mig 155** (`155_actividad_log_ledger.sql`, aditiva): `actividad_log` += `transaccion_id`, `tipo_transaccion`, `producto_id`, `lpn`, `nro_serie`, `lote`, `sucursal_id` (todas nullables/snapshot). Sin backfill: filas legacy quedan con `transaccion_id` NULL = evento único. Índices por transacción + unidad (producto/lpn/serie). Aplicada en DEV + `schema_full.sql`.
+- **logActividad** (`actividadLog.ts`): nuevos campos opcionales + helper `nuevaTransaccion()` (`crypto.randomUUID()`). Tipo `TipoTransaccion`.
+- **Call-sites**: `LpnAccionesModal` edición de LPN ahora genera **1 `transaccion_id`** para todas las filas (antes hasta 7 sueltas) + clasifica `tipo_transaccion` y snapshots (lpn/serie/lote) en traslado/eliminación/serie. `InventarioPage` ingreso/rebaje y `VentasPage` creación de venta también clasifican tipo + snapshots.
+- **HistorialPage (3 fases)**: (1) **consolida** filas por `transaccion_id` en 1 tarjeta ("Editó LPN X — N cambios") con detalle campo por campo en el modal (cabecera+detalle); (2) **filtro recall** "Trazá una unidad" por LPN/serie que cruza `actividad_log` + `venta_item_despachos` y muestra la historia completa sin paginar; (3) **export** del set filtrado completo (hasta 10k filas) con columnas del ledger. Nuevo filtro "Transacción" (tipo WMS).
+- Typecheck `tsc --noEmit` OK. Wiki: `reportes-metricas.md`, `migraciones.md`, `project_pendientes.md`, `index.md`, `log.md`.
+- **Pendiente futuro**: `transaccion_id` en devoluciones y reserva→despacho; filtro de unidad por `producto_id` además de LPN/serie.
+
+---
+
+## [2026-05-30] update | Aislamiento por sucursal + stock display Agregar Stock (en DEV, v1.11.2-candidato)
+
+Cierre de sesión. Cambios en DEV **sin deployar a PROD** (esperan validación de GO → v1.11.2).
+
+- **Display Agregar Stock/Rebaje**: en vista global "Todas" el form mostraba "Stock total" (global) sin aclarar; ahora rotula **"Stock total (todas las sucursales)"**. Con sucursal activa o destino elegido ya mostraba "Stock en sucursal". No es bug — es la vista global.
+- **Aislamiento por sucursal (pedido GO)**: un usuario sin `puedeVerTodas` (CAJERO, roles no habilitados) no debe poder ver/operar otra sucursal. **Triple blindaje cliente**: (1) fijado a su sucursal al cargar (`effectiveSucursalId`), (2) selector de header oculto, (3) **nuevo guard en `setSucursal`** (`if (!get().puedeVerTodas) return`). Documentado en `multi-sucursal.md` → "Aislamiento por sucursal — enforcement".
+- **Limitación marcada**: la RLS es por `tenant_id`, no por `sucursal_id` → el aislamiento real (a prueba de API directa) requiere **RLS por sucursal**. Agregado a `project_pendientes.md` (Deuda técnica) como pendiente grande.
+- Commits en dev: rótulo stock (`9b18734a`), guard setSucursal (`71bec577`). Pendiente bump v1.11.2 + merge a main cuando GO valide.
+
+---
+
 ## [2026-05-30] update | v1.11.1 PROD — patch ISS-075 (manual/auto + stock vendible + Inventario→Historial)
 
 Patch correctivo tras QA de GO sobre v1.11.0. Sin migrations nuevas.

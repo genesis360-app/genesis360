@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { format, parseISO, startOfDay, endOfDay, subDays } from 'date-fns'
+import { format, parseISO, startOfDay, endOfDay } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { ClipboardList, Filter, X, Download, ChevronRight, User, Package, ShoppingCart, Tag, Truck, MapPin, CircleDot, MessageSquare, TrendingDown, Gift } from 'lucide-react'
+import { ClipboardList, Filter, X, Download, ChevronRight, User, Package, ShoppingCart, Tag, Truck, MapPin, CircleDot, MessageSquare, TrendingDown, Gift, ScanLine, Layers } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -12,11 +12,17 @@ import { UpgradePrompt } from '@/components/UpgradePrompt'
 type Filtros = {
   entidad: string
   accion: string
+  tipo: string        // tipo_transaccion (clasificación WMS)
   usuario_id: string
   desde: string
   hasta: string
   buscar: string
+  lpn: string         // trazabilidad por unidad (recall)
+  serie: string
 }
+
+// Una "transacción": una o varias filas de actividad_log que comparten transaccion_id.
+type Transaccion = { tx: string | null; rows: any[] }
 
 const ENTIDAD_ICONS: Record<string, any> = {
   producto: Package,
@@ -55,6 +61,18 @@ const ACCION_LABELS: Record<string, { label: string; color: string; bg: string }
   rebaje_stock:  { label: 'Rebajó',        color: 'text-blue-700 dark:text-blue-400',   bg: 'bg-blue-100 dark:bg-blue-900/30'  },
 }
 
+// Clasificación WMS de la transacción (mig 155)
+const TIPO_TX_LABELS: Record<string, string> = {
+  ingreso:     'Ingreso de stock',
+  rebaje:      'Rebaje de stock',
+  traslado:    'Traslado',
+  ajuste:      'Ajuste',
+  edicion:     'Edición',
+  venta:       'Venta',
+  devolucion:  'Devolución',
+  eliminacion: 'Eliminación',
+}
+
 function describir(log: any): string {
   const entidad = ENTIDAD_LABELS[log.entidad] ?? log.entidad
   const nombre = log.entidad_nombre ? `"${log.entidad_nombre}"` : ''
@@ -74,6 +92,8 @@ function describir(log: any): string {
     case 'editar': {
       const campo = log.campo
       if (!campo) return `Editó ${entidad} ${nombre}`
+      if (campo === 'traslado')
+        return `Trasladó ${entidad} ${nombre}: ${log.valor_anterior ?? '—'} → ${log.valor_nuevo ?? '—'}`
       if (log.valor_anterior && log.valor_nuevo)
         return `Editó ${campo} de ${entidad} ${nombre}: "${log.valor_anterior}" → "${log.valor_nuevo}"`
       if (log.valor_nuevo)
@@ -87,7 +107,30 @@ function describir(log: any): string {
   }
 }
 
-const FILTROS_VACIOS: Filtros = { entidad: '', accion: '', usuario_id: '', desde: '', hasta: '', buscar: '' }
+// Resumen de una transacción (cabecera). Multi-fila → "Editó LPN X — 3 cambios: lote, ..."
+function resumenTx(t: Transaccion): string {
+  const rows = t.rows
+  if (rows.length === 1) return describir(rows[0])
+  const f = rows[0]
+  const ent = ENTIDAD_LABELS[f.entidad] ?? f.entidad
+  const nombre = f.entidad_nombre ? `"${f.entidad_nombre}"` : ''
+  const verbo = f.tipo_transaccion === 'edicion' ? 'Editó' : (TIPO_TX_LABELS[f.tipo_transaccion] ?? 'Modificó')
+  const campos = rows.map(r => r.campo).filter(Boolean)
+  return `${verbo} ${ent} ${nombre} — ${rows.length} cambios${campos.length ? ': ' + campos.join(', ') : ''}`
+}
+
+// Agrupa filas consecutivas que comparten transaccion_id (vienen contiguas: orden por created_at).
+function agruparTransacciones(logs: any[]): Transaccion[] {
+  const out: Transaccion[] = []
+  for (const log of logs) {
+    const last = out[out.length - 1]
+    if (log.transaccion_id && last && last.tx === log.transaccion_id) last.rows.push(log)
+    else out.push({ tx: log.transaccion_id ?? null, rows: [log] })
+  }
+  return out
+}
+
+const FILTROS_VACIOS: Filtros = { entidad: '', accion: '', tipo: '', usuario_id: '', desde: '', hasta: '', buscar: '', lpn: '', serie: '' }
 const PAGE_SIZES = [20, 50, 75, 100]
 
 export default function HistorialPage() {
@@ -101,30 +144,67 @@ export default function HistorialPage() {
   const [editandoCantidad, setEditandoCantidad] = useState(false)
   const [cantidadInput, setCantidadInput] = useState('')
   const [showFiltros, setShowFiltros] = useState(false)
-  const [selectedLog, setSelectedLog] = useState<any>(null)
+  const [selectedTx, setSelectedTx] = useState<Transaccion | null>(null)
+  const [exportando, setExportando] = useState(false)
 
   // Rol check
   const puedeVer = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
 
+  // Modo "trazá una unidad" (recall): al filtrar por LPN o serie traemos TODA la
+  // historia de esa unidad (sin paginar) y la cruzamos con venta_item_despachos.
+  const unitMode = !!(filtros.lpn.trim() || filtros.serie.trim())
+
   const { data: logs = [], isLoading } = useQuery({
-    queryKey: ['actividad_log', tenant?.id, filtros, page, pageSize],
+    queryKey: ['actividad_log', tenant?.id, filtros, page, pageSize, unitMode],
     queryFn: async () => {
       let q = supabase.from('actividad_log')
         .select('*', { count: 'exact' })
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1)
 
       if (filtros.entidad)    q = q.eq('entidad', filtros.entidad)
       if (filtros.accion)     q = q.eq('accion', filtros.accion)
+      if (filtros.tipo)       q = q.eq('tipo_transaccion', filtros.tipo)
       if (filtros.usuario_id) q = q.eq('usuario_id', filtros.usuario_id)
       if (filtros.desde)      q = q.gte('created_at', startOfDay(parseISO(filtros.desde)).toISOString())
       if (filtros.hasta)      q = q.lte('created_at', endOfDay(parseISO(filtros.hasta)).toISOString())
       if (filtros.buscar)     q = q.ilike('entidad_nombre', `%${filtros.buscar}%`)
+      if (filtros.lpn)        q = q.ilike('lpn', `%${filtros.lpn}%`)
+      if (filtros.serie)      q = q.ilike('nro_serie', `%${filtros.serie}%`)
+
+      if (unitMode) q = q.limit(1000)
+      else          q = q.range(page * pageSize, (page + 1) * pageSize - 1)
 
       const { data, count } = await q
       setTotalCount(count ?? 0)
-      return data ?? []
+      let rows = (data ?? []) as any[]
+
+      // Fase 2 — cruce con despachos de venta para reconstruir la historia de la unidad.
+      if (unitMode) {
+        let dq = supabase.from('venta_item_despachos')
+          .select('id, venta_id, lpn, nro_serie, cantidad, ubicacion_nombre, origen, created_at, ventas(numero)')
+          .eq('tenant_id', tenant!.id)
+        if (filtros.lpn)   dq = dq.ilike('lpn', `%${filtros.lpn}%`)
+        if (filtros.serie) dq = dq.ilike('nro_serie', `%${filtros.serie}%`)
+        const { data: desp } = await dq.limit(1000)
+        const synth = (desp ?? []).map((d: any) => ({
+          id: `desp-${d.id}`,
+          created_at: d.created_at,
+          entidad: 'venta',
+          entidad_id: d.venta_id,
+          entidad_nombre: `Venta #${d.ventas?.numero ?? ''}`,
+          accion: 'rebaje_stock',
+          tipo_transaccion: 'venta',
+          campo: `${d.cantidad} u`,
+          valor_anterior: [d.ubicacion_nombre, d.lpn ? `LPN ${d.lpn}` : null].filter(Boolean).join(' · ') || null,
+          valor_nuevo: d.origen ? `despacho ${d.origen}` : null,
+          lpn: d.lpn, nro_serie: d.nro_serie,
+          usuario_nombre: null,
+          _synthetic: true,
+        }))
+        rows = [...rows, ...synth].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      }
+      return rows
     },
     enabled: !!tenant && puedeVer,
   })
@@ -148,7 +228,8 @@ export default function HistorialPage() {
   })
 
   // ISS-075: trazabilidad completa de la venta seleccionada (desglose por LPN/ubicación/serie de cada ítem)
-  const ventaSelId = selectedLog?.entidad === 'venta' ? selectedLog?.entidad_id : null
+  const repSel = selectedTx?.rows[0]
+  const ventaSelId = repSel?.entidad === 'venta' && !repSel?._synthetic ? repSel?.entidad_id : null
   const { data: ventaTrace } = useQuery({
     queryKey: ['historial-venta-trace', ventaSelId],
     queryFn: async () => {
@@ -165,30 +246,59 @@ export default function HistorialPage() {
 
   const limpiar = () => { setFiltros(FILTROS_VACIOS); setPage(0) }
 
-  const exportarExcel = () => {
-    const rows = (logs as any[]).map(l => ({
-      Fecha: format(parseISO(l.created_at), 'dd/MM/yyyy HH:mm', { locale: es }),
-      Usuario: l.usuario_nombre ?? '',
-      Entidad: ENTIDAD_LABELS[l.entidad] ?? l.entidad,
-      Nombre: l.entidad_nombre ?? '',
-      Acción: ACCION_LABELS[l.accion]?.label ?? l.accion,
-      Campo: l.campo ?? '',
-      Antes: l.valor_anterior ?? '',
-      Después: l.valor_nuevo ?? '',
-      Página: l.pagina ?? '',
-    }))
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Historial')
-    XLSX.writeFile(wb, `historial_${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
+  // Fase 3 — export del SET FILTRADO COMPLETO (no solo la página visible).
+  const exportarExcel = async () => {
+    if (!tenant) return
+    setExportando(true)
+    try {
+      let q = supabase.from('actividad_log')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .order('created_at', { ascending: false })
+        .limit(10000)
+      if (filtros.entidad)    q = q.eq('entidad', filtros.entidad)
+      if (filtros.accion)     q = q.eq('accion', filtros.accion)
+      if (filtros.tipo)       q = q.eq('tipo_transaccion', filtros.tipo)
+      if (filtros.usuario_id) q = q.eq('usuario_id', filtros.usuario_id)
+      if (filtros.desde)      q = q.gte('created_at', startOfDay(parseISO(filtros.desde)).toISOString())
+      if (filtros.hasta)      q = q.lte('created_at', endOfDay(parseISO(filtros.hasta)).toISOString())
+      if (filtros.buscar)     q = q.ilike('entidad_nombre', `%${filtros.buscar}%`)
+      if (filtros.lpn)        q = q.ilike('lpn', `%${filtros.lpn}%`)
+      if (filtros.serie)      q = q.ilike('nro_serie', `%${filtros.serie}%`)
+
+      const { data } = await q
+      const rows = (data ?? []).map((l: any) => ({
+        Fecha: format(parseISO(l.created_at), 'dd/MM/yyyy HH:mm', { locale: es }),
+        Usuario: l.usuario_nombre ?? '',
+        Tipo: TIPO_TX_LABELS[l.tipo_transaccion] ?? '',
+        Entidad: ENTIDAD_LABELS[l.entidad] ?? l.entidad,
+        Nombre: l.entidad_nombre ?? '',
+        Acción: ACCION_LABELS[l.accion]?.label ?? l.accion,
+        Campo: l.campo ?? '',
+        Antes: l.valor_anterior ?? '',
+        Después: l.valor_nuevo ?? '',
+        LPN: l.lpn ?? '',
+        Serie: l.nro_serie ?? '',
+        Lote: l.lote ?? '',
+        Transacción: l.transaccion_id ?? '',
+        Página: l.pagina ?? '',
+      }))
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Historial')
+      XLSX.writeFile(wb, `historial_${format(new Date(), 'yyyy-MM-dd')}.xlsx`)
+    } finally {
+      setExportando(false)
+    }
   }
 
-  // Agrupar logs por día
-  const grouped: Record<string, any[]> = {}
-  for (const log of logs as any[]) {
-    const dia = format(parseISO(log.created_at), 'yyyy-MM-dd')
+  // Agrupar en transacciones, luego por día.
+  const transacciones = agruparTransacciones(logs as any[])
+  const grouped: Record<string, Transaccion[]> = {}
+  for (const t of transacciones) {
+    const dia = format(parseISO(t.rows[0].created_at), 'yyyy-MM-dd')
     if (!grouped[dia]) grouped[dia] = []
-    grouped[dia].push(log)
+    grouped[dia].push(t)
   }
 
   if (limits && !limits.puede_historial) return <UpgradePrompt feature="historial" />
@@ -196,7 +306,7 @@ export default function HistorialPage() {
   if (!puedeVer) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-500 dark:text-gray-400">
-        <ClipboardList size={48} className="mb-4 text-gray-300 dark:text-gray-600 dark:text-gray-400" />
+        <ClipboardList size={48} className="mb-4 text-gray-300 dark:text-gray-600" />
         <p className="text-lg font-medium">Sin acceso</p>
         <p className="text-sm mt-1">Esta sección es solo para supervisores y dueños.</p>
       </div>
@@ -219,9 +329,9 @@ export default function HistorialPage() {
               ${showFiltros || hayFiltros ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
             <Filter size={15} /> Filtros {hayFiltros && '●'}
           </button>
-          <button onClick={exportarExcel}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-accent hover:bg-accent/90 text-white rounded-xl transition-all">
-            <Download size={15} /> Excel
+          <button onClick={exportarExcel} disabled={exportando}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-accent hover:bg-accent/90 text-white rounded-xl transition-all disabled:opacity-60">
+            <Download size={15} /> {exportando ? 'Generando…' : 'Excel'}
           </button>
         </div>
       </div>
@@ -242,6 +352,14 @@ export default function HistorialPage() {
                 className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                 <option value="">Todos</option>
                 {Object.entries(ENTIDAD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Transacción</label>
+              <select value={filtros.tipo} onChange={e => { setFiltros(f => ({ ...f, tipo: e.target.value })); setPage(0) }}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                <option value="">Todas</option>
+                {Object.entries(TIPO_TX_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </div>
             <div>
@@ -271,6 +389,31 @@ export default function HistorialPage() {
                 className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
             </div>
           </div>
+
+          {/* Trazabilidad por unidad (recall) */}
+          <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <ScanLine size={13} /> Trazá una unidad (recall)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">LPN</label>
+                <input type="text" placeholder="LPN-XXXX" value={filtros.lpn}
+                  onChange={e => { setFiltros(f => ({ ...f, lpn: e.target.value })); setPage(0) }}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">N° de serie</label>
+                <input type="text" placeholder="Serie..." value={filtros.serie}
+                  onChange={e => { setFiltros(f => ({ ...f, serie: e.target.value })); setPage(0) }}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              </div>
+            </div>
+            {unitMode && (
+              <p className="text-[11px] text-accent mt-2">Mostrando la historia completa de la unidad (ingresos, traslados, ediciones y ventas).</p>
+            )}
+          </div>
+
           {hayFiltros && (
             <button onClick={limpiar} className="mt-3 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 transition-colors">
               <X size={12} /> Limpiar filtros
@@ -290,36 +433,48 @@ export default function HistorialPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {Object.entries(grouped).map(([dia, items]) => (
+          {Object.entries(grouped).map(([dia, txs]) => (
             <div key={dia}>
               <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3 px-1">
                 {format(parseISO(dia), "EEEE d 'de' MMMM", { locale: es })}
               </p>
               <div className="space-y-2">
-                {items.map((log: any) => {
+                {txs.map((t: Transaccion) => {
+                  const log = t.rows[0]
+                  const multi = t.rows.length > 1
                   const accionInfo = ACCION_LABELS[log.accion] ?? { label: log.accion, color: 'text-gray-700 dark:text-gray-300', bg: 'bg-gray-100 dark:bg-gray-700' }
                   const EntidadIcon = ENTIDAD_ICONS[log.entidad] ?? ClipboardList
+                  const tipoLabel = log.tipo_transaccion ? TIPO_TX_LABELS[log.tipo_transaccion] : null
                   return (
-                    <div key={log.id}
-                      onClick={() => setSelectedLog(log)}
+                    <div key={t.tx ?? log.id}
+                      onClick={() => setSelectedTx(t)}
                       className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-3.5 hover:shadow-sm hover:border-accent/30 transition-all cursor-pointer">
                       <div className="flex items-start gap-3">
                         <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 mt-0.5">
                           <EntidadIcon size={15} className="text-gray-500 dark:text-gray-400" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-800 dark:text-gray-100">{describir(log)}</p>
+                          <p className="text-sm text-gray-800 dark:text-gray-100">{resumenTx(t)}</p>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${accionInfo.bg} ${accionInfo.color}`}>
-                              {accionInfo.label}
-                            </span>
+                            {multi ? (
+                              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent flex items-center gap-1">
+                                <Layers size={10} /> {t.rows.length} cambios
+                              </span>
+                            ) : (
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${accionInfo.bg} ${accionInfo.color}`}>
+                                {accionInfo.label}
+                              </span>
+                            )}
+                            {tipoLabel && (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">{tipoLabel}</span>
+                            )}
+                            {log.lpn && (
+                              <span className="text-[11px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">{log.lpn}</span>
+                            )}
                             {log.usuario_nombre && (
                               <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
                                 <User size={10} /> {log.usuario_nombre}
                               </span>
-                            )}
-                            {log.pagina && (
-                              <span className="text-xs text-gray-300">{log.pagina}</span>
                             )}
                           </div>
                         </div>
@@ -339,8 +494,8 @@ export default function HistorialPage() {
         </div>
       )}
 
-      {/* Paginación mejorada */}
-      {(logs as any[]).length > 0 && (
+      {/* Paginación (oculta en modo trazabilidad de unidad: ahí mostramos todo) */}
+      {(logs as any[]).length > 0 && !unitMode && (
         <div className="flex items-center justify-between pt-2 gap-2 flex-wrap">
           {/* Selector cantidad */}
           <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -400,25 +555,29 @@ export default function HistorialPage() {
       )}
 
       {/* Modal detalle */}
-      {selectedLog && (() => {
-        const log = selectedLog
+      {selectedTx && (() => {
+        const log = selectedTx.rows[0]
+        const multi = selectedTx.rows.length > 1
         const accionInfo = ACCION_LABELS[log.accion] ?? { label: log.accion, color: 'text-gray-700 dark:text-gray-300', bg: 'bg-gray-100 dark:bg-gray-700' }
         const EntidadIcon = ENTIDAD_ICONS[log.entidad] ?? ClipboardList
         const rows: { label: string; value: string }[] = [
           { label: 'Entidad', value: ENTIDAD_LABELS[log.entidad] ?? log.entidad },
+          ...(log.tipo_transaccion ? [{ label: 'Transacción', value: TIPO_TX_LABELS[log.tipo_transaccion] ?? log.tipo_transaccion }] : []),
           ...(log.entidad_nombre ? [{ label: 'Nombre', value: log.entidad_nombre }] : []),
+          ...(log.lpn ? [{ label: 'LPN', value: log.lpn }] : []),
+          ...(log.nro_serie ? [{ label: 'Serie', value: log.nro_serie }] : []),
+          ...(log.lote ? [{ label: 'Lote', value: log.lote }] : []),
           ...(log.entidad_id ? [{ label: 'ID', value: log.entidad_id }] : []),
-          { label: 'Acción', value: accionInfo.label },
-          ...(log.campo ? [{ label: 'Campo', value: log.campo }] : []),
-          ...(log.valor_anterior ? [{ label: 'Valor anterior', value: log.valor_anterior }] : []),
-          ...(log.valor_nuevo ? [{ label: 'Valor nuevo', value: log.valor_nuevo }] : []),
+          ...(!multi && log.campo ? [{ label: 'Campo', value: log.campo }] : []),
+          ...(!multi && log.valor_anterior ? [{ label: 'Valor anterior', value: log.valor_anterior }] : []),
+          ...(!multi && log.valor_nuevo ? [{ label: 'Valor nuevo', value: log.valor_nuevo }] : []),
           { label: 'Fecha', value: format(parseISO(log.created_at), "dd/MM/yyyy 'a las' HH:mm:ss", { locale: es }) },
           ...(log.usuario_nombre ? [{ label: 'Usuario', value: log.usuario_nombre }] : []),
           ...(log.pagina ? [{ label: 'Módulo', value: log.pagina }] : []),
         ]
         return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedLog(null)}>
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedTx(null)}>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
@@ -426,15 +585,15 @@ export default function HistorialPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900 dark:text-white text-sm">Detalle del registro</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">{log.id?.slice(0, 8)}…</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{(selectedTx.tx ?? log.id)?.slice(0, 8)}…</p>
                   </div>
                 </div>
-                <button onClick={() => setSelectedLog(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 transition-colors">
+                <button onClick={() => setSelectedTx(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 transition-colors">
                   <X size={16} />
                 </button>
               </div>
               <div className="p-5">
-                <p className="text-sm text-gray-700 dark:text-gray-200 mb-4 leading-relaxed">{describir(log)}</p>
+                <p className="text-sm text-gray-700 dark:text-gray-200 mb-4 leading-relaxed">{resumenTx(selectedTx)}</p>
                 <div className="space-y-2">
                   {rows.map(r => (
                     <div key={r.label} className="flex items-start gap-2">
@@ -444,8 +603,27 @@ export default function HistorialPage() {
                   ))}
                 </div>
 
+                {/* Cabecera + detalle: cada campo modificado en esta transacción */}
+                {multi && (
+                  <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Cambios ({selectedTx.rows.length})</p>
+                    <div className="space-y-2">
+                      {selectedTx.rows.map((r: any) => (
+                        <div key={r.id} className="bg-gray-50 dark:bg-gray-700/40 rounded-lg px-3 py-2">
+                          <p className="text-xs font-medium text-gray-700 dark:text-gray-200">{r.campo ?? '—'}</p>
+                          {(r.valor_anterior || r.valor_nuevo) && (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 break-all">
+                              {r.valor_anterior ?? '—'} <span className="text-gray-400">→</span> {r.valor_nuevo ?? '—'}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* ISS-075: trazabilidad de despacho de la venta (de qué LPN/ubicación salió cada ítem) */}
-                {log.entidad === 'venta' && ventaTrace && (ventaTrace.items.length > 0) && (
+                {ventaSelId && ventaTrace && (ventaTrace.items.length > 0) && (
                   <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
                     <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Trazabilidad de despacho</p>
                     <div className="space-y-2.5">
@@ -480,7 +658,7 @@ export default function HistorialPage() {
               </div>
               <div className="px-5 pb-5">
                 <span className={`text-xs font-medium px-3 py-1 rounded-full ${accionInfo.bg} ${accionInfo.color}`}>
-                  {accionInfo.label}
+                  {multi ? `${selectedTx.rows.length} cambios` : accionInfo.label}
                 </span>
               </div>
             </div>

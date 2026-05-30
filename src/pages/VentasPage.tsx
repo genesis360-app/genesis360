@@ -1768,7 +1768,7 @@ export default function VentasPage() {
         }
       }
 
-      logActividad({ entidad: 'venta', entidad_id: venta.id, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'crear', valor_nuevo: estado, pagina: '/ventas' })
+      logActividad({ entidad: 'venta', entidad_id: venta.id, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'crear', valor_nuevo: estado, pagina: '/ventas', tipo_transaccion: 'venta', sucursal_id: sucursalId || null })
       if (estado === 'despachada' && montoEfectivoCaja > 0 && sesionCajaId) {
         void supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id,

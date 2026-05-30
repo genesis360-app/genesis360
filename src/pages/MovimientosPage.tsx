@@ -73,7 +73,7 @@ export default function MovimientosPage() {
     queryFn: async () => {
       let q = supabase
         .from('movimientos_stock')
-        .select('*, productos(nombre,sku,unidad_medida), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie))')
+        .select('id, tipo, cantidad, stock_antes, stock_despues, motivo, created_at, venta_id, gasto_id, linea_id, sucursal_id, estado_id, productos(nombre,sku,unidad_medida), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie))')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -658,28 +658,34 @@ export default function MovimientosPage() {
                         </div>
                       )}
                     </>
-                  ) : movDetalle.venta_id && (despachosMov as any[]).length > 0 ? (
-                    <div className="col-span-2">
-                      <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-1.5">Surtido desde (LPN / ubicación)</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(despachosMov as any[]).map((d: any, di: number) => (
-                          <span key={di} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
-                            {d.nro_serie
-                              ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
-                              : <>{d.cantidad}u{d.lpn ? ` · ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
-                            {d.origen && <span className="text-gray-400 dark:text-gray-500"> · {d.origen}</span>}
-                          </span>
-                        ))}
+                  ) : movDetalle.venta_id ? (
+                    (despachosMov as any[]).length > 0 ? (
+                      <div className="col-span-2">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-1.5">Surtido desde (LPN / ubicación)</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(despachosMov as any[]).map((d: any, di: number) => (
+                            <span key={di} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
+                              {d.nro_serie
+                                ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
+                                : <>{d.cantidad}u{d.lpn ? ` · ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                              {d.origen && <span className="text-gray-400 dark:text-gray-500"> · {d.origen}</span>}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="col-span-2">
+                        <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                          Esta venta no tiene desglose por LPN registrado (trazabilidad desactivada o venta previa a la función).
+                        </p>
+                      </div>
+                    )
                   ) : (
                     <div className="col-span-2">
                       <p className="text-xs text-amber-500 italic">
                         {movDetalle.linea_id
                           ? 'La línea de inventario asociada ya no está disponible'
-                          : movDetalle.venta_id
-                            ? 'Venta anterior al registro de desglose por LPN'
-                            : 'Sin línea asociada — movimiento registrado antes del sistema de trazabilidad'}
+                          : 'Sin línea asociada — movimiento manual sin trazabilidad de línea'}
                       </p>
                     </div>
                   )}
@@ -703,7 +709,10 @@ export default function MovimientosPage() {
                 )}
 
                 {/* ID */}
-                <p className="text-xs text-gray-300 font-mono border-t border-gray-100 pt-3">ID: {movDetalle.id}</p>
+                <p className="text-xs text-gray-300 font-mono border-t border-gray-100 pt-3">
+                  ID: {movDetalle.id}
+                  {movDetalle.venta_id && <span className="ml-2">· venta: {String(movDetalle.venta_id).slice(0, 8)}…</span>}
+                </p>
               </div>
             </div>
           </div>

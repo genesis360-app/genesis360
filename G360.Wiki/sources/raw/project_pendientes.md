@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.11.0** ✅ (ISS-075 trazabilidad despacho por LPN + ISS-151 condonar/revertir CC + fix race rebaje) · DEV alineado con PROD
+Último release en PROD: **v1.11.1** ✅ (patch ISS-075: manual/auto correcto + stock vendible por sucursal en movimiento + desglose LPN en Inventario→Historial + log de ingreso/rebaje manual + borrada MovimientosPage huérfana) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,12 +14,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.0` | `v1.11.0` |
+| APP_VERSION | `v1.11.1` | `v1.11.1` |
 | Migrations | 001–154 ✅ | 001–154 ✅ |
-| Branch | `dev` alineado con `main` | `main` (release v1.11.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.11.0 |
+| Branch | `dev` alineado con `main` | `main` (release v1.11.1) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.11.1 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (153+154 aplicadas en el deploy v1.11.0)
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (v1.11.1 no agrega migrations)
 
 **Post-deploy PROD:** correr recalc global de `stock_actual` (`PERFORM recalcular_stock(id)` por producto) para sanear desfases históricos del bug de doble-update.
 

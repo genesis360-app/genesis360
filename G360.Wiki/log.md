@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | v1.11.1 PROD — patch ISS-075 (manual/auto + stock vendible + Inventario→Historial)
+
+Patch correctivo tras QA de GO sobre v1.11.0. Sin migrations nuevas.
+
+- **manual/auto correcto**: `CartItem.lpn_manual_ids` rastrea los LPN que el operador eligió en el picker; en el rebaje solo esos son `origen='manual'`, el resto del plan autocompletado es `auto`. Antes todo salía `manual`.
+- **Stock del movimiento de venta = vendible por sucursal**: `stock_antes/despues` ahora usa `stockVendibleSucursal()` (estados `es_disponible_venta` + ubicación pickeable en la sucursal de la venta), no el total global del producto. Aplica en Fase 3 y en reserva→despacho (B1).
+- **Bug de archivo equivocado**: el modal de "Inventario → Historial" lo dibuja `InventarioPage.tsx`, NO `MovimientosPage.tsx` (huérfana, `/movimientos`→`/inventario`). Se **eliminó** MovimientosPage (1221 líneas) y se agregó el desglose por LPN ("Surtido desde") al modal real. Regla [[feedback_mapear_mod_tab_a_ruta]].
+- **Log de ingreso/rebaje manual**: portado a InventarioPage. Ingreso → `ingreso_stock` (destino: ubicación+LPN), rebaje → `rebaje_stock` (origen: ubicación+LPN), con cantidad+unidad.
+- **Versión** `v1.11.1`. Migrations 153+154 ya estaban en PROD desde v1.11.0.
+
+---
+
 ## [2026-05-30] update | v1.11.0 PROD — ISS-075 trazabilidad + ISS-151 CC + fix race rebaje + log de asignación
 
 Release grande. Cierre de toda la sesión 075/151 + bugs encontrados en QA → PROD.

@@ -147,6 +147,20 @@ export default function HistorialPage() {
     enabled: !!tenant && puedeVer,
   })
 
+  // ISS-075: trazabilidad completa de la venta seleccionada (desglose por LPN/ubicación/serie de cada ítem)
+  const ventaSelId = selectedLog?.entidad === 'venta' ? selectedLog?.entidad_id : null
+  const { data: ventaTrace } = useQuery({
+    queryKey: ['historial-venta-trace', ventaSelId],
+    queryFn: async () => {
+      const [{ data: items }, { data: despachos }] = await Promise.all([
+        supabase.from('venta_items').select('id, cantidad, precio_unitario, subtotal, productos(nombre, sku)').eq('venta_id', ventaSelId),
+        supabase.from('venta_item_despachos').select('venta_item_id, lpn, ubicacion_nombre, cantidad, nro_serie').eq('venta_id', ventaSelId).order('created_at', { ascending: true }),
+      ])
+      return { items: (items ?? []) as any[], despachos: (despachos ?? []) as any[] }
+    },
+    enabled: !!ventaSelId,
+  })
+
   const hayFiltros = Object.values(filtros).some(Boolean)
 
   const limpiar = () => { setFiltros(FILTROS_VACIOS); setPage(0) }
@@ -429,6 +443,39 @@ export default function HistorialPage() {
                     </div>
                   ))}
                 </div>
+
+                {/* ISS-075: trazabilidad de despacho de la venta (de qué LPN/ubicación salió cada ítem) */}
+                {log.entidad === 'venta' && ventaTrace && (ventaTrace.items.length > 0) && (
+                  <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Trazabilidad de despacho</p>
+                    <div className="space-y-2.5">
+                      {ventaTrace.items.map((it: any) => {
+                        const desp = ventaTrace.despachos.filter((d: any) => d.venta_item_id === it.id)
+                        return (
+                          <div key={it.id} className="bg-gray-50 dark:bg-gray-700/40 rounded-lg px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">{it.productos?.nombre ?? '—'}</span>
+                              <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">{it.cantidad} u.</span>
+                            </div>
+                            {desp.length > 0 ? (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {desp.map((d: any, di: number) => (
+                                  <span key={di} className="text-[11px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                                    {d.nro_serie
+                                      ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
+                                      : <>{d.cantidad}u{d.lpn ? ` · ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-gray-400 dark:text-gray-500 italic mt-1">Sin desglose por LPN (venta anterior al registro de trazabilidad)</p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="px-5 pb-5">
                 <span className={`text-xs font-medium px-3 py-1 rounded-full ${accionInfo.bg} ${accionInfo.color}`}>

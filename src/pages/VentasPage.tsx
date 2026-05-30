@@ -68,6 +68,7 @@ interface CartItem {
   lpn?: string
   lineas_disponibles?: LineaDisponible[]   // todas las líneas ordenadas por sort activo
   lpn_fuentes?: LpnFuente[]               // computed: qué líneas cubren la cantidad actual
+  lpn_manual_ids?: string[]               // ISS-075: linea_ids que el operador eligió explícitamente (origen='manual'); el resto del plan es 'auto'
   imagen_url?: string
   es_kit?: boolean
   alicuota_iva?: number
@@ -966,7 +967,9 @@ export default function VentasPage() {
       if (!selected) return item
       const reordered = [selected, ...item.lineas_disponibles.filter(l => l.id !== lineaId)]
       const fuentes = calcularLpnFuentes(reordered, item.cantidad)
-      return { ...item, lineas_disponibles: reordered, lpn_fuentes: fuentes, linea_id: fuentes[0]?.linea_id, lpn: fuentes[0]?.lpn ?? undefined }
+      // ISS-075: registrar este LPN como elegido manualmente (para distinguir manual vs auto en el rebaje)
+      const manualIds = Array.from(new Set([...(item.lpn_manual_ids ?? []), lineaId]))
+      return { ...item, lineas_disponibles: reordered, lpn_fuentes: fuentes, lpn_manual_ids: manualIds, linea_id: fuentes[0]?.linea_id, lpn: fuentes[0]?.lpn ?? undefined }
     }))
     setLpnPickerIdx(null)
   }
@@ -1655,14 +1658,16 @@ export default function VentasPage() {
           }
 
           let restante = cant
-          // Fase A — ISS-075: honrar la selección manual de LPN del carrito (item.lpn_fuentes),
-          // respetando las cantidades exactas que el usuario asignó a cada LPN, en orden. origen='manual'.
+          // Fase A — ISS-075: seguir el plan de LPN del carrito (item.lpn_fuentes) con cantidades exactas.
+          // origen='manual' SOLO para los LPN que el operador eligió explícitamente; los que el plan
+          // autocompletó por la regla de rebaje van como 'auto'.
+          const manualIds = new Set(item.lpn_manual_ids ?? [])
           const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
           for (const f of (item.lpn_fuentes ?? [])) {
             if (restante <= 0) break
             const linea = lineaById[f.linea_id]
             if (!linea) continue   // la línea elegida ya no tiene stock → se cubre en la Fase B
-            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante), 'manual')
+            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante), manualIds.has(f.linea_id) ? 'manual' : 'auto')
           }
           // Fase B — fallback por orden de sort (regla de rebaje del sistema). origen='auto'.
           for (const linea of lineas) {

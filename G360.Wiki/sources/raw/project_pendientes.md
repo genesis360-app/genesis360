@@ -14,12 +14,14 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.2` | `v1.11.2` |
+| APP_VERSION | `v1.11.3` (cierre trazabilidad, sin deployar) | `v1.11.2` |
 | Migrations | 001–**155** ✅ | 001–**155** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.11.2) |
+| Branch | `dev` **adelante de** `main` (v1.11.3 sin deployar) | `main` (release v1.11.2) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.11.2 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna.
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (v1.11.3 es solo código, usa columnas de mig 155 ya en PROD).
+
+**🔜 En DEV pendiente de deploy a PROD (v1.11.3):** cierre de Trazabilidad-extendida — devoluciones en `/historial` + reserva→despacho/devuelta clasificadas + filtro recall por producto. Solo código.
 
 **Deployado en v1.11.2 (2026-05-30):**
 - **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.
@@ -93,7 +95,7 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 
 **Decisión de diseño** (GO preguntó cómo igualar/superar un WMS tier-1): se eligió `transaccion_id` write-time (ledger inmutable, auditable), **no** heurística read-time por minuto (frágil, no auditable para recall). Snapshots de LPN/lote/serie desde el día 1.
 
-**Pendiente futuro**: registrar `transaccion_id` también en devoluciones y en reserva→despacho; trazar por `producto_id` además de LPN/serie (hoy el filtro de unidad usa LPN/serie).
+**✅ Cerrado en v1.11.3 (2026-05-30)**: devoluciones ahora se loguean en `/historial` (`tipo_transaccion='devolucion'`, agrupadas por transacción, con producto_id + LPN); reserva→despacho y venta→devuelta clasificadas; filtro de recall por **producto** (nombre/SKU → producto_id) además de LPN/serie. Trazabilidad-extendida **completa**.
 
 ### Deuda técnica / pendientes abiertos
 

@@ -5,7 +5,7 @@ import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCar
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { logActividad } from '@/lib/actividadLog'
+import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { generarFacturaPDF, normalizarCondIVA } from '@/lib/facturasPDF'
 import { useCotizacion } from '@/hooks/useCotizacion'
@@ -2205,6 +2205,9 @@ export default function VentasPage() {
       if (devError) throw devError
       devId = dev.id
 
+      // Trazabilidad-extendida: una transacción de devolución agrupa todos los ítems reintegrados.
+      const txDev = nuevaTransaccion()
+
       // 3. Procesar cada ítem
       for (const item of itemsADevolver) {
         const cantDev = item.tiene_series ? item.series_seleccionadas.length : item.cantidad_devolver
@@ -2234,6 +2237,12 @@ export default function VentasPage() {
           if (prodData) {
             await supabase.from('productos').update({ stock_actual: prodData.stock_actual + cantDev }).eq('id', item.producto_id)
           }
+          logActividad({
+            entidad: 'venta', entidad_id: devolucionVenta.id, entidad_nombre: `Venta #${devolucionVenta.numero ?? ''}`,
+            accion: 'editar', campo: 'devolución', valor_anterior: item.nombre, valor_nuevo: `${cantDev} u${numero_nc ? ` · ${numero_nc}` : ''}`,
+            pagina: '/ventas', transaccion_id: txDev, tipo_transaccion: 'devolucion',
+            producto_id: item.producto_id, sucursal_id: (devolucionVenta as any).sucursal_id ?? null,
+          })
         } else {
           // No serializado: crear nueva inventario_lineas.
           // A7: si devDestinoStock === 'vendible', la línea va al stock disponible (sin ubicación
@@ -2276,6 +2285,14 @@ export default function VentasPage() {
             cantidad: cantDev,
             precio_unitario: item.precio_unitario,
             inventario_linea_nueva_id: linea.id,
+          })
+          logActividad({
+            entidad: 'venta', entidad_id: devolucionVenta.id, entidad_nombre: `Venta #${devolucionVenta.numero ?? ''}`,
+            accion: 'editar', campo: 'devolución',
+            valor_anterior: item.nombre,
+            valor_nuevo: `${cantDev} u${numero_nc ? ` · ${numero_nc}` : ''}${devDestinoStock === 'vendible' ? ' · reintegrado vendible' : ' · a revisión'}`,
+            pagina: '/ventas', transaccion_id: txDev, tipo_transaccion: 'devolucion',
+            producto_id: item.producto_id, lpn: linea.lpn ?? null, sucursal_id: (devolucionVenta as any).sucursal_id ?? null,
           })
         }
       }
@@ -2667,7 +2684,12 @@ export default function VentasPage() {
       } else {
         await supabase.from('ventas').update({ estado: nuevoEstado }).eq('id', ventaId)
       }
-      logActividad({ entidad: 'venta', entidad_id: ventaId, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'cambio_estado', valor_anterior: venta.estado, valor_nuevo: nuevoEstado, pagina: '/ventas' })
+      logActividad({
+        entidad: 'venta', entidad_id: ventaId, entidad_nombre: `Venta #${venta.numero ?? ''}`,
+        accion: 'cambio_estado', valor_anterior: venta.estado, valor_nuevo: nuevoEstado, pagina: '/ventas',
+        tipo_transaccion: nuevoEstado === 'despachada' ? 'venta' : nuevoEstado === 'devuelta' ? 'devolucion' : undefined,
+        sucursal_id: (venta as any).sucursal_id ?? null,
+      })
     },
     onSuccess: (_data, variables) => {
       toast.success('Estado actualizado')

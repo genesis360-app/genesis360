@@ -58,6 +58,14 @@ Toggle en el checkout:
 - Badges máx 3 LPNs + "+N más" en el carrito
 - Función pura: `calcularLpnFuentes(lineas, cantidad)`
 
+### ISS-075 — Trazabilidad de despacho por LPN (mig 153)
+
+`venta_items.linea_id` guarda solo el **LPN principal**. Cuando un ítem se despacha desde varios LPN/ubicaciones, el **desglose completo** se persiste en la tabla `venta_item_despachos` (una fila por porción/línea consumida, o por serie en items serializados).
+
+- **Captura**: dentro del rebaje real de `registrarVenta` (Fase 2) y de la transición **reserva → despachada** (`cambiarEstado`). Solo se persiste para ventas `despachada` (la reserva aún no despacha). Insert fire-and-forget — si falla no rompe la venta.
+- **Snapshot**: `lpn`, `ubicacion_nombre` y `nro_serie` se guardan como texto; si después se edita/borra el LPN, la traza queda intacta.
+- **Vista**: el modal de detalle de venta lee `venta_item_despachos` (query `venta-despachos`) y muestra por ítem el desglose (`Nu · LPN X · Ubicación` o `#serie · Ubicación`). Fallback al LPN único (`inventario_lineas.lpn`) si no hay filas de despacho (ventas previas a la mig 153).
+
 ### Cantidades decimales
 - `UNIDADES_DECIMALES`: kg, g, gr, mg, l, lt, ml, m, m2, m3, cm, mm, km (case-insensitive)
 - Input: `step` y `min` dinámicos. Para no-decimales bloquea `.` y `,`

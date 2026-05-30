@@ -13,6 +13,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
 import type { Producto } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { logActividad } from '@/lib/actividadLog'
 
 type ModalType = 'ingreso' | 'rebaje' | null
 
@@ -229,6 +230,15 @@ export default function MovimientosPage() {
         linea_id: linea.id,
         sucursal_id: sucursalId || null,
       })
+
+      // ISS-075: registrar en el Historial de actividad (destino: ubicación + LPN)
+      const ubicNombre = form.ubicacionId ? (ubicaciones as any[]).find(u => u.id === form.ubicacionId)?.nombre : null
+      const destino = [ubicNombre, linea.lpn ? `LPN ${linea.lpn}` : null].filter(Boolean).join(' · ') || null
+      logActividad({
+        entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: selectedProduct.nombre,
+        accion: 'ingreso_stock', campo: `${cant} ${(selectedProduct as any).unidad_medida ?? 'u'}`,
+        valor_nuevo: destino, valor_anterior: form.motivo || null, pagina: '/movimientos',
+      })
     },
     onSuccess: () => {
       toast.success('Ingreso registrado')
@@ -298,6 +308,15 @@ export default function MovimientosPage() {
         usuario_id: user?.id,
         linea_id: rebajeLinea.id,
         sucursal_id: sucursalId || null,
+      })
+
+      // ISS-075: registrar en el Historial de actividad (origen: ubicación + LPN)
+      const ubicOrigen = (rebajeLinea as any).ubicaciones?.nombre ?? null
+      const origen = [ubicOrigen, rebajeLinea.lpn ? `LPN ${rebajeLinea.lpn}` : null].filter(Boolean).join(' · ') || null
+      logActividad({
+        entidad: 'inventario_linea', entidad_id: rebajeLinea.id, entidad_nombre: selectedProduct.nombre,
+        accion: 'rebaje_stock', campo: `${cant} ${(selectedProduct as any).unidad_medida ?? 'u'}`,
+        valor_anterior: origen, valor_nuevo: rebajeMotivo || null, pagina: '/movimientos',
       })
     },
     onSuccess: () => {

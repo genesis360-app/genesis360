@@ -15,11 +15,11 @@ type: project
 | | DEV | PROD |
 |---|---|---|
 | APP_VERSION | `v1.10.4` | `v1.10.4` |
-| Migrations | 001–152 ✅ | 001–152 ✅ |
-| Branch | `dev` alineado con `main` | `main` (release v1.10.4) |
+| Migrations | 001–153 ✅ | 001–152 ✅ |
+| Branch | `dev` (ISS-075 en curso) | `main` (release v1.10.4) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.10.4 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna
+**Migrations DEV pendientes de aplicar en PROD:** **153** (`venta_item_despachos`, ISS-075) — aplicar antes del próximo merge `dev → main` ([[feedback_deploy_order_migrations_aditivas]])
 
 ---
 
@@ -39,11 +39,33 @@ type: project
 
 | ID | Módulo | Descripción | Estado |
 |---|---|---|---|
-| ISS-075 | Historial | Faltan detalles: usuario que ejecutó, ubicación origen → destino en movimientos manuales, cambio de LPN, para ventas mostrar de qué ubicación/LPN se despachó cada ítem. Hoy `actividad_log` registra acción genérica pero no el `diff` por línea | Pendiente |
+| ISS-075 | Historial | Trazabilidad de despacho y movimientos. **🔄 En DEV (mig 153)**: (1) nueva tabla `venta_item_despachos` con desglose por LPN/ubicación de cada ítem vendido (capturado en `registrarVenta` Fase 2 + transición reserva→despacho); (2) modal detalle de venta muestra el desglose por LPN; (3) ingreso/rebaje manual (MovimientosPage) ahora se vuelcan al `actividad_log` con acciones `ingreso_stock`/`rebaje_stock` (origen/destino + ubicación + LPN); (4) traslado LpnAccionesModal enriquecido con ubicación origen. **Ya existía**: cambio LPN/ubicación/lote/venc en edición LPN. **Pendiente**: ISS-075 ya cubre lo solicitado; falta deploy a PROD | 🔄 DEV |
 | ISS-080 | Alertas | Filtrar por sucursal todas las queries de AlertasPage | ✅ Resuelto 2026-05-28 — cruce client-side con `inventario_lineas`+`PSMSS` para stock; cruce con `inventario_lineas` para productos sin categoría |
 | ISS-108 | Header / Mobile | Selector de sucursal invisible en celular | ✅ Resuelto 2026-05-28 — bloque mobile con ícono Building2 + nombre + `<select>` transparente superpuesto |
 | ISS-148 | Recursos | Input texto libre para ubicación | ✅ Resuelto 2026-05-28 — componente `UbicacionPicker` (select con opciones del histórico de la sucursal + opción "+ Nueva ubicación") en form crear/editar, modal asignar y edit inline |
-| ISS-151 | Dashboard + CC | Dashboard pestaña "todo" suma "Cancelación CC" como método de pago (debería ser cobro real de deuda, no un nuevo ingreso) → distorsiona la ganancia del día. **Además** al cancelar una CC, la venta original debe volver a estado "falta pagar" tipo reserva (hoy queda `despachada` y `monto_pagado` total). Después se cobra por otro medio o se anula la venta. | Pendiente — requiere alineación de modelo antes de implementar |
+| ISS-151 | Dashboard + CC | Dashboard sumaba "Cancelación CC" como método de pago → distorsionaba la ganancia. **🔄 Implementado en DEV:** (1) `MixCajaChart` + `MetricasPage` excluyen pseudo-métodos (`Cuenta Corriente`, `Cancelación CC`, `Condonación CC`); (2) `ClientesPage` reemplaza el botón único por **Condonar** (write-off, tag `Condonación CC`) y **Revertir** (restaura la deuda), ambos solo DUEÑO/SUPERVISOR/ADMIN; las condonadas quedan visibles con badge para poder revertir. Ambas acciones mantienen la venta **despachada** (no tocan stock ni estado de entrega — P4). Sin migración. Ver modelo abajo. | 🔄 DEV |
+
+### ISS-151 — modelo alineado (relevado con GO + socio, 2026-05-29)
+
+Decisiones para implementar (no implementado aún):
+
+1. **Dos acciones separadas en una venta con deuda CC** (ambas solo DUEÑO / SUPERVISOR / ADMIN):
+   - **Condonar**: la deuda se da por perdida (incobrable). No es un cobro ni un ingreso.
+   - **Revertir a pendiente**: la venta vuelve a estado de pago "falta pagar" para re-cobrarla por otro medio o anularla.
+   - Reemplaza al actual botón único `cancelarDeudaCC` (`ClientesPage.tsx:405`) que hoy marca `monto_pagado = total` con un medio falso `"Cancelación CC"`.
+2. **El cobro posterior de una CC NO suma a la ganancia del día**: la utilidad ya se contabilizó cuando la venta se despachó. Cobrar la deuda después es solo movimiento de caja (pasa de "por cobrar" a efectivo/medio real), no nueva utilidad.
+3. **Dashboard**: `"Cancelación CC"` deja de contarse como medio de pago. Cuando la deuda se cobra por un medio real, recién ahí aparece en el gráfico bajo ese método de pago.
+4. **Al revertir a pendiente, la venta sigue entregada** (solo cambia el estado de pago). Si hay que devolver mercadería, se usa el flujo de **Devolución** aparte (no se reintegra stock automáticamente).
+
+### BUG-LPN (encontrado + corregido 2026-05-29, en DEV)
+
+**Síntoma:** en venta directa, la selección manual de LPN en el carrito (override de `lpn_fuentes`) se ignoraba en el rebaje real — la Fase 2 de `registrarVenta` re-consultaba y ordenaba por el sort automático, rebajando de un LPN distinto al elegido. El desglose de ISS-075 lo destapó.
+
+**Fix:** rebaje en 2 fases ([VentasPage.tsx Fase 2](src/pages/VentasPage.tsx)) — **Fase A** honra `item.lpn_fuentes` con cantidades exactas por LPN y en orden; **Fase B** completa por sort solo si quedó faltante (stock cambiado). Ahora el rebaje siempre coincide con los badges de LPN del carrito.
+
+**Limitación conocida pendiente:** la transición **reserva → despacho** (`cambiarEstado`) sigue rebajando por sort y no persiste la selección manual de LPN (venta_items solo guarda el `linea_id` principal). Afecta solo a reservas con selección manual multi-LPN, no a venta directa.
+
+**Dato:** la Venta #196 (prueba) quedó con stock desfasado por el bug previo — corregir manualmente con Mover/Editar LPN si se quiere.
 
 ### Deuda técnica / pendientes abiertos
 

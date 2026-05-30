@@ -76,6 +76,15 @@ function validarTelefono(valor: string): string | null {
   return null
 }
 
+// ISS-151: tags de condonación de CC (write-off). No son ingresos reales.
+const TAGS_CONDONACION_CC = ['Condonación CC', 'Cancelación CC']
+function esCondonadaCC(medioPago: string | null | undefined): boolean {
+  try {
+    const arr = JSON.parse(medioPago ?? '[]')
+    return Array.isArray(arr) && arr.some((m: any) => TAGS_CONDONACION_CC.includes(m?.tipo))
+  } catch { return false }
+}
+
 const ESTADOS: Record<string, { label: string; color: string }> = {
   pendiente:  { label: 'Pendiente',  color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400' },
   reservada:  { label: 'Reservada',  color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' },
@@ -198,12 +207,15 @@ export default function ClientesPage() {
     queryKey: ['ventas-cc', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('ventas')
-        .select('id, numero, total, monto_pagado, estado, created_at, despachado_at, cliente_id, cliente_nombre')
+        .select('id, numero, total, monto_pagado, estado, created_at, despachado_at, cliente_id, cliente_nombre, medio_pago')
         .eq('tenant_id', tenant!.id)
         .eq('es_cuenta_corriente', true)
         .in('estado', ['despachada', 'facturada'])
         .order('created_at', { ascending: false })
-      return (data ?? []).filter((v: any) => (v.total ?? 0) - (v.monto_pagado ?? 0) > 0.5)
+      // ISS-151: mostrar deudas vigentes (saldo > 0.5) + condonadas (para poder revertir)
+      return (data ?? [])
+        .map((v: any) => ({ ...v, condonada: esCondonadaCC(v.medio_pago) }))
+        .filter((v: any) => (v.total ?? 0) - (v.monto_pagado ?? 0) > 0.5 || v.condonada)
     },
     enabled: !!tenant && pageTab === 'cc',
   })
@@ -401,26 +413,53 @@ export default function ClientesPage() {
     finally { setSavingPago(false) }
   }
 
-  // ISS-107: cancelar deuda de una venta CC (solo DUEÑO/SUPERVISOR/ADMIN)
-  const cancelarDeudaCC = async (ventaId: string, ventaNumero: number) => {
-    if (!confirm(`¿Cancelar la deuda de la Venta #${ventaNumero}? La deuda quedará marcada como saldada sin pago registrado.`)) return
+  // ISS-151: CONDONAR deuda CC (write-off — deuda perdida, NO es ingreso). Solo DUEÑO/SUPERVISOR/ADMIN.
+  // La venta sigue entregada (despachada); solo se salda la deuda como incobrable.
+  // El tag 'Condonación CC' queda EXCLUIDO de los gráficos de medios de pago (no distorsiona la ganancia).
+  const condonarDeudaCC = async (ventaId: string, ventaNumero: number) => {
+    if (!confirm(`¿Condonar la deuda de la Venta #${ventaNumero}? La deuda se da por PERDIDA (incobrable). No cuenta como ingreso ni como medio de pago. Podés revertirlo después.`)) return
     setCancelandoDeudaId(ventaId)
     try {
       const { data: venta } = await supabase.from('ventas').select('total, medio_pago').eq('id', ventaId).single()
       if (!venta) throw new Error('Venta no encontrada')
-      // Marcar como pagada por cancelación (monto_pagado = total, agrega nota en medio_pago)
       let medios: any[] = []
       try { medios = JSON.parse(venta.medio_pago ?? '[]') } catch { medios = [] }
       const saldo = venta.total - medios.filter((m: any) => m.tipo !== 'Cuenta Corriente').reduce((acc: number, m: any) => acc + (m.monto || 0), 0)
-      if (saldo > 0) medios.push({ tipo: 'Cancelación CC', monto: saldo, cancelado_por: user?.nombre_display ?? user?.id })
+      if (saldo > 0) medios.push({ tipo: 'Condonación CC', monto: saldo, condonado_por: user?.nombre_display ?? user?.id, condonado_at: new Date().toISOString() })
       const { error } = await supabase.from('ventas').update({
         monto_pagado: venta.total,
         medio_pago: JSON.stringify(medios),
       }).eq('id', ventaId)
       if (error) throw error
-      toast.success(`Deuda Venta #${ventaNumero} cancelada`)
+      toast.success(`Deuda Venta #${ventaNumero} condonada`)
       qc.invalidateQueries({ queryKey: ['ventas-cc'] })
-    } catch (e: any) { toast.error(e.message ?? 'Error al cancelar deuda') }
+    } catch (e: any) { toast.error(e.message ?? 'Error al condonar deuda') }
+    finally { setCancelandoDeudaId(null) }
+  }
+
+  // ISS-151: REVERTIR a pendiente — deshace una condonación, restaura la deuda. Solo DUEÑO/SUPERVISOR/ADMIN.
+  // La venta SIGUE entregada (no se toca estado ni stock); solo vuelve a "falta pagar" para re-cobrar o anular.
+  const revertirDeudaCC = async (ventaId: string, ventaNumero: number) => {
+    if (!confirm(`¿Revertir la Venta #${ventaNumero} a "falta pagar"? Se restaura la deuda para cobrarla por otro medio o anular la venta. La mercadería sigue entregada (si necesitás devolverla, usá Devolución).`)) return
+    setCancelandoDeudaId(ventaId)
+    try {
+      const { data: venta } = await supabase.from('ventas').select('total, medio_pago').eq('id', ventaId).single()
+      if (!venta) throw new Error('Venta no encontrada')
+      let medios: any[] = []
+      try { medios = JSON.parse(venta.medio_pago ?? '[]') } catch { medios = [] }
+      // Quitar las entradas de condonación; recomputar monto_pagado con los pagos reales (excluye CC y condonaciones)
+      const mediosReales = medios.filter((m: any) => !TAGS_CONDONACION_CC.includes(m?.tipo))
+      const pagadoReal = mediosReales
+        .filter((m: any) => m?.tipo !== 'Cuenta Corriente')
+        .reduce((acc: number, m: any) => acc + (m.monto || 0), 0)
+      const { error } = await supabase.from('ventas').update({
+        monto_pagado: pagadoReal,
+        medio_pago: JSON.stringify(mediosReales),
+      }).eq('id', ventaId)
+      if (error) throw error
+      toast.success(`Venta #${ventaNumero} revertida a "falta pagar"`)
+      qc.invalidateQueries({ queryKey: ['ventas-cc'] })
+    } catch (e: any) { toast.error(e.message ?? 'Error al revertir') }
     finally { setCancelandoDeudaId(null) }
   }
 
@@ -707,16 +746,30 @@ export default function ClientesPage() {
                             {(ventasCC as any[]).filter((v: any) => v.cliente_id === c.id).slice(0, 5).map((v: any) => (
                               <div key={v.id} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 gap-2">
                                 <span className="text-gray-600 dark:text-gray-400 flex-1 min-w-0 truncate">Venta #{v.numero} · {new Date(v.created_at).toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' })}</span>
-                                <span className="font-semibold text-red-600 dark:text-red-400 flex-shrink-0">{formatMoneda((v.total ?? 0) - (v.monto_pagado ?? 0))}</span>
-                                {/* ISS-107: cancelar deuda CC (solo DUEÑO/SUPERVISOR/ADMIN) */}
+                                {v.condonada ? (
+                                  <span className="flex-shrink-0 text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">Condonada</span>
+                                ) : (
+                                  <span className="font-semibold text-red-600 dark:text-red-400 flex-shrink-0">{formatMoneda((v.total ?? 0) - (v.monto_pagado ?? 0))}</span>
+                                )}
+                                {/* ISS-151: condonar (write-off) / revertir a pendiente — solo DUEÑO/SUPERVISOR/ADMIN */}
                                 {puedeGestionarCC && (
-                                  <button
-                                    onClick={() => cancelarDeudaCC(v.id, v.numero)}
-                                    disabled={cancelandoDeudaId === v.id}
-                                    title="Cancelar deuda de esta venta (condonar)"
-                                    className="flex-shrink-0 text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-red-400 hover:text-red-500 transition-colors disabled:opacity-50">
-                                    {cancelandoDeudaId === v.id ? '...' : 'Cancelar deuda'}
-                                  </button>
+                                  v.condonada ? (
+                                    <button
+                                      onClick={() => revertirDeudaCC(v.id, v.numero)}
+                                      disabled={cancelandoDeudaId === v.id}
+                                      title="Revertir: restaurar la deuda a 'falta pagar' para re-cobrar o anular"
+                                      className="flex-shrink-0 text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors disabled:opacity-50">
+                                      {cancelandoDeudaId === v.id ? '...' : 'Revertir'}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => condonarDeudaCC(v.id, v.numero)}
+                                      disabled={cancelandoDeudaId === v.id}
+                                      title="Condonar: dar la deuda por perdida (incobrable). No cuenta como ingreso."
+                                      className="flex-shrink-0 text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-red-400 hover:text-red-500 transition-colors disabled:opacity-50">
+                                      {cancelandoDeudaId === v.id ? '...' : 'Condonar'}
+                                    </button>
+                                  )
                                 )}
                               </div>
                             ))}

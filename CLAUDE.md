@@ -85,5 +85,5 @@ Objetivo: evitar consumo innecesario de tokens leyendo código que ya está resu
 - **Google OAuth → nuevo tenant**: `await loadUserData(userId)` ANTES de `navigate('/dashboard')`. Sin esto la store Zustand no tiene datos del tenant.
 - **RLS SELECT-after-INSERT**: generar UUID en cliente con `crypto.randomUUID()`. Nunca hacer SELECT del tenant/user recién insertado.
 - **`ventas.numero`**: lo asigna el trigger `set_venta_numero`. **Nunca** incluirlo en el INSERT.
-- **`linea_id` en `venta_items`**: columna existe en schema pero nunca se escribe (deuda técnica).
+- **`linea_id` en `venta_items`**: guarda el LPN principal del despacho (se escribe en `registrarVenta`). El desglose completo cuando un ítem sale de varios LPN vive en `venta_item_despachos` (ISS-075, mig 153).
 - **MP suscripciones**: modelo preapproval, `init_point` construido en frontend directo. No usar `POST /preapproval` vía Edge Function.

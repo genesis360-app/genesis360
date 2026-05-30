@@ -51,6 +51,8 @@ const ACCION_LABELS: Record<string, { label: string; color: string; bg: string }
   editar:        { label: 'Editó',         color: 'text-blue-700 dark:text-blue-400',   bg: 'bg-blue-100 dark:bg-blue-900/30'  },
   eliminar:      { label: 'Eliminó',       color: 'text-red-700 dark:text-red-400',    bg: 'bg-red-100 dark:bg-red-900/30'   },
   cambio_estado: { label: 'Cambió estado', color: 'text-purple-700', bg: 'bg-purple-100'},
+  ingreso_stock: { label: 'Ingresó',       color: 'text-green-700 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-900/30' },
+  rebaje_stock:  { label: 'Rebajó',        color: 'text-blue-700 dark:text-blue-400',   bg: 'bg-blue-100 dark:bg-blue-900/30'  },
 }
 
 function describir(log: any): string {
@@ -65,6 +67,10 @@ function describir(log: any): string {
       return `Eliminó ${entidad} ${nombre}`
     case 'cambio_estado':
       return `Cambió estado de ${entidad} ${nombre}: ${log.valor_anterior ?? '—'} → ${log.valor_nuevo ?? '—'}`
+    case 'ingreso_stock':
+      return `Ingresó ${log.campo ?? ''} de ${nombre}${log.valor_nuevo ? ` en ${log.valor_nuevo}` : ''}`
+    case 'rebaje_stock':
+      return `Rebajó ${log.campo ?? ''} de ${nombre}${log.valor_anterior ? ` desde ${log.valor_anterior}` : ''}`
     case 'editar': {
       const campo = log.campo
       if (!campo) return `Editó ${entidad} ${nombre}`

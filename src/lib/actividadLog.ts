@@ -21,7 +21,7 @@ export type EntidadLog =
   | 'recurso'
   | 'autorizacion_gasto'
 
-export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar' | 'solicitar' | 'aprobar' | 'rechazar'
+export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar' | 'solicitar' | 'aprobar' | 'rechazar' | 'ingreso_stock' | 'rebaje_stock'
 
 interface LogParams {
   entidad: EntidadLog

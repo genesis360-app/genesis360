@@ -799,6 +799,22 @@ export default function VentasPage() {
     enabled: !!ventaDetalle?.id,
   })
 
+  // ISS-075: desglose de despacho por LPN/ubicación de cada ítem de la venta abierta
+  const { data: despachosVenta = [] } = useQuery({
+    queryKey: ['venta-despachos', ventaDetalle?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('venta_item_despachos')
+        .select('venta_item_id, lpn, ubicacion_nombre, cantidad, nro_serie')
+        .eq('venta_id', ventaDetalle!.id)
+        .order('created_at', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!ventaDetalle?.id,
+  })
+  const despachosPorItem = (despachosVenta as any[]).reduce((acc: Record<string, any[]>, d: any) => {
+    (acc[d.venta_item_id] ??= []).push(d); return acc
+  }, {})
+
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit],
     queryFn: async () => {
@@ -865,7 +881,7 @@ export default function VentasPage() {
       const estadosFinal = estadosFiltro.length > 0 ? estadosFiltro.filter(id => evIds.includes(id)) : evIds
 
       let lineasQuery = supabase.from('inventario_lineas')
-        .select('id, lpn, estado_id, ubicaciones(disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
+        .select('id, lpn, estado_id, ubicacion_id, ubicaciones(nombre, disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
         .eq('producto_id', p.id).eq('activo', true)
         .not('ubicacion_id', 'is', null)
 
@@ -879,7 +895,7 @@ export default function VentasPage() {
         .flatMap((l: any) =>
           (l.inventario_series ?? [])
             .filter((s: any) => s.activo && !s.reservado)
-            .map((s: any) => ({ ...s, lpn: l.lpn, linea_id: l.id }))
+            .map((s: any) => ({ ...s, lpn: l.lpn, linea_id: l.id, ubicacion_id: l.ubicacion_id ?? null, ubicacion_nombre: (l.ubicaciones as any)?.nombre ?? null }))
         )
     }
 
@@ -1562,6 +1578,8 @@ export default function VentasPage() {
       }
 
       // ─── Fase 2: series + lineas en paralelo por item (distintos productos) ──
+      // ISS-075: acumular el desglose de despacho por LPN/ubicación (solo despachada)
+      const despachoRows: any[] = []
       const _hoy = new Date().toISOString().split('T')[0]
       await Promise.all(cart.map(async (item, i) => {
         const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
@@ -1576,14 +1594,25 @@ export default function VentasPage() {
           if (seriesError) throw seriesError
           if (estado === 'reservada')
             await supabase.from('inventario_series').update({ reservado: true }).in('id', item.series_seleccionadas)
-          else if (estado === 'despachada')
+          else if (estado === 'despachada') {
             await supabase.from('inventario_series').update({ activo: false, reservado: false }).in('id', item.series_seleccionadas)
+            // ISS-075: una fila de despacho por serie (snapshot LPN/ubicación/serie)
+            for (const sid of item.series_seleccionadas) {
+              const s = item.series_disponibles.find((d: any) => d.id === sid)
+              despachoRows.push({
+                tenant_id: tenant!.id, venta_id: venta.id, venta_item_id: ventaItemId, producto_id: item.producto_id,
+                linea_id: s?.linea_id ?? null, lpn: s?.lpn ?? null,
+                ubicacion_id: s?.ubicacion_id ?? null, ubicacion_nombre: s?.ubicacion_nombre ?? null,
+                cantidad: 1, nro_serie: s?.nro_serie ?? null,
+              })
+            }
+          }
         }
 
         if (!item.tiene_series && (estado === 'reservada' || estado === 'despachada')) {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
           let lineasQ = supabase.from('inventario_lineas')
-            .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+            .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
             .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
           // Filtrar ESTRICTAMENTE por sucursal activa para no tocar stock de otra sucursal
           if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
@@ -1595,26 +1624,58 @@ export default function VentasPage() {
           const stockDisp = lineas.reduce((sum: number, l: any) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0)
           if (stockDisp < cant) throw new Error(`Stock insuficiente para "${item.nombre}" en esta sucursal. Disponible: ${stockDisp}, pedido: ${cant}`)
 
+          // Consume hasta `qty` unidades de una línea concreta. Muta el objeto in-memory
+          // para que la fase de fallback no vuelva a contar lo ya consumido.
+          const consumirLinea = async (linea: any, qty: number): Promise<number> => {
+            if (qty <= 0) return 0
+            if (estado === 'reservada') {
+              const areservar = Math.min((linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0), qty)
+              if (areservar <= 0) return 0
+              await supabase.from('inventario_lineas').update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar }).eq('id', linea.id)
+              linea.cantidad_reservada = (linea.cantidad_reservada ?? 0) + areservar
+              return areservar
+            }
+            const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
+            const rebajar = Math.min(disponible, qty)
+            if (rebajar <= 0) return 0
+            const nuevaCant = linea.cantidad - rebajar
+            await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
+            linea.cantidad = nuevaCant
+            // ISS-075: una fila de despacho por LPN consumido (snapshot)
+            despachoRows.push({
+              tenant_id: tenant!.id, venta_id: venta.id, venta_item_id: ventaItemId, producto_id: item.producto_id,
+              linea_id: linea.id, lpn: linea.lpn ?? null,
+              ubicacion_id: linea.ubicacion_id ?? null, ubicacion_nombre: linea.ubicaciones?.nombre ?? null,
+              cantidad: rebajar, nro_serie: null,
+            })
+            return rebajar
+          }
+
           let restante = cant
+          // Fase A — ISS-075: honrar la selección manual de LPN del carrito (item.lpn_fuentes),
+          // respetando las cantidades exactas que el usuario asignó a cada LPN, en orden.
+          const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
+          for (const f of (item.lpn_fuentes ?? [])) {
+            if (restante <= 0) break
+            const linea = lineaById[f.linea_id]
+            if (!linea) continue   // la línea elegida ya no tiene stock → se cubre en la Fase B
+            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante))
+          }
+          // Fase B — fallback por orden de sort para cubrir cualquier faltante
           for (const linea of lineas) {
             if (restante <= 0) break
-            if (estado === 'reservada') {
-              const areservar = Math.min(linea.cantidad - (linea.cantidad_reservada ?? 0), restante)
-              if (areservar > 0) {
-                await supabase.from('inventario_lineas').update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar }).eq('id', linea.id)
-                restante -= areservar
-              }
-            } else {
-              const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
-              const rebajar = Math.min(disponible, restante)
-              if (rebajar <= 0) continue
-              const nuevaCant = linea.cantidad - rebajar
-              await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
-              restante -= rebajar
-            }
+            restante -= await consumirLinea(linea, restante)
           }
+          if (restante > 0.0001) throw new Error(`Stock insuficiente para "${item.nombre}" en esta sucursal.`)
         }
       }))
+
+      // ISS-075: persistir el desglose de despacho (fire-and-forget, no bloquea la venta)
+      if (estado === 'despachada' && despachoRows.length > 0) {
+        void supabase.from('venta_item_despachos').insert(despachoRows).then(({ error }) => {
+          if (error) console.warn('No se pudo registrar el desglose de despacho:', error.message)
+        })
+      }
 
       // ─── Fase 3: stock_actual + movimientos en paralelo (solo despachada) ────
       if (estado === 'despachada') {
@@ -2339,9 +2400,24 @@ export default function VentasPage() {
         }
 
       } else if (nuevoEstado === 'despachada') {
+        // ISS-075: desglose de despacho por LPN al pasar reserva → despachada
+        const despachoRows: any[] = []
         for (const item of items ?? []) {
           if ((item.productos as any)?.tiene_series) {
             const serieIds = (item.venta_series ?? []).map((s: any) => s.serie_id)
+            // ISS-075: snapshot LPN/ubicación/serie antes de desactivar
+            const { data: seriesInfo } = await supabase.from('inventario_series')
+              .select('nro_serie, linea_id, inventario_lineas(lpn, ubicacion_id, ubicaciones(nombre))')
+              .in('id', serieIds)
+            for (const s of (seriesInfo ?? []) as any[]) {
+              despachoRows.push({
+                tenant_id: tenant!.id, venta_id: ventaId, venta_item_id: item.id, producto_id: item.producto_id,
+                linea_id: s.linea_id ?? null, lpn: s.inventario_lineas?.lpn ?? null,
+                ubicacion_id: s.inventario_lineas?.ubicacion_id ?? null,
+                ubicacion_nombre: s.inventario_lineas?.ubicaciones?.nombre ?? null,
+                cantidad: 1, nro_serie: s.nro_serie ?? null,
+              })
+            }
             // Desactivar series y quitar reserva
             await supabase.from('inventario_series')
               .update({ activo: false, reservado: false }).in('id', serieIds)
@@ -2349,7 +2425,7 @@ export default function VentasPage() {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
             let complQ = supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+              .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
             // Usar la sucursal de la venta original para no tocar lineas de otra sucursal
             const ventaSucursal = (ventaDetalle as any)?.sucursal_id
@@ -2370,6 +2446,12 @@ export default function VentasPage() {
                 .update({ cantidad: nuevaCant, cantidad_reservada: nuevaReserva, activo: nuevaCant > 0 })
                 .eq('id', linea.id)
               restante -= rebajar
+              despachoRows.push({
+                tenant_id: tenant!.id, venta_id: ventaId, venta_item_id: item.id, producto_id: item.producto_id,
+                linea_id: linea.id, lpn: (linea as any).lpn ?? null,
+                ubicacion_id: (linea as any).ubicacion_id ?? null, ubicacion_nombre: (linea as any).ubicaciones?.nombre ?? null,
+                cantidad: rebajar, nro_serie: null,
+              })
             }
           }
           // B1: Sincronizar stock_actual y registrar movimiento
@@ -2391,6 +2473,12 @@ export default function VentasPage() {
               venta_id: ventaId,
             })
           }
+        }
+        // ISS-075: persistir el desglose de despacho (fire-and-forget)
+        if (despachoRows.length > 0) {
+          void supabase.from('venta_item_despachos').insert(despachoRows).then(({ error }) => {
+            if (error) console.warn('No se pudo registrar el desglose de despacho:', error.message)
+          })
         }
         // Acumular saldo en medio_pago si lo hay
         let montoPagadoFinal = venta.monto_pagado ?? 0
@@ -3748,6 +3836,7 @@ export default function VentasPage() {
                   .map((vs: any) => vs.inventario_series?.nro_serie)
                   .filter(Boolean)
                 const lpn = item.inventario_lineas?.lpn
+                const despachos = (despachosPorItem[item.id] ?? []) as any[]
                 return (
                   <div key={item.id} className="flex justify-between text-sm bg-page rounded-xl px-3 py-2">
                     <div>
@@ -3768,8 +3857,19 @@ export default function VentasPage() {
                           ))}
                         </div>
                       )}
-                      {nrosSerie.length === 0 && lpn && (
-                        <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded mt-1 inline-block">LPN: {lpn}</span>
+                      {/* ISS-075: desglose de despacho por LPN/ubicación */}
+                      {despachos.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {despachos.map((d: any, di: number) => (
+                            <span key={di} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                              {d.nro_serie
+                                ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
+                                : <>{d.cantidad}u{d.lpn ? ` · LPN ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                            </span>
+                          ))}
+                        </div>
+                      ) : nrosSerie.length === 0 && lpn && (
+                        <span title="Venta anterior al registro de desglose por LPN — se muestra el LPN principal" className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/50 px-1.5 py-0.5 rounded mt-1 inline-block">LPN principal: {lpn}</span>
                       )}
                     </div>
                     <p className="font-semibold">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>

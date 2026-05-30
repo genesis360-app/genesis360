@@ -137,6 +137,14 @@ Formatos: **Excel** (XLSX) · **PDF** (jsPDF + jspdf-autotable)
 - Filas clickeables → modal detalle (entidad, ID, acción, valor anterior/nuevo, usuario)
 - Paginación: selector 20/50/75/100 + primera/última página
 
+### ISS-075 — Movimientos de stock en el Historial (mig 153)
+
+- Los **ingresos y rebajes manuales** de `MovimientosPage` ahora se vuelcan al `actividad_log` con dos acciones nuevas: `ingreso_stock` ("Ingresó") y `rebaje_stock` ("Rebajó").
+  - **Ingreso** registra el destino: `campo` = cantidad + unidad, `valor_nuevo` = ubicación · LPN, `valor_anterior` = motivo.
+  - **Rebaje** registra el origen: `valor_anterior` = ubicación · LPN de la línea rebajada, `valor_nuevo` = motivo.
+- El **traslado** de LPN (`LpnAccionesModal`) ahora incluye la **ubicación de origen** en el diff (`ubicación origen · LPN → ubicación destino · LPN nuevo`), no solo el LPN.
+- Para ventas, el detalle de **qué LPN/ubicación se despachó cada ítem** vive en `venta_item_despachos` y se muestra en el modal de detalle de venta (ver [[ventas-pos]]).
+
 ---
 
 ## Dashboard — Coherencia de números

@@ -28,8 +28,8 @@
     "clsx": "^2.1.0",
     "date-fns": "^3.2.0",
     "html5-qrcode": "^2.3.8",
-    "jspdf": "^2.5.2",
-    "jspdf-autotable": "^3.8.4",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.309.0",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
@@ -40,7 +40,7 @@
     "tailwind-merge": "^2.2.0",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.6.0",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zustand": "^4.4.7"
   },
   "devDependencies": {

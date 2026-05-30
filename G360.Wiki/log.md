@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | Seguridad deps (npm audit 13→5) + restyle visual (fondo slate + scrollbars) — en DEV
+
+Cambios en DEV sin deployar (preview).
+
+- **npm audit**: de 13 vulnerabilidades a **5** (todas las restantes son dev-server: vite/esbuild/uuid, requieren vite@8 major — diferido). Resueltas las de riesgo real: `jspdf` 2→4 (crítica: ReDoS/XSS/path traversal), `jspdf-autotable` 3→5, `dompurify` (transitiva de jspdf), `xlsx` reemplazado por la distribución oficial de SheetJS (`xlsx-0.20.3` desde CDN, el paquete de npm está abandonado y sin fix). +fixes transitivos seguros (@babel, fast-uri, brace-expansion, ws). **Build de prod OK.** jspdf usa solo APIs estables (`new jsPDF({...})`, `autoTable(doc,{...})`, `internal.pageSize`) → bajo riesgo; verificar visualmente un PDF antes de deploy.
+- **Restyle visual** (`index.css`): fondo de pantalla `--ds-page` `#F5F0FF` (lila) → **`#F8FAFC`** (slate frío, look tech). Scrollbars: el light mode usaba el gris default del navegador → ahora **pill flotante fino con tinte violeta de marca** (light+dark+Firefox). Pedido GO de dar un toque más artístico/tecnológico.
+
+---
+
 ## [2026-05-30] update | v1.11.3 PROD — cierre Trazabilidad-extendida: devoluciones + recall por producto
 
 Cierre de los pendientes futuros de la Trazabilidad-extendida. **Solo código** (usa columnas de mig 155 ya en PROD). Deployado a PROD (PR #127, release v1.11.3).

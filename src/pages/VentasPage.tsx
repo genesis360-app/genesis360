@@ -51,6 +51,21 @@ function calcularEfectivo(mediosPago: MedioPagoItem[], total: number): number {
 
 const stepCantidad = (u?: string | null) => esDecimal(u) ? 0.001 : 1
 
+// ISS-075: stock VENDIBLE del producto en una sucursal (estados es_disponible_venta + ubicación pickeable).
+// Se usa para el stock_antes/despues de los movimientos de venta — más significativo que el total
+// global del producto (que mezcla todas las sucursales y estados no vendibles como "Análisis").
+async function stockVendibleSucursal(productoId: string, sucursalId: string | null, vendibleEstadoIds: string[]): Promise<number> {
+  let q = supabase.from('inventario_lineas')
+    .select('cantidad, ubicaciones(disponible_surtido)')
+    .eq('producto_id', productoId).eq('activo', true).gt('cantidad', 0)
+  if (vendibleEstadoIds.length > 0) q = q.in('estado_id', vendibleEstadoIds)
+  if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+  const { data } = await q
+  return (data ?? [])
+    .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
+    .reduce((s: number, l: any) => s + (Number(l.cantidad) || 0), 0)
+}
+
 interface CartItem {
   producto_id: string
   nombre: string
@@ -68,6 +83,7 @@ interface CartItem {
   lpn?: string
   lineas_disponibles?: LineaDisponible[]   // todas las líneas ordenadas por sort activo
   lpn_fuentes?: LpnFuente[]               // computed: qué líneas cubren la cantidad actual
+  lpn_manual_ids?: string[]               // ISS-075: linea_ids que el operador eligió explícitamente (origen='manual'); el resto del plan es 'auto'
   imagen_url?: string
   es_kit?: boolean
   alicuota_iva?: number
@@ -966,7 +982,9 @@ export default function VentasPage() {
       if (!selected) return item
       const reordered = [selected, ...item.lineas_disponibles.filter(l => l.id !== lineaId)]
       const fuentes = calcularLpnFuentes(reordered, item.cantidad)
-      return { ...item, lineas_disponibles: reordered, lpn_fuentes: fuentes, linea_id: fuentes[0]?.linea_id, lpn: fuentes[0]?.lpn ?? undefined }
+      // ISS-075: registrar este LPN como elegido manualmente (para distinguir manual vs auto en el rebaje)
+      const manualIds = Array.from(new Set([...(item.lpn_manual_ids ?? []), lineaId]))
+      return { ...item, lineas_disponibles: reordered, lpn_fuentes: fuentes, lpn_manual_ids: manualIds, linea_id: fuentes[0]?.linea_id, lpn: fuentes[0]?.lpn ?? undefined }
     }))
     setLpnPickerIdx(null)
   }
@@ -1655,14 +1673,16 @@ export default function VentasPage() {
           }
 
           let restante = cant
-          // Fase A — ISS-075: honrar la selección manual de LPN del carrito (item.lpn_fuentes),
-          // respetando las cantidades exactas que el usuario asignó a cada LPN, en orden. origen='manual'.
+          // Fase A — ISS-075: seguir el plan de LPN del carrito (item.lpn_fuentes) con cantidades exactas.
+          // origen='manual' SOLO para los LPN que el operador eligió explícitamente; los que el plan
+          // autocompletó por la regla de rebaje van como 'auto'.
+          const manualIds = new Set(item.lpn_manual_ids ?? [])
           const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
           for (const f of (item.lpn_fuentes ?? [])) {
             if (restante <= 0) break
             const linea = lineaById[f.linea_id]
             if (!linea) continue   // la línea elegida ya no tiene stock → se cubre en la Fase B
-            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante), 'manual')
+            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante), manualIds.has(f.linea_id) ? 'manual' : 'auto')
           }
           // Fase B — fallback por orden de sort (regla de rebaje del sistema). origen='auto'.
           for (const linea of lineas) {
@@ -1694,16 +1714,20 @@ export default function VentasPage() {
         }
         const productIds = Object.keys(cantPorProducto)
         if (productIds.length > 0) {
+          // Estados vendibles del tenant — para calcular el stock por sucursal del movimiento
+          const { data: evData } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
+          const vendibleIds = (evData ?? []).map((e: any) => e.id)
           const { data: prodsData } = await supabase.from('productos')
-            .select('id, stock_actual, stock_minimo, nombre, sku').in('id', productIds)
+            .select('id, stock_minimo, nombre, sku').in('id', productIds)
           const prodMap = Object.fromEntries((prodsData ?? []).map(p => [p.id, p]))
           const movimientosRows: any[] = []
           for (const productoId of productIds) {
             const prodData = prodMap[productoId]
             if (!prodData) continue
             const cant = cantPorProducto[productoId]
-            const stockDespues = prodData.stock_actual            // ya recalculado por el trigger
-            const stockAntes = stockDespues + cant                // reconstruido para el registro
+            // ISS-075: stock_antes/despues = stock VENDIBLE en la sucursal de la venta (no el total global)
+            const stockDespues = await stockVendibleSucursal(productoId, sucursalId, vendibleIds)
+            const stockAntes = stockDespues + cant
             movimientosRows.push({
               tenant_id: tenant!.id, producto_id: productoId, tipo: 'rebaje', cantidad: cant,
               stock_antes: stockAntes, stock_despues: stockDespues,
@@ -2414,6 +2438,9 @@ export default function VentasPage() {
       } else if (nuevoEstado === 'despachada') {
         // ISS-075: desglose de despacho por LPN al pasar reserva → despachada
         const despachoRows: any[] = []
+        // Estados vendibles del tenant — para el stock por sucursal del movimiento (B1)
+        const { data: evDataCambio } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
+        const vendibleIdsCambio = (evDataCambio ?? []).map((e: any) => e.id)
         for (const item of items ?? []) {
           if ((item.productos as any)?.tiene_series) {
             const serieIds = (item.venta_series ?? []).map((s: any) => s.serie_id)
@@ -2468,24 +2495,20 @@ export default function VentasPage() {
           }
           // B1: Registrar movimiento. NO actualizamos stock_actual a mano: el trigger
           // (lineas/series_recalcular_stock) ya lo recalculó tras la rebaja de arriba.
-          // Actualizarlo acá restaría DE NUEVO (doble resta). stock_antes se reconstruye.
-          const { data: prodData } = await supabase.from('productos')
-            .select('stock_actual').eq('id', item.producto_id).single()
-          if (prodData) {
-            const stockDespues = prodData.stock_actual            // ya recalculado por el trigger
-            const stockAntes = stockDespues + item.cantidad       // reconstruido para el registro
-            await supabase.from('movimientos_stock').insert({
-              tenant_id: tenant!.id,
-              producto_id: item.producto_id,
-              tipo: 'rebaje',
-              cantidad: item.cantidad,
-              stock_antes: stockAntes,
-              stock_despues: stockDespues,
-              motivo: `Venta #${venta.numero}`,
-              usuario_id: user?.id,
-              venta_id: ventaId,
-            })
-          }
+          // stock_antes/despues = stock VENDIBLE en la sucursal de la venta (no el total global).
+          const stockDespues = await stockVendibleSucursal(item.producto_id, (ventaDetalle as any)?.sucursal_id ?? null, vendibleIdsCambio)
+          const stockAntes = stockDespues + item.cantidad
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant!.id,
+            producto_id: item.producto_id,
+            tipo: 'rebaje',
+            cantidad: item.cantidad,
+            stock_antes: stockAntes,
+            stock_despues: stockDespues,
+            motivo: `Venta #${venta.numero}`,
+            usuario_id: user?.id,
+            venta_id: ventaId,
+          })
         }
         // ISS-075: persistir el desglose de despacho (fire-and-forget, gate por toggle del tenant)
         if ((tenant as any)?.trazabilidad_asignacion !== false && despachoRows.length > 0) {

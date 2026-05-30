@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.11.1 — Patch ISS-075: manual/auto + stock vendible por sucursal + Inventario→Historial (PROD ✅)
+
+Correctivo tras QA. Sin migrations. (a) `origen` manual/auto correcto (solo LPN elegidos por el operador son manual); (b) stock del movimiento de venta = vendible en la sucursal (no el total global); (c) desglose por LPN en el modal de Inventario→Historial (vivía en InventarioPage, no en la huérfana MovimientosPage, que se eliminó); (d) ingreso/rebaje manual al Historial de actividad portado a InventarioPage.
+
 ## v1.11.0 — ISS-075 trazabilidad despacho por LPN + ISS-151 CC + fix race rebaje (PROD ✅)
 
 - **ISS-075** — trazabilidad de despacho: tabla `venta_item_despachos` (desglose por LPN/ubicación/serie de cada ítem vendido + `origen` manual/auto). Visible en detalle de venta, detalle de movimiento y `/historial`. Ingreso/rebaje manual al `actividad_log`. Toggle en Config → Inventario. Migrations 153+154.

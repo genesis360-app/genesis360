@@ -259,6 +259,19 @@ export default function InventarioPage() {
     enabled: !!tenant,
   })
 
+  // ISS-075: desglose por LPN de un movimiento de venta (abarca varios LPN, no tiene linea_id única)
+  const { data: despachosMov = [] } = useQuery({
+    queryKey: ['inv-movimiento-despachos', movDetalle?.venta_id],
+    queryFn: async () => {
+      const { data } = await supabase.from('venta_item_despachos')
+        .select('lpn, ubicacion_nombre, cantidad, nro_serie, origen')
+        .eq('venta_id', movDetalle!.venta_id)
+        .order('created_at', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!movDetalle?.venta_id,
+  })
+
   const { data: productosBusqueda = [] } = useQuery({
     queryKey: ['productos-busqueda', tenant?.id, form.productoSearch],
     queryFn: async () => {
@@ -966,15 +979,19 @@ export default function InventarioPage() {
         linea_id: linea.id,
         sucursal_id: sucursalId || null,
       })
+
+      // ISS-075: datos para el log del Historial (se capturan antes de cerrar/reset el modal)
+      const ubicNombre = form.ubicacionId ? (ubicaciones as any[]).find((u: any) => u.id === form.ubicacionId)?.nombre : null
+      return { nombre: (selectedProduct as any).nombre, cant, unidad: (selectedProduct as any).unidad_medida, lineaId: linea.id, ubicNombre, lpn: linea.lpn, motivo: form.motivo }
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       toast.success('Ingreso registrado')
+      // ISS-075: ingreso manual → Historial de actividad (destino: ubicación + LPN)
+      const destino = [data?.ubicNombre, data?.lpn ? `LPN ${data.lpn}` : null].filter(Boolean).join(' · ') || null
       logActividad({
-        entidad: 'inventario_linea',
-        entidad_nombre: (selectedProduct as any)?.nombre ?? '',
-        accion: 'crear',
-        valor_nuevo: `Ingreso de stock — ${(selectedProduct as any)?.nombre ?? ''}`,
-        pagina: '/inventario',
+        entidad: 'inventario_linea', entidad_id: data?.lineaId, entidad_nombre: data?.nombre ?? '',
+        accion: 'ingreso_stock', campo: `${data?.cant} ${data?.unidad ?? 'u'}`,
+        valor_nuevo: destino, valor_anterior: data?.motivo || null, pagina: '/inventario',
       })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -1024,15 +1041,19 @@ export default function InventarioPage() {
         linea_id: rebajeLinea.id,
         sucursal_id: sucursalId || null,
       })
+
+      // ISS-075: datos para el log del Historial (origen: ubicación + LPN de la línea rebajada)
+      const ubicOrigen = (rebajeLinea as any).ubicaciones?.nombre ?? null
+      return { nombre: (selectedProduct as any).nombre, cant, unidad: (selectedProduct as any).unidad_medida, lineaId: rebajeLinea.id, ubicOrigen, lpn: rebajeLinea.lpn, motivo: rebajeMotivo }
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       toast.success('Rebaje registrado')
+      // ISS-075: rebaje manual → Historial de actividad (origen: ubicación + LPN)
+      const origen = [data?.ubicOrigen, data?.lpn ? `LPN ${data.lpn}` : null].filter(Boolean).join(' · ') || null
       logActividad({
-        entidad: 'inventario_linea',
-        entidad_nombre: (selectedProduct as any)?.nombre ?? '',
-        accion: 'cambio_estado',
-        valor_nuevo: `Rebaje de stock — ${(selectedProduct as any)?.nombre ?? ''}`,
-        pagina: '/inventario',
+        entidad: 'inventario_linea', entidad_id: data?.lineaId, entidad_nombre: data?.nombre ?? '',
+        accion: 'rebaje_stock', campo: `${data?.cant} ${data?.unidad ?? 'u'}`,
+        valor_anterior: origen, valor_nuevo: data?.motivo || null, pagina: '/inventario',
       })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -2454,12 +2475,34 @@ export default function InventarioPage() {
                             </div>
                           )}
                         </>
+                      ) : movDetalle.venta_id ? (
+                        (despachosMov as any[]).length > 0 ? (
+                          <div className="col-span-2">
+                            <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-1.5">Surtido desde (LPN / ubicación)</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(despachosMov as any[]).map((d: any, di: number) => (
+                                <span key={di} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
+                                  {d.nro_serie
+                                    ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
+                                    : <>{d.cantidad}u{d.lpn ? ` · ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                                  {d.origen && <span className="text-gray-400 dark:text-gray-500"> · {d.origen}</span>}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="col-span-2">
+                            <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                              Esta venta no tiene desglose por LPN registrado (trazabilidad desactivada o venta previa a la función).
+                            </p>
+                          </div>
+                        )
                       ) : (
                         <div className="col-span-2">
                           <p className="text-xs text-amber-500 italic">
                             {movDetalle.linea_id
                               ? 'La línea de inventario asociada ya no está disponible'
-                              : 'Sin línea asociada — movimiento registrado antes del sistema de trazabilidad'}
+                              : 'Sin línea asociada — movimiento manual sin trazabilidad de línea'}
                           </p>
                         </div>
                       )}

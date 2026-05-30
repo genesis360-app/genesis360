@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-29 — 53 páginas + 3 manuales + relevamientos (caja PDF + 5 HTML: ventas/rrhh/clientes/compras/envíos · Ventas A-D respondido) · 9 fuentes en raw/ · DEV: 152 + 086b · PROD: 152 + 086b · **v1.10.4 PROD** ✅ (ISS-178 rangos horarios + C3/A7 relevamiento Ventas) · 5 relevamientos abiertos esperando respuesta GO+socio*
+*Última actualización: 2026-05-30 — 53 páginas + 3 manuales + relevamientos (caja PDF + 5 HTML: ventas/rrhh/clientes/compras/envíos · Ventas A-D respondido) · 9 fuentes en raw/ · DEV: 154 + 086b · PROD: 154 + 086b · **v1.11.0 PROD** ✅ (ISS-075 trazabilidad despacho por LPN + ISS-151 condonar/revertir CC + fix race rebaje + log de asignación) · 5 relevamientos abiertos esperando respuesta GO+socio*

@@ -217,6 +217,8 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     .slice(0, 10)
 
   // Ventas por medio de pago — medio_pago se guarda como JSON string
+  // ISS-151: pseudo-métodos (deuda CC + condonaciones) no son ingresos reales
+  const PSEUDO_METODOS_PAGO = new Set(['Cuenta Corriente', 'Cancelación CC', 'Condonación CC'])
   const ventasPorMedio: Record<string, number> = {}
   ventasPeriodo.forEach((v: any) => {
     if (!v.medio_pago) {
@@ -226,11 +228,13 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     try {
       const arr = JSON.parse(v.medio_pago) as { tipo: string; monto: number }[]
       if (Array.isArray(arr)) {
+        // ISS-151: excluir pseudo-métodos (deuda CC + condonaciones) — no son ingresos reales
+        const reales = arr.filter(p => !PSEUDO_METODOS_PAGO.has(p.tipo))
         // Si hay monto por tipo, usarlo; si no, dividir en partes iguales
-        const totalArr = arr.reduce((s, p) => s + (p.monto || 0), 0)
-        arr.forEach(p => {
+        const totalArr = reales.reduce((s, p) => s + (p.monto || 0), 0)
+        reales.forEach(p => {
           const tipo = p.tipo || 'Sin especificar'
-          const monto = totalArr > 0 ? (p.monto || 0) : v.total / arr.length
+          const monto = totalArr > 0 ? (p.monto || 0) : v.total / reales.length
           ventasPorMedio[tipo] = (ventasPorMedio[tipo] ?? 0) + monto
         })
         return

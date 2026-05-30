@@ -6,6 +6,45 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | v1.11.0 PROD — ISS-075 trazabilidad + ISS-151 CC + fix race rebaje + log de asignación
+
+Release grande. Cierre de toda la sesión 075/151 + bugs encontrados en QA → PROD.
+
+- **Feature log de asignación (mig 154)**: `venta_item_despachos.origen` (`manual`/`auto`) + `tenants.trazabilidad_asignacion` (toggle en Config → Inventario, default ON). El desglose ahora indica si cada LPN lo eligió el operador o la regla de rebaje.
+- **Trazabilidad en /historial**: el detalle de una venta en HistorialPage trae `venta_items` + `venta_item_despachos` y muestra, por ítem, de qué LPN/ubicación/serie salió cada unidad (con `origen`). También en VentasPage (detalle) y MovimientosPage (detalle de movimiento de venta).
+- **Fix race condition (crítico)**: `registrarVenta` procesaba las líneas del carrito en `Promise.all`. Con el mismo producto en 2 líneas, el rebaje se pisaba (race). Ahora **secuencial**. Además Fase 3 (y el B1 de reserva→despacho) **ya no actualizan `stock_actual` a mano** — lo hace el trigger `lineas/series_recalcular_stock` (`stock_actual = SUM líneas activas`). El update manual peleaba con el trigger y desincronizaba/doble-restaba.
+- **Recalc global** de `stock_actual` corrido en DEV (113 productos, 0 desfasados) y en PROD post-deploy.
+- **Versión** `v1.11.0` (feature). Migrations 153+154 aplicadas en PROD antes del merge ([[feedback_deploy_order_migrations_aditivas]]).
+- Pendiente futuro: Trazabilidad-extendida (consolidar todas las transacciones en /historial) — ver `project_pendientes.md`.
+
+---
+
+## [2026-05-29] update | ISS-075 despacho por LPN (mig 153) + ISS-151 impl + fix BUG-LPN manual — todo en DEV
+
+**ISS-075 — implementado en DEV** (mig 153 aplicada en DEV, pendiente PROD):
+
+- **Migration 153** `153_venta_item_despachos.sql`: nueva tabla con desglose de despacho por LPN/ubicación de cada `venta_item` (fila por porción/línea o por serie). Snapshots de texto (`lpn`/`ubicacion_nombre`/`nro_serie`) intactos ante edición/borrado del LPN. RLS por tenant. Aplicada en DEV + `schema_full.sql`.
+- **VentasPage `registrarVenta` (Fase 2)** + **transición reserva→despacho (`cambiarEstado`)**: acumulan y persisten `despachoRows` (fire-and-forget) con el detalle real de qué LPN/ubicación se consumió. Selects enriquecidos con `lpn`, `ubicacion_id`, `ubicaciones(nombre)`.
+- **Modal detalle de venta**: query `venta-despachos` + render del desglose por ítem (`Nu · LPN · Ubicación` / `#serie · Ubicación`). Fallback al LPN único para ventas previas a la mig.
+- **MovimientosPage**: ingreso/rebaje manual ahora se vuelcan al `actividad_log` con acciones nuevas `ingreso_stock`/`rebaje_stock` (origen/destino + ubicación + LPN). Renderizadas en HistorialPage (`ACCION_LABELS` + `describir()`).
+- **LpnAccionesModal traslado**: diff enriquecido con ubicación de **origen** (antes solo LPN).
+- **`actividadLog.ts`**: `AccionLog` += `ingreso_stock | rebaje_stock`.
+- Corregido gotcha desactualizado en CLAUDE.md (`venta_items.linea_id` sí se escribe; desglose en `venta_item_despachos`).
+- Typecheck `tsc --noEmit` OK. Wiki: `ventas-pos.md`, `reportes-metricas.md`, `migraciones.md`, `project_pendientes.md`, `index.md`.
+
+**ISS-151 — implementado en DEV** (sin migración):
+- `MixCajaChart` + `MetricasPage`: excluyen pseudo-métodos `Cuenta Corriente`, `Cancelación CC`, `Condonación CC` del mix de medios de pago (ya no distorsionan la ganancia). El cobro real de una CC (abono) agrega su método real y ése sí aparece.
+- `ClientesPage`: el botón único "Cancelar deuda" se reemplaza por **Condonar** (write-off, tag `Condonación CC`, monto_pagado=total) y **Revertir** (deshace condonación, restaura monto_pagado a pagos reales). Ambos solo DUEÑO/SUPERVISOR/ADMIN. Las condonadas quedan visibles en la lista CC con badge + botón Revertir. Ninguna acción toca estado de entrega ni stock (P4).
+- Helper `esCondonadaCC()` + constante `TAGS_CONDONACION_CC` (incluye el legacy `Cancelación CC`).
+
+**BUG-LPN — corregido en DEV**: la selección manual de LPN en el carrito se ignoraba en el rebaje real (Fase 2 re-ordenaba por sort). Fix: rebaje en 2 fases (A: honra `lpn_fuentes` con cantidades exactas; B: fallback por sort). Limitación: reserva→despacho aún rebaja por sort (no persiste selección manual). Detalle en `project_pendientes.md` → BUG-LPN.
+
+**Config**: tenant DEV "Almacén Jorgito" tenía `cliente_obligatorio='siempre'` (bloqueaba venta directa sin cliente) → cambiado a `'nunca'`. Es config por tenant (ISS-142), no un bug de código.
+
+Estado: **todo en DEV, sin deployar a PROD** (el usuario valida primero). Pendiente para PROD: bump versión (v1.11.0 — feature), aplicar mig 153 en PROD, merge `dev → main`, release ([[feedback_deploy_order_migrations_aditivas]]).
+
+---
+
 ## [2026-05-29] update | v1.10.4 PROD — ISS-178 + C3/A7 → PROD
 
 Cierre del tren acumulado en DEV (2 commits desde v1.10.3). Sin breaking change.

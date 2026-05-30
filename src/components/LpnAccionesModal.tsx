@@ -289,7 +289,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (e2) throw e2
 
       const ubicNombre = (ubicaciones as any[]).find(u => u.id === ubicDestino)?.nombre ?? ubicDestino
-      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'traslado', valor_anterior: `${linea.lpn} (${linea.cantidad} u.)`, valor_nuevo: `${newLpn} → ${ubicNombre} (${cant} u.)`, pagina: '/inventario' })
+      const ubicOrigen = (linea.ubicaciones?.nombre ?? (ubicaciones as any[]).find(u => u.id === linea.ubicacion_id)?.nombre) || 'sin ubicación'
+      logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'traslado', valor_anterior: `${ubicOrigen} · ${linea.lpn} (${linea.cantidad} u.)`, valor_nuevo: `${ubicNombre} · ${newLpn} (${cant} u.)`, pagina: '/inventario' })
     },
     onSuccess: () => { toast.success('Stock movido — nuevo LPN creado'); invalidar(); onClose() },
     onError: (e: Error) => toast.error(e.message),

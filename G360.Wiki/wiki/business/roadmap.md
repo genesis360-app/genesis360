@@ -9,7 +9,26 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 29 de Mayo, 2026
+**Última actualización:** 30 de Mayo, 2026
+
+---
+
+## v1.11.0 — ISS-075 trazabilidad despacho por LPN + ISS-151 CC + fix race rebaje (PROD ✅)
+
+- **ISS-075** — trazabilidad de despacho: tabla `venta_item_despachos` (desglose por LPN/ubicación/serie de cada ítem vendido + `origen` manual/auto). Visible en detalle de venta, detalle de movimiento y `/historial`. Ingreso/rebaje manual al `actividad_log`. Toggle en Config → Inventario. Migrations 153+154.
+- **ISS-151** — Cuenta Corriente: Condonar (write-off) + Revertir (restaura deuda), solo DUEÑO/SUPERVISOR/ADMIN. Dashboard excluye pseudo-métodos (CC/condonación) del mix de medios de pago.
+- **Fix race condition (crítico)**: rebaje de venta era paralelo (`Promise.all`) → con el mismo producto en varias líneas del carrito se pisaba. Ahora secuencial. `stock_actual` lo maneja solo el trigger (se removió el update manual que lo desincronizaba). Recalc global de saneo.
+
+## v1.10.4 — ISS-178 rangos horarios + C3/A7 relevamiento Ventas (PROD ✅)
+
+**Estado:** desplegado en PROD ✅
+**Fecha:** 2026-05-29
+**Migration:** 152 (`envio_rangos_horarios JSONB` + `envios.rango_horario_desde/hasta TIME`) aplicada en PROD pre-merge
+
+### Cambios
+- **ISS-178** (Ventas + Envíos + Config · mig 152): rangos horarios de entrega configurables. `tenants.envio_rangos_horarios JSONB NOT NULL DEFAULT` con seed de 3 rangos típicos (8-13 / 13-18 / 18-22). `envios.rango_horario_desde/hasta TIME` como snapshot al momento del envío (no rompe si después se borra el rango de la config). Config → Envíos: card nueva con CRUD inline. VentasPage modal de envío y EnviosPage form: selector. EnviosPage tabla: badge accent con el rango.
+- **C3 (parcial)** (POS · relevamiento Ventas A-D): CAJERO ya no puede colocar/editar descuentos por ítem ni descuento general en VentasPage. Inputs `disabled` con tooltip "Bloqueado para CAJERO. Pedile al SUPERVISOR/DUEÑO". Pendiente del mismo C3 (feature mayor): descuentos automáticos por medio de pago + umbral por monto configurable para SUPERVISOR.
+- **A7** (Devoluciones · relevamiento Ventas A-D): radio "Dejar en DEV para revisión" (default — flujo previo) / "Reintegrar a stock vendible" (línea sin ubicación + `estado_id` = primer `es_disponible_venta`, aparece en alerta "Inventario sin ubicación") en el modal de devolución. Solo afecta a items no serializados.
 
 ---
 

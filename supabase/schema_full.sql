@@ -509,6 +509,29 @@ ALTER TABLE venta_series ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX idx_venta_series_venta ON venta_series(venta_id);
 
+-- ISS-075 (mig 153): desglose de despacho por LPN/ubicación de cada venta_item
+CREATE TABLE venta_item_despachos (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  venta_id         UUID NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
+  venta_item_id    UUID NOT NULL REFERENCES venta_items(id) ON DELETE CASCADE,
+  producto_id      UUID REFERENCES productos(id) ON DELETE SET NULL,
+  linea_id         UUID REFERENCES inventario_lineas(id) ON DELETE SET NULL,
+  lpn              TEXT,
+  ubicacion_id     UUID,
+  ubicacion_nombre TEXT,
+  cantidad         NUMERIC NOT NULL,
+  nro_serie        TEXT,
+  origen           TEXT,           -- ISS-075 (mig 154): 'manual' | 'auto' | NULL (legacy)
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE venta_item_despachos ENABLE ROW LEVEL SECURITY;
+-- ISS-075 (mig 154): toggle de captura de trazabilidad → tenants.trazabilidad_asignacion BOOLEAN DEFAULT TRUE
+
+CREATE INDEX idx_vid_venta  ON venta_item_despachos(venta_id);
+CREATE INDEX idx_vid_item   ON venta_item_despachos(venta_item_id);
+CREATE INDEX idx_vid_tenant ON venta_item_despachos(tenant_id);
+
 -- ============================================================
 -- 19. CAJAS
 -- ============================================================

@@ -15,6 +15,11 @@ interface Props {
   cotizacion: number
 }
 
+// ISS-151: pseudo-métodos que NO son ingresos reales (deuda CC + condonaciones).
+// No deben contar en el Mix de Caja. El cobro real de una CC se agrega como su
+// método real (Efectivo, Transferencia, etc.) al abonar, y ése sí aparece acá.
+const PSEUDO_METODOS = new Set(['Cuenta Corriente', 'Cancelación CC', 'Condonación CC'])
+
 const FALLBACK_COLORS: Record<string, string> = {
   Efectivo:            '#22c55e',
   'Mercado Pago':      '#06b6d4',
@@ -87,7 +92,7 @@ export function MixCajaChart({ periodo, moneda, cotizacion }: Props) {
           const medios = JSON.parse(v.medio_pago || '[]')
           if (Array.isArray(medios)) {
             medios.forEach((m: any) => {
-              if (m?.tipo && m?.monto > 0) {
+              if (m?.tipo && m?.monto > 0 && !PSEUDO_METODOS.has(m.tipo)) {
                 metodos[m.tipo] = (metodos[m.tipo] ?? 0) + m.monto
               }
             })

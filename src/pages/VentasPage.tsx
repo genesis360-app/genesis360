@@ -799,6 +799,22 @@ export default function VentasPage() {
     enabled: !!ventaDetalle?.id,
   })
 
+  // ISS-075: desglose de despacho por LPN/ubicación de cada ítem de la venta abierta
+  const { data: despachosVenta = [] } = useQuery({
+    queryKey: ['venta-despachos', ventaDetalle?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('venta_item_despachos')
+        .select('venta_item_id, lpn, ubicacion_nombre, cantidad, nro_serie, origen')
+        .eq('venta_id', ventaDetalle!.id)
+        .order('created_at', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!ventaDetalle?.id,
+  })
+  const despachosPorItem = (despachosVenta as any[]).reduce((acc: Record<string, any[]>, d: any) => {
+    (acc[d.venta_item_id] ??= []).push(d); return acc
+  }, {})
+
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
     queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit],
     queryFn: async () => {
@@ -865,7 +881,7 @@ export default function VentasPage() {
       const estadosFinal = estadosFiltro.length > 0 ? estadosFiltro.filter(id => evIds.includes(id)) : evIds
 
       let lineasQuery = supabase.from('inventario_lineas')
-        .select('id, lpn, estado_id, ubicaciones(disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
+        .select('id, lpn, estado_id, ubicacion_id, ubicaciones(nombre, disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
         .eq('producto_id', p.id).eq('activo', true)
         .not('ubicacion_id', 'is', null)
 
@@ -879,7 +895,7 @@ export default function VentasPage() {
         .flatMap((l: any) =>
           (l.inventario_series ?? [])
             .filter((s: any) => s.activo && !s.reservado)
-            .map((s: any) => ({ ...s, lpn: l.lpn, linea_id: l.id }))
+            .map((s: any) => ({ ...s, lpn: l.lpn, linea_id: l.id, ubicacion_id: l.ubicacion_id ?? null, ubicacion_nombre: (l.ubicaciones as any)?.nombre ?? null }))
         )
     }
 
@@ -1562,8 +1578,13 @@ export default function VentasPage() {
       }
 
       // ─── Fase 2: series + lineas en paralelo por item (distintos productos) ──
+      // ISS-075: acumular el desglose de despacho por LPN/ubicación (solo despachada)
+      const despachoRows: any[] = []
       const _hoy = new Date().toISOString().split('T')[0]
-      await Promise.all(cart.map(async (item, i) => {
+      // Procesamiento SECUENCIAL (no Promise.all): si el mismo producto está en varias
+      // líneas del carrito, el rebaje en paralelo leería el mismo stock y se pisaría (race).
+      for (let i = 0; i < cart.length; i++) {
+        const item = cart[i]
         const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
         const ventaItemId = insertedItems![i].id
 
@@ -1576,14 +1597,25 @@ export default function VentasPage() {
           if (seriesError) throw seriesError
           if (estado === 'reservada')
             await supabase.from('inventario_series').update({ reservado: true }).in('id', item.series_seleccionadas)
-          else if (estado === 'despachada')
+          else if (estado === 'despachada') {
             await supabase.from('inventario_series').update({ activo: false, reservado: false }).in('id', item.series_seleccionadas)
+            // ISS-075: una fila de despacho por serie (snapshot LPN/ubicación/serie)
+            for (const sid of item.series_seleccionadas) {
+              const s = item.series_disponibles.find((d: any) => d.id === sid)
+              despachoRows.push({
+                tenant_id: tenant!.id, venta_id: venta.id, venta_item_id: ventaItemId, producto_id: item.producto_id,
+                linea_id: s?.linea_id ?? null, lpn: s?.lpn ?? null,
+                ubicacion_id: s?.ubicacion_id ?? null, ubicacion_nombre: s?.ubicacion_nombre ?? null,
+                cantidad: 1, nro_serie: s?.nro_serie ?? null, origen: 'manual',
+              })
+            }
+          }
         }
 
         if (!item.tiene_series && (estado === 'reservada' || estado === 'despachada')) {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
           let lineasQ = supabase.from('inventario_lineas')
-            .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+            .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
             .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
           // Filtrar ESTRICTAMENTE por sucursal activa para no tocar stock de otra sucursal
           if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
@@ -1595,51 +1627,92 @@ export default function VentasPage() {
           const stockDisp = lineas.reduce((sum: number, l: any) => sum + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0)
           if (stockDisp < cant) throw new Error(`Stock insuficiente para "${item.nombre}" en esta sucursal. Disponible: ${stockDisp}, pedido: ${cant}`)
 
+          // Consume hasta `qty` unidades de una línea concreta. Muta el objeto in-memory
+          // para que la fase de fallback no vuelva a contar lo ya consumido.
+          const consumirLinea = async (linea: any, qty: number, origen: 'manual' | 'auto'): Promise<number> => {
+            if (qty <= 0) return 0
+            if (estado === 'reservada') {
+              const areservar = Math.min((linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0), qty)
+              if (areservar <= 0) return 0
+              await supabase.from('inventario_lineas').update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar }).eq('id', linea.id)
+              linea.cantidad_reservada = (linea.cantidad_reservada ?? 0) + areservar
+              return areservar
+            }
+            const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
+            const rebajar = Math.min(disponible, qty)
+            if (rebajar <= 0) return 0
+            const nuevaCant = linea.cantidad - rebajar
+            await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
+            linea.cantidad = nuevaCant
+            // ISS-075: una fila de despacho por LPN consumido (snapshot + origen manual/auto)
+            despachoRows.push({
+              tenant_id: tenant!.id, venta_id: venta.id, venta_item_id: ventaItemId, producto_id: item.producto_id,
+              linea_id: linea.id, lpn: linea.lpn ?? null,
+              ubicacion_id: linea.ubicacion_id ?? null, ubicacion_nombre: linea.ubicaciones?.nombre ?? null,
+              cantidad: rebajar, nro_serie: null, origen,
+            })
+            return rebajar
+          }
+
           let restante = cant
+          // Fase A — ISS-075: honrar la selección manual de LPN del carrito (item.lpn_fuentes),
+          // respetando las cantidades exactas que el usuario asignó a cada LPN, en orden. origen='manual'.
+          const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
+          for (const f of (item.lpn_fuentes ?? [])) {
+            if (restante <= 0) break
+            const linea = lineaById[f.linea_id]
+            if (!linea) continue   // la línea elegida ya no tiene stock → se cubre en la Fase B
+            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante), 'manual')
+          }
+          // Fase B — fallback por orden de sort (regla de rebaje del sistema). origen='auto'.
           for (const linea of lineas) {
             if (restante <= 0) break
-            if (estado === 'reservada') {
-              const areservar = Math.min(linea.cantidad - (linea.cantidad_reservada ?? 0), restante)
-              if (areservar > 0) {
-                await supabase.from('inventario_lineas').update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar }).eq('id', linea.id)
-                restante -= areservar
-              }
-            } else {
-              const disponible = (linea.cantidad ?? 0) - (linea.cantidad_reservada ?? 0)
-              const rebajar = Math.min(disponible, restante)
-              if (rebajar <= 0) continue
-              const nuevaCant = linea.cantidad - rebajar
-              await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', linea.id)
-              restante -= rebajar
-            }
+            restante -= await consumirLinea(linea, restante, 'auto')
           }
+          if (restante > 0.0001) throw new Error(`Stock insuficiente para "${item.nombre}" en esta sucursal.`)
         }
-      }))
+      }
 
-      // ─── Fase 3: stock_actual + movimientos en paralelo (solo despachada) ────
+      // ISS-075: persistir el desglose de despacho (fire-and-forget, no bloquea la venta)
+      // Gate por toggle del tenant (Config → Inventario → Trazabilidad de asignación de stock)
+      const trazaAsignacionOn = (tenant as any)?.trazabilidad_asignacion !== false
+      if (trazaAsignacionOn && estado === 'despachada' && despachoRows.length > 0) {
+        void supabase.from('venta_item_despachos').insert(despachoRows).then(({ error }) => {
+          if (error) console.warn('No se pudo registrar el desglose de despacho:', error.message)
+        })
+      }
+
+      // ─── Fase 3: movimientos de stock (solo despachada) ──────────────────────
+      // IMPORTANTE: el trigger `lineas_recalcular_stock` ya recalculó productos.stock_actual
+      // tras la Fase 2. NO lo actualizamos manualmente acá (hacerlo pisaba el valor correcto
+      // con un cálculo paralelo → race). Solo registramos los movimientos para el historial,
+      // agregando cantidades por producto (si el mismo producto está en varias líneas del carrito).
       if (estado === 'despachada') {
-        const productIds = [...new Set(cart.filter(i => !i.tiene_series).map(i => i.producto_id))]
+        const cantPorProducto: Record<string, number> = {}
+        for (const item of cart.filter(i => !i.tiene_series)) {
+          cantPorProducto[item.producto_id] = (cantPorProducto[item.producto_id] ?? 0) + item.cantidad
+        }
+        const productIds = Object.keys(cantPorProducto)
         if (productIds.length > 0) {
           const { data: prodsData } = await supabase.from('productos')
             .select('id, stock_actual, stock_minimo, nombre, sku').in('id', productIds)
           const prodMap = Object.fromEntries((prodsData ?? []).map(p => [p.id, p]))
           const movimientosRows: any[] = []
-          await Promise.all(cart.filter(i => !i.tiene_series).map(async item => {
-            const cant = item.cantidad
-            const prodData = prodMap[item.producto_id]
-            if (!prodData) return
-            const stockAntes = prodData.stock_actual
-            const stockDespues = Math.max(0, stockAntes - cant)
-            await supabase.from('productos').update({ stock_actual: stockDespues }).eq('id', item.producto_id)
+          for (const productoId of productIds) {
+            const prodData = prodMap[productoId]
+            if (!prodData) continue
+            const cant = cantPorProducto[productoId]
+            const stockDespues = prodData.stock_actual            // ya recalculado por el trigger
+            const stockAntes = stockDespues + cant                // reconstruido para el registro
             movimientosRows.push({
-              tenant_id: tenant!.id, producto_id: item.producto_id, tipo: 'rebaje', cantidad: cant,
+              tenant_id: tenant!.id, producto_id: productoId, tipo: 'rebaje', cantidad: cant,
               stock_antes: stockAntes, stock_despues: stockDespues,
               motivo: `Venta #${venta.numero}`, usuario_id: user?.id, venta_id: venta.id,
               sucursal_id: sucursalId || null,
             })
             if (stockDespues <= (prodData.stock_minimo ?? 0))
               stockAlertas.push({ nombre: prodData.nombre, sku: prodData.sku ?? '', stock_actual: stockDespues, stock_minimo: prodData.stock_minimo ?? 0 })
-          }))
+          }
           if (movimientosRows.length > 0)
             await supabase.from('movimientos_stock').insert(movimientosRows)
         }
@@ -2339,9 +2412,24 @@ export default function VentasPage() {
         }
 
       } else if (nuevoEstado === 'despachada') {
+        // ISS-075: desglose de despacho por LPN al pasar reserva → despachada
+        const despachoRows: any[] = []
         for (const item of items ?? []) {
           if ((item.productos as any)?.tiene_series) {
             const serieIds = (item.venta_series ?? []).map((s: any) => s.serie_id)
+            // ISS-075: snapshot LPN/ubicación/serie antes de desactivar
+            const { data: seriesInfo } = await supabase.from('inventario_series')
+              .select('nro_serie, linea_id, inventario_lineas(lpn, ubicacion_id, ubicaciones(nombre))')
+              .in('id', serieIds)
+            for (const s of (seriesInfo ?? []) as any[]) {
+              despachoRows.push({
+                tenant_id: tenant!.id, venta_id: ventaId, venta_item_id: item.id, producto_id: item.producto_id,
+                linea_id: s.linea_id ?? null, lpn: s.inventario_lineas?.lpn ?? null,
+                ubicacion_id: s.inventario_lineas?.ubicacion_id ?? null,
+                ubicacion_nombre: s.inventario_lineas?.ubicaciones?.nombre ?? null,
+                cantidad: 1, nro_serie: s.nro_serie ?? null, origen: 'manual',
+              })
+            }
             // Desactivar series y quitar reserva
             await supabase.from('inventario_series')
               .update({ activo: false, reservado: false }).in('id', serieIds)
@@ -2349,7 +2437,7 @@ export default function VentasPage() {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
             let complQ = supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+              .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
             // Usar la sucursal de la venta original para no tocar lineas de otra sucursal
             const ventaSucursal = (ventaDetalle as any)?.sucursal_id
@@ -2370,15 +2458,22 @@ export default function VentasPage() {
                 .update({ cantidad: nuevaCant, cantidad_reservada: nuevaReserva, activo: nuevaCant > 0 })
                 .eq('id', linea.id)
               restante -= rebajar
+              despachoRows.push({
+                tenant_id: tenant!.id, venta_id: ventaId, venta_item_id: item.id, producto_id: item.producto_id,
+                linea_id: linea.id, lpn: (linea as any).lpn ?? null,
+                ubicacion_id: (linea as any).ubicacion_id ?? null, ubicacion_nombre: (linea as any).ubicaciones?.nombre ?? null,
+                cantidad: rebajar, nro_serie: null, origen: 'auto',
+              })
             }
           }
-          // B1: Sincronizar stock_actual y registrar movimiento
+          // B1: Registrar movimiento. NO actualizamos stock_actual a mano: el trigger
+          // (lineas/series_recalcular_stock) ya lo recalculó tras la rebaja de arriba.
+          // Actualizarlo acá restaría DE NUEVO (doble resta). stock_antes se reconstruye.
           const { data: prodData } = await supabase.from('productos')
             .select('stock_actual').eq('id', item.producto_id).single()
           if (prodData) {
-            const stockAntes = prodData.stock_actual
-            const stockDespues = Math.max(0, stockAntes - item.cantidad)
-            await supabase.from('productos').update({ stock_actual: stockDespues }).eq('id', item.producto_id)
+            const stockDespues = prodData.stock_actual            // ya recalculado por el trigger
+            const stockAntes = stockDespues + item.cantidad       // reconstruido para el registro
             await supabase.from('movimientos_stock').insert({
               tenant_id: tenant!.id,
               producto_id: item.producto_id,
@@ -2391,6 +2486,12 @@ export default function VentasPage() {
               venta_id: ventaId,
             })
           }
+        }
+        // ISS-075: persistir el desglose de despacho (fire-and-forget, gate por toggle del tenant)
+        if ((tenant as any)?.trazabilidad_asignacion !== false && despachoRows.length > 0) {
+          void supabase.from('venta_item_despachos').insert(despachoRows).then(({ error }) => {
+            if (error) console.warn('No se pudo registrar el desglose de despacho:', error.message)
+          })
         }
         // Acumular saldo en medio_pago si lo hay
         let montoPagadoFinal = venta.monto_pagado ?? 0
@@ -3748,6 +3849,7 @@ export default function VentasPage() {
                   .map((vs: any) => vs.inventario_series?.nro_serie)
                   .filter(Boolean)
                 const lpn = item.inventario_lineas?.lpn
+                const despachos = (despachosPorItem[item.id] ?? []) as any[]
                 return (
                   <div key={item.id} className="flex justify-between text-sm bg-page rounded-xl px-3 py-2">
                     <div>
@@ -3768,8 +3870,20 @@ export default function VentasPage() {
                           ))}
                         </div>
                       )}
-                      {nrosSerie.length === 0 && lpn && (
-                        <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded mt-1 inline-block">LPN: {lpn}</span>
+                      {/* ISS-075: desglose de despacho por LPN/ubicación */}
+                      {despachos.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {despachos.map((d: any, di: number) => (
+                            <span key={di} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                              {d.nro_serie
+                                ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
+                                : <>{d.cantidad}u{d.lpn ? ` · LPN ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                              {d.origen && <span className="text-gray-400 dark:text-gray-500">· {d.origen}</span>}
+                            </span>
+                          ))}
+                        </div>
+                      ) : nrosSerie.length === 0 && lpn && (
+                        <span title="Venta anterior al registro de desglose por LPN — se muestra el LPN principal" className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/50 px-1.5 py-0.5 rounded mt-1 inline-block">LPN principal: {lpn}</span>
                       )}
                     </div>
                     <p className="font-semibold">${item.subtotal?.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>

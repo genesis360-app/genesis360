@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.10.4** ✅ (ISS-178 rangos horarios + C3/A7 relevamiento Ventas) · DEV alineado con PROD
+Último release en PROD: **v1.11.0** ✅ (ISS-075 trazabilidad despacho por LPN + ISS-151 condonar/revertir CC + fix race rebaje) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,12 +14,14 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.10.4` | `v1.10.4` |
-| Migrations | 001–152 ✅ | 001–152 ✅ |
-| Branch | `dev` alineado con `main` | `main` (release v1.10.4) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.10.4 |
+| APP_VERSION | `v1.11.0` | `v1.11.0` |
+| Migrations | 001–154 ✅ | 001–154 ✅ |
+| Branch | `dev` alineado con `main` | `main` (release v1.11.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.11.0 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (153+154 aplicadas en el deploy v1.11.0)
+
+**Post-deploy PROD:** correr recalc global de `stock_actual` (`PERFORM recalcular_stock(id)` por producto) para sanear desfases históricos del bug de doble-update.
 
 ---
 
@@ -39,11 +41,49 @@ type: project
 
 | ID | Módulo | Descripción | Estado |
 |---|---|---|---|
-| ISS-075 | Historial | Faltan detalles: usuario que ejecutó, ubicación origen → destino en movimientos manuales, cambio de LPN, para ventas mostrar de qué ubicación/LPN se despachó cada ítem. Hoy `actividad_log` registra acción genérica pero no el `diff` por línea | Pendiente |
+| ISS-075 | Historial | Trazabilidad de despacho y movimientos. **✅ v1.11.0 (mig 153+154)**: (1) tabla `venta_item_despachos` con desglose por LPN/ubicación/serie de cada ítem vendido + campo `origen` (`manual`/`auto`); (2) detalle de venta (VentasPage), detalle de movimiento (MovimientosPage) y **/historial** (HistorialPage) muestran el desglose completo por LPN; (3) ingreso/rebaje manual se vuelcan al `actividad_log` (`ingreso_stock`/`rebaje_stock`); (4) traslado con ubicación origen→destino; (5) toggle `tenants.trazabilidad_asignacion` en Config → Inventario. **Pendiente futuro**: consolidar aún más el /historial (ver nota Trazabilidad-extendida abajo) | ✅ v1.11.0 |
 | ISS-080 | Alertas | Filtrar por sucursal todas las queries de AlertasPage | ✅ Resuelto 2026-05-28 — cruce client-side con `inventario_lineas`+`PSMSS` para stock; cruce con `inventario_lineas` para productos sin categoría |
 | ISS-108 | Header / Mobile | Selector de sucursal invisible en celular | ✅ Resuelto 2026-05-28 — bloque mobile con ícono Building2 + nombre + `<select>` transparente superpuesto |
 | ISS-148 | Recursos | Input texto libre para ubicación | ✅ Resuelto 2026-05-28 — componente `UbicacionPicker` (select con opciones del histórico de la sucursal + opción "+ Nueva ubicación") en form crear/editar, modal asignar y edit inline |
-| ISS-151 | Dashboard + CC | Dashboard pestaña "todo" suma "Cancelación CC" como método de pago (debería ser cobro real de deuda, no un nuevo ingreso) → distorsiona la ganancia del día. **Además** al cancelar una CC, la venta original debe volver a estado "falta pagar" tipo reserva (hoy queda `despachada` y `monto_pagado` total). Después se cobra por otro medio o se anula la venta. | Pendiente — requiere alineación de modelo antes de implementar |
+| ISS-151 | Dashboard + CC | Dashboard sumaba "Cancelación CC" como método de pago → distorsionaba la ganancia. **🔄 Implementado en DEV:** (1) `MixCajaChart` + `MetricasPage` excluyen pseudo-métodos (`Cuenta Corriente`, `Cancelación CC`, `Condonación CC`); (2) `ClientesPage` reemplaza el botón único por **Condonar** (write-off, tag `Condonación CC`) y **Revertir** (restaura la deuda), ambos solo DUEÑO/SUPERVISOR/ADMIN; las condonadas quedan visibles con badge para poder revertir. Ambas acciones mantienen la venta **despachada** (no tocan stock ni estado de entrega — P4). Sin migración. Ver modelo abajo. | 🔄 DEV |
+
+### ISS-151 — modelo alineado (relevado con GO + socio, 2026-05-29)
+
+Decisiones para implementar (no implementado aún):
+
+1. **Dos acciones separadas en una venta con deuda CC** (ambas solo DUEÑO / SUPERVISOR / ADMIN):
+   - **Condonar**: la deuda se da por perdida (incobrable). No es un cobro ni un ingreso.
+   - **Revertir a pendiente**: la venta vuelve a estado de pago "falta pagar" para re-cobrarla por otro medio o anularla.
+   - Reemplaza al actual botón único `cancelarDeudaCC` (`ClientesPage.tsx:405`) que hoy marca `monto_pagado = total` con un medio falso `"Cancelación CC"`.
+2. **El cobro posterior de una CC NO suma a la ganancia del día**: la utilidad ya se contabilizó cuando la venta se despachó. Cobrar la deuda después es solo movimiento de caja (pasa de "por cobrar" a efectivo/medio real), no nueva utilidad.
+3. **Dashboard**: `"Cancelación CC"` deja de contarse como medio de pago. Cuando la deuda se cobra por un medio real, recién ahí aparece en el gráfico bajo ese método de pago.
+4. **Al revertir a pendiente, la venta sigue entregada** (solo cambia el estado de pago). Si hay que devolver mercadería, se usa el flujo de **Devolución** aparte (no se reintegra stock automáticamente).
+
+### BUG-LPN (encontrado + corregido 2026-05-29, en DEV)
+
+**Síntoma:** en venta directa, la selección manual de LPN en el carrito (override de `lpn_fuentes`) se ignoraba en el rebaje real — la Fase 2 de `registrarVenta` re-consultaba y ordenaba por el sort automático, rebajando de un LPN distinto al elegido. El desglose de ISS-075 lo destapó.
+
+**Fix:** rebaje en 2 fases ([VentasPage.tsx Fase 2](src/pages/VentasPage.tsx)) — **Fase A** honra `item.lpn_fuentes` con cantidades exactas por LPN y en orden; **Fase B** completa por sort solo si quedó faltante (stock cambiado). Ahora el rebaje siempre coincide con los badges de LPN del carrito.
+
+**BUG-RACE (mismo producto en varias líneas del carrito):** además del sort, había una **race condition**. La Fase 2 y Fase 3 de `registrarVenta` corrían en `Promise.all` (paralelo). Con el mismo producto en 2 líneas del carrito, ambas leían el mismo stock inicial y se pisaban → distribución de rebaje por LPN incorrecta y `stock_actual` desfasado. Detectado en Venta #198 (2 movimientos leyeron `stock_antes=35` ambos).
+
+**Causa de fondo:** el trigger `lineas_recalcular_stock` → `recalcular_stock(producto_id)` ya setea `stock_actual = SUM(cantidad de líneas activas)` (o COUNT de series activas). El update **manual** de `stock_actual` en Fase 3 de `registrarVenta` peleaba contra el trigger y lo pisaba con un valor racy.
+
+**Fix (en DEV):**
+1. Fase 2 ahora es **secuencial** (`for` en vez de `Promise.all`) → sin race entre líneas del mismo producto.
+2. Fase 3 **ya no actualiza `stock_actual` manualmente** (lo hace el trigger); solo registra movimientos, **agregados por producto** (un movimiento por producto con la cantidad total). `stock_antes` se reconstruye desde el `stock_actual` post-trigger.
+3. Esto además **auto-corrige** desfases históricos: al dejar el trigger como única fuente, `stock_actual` converge a la suma real de líneas.
+
+**Limitación conocida pendiente:** la transición **reserva → despacho** (`cambiarEstado`) (a) no persiste la selección manual de LPN (venta_items solo guarda `linea_id` principal) y (b) **también** actualiza `stock_actual` manualmente (mismo anti-patrón vs trigger — revisar y migrar al patrón de Fase 3). Afecta solo a reservas, no a venta directa.
+
+**Datos de prueba con stock desfasado:** Ventas #196 y #198 (Almacén Jorgito) quedaron con distribución por LPN incorrecta y/o `stock_actual` −1. **Recalc global corrido en DEV** (113 productos, 0 desfasados). En PROD correr el recalc post-deploy.
+
+### Trazabilidad-extendida (futuro — pedido GO 2026-05-30)
+
+Visión: `/historial` (HistorialPage) debe ser el **hub único de trazabilidad completa** para recall / auditoría / análisis. Ya muestra el desglose de despacho por venta (v1.11.0). Falta consolidar:
+- Mostrar el detalle completo de cada transacción (no solo ventas): edición de LPN (lote/venc/estado/ubicación origen→destino), traslados, ingresos/rebajes — hoy están en `actividad_log` como filas por-campo separadas; consolidarlas por "transacción".
+- Filtro por producto/LPN/serie para reconstruir la historia de una unidad puntual.
+- Export completo para recall.
 
 ### Deuda técnica / pendientes abiertos
 

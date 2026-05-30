@@ -13,6 +13,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
 import type { Producto } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { logActividad } from '@/lib/actividadLog'
 
 type ModalType = 'ingreso' | 'rebaje' | null
 
@@ -82,6 +83,19 @@ export default function MovimientosPage() {
       return data ?? []
     },
     enabled: !!tenant,
+  })
+
+  // ISS-075: desglose por LPN de un movimiento de venta (abarca varios LPN, no tiene linea_id única)
+  const { data: despachosMov = [] } = useQuery({
+    queryKey: ['movimiento-despachos', movDetalle?.venta_id],
+    queryFn: async () => {
+      const { data } = await supabase.from('venta_item_despachos')
+        .select('lpn, ubicacion_nombre, cantidad, nro_serie, origen')
+        .eq('venta_id', movDetalle!.venta_id)
+        .order('created_at', { ascending: true })
+      return data ?? []
+    },
+    enabled: !!movDetalle?.venta_id,
   })
 
   const { data: productosBusqueda = [] } = useQuery({
@@ -229,6 +243,15 @@ export default function MovimientosPage() {
         linea_id: linea.id,
         sucursal_id: sucursalId || null,
       })
+
+      // ISS-075: registrar en el Historial de actividad (destino: ubicación + LPN)
+      const ubicNombre = form.ubicacionId ? (ubicaciones as any[]).find(u => u.id === form.ubicacionId)?.nombre : null
+      const destino = [ubicNombre, linea.lpn ? `LPN ${linea.lpn}` : null].filter(Boolean).join(' · ') || null
+      logActividad({
+        entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: selectedProduct.nombre,
+        accion: 'ingreso_stock', campo: `${cant} ${(selectedProduct as any).unidad_medida ?? 'u'}`,
+        valor_nuevo: destino, valor_anterior: form.motivo || null, pagina: '/movimientos',
+      })
     },
     onSuccess: () => {
       toast.success('Ingreso registrado')
@@ -298,6 +321,15 @@ export default function MovimientosPage() {
         usuario_id: user?.id,
         linea_id: rebajeLinea.id,
         sucursal_id: sucursalId || null,
+      })
+
+      // ISS-075: registrar en el Historial de actividad (origen: ubicación + LPN)
+      const ubicOrigen = (rebajeLinea as any).ubicaciones?.nombre ?? null
+      const origen = [ubicOrigen, rebajeLinea.lpn ? `LPN ${rebajeLinea.lpn}` : null].filter(Boolean).join(' · ') || null
+      logActividad({
+        entidad: 'inventario_linea', entidad_id: rebajeLinea.id, entidad_nombre: selectedProduct.nombre,
+        accion: 'rebaje_stock', campo: `${cant} ${(selectedProduct as any).unidad_medida ?? 'u'}`,
+        valor_anterior: origen, valor_nuevo: rebajeMotivo || null, pagina: '/movimientos',
       })
     },
     onSuccess: () => {
@@ -626,12 +658,28 @@ export default function MovimientosPage() {
                         </div>
                       )}
                     </>
+                  ) : movDetalle.venta_id && (despachosMov as any[]).length > 0 ? (
+                    <div className="col-span-2">
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-1.5">Surtido desde (LPN / ubicación)</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(despachosMov as any[]).map((d: any, di: number) => (
+                          <span key={di} className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-lg">
+                            {d.nro_serie
+                              ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
+                              : <>{d.cantidad}u{d.lpn ? ` · ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                            {d.origen && <span className="text-gray-400 dark:text-gray-500"> · {d.origen}</span>}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   ) : (
                     <div className="col-span-2">
                       <p className="text-xs text-amber-500 italic">
                         {movDetalle.linea_id
                           ? 'La línea de inventario asociada ya no está disponible'
-                          : 'Sin línea asociada — movimiento registrado antes del sistema de trazabilidad'}
+                          : movDetalle.venta_id
+                            ? 'Venta anterior al registro de desglose por LPN'
+                            : 'Sin línea asociada — movimiento registrado antes del sistema de trazabilidad'}
                       </p>
                     </div>
                   )}

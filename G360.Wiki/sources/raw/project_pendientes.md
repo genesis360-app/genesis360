@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.11.5** ✅ (ISS-127 Códigos compuestos GS1 completo — F1+F2+F3, mig 157+158) · DEV alineado con PROD
+Último release en PROD: **v1.11.6** ✅ (ISS-127 Códigos compuestos GS1 completo — F1+F2+F3, mig 157+158 + GS1 QR Code) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,10 +14,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.5` | `v1.11.5` |
+| APP_VERSION | `v1.11.6` | `v1.11.6` |
 | Migrations | 001–**158** ✅ | 001–**158** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.11.5) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.11.5 |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.11.6) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.11.6 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna.
 

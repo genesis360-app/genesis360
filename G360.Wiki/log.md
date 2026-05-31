@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | ISS-127 — GS1 QR Code como 3ª simbología (v1.11.6, en DEV)
+
+Pedido GO al cierre. Los perfiles de códigos compuestos ahora soportan **GS1 QR Code** además de GS1-128 y DataMatrix.
+
+- `bwip-js` bcid `gs1qrcode` (confirmado; `gs1-qrcode` con guión NO existe). `CodigoCompuestoModal` y `CodigoMasivoModal`: mapa de bcid por simbología + solo el 1D (GS1-128) lleva height/texto. `CodigoPerfilesPanel`: opción "GS1 QR Code (2D)" en el select + label en la lista. Tipo `simbologia` += `'qr'`. Sin migración (la columna es TEXT libre).
+- Typecheck + build OK. Bump v1.11.6. Wiki: `escaneo-barcode.md`, `project_pendientes.md`, `log.md`, `roadmap.md`.
+
+---
+
 ## [2026-05-31] update | v1.11.5 PROD — ISS-127 Códigos compuestos GS1 COMPLETO (F3c/d/e)
 
 Cierre de ISS-127. Deploy a PROD como v1.11.5 (mig 157+158 aplicadas en DEV y PROD).

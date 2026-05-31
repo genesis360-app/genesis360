@@ -11,7 +11,7 @@ interface PerfilRow {
   nombre: string
   proveedor_id: string | null
   tipo: 'gs1' | 'custom'
-  simbologia: 'gs1_128' | 'datamatrix'
+  simbologia: 'gs1_128' | 'datamatrix' | 'qr'
   ais: string[]
   custom_format: { separador?: string } | null
   lectura_modo: 'autocompletar' | 'directo'
@@ -22,7 +22,7 @@ interface FormState {
   nombre: string
   proveedor_id: string
   tipo: 'gs1' | 'custom'
-  simbologia: 'gs1_128' | 'datamatrix'
+  simbologia: 'gs1_128' | 'datamatrix' | 'qr'
   ais: string[]
   separador: string
   lectura_modo: 'autocompletar' | 'directo'
@@ -170,6 +170,7 @@ export function CodigoPerfilesPanel() {
                 className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
                 <option value="gs1_128">GS1-128 (barras 1D)</option>
                 <option value="datamatrix">GS1 DataMatrix (2D)</option>
+                <option value="qr">GS1 QR Code (2D)</option>
               </select>
             </div>
             <div>
@@ -221,7 +222,7 @@ export function CodigoPerfilesPanel() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{p.nombre}</span>
-                  <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent">{p.simbologia === 'datamatrix' ? 'DataMatrix' : 'GS1-128'}</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent">{p.simbologia === 'datamatrix' ? 'DataMatrix' : p.simbologia === 'qr' ? 'QR' : 'GS1-128'}</span>
                   {p.tipo === 'custom' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">custom</span>}
                   {p.proveedor_id && <span className="text-[11px] text-gray-400 dark:text-gray-500">· {provNombre(p.proveedor_id) ?? 'proveedor'}</span>}
                 </div>

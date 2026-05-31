@@ -7,9 +7,13 @@ import { buildGS1ElementString, gtinCheckDigit, isValidGtin, type GS1Fields } fr
 export interface Perfil {
   id: string
   nombre: string
-  simbologia: 'gs1_128' | 'datamatrix'
+  simbologia: 'gs1_128' | 'datamatrix' | 'qr'
   ais: string[]
 }
+
+// bwip-js: barcode id por simbología
+const BCID: Record<Perfil['simbologia'], string> = { gs1_128: 'gs1-128', datamatrix: 'gs1datamatrix', qr: 'gs1qrcode' }
+const SIMB_LABEL: Record<Perfil['simbologia'], string> = { gs1_128: 'GS1-128', datamatrix: 'DataMatrix', qr: 'QR' }
 
 interface Props {
   /** Datos del LPN/producto para codificar */
@@ -66,12 +70,13 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
       // bwipp rechaza opciones `undefined` (la clave debe estar ausente). DataMatrix
       // (2D) no usa height ni el texto legible; GS1-128 (1D) sí.
       const opts: Record<string, any> = {
-        bcid: perfil.simbologia === 'datamatrix' ? 'gs1datamatrix' : 'gs1-128',
+        bcid: BCID[perfil.simbologia],
         text: elementString,
         scale: 3,
         backgroundcolor: 'FFFFFF',
       }
-      if (perfil.simbologia !== 'datamatrix') {
+      // Solo el lineal (GS1-128) usa height + texto legible; los 2D (DataMatrix/QR) no.
+      if (perfil.simbologia === 'gs1_128') {
         opts.height = 12
         opts.includetext = true
         opts.textxalign = 'center'
@@ -135,7 +140,7 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
           {opciones.length > 1 && (
             <select value={perfilId} onChange={e => setPerfilId(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
-              {opciones.map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.simbologia === 'datamatrix' ? 'DataMatrix' : 'GS1-128'}</option>)}
+              {opciones.map(p => <option key={p.id} value={p.id}>{p.nombre} · {SIMB_LABEL[p.simbologia]}</option>)}
             </select>
           )}
 

@@ -6,6 +6,64 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | v1.11.5 PROD — ISS-127 Códigos compuestos GS1 COMPLETO (F3c/d/e)
+
+Cierre de ISS-127. Deploy a PROD como v1.11.5 (mig 157+158 aplicadas en DEV y PROD).
+
+- **F3c — Recepciones**: botón de scanner en el buscador (`handleScanRecepcion`) → `agregarProducto(prod, {nro_lote, fecha_vencimiento, cantidad_recibida})` con datos del GS1.
+- **F3d — Rebaje + modo directo**: el scanner compartido ya identifica el producto por GTIN; `pendingRebaje` + effect auto-seleccionan la **línea por lote** y setean cantidad. Modo `directo`: `pendingDirectoIngreso` + `directoFiredRef` + effect auto-crean el LPN cuando el form queda completo (perfil con `lectura_modo='directo'`).
+- **F3e — Generación masiva**: `CodigoMasivoModal` — seleccionando varios LPNs en Inventario, botón "Etiquetas GS1" genera la hoja imprimible con todos los códigos (marca los sin GTIN válido).
+- Typecheck + `vite build` OK. Bump v1.11.5. Wiki: `escaneo-barcode.md`, `roadmap.md`, `project_pendientes.md`, `log.md`.
+
+---
+
+## [2026-05-30] update | ISS-127 F3 (parcial) — DataMatrix lectura (ZXing) + Ventas/POS + cierre PR Dependabot #129
+
+- **PR Dependabot #129 cerrado**: bump de vite a 8 incompatible con el peer de @vitejs/plugin-react@4 → build rojo, no aplicable. Vulns involucradas son dev-server only (cluster vite/esbuild, diferido). Rama aislada, no afectaba dev/main.
+- **F3a — DataMatrix lectura**: `@zxing/library` restringido a DATA_MATRIX como fallback en `BarcodeScanner`. Se carga/ejecuta solo cuando el primario no cubre data_matrix (zbar activo o BarcodeDetector sin soporte), throttle 1/3 frames, vía `HTMLCanvasElementLuminanceSource`. Audit sin vulns nuevas.
+- **F3b — Ventas/POS**: `procesarScan` usa `resolverScanCompuesto` → identifica producto por GTIN (fallback codigo_barras) + suma la cantidad del AI 30 en el incremento del carrito.
+- **Fixes previos en este bloque**: AI cantidad 37→30, validación de GTIN (gtinCheckDigit/isValidGtin) con sugerencia del dígito correcto, mensajes GS1 accionables, y DataMatrix sin `height:undefined`.
+- Typecheck + build OK. Pendiente F3: Recepciones (scanner propio) + Rebaje (lote→LPN) + modo directo + generación masiva.
+
+---
+
+## [2026-05-30] update | ISS-127 fix — AI cantidad (37→30) + validación GTIN + errores claros (QA GO)
+
+Fixes tras prueba de GO al generar un código desde un LPN.
+
+- **AI de cantidad 37→30**: (37) "count of trade items" requiere contexto logístico GS1 (00/02) → bwipp tiraba `GS1missingAIs`. El correcto para "cantidad de unidades" suelto es **(30)**. `buildGS1ElementString` ahora emite siempre (30) para cantidad; `AIS_SOPORTADOS` y defaults pasan a 30. Perfiles existentes en DEV migrados (37→30) + default de la columna `codigo_perfiles.ais` actualizado (mig file + schema_full).
+- **Validación de GTIN**: `gs1.ts` += `gtinCheckDigit` + `isValidGtin`. El modal valida el GTIN antes de bwip-js y, si el dígito verificador está mal, **avisa el dígito correcto** (ej: barcode `0378912345689` inválido → "el correcto sería 8"). Antes salía el críptico `GS1badChecksum`.
+- **Mensajes accionables**: falta de GTIN en el producto / perfil sin (01) / checksum → mensajes en español que dicen qué corregir, en vez del error de bwipp.
+- Typecheck OK. Aún en DEV (F1+F2+fix sin deployar).
+
+---
+
+## [2026-05-30] update | ISS-127 F2 — lectura GS1 en ingreso (individual + masivo) — en DEV
+
+Fase 2 del subsistema GS1: leer un código compuesto en el ingreso de stock y autocompletar. En DEV sin deployar (sigue a F1).
+
+- **`gs1.ts → looksLikeGS1`**: distingue GS1 compuesto de EAN/SKU plano (prefijo simbología / FNC1 / AI 01+14díg+datos). **Crítico** para no parsear un EAN como GS1. Testeado: EAN-13/SKU→plano, GS1 variantes→GS1.
+- **`src/lib/scanCompuesto.ts → resolverScanCompuesto`**: parseo + match del producto por GTIN (normalizaciones 14/13/sin-ceros) con fallback a `codigo_barras`; resuelve `lectura_modo` (perfil del proveedor → perfil único → autocompletar). Devuelve null si no es GS1 (caller cae a búsqueda plana).
+- **InventarioPage**: `handleBarcodeScan` (ingreso individual) → selecciona producto + autocompleta lote/venc/cantidad. `handleMasivoScan` + `addMasivoRow(prod, overrides)` (masivo) → fila con lote/venc/cantidad pre-cargados.
+- **Rebaje NO incluido**: no tiene scanner propio y requiere resolución lote→LPN → movido a F3 junto con modo `directo`.
+- Typecheck OK. Wiki: `escaneo-barcode.md`, `project_pendientes.md`, `log.md`.
+
+---
+
+## [2026-05-30] update | ISS-127 F1 COMPLETA — códigos compuestos GS1: lib + Config perfiles + generación desde LPN — en DEV
+
+Subsistema de códigos compuestos GS1 (relevado con GO, diseño en `project_pendientes.md`). **Fase 1 — fundación, completa y con build OK**. En DEV sin deployar.
+
+- **Migrations 157+158** (DEV): `codigo_perfiles` (perfiles GS1/custom: proveedor_id, tipo, simbologia, ais, custom_format, lectura_modo) + `productos.gtin` (fallback a codigo_barras).
+- **`src/lib/gs1.ts`**: parser + encoder GS1 testeado (round-trip OK). `parseGS1` (FNC1/GS, strip prefijo simbología, AIs fijos/variables, YYMMDD incl. día 00→último del mes, precio 392x con decimales), `buildGS1ElementString` (paréntesis para bwip-js), `normalizeGtin`, `AIS_SOPORTADOS`. AIs: 01/10/17/11/21/37/30/392x.
+- **`bwip-js@4`** (genera GS1-128 + DataMatrix). `npm audit` sigue en 5 moderate.
+- **`CodigoPerfilesPanel`** → Config → Inventario → **Códigos**: CRUD de perfiles (nombre, proveedor, tipo, simbología, AIs por chips, modo lectura, activar/desactivar).
+- **`CodigoCompuestoModal`** → botón en `LpnAccionesModal` (al lado del QR): genera el código compuesto con los datos reales del LPN (lote/venc/cantidad/serie/precio + GTIN del producto) según el perfil elegido. Descargar/imprimir.
+- Typecheck + `vite build` OK. Wiki: `escaneo-barcode.md`, `migraciones.md`, `schema_full.sql`, `project_pendientes.md`, `log.md`.
+- **Pendiente F2**: lectura en ingreso/rebaje (autocompletar/directo). **F3**: DataMatrix lectura (ZXing) + ventas/recepciones + masiva.
+
+---
+
 ## [2026-05-30] update | v1.11.4 PROD — Reservas: selección manual de LPN persistida (mig 156) + anti-patrón stock_actual confirmado resuelto
 
 Cierre del "anti-patrón de reservas". Hallazgo: el rótulo del wiki estaba desactualizado.

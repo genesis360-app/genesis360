@@ -31,7 +31,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/envios]] | Propio + Courier · POD (foto cámara) · estado `en_bodega` · página pública transportista `/transporte/:token` · pestaña Pagos Courier · QR codes en remito · LPN+ubicación en panel · bloqueo si no pagado | ✅ |
 | [[wiki/features/notificaciones]] | Tabla real, campana, email, diferencia apertura caja — v1.5.0 | ✅ |
 | [[wiki/features/suscripciones-planes]] | Planes Free/Básico/Pro/Enterprise, trial, Mercado Pago | ✅ |
-| [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku (scan-product) + scan-ticket IA (v1.8.38): ticket supermercado → recepciones + productos | ✅ |
+| [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + Claude Haiku (scan-product) + scan-ticket IA (v1.8.38): ticket supermercado → recepciones + productos · **ISS-127 F1: códigos compuestos GS1 (lib gs1.ts + perfiles + generación bwip-js desde LPN)** | ✅ |
 | [[wiki/features/multi-sucursal]] | Selector, roles, stock · SucursalesPage consolidada v1.8.38 (todos los campos en un modal) · backfill 114–117 · filtros estrictos · cajas por sucursal · **aislamiento por sucursal** (triple blindaje cliente + RLS-por-sucursal pendiente) v1.11.2-dev | ✅ |
 | [[wiki/features/alertas]] | Stock bajo, LPNs vencidos, reservas viejas, sin categoría, deuda · filtro por sucursal | ✅ |
 | [[wiki/features/recursos]] | Patrimonio del negocio, tab Ubicaciones, recursos recurrentes, integración gastos · ISS-111/112/114 fixes · **v1.8.45**: capitalización (`capitaliza_recurso`) + card "Mantenimiento acumulado" + chips Mantto/Cap en cada card | ✅ |

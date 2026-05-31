@@ -17,7 +17,8 @@ updated: 2026-05-20
 | Librería | Rol |
 |---------|-----|
 | `BarcodeDetector` (nativo) | Primera opción — Chrome/Edge/Android |
-| `@undecaf/zbar-wasm` | Fallback WASM — iOS, Firefox, Desktop |
+| `@undecaf/zbar-wasm` | Fallback WASM — iOS, Firefox, Desktop (1D + QR) |
+| `@zxing/library` | Fallback **DataMatrix** (ISS-127 F3) — zbar no lo decodifica. Se carga y corre solo si el primario no cubre data_matrix; restringido a DATA_MATRIX + throttle 1/3 frames |
 | `html5-qrcode` | Manejo de cámara y permisos |
 | `qrcode` | Generación de QR (no lectura) |
 
@@ -123,6 +124,55 @@ Analiza la foto de un ticket de supermercado y extrae la lista de productos con 
 ## Búsqueda por código de barras
 
 `InventarioPage` y búsqueda de productos en VentasPage incluyen `codigo_barras` en los filtros del lado de la DB y del cliente.
+
+---
+
+## Códigos compuestos GS1 (ISS-127)
+
+Subsistema para leer/generar códigos que codifican **varios campos a la vez** (estándar GS1), grado WMS. Distinto del scan de valor único: un mismo código lleva GTIN + lote + vencimiento + cantidad + serie + etc.
+
+### Modelo
+
+- **`codigo_perfiles`** (mig 157): perfiles configurables. `tipo` `gs1`|`custom`, `simbologia` `gs1_128`|`datamatrix`, `ais` (lista de AIs a generar), `custom_format` (override no-GS1: separador), `lectura_modo` `autocompletar`|`directo`, `proveedor_id` opcional. RLS por tenant.
+- **`productos.gtin`** (mig 158): GTIN dedicado (GS1 AI 01) para el match; fallback a `codigo_barras` si NULL.
+
+### Librería `src/lib/gs1.ts`
+
+- `parseGS1(raw)` → `{gtin, lote, vencimiento, produccion, cantidad, serie, precio}`. Maneja FNC1 (`\x1d`), strip de prefijo de simbología (`]C1`/`]d2`/`]Q3`), AIs fijos/variables, fechas `YYMMDD` (día 00 → último del mes), precio `392x` con decimales.
+- `buildGS1ElementString(fields, ais)` → element string con paréntesis (`(01)...(10)...`) apto para bwip-js.
+- `normalizeGtin`, `isoToYYMMDD`, `yymmddToISO`, `AIS_SOPORTADOS`.
+- **AIs soportados:** GTIN(01), Lote(10), Vencimiento(17), Producción(11), Serie(21), Cantidad(37/30), Precio(392x).
+
+### Generación
+
+- **`bwip-js@4`** genera GS1-128 (1D) y GS1 DataMatrix (2D). Import browser: `bwip-js/browser`.
+- **`CodigoCompuestoModal`**: desde un LPN (en `LpnAccionesModal`, botón al lado del QR) toma los datos reales del LPN (lote/venc/cantidad/serie/precio) + GTIN del producto y renderiza el código según el perfil elegido. Descargar / imprimir.
+
+### Config
+
+- **Config → Inventario → Códigos** (`CodigoPerfilesPanel`): CRUD de perfiles (nombre, proveedor, tipo, simbología, AIs por chips, modo de lectura, activar/desactivar).
+
+### Lectura en Ingreso (F2)
+
+- **`gs1.ts → looksLikeGS1(raw)`**: heurística que distingue un GS1 compuesto de un EAN/SKU plano (prefijo de simbología, FNC1, o AI 01 + 14 dígitos + más datos). **Crítico**: si da false NO se parsea (un EAN se interpretaría mal). Verificado: EAN-13/SKU → plano, GS1-128/FNC1/sin-separador → GS1.
+- **`src/lib/scanCompuesto.ts → resolverScanCompuesto(code, tenantId)`**: si `looksLikeGS1`, parsea + matchea el producto por **GTIN** (varias normalizaciones: 14/13 dígitos y sin ceros) con **fallback a `codigo_barras`**, y resuelve el `lectura_modo` (perfil del proveedor → perfil único → `autocompletar`). Devuelve `null` si no es GS1 (el caller cae a la búsqueda plana).
+- **InventarioPage**:
+  - **Ingreso individual** (`handleBarcodeScan`): scan GS1 → selecciona el producto + autocompleta **lote / vencimiento / cantidad** del form. Toast con el resumen. Si el GTIN no matchea, avisa que falta cargarlo.
+  - **Ingreso masivo** (`handleMasivoScan` + `addMasivoRow(prod, overrides)`): scan GS1 → agrega la fila con lote/venc/cantidad pre-cargados. Acelera la carga por bulto.
+
+### Estado / fases
+
+- **F1 ✅ (fundación)**: modelo + `gs1.ts` + Config de perfiles + generación desde LPN.
+- **F2 ✅ (lectura ingreso)**: detección GS1 + parseo + match GTIN→producto (fallback codigo_barras) + autocompletado en ingreso individual y masivo.
+- **F3 ✅ (completa)**:
+  - **DataMatrix lectura** con `@zxing/library` (fallback en `BarcodeScanner` cuando zbar/BarcodeDetector no cubren data_matrix).
+  - **Ventas/POS** (`procesarScan`): scan GS1 → identifica el producto por GTIN (fallback codigo_barras) y suma al carrito con la **cantidad** del código (AI 30).
+  - **Recepciones**: botón de scanner nuevo en el buscador (`handleScanRecepcion`) → agrega el ítem con lote/venc/cantidad pre-cargados (`agregarProducto` con overrides).
+  - **Rebaje**: el scanner compartido identifica el producto por GTIN; un effect auto-selecciona la **línea por lote** (`pendingRebaje`) y setea la cantidad.
+  - **Modo `directo`**: si el perfil tiene `lectura_modo='directo'`, un effect guardado (`directoFiredRef`) auto-crea el LPN tras autocompletar el ingreso.
+  - **Generación masiva** (`CodigoMasivoModal`): seleccionando varios LPNs en Inventario → botón "Etiquetas GS1" → hoja imprimible con todos los códigos (marca los que no tienen GTIN válido).
+
+> [!NOTE] DataMatrix se **genera** ya (bwip-js), pero la **lectura** de DataMatrix solo funciona donde hay `BarcodeDetector` (Chrome/Edge/Android) hasta que entre ZXing en F3. GS1-128 (1D) se lee en todos lados con el stack actual.
 
 ---
 

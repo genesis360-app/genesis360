@@ -75,6 +75,25 @@ export function normalizeGtin(code: string | null | undefined): string {
 }
 
 /**
+ * Heurística para distinguir un código GS1 compuesto de un EAN/SKU plano —
+ * NO parsear con parseGS1 si esto da false (un EAN se interpretaría mal).
+ *   - Prefijo de simbología GS1 (]C1, ]e0, ]d2, ]Q3) → sí.
+ *   - Contiene FNC1 (\x1d) → sí.
+ *   - Empieza con AI 01 + 14 dígitos y sigue habiendo datos (otro AI) → sí.
+ */
+export function looksLikeGS1(rawInput: string): boolean {
+  const raw = rawInput ?? ''
+  if (/^\][Ce dQ]\d/i.test(raw)) return true            // ]C1 ]e0 ]d2 ]Q3
+  if (raw.includes(GS)) return true
+  const s = stripSymbology(raw)
+  // AI 01 (GTIN) + 14 dígitos y algo más después → compuesto (no un EAN suelto)
+  if (/^01\d{14}\d/.test(s)) return true
+  // AI 01 + 14 dígitos + un AI conocido a continuación
+  if (/^01\d{14}(10|17|11|21|37|30|39\d\d)/.test(s)) return true
+  return false
+}
+
+/**
  * Parsea un string escaneado GS1 a campos. Tolerante: ignora AIs desconocidos
  * (los guarda en `_desconocidos`) y corta limpio si encuentra datos mal formados.
  */

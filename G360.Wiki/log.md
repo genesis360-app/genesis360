@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | ISS-127 F2 — lectura GS1 en ingreso (individual + masivo) — en DEV
+
+Fase 2 del subsistema GS1: leer un código compuesto en el ingreso de stock y autocompletar. En DEV sin deployar (sigue a F1).
+
+- **`gs1.ts → looksLikeGS1`**: distingue GS1 compuesto de EAN/SKU plano (prefijo simbología / FNC1 / AI 01+14díg+datos). **Crítico** para no parsear un EAN como GS1. Testeado: EAN-13/SKU→plano, GS1 variantes→GS1.
+- **`src/lib/scanCompuesto.ts → resolverScanCompuesto`**: parseo + match del producto por GTIN (normalizaciones 14/13/sin-ceros) con fallback a `codigo_barras`; resuelve `lectura_modo` (perfil del proveedor → perfil único → autocompletar). Devuelve null si no es GS1 (caller cae a búsqueda plana).
+- **InventarioPage**: `handleBarcodeScan` (ingreso individual) → selecciona producto + autocompleta lote/venc/cantidad. `handleMasivoScan` + `addMasivoRow(prod, overrides)` (masivo) → fila con lote/venc/cantidad pre-cargados.
+- **Rebaje NO incluido**: no tiene scanner propio y requiere resolución lote→LPN → movido a F3 junto con modo `directo`.
+- Typecheck OK. Wiki: `escaneo-barcode.md`, `project_pendientes.md`, `log.md`.
+
+---
+
 ## [2026-05-30] update | ISS-127 F1 COMPLETA — códigos compuestos GS1: lib + Config perfiles + generación desde LPN — en DEV
 
 Subsistema de códigos compuestos GS1 (relevado con GO, diseño en `project_pendientes.md`). **Fase 1 — fundación, completa y con build OK**. En DEV sin deployar.

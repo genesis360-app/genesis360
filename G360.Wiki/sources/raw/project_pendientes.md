@@ -68,8 +68,8 @@ type: project
 
 **Fases de entrega:**
 - **F1 — Fundación ✅ (en DEV, build OK):** migrations 157+158 (perfiles + `productos.gtin`) + `gs1.ts` (parse/encode testeado) + Config UI de perfiles (`CodigoPerfilesPanel` en Config → Inventario → Códigos) + generación GS1-128/DataMatrix desde LPN (`CodigoCompuestoModal` en `LpnAccionesModal`, render `bwip-js`). Pendiente deploy a PROD.
-- **F2 — Lectura operativa:** integrar el parser en **Ingreso y Rebaje** de stock (autocompletar/directo según `lectura_modo` del perfil; match GTIN→producto con fallback). Probar + deploy.
-- **F3 — Cobertura completa:** **DataMatrix** (generación bwip-js + lectura `@zxing/library` como fallback del scanner) + integración en **Ventas/POS** y **Recepciones** + **generación masiva** de etiquetas. Probar + deploy.
+- **F2 — Lectura ingreso ✅ (en DEV):** `looksLikeGS1` (detecta compuesto vs EAN/SKU plano) + `resolverScanCompuesto` (parseo + match GTIN→producto con fallback a codigo_barras + resolución `lectura_modo`). Integrado en **Ingreso individual** (autocompleta lote/venc/cantidad) y **Ingreso masivo** (pre-carga la fila). **Rebaje pendiente** (no tiene scanner propio; necesita resolución lote→LPN → pasa a F3). Modo `directo` (auto-crear sin confirmar) también a F3.
+- **F3 — Cobertura completa:** **DataMatrix lectura** (`@zxing/library`, zbar no decodifica) + scanner de **Rebaje** por compuesto (lote→LPN) + modo `directo` + integración en **Ventas/POS** y **Recepciones** + **generación masiva** de etiquetas. Probar + deploy.
 
 **Riesgos/notas:** verificar que `bwip-js` y `@zxing/library` no reintroduzcan vulnerabilidades (correr `npm audit` post-install). DataMatrix solo lee en BarcodeDetector hasta que entre ZXing (F3). El parseo GS1 de variable-length depende de FNC1: muchos lectores 1D lo emiten como carácter GS (`\x1d`); contemplar lectores que lo omiten.
 

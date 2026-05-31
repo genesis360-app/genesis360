@@ -13,6 +13,7 @@ import { MasivoModal } from '@/components/MasivoModal'
 import type { MasivoTipo } from '@/components/MasivoModal'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
+import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useCotizacion } from '@/hooks/useCotizacion'
@@ -1589,6 +1590,36 @@ export default function InventarioPage() {
 
   const handleBarcodeScan = async (code: string) => {
     setMovScannerOpen(false)
+
+    // ISS-127 F2: ¿es un código compuesto GS1? → parsear y autocompletar lote/venc/cantidad.
+    const comp = await resolverScanCompuesto(code, tenant!.id)
+    if (comp) {
+      if (!comp.producto) {
+        toast.error('Código GS1 leído, pero el GTIN no coincide con ningún producto. Cargá el GTIN en el producto.')
+        return
+      }
+      const prod = comp.producto as unknown as Producto
+      setSelectedProduct(prod)
+      const ubicDefault = await resolverUbicacionDefault(prod.id, (prod as any).ubicacion_id)
+      setForm(f => ({
+        ...f,
+        productoSearch: '',
+        ubicacionId: ubicDefault,
+        estadoId:    (comp.producto.estado_id)    ?? f.estadoId,
+        proveedorId: (comp.producto.proveedor_id) ?? f.proveedorId,
+        nroLote:          comp.fields.lote ?? f.nroLote,
+        fechaVencimiento: comp.fields.vencimiento ?? f.fechaVencimiento,
+        cantidad:         comp.fields.cantidad != null ? String(comp.fields.cantidad) : f.cantidad,
+      }))
+      const partes = [
+        comp.fields.lote ? `lote ${comp.fields.lote}` : null,
+        comp.fields.vencimiento ? `vto ${comp.fields.vencimiento}` : null,
+        comp.fields.cantidad != null ? `${comp.fields.cantidad} u` : null,
+      ].filter(Boolean).join(' · ')
+      toast.success(`GS1: ${prod.nombre}${partes ? ` — ${partes}` : ''}`)
+      return
+    }
+
     const { data: prods } = await supabase.from('productos')
       .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
       .eq('tenant_id', tenant!.id).eq('activo', true)
@@ -1611,14 +1642,15 @@ export default function InventarioPage() {
   }
 
   // ── Masivo inline helpers ─────────────────────────────────────────────────
-  const addMasivoRow = (prod: any) => {
+  // ISS-127 F2: `overrides` pre-cargan cantidad/lote/venc desde un código GS1.
+  const addMasivoRow = (prod: any, overrides?: { cantidad?: number; nro_lote?: string; fecha_vencimiento?: string }) => {
     setMasivoRows(prev => {
       // Same SKU + no lote required → increment quantity
-      const existingIdx = prev.findIndex(r => r.producto_id === prod.id && !r.nro_lote && !prod.tiene_lote && !prod.tiene_series)
+      const existingIdx = prev.findIndex(r => r.producto_id === prod.id && !r.nro_lote && !overrides?.nro_lote && !prod.tiene_lote && !prod.tiene_series)
       if (existingIdx >= 0) {
         const updated = [...prev]
         const prevCant = parseFloat(updated[existingIdx].cantidad) || 0
-        updated[existingIdx] = { ...updated[existingIdx], cantidad: String(prevCant + 1) }
+        updated[existingIdx] = { ...updated[existingIdx], cantidad: String(prevCant + (overrides?.cantidad ?? 1)) }
         setMasivoFocusIdx(existingIdx)
         return updated
       }
@@ -1631,14 +1663,14 @@ export default function InventarioPage() {
         tiene_series: prod.tiene_series ?? false,
         tiene_lote: prod.tiene_lote ?? false,
         tiene_vencimiento: prod.tiene_vencimiento ?? false,
-        cantidad: '1',
+        cantidad: overrides?.cantidad != null ? String(overrides.cantidad) : '1',
         estado_id: '',
         ubicacion_id: '',
-        nro_lote: '',
-        fecha_vencimiento: '',
+        nro_lote: overrides?.nro_lote ?? '',
+        fecha_vencimiento: overrides?.fecha_vencimiento ?? '',
         lpn: '',
         series_txt: '',
-        showExtra: !!(prod.tiene_lote || prod.tiene_vencimiento || prod.tiene_series),
+        showExtra: !!(prod.tiene_lote || prod.tiene_vencimiento || prod.tiene_series || overrides?.nro_lote || overrides?.fecha_vencimiento),
       }
       setMasivoFocusIdx(prev.length)
       return [...prev, newRow]
@@ -1649,6 +1681,23 @@ export default function InventarioPage() {
 
   const handleMasivoScan = async (code: string) => {
     setMasivoScannerOpen(false)
+
+    // ISS-127 F2: código compuesto GS1 → pre-cargar la fila con lote/venc/cantidad.
+    const comp = await resolverScanCompuesto(code, tenant!.id)
+    if (comp) {
+      if (!comp.producto) {
+        toast.error('Código GS1 leído, pero el GTIN no coincide con ningún producto.')
+        setTimeout(() => masivoSearchRef.current?.focus(), 50)
+        return
+      }
+      addMasivoRow(comp.producto, {
+        cantidad: comp.fields.cantidad ?? undefined,
+        nro_lote: comp.fields.lote ?? undefined,
+        fecha_vencimiento: comp.fields.vencimiento ?? undefined,
+      })
+      return
+    }
+
     const { data: prods } = await supabase.from('productos')
       .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, precio_costo, precio_venta')
       .eq('tenant_id', tenant!.id).eq('activo', true)

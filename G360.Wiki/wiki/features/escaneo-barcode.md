@@ -151,11 +151,19 @@ Subsistema para leer/generar códigos que codifican **varios campos a la vez** (
 
 - **Config → Inventario → Códigos** (`CodigoPerfilesPanel`): CRUD de perfiles (nombre, proveedor, tipo, simbología, AIs por chips, modo de lectura, activar/desactivar).
 
+### Lectura en Ingreso (F2)
+
+- **`gs1.ts → looksLikeGS1(raw)`**: heurística que distingue un GS1 compuesto de un EAN/SKU plano (prefijo de simbología, FNC1, o AI 01 + 14 dígitos + más datos). **Crítico**: si da false NO se parsea (un EAN se interpretaría mal). Verificado: EAN-13/SKU → plano, GS1-128/FNC1/sin-separador → GS1.
+- **`src/lib/scanCompuesto.ts → resolverScanCompuesto(code, tenantId)`**: si `looksLikeGS1`, parsea + matchea el producto por **GTIN** (varias normalizaciones: 14/13 dígitos y sin ceros) con **fallback a `codigo_barras`**, y resuelve el `lectura_modo` (perfil del proveedor → perfil único → `autocompletar`). Devuelve `null` si no es GS1 (el caller cae a la búsqueda plana).
+- **InventarioPage**:
+  - **Ingreso individual** (`handleBarcodeScan`): scan GS1 → selecciona el producto + autocompleta **lote / vencimiento / cantidad** del form. Toast con el resumen. Si el GTIN no matchea, avisa que falta cargarlo.
+  - **Ingreso masivo** (`handleMasivoScan` + `addMasivoRow(prod, overrides)`): scan GS1 → agrega la fila con lote/venc/cantidad pre-cargados. Acelera la carga por bulto.
+
 ### Estado / fases
 
 - **F1 ✅ (fundación)**: modelo + `gs1.ts` + Config de perfiles + generación desde LPN.
-- **F2 (pendiente)**: lectura en Ingreso/Rebaje — parsear el scan y autocompletar el form (o crear LPN directo según `lectura_modo`); match GTIN→producto con fallback.
-- **F3 (pendiente)**: lectura DataMatrix con `@zxing/library` (zbar no decodifica DataMatrix) + integración en Ventas/POS y Recepciones + generación masiva de etiquetas.
+- **F2 ✅ (lectura ingreso)**: detección GS1 + parseo + match GTIN→producto (fallback codigo_barras) + autocompletado en ingreso individual y masivo.
+- **F3 (pendiente)**: lectura **DataMatrix** con `@zxing/library` (zbar no decodifica DataMatrix) + scanner de **Rebaje** por compuesto (resolución lote→LPN) + integración en **Ventas/POS** y **Recepciones** + generación masiva de etiquetas + modo `directo` (auto-crear LPN sin confirmar).
 
 > [!NOTE] DataMatrix se **genera** ya (bwip-js), pero la **lectura** de DataMatrix solo funciona donde hay `BarcodeDetector` (Chrome/Edge/Android) hasta que entre ZXing en F3. GS1-128 (1D) se lee en todos lados con el stack actual.
 

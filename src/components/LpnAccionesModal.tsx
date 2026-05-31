@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
-  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown, QrCode, Layers, ClipboardList
+  MapPin, Tag, Package, AlertTriangle, Save, ChevronDown, QrCode, Layers, ClipboardList, ScanBarcode
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import type { Sucursal } from '@/lib/supabase'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { LpnQR } from '@/components/LpnQR'
+import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
 import toast from 'react-hot-toast'
 import type { ProductoEstructura } from '@/lib/supabase'
 
@@ -55,6 +56,19 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   // null = sin sucursal asignada; string = ID de sucursal destino
   const [sucursalDestino, setSucursalDestino] = useState<string | null>(linea.sucursal_id ?? null)
   const [showQR, setShowQR] = useState(false)
+  const [showCodigo, setShowCodigo] = useState(false)
+
+  // ISS-127: perfiles de códigos compuestos (para la generación GS1 desde el LPN)
+  const { data: perfilesGS1 = [] } = useQuery({
+    queryKey: ['codigo_perfiles_activos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('codigo_perfiles')
+        .select('id, nombre, simbologia, ais')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('created_at')
+      return (data ?? []) as any[]
+    },
+    enabled: !!tenant && showCodigo,
+  })
 
   // Series
   const [newSerie, setNewSerie] = useState('')
@@ -415,7 +429,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
   // ── Teclado: ESC = cerrar, ENTER = guardar según tab ──────────────────────
   useEffect(() => {
-    if (showQR) return
+    if (showQR || showCodigo) return
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { e.preventDefault(); onClose(); return }
       if (e.key === 'Enter') {
@@ -453,6 +467,10 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
             <p className="text-xs text-gray-400 dark:text-gray-500">{producto.nombre} · {producto.sku}</p>
           </div>
           <div className="flex items-center gap-1">
+            <button onClick={() => setShowCodigo(true)} title="Generar código compuesto (GS1)"
+              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+              <ScanBarcode size={18} />
+            </button>
             <button onClick={() => setShowQR(true)} title="Generar QR del LPN"
               className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
               <QrCode size={18} />
@@ -897,6 +915,24 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         productoNombre={producto.nombre}
         sku={producto.sku}
         onClose={() => setShowQR(false)}
+      />
+    )}
+
+    {showCodigo && (
+      <CodigoCompuestoModal
+        lpn={linea.lpn}
+        productoNombre={producto.nombre}
+        sku={producto.sku}
+        perfiles={perfilesGS1}
+        fields={{
+          gtin: (producto as any).gtin || (producto as any).codigo_barras || undefined,
+          lote: linea.nro_lote || undefined,
+          vencimiento: linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : undefined,
+          cantidad: tieneSeries ? seriesActivas.length : linea.cantidad,
+          serie: tieneSeries && seriesActivas.length === 1 ? seriesActivas[0].nro_serie : undefined,
+          precio: (producto as any).precio_venta ?? undefined,
+        }}
+        onClose={() => setShowCodigo(false)}
       />
     )}
     </>

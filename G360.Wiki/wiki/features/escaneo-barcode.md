@@ -126,6 +126,41 @@ Analiza la foto de un ticket de supermercado y extrae la lista de productos con 
 
 ---
 
+## Códigos compuestos GS1 (ISS-127)
+
+Subsistema para leer/generar códigos que codifican **varios campos a la vez** (estándar GS1), grado WMS. Distinto del scan de valor único: un mismo código lleva GTIN + lote + vencimiento + cantidad + serie + etc.
+
+### Modelo
+
+- **`codigo_perfiles`** (mig 157): perfiles configurables. `tipo` `gs1`|`custom`, `simbologia` `gs1_128`|`datamatrix`, `ais` (lista de AIs a generar), `custom_format` (override no-GS1: separador), `lectura_modo` `autocompletar`|`directo`, `proveedor_id` opcional. RLS por tenant.
+- **`productos.gtin`** (mig 158): GTIN dedicado (GS1 AI 01) para el match; fallback a `codigo_barras` si NULL.
+
+### Librería `src/lib/gs1.ts`
+
+- `parseGS1(raw)` → `{gtin, lote, vencimiento, produccion, cantidad, serie, precio}`. Maneja FNC1 (`\x1d`), strip de prefijo de simbología (`]C1`/`]d2`/`]Q3`), AIs fijos/variables, fechas `YYMMDD` (día 00 → último del mes), precio `392x` con decimales.
+- `buildGS1ElementString(fields, ais)` → element string con paréntesis (`(01)...(10)...`) apto para bwip-js.
+- `normalizeGtin`, `isoToYYMMDD`, `yymmddToISO`, `AIS_SOPORTADOS`.
+- **AIs soportados:** GTIN(01), Lote(10), Vencimiento(17), Producción(11), Serie(21), Cantidad(37/30), Precio(392x).
+
+### Generación
+
+- **`bwip-js@4`** genera GS1-128 (1D) y GS1 DataMatrix (2D). Import browser: `bwip-js/browser`.
+- **`CodigoCompuestoModal`**: desde un LPN (en `LpnAccionesModal`, botón al lado del QR) toma los datos reales del LPN (lote/venc/cantidad/serie/precio) + GTIN del producto y renderiza el código según el perfil elegido. Descargar / imprimir.
+
+### Config
+
+- **Config → Inventario → Códigos** (`CodigoPerfilesPanel`): CRUD de perfiles (nombre, proveedor, tipo, simbología, AIs por chips, modo de lectura, activar/desactivar).
+
+### Estado / fases
+
+- **F1 ✅ (fundación)**: modelo + `gs1.ts` + Config de perfiles + generación desde LPN.
+- **F2 (pendiente)**: lectura en Ingreso/Rebaje — parsear el scan y autocompletar el form (o crear LPN directo según `lectura_modo`); match GTIN→producto con fallback.
+- **F3 (pendiente)**: lectura DataMatrix con `@zxing/library` (zbar no decodifica DataMatrix) + integración en Ventas/POS y Recepciones + generación masiva de etiquetas.
+
+> [!NOTE] DataMatrix se **genera** ya (bwip-js), pero la **lectura** de DataMatrix solo funciona donde hay `BarcodeDetector` (Chrome/Edge/Android) hasta que entre ZXing en F3. GS1-128 (1D) se lee en todos lados con el stack actual.
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/inventario-stock]]

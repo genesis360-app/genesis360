@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | ISS-127 F1 COMPLETA — códigos compuestos GS1: lib + Config perfiles + generación desde LPN — en DEV
+
+Subsistema de códigos compuestos GS1 (relevado con GO, diseño en `project_pendientes.md`). **Fase 1 — fundación, completa y con build OK**. En DEV sin deployar.
+
+- **Migrations 157+158** (DEV): `codigo_perfiles` (perfiles GS1/custom: proveedor_id, tipo, simbologia, ais, custom_format, lectura_modo) + `productos.gtin` (fallback a codigo_barras).
+- **`src/lib/gs1.ts`**: parser + encoder GS1 testeado (round-trip OK). `parseGS1` (FNC1/GS, strip prefijo simbología, AIs fijos/variables, YYMMDD incl. día 00→último del mes, precio 392x con decimales), `buildGS1ElementString` (paréntesis para bwip-js), `normalizeGtin`, `AIS_SOPORTADOS`. AIs: 01/10/17/11/21/37/30/392x.
+- **`bwip-js@4`** (genera GS1-128 + DataMatrix). `npm audit` sigue en 5 moderate.
+- **`CodigoPerfilesPanel`** → Config → Inventario → **Códigos**: CRUD de perfiles (nombre, proveedor, tipo, simbología, AIs por chips, modo lectura, activar/desactivar).
+- **`CodigoCompuestoModal`** → botón en `LpnAccionesModal` (al lado del QR): genera el código compuesto con los datos reales del LPN (lote/venc/cantidad/serie/precio + GTIN del producto) según el perfil elegido. Descargar/imprimir.
+- Typecheck + `vite build` OK. Wiki: `escaneo-barcode.md`, `migraciones.md`, `schema_full.sql`, `project_pendientes.md`, `log.md`.
+- **Pendiente F2**: lectura en ingreso/rebaje (autocompletar/directo). **F3**: DataMatrix lectura (ZXing) + ventas/recepciones + masiva.
+
+---
+
 ## [2026-05-30] update | v1.11.4 PROD — Reservas: selección manual de LPN persistida (mig 156) + anti-patrón stock_actual confirmado resuelto
 
 Cierre del "anti-patrón de reservas". Hallazgo: el rótulo del wiki estaba desactualizado.

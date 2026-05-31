@@ -14,12 +14,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.4` | `v1.11.4` |
-| Migrations | 001–**156** ✅ | 001–**156** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.11.4) |
+| APP_VERSION | `v1.11.4` (+ ISS-127 F1 sin deployar) | `v1.11.4` |
+| Migrations | 001–**158** ✅ | 001–**156** ✅ |
+| Branch | `dev` **adelante de** `main` (ISS-127 F1) | `main` (release v1.11.4) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.11.4 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna.
+**Migrations DEV pendientes de aplicar en PROD:** **157, 158** (ISS-127 F1 — aditivas; aplicar antes del merge cuando se deploye).
 
 **Deployado en v1.11.2 (2026-05-30):**
 - **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.
@@ -37,10 +37,41 @@ type: project
 | ID | Módulo | Descripción | Complejidad |
 |---|---|---|---|
 | ISS-073 | TiendaNube + Ventas + Envíos + Clientes | Sincronización completa de flujo TN: la orden TN crea automáticamente venta Genesis (con `numero` = número TN para trazabilidad) + cliente nuevo con datos y domicilio si no existe + envío en estado `pendiente` con datos del comprador. Estados sincronizados bidireccional: pendiente_pago → pagada → empaquetada → despachada → entregada / devuelta. Hoy: solo rebaja stock. | Alta — webhook + estado-machine + creación multi-entidad transaccional |
-| ISS-127 | Config + Inventario | Perfiles de códigos de barra/QR compuestos: configurar campos (SKU, Lote, Vencimiento, Cantidad, etc.) y leer/escribir ese código en ingreso y rebaje de stock | Alta — nuevo subsistema |
+| ISS-127 | Config + Inventario + Ventas + Recepciones | Códigos compuestos **GS1** (GS1-128 + DataMatrix) leer/escribir con múltiples AIs. **Relevado 2026-05-30 → diseño abajo.** | Alta — nuevo subsistema, por fases |
 | ISS-130 | Inventario + Ventas | Comandos por voz: hablarle a la app para rebajar/ingresar (SKU, cantidad, estado, ubicación, lote, fecha) y consultar ("¿qué hay en ubicación X?"). Web Speech API + parseo intenciones | Alta — UX nueva, requiere prototipo |
 | ISS-137 | Config | Evaluación: integración con Google Drive como almacenamiento propio del cliente para documentos/imágenes | Requiere evaluación primero |
 | ISS-174 | Ventas + Envíos | Servicio de envío como select (igual que en módulo Envíos) + cotización automática por API de cada courier (precio + disponibilidad según servicio, dirección y fecha) | Alta — depende APIs externas |
+
+### ISS-127 — Códigos compuestos GS1 (diseño relevado con GO 2026-05-30)
+
+**Objetivo:** leer y escribir códigos de barra/QR que codifican varios campos a la vez (estándar **GS1**), grado WMS. Reemplaza el scan de valor único actual (`sku`/`codigo_barras`).
+
+**Decisiones relevadas:**
+- **Estándar:** GS1 (GS1-128 1D + GS1 DataMatrix 2D), con **override no-GS1** por perfil (separador+campos propios) para proveedores que no usan GS1.
+- **AIs soportados:** GTIN `(01)`, Lote `(10)`, Vencimiento `(17)`, Cantidad `(37/30)`, Serie `(21)`, Producción `(11)`, Precio `(392x)`.
+- **Dirección:** leer + escribir.
+- **Integración:** Ingreso de stock, Rebaje, Ventas/POS, Recepciones.
+- **Lectura en ingreso:** comportamiento **configurable por perfil** (autocompletar+confirmar vs crear LPN directo).
+- **Match del GTIN→producto:** `productos.gtin` dedicado **con fallback** a `codigo_barras` (ambos normalizados, ceros a la izq.).
+- **Perfiles:** múltiples, **ligados a `proveedor_id`** (opcional) + override no-GS1. Como GS1 es autodescriptivo, el perfil gobierna sobre todo la **generación** (qué AIs + simbología + modo de lectura), no el parseo.
+- **DataMatrix lectura:** sumar **`@zxing/library`** como fallback (zbar no decodifica DataMatrix). GS1-128 1D ya lo lee el stack actual (BarcodeDetector + zbar).
+- **Generación:** desde el LPN (extiende `LpnQR`) **+ generación masiva** (ej: N etiquetas de una recepción). Requiere **`bwip-js`** (genera GS1-128 y GS1-DataMatrix con FNC1 correcto).
+
+**Modelo de datos (propuesto):**
+- **Migration A:** `codigo_perfiles` (`id, tenant_id, nombre, proveedor_id NULL, simbologia 'gs1_128'|'datamatrix', tipo 'gs1'|'custom', ais JSONB [lista de AIs a generar], custom_format JSONB {separador, campos}, lectura_modo 'autocompletar'|'directo', activo, created_at`). RLS por tenant.
+- **Migration B:** `productos.gtin TEXT` (+ índice `(tenant_id, gtin)`).
+
+**Librería `src/lib/gs1.ts` (sin deps para parse; usa la app):**
+- `parseGS1(raw): { gtin?, lote?, vencimiento?, cantidad?, serie?, produccion?, precio?, _raw }` — maneja FNC1 (`\x1d`), AIs de longitud fija y variable, fecha `YYMMDD`.
+- `encodeGS1(fields, ais): string` — arma el element string con AIs en orden + FNC1 donde corresponde.
+- `parseCustom(raw, perfil)` / `encodeCustom(...)` para el override no-GS1.
+
+**Fases de entrega:**
+- **F1 — Fundación ✅ (en DEV, build OK):** migrations 157+158 (perfiles + `productos.gtin`) + `gs1.ts` (parse/encode testeado) + Config UI de perfiles (`CodigoPerfilesPanel` en Config → Inventario → Códigos) + generación GS1-128/DataMatrix desde LPN (`CodigoCompuestoModal` en `LpnAccionesModal`, render `bwip-js`). Pendiente deploy a PROD.
+- **F2 — Lectura operativa:** integrar el parser en **Ingreso y Rebaje** de stock (autocompletar/directo según `lectura_modo` del perfil; match GTIN→producto con fallback). Probar + deploy.
+- **F3 — Cobertura completa:** **DataMatrix** (generación bwip-js + lectura `@zxing/library` como fallback del scanner) + integración en **Ventas/POS** y **Recepciones** + **generación masiva** de etiquetas. Probar + deploy.
+
+**Riesgos/notas:** verificar que `bwip-js` y `@zxing/library` no reintroduzcan vulnerabilidades (correr `npm audit` post-install). DataMatrix solo lee en BarcodeDetector hasta que entre ZXing (F3). El parseo GS1 de variable-length depende de FNC1: muchos lectores 1D lo emiten como carácter GS (`\x1d`); contemplar lectores que lo omiten.
 
 ### Bugs / mejoras UX puntuales
 

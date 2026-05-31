@@ -74,7 +74,8 @@ interface CartItem {
   nombre: string
   sku: string
   unidad_medida: string
-  precio_unitario: number          // precio minorista base (1 u.)
+  precio_unitario: number          // precio minorista base (1 u.) — ya convertido a moneda local
+  precio_usd_origen?: number        // G5 — si el producto se vende en USD, su precio original en dólares
   tiers?: { cantidad_minima: number; precio: number }[]  // G1/G2 — precios mayoristas por cantidad (asc)
   precio_costo: number
   cantidad: number
@@ -737,7 +738,7 @@ export default function VentasPage() {
 
       // Buscar productos
       let prodQuery = supabase.from('productos')
-        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit, alicuota_iva')
+        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit, alicuota_iva, precio_usd, moneda_venta')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('nombre')
         .limit(viewMode === 'galeria' ? 60 : 20)
@@ -996,12 +997,18 @@ export default function VentasPage() {
       primaryLpn = lpnFuentes[0]?.lpn ?? undefined
     }
 
+    // G5 — si el producto se vende en USD, convertir a moneda local a la cotización vigente
+    const esUSD = (p as any).moneda_venta === 'usd' && ((p as any).precio_usd ?? 0) > 0 && (cotizacionUSD ?? 0) > 0
+    const precioBase = esUSD
+      ? Math.round(((p as any).precio_usd as number) * (cotizacionUSD as number) * 100) / 100
+      : p.precio_venta
     const newItem: CartItem = {
       producto_id: p.id,
       nombre: p.nombre,
       sku: p.sku,
       unidad_medida: p.unidad_medida ?? 'unidad',
-      precio_unitario: p.precio_venta,
+      precio_unitario: precioBase,
+      precio_usd_origen: esUSD ? ((p as any).precio_usd as number) : undefined,
       tiers: (tiersMayoristaMap as any)[p.id],
       precio_costo: p.precio_costo ?? 0,
       cantidad: 1,
@@ -1037,7 +1044,7 @@ export default function VentasPage() {
   }
 
   const procesarScan = async (code: string) => {
-    const PROD_COLS = 'id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva'
+    const PROD_COLS = 'id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva, precio_usd, moneda_venta'
     let prod: any = null
     let cantidadScan = 1   // ISS-127 F3: cantidad a sumar (1 por default; del código GS1 si trae AI 30)
 
@@ -1474,9 +1481,11 @@ export default function VentasPage() {
   }
 
   const subtotal = cart.reduce((acc, item) => acc + getItemSubtotal(item), 0)
-  // C3 (relevamiento Ventas A-D): CAJERO no puede colocar/editar descuentos por ítem ni global.
-  // Si necesita aplicar uno, lo hace un SUPERVISOR/DUEÑO.
-  const descuentoBloqueadoCajero = user?.rol === 'CAJERO'
+  // C3/G3 (relevamiento Ventas): SOLO DUEÑO/SUPERVISOR/ADMIN pueden aplicar descuentos
+  // (por ítem o global). Cualquier otro rol los tiene bloqueados. El SUPERVISOR además
+  // está sujeto al límite de % configurado por el tenant.
+  const ROLES_DESCUENTO = ['DUEÑO', 'SUPERVISOR', 'ADMIN', 'SUPER_USUARIO']
+  const descuentoBloqueadoCajero = !ROLES_DESCUENTO.includes(user?.rol ?? '')
   const descTotalVal = parseFloat(descuentoTotal) || 0
   const descTotalMonto = descuentoTotalTipo === 'pct' ? subtotal * descTotalVal / 100 : descTotalVal
   const descCombosMulti = combosActivosMulti.reduce((s, c) => s + c.monto, 0)
@@ -1534,22 +1543,26 @@ export default function VentasPage() {
         toast.error(`Cantidad inválida para "${item.nombre}". Corregila antes de guardar.`); return
       }
     }
-    // Validar descuento máximo por rol
-    const maxCajero     = (tenant as any)?.descuento_max_cajero_pct
-    const maxSupervisor = (tenant as any)?.descuento_max_supervisor_pct
+    // G3 — validación de descuentos por rol
     const rol = user?.rol
-    const esRolLimitado = rol === 'CAJERO' || rol === 'SUPERVISOR'
-    if (esRolLimitado && (maxCajero != null || maxSupervisor != null)) {
-      const limite = rol === 'CAJERO' ? maxCajero : maxSupervisor
-      if (limite != null) {
-        const itemConExceso = cart.find(item => {
-          if (item.descuento_tipo !== 'pct') return false
-          return item.descuento > limite
-        })
-        if (itemConExceso) {
-          toast.error(`Descuento del ${itemConExceso.descuento}% supera el límite permitido para ${rol} (${limite}%). Solicitá autorización a un supervisor.`)
-          return
-        }
+    const hayDescuentoItem = cart.some(i => i.descuento > 0)
+    const hayDescuentoGlobal = descTotalVal > 0
+    // Bloqueo duro: roles no autorizados no pueden aplicar ningún descuento
+    if (descuentoBloqueadoCajero && (hayDescuentoItem || hayDescuentoGlobal)) {
+      toast.error('Solo DUEÑO, SUPERVISOR o ADMIN pueden aplicar descuentos. Pedí autorización.')
+      return
+    }
+    // Límite de % para SUPERVISOR (DUEÑO/ADMIN sin tope)
+    const maxSupervisor = (tenant as any)?.descuento_max_supervisor_pct
+    if (rol === 'SUPERVISOR' && maxSupervisor != null) {
+      const itemConExceso = cart.find(item => item.descuento_tipo === 'pct' && item.descuento > maxSupervisor)
+      if (itemConExceso) {
+        toast.error(`Descuento del ${itemConExceso.descuento}% supera el límite del SUPERVISOR (${maxSupervisor}%). Solicitá autorización al DUEÑO.`)
+        return
+      }
+      if (descuentoTotalTipo === 'pct' && descTotalVal > maxSupervisor) {
+        toast.error(`El descuento global del ${descTotalVal}% supera el límite del SUPERVISOR (${maxSupervisor}%).`)
+        return
       }
     }
 
@@ -3222,11 +3235,11 @@ export default function VentasPage() {
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={item.descuento}
                               onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
                               disabled={descuentoBloqueadoCajero}
-                              title={descuentoBloqueadoCajero ? 'Descuentos bloqueados para CAJERO. Pedile al SUPERVISOR/DUEÑO.' : undefined}
+                              title={descuentoBloqueadoCajero ? 'Descuentos: solo DUEÑO/SUPERVISOR/ADMIN.' : undefined}
                               className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:cursor-not-allowed" placeholder="0" />
                             <button onClick={() => updateItem(idx, 'descuento_tipo', item.descuento_tipo === 'pct' ? 'monto' : 'pct')}
                               disabled={descuentoBloqueadoCajero}
-                              title={descuentoBloqueadoCajero ? 'Descuentos bloqueados para CAJERO' : 'Cambiar tipo de descuento (% o $)'}
+                              title={descuentoBloqueadoCajero ? 'Descuentos: solo DUEÑO/SUPERVISOR/ADMIN' : 'Cambiar tipo de descuento (% o $)'}
                               className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors disabled:cursor-not-allowed disabled:hover:bg-gray-100">
                               {item.descuento_tipo === 'pct' ? '%' : '$'}
                             </button>
@@ -3248,6 +3261,13 @@ export default function VentasPage() {
                           ${getItemSubtotal(item).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
                         </p>
                       </div>
+
+                      {/* G5 — producto vendido en USD (convertido a la cotización vigente) */}
+                      {item.precio_usd_origen != null && item.precio_usd_origen > 0 && (
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1">
+                          <DollarSign size={11} /> Precio USD {item.precio_usd_origen.toLocaleString('es-AR', { maximumFractionDigits: 2 })} · convertido a ${item.precio_unitario.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                        </p>
+                      )}
 
                       {/* G1/G2 — precio mayorista aplicado por cantidad */}
                       {(() => {
@@ -3429,7 +3449,7 @@ export default function VentasPage() {
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                     Descuento general
                     {descuentoBloqueadoCajero && (
-                      <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500 italic">— bloqueado para CAJERO</span>
+                      <span className="ml-1.5 text-[10px] text-gray-400 dark:text-gray-500 italic">— solo DUEÑO/SUPERVISOR/ADMIN</span>
                     )}
                   </label>
                   {descTotalVal > 0 && cart.some(i => i.descuento > 0) && (
@@ -3448,12 +3468,12 @@ export default function VentasPage() {
                         setDescuentoTotal(String(Math.min(v, max) || e.target.value))
                       }}
                       disabled={descuentoBloqueadoCajero}
-                      title={descuentoBloqueadoCajero ? 'Descuentos bloqueados para CAJERO. Pedile al SUPERVISOR/DUEÑO.' : undefined}
+                      title={descuentoBloqueadoCajero ? 'Descuentos: solo DUEÑO/SUPERVISOR/ADMIN.' : undefined}
                       placeholder="0"
                       className="flex-1 px-3 py-2.5 text-sm focus:outline-none disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:cursor-not-allowed" />
                     <button onClick={() => setDescuentoTotalTipo(t => t === 'pct' ? 'monto' : 'pct')}
                       disabled={descuentoBloqueadoCajero}
-                      title={descuentoBloqueadoCajero ? 'Descuentos bloqueados para CAJERO' : 'Cambiar tipo de descuento (% o $)'}
+                      title={descuentoBloqueadoCajero ? 'Descuentos: solo DUEÑO/SUPERVISOR/ADMIN' : 'Cambiar tipo de descuento (% o $)'}
                       className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-400 text-sm font-bold border-l border-gray-200 dark:border-gray-700 transition-colors min-w-10 disabled:cursor-not-allowed disabled:hover:bg-gray-100">
                       {descuentoTotalTipo === 'pct' ? '%' : '$'}
                     </button>

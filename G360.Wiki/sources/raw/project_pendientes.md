@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.12.0** ✅ (Relevamiento Ventas E/F/G — reservas seña/vencimiento/crédito, presupuestos PRES-NNNN, mayorista por cantidad, costo/margen por rol · mig 159+160) · DEV alineado con PROD
+Último release en PROD: **v1.13.0** ✅ (Relevamiento Ventas E/F/G COMPLETO — G3 descuentos por rol + G5 precio USD · mig 161; sobre v1.12.0 reservas/presupuestos/mayorista mig 159+160) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,10 +14,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.12.0` | `v1.12.0` |
-| Migrations | 001–**160** ✅ | 001–**160** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.12.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.12.0 |
+| APP_VERSION | `v1.13.0` | `v1.13.0` |
+| Migrations | 001–**161** ✅ | 001–**161** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.13.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.13.0 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
@@ -32,7 +32,7 @@ type: project
 - **G1/G2 completo** — POS aplica precios mayoristas por cantidad (`producto_precios_mayorista`): `precioTierEfectivo`, indicador en carrito, persiste en `venta_items`. Sin migración.
 - **E3 completo** — catálogo de motivo de cancelación de reserva + observación opcional (en `ventas.notas`). Sin migración.
 
-**Relevamiento Ventas E/F/G — implementado en DEV:** G4, F1, F5, E1, E2, E3, E6, G1, G2, G4. **Pendientes de este relevamiento:** **G3** (límite % de descuento por rol — existe `descuento_max_cajero_pct`/`descuento_max_supervisor_pct`, falta el refinamiento de config "solo dueño/supervisor/admin aplican") · **G5** (precio USD por producto + flag moneda de venta). Falta deploy a PROD (mig 159+160).
+**Relevamiento Ventas E/F/G — COMPLETO (v1.13.0):** E1, E2, E3, E6, F1, F5, G1, G2, G3, G4, G5. Único pendiente menor: **venta física en USD / caja USD** (G5 cubre precio-en-USD cobrado en pesos; el cobro físico en dólares queda para una fase futura).
 
 **Deployado en v1.11.2 (2026-05-30):**
 - **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.

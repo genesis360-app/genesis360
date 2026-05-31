@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.11.6 — ISS-127: GS1 QR Code como 3ª simbología (DEV)
+
+Los perfiles de códigos compuestos suman **GS1 QR Code** (`bcid gs1qrcode`) además de GS1-128 y DataMatrix. Generación individual y masiva. Sin migración.
+
 ## v1.11.5 — ISS-127 Códigos compuestos GS1 (grado WMS) — completo (PROD ✅)
 
 Subsistema nuevo de códigos compuestos GS1 (GS1-128 + DataMatrix), leer/escribir múltiples campos en un código. **3 fases completas** (mig 157+158):

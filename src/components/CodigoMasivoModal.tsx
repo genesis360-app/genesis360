@@ -67,11 +67,9 @@ export function CodigoMasivoModal({ lineas, tenantId, onClose }: Props) {
       if (g && !isValidGtin(g)) { out.push({ lpn: l.lpn, nombre, dataUrl: null, error: 'GTIN inválido' }); continue }
       try {
         const canvas = document.createElement('canvas')
-        const opts: Record<string, any> = {
-          bcid: perfil.simbologia === 'datamatrix' ? 'gs1datamatrix' : 'gs1-128',
-          text: elementString, scale: 3, backgroundcolor: 'FFFFFF',
-        }
-        if (perfil.simbologia !== 'datamatrix') { opts.height = 12; opts.includetext = true; opts.textxalign = 'center' }
+        const bcid = perfil.simbologia === 'datamatrix' ? 'gs1datamatrix' : perfil.simbologia === 'qr' ? 'gs1qrcode' : 'gs1-128'
+        const opts: Record<string, any> = { bcid, text: elementString, scale: 3, backgroundcolor: 'FFFFFF' }
+        if (perfil.simbologia === 'gs1_128') { opts.height = 12; opts.includetext = true; opts.textxalign = 'center' }
         bwipjs.toCanvas(canvas, opts as any)
         out.push({ lpn: l.lpn, nombre, dataUrl: canvas.toDataURL('image/png') })
       } catch {
@@ -129,7 +127,7 @@ export function CodigoMasivoModal({ lineas, tenantId, onClose }: Props) {
               {perfiles.length > 0 && (
                 <select value={perfilId} onChange={e => setPerfilId(e.target.value)}
                   className="w-full mb-3 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
-                  {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.simbologia === 'datamatrix' ? 'DataMatrix' : 'GS1-128'}</option>)}
+                  {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.simbologia === 'datamatrix' ? 'DataMatrix' : p.simbologia === 'qr' ? 'QR' : 'GS1-128'}</option>)}
                 </select>
               )}
               {fallidas > 0 && (

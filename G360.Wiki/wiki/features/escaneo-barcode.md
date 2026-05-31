@@ -145,7 +145,7 @@ Subsistema para leer/generar códigos que codifican **varios campos a la vez** (
 
 ### Generación
 
-- **`bwip-js@4`** genera GS1-128 (1D) y GS1 DataMatrix (2D). Import browser: `bwip-js/browser`.
+- **`bwip-js@4`** genera **GS1-128 (1D), GS1 DataMatrix (2D) y GS1 QR Code (2D)**. `bcid`: `gs1-128` / `gs1datamatrix` / `gs1qrcode`. Solo el 1D usa height + texto legible. Import browser: `bwip-js/browser`.
 - **`CodigoCompuestoModal`**: desde un LPN (en `LpnAccionesModal`, botón al lado del QR) toma los datos reales del LPN (lote/venc/cantidad/serie/precio) + GTIN del producto y renderiza el código según el perfil elegido. Descargar / imprimir.
 
 ### Config

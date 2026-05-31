@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.11.3** ✅ (cierre Trazabilidad-extendida: devoluciones en /historial + reserva→despacho/devuelta clasificadas + recall por producto · solo código sobre mig 155) · DEV alineado con PROD
+Último release en PROD: **v1.11.4** ✅ (seguridad deps npm audit 13→5 [jspdf@4, xlsx oficial] + restyle visual [fondo slate #F8FAFC + scrollbars violeta] + selección manual de LPN en reservas [mig 156]) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,10 +14,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.3` | `v1.11.3` |
-| Migrations | 001–**155** ✅ | 001–**155** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.11.3) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.11.3 |
+| APP_VERSION | `v1.11.4` | `v1.11.4` |
+| Migrations | 001–**156** ✅ | 001–**156** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.11.4) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.11.4 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
@@ -79,7 +79,9 @@ Decisiones para implementar (no implementado aún):
 2. Fase 3 **ya no actualiza `stock_actual` manualmente** (lo hace el trigger); solo registra movimientos, **agregados por producto** (un movimiento por producto con la cantidad total). `stock_antes` se reconstruye desde el `stock_actual` post-trigger.
 3. Esto además **auto-corrige** desfases históricos: al dejar el trigger como única fuente, `stock_actual` converge a la suma real de líneas.
 
-**Limitación conocida pendiente:** la transición **reserva → despacho** (`cambiarEstado`) (a) no persiste la selección manual de LPN (venta_items solo guarda `linea_id` principal) y (b) **también** actualiza `stock_actual` manualmente (mismo anti-patrón vs trigger — revisar y migrar al patrón de Fase 3). Afecta solo a reservas, no a venta directa.
+**Limitación conocida — ✅ RESUELTA (2026-05-30):**
+- (b) **`stock_actual` manual en reserva→despacho**: ya estaba resuelto desde v1.11.0 (`cambiarEstado` NO toca `stock_actual`, lo deja al trigger y reconstruye `stock_antes/despues` con `stockVendibleSucursal`). El rótulo de "pendiente" estaba desactualizado.
+- (a) **Selección manual de LPN no persistía en reservas**: resuelto con **mig 156** (`venta_items.lpn_plan JSONB`). `registrarVenta` persiste el plan del carrito `[{linea_id,lpn,cantidad,manual}]`; `cambiarEstado` (reservar + despachar) honra el plan (Fase A) y autocompleta por sort si cambió el stock (Fase B), con `origen` manual/auto. Antes el despacho de una reserva re-ordenaba por sort, ignorando el LPN elegido. Sin impacto en cantidades (solo trazabilidad fina del LPN).
 
 **Datos de prueba con stock desfasado:** Ventas #196 y #198 (Almacén Jorgito) quedaron con distribución por LPN incorrecta y/o `stock_actual` −1. **Recalc global corrido en DEV** (113 productos, 0 desfasados). En PROD correr el recalc post-deploy.
 

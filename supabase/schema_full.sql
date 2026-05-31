@@ -488,6 +488,7 @@ CREATE TABLE venta_items (
   descuento              DECIMAL(5,2) NOT NULL DEFAULT 0,
   subtotal               DECIMAL(12,2) NOT NULL,
   precio_costo_historico DECIMAL(14,2),
+  lpn_plan               JSONB,  -- mig 156: plan de LPN del carrito [{linea_id,lpn,cantidad,manual}] para honrar al despachar reservas
   created_at             TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE venta_items ENABLE ROW LEVEL SECURITY;

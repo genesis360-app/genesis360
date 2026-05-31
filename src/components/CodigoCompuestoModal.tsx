@@ -63,15 +63,20 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
       return
     }
     try {
-      bwipjs.toCanvas(canvasRef.current, {
+      // bwipp rechaza opciones `undefined` (la clave debe estar ausente). DataMatrix
+      // (2D) no usa height ni el texto legible; GS1-128 (1D) sí.
+      const opts: Record<string, any> = {
         bcid: perfil.simbologia === 'datamatrix' ? 'gs1datamatrix' : 'gs1-128',
         text: elementString,
         scale: 3,
-        height: perfil.simbologia === 'datamatrix' ? undefined : 12,
-        includetext: true,
-        textxalign: 'center',
         backgroundcolor: 'FFFFFF',
-      } as any)
+      }
+      if (perfil.simbologia !== 'datamatrix') {
+        opts.height = 12
+        opts.includetext = true
+        opts.textxalign = 'center'
+      }
+      bwipjs.toCanvas(canvasRef.current, opts as any)
       setDataUrl(canvasRef.current.toDataURL('image/png'))
     } catch (e: any) {
       setError(traducirError(e))

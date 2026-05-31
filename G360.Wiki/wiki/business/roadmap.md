@@ -13,7 +13,11 @@ updated: 2026-05-29
 
 ---
 
-## v1.11.3 — Cierre Trazabilidad-extendida: devoluciones + recall por producto (DEV)
+## v1.11.4 — Seguridad deps + restyle visual + selección manual de LPN en reservas (PROD ✅)
+
+Release combinado. **Seguridad**: `npm audit` 13→5 vulnerabilidades (jspdf 2→4 crítica, jspdf-autotable 3→5, xlsx → distribución oficial SheetJS, dompurify; las 5 restantes son solo dev-server). **Visual**: fondo de pantalla `#F5F0FF` (lila) → `#F8FAFC` (slate frío) + scrollbars rediseñados (pill flotante con tinte violeta de marca, light+dark). **Reservas (mig 156)**: `venta_items.lpn_plan JSONB` persiste el plan de LPN del carrito; al despachar una reserva se honra la selección manual del operador (Fase A) + autocompleta por sort si cambió el stock (Fase B). Cierra el anti-patrón de reservas (la parte de `stock_actual` ya estaba resuelta desde v1.11.0).
+
+## v1.11.3 — Cierre Trazabilidad-extendida: devoluciones + recall por producto (PROD ✅)
 
 Completa la Trazabilidad-extendida (sin migration, solo código sobre mig 155). Las **devoluciones** ahora se registran en `/historial` (`tipo_transaccion='devolucion'`, agrupadas por transacción, con producto_id + LPN → entran al recall de la unidad). La transición reserva→despacho/devuelta queda clasificada. El filtro "Trazá una unidad" suma búsqueda por **producto (nombre/SKU)** además de LPN/serie.
 

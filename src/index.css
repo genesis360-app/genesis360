@@ -13,7 +13,7 @@
   --color-brand-bg:  245 240 255;  /* #F5F0FF — fondo lila  */
 
   /* ── Design System — light mode ──────────────────────────── */
-  --ds-page:     245 240 255;  /* #F5F0FF — fondo pantalla  */
+  --ds-page:     248 250 252;  /* #F8FAFC — slate frío (tech) */
   --ds-surface:  255 255 255;  /* #FFFFFF — cards / sidebar  */
   --ds-muted:    107 114 128;  /* #6B7280 — texto secundario */
   --ds-border:   229 231 235;  /* #E5E7EB — bordes cards     */
@@ -71,8 +71,32 @@ body { font-family: 'Inter', system-ui, sans-serif; }
 /* text-primary en dark mode: negro sobre negro = invisible → invertir a blanco */
 .dark .text-primary { color: rgb(255 255 255); }
 
+/* ─── Scrollbar — light mode (fino, tinte violeta de marca, pill flotante) ───────
+   Antes el light mode usaba el scrollbar gris por defecto del navegador.
+   ─────────────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(123 0 255 / 0.28);          /* violeta de marca translúcido */
+  border-radius: 9999px;
+  border: 3px solid transparent;              /* inset → pill flotante, más delgado */
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(123 0 255 / 0.5);
+  background-clip: padding-box;
+}
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: rgb(123 0 255 / 0.35) transparent; }
+
 /* Scrollbar en dark mode */
-.dark ::-webkit-scrollbar { width: 8px; height: 8px; }
-.dark ::-webkit-scrollbar-track { background: rgb(31 41 55); }  /* gray-800 */
-.dark ::-webkit-scrollbar-thumb { background: rgb(75 85 99); border-radius: 4px; } /* gray-600 */
-.dark ::-webkit-scrollbar-thumb:hover { background: rgb(107 114 128); } /* gray-500 */
+.dark ::-webkit-scrollbar { width: 10px; height: 10px; }
+.dark ::-webkit-scrollbar-track { background: transparent; }
+.dark ::-webkit-scrollbar-thumb {
+  background: rgb(139 92 246 / 0.35);         /* violeta más luminoso en dark */
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb:hover { background: rgb(139 92 246 / 0.6); background-clip: padding-box; }
+.dark * { scrollbar-color: rgb(139 92 246 / 0.4) transparent; }

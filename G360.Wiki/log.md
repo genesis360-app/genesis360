@@ -6,9 +6,28 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-05-30] update | v1.11.3 — cierre Trazabilidad-extendida: devoluciones + recall por producto (en DEV)
+## [2026-05-30] update | v1.11.4 PROD — Reservas: selección manual de LPN persistida (mig 156) + anti-patrón stock_actual confirmado resuelto
 
-Cierre de los pendientes futuros de la Trazabilidad-extendida. **Solo código** (usa columnas de mig 155 ya en PROD), en DEV sin deployar.
+Cierre del "anti-patrón de reservas". Hallazgo: el rótulo del wiki estaba desactualizado.
+
+- **(b) `stock_actual` manual en reserva→despacho**: **ya estaba resuelto desde v1.11.0** (`cambiarEstado` no toca `stock_actual`, lo deja al trigger y reconstruye con `stockVendibleSucursal`). Era el que causaba desync; ya no existe. Corregido el wiki.
+- **(a) selección manual de LPN no persistía en reservas** (lo que sí quedaba): **mig 156** `venta_items.lpn_plan JSONB`. `registrarVenta` ya honraba el plan al crear la reserva (`consumirLinea` Fase A/B) pero no lo persistía → al despachar la reserva, `cambiarEstado` re-ordenaba por sort e ignoraba el LPN elegido. Ahora: el plan `[{linea_id,lpn,cantidad,manual}]` se guarda en `venta_items`; `cambiarEstado` (reservar + despachar) lo honra (Fase A) + autocompleta por sort si cambió el stock (Fase B), con `origen` manual/auto en el desglose. `cantidad_reservada` cuadra porque reserva y despacho usan las mismas líneas. Sin impacto en cantidades (solo trazabilidad fina). Aditiva: venta directa / series / legacy quedan NULL.
+- Typecheck OK. Mig 156 aplicada en DEV + `schema_full.sql`. Wiki: `project_pendientes.md`, `migraciones.md`, `log.md`.
+
+---
+
+## [2026-05-30] update | Seguridad deps (npm audit 13→5) + restyle visual (fondo slate + scrollbars) — deployado en v1.11.4
+
+Deployado a PROD como parte de v1.11.4 (junto con reservas mig 156).
+
+- **npm audit**: de 13 vulnerabilidades a **5** (todas las restantes son dev-server: vite/esbuild/uuid, requieren vite@8 major — diferido). Resueltas las de riesgo real: `jspdf` 2→4 (crítica: ReDoS/XSS/path traversal), `jspdf-autotable` 3→5, `dompurify` (transitiva de jspdf), `xlsx` reemplazado por la distribución oficial de SheetJS (`xlsx-0.20.3` desde CDN, el paquete de npm está abandonado y sin fix). +fixes transitivos seguros (@babel, fast-uri, brace-expansion, ws). **Build de prod OK.** jspdf usa solo APIs estables (`new jsPDF({...})`, `autoTable(doc,{...})`, `internal.pageSize`) → bajo riesgo; verificar visualmente un PDF antes de deploy.
+- **Restyle visual** (`index.css`): fondo de pantalla `--ds-page` `#F5F0FF` (lila) → **`#F8FAFC`** (slate frío, look tech). Scrollbars: el light mode usaba el gris default del navegador → ahora **pill flotante fino con tinte violeta de marca** (light+dark+Firefox). Pedido GO de dar un toque más artístico/tecnológico.
+
+---
+
+## [2026-05-30] update | v1.11.3 PROD — cierre Trazabilidad-extendida: devoluciones + recall por producto
+
+Cierre de los pendientes futuros de la Trazabilidad-extendida. **Solo código** (usa columnas de mig 155 ya en PROD). Deployado a PROD (PR #127, release v1.11.3).
 
 - **Devoluciones en `/historial`**: antes la mutación de devolución (`VentasPage`) no llamaba `logActividad` → las devoluciones no aparecían. Ahora cada ítem reintegrado emite una fila `tipo_transaccion='devolucion'`, agrupadas por `transaccion_id` (1 por devolución), con `producto_id` + LPN de la nueva línea (no-serie) → entran al recall de la unidad. Render legible (`describir` campo `devolución` → "Devolvió N u de Venta #X").
 - **Clasificación de estados**: la transición `cambiarEstado` (reserva→despacho, venta→devuelta) ahora tag `tipo_transaccion` (`venta`/`devolucion`) + `sucursal_id`.

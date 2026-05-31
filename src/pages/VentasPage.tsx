@@ -1581,11 +1581,18 @@ export default function VentasPage() {
           if (!item.series_seleccionadas.every(sid => item.series_disponibles.find((d: any) => d.id === sid)?.linea_id === lineaId))
             lineaId = null
         }
+        // Mig 156: persistir el plan de LPN del carrito (no-series) para honrarlo al
+        // despachar una reserva. `manual` = LPN elegido explícitamente por el operador.
+        const manualIds = new Set(item.lpn_manual_ids ?? [])
+        const lpnPlan = (!item.tiene_series && (item.lpn_fuentes ?? []).length > 0)
+          ? item.lpn_fuentes!.map(f => ({ linea_id: f.linea_id, lpn: f.lpn ?? null, cantidad: f.cantidad, manual: f.linea_id ? manualIds.has(f.linea_id) : false }))
+          : null
         return {
           tenant_id: tenant!.id, venta_id: venta.id, producto_id: item.producto_id, linea_id: lineaId,
           cantidad: cant, precio_unitario: item.precio_unitario, precio_costo_historico: item.precio_costo || null,
           descuento: item.descuento_tipo === 'pct' ? item.descuento : 0, subtotal: itemSubtotal,
           alicuota_iva: ivaRate, iva_monto: parseFloat(ivaMonto.toFixed(2)),
+          lpn_plan: lpnPlan,
         }
       })
       const { data: insertedItems, error: itemsError } = await supabase.from('venta_items').insert(itemPayloads).select()
@@ -2393,17 +2400,28 @@ export default function VentasPage() {
               .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
               .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoyStr)
               .sort(sortLineas)
+            const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
+            // Reserva cantidad_reservada en una línea concreta. Muta in-memory para el fallback.
+            const reservarEn = async (linea: any, qty: number): Promise<number> => {
+              if (!linea || qty <= 0) return 0
+              const areservar = Math.min(linea.cantidad - (linea.cantidad_reservada ?? 0), qty)
+              if (areservar <= 0) return 0
+              await supabase.from('inventario_lineas')
+                .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar })
+                .eq('id', linea.id)
+              linea.cantidad_reservada = (linea.cantidad_reservada ?? 0) + areservar
+              return areservar
+            }
             let restante = item.cantidad
+            // Mig 156 — Fase A: honrar el plan de LPN del carrito (si se eligió manualmente).
+            for (const p of ((item.lpn_plan ?? []) as any[])) {
+              if (restante <= 0) break
+              restante -= await reservarEn(lineaById[p.linea_id], Math.min(p.cantidad, restante))
+            }
+            // Fase B: autocompletar por sort.
             for (const linea of lineas) {
               if (restante <= 0) break
-              const disponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
-              const areservar = Math.min(disponible, restante)
-              if (areservar > 0) {
-                await supabase.from('inventario_lineas')
-                  .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + areservar })
-                  .eq('id', linea.id)
-                restante -= areservar
-              }
+              restante -= await reservarEn(linea, restante)
             }
           }
         }
@@ -2492,22 +2510,37 @@ export default function VentasPage() {
               .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
               .filter((l: any) => !l.fecha_vencimiento || l.fecha_vencimiento >= _hoyStr2)
               .sort(sortLineas)
-            let restante = item.cantidad
-            for (const linea of lineas) {
-              if (restante <= 0) break
-              const rebajar = Math.min(linea.cantidad, restante)
+            const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
+            // Rebaja `qty` de una línea concreta. Muta in-memory para el fallback + registra el desglose.
+            const consumir = async (linea: any, qty: number, origen: 'manual' | 'auto'): Promise<number> => {
+              if (!linea || qty <= 0) return 0
+              const rebajar = Math.min(linea.cantidad, qty)
+              if (rebajar <= 0) return 0
               const nuevaCant = linea.cantidad - rebajar
               const nuevaReserva = Math.max(0, (linea.cantidad_reservada ?? 0) - rebajar)
               await supabase.from('inventario_lineas')
                 .update({ cantidad: nuevaCant, cantidad_reservada: nuevaReserva, activo: nuevaCant > 0 })
                 .eq('id', linea.id)
-              restante -= rebajar
+              linea.cantidad = nuevaCant
+              linea.cantidad_reservada = nuevaReserva
               despachoRows.push({
                 tenant_id: tenant!.id, venta_id: ventaId, venta_item_id: item.id, producto_id: item.producto_id,
                 linea_id: linea.id, lpn: (linea as any).lpn ?? null,
                 ubicacion_id: (linea as any).ubicacion_id ?? null, ubicacion_nombre: (linea as any).ubicaciones?.nombre ?? null,
-                cantidad: rebajar, nro_serie: null, origen: 'auto',
+                cantidad: rebajar, nro_serie: null, origen,
               })
+              return rebajar
+            }
+            let restante = item.cantidad
+            // Mig 156 — Fase A: honrar el plan de LPN persistido de la reserva (manual/auto).
+            for (const p of ((item.lpn_plan ?? []) as any[])) {
+              if (restante <= 0) break
+              restante -= await consumir(lineaById[p.linea_id], Math.min(p.cantidad, restante), p.manual ? 'manual' : 'auto')
+            }
+            // Fase B: autocompletar por sort si el stock cambió desde la reserva.
+            for (const linea of lineas) {
+              if (restante <= 0) break
+              restante -= await consumir(linea, restante, 'auto')
             }
           }
           // B1: Registrar movimiento. NO actualizamos stock_actual a mano: el trigger

@@ -10,7 +10,7 @@ type: project
 
 ---
 
-## Estado actual DEV / PROD — cierre sesión 2026-05-30
+## Estado actual DEV / PROD — cierre sesión 2026-05-31
 
 | | DEV | PROD |
 |---|---|---|
@@ -72,6 +72,8 @@ type: project
 - **F3 — Cobertura completa ✅ (PROD v1.11.5):** DataMatrix lectura (`@zxing/library`) + Ventas/POS + Recepciones (scanner nuevo) + Rebaje (auto-selección lote→LPN vía `pendingRebaje`) + modo `directo` (auto-crear LPN, `directoFiredRef`) + generación masiva (`CodigoMasivoModal`).
 
 **ISS-127 cerrado** en v1.11.5. Fixes de QA aplicados: AI cantidad 37→30, validación de GTIN con dígito sugerido, DataMatrix sin `height:undefined`, mensajes GS1 accionables.
+
+**Mejora futura (chica):** agregar **GS1 QR Code** como 3ª simbología de los perfiles (hoy GS1-128 + DataMatrix). `bwip-js` ya lo soporta (`gs1-qrcode`) → sumar `'qr'` al enum `simbologia` + mapear el `bcid` en `CodigoCompuestoModal`/`CodigoMasivoModal`. (El QR simple del LPN ya existe vía `LpnQR`.)
 
 **Riesgos/notas:** verificar que `bwip-js` y `@zxing/library` no reintroduzcan vulnerabilidades (correr `npm audit` post-install). DataMatrix solo lee en BarcodeDetector hasta que entre ZXing (F3). El parseo GS1 de variable-length depende de FNC1: muchos lectores 1D lo emiten como carácter GS (`\x1d`); contemplar lectores que lo omiten.
 

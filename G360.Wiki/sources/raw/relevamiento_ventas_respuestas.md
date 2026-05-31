@@ -246,8 +246,8 @@ Lo respondido en E/F/G **no depende** de las secciones pendientes (H edición PO
 | **E6** | ✅ Implementado | **Mig 160**. `tenants.reserva_sena_obligatoria` + `reserva_sena_minima_pct`. Validación en `registrarVenta` y en el saldoModal (conversión a reserva). Config UI en ConfigPage → Ventas → Operativa → Reservas. |
 | **E1** | ✅ Implementado | **Mig 160**. `tenants.reserva_vencimiento_dias` (NULL=sin venc.) + `ventas.reservado_at`. Función `liberar_reservas_vencidas(tenant)` (libera stock + cancela, NO toca dinero, saltea período cerrado). Sweep lazy al entrar a Ventas. Config UI. |
 | **E2** | ✅ Implementado | **Mig 160**. Cancelación: penalidad % (`reserva_penalidad_pct`) + destino devolución/crédito + gate E4 (DUEÑO/SUPERVISOR para reserva con seña). Tabla `cliente_creditos` (ledger saldo a favor). **Redención**: medio de pago "Crédito a favor" en el POS (cuenta como pagado, NO entra a caja, inserta consumo negativo) + validación contra saldo + badge "Saldo a favor" en ficha del cliente (`ClientesPage`). |
-| **G1/G2** | ⏳ Backlog | Confirmado por cantidad. Infra `producto_precios_mayorista` ya existe; falta aplicar el tier en el POS por cantidad de línea. |
-| **E3, E4(motivo)** | ⏳ Backlog | E3 (catálogo motivo cancelación) no implementado aún. E4 gate sí (en cancelación con seña). |
+| **G1/G2** | ✅ Implementado | Sin migración (usa `producto_precios_mayorista`). POS: `tiersMayoristaMap` (query) + helper `precioTierEfectivo(item)` aplica el tier de mayor `cantidad_minima` que la cantidad de la línea satisfaga; cae a minorista si ninguno. Usado en `getItemSubtotal`, persistido en `venta_items.precio_unitario`. Indicador "Precio mayorista" en el carrito. |
+| **E3** | ✅ Implementado | Sin migración. Catálogo cerrado `MOTIVOS_CANCELACION_RESERVA` (Cliente arrepentido / Producto roto / Stock perdido / Otro) + observación opcional en el modal de cancelación de reserva (toda cancelación de reserva pasa por el modal). Se guarda en `ventas.notas`. E4 gate ya estaba. |
 
 > **Migrations aplicadas en DEV**: 159 (presupuesto_numero), 160 (reservas seña/vencimiento/crédito). **Pendientes de aplicar en PROD.**
 

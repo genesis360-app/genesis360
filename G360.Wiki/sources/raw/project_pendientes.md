@@ -29,7 +29,10 @@ type: project
 - **E2 completo** (mig 160) — cancelación de reserva con penalidad % + destino devolución/crédito (`cliente_creditos`) + gate E4. **Redención**: medio de pago "Crédito a favor" en el POS (cuenta como pagado, no entra a caja, consumo negativo) + saldo a favor en ficha del cliente.
 - Detalle completo y estado por ítem: `relevamiento_ventas_respuestas.md`.
 
-**Backlog Ventas inmediato:** G1/G2 (aplicar tiers `producto_precios_mayorista` por cantidad en el POS) · E3 (catálogo motivo cancelación reserva).
+- **G1/G2 completo** — POS aplica precios mayoristas por cantidad (`producto_precios_mayorista`): `precioTierEfectivo`, indicador en carrito, persiste en `venta_items`. Sin migración.
+- **E3 completo** — catálogo de motivo de cancelación de reserva + observación opcional (en `ventas.notas`). Sin migración.
+
+**Relevamiento Ventas E/F/G — implementado en DEV:** G4, F1, F5, E1, E2, E3, E6, G1, G2, G4. **Pendientes de este relevamiento:** **G3** (límite % de descuento por rol — existe `descuento_max_cajero_pct`/`descuento_max_supervisor_pct`, falta el refinamiento de config "solo dueño/supervisor/admin aplican") · **G5** (precio USD por producto + flag moneda de venta). Falta deploy a PROD (mig 159+160).
 
 **Deployado en v1.11.2 (2026-05-30):**
 - **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.

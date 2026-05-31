@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | Ventas G1/G2 (mayorista por cantidad) + E3 (motivo cancelación) (DEV)
+
+- **G1/G2** — el POS aplica precios mayoristas por **cantidad de la línea** (`producto_precios_mayorista`, infra que ya existía). `tiersMayoristaMap` (query) + helper `precioTierEfectivo(item)` (tier de mayor `cantidad_minima` ≤ cantidad; si no, minorista). Usado en `getItemSubtotal` y persistido en `venta_items.precio_unitario`. Indicador "Precio mayorista" en el carrito (minorista tachado). Sin migración. CartItem += `tiers`.
+- **E3** — catálogo cerrado de motivo de cancelación de reserva (`MOTIVOS_CANCELACION_RESERVA`) + observación opcional. **Toda** cancelación de reserva ahora pasa por el modal (antes solo las que tenían seña); motivo obligatorio. Se guarda en `ventas.notas`. Sin migración.
+- Typecheck + build OK.
+
+---
+
 ## [2026-05-31] update | E2 reservas — redención del crédito a favor en POS (DEV)
 
 Cierre de E2. La redención del saldo a favor quedó completa:

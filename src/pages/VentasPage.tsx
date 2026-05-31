@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
@@ -34,6 +34,8 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
 
 // Fallback si el tenant aún no tiene métodos configurados — se prefiere la lista dinámica de Config
 const MEDIOS_PAGO_FALLBACK = ['Efectivo', 'Tarjeta de débito', 'Tarjeta de crédito', 'Transferencia', 'Mercado Pago']
+// E3 — catálogo cerrado de motivos de cancelación de reserva (+ observación libre opcional)
+const MOTIVOS_CANCELACION_RESERVA = ['Cliente arrepentido', 'Producto roto', 'Stock perdido', 'Otro']
 
 function isPresupuestoVencido(venta: any, validezDias: number | null | undefined): boolean {
   if (!validezDias || venta?.estado !== 'pendiente') return false
@@ -72,7 +74,8 @@ interface CartItem {
   nombre: string
   sku: string
   unidad_medida: string
-  precio_unitario: number
+  precio_unitario: number          // precio minorista base (1 u.)
+  tiers?: { cantidad_minima: number; precio: number }[]  // G1/G2 — precios mayoristas por cantidad (asc)
   precio_costo: number
   cantidad: number
   descuento: number
@@ -190,8 +193,8 @@ export default function VentasPage() {
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
-  // E2 — cancelación de reserva con seña: penalidad + destino (devolución / crédito en CC)
-  const [cancelReservaModal, setCancelReservaModal] = useState<{ venta: any; destino: 'devolucion' | 'credito' } | null>(null)
+  // E2/E3 — cancelación de reserva: motivo + (si hay seña) penalidad + destino devolución/crédito
+  const [cancelReservaModal, setCancelReservaModal] = useState<{ venta: any; destino: 'devolucion' | 'credito'; motivo: string; observacion: string } | null>(null)
   const [facturaModal, setFacturaModal] = useState<{ ventaId: string; ventaNumero: number; ventaTotal: number } | null>(null)
   const [facturaTipo, setFacturaTipo] = useState<'A' | 'B' | 'C'>('B')
   const [facturaPV, setFacturaPV]     = useState<number>(1)
@@ -999,6 +1002,7 @@ export default function VentasPage() {
       sku: p.sku,
       unidad_medida: p.unidad_medida ?? 'unidad',
       precio_unitario: p.precio_venta,
+      tiers: (tiersMayoristaMap as any)[p.id],
       precio_costo: p.precio_costo ?? 0,
       cantidad: 1,
       descuento: 0,
@@ -1293,6 +1297,33 @@ export default function VentasPage() {
     enabled: !!tenant,
   })
 
+  // G1/G2 — precios mayoristas por cantidad (producto_precios_mayorista). Mapa por producto.
+  const { data: tiersMayoristaMap = {} } = useQuery({
+    queryKey: ['precios-mayorista', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_precios_mayorista')
+        .select('producto_id, cantidad_minima, precio').eq('tenant_id', tenant!.id)
+      const map: Record<string, { cantidad_minima: number; precio: number }[]> = {}
+      for (const r of (data ?? []) as any[]) {
+        (map[r.producto_id] ??= []).push({ cantidad_minima: r.cantidad_minima, precio: Number(r.precio) })
+      }
+      for (const k in map) map[k].sort((a, b) => a.cantidad_minima - b.cantidad_minima)
+      return map
+    },
+    enabled: !!tenant,
+  })
+
+  // Precio efectivo de un ítem según su cantidad: tier mayorista con mayor cantidad_minima
+  // que la cantidad satisfaga; si ninguno aplica, precio minorista (precio_unitario base).
+  const precioTierEfectivo = (item: CartItem): number => {
+    const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
+    const tiers = item.tiers
+    if (!tiers || tiers.length === 0) return item.precio_unitario
+    let precio = item.precio_unitario
+    for (const t of tiers) if (cant >= t.cantidad_minima) precio = t.precio  // tiers ya viene asc
+    return precio
+  }
+
   const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
       .filter(c => {
@@ -1437,7 +1468,7 @@ export default function VentasPage() {
 
   const getItemSubtotal = (item: CartItem) => {
     const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
-    const base = item.precio_unitario * cant
+    const base = precioTierEfectivo(item) * cant
     if (item.descuento_tipo === 'pct') return base * (1 - item.descuento / 100)
     return Math.max(0, base - item.descuento)
   }
@@ -1671,7 +1702,7 @@ export default function VentasPage() {
           : null
         return {
           tenant_id: tenant!.id, venta_id: venta.id, producto_id: item.producto_id, linea_id: lineaId,
-          cantidad: cant, precio_unitario: item.precio_unitario, precio_costo_historico: item.precio_costo || null,
+          cantidad: cant, precio_unitario: precioTierEfectivo(item), precio_costo_historico: item.precio_costo || null,
           descuento: item.descuento_tipo === 'pct' ? item.descuento : 0, subtotal: itemSubtotal,
           alicuota_iva: ivaRate, iva_monto: parseFloat(ivaMonto.toFixed(2)),
           lpn_plan: lpnPlan,
@@ -2459,7 +2490,7 @@ export default function VentasPage() {
   }
 
   const cambiarEstado = useMutation({
-    mutationFn: async ({ ventaId, nuevoEstado, saldoMediosPago, cancelOpts }: { ventaId: string; nuevoEstado: EstadoVenta; saldoMediosPago?: MedioPagoItem[]; cancelOpts?: { penalidadPct: number; destino: 'devolucion' | 'credito'; clienteId?: string | null } }) => {
+    mutationFn: async ({ ventaId, nuevoEstado, saldoMediosPago, cancelOpts }: { ventaId: string; nuevoEstado: EstadoVenta; saldoMediosPago?: MedioPagoItem[]; cancelOpts?: { penalidadPct: number; destino: 'devolucion' | 'credito'; clienteId?: string | null; motivo?: string; observacion?: string } }) => {
       const venta = ventas.find((v: any) => v.id === ventaId)
       if (!venta) throw new Error('Venta no encontrada')
 
@@ -2771,8 +2802,16 @@ export default function VentasPage() {
             }
           }
         }
+        // E3 — registrar motivo de cancelación (catálogo + observación opcional) en notas
+        const cancelNota = cancelOpts?.motivo
+          ? `[Cancelación: ${cancelOpts.motivo}${cancelOpts.observacion?.trim() ? ` — ${cancelOpts.observacion.trim()}` : ''}]`
+          : null
         await supabase.from('ventas')
-          .update({ estado: 'cancelada', cancelado_at: new Date().toISOString() })
+          .update({
+            estado: 'cancelada',
+            cancelado_at: new Date().toISOString(),
+            ...(cancelNota ? { notas: `${venta.notas ? venta.notas + ' · ' : ''}${cancelNota}` } : {}),
+          })
           .eq('id', ventaId)
         // E2 — devolución de seña con penalidad opcional y destino configurable.
         const senaCobrada = venta.monto_pagado ?? 0
@@ -3210,10 +3249,22 @@ export default function VentasPage() {
                         </p>
                       </div>
 
+                      {/* G1/G2 — precio mayorista aplicado por cantidad */}
+                      {(() => {
+                        const efectivo = precioTierEfectivo(item)
+                        if (efectivo >= item.precio_unitario) return null
+                        return (
+                          <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 font-medium">
+                            <Tag size={11} /> Precio mayorista: ${efectivo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}/u
+                            <span className="text-gray-400 dark:text-gray-500 line-through font-normal">${item.precio_unitario.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                          </p>
+                        )
+                      })()}
+
                       {/* Precio tachado cuando hay descuento */}
                       {item.descuento > 0 && (() => {
                         const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
-                        const precioOriginal = item.precio_unitario * cant
+                        const precioOriginal = precioTierEfectivo(item) * cant
                         const precioFinal = getItemSubtotal(item)
                         return (
                           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -4374,26 +4425,22 @@ export default function VentasPage() {
               {['pendiente', 'reservada'].includes(ventaDetalle.estado) && (
                 <button onClick={() => {
                   const montoCobrado = ventaDetalle.monto_pagado ?? 0
-                  // E2/E4 — reserva con seña: requiere DUEÑO/SUPERVISOR/ADMIN y abre modal (penalidad + destino)
-                  if (ventaDetalle.estado === 'reservada' && montoCobrado > 0) {
-                    const rolesCancela = ['DUEÑO', 'SUPERVISOR', 'ADMIN', 'SUPER_USUARIO']
-                    if (!rolesCancela.includes(user?.rol ?? '')) {
-                      toast.error('Solo DUEÑO o SUPERVISOR pueden cancelar una reserva con seña pagada.')
-                      return
+                  // E3 — toda cancelación de reserva pasa por el modal (motivo + obs).
+                  // E2/E4 — con seña: requiere DUEÑO/SUPERVISOR/ADMIN + penalidad/destino.
+                  if (ventaDetalle.estado === 'reservada') {
+                    if (montoCobrado > 0) {
+                      const rolesCancela = ['DUEÑO', 'SUPERVISOR', 'ADMIN', 'SUPER_USUARIO']
+                      if (!rolesCancela.includes(user?.rol ?? '')) {
+                        toast.error('Solo DUEÑO o SUPERVISOR pueden cancelar una reserva con seña pagada.')
+                        return
+                      }
                     }
-                    setCancelReservaModal({ venta: ventaDetalle, destino: 'devolucion' })
+                    setCancelReservaModal({ venta: ventaDetalle, destino: 'devolucion', motivo: '', observacion: '' })
                     return
                   }
-                  const aviso = montoCobrado > 0
-                    ? `\n\n⚠ Esta venta tiene $${montoCobrado.toLocaleString('es-AR')} cobrado al cliente. Recordá devolver el importe.`
-                    : ''
-                  if (!confirm(`¿Cancelar esta venta? El stock reservado quedará disponible.${aviso}`)) return
-                  cambiarEstado.mutate(
-                    { ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' },
-                    montoCobrado > 0
-                      ? { onSuccess: () => toast.error(`Devolvé $${montoCobrado.toLocaleString('es-AR')} al cliente (seña cobrada)`, { duration: 8000 }) }
-                      : undefined,
-                  )
+                  // Presupuesto (pendiente): cancelación simple
+                  if (!confirm('¿Cancelar este presupuesto?')) return
+                  cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
                 }}
                   disabled={cambiarEstado.isPending}
                   className="w-full border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all">
@@ -4911,8 +4958,7 @@ export default function VentasPage() {
         />
       )}
 
-      {/* Modal saldo restante al despachar reserva / registrar seña para reservar */}
-      {/* E2 — Cancelar reserva con seña: penalidad + destino */}
+      {/* E2/E3 — Cancelar reserva: motivo (catálogo) + obs · si hay seña: penalidad + destino */}
       {cancelReservaModal && (() => {
         const v = cancelReservaModal.venta
         const sena = v.monto_pagado ?? 0
@@ -4931,30 +4977,49 @@ export default function VentasPage() {
                 <button onClick={() => setCancelReservaModal(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
               </div>
               <div className="p-5 space-y-4">
-                <p className="text-sm text-gray-600 dark:text-gray-400">Se liberará el stock reservado. Definí qué pasa con la seña cobrada.</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Se liberará el stock reservado.{sena > 0 ? ' Definí qué pasa con la seña cobrada.' : ''}</p>
 
-                <div className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-3 text-sm space-y-1">
-                  <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Seña cobrada</span><span className="font-medium">${sena.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
-                  {penalidadPct > 0 && (
-                    <div className="flex justify-between text-red-600 dark:text-red-400"><span>Penalidad ({penalidadPct}%) — se retiene</span><span>−${penalidad.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
-                  )}
-                  <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-1 mt-1 font-bold"><span>A devolver / acreditar</span><span className="text-primary">${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
-                </div>
-
+                {/* E3 — motivo (catálogo) + observación opcional */}
                 <div className="space-y-2">
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Destino del monto</p>
-                  <label className="flex items-center gap-3 p-2.5 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer">
-                    <input type="radio" name="destinoCancel" checked={destino === 'devolucion'} onChange={() => setCancelReservaModal({ ...cancelReservaModal, destino: 'devolucion' })} className="accent-accent" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Devolver al cliente (efectivo / medio cobrado)</span>
-                  </label>
-                  <label className={`flex items-center gap-3 p-2.5 border rounded-xl ${tieneCliente ? 'cursor-pointer border-gray-200 dark:border-gray-700' : 'opacity-50 cursor-not-allowed border-gray-100 dark:border-gray-800'}`}>
-                    <input type="radio" name="destinoCancel" disabled={!tieneCliente} checked={destino === 'credito'} onChange={() => setCancelReservaModal({ ...cancelReservaModal, destino: 'credito' })} className="accent-accent" />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Crédito a favor en la cuenta del cliente
-                      {!tieneCliente && <span className="block text-xs text-gray-400">Requiere un cliente asignado a la venta</span>}
-                    </span>
-                  </label>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Motivo de la cancelación</label>
+                  <select value={cancelReservaModal.motivo}
+                    onChange={e => setCancelReservaModal({ ...cancelReservaModal, motivo: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700">
+                    <option value="">Seleccioná un motivo…</option>
+                    {MOTIVOS_CANCELACION_RESERVA.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <textarea value={cancelReservaModal.observacion} rows={2}
+                    onChange={e => setCancelReservaModal({ ...cancelReservaModal, observacion: e.target.value })}
+                    placeholder="Observación (opcional)"
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
                 </div>
+
+                {sena > 0 && (
+                  <>
+                    <div className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-3 text-sm space-y-1">
+                      <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Seña cobrada</span><span className="font-medium">${sena.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
+                      {penalidadPct > 0 && (
+                        <div className="flex justify-between text-red-600 dark:text-red-400"><span>Penalidad ({penalidadPct}%) — se retiene</span><span>−${penalidad.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
+                      )}
+                      <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-1 mt-1 font-bold"><span>A devolver / acreditar</span><span className="text-primary">${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Destino del monto</p>
+                      <label className="flex items-center gap-3 p-2.5 border border-gray-200 dark:border-gray-700 rounded-xl cursor-pointer">
+                        <input type="radio" name="destinoCancel" checked={destino === 'devolucion'} onChange={() => setCancelReservaModal({ ...cancelReservaModal, destino: 'devolucion' })} className="accent-accent" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Devolver al cliente (efectivo / medio cobrado)</span>
+                      </label>
+                      <label className={`flex items-center gap-3 p-2.5 border rounded-xl ${tieneCliente ? 'cursor-pointer border-gray-200 dark:border-gray-700' : 'opacity-50 cursor-not-allowed border-gray-100 dark:border-gray-800'}`}>
+                        <input type="radio" name="destinoCancel" disabled={!tieneCliente} checked={destino === 'credito'} onChange={() => setCancelReservaModal({ ...cancelReservaModal, destino: 'credito' })} className="accent-accent" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                          Crédito a favor en la cuenta del cliente
+                          {!tieneCliente && <span className="block text-xs text-gray-400">Requiere un cliente asignado a la venta</span>}
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex gap-2 px-5 py-4 border-t border-gray-100 dark:border-gray-700">
                 <button onClick={() => setCancelReservaModal(null)}
@@ -4962,19 +5027,22 @@ export default function VentasPage() {
                   Volver
                 </button>
                 <button onClick={() => {
+                  if (!cancelReservaModal.motivo) { toast.error('Seleccioná un motivo de cancelación.'); return }
                   cambiarEstado.mutate({
                     ventaId: v.id, nuevoEstado: 'cancelada',
-                    cancelOpts: { penalidadPct, destino, clienteId: v.cliente_id ?? null },
+                    cancelOpts: { penalidadPct, destino, clienteId: v.cliente_id ?? null, motivo: cancelReservaModal.motivo, observacion: cancelReservaModal.observacion },
                   }, {
                     onSuccess: () => {
-                      toast.success(destino === 'credito'
-                        ? `Reserva cancelada. $${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })} acreditados al cliente.`
-                        : `Reserva cancelada. Devolvé $${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })} al cliente.`)
+                      toast.success(sena <= 0
+                        ? 'Reserva cancelada. Stock liberado.'
+                        : destino === 'credito'
+                          ? `Reserva cancelada. $${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })} acreditados al cliente.`
+                          : `Reserva cancelada. Devolvé $${aDevolver.toLocaleString('es-AR', { maximumFractionDigits: 0 })} al cliente.`)
                       setCancelReservaModal(null); setVentaDetalle(null)
                     },
                   })
                 }}
-                  disabled={cambiarEstado.isPending}
+                  disabled={cambiarEstado.isPending || !cancelReservaModal.motivo}
                   className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold disabled:opacity-60">
                   {cambiarEstado.isPending ? 'Cancelando…' : 'Confirmar cancelación'}
                 </button>

@@ -171,6 +171,17 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 
 - En el detalle de un presupuesto **no vencido** hay un botón "Actualizar presupuesto (precios + validez)" que recrea con precios actuales y **resetea el contador de validez** (vía `updated_at`, base de `isPresupuestoVencido`). La validez sigue siendo `tenants.presupuesto_validez_dias` (config existente).
 
+## Precios mayoristas por cantidad (G1/G2)
+
+- Cada producto puede tener **tiers** en `producto_precios_mayorista` (`cantidad_minima` + `precio` + etiqueta), editables en el form de producto (accordion "Precios mayoristas", solo `canEdit`).
+- El POS los aplica **automáticamente por la cantidad de cada línea**: `precioTierEfectivo(item)` toma el tier de mayor `cantidad_minima` que la cantidad satisfaga; si ninguno aplica, usa el precio minorista. **No** es por cliente ni por monto total — es por unidades del producto (confirmado GO 2026-05-31).
+- El precio efectivo entra en `getItemSubtotal` y se persiste en `venta_items.precio_unitario`. En el carrito se muestra el indicador "🏷 Precio mayorista: $X/u" con el minorista tachado.
+
+## Motivo de cancelación de reserva (E3)
+
+- Toda cancelación de reserva pasa por el modal con un **catálogo cerrado** de motivos (`Cliente arrepentido` / `Producto roto` / `Stock perdido` / `Otro`) + **observación libre opcional**. El motivo es obligatorio para confirmar.
+- Se registra en `ventas.notas` como `[Cancelación: {motivo} — {obs}]`.
+
 ## Visibilidad de costo/margen (G4)
 
 - `src/lib/permisosCosto.ts` → `puedeVerCosto(rol)`: **CAJERO y DEPOSITO no ven precio de costo ni margen**. Aplica en `ProductosPage` (cards, panel expandido, botón Orden de Compra) y `ProductoFormPage` (precio de costo, margen actual, margen objetivo, precio sugerido). Visible para DUEÑO/SUPERVISOR/ADMIN/CONTADOR/SUPER_USUARIO.

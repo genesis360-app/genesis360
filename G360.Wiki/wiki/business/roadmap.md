@@ -13,6 +13,14 @@ updated: 2026-05-29
 
 ---
 
+## v1.12.0 — Relevamiento Ventas E/F/G: reservas, presupuestos, mayorista (PROD ✅)
+
+Implementación de las secciones E/F/G del relevamiento de Ventas (mig **159** + **160**).
+- **Reservas (E1/E2/E6)**: seña obligatoria + mínima % configurable; vencimiento configurable con **liberación automática de stock** (`liberar_reservas_vencidas`, sweep lazy); cancelación con **penalidad %** + destino **devolución o crédito a favor** del cliente (`cliente_creditos`), gate por rol (E4); **redención** del crédito como medio de pago en el POS + saldo a favor en la ficha del cliente; **motivo de cancelación** con catálogo + observación (E3).
+- **Presupuestos (F1/F5)**: correlativo independiente `PRES-{cod}-NNNN` por sucursal; botón "Actualizar presupuesto" on-demand (precios + reset de validez).
+- **Listas/B2B (G1/G2/G4)**: precio **mayorista por cantidad** aplicado en el POS (tiers `producto_precios_mayorista`); **costo/margen oculto** para CAJERO/DEPOSITO.
+- Config nueva en Config → Ventas → Operativa → "Reservas".
+
 ## v1.11.6 — ISS-127: GS1 QR Code como 3ª simbología (PROD ✅)
 
 Los perfiles de códigos compuestos suman **GS1 QR Code** (`bcid gs1qrcode`) además de GS1-128 y DataMatrix. Generación individual y masiva. Sin migración.

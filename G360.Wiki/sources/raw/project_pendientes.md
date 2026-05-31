@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.11.6** ✅ (ISS-127 Códigos compuestos GS1 completo — F1+F2+F3, mig 157+158 + GS1 QR Code) · DEV alineado con PROD
+Último release en PROD: **v1.12.0** ✅ (Relevamiento Ventas E/F/G — reservas seña/vencimiento/crédito, presupuestos PRES-NNNN, mayorista por cantidad, costo/margen por rol · mig 159+160) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,12 +14,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.6` | `v1.11.6` |
-| Migrations | 001–**160** ✅ | 001–**158** ✅ |
-| Branch | `dev` (adelantado a `main`) | `main` (release v1.11.6) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.11.6 |
+| APP_VERSION | `v1.12.0` | `v1.12.0` |
+| Migrations | 001–**160** ✅ | 001–**160** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.12.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.12.0 |
 
-**Migrations DEV pendientes de aplicar en PROD:** **159** (presupuesto_numero), **160** (reservas seña/vencimiento/crédito).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
 **En DEV sin deployar (relevamiento Ventas E/F/G — 2026-05-31):**
 - **G4** — costo/margen ocultos para CAJERO/DEPOSITO (`permisosCosto.ts`). Sin migración.

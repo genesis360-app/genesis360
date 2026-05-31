@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | v1.12.0 PROD — Relevamiento Ventas E/F/G
+
+Deploy a PROD. Bump `APP_VERSION` v1.11.6 → **v1.12.0**. Migrations **159 + 160** aplicadas en PROD (aditivas, antes del merge). PR `dev → main` + merge → Vercel PROD. Release + tag `v1.12.0`.
+
+Contenido: reservas (seña obligatoria/mínima, vencimiento + liberación automática, penalidad + crédito a favor + redención, motivo cancelación), presupuestos (`PRES-NNNN` + actualizar on-demand), mayorista por cantidad en POS, costo/margen oculto por rol. Detalle por ítem en `relevamiento_ventas_respuestas.md`. Pendientes del relevamiento: G3 (refinamiento) y G5 (USD).
+
+---
+
 ## [2026-05-31] update | Ventas G1/G2 (mayorista por cantidad) + E3 (motivo cancelación) (DEV)
 
 - **G1/G2** — el POS aplica precios mayoristas por **cantidad de la línea** (`producto_precios_mayorista`, infra que ya existía). `tiersMayoristaMap` (query) + helper `precioTierEfectivo(item)` (tier de mayor `cantidad_minima` ≤ cantidad; si no, minorista). Usado en `getItemSubtotal` y persistido en `venta_items.precio_unitario`. Indicador "Precio mayorista" en el carrito (minorista tachado). Sin migración. CartItem += `tiers`.

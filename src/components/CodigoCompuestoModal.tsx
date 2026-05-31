@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import bwipjs from 'bwip-js/browser'
 import { ScanBarcode, Download, X, Printer } from 'lucide-react'
 import { BRAND } from '../config/brand'
-import { buildGS1ElementString, type GS1Fields } from '../lib/gs1'
+import { buildGS1ElementString, gtinCheckDigit, isValidGtin, type GS1Fields } from '../lib/gs1'
 
 export interface Perfil {
   id: string
@@ -22,7 +22,7 @@ interface Props {
   onClose: () => void
 }
 
-const PERFIL_DEFAULT: Perfil = { id: '__default', nombre: 'GS1-128 (núcleo)', simbologia: 'gs1_128', ais: ['01', '10', '17', '37'] }
+const PERFIL_DEFAULT: Perfil = { id: '__default', nombre: 'GS1-128 (núcleo)', simbologia: 'gs1_128', ais: ['01', '10', '17', '30'] }
 
 export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfiles, onClose }: Props) {
   const opciones = perfiles && perfiles.length > 0 ? perfiles : [PERFIL_DEFAULT]
@@ -34,11 +34,34 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
   const perfil = opciones.find(p => p.id === perfilId) ?? opciones[0]
   const elementString = buildGS1ElementString(fields, perfil.ais)
 
+  // GS1 exige un AI primario (01 GTIN). Validamos antes de llamar a bwip-js para
+  // dar un mensaje accionable en vez del error críptico del linter (GS1missingAIs).
+  function traducirError(e: any): string {
+    const msg = String(e?.message ?? e ?? '')
+    if (msg.includes('GS1missingAIs')) return 'El código GS1 necesita un GTIN (01). Cargá el código de barras/GTIN del producto e incluí "GTIN (01)" en el perfil.'
+    if (msg.includes('GS1badChecksum') || msg.includes('checksum')) return 'El código de barras del producto no es un GTIN válido (dígito verificador incorrecto). Revisalo en el producto.'
+    if (msg.includes('GS1')) return `Datos GS1 inválidos: ${msg.replace(/^bwipp\.\w+#\d+:\s*/, '')}`
+    return msg ? `No se pudo generar: ${msg}` : 'No se pudo generar el código (revisá GTIN/datos).'
+  }
+
   useEffect(() => {
     if (!canvasRef.current) return
     setError(null)
     setDataUrl(null)
     if (!elementString) { setError('No hay datos para codificar con este perfil.'); return }
+    if (!elementString.includes('(01)')) {
+      setError(perfil.ais.includes('01')
+        ? 'El producto no tiene GTIN ni código de barras. Cargá uno en el producto para generar el código GS1.'
+        : 'El perfil no incluye el GTIN (01). Agregalo en Config → Inventario → Códigos.')
+      return
+    }
+    // Validar el dígito verificador del GTIN antes de bwip-js (mensaje accionable).
+    const gtinDigits = (fields.gtin ?? '').replace(/\D/g, '')
+    if (gtinDigits && !isValidGtin(gtinDigits)) {
+      const correcto = gtinCheckDigit(gtinDigits.slice(0, -1))
+      setError(`El código de barras "${gtinDigits}" no es un GTIN válido (dígito verificador). El correcto sería ${correcto} — corregilo en el producto (último dígito).`)
+      return
+    }
     try {
       bwipjs.toCanvas(canvasRef.current, {
         bcid: perfil.simbologia === 'datamatrix' ? 'gs1datamatrix' : 'gs1-128',
@@ -51,7 +74,7 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
       } as any)
       setDataUrl(canvasRef.current.toDataURL('image/png'))
     } catch (e: any) {
-      setError(e?.message ? `No se pudo generar: ${e.message}` : 'No se pudo generar el código (revisá GTIN/datos).')
+      setError(traducirError(e))
     }
   }, [elementString, perfil.simbologia])
 

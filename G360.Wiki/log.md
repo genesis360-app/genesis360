@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | ISS-127 fix — AI cantidad (37→30) + validación GTIN + errores claros (QA GO)
+
+Fixes tras prueba de GO al generar un código desde un LPN.
+
+- **AI de cantidad 37→30**: (37) "count of trade items" requiere contexto logístico GS1 (00/02) → bwipp tiraba `GS1missingAIs`. El correcto para "cantidad de unidades" suelto es **(30)**. `buildGS1ElementString` ahora emite siempre (30) para cantidad; `AIS_SOPORTADOS` y defaults pasan a 30. Perfiles existentes en DEV migrados (37→30) + default de la columna `codigo_perfiles.ais` actualizado (mig file + schema_full).
+- **Validación de GTIN**: `gs1.ts` += `gtinCheckDigit` + `isValidGtin`. El modal valida el GTIN antes de bwip-js y, si el dígito verificador está mal, **avisa el dígito correcto** (ej: barcode `0378912345689` inválido → "el correcto sería 8"). Antes salía el críptico `GS1badChecksum`.
+- **Mensajes accionables**: falta de GTIN en el producto / perfil sin (01) / checksum → mensajes en español que dicen qué corregir, en vez del error de bwipp.
+- Typecheck OK. Aún en DEV (F1+F2+fix sin deployar).
+
+---
+
 ## [2026-05-30] update | ISS-127 F2 — lectura GS1 en ingreso (individual + masivo) — en DEV
 
 Fase 2 del subsistema GS1: leer un código compuesto en el ingreso de stock y autocompletar. En DEV sin deployar (sigue a F1).

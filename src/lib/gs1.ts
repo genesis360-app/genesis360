@@ -74,6 +74,21 @@ export function normalizeGtin(code: string | null | undefined): string {
   return (code ?? '').replace(/\D/g, '').replace(/^0+/, '')
 }
 
+/** Dígito verificador GS1 (mod-10) para un cuerpo de GTIN/EAN sin el último dígito. */
+export function gtinCheckDigit(body: string): number {
+  const digits = body.replace(/\D/g, '').split('').map(Number)
+  let sum = 0
+  for (let i = digits.length - 1, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3) sum += digits[i] * w
+  return (10 - (sum % 10)) % 10
+}
+
+/** ¿El GTIN/EAN tiene dígito verificador válido? */
+export function isValidGtin(code: string): boolean {
+  const d = (code ?? '').replace(/\D/g, '')
+  if (d.length < 8) return false
+  return gtinCheckDigit(d.slice(0, -1)) === Number(d.slice(-1))
+}
+
 /**
  * Heurística para distinguir un código GS1 compuesto de un EAN/SKU plano —
  * NO parsear con parseGS1 si esto da false (un EAN se interpretaría mal).
@@ -193,7 +208,9 @@ export function buildGS1ElementString(fields: GS1Fields, ais: string[]): string 
         break
       case '37':
       case '30':
-        if (fields.cantidad != null) parts.push(`(${ai})${Math.round(fields.cantidad)}`)
+        // (30) = count of items (válido suelto). (37) requiere contexto logístico
+        // (00/02) → siempre emitimos (30) para "cantidad de unidades".
+        if (fields.cantidad != null) parts.push(`(30)${Math.round(fields.cantidad)}`)
         break
       default:
         // Precio: AI 392x con 2 decimales por defecto (3922)
@@ -213,6 +230,6 @@ export const AIS_SOPORTADOS: { ai: string; label: string }[] = [
   { ai: '17', label: 'Vencimiento (17)' },
   { ai: '11', label: 'Producción (11)' },
   { ai: '21', label: 'Serie (21)' },
-  { ai: '37', label: 'Cantidad (37)' },
+  { ai: '30', label: 'Cantidad (30)' },
   { ai: '3922', label: 'Precio (392x)' },
 ]

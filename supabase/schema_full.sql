@@ -885,7 +885,7 @@ CREATE TABLE IF NOT EXISTS codigo_perfiles (
   proveedor_id  UUID REFERENCES proveedores(id) ON DELETE SET NULL,
   tipo          TEXT NOT NULL DEFAULT 'gs1',          -- 'gs1' | 'custom'
   simbologia    TEXT NOT NULL DEFAULT 'gs1_128',      -- 'gs1_128' | 'datamatrix'
-  ais           JSONB NOT NULL DEFAULT '["01","10","17","37"]'::jsonb,
+  ais           JSONB NOT NULL DEFAULT '["01","10","17","30"]'::jsonb,
   custom_format JSONB,
   lectura_modo  TEXT NOT NULL DEFAULT 'autocompletar', -- 'autocompletar' | 'directo'
   activo        BOOLEAN NOT NULL DEFAULT TRUE,

@@ -30,7 +30,7 @@ interface FormState {
 
 const FORM_VACIO: FormState = {
   nombre: '', proveedor_id: '', tipo: 'gs1', simbologia: 'gs1_128',
-  ais: ['01', '10', '17', '37'], separador: '|', lectura_modo: 'autocompletar',
+  ais: ['01', '10', '17', '30'], separador: '|', lectura_modo: 'autocompletar',
 }
 
 export function CodigoPerfilesPanel() {

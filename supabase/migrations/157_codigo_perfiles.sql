@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS codigo_perfiles (
   proveedor_id  UUID REFERENCES proveedores(id) ON DELETE SET NULL,
   tipo          TEXT NOT NULL DEFAULT 'gs1',          -- 'gs1' | 'custom'
   simbologia    TEXT NOT NULL DEFAULT 'gs1_128',      -- 'gs1_128' | 'datamatrix'
-  ais           JSONB NOT NULL DEFAULT '["01","10","17","37"]'::jsonb,  -- AIs a generar (tipo gs1)
+  ais           JSONB NOT NULL DEFAULT '["01","10","17","30"]'::jsonb,  -- AIs a generar (tipo gs1). 30=cantidad (37 requiere contexto logístico)
   custom_format JSONB,                                 -- {separador, campos:[{ai|campo, longitud?}]} (tipo custom)
   lectura_modo  TEXT NOT NULL DEFAULT 'autocompletar', -- 'autocompletar' | 'directo'
   activo        BOOLEAN NOT NULL DEFAULT TRUE,

@@ -6,7 +6,7 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-05-31] update | ISS-127 — GS1 QR Code como 3ª simbología (v1.11.6, en DEV)
+## [2026-05-31] update | v1.11.6 PROD — ISS-127: GS1 QR Code como 3ª simbología
 
 Pedido GO al cierre. Los perfiles de códigos compuestos ahora soportan **GS1 QR Code** además de GS1-128 y DataMatrix.
 

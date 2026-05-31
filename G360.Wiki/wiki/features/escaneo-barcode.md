@@ -133,15 +133,17 @@ Subsistema para leer/generar códigos que codifican **varios campos a la vez** (
 
 ### Modelo
 
-- **`codigo_perfiles`** (mig 157): perfiles configurables. `tipo` `gs1`|`custom`, `simbologia` `gs1_128`|`datamatrix`, `ais` (lista de AIs a generar), `custom_format` (override no-GS1: separador), `lectura_modo` `autocompletar`|`directo`, `proveedor_id` opcional. RLS por tenant.
+- **`codigo_perfiles`** (mig 157): perfiles configurables. `tipo` `gs1`|`custom`, `simbologia` `gs1_128`|`datamatrix`|`qr`, `ais` (lista de AIs a generar; default `["01","10","17","30"]`), `custom_format` (override no-GS1: separador), `lectura_modo` `autocompletar`|`directo`, `proveedor_id` opcional. RLS por tenant.
 - **`productos.gtin`** (mig 158): GTIN dedicado (GS1 AI 01) para el match; fallback a `codigo_barras` si NULL.
 
 ### Librería `src/lib/gs1.ts`
 
 - `parseGS1(raw)` → `{gtin, lote, vencimiento, produccion, cantidad, serie, precio}`. Maneja FNC1 (`\x1d`), strip de prefijo de simbología (`]C1`/`]d2`/`]Q3`), AIs fijos/variables, fechas `YYMMDD` (día 00 → último del mes), precio `392x` con decimales.
-- `buildGS1ElementString(fields, ais)` → element string con paréntesis (`(01)...(10)...`) apto para bwip-js.
+- `buildGS1ElementString(fields, ais)` → element string con paréntesis (`(01)...(10)...`) apto para bwip-js. La cantidad **siempre** se emite como `(30)`.
+- `looksLikeGS1(raw)` → distingue un GS1 compuesto de un EAN/SKU plano (clave para no parsear un EAN como GS1).
+- `gtinCheckDigit(body)` / `isValidGtin(code)` → validan el dígito verificador GS1 (mod-10).
 - `normalizeGtin`, `isoToYYMMDD`, `yymmddToISO`, `AIS_SOPORTADOS`.
-- **AIs soportados:** GTIN(01), Lote(10), Vencimiento(17), Producción(11), Serie(21), Cantidad(37/30), Precio(392x).
+- **AIs soportados:** GTIN(01), Lote(10), Vencimiento(17), Producción(11), Serie(21), **Cantidad(30)**, Precio(392x). *(El AI 37 NO se usa: requiere contexto logístico SSCC/02; para "cantidad de unidades" el correcto es 30.)*
 
 ### Generación
 
@@ -172,7 +174,16 @@ Subsistema para leer/generar códigos que codifican **varios campos a la vez** (
   - **Modo `directo`**: si el perfil tiene `lectura_modo='directo'`, un effect guardado (`directoFiredRef`) auto-crea el LPN tras autocompletar el ingreso.
   - **Generación masiva** (`CodigoMasivoModal`): seleccionando varios LPNs en Inventario → botón "Etiquetas GS1" → hoja imprimible con todos los códigos (marca los que no tienen GTIN válido).
 
-> [!NOTE] DataMatrix se **genera** ya (bwip-js), pero la **lectura** de DataMatrix solo funciona donde hay `BarcodeDetector` (Chrome/Edge/Android) hasta que entre ZXing en F3. GS1-128 (1D) se lee en todos lados con el stack actual.
+> [!NOTE] Lectura por simbología: **GS1-128 (1D)** se lee en todos lados (BarcodeDetector nativo + zbar). **DataMatrix (2D)** se lee con BarcodeDetector nativo (Chrome/Edge/Android) y, donde no está, con **ZXing** (iOS/Firefox/Desktop). **QR** lo cubren BarcodeDetector + zbar.
+
+### Gotchas GS1 (aprendido en QA — v1.11.5/6)
+
+- **AI cantidad = 30, no 37.** bwipp rechaza `(37)` suelto (`GS1missingAIs`: requiere SSCC `00` o `02`). El encoder siempre emite `(30)`.
+- **El GTIN necesita dígito verificador válido.** bwipp tira `GS1badChecksum` si no. El modal valida con `isValidGtin` y **sugiere el dígito correcto** (vía `gtinCheckDigit`) antes de llamar a bwip-js. Un EAN-13 válido → GTIN-14 válido (el `0` a la izquierda no altera el check digit).
+- **`bcid` de QR = `gs1qrcode`** (sin guión; `gs1-qrcode` no existe en bwipp).
+- **Opciones `undefined` rompen bwipp** (`invalidOptionType`). Las opciones se arman condicionalmente: solo el 1D lleva `height`/`includetext`; nunca pasar una clave en `undefined`.
+- **Sin GTIN no hay código GS1 válido.** Si el producto no tiene `gtin` ni `codigo_barras`, o el perfil no incluye `(01)`, el modal muestra un mensaje accionable en vez del error críptico.
+- **Detección antes de parsear**: nunca correr `parseGS1` sobre un código plano — `looksLikeGS1` decide; si es plano, se cae a la búsqueda por `codigo_barras`/`sku`.
 
 ---
 

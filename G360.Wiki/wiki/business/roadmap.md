@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.11.6 — ISS-127: GS1 QR Code como 3ª simbología (DEV)
+## v1.11.6 — ISS-127: GS1 QR Code como 3ª simbología (PROD ✅)
 
 Los perfiles de códigos compuestos suman **GS1 QR Code** (`bcid gs1qrcode`) además de GS1-128 y DataMatrix. Generación individual y masiva. Sin migración.
 

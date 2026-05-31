@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.11.5** ✅ (ISS-127 Códigos compuestos GS1 completo — F1+F2+F3, mig 157+158) · DEV alineado con PROD
+Último release en PROD: **v1.11.6** ✅ (ISS-127 Códigos compuestos GS1 completo — F1+F2+F3, mig 157+158 + GS1 QR Code) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,10 +14,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.5` | `v1.11.5` |
+| APP_VERSION | `v1.11.6` | `v1.11.6` |
 | Migrations | 001–**158** ✅ | 001–**158** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.11.5) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.11.5 |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.11.6) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.11.6 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
@@ -37,7 +37,7 @@ type: project
 | ID | Módulo | Descripción | Complejidad |
 |---|---|---|---|
 | ISS-073 | TiendaNube + Ventas + Envíos + Clientes | Sincronización completa de flujo TN: la orden TN crea automáticamente venta Genesis (con `numero` = número TN para trazabilidad) + cliente nuevo con datos y domicilio si no existe + envío en estado `pendiente` con datos del comprador. Estados sincronizados bidireccional: pendiente_pago → pagada → empaquetada → despachada → entregada / devuelta. Hoy: solo rebaja stock. | Alta — webhook + estado-machine + creación multi-entidad transaccional |
-| ISS-127 | Config + Inventario + Ventas + Recepciones | Códigos compuestos **GS1** (GS1-128 + DataMatrix) leer/escribir con múltiples AIs. **Relevado 2026-05-30 → diseño abajo.** | Alta — nuevo subsistema, por fases |
+| ~~ISS-127~~ | Config + Inventario + Ventas + Recepciones | ✅ **Cerrado v1.11.6** — Códigos compuestos GS1 (GS1-128 + DataMatrix + QR) leer/escribir con múltiples AIs. Ver `escaneo-barcode.md` y diseño/fases abajo. | ✅ Hecho |
 | ISS-130 | Inventario + Ventas | Comandos por voz: hablarle a la app para rebajar/ingresar (SKU, cantidad, estado, ubicación, lote, fecha) y consultar ("¿qué hay en ubicación X?"). Web Speech API + parseo intenciones | Alta — UX nueva, requiere prototipo |
 | ISS-137 | Config | Evaluación: integración con Google Drive como almacenamiento propio del cliente para documentos/imágenes | Requiere evaluación primero |
 | ISS-174 | Ventas + Envíos | Servicio de envío como select (igual que en módulo Envíos) + cotización automática por API de cada courier (precio + disponibilidad según servicio, dirección y fecha) | Alta — depende APIs externas |

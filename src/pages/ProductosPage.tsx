@@ -9,6 +9,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { puedeVerCosto } from '@/lib/permisosCosto'
 import toast from 'react-hot-toast'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -427,6 +428,7 @@ type TicketScanItem = {
 
 export default function ProductosPage() {
   const { tenant, user } = useAuthStore()
+  const verCosto = puedeVerCosto(user?.rol)
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { limits } = usePlanLimits()
@@ -1477,7 +1479,7 @@ export default function ProductosPage() {
                           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
                             ${((p as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                           </p>
-                          {(p as any).precio_costo > 0 && (
+                          {verCosto && (p as any).precio_costo > 0 && (
                             <p className="text-xs text-gray-400 dark:text-gray-500">
                               costo ${((p as any).precio_costo ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                             </p>
@@ -1499,6 +1501,7 @@ export default function ProductosPage() {
                           )}
                         </div>
 
+                        {verCosto && (
                         <button
                           onClick={e => {
                             e.stopPropagation()
@@ -1511,6 +1514,7 @@ export default function ProductosPage() {
                           className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent dark:hover:text-accent hover:bg-accent/10 rounded-lg transition-colors flex-shrink-0">
                           <ShoppingCart size={15} />
                         </button>
+                        )}
                         <Link to={`/productos/${p.id}/editar`}
                           onClick={e => e.stopPropagation()}
                           className="text-xs text-accent hover:underline flex-shrink-0 hidden sm:block">
@@ -1543,12 +1547,14 @@ export default function ProductosPage() {
                                 </p>
                               )}
                             </div>
+                            {verCosto && (
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Costo</p>
                               <p className="font-semibold text-gray-800 dark:text-gray-100">
                                 ${((p as any).precio_costo ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 2 })}
                               </p>
                             </div>
+                            )}
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Categoría</p>
                               <p className="text-gray-700 dark:text-gray-300">{(p as any).categorias?.nombre ?? '—'}</p>

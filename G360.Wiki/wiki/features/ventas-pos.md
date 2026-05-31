@@ -142,6 +142,50 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 ### Badge saldo en historial
 - Chip naranja "Saldo $X" en reservas con pago parcial pendiente
 
+### Seña obligatoria + mínima (E6 · mig 160)
+- `tenants.reserva_sena_obligatoria` (default ON): **sin seña no se puede reservar**. Validado en `registrarVenta` y en el saldoModal de conversión a reserva.
+- `tenants.reserva_sena_minima_pct`: seña mínima como % del total (0 = cualquier seña > 0). La seña cuenta dinero real (excluye CC).
+- Config: ConfigPage → Ventas → Operativa → **Reservas**.
+
+### Vencimiento + liberación automática (E1 · mig 160)
+- `tenants.reserva_vencimiento_dias` (NULL = sin vencimiento, default). `ventas.reservado_at` fija la referencia al pasar a `reservada`.
+- Función `liberar_reservas_vencidas(tenant)` (SECURITY DEFINER): libera el stock reservado (series `reservado=false` / `cantidad_reservada` decrementado) y marca la reserva `cancelada` con nota. **No toca dinero** (la seña se resuelve manual). Cada reserva es atómica y saltea las de período contable cerrado.
+- Disparo: **sweep lazy** al entrar a Ventas (RPC una vez por montaje si el tenant tiene vencimiento configurado). pg_cron no está habilitado.
+
+### Cancelación con penalidad + crédito (E2 · mig 160)
+- Cancelar una reserva **con seña** requiere DUEÑO/SUPERVISOR/ADMIN (gate E4). Abre modal con:
+  - **Penalidad** `tenants.reserva_penalidad_pct`: se retiene ese % de la seña (no se devuelve).
+  - **Destino** del monto a devolver: *devolución* (egreso en caja, escala efectivo/no-cash) o *crédito a favor* del cliente (tabla `cliente_creditos`, requiere cliente asignado).
+- `cliente_creditos`: ledger, saldo a favor = `SUM(monto)` (`monto>0` crédito, `monto<0` consumo).
+- **Redención** (gastar el crédito): medio de pago **"Crédito a favor"** en el POS, visible cuando el cliente seleccionado tiene saldo > 0. Cuenta como **pagado** (cubre el total, suma a `monto_pagado`) pero **NO entra a caja** (es dinero prepago) y no genera `ingreso_informativo`. Al confirmar la venta inserta el consumo negativo. Validación: no puede superar el saldo disponible.
+- **Visibilidad**: badge "🎁 Saldo a favor $X" en la ficha del cliente (`ClientesPage`).
+
+---
+
+## Numeración de presupuestos (F5 · mig 159)
+
+- Los presupuestos (estado `pendiente`) tienen **correlativo propio independiente** de las ventas: `ventas.presupuesto_numero` (por tenant) + `presupuesto_numero_sucursal` (por sucursal). Asignado por el trigger `gen_venta_numero` solo si la venta nace como presupuesto; se conserva al convertir.
+- `formatTicket` muestra **`PRES-{codigo_sucursal}-NNNN`** (o `PRES-NNNN` sin código de sucursal). Las ventas reales mantienen su formato.
+
+## Actualizar presupuesto on-demand (F1)
+
+- En el detalle de un presupuesto **no vencido** hay un botón "Actualizar presupuesto (precios + validez)" que recrea con precios actuales y **resetea el contador de validez** (vía `updated_at`, base de `isPresupuestoVencido`). La validez sigue siendo `tenants.presupuesto_validez_dias` (config existente).
+
+## Precios mayoristas por cantidad (G1/G2)
+
+- Cada producto puede tener **tiers** en `producto_precios_mayorista` (`cantidad_minima` + `precio` + etiqueta), editables en el form de producto (accordion "Precios mayoristas", solo `canEdit`).
+- El POS los aplica **automáticamente por la cantidad de cada línea**: `precioTierEfectivo(item)` toma el tier de mayor `cantidad_minima` que la cantidad satisfaga; si ninguno aplica, usa el precio minorista. **No** es por cliente ni por monto total — es por unidades del producto (confirmado GO 2026-05-31).
+- El precio efectivo entra en `getItemSubtotal` y se persiste en `venta_items.precio_unitario`. En el carrito se muestra el indicador "🏷 Precio mayorista: $X/u" con el minorista tachado.
+
+## Motivo de cancelación de reserva (E3)
+
+- Toda cancelación de reserva pasa por el modal con un **catálogo cerrado** de motivos (`Cliente arrepentido` / `Producto roto` / `Stock perdido` / `Otro`) + **observación libre opcional**. El motivo es obligatorio para confirmar.
+- Se registra en `ventas.notas` como `[Cancelación: {motivo} — {obs}]`.
+
+## Visibilidad de costo/margen (G4)
+
+- `src/lib/permisosCosto.ts` → `puedeVerCosto(rol)`: **CAJERO y DEPOSITO no ven precio de costo ni margen**. Aplica en `ProductosPage` (cards, panel expandido, botón Orden de Compra) y `ProductoFormPage` (precio de costo, margen actual, margen objetivo, precio sugerido). Visible para DUEÑO/SUPERVISOR/ADMIN/CONTADOR/SUPER_USUARIO.
+
 ---
 
 ## Cuenta corriente (v1.4.0 · migration 083 · fix ISS-090 v1.8.38)

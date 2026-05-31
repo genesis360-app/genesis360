@@ -433,6 +433,9 @@ CREATE TABLE ventas (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   numero          INT NOT NULL,
+  numero_sucursal INTEGER,                      -- correlativo local por sucursal (mig 108)
+  presupuesto_numero          INTEGER,          -- correlativo independiente de presupuestos (mig 159, F5)
+  presupuesto_numero_sucursal INTEGER,          -- correlativo de presupuestos por sucursal (mig 159, F5)
   cliente_id      UUID REFERENCES clientes(id),
   cliente_nombre  TEXT,
   cliente_telefono TEXT,
@@ -458,13 +461,27 @@ CREATE TRIGGER ventas_updated_at
   BEFORE UPDATE ON ventas
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- Trigger: auto-generar numero de venta por tenant
+-- Trigger: auto-generar numero de venta por tenant (mig 108: numero_sucursal · mig 159: presupuesto_numero)
 CREATE OR REPLACE FUNCTION gen_venta_numero()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.numero IS NULL THEN
     SELECT COALESCE(MAX(numero), 0) + 1 INTO NEW.numero
     FROM ventas WHERE tenant_id = NEW.tenant_id;
+  END IF;
+  IF NEW.sucursal_id IS NOT NULL AND NEW.numero_sucursal IS NULL THEN
+    SELECT COALESCE(MAX(numero_sucursal), 0) + 1 INTO NEW.numero_sucursal
+    FROM ventas WHERE tenant_id = NEW.tenant_id AND sucursal_id = NEW.sucursal_id;
+  END IF;
+  -- F5: correlativo independiente de presupuestos (solo si nace como presupuesto)
+  IF NEW.estado = 'pendiente' AND NEW.presupuesto_numero IS NULL THEN
+    SELECT COALESCE(MAX(presupuesto_numero), 0) + 1 INTO NEW.presupuesto_numero
+    FROM ventas WHERE tenant_id = NEW.tenant_id AND presupuesto_numero IS NOT NULL;
+    IF NEW.sucursal_id IS NOT NULL THEN
+      SELECT COALESCE(MAX(presupuesto_numero_sucursal), 0) + 1 INTO NEW.presupuesto_numero_sucursal
+      FROM ventas WHERE tenant_id = NEW.tenant_id AND sucursal_id = NEW.sucursal_id
+        AND presupuesto_numero_sucursal IS NOT NULL;
+    END IF;
   END IF;
   RETURN NEW;
 END;

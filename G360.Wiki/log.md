@@ -6,6 +6,45 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | v1.12.0 PROD — Relevamiento Ventas E/F/G
+
+Deploy a PROD. Bump `APP_VERSION` v1.11.6 → **v1.12.0**. Migrations **159 + 160** aplicadas en PROD (aditivas, antes del merge). PR `dev → main` + merge → Vercel PROD. Release + tag `v1.12.0`.
+
+Contenido: reservas (seña obligatoria/mínima, vencimiento + liberación automática, penalidad + crédito a favor + redención, motivo cancelación), presupuestos (`PRES-NNNN` + actualizar on-demand), mayorista por cantidad en POS, costo/margen oculto por rol. Detalle por ítem en `relevamiento_ventas_respuestas.md`. Pendientes del relevamiento: G3 (refinamiento) y G5 (USD).
+
+---
+
+## [2026-05-31] update | Ventas G1/G2 (mayorista por cantidad) + E3 (motivo cancelación) (DEV)
+
+- **G1/G2** — el POS aplica precios mayoristas por **cantidad de la línea** (`producto_precios_mayorista`, infra que ya existía). `tiersMayoristaMap` (query) + helper `precioTierEfectivo(item)` (tier de mayor `cantidad_minima` ≤ cantidad; si no, minorista). Usado en `getItemSubtotal` y persistido en `venta_items.precio_unitario`. Indicador "Precio mayorista" en el carrito (minorista tachado). Sin migración. CartItem += `tiers`.
+- **E3** — catálogo cerrado de motivo de cancelación de reserva (`MOTIVOS_CANCELACION_RESERVA`) + observación opcional. **Toda** cancelación de reserva ahora pasa por el modal (antes solo las que tenían seña); motivo obligatorio. Se guarda en `ventas.notas`. Sin migración.
+- Typecheck + build OK.
+
+---
+
+## [2026-05-31] update | E2 reservas — redención del crédito a favor en POS (DEV)
+
+Cierre de E2. La redención del saldo a favor quedó completa:
+- POS: medio de pago **"Crédito a favor"** (visible si el cliente tiene saldo). Cuenta como pagado (cubre total + suma a `monto_pagado`) pero NO entra a caja (excluido de los 2 loops de `ingreso_informativo`). Al confirmar inserta consumo negativo en `cliente_creditos` (`origen='consumo_venta'`). Validación: no supera el saldo. Effect que trae el saldo al seleccionar cliente (`clienteCredito`).
+- ClientesPage: query `creditoMap` (saldo por cliente) + badge "🎁 Saldo a favor $X" en la ficha.
+- Typecheck + build OK. Sin migración nueva (usa `cliente_creditos` de mig 160).
+
+---
+
+## [2026-05-31] update | Relevamiento Ventas E/F/G — G4, F1, F5, bloque reservas (DEV)
+
+Implementación de respuestas del relevamiento de Ventas (secciones E/F/G), sin deployar a PROD aún.
+
+- **G4** — `src/lib/permisosCosto.ts` (`puedeVerCosto`). Costo y margen ocultos para CAJERO/DEPOSITO en `ProductosPage` (cards, panel expandido, botón Orden de Compra) y `ProductoFormPage` (precio de costo, margen actual, margen objetivo, precio sugerido). El POS no exponía costo. Sin migración.
+- **F1** — botón "Actualizar presupuesto" on-demand en el detalle (presupuestos no vencidos): recrea con precios actuales y resetea el contador de validez. La config `presupuesto_validez_dias` ya existía.
+- **F5** (mig **159**) — correlativo independiente de presupuestos `PRES-{cod}-NNNN` por sucursal. `ventas.presupuesto_numero` + `presupuesto_numero_sucursal`, trigger `gen_venta_numero` extendido + backfill (deshabilitando `trg_ventas_cierre` durante el UPDATE). `formatTicket` muestra el prefijo PRES.
+- **E6 + E1** (mig **160**) — `tenants.reserva_sena_obligatoria` + `reserva_sena_minima_pct` (validación al reservar, ambos paths) + `reserva_vencimiento_dias` (NULL=sin venc.) + `ventas.reservado_at`. Función `liberar_reservas_vencidas(tenant)` libera stock reservado + cancela las vencidas (NO toca dinero, saltea período cerrado por reserva). Sweep lazy al entrar a Ventas. Config UI nueva en ConfigPage → Ventas → Operativa → "Reservas".
+- **E2 parcial** (mig **160**) — cancelación de reserva con seña: penalidad % (`reserva_penalidad_pct`) + elección devolución / crédito a favor. Tabla `cliente_creditos` (ledger, saldo = SUM(monto)). Gate E4: solo DUEÑO/SUPERVISOR/ADMIN cancelan reserva con seña. **Pendiente**: redención del crédito en POS + saldo a favor en ficha del cliente.
+- **G1/G2** confirmado por GO: mayorista por **cantidad de unidades del producto**. Hallazgo: `producto_precios_mayorista` (tiers) ya existe; falta aplicarlo en el POS. Queda en backlog.
+- Typecheck + `vite build` OK. Migrations 159+160 aplicadas en DEV. `schema_full.sql` actualizado (gen_venta_numero + columnas ventas).
+
+---
+
 ## [2026-05-31] update | v1.11.6 PROD — ISS-127: GS1 QR Code como 3ª simbología
 
 Pedido GO al cierre. Los perfiles de códigos compuestos ahora soportan **GS1 QR Code** además de GS1-128 y DataMatrix.

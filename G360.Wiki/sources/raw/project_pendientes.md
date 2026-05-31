@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.11.6** ✅ (ISS-127 Códigos compuestos GS1 completo — F1+F2+F3, mig 157+158 + GS1 QR Code) · DEV alineado con PROD
+Último release en PROD: **v1.12.0** ✅ (Relevamiento Ventas E/F/G — reservas seña/vencimiento/crédito, presupuestos PRES-NNNN, mayorista por cantidad, costo/margen por rol · mig 159+160) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,12 +14,25 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.6` | `v1.11.6` |
-| Migrations | 001–**158** ✅ | 001–**158** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.11.6) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.11.6 |
+| APP_VERSION | `v1.12.0` | `v1.12.0` |
+| Migrations | 001–**160** ✅ | 001–**160** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.12.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.12.0 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna.
+
+**En DEV sin deployar (relevamiento Ventas E/F/G — 2026-05-31):**
+- **G4** — costo/margen ocultos para CAJERO/DEPOSITO (`permisosCosto.ts`). Sin migración.
+- **F1** — botón "Actualizar presupuesto" on-demand (la config de validez ya existía).
+- **F5** (mig 159) — correlativo independiente de presupuestos `PRES-NNNN` por sucursal.
+- **E6+E1** (mig 160) — seña obligatoria/mínima %, vencimiento configurable + liberación automática de stock (sweep lazy `liberar_reservas_vencidas`), config en ConfigPage → Ventas → Reservas.
+- **E2 completo** (mig 160) — cancelación de reserva con penalidad % + destino devolución/crédito (`cliente_creditos`) + gate E4. **Redención**: medio de pago "Crédito a favor" en el POS (cuenta como pagado, no entra a caja, consumo negativo) + saldo a favor en ficha del cliente.
+- Detalle completo y estado por ítem: `relevamiento_ventas_respuestas.md`.
+
+- **G1/G2 completo** — POS aplica precios mayoristas por cantidad (`producto_precios_mayorista`): `precioTierEfectivo`, indicador en carrito, persiste en `venta_items`. Sin migración.
+- **E3 completo** — catálogo de motivo de cancelación de reserva + observación opcional (en `ventas.notas`). Sin migración.
+
+**Relevamiento Ventas E/F/G — implementado en DEV:** G4, F1, F5, E1, E2, E3, E6, G1, G2, G4. **Pendientes de este relevamiento:** **G3** (límite % de descuento por rol — existe `descuento_max_cajero_pct`/`descuento_max_supervisor_pct`, falta el refinamiento de config "solo dueño/supervisor/admin aplican") · **G5** (precio USD por producto + flag moneda de venta). Falta deploy a PROD (mig 159+160).
 
 **Deployado en v1.11.2 (2026-05-30):**
 - **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.

@@ -6,6 +6,7 @@ import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Spa
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { puedeVerCosto } from '@/lib/permisosCosto'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -588,6 +589,7 @@ export default function ProductoFormPage() {
   }
 
   const canEdit = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
+  const verCosto = puedeVerCosto(user?.rol)  // G4 — costo/margen oculto para CAJERO/DEPOSITO
 
   const saveMinimos = async () => {
     if (!id || !tenant) return
@@ -817,7 +819,8 @@ export default function ProductoFormPage() {
                   setUsdModoVenta(v => !v)
                 }
                 return (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className={`grid ${verCosto ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+                    {verCosto && (
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de costo</label>
@@ -852,6 +855,7 @@ export default function ProductoFormPage() {
                         </p>
                       )}
                     </div>
+                    )}
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de venta</label>
@@ -890,7 +894,7 @@ export default function ProductoFormPage() {
                 )
               })()}
 
-              {margen !== null && (
+              {verCosto && margen !== null && (
                 <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium
                   ${parseFloat(margen) >= 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
                   Margen actual: <span className="font-bold">{margen}%</span>
@@ -909,14 +913,14 @@ export default function ProductoFormPage() {
                   </span>
                 </div>
               )}
-              {precioSugerido !== null && (
+              {verCosto && precioSugerido !== null && (
                 <p className="text-xs text-blue-600 dark:text-blue-400 px-1">
                   💡 Precio sugerido con {form.margen_objetivo}% de margen{parseFloat(form.alicuota_iva) > 0 ? ` + IVA ${form.alicuota_iva}%` : ''}: <span className="font-semibold">${precioSugerido.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </p>
               )}
 
               {/* Alícuota IVA | Margen objetivo % */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className={`grid ${verCosto ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alícuota IVA</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">IVA incluido en el precio de venta</p>
@@ -929,6 +933,7 @@ export default function ProductoFormPage() {
                     <option value="27">27% (servicios)</option>
                   </select>
                 </div>
+                {verCosto && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Margen objetivo %</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta en Métricas si el margen cae debajo</p>
@@ -941,6 +946,7 @@ export default function ProductoFormPage() {
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">%</span>
                   </div>
                 </div>
+                )}
               </div>
 
               {/* Accordion Precios mayoristas */}

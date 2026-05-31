@@ -182,6 +182,19 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 - Toda cancelación de reserva pasa por el modal con un **catálogo cerrado** de motivos (`Cliente arrepentido` / `Producto roto` / `Stock perdido` / `Otro`) + **observación libre opcional**. El motivo es obligatorio para confirmar.
 - Se registra en `ventas.notas` como `[Cancelación: {motivo} — {obs}]`.
 
+## Descuentos por rol (G3)
+
+- **Solo DUEÑO / SUPERVISOR / ADMIN** pueden aplicar descuentos (por ítem o global). El resto de roles (CAJERO, DEPÓSITO, etc.) los tiene bloqueados: `ROLES_DESCUENTO` controla `descuentoBloqueadoCajero` (inputs deshabilitados) + validación dura en `registrarVenta` (ítem y global).
+- **SUPERVISOR** está limitado por `tenants.descuento_max_supervisor_pct` (aplica a descuento de ítem y al global); **DUEÑO/ADMIN** sin tope.
+- Config en Config → Ventas → Descuentos (el campo "máx CAJERO" fue reemplazado por una nota: el cajero no aplica descuentos).
+- Sin edición libre de precio (solo % de descuento) — comportamiento previo mantenido.
+
+## Precio en USD (G5 · mig 161)
+
+- `productos.precio_usd` + `productos.moneda_venta` (`'local'` default | `'usd'`). Se configura en el form de producto (select de moneda + input USD + preview de conversión).
+- Si `moneda_venta='usd'`, el POS **convierte a moneda local a la cotización vigente** al cargar el producto al carrito (`precio_unitario` queda fijado al cambio del momento; `precio_usd_origen` guarda el dólar original para el hint "Precio USD X · convertido a $Y").
+- Cubre el caso "producto cotizado en dólares, cobrado en pesos al cambio del día". **Venta física en USD / caja USD: fase futura.**
+
 ## Visibilidad de costo/margen (G4)
 
 - `src/lib/permisosCosto.ts` → `puedeVerCosto(rol)`: **CAJERO y DEPOSITO no ven precio de costo ni margen**. Aplica en `ProductosPage` (cards, panel expandido, botón Orden de Compra) y `ProductoFormPage` (precio de costo, margen actual, margen objetivo, precio sugerido). Visible para DUEÑO/SUPERVISOR/ADMIN/CONTADOR/SUPER_USUARIO.

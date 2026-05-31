@@ -4,6 +4,7 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
+import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
@@ -990,13 +991,27 @@ export default function VentasPage() {
   }
 
   const procesarScan = async (code: string) => {
-    const { data: prods } = await supabase.from('productos')
-      .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva')
-      .eq('tenant_id', tenant!.id).eq('activo', true)
-      .or(`codigo_barras.eq.${code},sku.eq.${code}`)
-      .limit(1)
-    if (!prods || prods.length === 0) { toast.error(`No se encontró ningún producto con código "${code}"`); return }
-    const prod = prods[0]
+    const PROD_COLS = 'id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva'
+    let prod: any = null
+    let cantidadScan = 1   // ISS-127 F3: cantidad a sumar (1 por default; del código GS1 si trae AI 30)
+
+    // ¿Código compuesto GS1? → identificar producto por GTIN (fallback codigo_barras).
+    const comp = await resolverScanCompuesto(code, tenant!.id)
+    if (comp) {
+      if (!comp.producto) { toast.error('Código GS1 leído, pero el GTIN no coincide con ningún producto.'); return }
+      cantidadScan = comp.fields.cantidad ?? 1
+      const { data } = await supabase.from('productos').select(PROD_COLS)
+        .eq('tenant_id', tenant!.id).eq('id', comp.producto.id).limit(1)
+      prod = data?.[0]
+      if (!prod) { toast.error('Producto no encontrado'); return }
+    } else {
+      const { data: prods } = await supabase.from('productos').select(PROD_COLS)
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+        .or(`codigo_barras.eq.${code},sku.eq.${code}`)
+        .limit(1)
+      if (!prods || prods.length === 0) { toast.error(`No se encontró ningún producto con código "${code}"`); return }
+      prod = prods[0]
+    }
     const { data: lineasScan } = await applyFilter(
       supabase.from('inventario_lineas')
         .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
@@ -1018,7 +1033,7 @@ export default function VentasPage() {
       if (idx >= 0) {
         const item = cart[idx]
         const maxDisp = item.lineas_disponibles?.reduce((s, l) => s + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0) ?? stockDisponibleScan
-        const nuevaCant = item.cantidad + 1
+        const nuevaCant = item.cantidad + cantidadScan
         if (nuevaCant <= maxDisp) {
           updateItem(idx, 'cantidad', nuevaCant)
           return

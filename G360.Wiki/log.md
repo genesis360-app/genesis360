@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-30] update | ISS-127 F3 (parcial) — DataMatrix lectura (ZXing) + Ventas/POS + cierre PR Dependabot #129
+
+- **PR Dependabot #129 cerrado**: bump de vite a 8 incompatible con el peer de @vitejs/plugin-react@4 → build rojo, no aplicable. Vulns involucradas son dev-server only (cluster vite/esbuild, diferido). Rama aislada, no afectaba dev/main.
+- **F3a — DataMatrix lectura**: `@zxing/library` restringido a DATA_MATRIX como fallback en `BarcodeScanner`. Se carga/ejecuta solo cuando el primario no cubre data_matrix (zbar activo o BarcodeDetector sin soporte), throttle 1/3 frames, vía `HTMLCanvasElementLuminanceSource`. Audit sin vulns nuevas.
+- **F3b — Ventas/POS**: `procesarScan` usa `resolverScanCompuesto` → identifica producto por GTIN (fallback codigo_barras) + suma la cantidad del AI 30 en el incremento del carrito.
+- **Fixes previos en este bloque**: AI cantidad 37→30, validación de GTIN (gtinCheckDigit/isValidGtin) con sugerencia del dígito correcto, mensajes GS1 accionables, y DataMatrix sin `height:undefined`.
+- Typecheck + build OK. Pendiente F3: Recepciones (scanner propio) + Rebaje (lote→LPN) + modo directo + generación masiva.
+
+---
+
 ## [2026-05-30] update | ISS-127 fix — AI cantidad (37→30) + validación GTIN + errores claros (QA GO)
 
 Fixes tras prueba de GO al generar un código desde un LPN.

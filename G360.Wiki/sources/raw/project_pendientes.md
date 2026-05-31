@@ -26,8 +26,10 @@ type: project
 - **F1** — botón "Actualizar presupuesto" on-demand (la config de validez ya existía).
 - **F5** (mig 159) — correlativo independiente de presupuestos `PRES-NNNN` por sucursal.
 - **E6+E1** (mig 160) — seña obligatoria/mínima %, vencimiento configurable + liberación automática de stock (sweep lazy `liberar_reservas_vencidas`), config en ConfigPage → Ventas → Reservas.
-- **E2 parcial** (mig 160) — cancelación de reserva con penalidad % + destino devolución/crédito (`cliente_creditos`) + gate E4. **Falta**: gastar el crédito en POS + mostrar saldo a favor en ficha cliente.
+- **E2 completo** (mig 160) — cancelación de reserva con penalidad % + destino devolución/crédito (`cliente_creditos`) + gate E4. **Redención**: medio de pago "Crédito a favor" en el POS (cuenta como pagado, no entra a caja, consumo negativo) + saldo a favor en ficha del cliente.
 - Detalle completo y estado por ítem: `relevamiento_ventas_respuestas.md`.
+
+**Backlog Ventas inmediato:** G1/G2 (aplicar tiers `producto_precios_mayorista` por cantidad en el POS) · E3 (catálogo motivo cancelación reserva).
 
 **Deployado en v1.11.2 (2026-05-30):**
 - **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.

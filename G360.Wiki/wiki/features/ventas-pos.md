@@ -152,11 +152,13 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 - Función `liberar_reservas_vencidas(tenant)` (SECURITY DEFINER): libera el stock reservado (series `reservado=false` / `cantidad_reservada` decrementado) y marca la reserva `cancelada` con nota. **No toca dinero** (la seña se resuelve manual). Cada reserva es atómica y saltea las de período contable cerrado.
 - Disparo: **sweep lazy** al entrar a Ventas (RPC una vez por montaje si el tenant tiene vencimiento configurado). pg_cron no está habilitado.
 
-### Cancelación con penalidad + crédito (E2 · mig 160 — parcial)
+### Cancelación con penalidad + crédito (E2 · mig 160)
 - Cancelar una reserva **con seña** requiere DUEÑO/SUPERVISOR/ADMIN (gate E4). Abre modal con:
   - **Penalidad** `tenants.reserva_penalidad_pct`: se retiene ese % de la seña (no se devuelve).
   - **Destino** del monto a devolver: *devolución* (egreso en caja, escala efectivo/no-cash) o *crédito a favor* del cliente (tabla `cliente_creditos`, requiere cliente asignado).
-- `cliente_creditos`: ledger, saldo a favor = `SUM(monto)`. **Pendiente**: gastar el crédito en el POS + mostrar saldo a favor en la ficha del cliente.
+- `cliente_creditos`: ledger, saldo a favor = `SUM(monto)` (`monto>0` crédito, `monto<0` consumo).
+- **Redención** (gastar el crédito): medio de pago **"Crédito a favor"** en el POS, visible cuando el cliente seleccionado tiene saldo > 0. Cuenta como **pagado** (cubre el total, suma a `monto_pagado`) pero **NO entra a caja** (es dinero prepago) y no genera `ingreso_informativo`. Al confirmar la venta inserta el consumo negativo. Validación: no puede superar el saldo disponible.
+- **Visibilidad**: badge "🎁 Saldo a favor $X" en la ficha del cliente (`ClientesPage`).
 
 ---
 

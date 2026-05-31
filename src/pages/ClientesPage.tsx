@@ -233,6 +233,19 @@ export default function ClientesPage() {
     enabled: !!tenant && pageTab === 'cc',
   })
 
+  // E2 — saldo a favor por cliente (cliente_creditos, saldo = SUM(monto))
+  const { data: creditoMap = {} } = useQuery({
+    queryKey: ['clientes-credito', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('cliente_creditos')
+        .select('cliente_id, monto').eq('tenant_id', tenant!.id)
+      const map: Record<string, number> = {}
+      for (const r of (data ?? []) as any[]) map[r.cliente_id] = (map[r.cliente_id] ?? 0) + (Number(r.monto) || 0)
+      return map
+    },
+    enabled: !!tenant,
+  })
+
   const { data: notasCliente = [], refetch: refetchNotas } = useQuery({
     queryKey: ['cliente-notas', expandedId],
     queryFn: async () => {
@@ -943,6 +956,11 @@ export default function ClientesPage() {
                       {c.cuenta_corriente_habilitada && (
                         <span className="text-xs bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium">
                           <CreditCard size={9} /> CC
+                        </span>
+                      )}
+                      {(creditoMap[c.id] ?? 0) > 0.5 && (
+                        <span className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium" title="Saldo a favor (crédito por cancelación de reserva)">
+                          🎁 Saldo a favor {formatMoneda(creditoMap[c.id])}
                         </span>
                       )}
                       {Array.isArray(c.etiquetas) && c.etiquetas.map((et: string) => (

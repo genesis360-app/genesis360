@@ -149,6 +149,7 @@ export default function VentasPage() {
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [clienteCCEnabled, setClienteCCEnabled] = useState(false)
+  const [clienteCredito, setClienteCredito] = useState(0)  // E2 — saldo a favor del cliente (cliente_creditos)
   const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
@@ -467,6 +468,19 @@ export default function VentasPage() {
       }
     })
   }, [tenant?.id])
+
+  // E2 — saldo a favor del cliente seleccionado (cliente_creditos)
+  useEffect(() => {
+    if (!clienteId || !tenant?.id) { setClienteCredito(0); return }
+    let cancelado = false
+    supabase.from('cliente_creditos').select('monto').eq('tenant_id', tenant.id).eq('cliente_id', clienteId)
+      .then(({ data }) => {
+        if (cancelado) return
+        const saldo = (data ?? []).reduce((acc: number, r: any) => acc + (Number(r.monto) || 0), 0)
+        setClienteCredito(Math.max(0, Math.round(saldo * 100) / 100))
+      })
+    return () => { cancelado = true }
+  }, [clienteId, tenant?.id])
 
   // Auto-calcular costo de envío cuando cambian km o precio/km
   useEffect(() => {
@@ -1472,6 +1486,8 @@ export default function VentasPage() {
   // ISS-090: CC como método de pago parcial (derivado de mediosPago)
   const montoCC = mediosPago.filter(m => m.tipo === 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
   const modoCC = montoCC > 0
+  // E2: crédito a favor aplicado como pago (cuenta como pagado, NO entra a caja)
+  const montoCredito = mediosPago.filter(m => m.tipo === 'Crédito a favor').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
 
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
@@ -1517,6 +1533,14 @@ export default function VentasPage() {
     if (modoCC) {
       if (!clienteId) { toast.error('Seleccioná un cliente para usar cuenta corriente.'); return }
       if (!clienteCCEnabled) { toast.error('Este cliente no tiene cuenta corriente habilitada.'); return }
+    }
+    // E2: crédito a favor — requiere cliente y no puede superar el saldo disponible
+    if (montoCredito > 0.001) {
+      if (!clienteId) { toast.error('Seleccioná un cliente para usar su crédito a favor.'); return }
+      if (montoCredito > clienteCredito + 0.5) {
+        toast.error(`El crédito a favor disponible es $${clienteCredito.toLocaleString('es-AR', { maximumFractionDigits: 0 })}. No podés aplicar más que eso.`)
+        return
+      }
     }
     // E6 — seña obligatoria + mínima % al reservar (la seña es dinero real, excluye CC)
     if (estado === 'reservada' && ((tenant as any)?.reserva_sena_obligatoria ?? true)) {
@@ -1834,6 +1858,19 @@ export default function VentasPage() {
       }
 
       logActividad({ entidad: 'venta', entidad_id: venta.id, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'crear', valor_nuevo: estado, pagina: '/ventas', tipo_transaccion: 'venta', sucursal_id: sucursalId || null })
+      // E2: consumir crédito a favor aplicado (movimiento negativo en el ledger)
+      if (estado !== 'pendiente' && montoCredito > 0.001 && clienteId) {
+        await supabase.from('cliente_creditos').insert({
+          tenant_id: tenant!.id,
+          cliente_id: clienteId,
+          monto: -(Math.round(montoCredito * 100) / 100),
+          origen: 'consumo_venta',
+          venta_id: venta.id,
+          nota: `Aplicado en Venta #${venta.numero}`,
+          usuario_id: user?.id,
+        })
+        setClienteCredito(c => Math.max(0, Math.round((c - montoCredito) * 100) / 100))
+      }
       if (estado === 'despachada' && montoEfectivoCaja > 0 && sesionCajaId) {
         void supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id,
@@ -1848,7 +1885,7 @@ export default function VentasPage() {
       const sesionInformativo = sesionCajaId ?? ((sesionesAbiertas as any[])[0]?.id ?? null)
       if (estado === 'despachada' && sesionInformativo) {
         for (const mp of mediosPago) {
-          if (!mp.tipo || mp.tipo === 'Efectivo' || mp.tipo === 'Cuenta Corriente' || !mp.tipo.trim()) continue
+          if (!mp.tipo || mp.tipo === 'Efectivo' || mp.tipo === 'Cuenta Corriente' || mp.tipo === 'Crédito a favor' || !mp.tipo.trim()) continue
           const montoMp = parseFloat(mp.monto) || 0
           if (montoMp <= 0.01) continue
           const { error: errInfo } = await supabase.from('caja_movimientos').insert({
@@ -1877,7 +1914,7 @@ export default function VentasPage() {
       // Seña no-efectivo: un ingreso_informativo por método (fire-and-forget)
       if (estado === 'reservada' && sesionCajaId) {
         for (const mp of mediosPago) {
-          if (!mp.tipo || mp.tipo === 'Efectivo' || !mp.tipo.trim()) continue
+          if (!mp.tipo || mp.tipo === 'Efectivo' || mp.tipo === 'Crédito a favor' || !mp.tipo.trim()) continue
           const montoMp = parseFloat(mp.monto) || 0
           if (montoMp <= 0.01) continue
           void supabase.from('caja_movimientos').insert({
@@ -3678,6 +3715,10 @@ export default function VentasPage() {
                       {/* ISS-090: CC como medio de pago parcial */}
                       {clienteCCEnabled && clienteId && (
                         <option value="Cuenta Corriente">💳 Cuenta Corriente</option>
+                      )}
+                      {/* E2: crédito a favor del cliente */}
+                      {clienteId && clienteCredito > 0 && (
+                        <option value="Crédito a favor">🎁 Crédito a favor (${clienteCredito.toLocaleString('es-AR', { maximumFractionDigits: 0 })})</option>
                       )}
                     </select>
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}

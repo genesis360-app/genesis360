@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | E2 reservas — redención del crédito a favor en POS (DEV)
+
+Cierre de E2. La redención del saldo a favor quedó completa:
+- POS: medio de pago **"Crédito a favor"** (visible si el cliente tiene saldo). Cuenta como pagado (cubre total + suma a `monto_pagado`) pero NO entra a caja (excluido de los 2 loops de `ingreso_informativo`). Al confirmar inserta consumo negativo en `cliente_creditos` (`origen='consumo_venta'`). Validación: no supera el saldo. Effect que trae el saldo al seleccionar cliente (`clienteCredito`).
+- ClientesPage: query `creditoMap` (saldo por cliente) + badge "🎁 Saldo a favor $X" en la ficha.
+- Typecheck + build OK. Sin migración nueva (usa `cliente_creditos` de mig 160).
+
+---
+
 ## [2026-05-31] update | Relevamiento Ventas E/F/G — G4, F1, F5, bloque reservas (DEV)
 
 Implementación de respuestas del relevamiento de Ventas (secciones E/F/G), sin deployar a PROD aún.

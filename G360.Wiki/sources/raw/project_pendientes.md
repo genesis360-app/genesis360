@@ -15,11 +15,19 @@ type: project
 | | DEV | PROD |
 |---|---|---|
 | APP_VERSION | `v1.11.6` | `v1.11.6` |
-| Migrations | 001–**158** ✅ | 001–**158** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.11.6) |
+| Migrations | 001–**160** ✅ | 001–**158** ✅ |
+| Branch | `dev` (adelantado a `main`) | `main` (release v1.11.6) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.11.6 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna.
+**Migrations DEV pendientes de aplicar en PROD:** **159** (presupuesto_numero), **160** (reservas seña/vencimiento/crédito).
+
+**En DEV sin deployar (relevamiento Ventas E/F/G — 2026-05-31):**
+- **G4** — costo/margen ocultos para CAJERO/DEPOSITO (`permisosCosto.ts`). Sin migración.
+- **F1** — botón "Actualizar presupuesto" on-demand (la config de validez ya existía).
+- **F5** (mig 159) — correlativo independiente de presupuestos `PRES-NNNN` por sucursal.
+- **E6+E1** (mig 160) — seña obligatoria/mínima %, vencimiento configurable + liberación automática de stock (sweep lazy `liberar_reservas_vencidas`), config en ConfigPage → Ventas → Reservas.
+- **E2 parcial** (mig 160) — cancelación de reserva con penalidad % + destino devolución/crédito (`cliente_creditos`) + gate E4. **Falta**: gastar el crédito en POS + mostrar saldo a favor en ficha cliente.
+- Detalle completo y estado por ítem: `relevamiento_ventas_respuestas.md`.
 
 **Deployado en v1.11.2 (2026-05-30):**
 - **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.

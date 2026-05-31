@@ -422,6 +422,17 @@ export default function ConfigPage() {
   const [bizPresupuestoValidez, setBizPresupuestoValidez] = useState<string>(
     String((tenant as any)?.presupuesto_validez_dias ?? 30)
   )
+  // Reservas (E1/E2/E6)
+  const [bizReservaSenaObligatoria, setBizReservaSenaObligatoria] = useState<boolean>((tenant as any)?.reserva_sena_obligatoria ?? true)
+  const [bizReservaSenaMinimaPct, setBizReservaSenaMinimaPct] = useState<string>(
+    String((tenant as any)?.reserva_sena_minima_pct ?? 0)
+  )
+  const [bizReservaVencimientoDias, setBizReservaVencimientoDias] = useState<string>(
+    (tenant as any)?.reserva_vencimiento_dias != null ? String((tenant as any).reserva_vencimiento_dias) : ''
+  )
+  const [bizReservaPenalidadPct, setBizReservaPenalidadPct] = useState<string>(
+    String((tenant as any)?.reserva_penalidad_pct ?? 0)
+  )
 
   // Facturación electrónica
   const [bizFactHabilitada,  setBizFactHabilitada]  = useState<boolean>((tenant as any)?.facturacion_habilitada ?? false)
@@ -563,6 +574,11 @@ export default function ConfigPage() {
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
       trazabilidad_asignacion: bizTrazaAsignacion,
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
+      // Reservas (E1/E2/E6)
+      reserva_sena_obligatoria: bizReservaSenaObligatoria,
+      reserva_sena_minima_pct: parseFloat(bizReservaSenaMinimaPct) || 0,
+      reserva_vencimiento_dias: bizReservaVencimientoDias.trim() === '' ? null : (parseInt(bizReservaVencimientoDias) || null),
+      reserva_penalidad_pct: parseFloat(bizReservaPenalidadPct) || 0,
       whatsapp_plantilla: bizWAPlantilla.trim() || null,
       costo_envio_por_km: bizCostoKm ? parseFloat(bizCostoKm) : null,
       envio_rangos_horarios: bizEnvioRangos.filter(r => r.desde && r.hasta),
@@ -3613,6 +3629,57 @@ export default function ConfigPage() {
                     className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Un presupuesto creado hoy expirará en esta cantidad de días. Se muestra en el ticket de presupuesto.</p>
                 </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Reservas (E1/E2/E6) */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Reservas</h2>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" checked={bizReservaSenaObligatoria} disabled={!canEdit}
+                    onChange={e => setBizReservaSenaObligatoria(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-accent" />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Exigir seña para reservar</span>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">Si está activo, no se puede crear una reserva sin cobrar una seña.</p>
+                  </div>
+                </label>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Seña mínima (% del total)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
+                    value={bizReservaSenaMinimaPct} disabled={!canEdit || !bizReservaSenaObligatoria}
+                    onChange={e => setBizReservaSenaMinimaPct(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">0 = cualquier seña mayor a cero. Ej: 30 exige al menos el 30% del total al reservar.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vencimiento de reserva (días)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365"
+                    value={bizReservaVencimientoDias} disabled={!canEdit} placeholder="Sin vencimiento"
+                    onChange={e => setBizReservaVencimientoDias(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = sin vencimiento. Pasados estos días sin despachar, <span className="font-medium">el inventario reservado se libera automáticamente</span> y la reserva se cancela.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Penalidad al cancelar (% de la seña)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
+                    value={bizReservaPenalidadPct} disabled={!canEdit}
+                    onChange={e => setBizReservaPenalidadPct(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">0 = sin penalidad (se devuelve la seña completa). Ej: 10 retiene el 10% de la seña al cancelar.</p>
+                </div>
+
                 {canEdit && (
                   <div className="flex justify-end">
                     <button onClick={handleSaveBiz} disabled={savingBiz}

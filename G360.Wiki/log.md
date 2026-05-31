@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | Relevamiento Ventas E/F/G — G4, F1, F5, bloque reservas (DEV)
+
+Implementación de respuestas del relevamiento de Ventas (secciones E/F/G), sin deployar a PROD aún.
+
+- **G4** — `src/lib/permisosCosto.ts` (`puedeVerCosto`). Costo y margen ocultos para CAJERO/DEPOSITO en `ProductosPage` (cards, panel expandido, botón Orden de Compra) y `ProductoFormPage` (precio de costo, margen actual, margen objetivo, precio sugerido). El POS no exponía costo. Sin migración.
+- **F1** — botón "Actualizar presupuesto" on-demand en el detalle (presupuestos no vencidos): recrea con precios actuales y resetea el contador de validez. La config `presupuesto_validez_dias` ya existía.
+- **F5** (mig **159**) — correlativo independiente de presupuestos `PRES-{cod}-NNNN` por sucursal. `ventas.presupuesto_numero` + `presupuesto_numero_sucursal`, trigger `gen_venta_numero` extendido + backfill (deshabilitando `trg_ventas_cierre` durante el UPDATE). `formatTicket` muestra el prefijo PRES.
+- **E6 + E1** (mig **160**) — `tenants.reserva_sena_obligatoria` + `reserva_sena_minima_pct` (validación al reservar, ambos paths) + `reserva_vencimiento_dias` (NULL=sin venc.) + `ventas.reservado_at`. Función `liberar_reservas_vencidas(tenant)` libera stock reservado + cancela las vencidas (NO toca dinero, saltea período cerrado por reserva). Sweep lazy al entrar a Ventas. Config UI nueva en ConfigPage → Ventas → Operativa → "Reservas".
+- **E2 parcial** (mig **160**) — cancelación de reserva con seña: penalidad % (`reserva_penalidad_pct`) + elección devolución / crédito a favor. Tabla `cliente_creditos` (ledger, saldo = SUM(monto)). Gate E4: solo DUEÑO/SUPERVISOR/ADMIN cancelan reserva con seña. **Pendiente**: redención del crédito en POS + saldo a favor en ficha del cliente.
+- **G1/G2** confirmado por GO: mayorista por **cantidad de unidades del producto**. Hallazgo: `producto_precios_mayorista` (tiers) ya existe; falta aplicarlo en el POS. Queda en backlog.
+- Typecheck + `vite build` OK. Migrations 159+160 aplicadas en DEV. `schema_full.sql` actualizado (gen_venta_numero + columnas ventas).
+
+---
+
 ## [2026-05-31] update | v1.11.6 PROD — ISS-127: GS1 QR Code como 3ª simbología
 
 Pedido GO al cierre. Los perfiles de códigos compuestos ahora soportan **GS1 QR Code** además de GS1-128 y DataMatrix.

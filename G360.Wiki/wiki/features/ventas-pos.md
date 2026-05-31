@@ -142,6 +142,37 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 ### Badge saldo en historial
 - Chip naranja "Saldo $X" en reservas con pago parcial pendiente
 
+### Seña obligatoria + mínima (E6 · mig 160)
+- `tenants.reserva_sena_obligatoria` (default ON): **sin seña no se puede reservar**. Validado en `registrarVenta` y en el saldoModal de conversión a reserva.
+- `tenants.reserva_sena_minima_pct`: seña mínima como % del total (0 = cualquier seña > 0). La seña cuenta dinero real (excluye CC).
+- Config: ConfigPage → Ventas → Operativa → **Reservas**.
+
+### Vencimiento + liberación automática (E1 · mig 160)
+- `tenants.reserva_vencimiento_dias` (NULL = sin vencimiento, default). `ventas.reservado_at` fija la referencia al pasar a `reservada`.
+- Función `liberar_reservas_vencidas(tenant)` (SECURITY DEFINER): libera el stock reservado (series `reservado=false` / `cantidad_reservada` decrementado) y marca la reserva `cancelada` con nota. **No toca dinero** (la seña se resuelve manual). Cada reserva es atómica y saltea las de período contable cerrado.
+- Disparo: **sweep lazy** al entrar a Ventas (RPC una vez por montaje si el tenant tiene vencimiento configurado). pg_cron no está habilitado.
+
+### Cancelación con penalidad + crédito (E2 · mig 160 — parcial)
+- Cancelar una reserva **con seña** requiere DUEÑO/SUPERVISOR/ADMIN (gate E4). Abre modal con:
+  - **Penalidad** `tenants.reserva_penalidad_pct`: se retiene ese % de la seña (no se devuelve).
+  - **Destino** del monto a devolver: *devolución* (egreso en caja, escala efectivo/no-cash) o *crédito a favor* del cliente (tabla `cliente_creditos`, requiere cliente asignado).
+- `cliente_creditos`: ledger, saldo a favor = `SUM(monto)`. **Pendiente**: gastar el crédito en el POS + mostrar saldo a favor en la ficha del cliente.
+
+---
+
+## Numeración de presupuestos (F5 · mig 159)
+
+- Los presupuestos (estado `pendiente`) tienen **correlativo propio independiente** de las ventas: `ventas.presupuesto_numero` (por tenant) + `presupuesto_numero_sucursal` (por sucursal). Asignado por el trigger `gen_venta_numero` solo si la venta nace como presupuesto; se conserva al convertir.
+- `formatTicket` muestra **`PRES-{codigo_sucursal}-NNNN`** (o `PRES-NNNN` sin código de sucursal). Las ventas reales mantienen su formato.
+
+## Actualizar presupuesto on-demand (F1)
+
+- En el detalle de un presupuesto **no vencido** hay un botón "Actualizar presupuesto (precios + validez)" que recrea con precios actuales y **resetea el contador de validez** (vía `updated_at`, base de `isPresupuestoVencido`). La validez sigue siendo `tenants.presupuesto_validez_dias` (config existente).
+
+## Visibilidad de costo/margen (G4)
+
+- `src/lib/permisosCosto.ts` → `puedeVerCosto(rol)`: **CAJERO y DEPOSITO no ven precio de costo ni margen**. Aplica en `ProductosPage` (cards, panel expandido, botón Orden de Compra) y `ProductoFormPage` (precio de costo, margen actual, margen objetivo, precio sugerido). Visible para DUEÑO/SUPERVISOR/ADMIN/CONTADOR/SUPER_USUARIO.
+
 ---
 
 ## Cuenta corriente (v1.4.0 · migration 083 · fix ISS-090 v1.8.38)

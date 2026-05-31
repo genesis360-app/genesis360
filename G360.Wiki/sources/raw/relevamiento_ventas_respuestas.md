@@ -2,15 +2,15 @@
 name: relevamiento_ventas_respuestas
 description: Respuestas consolidadas del relevamiento de reglas de negocio del módulo Ventas (GO + socio). Origen del backlog de implementación.
 type: project
-status: WIP — A-D respondidas (2026-05-28), E-L pendientes
+status: WIP — A-G respondidas (E-G: 2026-05-31), H-L pendientes
 source: relevamiento-ventas-reglas-negocio.html
-updated: 2026-05-28
+updated: 2026-05-31
 ---
 
 # Respuestas — Relevamiento Reglas de Negocio · Ventas
 
-> **Estado:** respondidas secciones **A (Devoluciones)**, **B (Re-apertura/edición)**, **C (Límites)** y **D (CC clientes)**.
-> Faltan secciones **E (Reservas)**, **F (Presupuestos)**, **G (Listas de precios)**, **H (Edición POS)**, **I (Canales)**, **J (Auditoría)**, **K (Reportes)** y **L (Top 3 prioridad)**.
+> **Estado:** respondidas secciones **A (Devoluciones)**, **B (Re-apertura/edición)**, **C (Límites)**, **D (CC clientes)**, **E (Reservas)**, **F (Presupuestos)** y **G (Listas de precios)**.
+> Faltan secciones **H (Edición POS)**, **I (Canales)**, **J (Auditoría)**, **K (Reportes)** y **L (Top 3 prioridad)**.
 > Las preguntas marcadas como ⚠ requieren confirmación final de GO antes de mover a backlog firme.
 
 ---
@@ -75,6 +75,43 @@ updated: 2026-05-28
 
 ---
 
+## E. Reservas
+
+| # | Respuesta | Resumen para implementación |
+|---|---|---|
+| E1 | **C configurable (default sin vencimiento)** | Vencimiento de reserva configurable por tenant en Config → Ventas: **(1) seña mínima** (ver E6) + **(2) X días de vencimiento**. Al vencer → **liberación automática del stock** (aclararlo explícito en el texto de config: "pasados N días sin despachar, el inventario reservado se libera"). **Default: "Sin vencimiento"**. Regla dura ligada a E6: **sin seña NO se puede crear reserva**. Nuevos: `tenants.reserva_vencimiento_dias INT` (NULL/0 = sin vencimiento), job nocturno que libera reservas vencidas + notifica. |
+| E2 | **D + B** | Al cancelar reserva con seña: **el operador elige** entre devolución total o convertir la seña en **crédito en cuenta** del cliente (D), **y** puede aplicar **penalidad configurable en %** reteniendo parte de la seña (B). Nuevos: `tenants.reserva_penalidad_pct DECIMAL` (default 0). El destino (efectivo vs crédito) lo decide el operador en el modal de cancelación. |
+| E3 | **C con observación opcional** | Catálogo cerrado de motivos (Cliente arrepentido / Producto roto / Stock perdido / Otro) + observación libre **opcional** (no obligatoria). Reusar el patrón de catálogo de A4. |
+| E4 | **C** | Solo **DUEÑO/SUPERVISOR** pueden cancelar una reserva **con seña pagada** (para decidir si penalizar o no); si la reserva **no tiene seña**, la puede cancelar **el creador**. Gate por rol + estado de seña. |
+| E5 | **A** | Mantener flujo actual: "Modificar reserva" cancela + recrea pre-poblando el carrito. **Sin cambios.** |
+| E6 | **B (en porcentaje)** | Exigir **seña mínima configurable en %** del total (ej: 30%). Ligado a E1: sin seña no hay reserva. Nuevo: `tenants.reserva_sena_minima_pct DECIMAL`. Valida en el flujo de creación de reserva. |
+
+---
+
+## F. Presupuestos
+
+| # | Respuesta | Resumen para implementación |
+|---|---|---|
+| F1 | **B + botón "Actualizar presupuesto"** | Vencimiento **configurable por tenant** en Config → Ventas (7/15/30 días). Botón **"Actualizar presupuesto"** que **recrea el presupuesto con precios actuales** y **resetea el contador de vencimiento** desde la fecha de actualización. Nuevo: `tenants.presupuesto_vencimiento_dias INT`. |
+| F2 | **Configurable (3 modos)** | Nuevo selector en Config → Ventas para la política de conversión presupuesto → venta: **(1) "Mantener si está dentro del plazo, recotiza si venció" (default = opción A actual)**, **(2) "Mantener siempre"**, **(3) "Siempre recotiza"**. Nuevo: `tenants.presupuesto_conversion_politica TEXT` (`mantener_en_plazo` / `mantener_siempre` / `siempre_recotiza`). |
+| F3 | **A + C** | Cualquier rol con acceso a Ventas puede convertir, **pero solo dentro de la misma sucursal** donde se creó el presupuesto. Gate por `sucursal_id`. |
+| F4 | **D** | PDF + email automático + link WhatsApp, **todo configurable** por tenant. Reusar infra de email (A9 devoluciones) y patrón de links públicos (`VITE_APP_URL`). |
+| F5 | **B + C** | Numeración **independiente con prefijo** (ej: `PRES-001`) **y por sucursal**. Nuevo correlativo propio (no comparte con `ventas.numero`); trigger análogo a `set_venta_numero` por sucursal. |
+
+---
+
+## G. Listas de precios / Mayorista / B2B
+
+| # | Respuesta | Resumen para implementación |
+|---|---|---|
+| G1 | **B + umbral configurable** ⚠ | 2 listas (Minorista / Mayorista). El precio mayorista se activa **a partir de X (monto/cantidad) configurable**. **Ver tensión con G2 abajo.** |
+| G2 | **Por cantidad de unidades por producto, NO por cliente** ⚠ | La distinción mayorista/minorista se decide **automáticamente por la cantidad de unidades compradas de cada producto** en la línea de venta — **no** es un flag por cliente. Combina con G1: en vez de asignar lista al cliente, el sistema aplica precio mayorista cuando la cantidad de esa línea supera el umbral del producto/tenant. **Ver recomendación abajo.** |
+| G3 | **A con límite de % por rol** | Sin edición libre de precio: **solo descuento por %**. El descuento lo aplica **solo DUEÑO / SUPERVISOR / ADMIN** (nadie más), según una **regla de límite de % máximo de descuento por ROL**. Al CAJERO le aparece **solo el descuento ya autorizado si cumple las condiciones** configuradas en Config → Ventas → Descuentos. **Liga directo con C3** (descuentos por medio de pago + umbral). |
+| G4 | **B** | Precio de **costo y margen visibles solo para DUEÑO / SUPERVISOR / ADMIN / CONTADOR**; **ocultos para CAJERO / DEPOSITO** en POS/Productos. Gate por rol en UI. |
+| G5 | **D (3 opciones configurables)** | Producto puede tener precio en USD + flag configurable: **"Vender en moneda local"** (convierte en POS al cargar) **o "Vender en USD"** (caja USD). Reusar cotización USD existente (combos) y moneda por caja. Nuevos: `productos.precio_usd DECIMAL`, `productos.moneda_venta TEXT`. |
+
+---
+
 ## Preguntas abiertas — recomendaciones de Claude
 
 ### A10 — NC electrónica AFIP automática
@@ -126,6 +163,25 @@ Si **dudás**, andate por **A (no es necesario)** ahora. Razones:
 
 **Recomendación final D8**: A por ahora. Lo dejamos en backlog y si en 3-6 meses el volumen de CC pega un salto, pasamos a B.
 
+### G1 + G2 — Tensión a resolver antes de implementar ⚠
+
+Hay un **choque entre G1 y G2** que hay que cerrar antes de pasar a backlog firme:
+
+- **G1** dice "mayorista a partir de X **monto** configurable" (umbral sobre el total de la venta).
+- **G2** dice "por **cantidad de unidades** compradas **por producto**, no por cliente" (umbral por línea, no por total).
+
+Son dos disparadores distintos. Mi lectura: lo que querés es lo de **G2** (precio escalonado **por cantidad por producto**, automático, sin asignar lista al cliente). Eso en realidad corresponde a la opción **(d) de G1** (listas escalonadas por cantidad), no a la (b). El "monto" de G1 probablemente fue una forma de decir "umbral", pero el umbral real que describís es **cantidad de unidades de ese producto**.
+
+**Recomendación**: modelar como **umbral de cantidad por producto** (cada producto define a partir de cuántas unidades aplica precio mayorista; opcionalmente un default a nivel tenant). No hace falta tabla de "listas N" ni flag por cliente:
+- `productos.precio_mayorista DECIMAL` (NULL = no aplica)
+- `productos.mayorista_cant_minima INT` (NULL = usa default tenant)
+- `tenants.mayorista_cant_minima_default INT`
+- El POS, al cargar una línea, si `cantidad >= cant_minima` → usa `precio_mayorista`.
+
+**✅ CONFIRMADO por GO (2026-05-31)**: el disparador es **cantidad de unidades del producto**. **Desbloqueado para backlog firme.**
+
+**⚠ HALLAZGO (2026-05-31): ya existe infraestructura parcial.** La tabla **`producto_precios_mayorista`** (tiers: `cantidad_minima` + `precio` + `descripcion`/etiqueta) **ya está implementada** y se edita en el form de producto (`ProductoFormPage` → accordion "Precios mayoristas", solo `canEdit`). Soporta **N tiers por producto** (mejor que los 2 niveles que pensábamos). **Lo que falta**: el **POS (`VentasPage`) NO aplica los tiers** — guarda los precios pero al vender no baja al precio mayorista según la cantidad de la línea. Por lo tanto G1/G2 se reduce a: **aplicar el tier correcto en el POS cuando `cantidad de la línea >= cantidad_minima`** (tomar el tier de mayor `cantidad_minima` que la cantidad satisfaga). No hace falta crear columnas nuevas ni default tenant; el modelo por-tier ya cubre el caso confirmado.
+
 ---
 
 ## Decisiones de impacto técnico (preview backlog)
@@ -143,7 +199,57 @@ Cambios estructurales que van a salir de lo respondido:
    - `clientes.cc_notificacion_override` (D4)
    - `tenants.cc_morosidad_politica TEXT` (D6)
    - Cola `nc_afip_pendientes` (A10)
-   - Tabla descuentos por medio de pago (C3)
+   - Tabla descuentos por medio de pago + límite % por rol (C3 + G3)
+   - `tenants.reserva_vencimiento_dias INT` + `tenants.reserva_sena_minima_pct` + `tenants.reserva_penalidad_pct` (E1/E2/E6)
+   - `tenants.presupuesto_vencimiento_dias INT` + `tenants.presupuesto_conversion_politica TEXT` (F1/F2)
+   - Correlativo independiente de presupuestos por sucursal (F5)
+   - `productos.precio_usd` + `productos.moneda_venta` (G5)
+   - `productos.precio_mayorista` + `productos.mayorista_cant_minima` + `tenants.mayorista_cant_minima_default` (G1/G2 — pendiente confirmar disparador)
+
+---
+
+## Análisis — qué se puede avanzar YA (independiente de H-L)
+
+Lo respondido en E/F/G **no depende** de las secciones pendientes (H edición POS, I canales, J auditoría, K reportes, L prioridad). Ordenado por relación esfuerzo/independencia:
+
+**Quick wins (self-contained, bajo riesgo):**
+
+1. **G4 — Ocultar costo/margen a CAJERO/DEPOSITO**. Puro gate por rol en UI (POS + Productos). No toca DB ni lógica de negocio. Es lo más rápido y seguro de hacer ahora. **Candidato #1 para arrancar.**
+2. **E5 — Sin cambios** (flujo modificar reserva se mantiene). Cero trabajo, solo confirmar.
+3. **F1 — Vencimiento presupuesto configurable + botón "Actualizar presupuesto"**. Una columna en `tenants` + reemplazar el plazo hardcoded + botón que recrea con precios actuales. Autocontenido.
+4. **F5 — Numeración independiente de presupuestos** (`PRES-NNN` por sucursal). Migration + trigger análogo a `set_venta_numero`. Independiente.
+
+**Medianos (autocontenidos pero más superficie):**
+
+5. **E3 — Catálogo de motivos de cancelación de reserva** (reusa patrón A4). Independiente.
+6. **F2 — Política de conversión presupuesto→venta configurable** (3 modos). Una columna + branch en el flujo de despacho de presupuesto.
+7. **F4 — PDF presupuesto + email + WhatsApp configurable**. Reusa infra de email/links públicos.
+8. **G5 — Precio USD por producto + flag moneda de venta**. Reusa cotización USD y moneda por caja.
+
+**Grandes (mejor por fases, pero igual independientes de H-L):**
+
+9. **E1/E2/E6 — Reservas con seña obligatoria + vencimiento + penalidad** (bloque coherente). Incluye job nocturno de liberación de stock. Es un lote: implementar junto.
+10. **G3 + C3 — Descuentos por % con límite por rol**. C3 ya estaba marcado como feature mayor; G3 lo refina con el límite por rol. **Implementar C3 y G3 juntos.**
+11. **G1/G2 — Precio mayorista por cantidad**. **Bloqueado** hasta confirmar el disparador (cantidad por producto vs monto total — ver tensión arriba). No avanzar hasta resolverlo.
+
+**Sugerencia de arranque**: G4 (quick win inmediato) → F1 + F5 (presupuestos, autocontenidos) → bloque reservas E1/E2/E6 por fases. Dejar G1/G2 frenado hasta la confirmación.
+
+---
+
+## Estado de implementación (DEV — 2026-05-31)
+
+| Ítem | Estado | Detalle |
+|---|---|---|
+| **G4** | ✅ Implementado | `src/lib/permisosCosto.ts` (`puedeVerCosto`). Costo/margen ocultos para CAJERO/DEPOSITO en `ProductosPage` (cards + panel + botón OC) y `ProductoFormPage` (precio costo + margen + margen objetivo + precio sugerido). POS no mostraba costo. |
+| **F1** | ✅ Implementado | Ya existía config `presupuesto_validez_dias` + botón "Actualizar precios" (resetea contador vía `updated_at`). Agregado botón "Actualizar presupuesto" on-demand para presupuestos no vencidos en el detalle. |
+| **F5** | ✅ Implementado | **Mig 159**. `ventas.presupuesto_numero` + `presupuesto_numero_sucursal`, trigger `gen_venta_numero` + backfill. `formatTicket` muestra `PRES-{cod}-NNNN`. |
+| **E6** | ✅ Implementado | **Mig 160**. `tenants.reserva_sena_obligatoria` + `reserva_sena_minima_pct`. Validación en `registrarVenta` y en el saldoModal (conversión a reserva). Config UI en ConfigPage → Ventas → Operativa → Reservas. |
+| **E1** | ✅ Implementado | **Mig 160**. `tenants.reserva_vencimiento_dias` (NULL=sin venc.) + `ventas.reservado_at`. Función `liberar_reservas_vencidas(tenant)` (libera stock + cancela, NO toca dinero, saltea período cerrado). Sweep lazy al entrar a Ventas. Config UI. |
+| **E2** | 🟡 Parcial | **Mig 160**. Cancelación: penalidad % (`reserva_penalidad_pct`) + destino devolución/crédito + gate E4 (DUEÑO/SUPERVISOR para reserva con seña). Tabla `cliente_creditos` (ledger saldo a favor). **PENDIENTE**: redención (gastar el crédito en POS) + mostrar saldo a favor en ficha del cliente. |
+| **G1/G2** | ⏳ Backlog | Confirmado por cantidad. Infra `producto_precios_mayorista` ya existe; falta aplicar el tier en el POS por cantidad de línea. |
+| **E3, E4(motivo)** | ⏳ Backlog | E3 (catálogo motivo cancelación) no implementado aún. E4 gate sí (en cancelación con seña). |
+
+> **Migrations aplicadas en DEV**: 159 (presupuesto_numero), 160 (reservas seña/vencimiento/crédito). **Pendientes de aplicar en PROD.**
 
 2. **Cambios UI grandes**:
    - Devolución: catálogo motivos + radio reintegro stock + selector cuenta_origen + email auto.

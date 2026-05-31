@@ -14,6 +14,16 @@ Contenido: reservas (seña obligatoria/mínima, vencimiento + liberación autom�
 
 ---
 
+## [2026-05-31] update | v1.13.0 PROD — Ventas G3 (descuentos por rol) + G5 (precio USD) — relevamiento COMPLETO
+
+Cierra el relevamiento de Ventas E/F/G. Bump v1.12.0 → **v1.13.0**. Migration **161** (DEV+PROD).
+
+- **G3** — solo DUEÑO/SUPERVISOR/ADMIN aplican descuentos (`ROLES_DESCUENTO`; antes solo CAJERO bloqueado). Bloqueo de inputs en POS + validación dura en `registrarVenta` (ítem y global). SUPERVISOR limitado por `descuento_max_supervisor_pct` (ítem + global); DUEÑO/ADMIN sin tope. Config: campo "máx CAJERO" reemplazado por nota (cajero no aplica descuentos). Sin migración.
+- **G5** (mig 161) — `productos.precio_usd` + `productos.moneda_venta` ('local'|'usd'). Form: select moneda + input USD + preview de conversión. POS: si `moneda_venta='usd'`, convierte a pesos a la cotización vigente al cargar (`precio_usd_origen` para el hint en el carrito). Venta física en USD/caja USD: diferida.
+- Typecheck + build OK. `schema_full.sql` actualizado (productos precio_usd/moneda_venta). Deploy: PR dev→main + merge → Vercel PROD; release+tag v1.13.0.
+
+---
+
 ## [2026-05-31] update | Ventas G1/G2 (mayorista por cantidad) + E3 (motivo cancelación) (DEV)
 
 - **G1/G2** — el POS aplica precios mayoristas por **cantidad de la línea** (`producto_precios_mayorista`, infra que ya existía). `tiersMayoristaMap` (query) + helper `precioTierEfectivo(item)` (tier de mayor `cantidad_minima` ≤ cantidad; si no, minorista). Usado en `getItemSubtotal` y persistido en `venta_items.precio_unitario`. Indicador "Precio mayorista" en el carrito (minorista tachado). Sin migración. CartItem += `tiers`.

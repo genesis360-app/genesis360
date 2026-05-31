@@ -56,6 +56,8 @@ export default function ProductoFormPage() {
     // Marketplace
     publicado_marketplace: false, precio_marketplace: '', stock_reservado_marketplace: '0',
     descripcion_marketplace: '',
+    // G5 — precio en USD + moneda de venta
+    precio_usd: '', moneda_venta: 'local',
   })
   const [showMarketplace, setShowMarketplace] = useState(false)
   const [showMayorista, setShowMayorista] = useState(false)
@@ -275,6 +277,8 @@ export default function ProductoFormPage() {
         // Marketplace
         publicado_marketplace: productoData.publicado_marketplace ?? false,
         precio_marketplace: productoData.precio_marketplace != null ? productoData.precio_marketplace.toString() : '',
+        precio_usd: (productoData as any).precio_usd != null ? (productoData as any).precio_usd.toString() : '',
+        moneda_venta: (productoData as any).moneda_venta ?? 'local',
         stock_reservado_marketplace: (productoData.stock_reservado_marketplace ?? 0).toString(),
         descripcion_marketplace: productoData.descripcion_marketplace ?? '',
       })
@@ -373,6 +377,8 @@ export default function ProductoFormPage() {
         ubicacion_id: form.ubicacion_id || null,
         precio_costo: parseFloat(form.precio_costo) || 0,
         precio_venta: parseFloat(form.precio_venta) || 0,
+        precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
+        moneda_venta: form.moneda_venta || 'local',
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida,
         codigo_barras: form.codigo_barras.trim() || null,
@@ -501,6 +507,8 @@ export default function ProductoFormPage() {
         ubicacion_id: form.ubicacion_id || null,
         precio_costo: parseFloat(form.precio_costo) || 0,
         precio_venta: parseFloat(form.precio_venta) || 0,
+        precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
+        moneda_venta: form.moneda_venta || 'local',
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida,
         codigo_barras: null,
@@ -946,6 +954,40 @@ export default function ProductoFormPage() {
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">%</span>
                   </div>
                 </div>
+                )}
+              </div>
+
+              {/* G5 — Moneda de venta + precio USD */}
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Moneda de venta</label>
+                  <select value={form.moneda_venta} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, moneda_venta: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    <option value="local">Moneda local (precio en pesos)</option>
+                    <option value="usd">Precio en USD (se convierte a pesos en el POS)</option>
+                  </select>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si elegís USD, el POS toma el precio en dólares y lo convierte a la cotización vigente al cargarlo.</p>
+                </div>
+                {form.moneda_venta === 'usd' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio en USD</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm font-medium">USD</span>
+                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01" disabled={!canEdit}
+                        value={form.precio_usd}
+                        onChange={e => setForm(p => ({ ...p, precio_usd: e.target.value }))}
+                        className="w-full pl-12 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
+                    </div>
+                    {cotizacionNum > 0 && (parseFloat(form.precio_usd) || 0) > 0 && (
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                        ≈ ${((parseFloat(form.precio_usd) || 0) * cotizacionNum).toLocaleString('es-AR', { maximumFractionDigits: 0 })} a la cotización actual (${cotizacionNum.toLocaleString('es-AR', { maximumFractionDigits: 0 })})
+                      </p>
+                    )}
+                    {!(cotizacionNum > 0) && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Sin cotización USD configurada — el POS no podrá convertir. Configurala en el menú lateral.</p>
+                    )}
+                  </div>
                 )}
               </div>
 

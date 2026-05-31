@@ -3752,22 +3752,13 @@ export default function ConfigPage() {
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300">Límites de descuento por rol</h2>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Define el máximo porcentaje de descuento que cada rol puede aplicar en una venta sin requerir autorización.
-                  Si el descuento supera el límite, el POS solicitará aprobación de un supervisor/dueño.
-                  Dejá el campo vacío para no poner límite.
+                  Solo <span className="font-medium">DUEÑO, SUPERVISOR y ADMIN</span> pueden aplicar descuentos en una venta.
+                  El resto de los roles (CAJERO, DEPÓSITO, etc.) los tiene bloqueados. El DUEÑO/ADMIN no tienen tope;
+                  el SUPERVISOR está limitado al porcentaje de abajo (vacío = sin límite).
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descuento máximo — CAJERO (%)</label>
-                    <div className="flex items-center gap-2">
-                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
-                        value={bizDescuentoMaxCajero} disabled={!canEdit}
-                        onChange={e => setBizDescuentoMaxCajero(e.target.value)}
-                        placeholder="Sin límite"
-                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
-                      <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
-                    </div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Aplica al rol CAJERO. Superar este % requiere autorización.</p>
+                  <div className="sm:col-span-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-2.5 text-xs text-amber-700 dark:text-amber-400">
+                    🔒 CAJERO y demás roles operativos no pueden aplicar descuentos. Si necesitan uno, lo autoriza un DUEÑO/SUPERVISOR/ADMIN.
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descuento máximo — SUPERVISOR (%)</label>

@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.13.0 — Relevamiento Ventas E/F/G completo: descuentos por rol + precio USD (PROD ✅)
+
+Cierra el relevamiento de Ventas (mig **161**).
+- **G3 — descuentos por rol**: solo DUEÑO/SUPERVISOR/ADMIN aplican descuentos (antes solo se bloqueaba CAJERO); bloqueo de inputs en POS + validación dura (ítem y global); SUPERVISOR sujeto a `descuento_max_supervisor_pct`, DUEÑO/ADMIN sin tope. Config aclarada.
+- **G5 — precio en USD**: `productos.precio_usd` + `moneda_venta` ('local' | 'usd'); si es USD, el POS convierte a pesos a la cotización vigente al cargar el producto al carrito. (Venta física en USD/caja USD: fase futura.)
+
 ## v1.12.0 — Relevamiento Ventas E/F/G: reservas, presupuestos, mayorista (PROD ✅)
 
 Implementación de las secciones E/F/G del relevamiento de Ventas (mig **159** + **160**).

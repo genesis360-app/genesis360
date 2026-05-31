@@ -215,6 +215,8 @@ CREATE TABLE productos (
   estado_id        UUID REFERENCES estados_inventario(id),
   precio_costo     DECIMAL(12,2) DEFAULT 0,
   precio_venta     DECIMAL(12,2) DEFAULT 0,
+  precio_usd       DECIMAL(12,2),              -- G5 (mig 161) — precio en USD si moneda_venta='usd'
+  moneda_venta     TEXT NOT NULL DEFAULT 'local', -- G5 (mig 161) — 'local' | 'usd' (convierte en POS)
   margen_ganancia  DECIMAL(5,2) GENERATED ALWAYS AS (
     CASE WHEN precio_costo > 0
       THEN ROUND(((precio_venta - precio_costo) / precio_costo) * 100, 2)

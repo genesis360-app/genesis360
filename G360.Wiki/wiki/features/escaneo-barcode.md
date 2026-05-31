@@ -17,7 +17,8 @@ updated: 2026-05-20
 | Librería | Rol |
 |---------|-----|
 | `BarcodeDetector` (nativo) | Primera opción — Chrome/Edge/Android |
-| `@undecaf/zbar-wasm` | Fallback WASM — iOS, Firefox, Desktop |
+| `@undecaf/zbar-wasm` | Fallback WASM — iOS, Firefox, Desktop (1D + QR) |
+| `@zxing/library` | Fallback **DataMatrix** (ISS-127 F3) — zbar no lo decodifica. Se carga y corre solo si el primario no cubre data_matrix; restringido a DATA_MATRIX + throttle 1/3 frames |
 | `html5-qrcode` | Manejo de cámara y permisos |
 | `qrcode` | Generación de QR (no lectura) |
 
@@ -163,7 +164,9 @@ Subsistema para leer/generar códigos que codifican **varios campos a la vez** (
 
 - **F1 ✅ (fundación)**: modelo + `gs1.ts` + Config de perfiles + generación desde LPN.
 - **F2 ✅ (lectura ingreso)**: detección GS1 + parseo + match GTIN→producto (fallback codigo_barras) + autocompletado en ingreso individual y masivo.
-- **F3 (pendiente)**: lectura **DataMatrix** con `@zxing/library` (zbar no decodifica DataMatrix) + scanner de **Rebaje** por compuesto (resolución lote→LPN) + integración en **Ventas/POS** y **Recepciones** + generación masiva de etiquetas + modo `directo` (auto-crear LPN sin confirmar).
+- **F3 (en progreso)**:
+  - ✅ **DataMatrix lectura** con `@zxing/library` (fallback en `BarcodeScanner` cuando zbar/BarcodeDetector no cubren data_matrix).
+  - ⏳ Pendiente: **Ventas/POS** + **Recepciones** (lectura compuesta) + scanner de **Rebaje** (lote→LPN) + modo `directo` (auto-crear) + generación masiva de etiquetas.
 
 > [!NOTE] DataMatrix se **genera** ya (bwip-js), pero la **lectura** de DataMatrix solo funciona donde hay `BarcodeDetector` (Chrome/Edge/Android) hasta que entre ZXing en F3. GS1-128 (1D) se lee en todos lados con el stack actual.
 

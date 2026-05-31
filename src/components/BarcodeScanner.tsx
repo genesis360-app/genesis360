@@ -55,6 +55,28 @@ async function getZBarScan() {
   return zbarScanFn
 }
 
+// ISS-127 F3: ZXing decodifica DataMatrix (zbar NO). Se carga solo cuando hace falta
+// (zbar activo, o BarcodeDetector nativo sin soporte data_matrix) y se restringe a
+// DATA_MATRIX para no duplicar lo que ya cubre zbar/BarcodeDetector (1D + QR).
+let zxingDecodeDM: ((canvas: HTMLCanvasElement) => string | null) | null = null
+async function getZXingDM() {
+  if (!zxingDecodeDM) {
+    const z = await import('@zxing/library')
+    const reader = new z.MultiFormatReader()
+    const hints = new Map<number, unknown>()
+    hints.set(z.DecodeHintType.POSSIBLE_FORMATS, [z.BarcodeFormat.DATA_MATRIX])
+    reader.setHints(hints as any)
+    zxingDecodeDM = (canvas: HTMLCanvasElement) => {
+      try {
+        const lum = new z.HTMLCanvasElementLuminanceSource(canvas)
+        const bitmap = new z.BinaryBitmap(new z.HybridBinarizer(lum))
+        return reader.decode(bitmap).getText()
+      } catch { return null }
+    }
+  }
+  return zxingDecodeDM
+}
+
 export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un código', persistent = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -64,6 +86,8 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
   const detectedRef = useRef(false)
   const useZBarRef = useRef(false)
   const processingRef = useRef(false)  // evita acumulación de llamadas async
+  const needsZXingRef = useRef(false)  // ISS-127 F3: DataMatrix no cubierto por el primario
+  const zxFrameRef = useRef(0)         // throttle de ZXing (más pesado)
 
   const [scanning, setScanning] = useState(false)
   const [detected, setDetected] = useState(false)
@@ -129,6 +153,13 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
           const results = await scan(imageData)
           if (results.length > 0) { processingRef.current = false; handleDetected(results[0].decode()); return }
         }
+
+        // ISS-127 F3: fallback DataMatrix con ZXing (zbar/algunos BarcodeDetector no lo leen).
+        // Throttle 1 de cada 3 frames porque el decode es más pesado.
+        if (needsZXingRef.current && zxingDecodeDM && (++zxFrameRef.current % 3 === 0)) {
+          const dm = zxingDecodeDM(canvas)
+          if (dm) { processingRef.current = false; handleDetected(dm); return }
+        }
       } catch {}
 
       processingRef.current = false
@@ -188,6 +219,8 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
           const formats = SCAN_FORMATS.filter(f => supported.includes(f))
           detectorRef.current = new BarcodeDetector({ formats: formats.length ? formats : ['qr_code'] })
           useZBarRef.current = false
+          // Si el detector nativo NO soporta data_matrix → ZXing como fallback (ISS-127 F3)
+          needsZXingRef.current = !supported.includes('data_matrix')
         } catch {
           useZBarRef.current = true
         }
@@ -196,6 +229,9 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
         // Pre-cargar zbar-wasm en background para que esté listo
         getZBarScan().catch(() => {})
       }
+      // zbar no decodifica DataMatrix → siempre ZXing como fallback en ese camino.
+      if (useZBarRef.current) needsZXingRef.current = true
+      if (needsZXingRef.current) getZXingDM().catch(() => {})
 
       // Enumerar cámaras
       try {

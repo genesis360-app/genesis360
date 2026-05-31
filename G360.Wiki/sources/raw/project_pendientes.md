@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.11.4** ✅ (seguridad deps npm audit 13→5 [jspdf@4, xlsx oficial] + restyle visual [fondo slate #F8FAFC + scrollbars violeta] + selección manual de LPN en reservas [mig 156]) · DEV alineado con PROD
+Último release en PROD: **v1.11.5** ✅ (ISS-127 Códigos compuestos GS1 completo — F1+F2+F3, mig 157+158) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,12 +14,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.11.4` (+ ISS-127 F1 sin deployar) | `v1.11.4` |
-| Migrations | 001–**158** ✅ | 001–**156** ✅ |
-| Branch | `dev` **adelante de** `main` (ISS-127 F1) | `main` (release v1.11.4) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.11.4 |
+| APP_VERSION | `v1.11.5` | `v1.11.5` |
+| Migrations | 001–**158** ✅ | 001–**158** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.11.5) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.11.5 |
 
-**Migrations DEV pendientes de aplicar en PROD:** **157, 158** (ISS-127 F1 — aditivas; aplicar antes del merge cuando se deploye).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
 **Deployado en v1.11.2 (2026-05-30):**
 - **Trazabilidad-extendida (mig 155)**: `/historial` consolida por transacción + filtro de recall por LPN/serie + export completo. Ver `reportes-metricas.md`.
@@ -68,8 +68,10 @@ type: project
 
 **Fases de entrega:**
 - **F1 — Fundación ✅ (en DEV, build OK):** migrations 157+158 (perfiles + `productos.gtin`) + `gs1.ts` (parse/encode testeado) + Config UI de perfiles (`CodigoPerfilesPanel` en Config → Inventario → Códigos) + generación GS1-128/DataMatrix desde LPN (`CodigoCompuestoModal` en `LpnAccionesModal`, render `bwip-js`). Pendiente deploy a PROD.
-- **F2 — Lectura ingreso ✅ (en DEV):** `looksLikeGS1` (detecta compuesto vs EAN/SKU plano) + `resolverScanCompuesto` (parseo + match GTIN→producto con fallback a codigo_barras + resolución `lectura_modo`). Integrado en **Ingreso individual** (autocompleta lote/venc/cantidad) y **Ingreso masivo** (pre-carga la fila). **Rebaje pendiente** (no tiene scanner propio; necesita resolución lote→LPN → pasa a F3). Modo `directo` (auto-crear sin confirmar) también a F3.
-- **F3 — Cobertura completa:** **DataMatrix lectura** (`@zxing/library`, zbar no decodifica) + scanner de **Rebaje** por compuesto (lote→LPN) + modo `directo` + integración en **Ventas/POS** y **Recepciones** + **generación masiva** de etiquetas. Probar + deploy.
+- **F2 — Lectura ingreso ✅ (PROD v1.11.5):** `looksLikeGS1` + `resolverScanCompuesto` (match GTIN→producto con fallback). Ingreso individual + masivo.
+- **F3 — Cobertura completa ✅ (PROD v1.11.5):** DataMatrix lectura (`@zxing/library`) + Ventas/POS + Recepciones (scanner nuevo) + Rebaje (auto-selección lote→LPN vía `pendingRebaje`) + modo `directo` (auto-crear LPN, `directoFiredRef`) + generación masiva (`CodigoMasivoModal`).
+
+**ISS-127 cerrado** en v1.11.5. Fixes de QA aplicados: AI cantidad 37→30, validación de GTIN con dígito sugerido, DataMatrix sin `height:undefined`, mensajes GS1 accionables.
 
 **Riesgos/notas:** verificar que `bwip-js` y `@zxing/library` no reintroduzcan vulnerabilidades (correr `npm audit` post-install). DataMatrix solo lee en BarcodeDetector hasta que entre ZXing (F3). El parseo GS1 de variable-length depende de FNC1: muchos lectores 1D lo emiten como carácter GS (`\x1d`); contemplar lectores que lo omiten.
 

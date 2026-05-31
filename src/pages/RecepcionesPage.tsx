@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, ArrowLeft, Trash2, Search, CheckCircle, XCircle, ChevronDown, ChevronRight, Warehouse, AlertTriangle, GitBranch, RotateCcw, X, Camera, Upload, Loader2 } from 'lucide-react'
+import { Plus, ArrowLeft, Trash2, Search, CheckCircle, XCircle, ChevronDown, ChevronRight, Warehouse, AlertTriangle, GitBranch, RotateCcw, X, Camera, Upload, Loader2, ScanBarcode } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
+import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import type { Recepcion, ProductoEstructura } from '@/lib/supabase'
@@ -126,6 +128,7 @@ export default function RecepcionesPage() {
   const [fNotas, setFNotas] = useState('')
   const [items, setItems] = useState<FormItem[]>([])
   const [prodSearch, setProdSearch] = useState('')
+  const [showScanner, setShowScanner] = useState(false)  // ISS-127 F3
   const [prodFocused, setProdFocused] = useState(false)
   const [saving, setSaving] = useState(false)
   const [expandedRec, setExpandedRec] = useState<string | null>(null)
@@ -302,7 +305,8 @@ export default function RecepcionesPage() {
     return def?.id ?? ''
   }
 
-  const agregarProducto = async (p: any) => {
+  // ISS-127 F3: `extra` pre-carga lote/venc/cantidad desde un código compuesto GS1.
+  const agregarProducto = async (p: any, extra?: { nro_lote?: string; fecha_vencimiento?: string; cantidad_recibida?: number }) => {
     if (items.find(it => it.producto_id === p.id)) {
       toast('Ese producto ya está en la lista')
       return
@@ -335,9 +339,44 @@ export default function RecepcionesPage() {
       // Defaults del producto — el usuario puede modificarlos antes de confirmar
       ubicacion_id: ubicacionDefault,
       estado_id:    p.estado_id ?? '',
+      // ISS-127 F3: datos pre-cargados del código GS1
+      ...(extra?.nro_lote ? { nro_lote: extra.nro_lote } : {}),
+      ...(extra?.fecha_vencimiento ? { fecha_vencimiento: extra.fecha_vencimiento } : {}),
+      ...(extra?.cantidad_recibida != null ? { cantidad_recibida: String(extra.cantidad_recibida) } : {}),
     })])
     setProdSearch('')
     setProdFocused(false)
+  }
+
+  // ISS-127 F3: leer un código (GS1 compuesto o plano) y agregarlo a la recepción.
+  const REC_PROD_COLS = 'id, nombre, sku, tiene_series, tiene_lote, tiene_vencimiento, tiene_pais_origen, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, unidad_medida, precio_costo, codigo_barras'
+  const handleScanRecepcion = async (code: string) => {
+    setShowScanner(false)
+    const comp = await resolverScanCompuesto(code, tenant!.id)
+    if (comp) {
+      if (!comp.producto) { toast.error('Código GS1 leído, pero el GTIN no coincide con ningún producto.'); return }
+      const { data } = await supabase.from('productos').select(REC_PROD_COLS)
+        .eq('tenant_id', tenant!.id).eq('id', comp.producto.id).limit(1)
+      const prod = data?.[0]
+      if (!prod) { toast.error('Producto no encontrado'); return }
+      await agregarProducto(prod, {
+        nro_lote: comp.fields.lote ?? undefined,
+        fecha_vencimiento: comp.fields.vencimiento ?? undefined,
+        cantidad_recibida: comp.fields.cantidad ?? undefined,
+      })
+      const partes = [
+        comp.fields.lote ? `lote ${comp.fields.lote}` : null,
+        comp.fields.vencimiento ? `vto ${comp.fields.vencimiento}` : null,
+        comp.fields.cantidad != null ? `${comp.fields.cantidad} u` : null,
+      ].filter(Boolean).join(' · ')
+      toast.success(`GS1: ${(prod as any).nombre}${partes ? ` — ${partes}` : ''}`)
+      return
+    }
+    const { data } = await supabase.from('productos').select(REC_PROD_COLS)
+      .eq('tenant_id', tenant!.id).eq('activo', true)
+      .or(`codigo_barras.eq.${code},sku.eq.${code}`).limit(1)
+    if (!data || data.length === 0) { toast.error(`No se encontró ningún producto con código "${code}"`); return }
+    await agregarProducto(data[0])
   }
 
   const updItem = (key: string, patch: Partial<FormItem>) =>
@@ -1060,6 +1099,10 @@ export default function RecepcionesPage() {
               onBlur={() => setTimeout(() => setProdFocused(false), 200)}
               placeholder="Buscar producto por nombre o SKU..."
               className="flex-1 text-sm bg-transparent focus:outline-none text-gray-800 dark:text-gray-100" />
+            <button type="button" onClick={() => setShowScanner(true)} title="Escanear código (GS1 o barras)"
+              className="flex-shrink-0 p-1 text-gray-400 hover:text-accent transition-colors">
+              <ScanBarcode size={16} />
+            </button>
           </div>
           {(prodSearch.length > 0 && prodFocused) && (
             <div className="absolute z-20 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-52 overflow-y-auto">
@@ -1249,6 +1292,15 @@ export default function RecepcionesPage() {
           </div>
         )}
       </div>
+
+      {/* ── Scanner de código (GS1 compuesto o plano) — ISS-127 F3 ─────────────── */}
+      {showScanner && (
+        <BarcodeScanner
+          title="Escaneá un código (GS1 o barras)"
+          onDetected={handleScanRecepcion}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
 
       {/* ── Modal scan ticket ────────────────────────────────────────────────── */}
       {showScanModal && (

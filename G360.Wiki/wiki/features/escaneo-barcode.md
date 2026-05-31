@@ -164,10 +164,13 @@ Subsistema para leer/generar códigos que codifican **varios campos a la vez** (
 
 - **F1 ✅ (fundación)**: modelo + `gs1.ts` + Config de perfiles + generación desde LPN.
 - **F2 ✅ (lectura ingreso)**: detección GS1 + parseo + match GTIN→producto (fallback codigo_barras) + autocompletado en ingreso individual y masivo.
-- **F3 (en progreso)**:
-  - ✅ **DataMatrix lectura** con `@zxing/library` (fallback en `BarcodeScanner` cuando zbar/BarcodeDetector no cubren data_matrix).
-  - ✅ **Ventas/POS** (`procesarScan`): scan GS1 → identifica el producto por GTIN (fallback codigo_barras) y suma al carrito con la **cantidad** del código (AI 30) en la rama de incremento. Reusa `resolverScanCompuesto`.
-  - ⏳ Pendiente: **Recepciones** (necesita scanner propio — hoy solo tiene "scan ticket" por foto) + scanner de **Rebaje** (lote→LPN) + modo `directo` (auto-crear) + generación masiva de etiquetas.
+- **F3 ✅ (completa)**:
+  - **DataMatrix lectura** con `@zxing/library` (fallback en `BarcodeScanner` cuando zbar/BarcodeDetector no cubren data_matrix).
+  - **Ventas/POS** (`procesarScan`): scan GS1 → identifica el producto por GTIN (fallback codigo_barras) y suma al carrito con la **cantidad** del código (AI 30).
+  - **Recepciones**: botón de scanner nuevo en el buscador (`handleScanRecepcion`) → agrega el ítem con lote/venc/cantidad pre-cargados (`agregarProducto` con overrides).
+  - **Rebaje**: el scanner compartido identifica el producto por GTIN; un effect auto-selecciona la **línea por lote** (`pendingRebaje`) y setea la cantidad.
+  - **Modo `directo`**: si el perfil tiene `lectura_modo='directo'`, un effect guardado (`directoFiredRef`) auto-crea el LPN tras autocompletar el ingreso.
+  - **Generación masiva** (`CodigoMasivoModal`): seleccionando varios LPNs en Inventario → botón "Etiquetas GS1" → hoja imprimible con todos los códigos (marca los que no tienen GTIN válido).
 
 > [!NOTE] DataMatrix se **genera** ya (bwip-js), pero la **lectura** de DataMatrix solo funciona donde hay `BarcodeDetector` (Chrome/Edge/Android) hasta que entre ZXing en F3. GS1-128 (1D) se lee en todos lados con el stack actual.
 

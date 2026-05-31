@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | v1.11.5 PROD — ISS-127 Códigos compuestos GS1 COMPLETO (F3c/d/e)
+
+Cierre de ISS-127. Deploy a PROD como v1.11.5 (mig 157+158 aplicadas en DEV y PROD).
+
+- **F3c — Recepciones**: botón de scanner en el buscador (`handleScanRecepcion`) → `agregarProducto(prod, {nro_lote, fecha_vencimiento, cantidad_recibida})` con datos del GS1.
+- **F3d — Rebaje + modo directo**: el scanner compartido ya identifica el producto por GTIN; `pendingRebaje` + effect auto-seleccionan la **línea por lote** y setean cantidad. Modo `directo`: `pendingDirectoIngreso` + `directoFiredRef` + effect auto-crean el LPN cuando el form queda completo (perfil con `lectura_modo='directo'`).
+- **F3e — Generación masiva**: `CodigoMasivoModal` — seleccionando varios LPNs en Inventario, botón "Etiquetas GS1" genera la hoja imprimible con todos los códigos (marca los sin GTIN válido).
+- Typecheck + `vite build` OK. Bump v1.11.5. Wiki: `escaneo-barcode.md`, `roadmap.md`, `project_pendientes.md`, `log.md`.
+
+---
+
 ## [2026-05-30] update | ISS-127 F3 (parcial) — DataMatrix lectura (ZXing) + Ventas/POS + cierre PR Dependabot #129
 
 - **PR Dependabot #129 cerrado**: bump de vite a 8 incompatible con el peer de @vitejs/plugin-react@4 → build rojo, no aplicable. Vulns involucradas son dev-server only (cluster vite/esbuild, diferido). Rama aislada, no afectaba dev/main.

@@ -5,10 +5,11 @@ import {
   ArrowDown, ArrowUp, Search, Plus, Minus, Hash, X, Info, Layers, ChevronRight, ChevronDown,
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
-  ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check, SlidersHorizontal,
+  ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check, SlidersHorizontal, ScanBarcode,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
+import { CodigoMasivoModal } from '@/components/CodigoMasivoModal'
 import { MasivoModal } from '@/components/MasivoModal'
 import type { MasivoTipo } from '@/components/MasivoModal'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -86,6 +87,10 @@ export default function InventarioPage() {
   const [series, setSeries] = useState<string[]>([''])
   const [rebajeLpn, setRebajeLpn] = useState('')
   const [rebajeLinea, setRebajeLinea] = useState<any | null>(null)
+  // ISS-127 F3d: pendientes tras escanear un código compuesto
+  const [pendingRebaje, setPendingRebaje] = useState<{ lote?: string; cantidad?: number } | null>(null)
+  const [pendingDirectoIngreso, setPendingDirectoIngreso] = useState(false)
+  const directoFiredRef = useRef(false)
   const [rebajeCantidad, setRebajeCantidad] = useState('')
   const [rebajeMotivo, setRebajeMotivo] = useState('')
   const [rebajeSeries, setRebajeSeries] = useState<string[]>([])
@@ -229,6 +234,7 @@ export default function InventarioPage() {
   const [bulkEstadoId, setBulkEstadoId] = useState('')
   const [bulkUbicacionId, setBulkUbicacionId] = useState('')
   const [showBulkEditar, setShowBulkEditar] = useState(false)
+  const [showMasivoEtiquetas, setShowMasivoEtiquetas] = useState(false)  // ISS-127 F3e
   const [bulkEditForm, setBulkEditForm] = useState({ sucursal_id: '', nro_lote: '', fecha_vencimiento: '', proveedor_id: '' })
   const [bulkEditCampos, setBulkEditCampos] = useState({ sucursal: false, lote: false, vencimiento: false, proveedor: false })
 
@@ -1067,6 +1073,33 @@ export default function InventarioPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ISS-127 F3d: rebaje — auto-seleccionar la línea por lote tras escanear un GS1.
+  useEffect(() => {
+    if (modal !== 'rebaje' || !pendingRebaje || !selectedProduct) return
+    if ((lineasProducto as any[]).length === 0) return
+    const lote = (pendingRebaje.lote ?? '').toLowerCase()
+    const linea = lote
+      ? (lineasProducto as any[]).find(l => (l.nro_lote ?? '').toLowerCase() === lote && (l.cantidad ?? 0) > 0)
+      : null
+    if (linea) {
+      setRebajeLinea(linea); setRebajeSeries([])
+      if (pendingRebaje.cantidad != null) setRebajeCantidad(String(Math.min(pendingRebaje.cantidad, linea.cantidad)))
+      toast.success(`Línea ${linea.lpn ?? ''} seleccionada${pendingRebaje.lote ? ` (lote ${pendingRebaje.lote})` : ''}`)
+    } else if (pendingRebaje.lote) {
+      toast.error(`Sin línea con lote "${pendingRebaje.lote}" y stock. Elegí la línea a mano.`)
+    }
+    setPendingRebaje(null)
+  }, [lineasProducto, pendingRebaje, selectedProduct, modal])
+
+  // ISS-127 F3d: ingreso modo 'directo' — auto-crear el LPN cuando el form quedó completo.
+  useEffect(() => {
+    if (!pendingDirectoIngreso || directoFiredRef.current) return
+    if (!selectedProduct || !form.cantidad || !form.ubicacionId) return
+    directoFiredRef.current = true
+    setPendingDirectoIngreso(false)
+    ingresoMutation.mutate()
+  }, [pendingDirectoIngreso, selectedProduct, form.cantidad, form.ubicacionId])
+
   // ── Kit mutations ──────────────────────────────────────────────────────────
   const agregarReceta = useMutation({
     mutationFn: async ({ kitId, compId }: { kitId: string; compId: string }) => {
@@ -1611,6 +1644,13 @@ export default function InventarioPage() {
         fechaVencimiento: comp.fields.vencimiento ?? f.fechaVencimiento,
         cantidad:         comp.fields.cantidad != null ? String(comp.fields.cantidad) : f.cantidad,
       }))
+      // F3d: en rebaje, auto-seleccionar la línea por lote (al cargar lineasProducto).
+      if (modal === 'rebaje') setPendingRebaje({ lote: comp.fields.lote ?? undefined, cantidad: comp.fields.cantidad ?? undefined })
+      // F3d: modo 'directo' del perfil → auto-crear el LPN tras autocompletar.
+      if (modal === 'ingreso' && comp.lecturaModo === 'directo' && comp.fields.cantidad != null) {
+        directoFiredRef.current = false
+        setPendingDirectoIngreso(true)
+      }
       const partes = [
         comp.fields.lote ? `lote ${comp.fields.lote}` : null,
         comp.fields.vencimiento ? `vto ${comp.fields.vencimiento}` : null,
@@ -3744,6 +3784,11 @@ export default function InventarioPage() {
                 className="text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border border-violet-200 dark:border-violet-700 text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors flex-shrink-0">
                 Editar atributos
               </button>
+              <button
+                onClick={() => setShowMasivoEtiquetas(true)}
+                className="text-sm px-3 py-1.5 rounded-xl font-medium flex items-center gap-1.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+                <ScanBarcode size={14} /> Etiquetas GS1
+              </button>
               {selectedLineas.length >= 2 && selectedLineasInfo.every(l => l.producto_id === selectedLineasInfo[0]?.producto_id) && (
                 <button
                   onClick={() => { setCombinarDestinoId(''); setCombinarMode('fusionar'); setShowCombinarModal(true) }}
@@ -3752,6 +3797,18 @@ export default function InventarioPage() {
                 </button>
               )}
             </div>
+          )}
+
+          {/* ISS-127 F3e: generación masiva de etiquetas GS1 de los LPNs seleccionados */}
+          {showMasivoEtiquetas && (
+            <CodigoMasivoModal
+              tenantId={tenant!.id}
+              lineas={selectedLineasInfo.map(l => ({
+                lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id,
+                nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento,
+              }))}
+              onClose={() => setShowMasivoEtiquetas(false)}
+            />
           )}
 
           {/* Modal bulk — cambiar estado */}

@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-01] update | v1.17.0 PROD — Relevamiento Ventas VF5 (edición post-venta + NC interna) — RELEVAMIENTO VENTAS COMPLETO
+
+Quinta y última fase del backlog Ventas H-K. Bump v1.16.0 → **v1.17.0**. **Sin migración** (reusa `devoluciones` + `venta_auditoria`).
+
+- **H1a — autorización post-cobro**: quitar/editar ítems de una venta **cobrada** (vía Devolver) ahora requiere rol **DUEÑO/SUPERVISOR/ADMIN**; otros roles (CAJERO) necesitan la **clave maestra** de un autorizado (si no hay clave configurada, se bloquea). Gate en `abrirModalDevolucion` (refactor con closure `abrir` + `pedirClaveMaestra`).
+- **H1b — NC interna**: al devolver/ajustar una venta **facturada**, el comprobante se identifica como **"NOTA DE CRÉDITO INTERNA · NO FISCAL"** (no reemplaza la NC electrónica AFIP, que queda como feature aparte). Se registra en el audit log de la venta (`venta_auditoria`, acción `nc_interna` con `numero_nc` + monto + motivo + ítems); las devoluciones de ventas despachadas se loguean como `devolucion`. El timeline del detalle muestra N° de NC + monto.
+- Typecheck + `vite build` OK. **Relevamiento de Ventas (A-K) COMPLETO**; único pendiente futuro: NC electrónica AFIP (L1) + venta física en USD/caja USD.
+
+---
+
 ## [2026-06-01] update | v1.16.0 PROD — Relevamiento Ventas VF4 (reportes + alertas + export)
 
 Cuarta fase del backlog Ventas H-K. Bump v1.15.0 → **v1.16.0**. Migration **170** (DEV+PROD).

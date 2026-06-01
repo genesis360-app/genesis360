@@ -2359,26 +2359,38 @@ export default function VentasPage() {
         return
       }
     }
-    const items = (venta.venta_items ?? []).map((item: any) => ({
-      venta_item_id: item.id,
-      producto_id: item.producto_id,
-      nombre: item.productos?.nombre ?? '',
-      cantidad_original: item.cantidad,
-      precio_unitario: item.precio_unitario,
-      tiene_series: (item.productos?.tiene_series ?? false),
-      venta_series: (item.venta_series ?? []).map((vs: any) => ({
-        serie_id: vs.serie_id,
-        nro_serie: vs.inventario_series?.nro_serie ?? '',
-      })),
-      cantidad_devolver: item.tiene_series ? 0 : item.cantidad,
-      series_seleccionadas: [],
-    }))
-    setDevItems(items)
-    setDevMotivo('')
-    setDevMediosPago([{ tipo: '', monto: '' }])
-    setDevCajaSesionId(sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : '')
-    setDevDestinoStock('dev')
-    setDevolucionVenta(venta)
+    // VF5/H1 — edición/quita de ítems post-cobro: requiere autorización SUPERVISOR/DUEÑO.
+    // Roles autorizados pasan directo; el resto (CAJERO, etc.) necesita la clave maestra
+    // de un DUEÑO/SUPERVISOR para autorizar (si no hay clave configurada, se bloquea).
+    const abrir = () => {
+      const items = (venta.venta_items ?? []).map((item: any) => ({
+        venta_item_id: item.id,
+        producto_id: item.producto_id,
+        nombre: item.productos?.nombre ?? '',
+        cantidad_original: item.cantidad,
+        precio_unitario: item.precio_unitario,
+        tiene_series: (item.productos?.tiene_series ?? false),
+        venta_series: (item.venta_series ?? []).map((vs: any) => ({
+          serie_id: vs.serie_id,
+          nro_serie: vs.inventario_series?.nro_serie ?? '',
+        })),
+        cantidad_devolver: item.tiene_series ? 0 : item.cantidad,
+        series_seleccionadas: [],
+      }))
+      setDevItems(items)
+      setDevMotivo('')
+      setDevMediosPago([{ tipo: '', monto: '' }])
+      setDevCajaSesionId(sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : '')
+      setDevDestinoStock('dev')
+      setDevolucionVenta(venta)
+    }
+    const rolesAutorizan = ['DUEÑO', 'SUPERVISOR', 'ADMIN', 'SUPER_USUARIO']
+    if (rolesAutorizan.includes(user?.rol ?? '')) { abrir(); return }
+    if (!claveMaestraConfigurada) {
+      toast.error('Solo DUEÑO/SUPERVISOR/ADMIN pueden devolver o editar una venta cobrada. Configurá una clave maestra para autorizar a otros roles.')
+      return
+    }
+    pedirClaveMaestra('Autorizar devolución/edición de una venta cobrada', abrir)
   }
 
   // ── Canales de ventas ──────────────────────────────────────────────────────
@@ -2551,6 +2563,12 @@ export default function VentasPage() {
       }).select().single()
       if (devError) throw devError
       devId = dev.id
+
+      // VF5/J1 — auditoría: si la venta era facturada, la devolución genera una NC interna (no fiscal)
+      logVentaAuditoria(devolucionVenta.id, devolucionVenta.estado === 'facturada' ? 'nc_interna' : 'devolucion', {
+        numero_nc, monto: montoTotal, motivo: devMotivo || null,
+        items: itemsADevolver.map(i => ({ nombre: i.nombre, cantidad: i.tiene_series ? i.series_seleccionadas.length : i.cantidad_devolver })),
+      })
 
       // Trazabilidad-extendida: una transacción de devolución agrupa todos los ítems reintegrados.
       const txDev = nuevaTransaccion()
@@ -4650,9 +4668,11 @@ export default function VentasPage() {
                       <div key={a.id} className="text-xs text-gray-600 dark:text-gray-300 flex items-start gap-2">
                         <span className="text-gray-400 whitespace-nowrap">{new Date(a.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                         <span className="flex-1">
-                          <span className="font-medium">{({ anulacion: 'Anulación', cambio_cliente: 'Cambio de cliente', override_descuento: 'Override de descuento', edicion_items: 'Edición de ítems' } as any)[a.accion] ?? a.accion}</span>
+                          <span className="font-medium">{({ anulacion: 'Anulación', cambio_cliente: 'Cambio de cliente', override_descuento: 'Override de descuento', edicion_items: 'Edición de ítems', nc_interna: 'NC interna (no fiscal)', devolucion: 'Devolución' } as any)[a.accion] ?? a.accion}</span>
                           {a.usuario_nombre ? ` · ${a.usuario_nombre}` : ''}
                           {a.accion === 'cambio_cliente' && a.detalle?.cliente_nuevo ? ` → ${a.detalle.cliente_nuevo}` : ''}
+                          {(a.accion === 'nc_interna' || a.accion === 'devolucion') && a.detalle?.numero_nc ? ` · ${a.detalle.numero_nc}` : ''}
+                          {(a.accion === 'nc_interna' || a.accion === 'devolucion') && a.detalle?.monto != null ? ` · $${Number(a.detalle.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : ''}
                         </span>
                       </div>
                     ))}
@@ -5008,6 +5028,12 @@ export default function VentasPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm p-6" id="devolucion-print">
             <div className="text-center mb-4 border-b border-dashed border-gray-300 dark:border-gray-600 pb-4">
+              {/* VF5/H1 — para ventas facturadas el comprobante es una NC interna (no fiscal) */}
+              {devComprobante.origen === 'facturada' && (
+                <div className="bg-orange-100 dark:bg-orange-900/30 border border-orange-300 rounded-lg px-3 py-1.5 mb-3 inline-block">
+                  <p className="text-xs font-bold text-orange-800 dark:text-orange-400 tracking-wide">NOTA DE CRÉDITO INTERNA · NO FISCAL</p>
+                </div>
+              )}
               <p className="text-lg font-bold text-primary">{tenant?.nombre ?? 'Genesis360'}</p>
               <p className="text-sm font-semibold text-orange-600 dark:text-orange-400 mt-1">
                 {devComprobante.numero_nc ?? 'Comprobante de devolución'}
@@ -5015,6 +5041,9 @@ export default function VentasPage() {
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                 Venta #{devComprobante.venta_numero} · {new Date(devComprobante.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
               </p>
+              {devComprobante.origen === 'facturada' && (
+                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">Documento interno de ajuste — no reemplaza la Nota de Crédito electrónica AFIP.</p>
+              )}
             </div>
             {devComprobante.motivo && (
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">Motivo: {devComprobante.motivo}</p>

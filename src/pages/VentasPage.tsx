@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
@@ -119,6 +119,7 @@ export default function VentasPage() {
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
   const clienteObligatorio  = (tenant as any)?.cliente_obligatorio    ?? 'reservas'
   const clienteCreacionInline = (tenant as any)?.cliente_creacion_inline ?? true
+  const permiteCF           = (tenant as any)?.cliente_consumidor_final ?? true  // H5: ¿se puede vender como Consumidor Final?
   const clienteDatosMinimos = (tenant as any)?.cliente_datos_minimos   ?? 'nombre'
 
   // ISS-085: formatea el número de ticket por sucursal
@@ -141,6 +142,38 @@ export default function VentasPage() {
     }
     return `#${v?.numero ?? '?'}`
   }
+  // H2 — enviar el ticket/comprobante por email (reusa el template venta_confirmada)
+  const enviarTicketPorEmail = async (destino: string) => {
+    const email = destino.trim()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.error('Email inválido'); return }
+    if (!ticketVenta) return
+    setEmailTicketSending(true)
+    try {
+      const items = (ticketVenta.items ?? []).map((i: any) => ({
+        nombre: i.nombre ?? i.producto_nombre ?? 'Ítem',
+        cantidad: i.tiene_series ? (i.series_seleccionadas?.length ?? i.cantidad ?? 1) : (i.cantidad ?? 1),
+        subtotal: i.subtotal ?? ((i.precio_unitario ?? 0) * (i.cantidad ?? 1)),
+      }))
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          type: 'venta_confirmada',
+          to: email,
+          data: {
+            numero: ticketVenta.numero,
+            negocio: tenant!.nombre,
+            total: ticketVenta.total,
+            items,
+            medio_pago: typeof ticketVenta.medio_pago === 'string' ? formatMedioPago(ticketVenta.medio_pago) : '',
+          },
+        },
+      })
+      if (error) throw error
+      toast.success(`Ticket enviado a ${email}`)
+      setEmailTicketOpen(false); setEmailTicketValue('')
+    } catch (e: any) {
+      toast.error(e?.message ?? 'No se pudo enviar el email')
+    } finally { setEmailTicketSending(false) }
+  }
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
@@ -152,6 +185,7 @@ export default function VentasPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [productoSearch, setProductoSearch] = useState('')
   const [clienteId, setClienteId] = useState<string | null>(null)
+  const [esConsumidorFinal, setEsConsumidorFinal] = useState(true)  // H5: flag por venta (CF vs cliente registrado)
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [clienteCCEnabled, setClienteCCEnabled] = useState(false)
@@ -200,6 +234,10 @@ export default function VentasPage() {
   const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
+  // H2 — enviar ticket por email
+  const [emailTicketOpen, setEmailTicketOpen] = useState(false)
+  const [emailTicketValue, setEmailTicketValue] = useState('')
+  const [emailTicketSending, setEmailTicketSending] = useState(false)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
   // E2/E3 — cancelación de reserva: motivo + (si hay seña) penalidad + destino devolución/crédito
   const [cancelReservaModal, setCancelReservaModal] = useState<{ venta: any; destino: 'devolucion' | 'credito'; motivo: string; observacion: string } | null>(null)
@@ -1594,10 +1632,18 @@ export default function VentasPage() {
     }
 
     // Cliente obligatorio según config del tenant
+    // H5 (VF1): si el negocio factura y la venta NO es a Consumidor Final, el cliente
+    // es obligatorio (para poder facturar a un cliente identificado). Si CF no está
+    // permitido en Config, también es obligatorio.
+    const ventaCF = permiteCF && esConsumidorFinal
     const clienteRequerido = clienteObligatorio === 'siempre'
       || (clienteObligatorio === 'reservas' && (estado === 'pendiente' || estado === 'reservada'))
+      || (factHabilitada && !ventaCF)
+      || !permiteCF
     if (clienteRequerido && !clienteId) {
-      toast.error('Registrá o seleccioná un cliente para continuar.')
+      toast.error(factHabilitada && !ventaCF
+        ? 'Para facturar a un cliente registrado, seleccioná o creá el cliente (o marcá la venta como Consumidor Final).'
+        : 'Registrá o seleccioná un cliente para continuar.')
       return
     }
     // ISS-090: CC como método de pago parcial
@@ -1641,18 +1687,17 @@ export default function VentasPage() {
       toast.error('Seleccioná una sucursal antes de registrar la venta. El stock se descuenta por sucursal.')
       return
     }
+    // H4 (VF1): reserva y venta directa SIEMPRE exigen caja abierta — incluso 100% CC.
+    // Solo el presupuesto (estado 'pendiente') puede crearse sin caja. Se quitó la
+    // excepción que permitía despachar/reservar 100% CC sin caja (control de ingresos).
     if (estado === 'despachada' || estado === 'reservada') {
-      const montoNoCCAsignado = mediosPago.filter(m => m.tipo !== 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
-      const necesitaCaja = montoNoCCAsignado > 0 || !modoCC
-      if (necesitaCaja) {
-        if (sesionesAbiertas.length === 0) {
-          toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
-          return
-        }
-        if (sesionesAbiertas.length > 1 && !sesionCajaId) {
-          toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
-          return
-        }
+      if (sesionesAbiertas.length === 0) {
+        toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas o reservas (incluso en cuenta corriente).')
+        return
+      }
+      if (sesionesAbiertas.length > 1 && !sesionCajaId) {
+        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
+        return
       }
     }
     const vuelto = calcularVuelto(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC)
@@ -1669,6 +1714,7 @@ export default function VentasPage() {
         cliente_id: clienteId || null,
         cliente_nombre: clienteNombre || null,
         cliente_telefono: clienteTelefono || null,
+        consumidor_final: permiteCF && esConsumidorFinal && !clienteId,  // H5
         estado,
         subtotal,
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
@@ -2041,7 +2087,7 @@ export default function VentasPage() {
       }
 
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
-      setClienteCCEnabled(false)
+      setClienteCCEnabled(false); setEsConsumidorFinal(true)
       setMediosPago([{ tipo: '', monto: '' }]); setCommittedAsignado(0); setCuotasSeleccion({}); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada'); setCanalPOS('POS')
       setRequiereEnvio(false)
       setEnvioTransporte('propio'); setEnvioCourier(''); setEnvioServicio('')
@@ -3389,6 +3435,30 @@ export default function VentasPage() {
             {/* Cliente */}
             <div className="bg-surface rounded-xl p-4 shadow-sm border border-border-ds space-y-3">
               <h2 className="font-semibold text-primary flex items-center gap-2"><User size={16} /> Cliente</h2>
+              {/* H5: tipo de comprobante — Consumidor Final vs Cliente registrado (solo si factura) */}
+              {factHabilitada && permiteCF && (
+                <div>
+                  <div className="flex gap-2">
+                    {([
+                      { v: true,  t: 'Consumidor Final' },
+                      { v: false, t: 'Cliente registrado' },
+                    ] as const).map(opt => (
+                      <button key={String(opt.v)} type="button"
+                        onClick={() => {
+                          setEsConsumidorFinal(opt.v)
+                          if (opt.v) { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch(''); setClienteCCEnabled(false); setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente')) }
+                        }}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors
+                          ${esConsumidorFinal === opt.v ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                        {opt.t}
+                      </button>
+                    ))}
+                  </div>
+                  {!esConsumidorFinal && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">Para facturar a un cliente registrado tenés que seleccionarlo o crearlo.</p>
+                  )}
+                </div>
+              )}
               {/* Autocomplete cliente registrado */}
               <div className="relative">
                 {clienteId ? (
@@ -3417,6 +3487,7 @@ export default function VentasPage() {
                               setClienteNombre(c.nombre)
                               setClienteTelefono(c.telefono ?? '')
                               setClienteCCEnabled(c.cuenta_corriente_habilitada ?? false)
+                              setEsConsumidorFinal(false)   // H5: elegir cliente registrado → no es CF
                               setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente'))
                               setClienteSearch('')
                               setClienteDropOpen(false)
@@ -4963,15 +5034,33 @@ export default function VentasPage() {
             </p>
             </div>{/* end scroll area */}
 
-            <div className="flex gap-2 p-4 pt-2 border-t border-gray-100 dark:border-gray-700 shrink-0">
-              <button onClick={() => window.print()}
-                className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <Printer size={15} /> Imprimir
-              </button>
-              <button onClick={() => setTicketVenta(null)}
-                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2 rounded-xl text-sm transition-all">
-                Cerrar
-              </button>
+            <div className="p-4 pt-2 border-t border-gray-100 dark:border-gray-700 shrink-0 space-y-2">
+              {emailTicketOpen && (
+                <div className="flex gap-2">
+                  <input type="email" value={emailTicketValue} onChange={e => setEmailTicketValue(e.target.value)}
+                    placeholder="email@cliente.com" autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') enviarTicketPorEmail(emailTicketValue) }}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  <button onClick={() => enviarTicketPorEmail(emailTicketValue)} disabled={emailTicketSending}
+                    className="px-3 py-1.5 bg-accent text-white rounded-lg text-sm font-medium disabled:opacity-60">
+                    {emailTicketSending ? 'Enviando…' : 'Enviar'}
+                  </button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => window.print()}
+                  className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <Printer size={15} /> Imprimir
+                </button>
+                <button onClick={() => { setEmailTicketOpen(o => !o); if (!emailTicketValue) setEmailTicketValue(ticketVenta.clientes?.email ?? ticketVenta.cliente_email ?? '') }}
+                  className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <Send size={15} /> Email
+                </button>
+                <button onClick={() => { setTicketVenta(null); setEmailTicketOpen(false) }}
+                  className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2 rounded-xl text-sm transition-all">
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -28,7 +28,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/features/rrhh]] | 5 fases: empleados, nómina, vacaciones, asistencia, supervisor · **RRHH-A5** (mig 151): selector "Usuario del sistema" en form empleado + columna Usuario en tabla, habilita "Mi Equipo" del SUPERVISOR | ✅ |
 | [[wiki/features/wms]] | Estructuras, ubicaciones, KITs, kitting, conteos, recepciones · scan ticket en RecepcionesPage (v1.8.38) | ✅ |
 | [[wiki/features/marketplace]] | API pública, webhook saliente, publicación por producto | ✅ |
-| [[wiki/features/envios]] | Propio + Courier · POD (foto cámara) · estado `en_bodega` · página pública transportista `/transporte/:token` · pestaña Pagos Courier · QR codes en remito · LPN+ubicación en panel · bloqueo si no pagado | ✅ |
+| [[wiki/features/envios]] | Propio + Courier · POD (foto cámara) · estado `en_bodega` · página pública transportista `/transporte/:token` · pestaña Pagos Courier · QR codes en remito · LPN+ubicación en panel · bloqueo si no pagado · **ISS-174 F1 (DEV)**: fundación cotización por API de courier (catálogo compartido, servicio select en POS, credenciales por tenant, peso configurable, peso/dim en producto) | ✅ |
 | [[wiki/features/notificaciones]] | Tabla real, campana, email, diferencia apertura caja — v1.5.0 | ✅ |
 | [[wiki/features/suscripciones-planes]] | Planes Free/Básico/Pro/Enterprise, trial, Mercado Pago | ✅ |
 | [[wiki/features/escaneo-barcode]] | BarcodeDetector + ZBar WASM + ZXing (DataMatrix) + Claude Haiku (scan-product) + scan-ticket IA · **ISS-127 (v1.11.5): códigos compuestos GS1 completo — perfiles + lib gs1.ts + generación bwip-js (GS1-128/DataMatrix) + lectura en ingreso/POS/recepciones/rebaje + modo directo + etiquetas masivas** | ✅ |
@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-30 — 53 páginas + 3 manuales + relevamientos (caja PDF + 5 HTML: ventas/rrhh/clientes/compras/envíos · Ventas A-D respondido) · 9 fuentes en raw/ · DEV: 154 + 086b · PROD: 154 + 086b · **v1.11.1 PROD** ✅ (ISS-075 trazabilidad + ISS-151 CC + fix race rebaje + patch: manual/auto + stock vendible por sucursal + Inventario→Historial) · 5 relevamientos abiertos esperando respuesta GO+socio*
+*Última actualización: 2026-05-31 — 53 páginas + 3 manuales + relevamientos · DEV: migrations 001-**164** + 086b · PROD: 001-**161** + 086b · **v1.13.0 PROD** ✅ (Relevamiento Ventas E/F/G completo) · **ISS-174 F1 en DEV** (fundación cotización de envíos por courier, mig 162-164, pendiente deploy a PROD)*

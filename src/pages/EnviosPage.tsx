@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { buildWhatsAppUrl, expandirPlantilla, PLANTILLA_DEFAULT } from '@/lib/whatsapp'
+import { COURIERS, SERVICIOS_POR_COURIER } from '@/lib/couriers/catalogo'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
@@ -27,15 +28,6 @@ type TabEnvio = 'envios' | 'pagos'
 
 const MEDIOS_PAGO_COURIER = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro']
 
-const COURIERS = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 'Otro']
-
-const SERVICIOS_POR_COURIER: Record<string, string[]> = {
-  'OCA':              ['Estándar', 'Urgente', 'OCA al Centro', 'Plus', 'Internacional'],
-  'Correo Argentino': ['Encomienda Clásica', 'Encomienda Plus', 'Small Pack', 'Express'],
-  'Andreani':         ['Estándar', 'Urgente', 'Expreso'],
-  'DHL Express':      ['Express Worldwide', 'Economy Select', 'Express Easy'],
-  'Otro':             ['Estándar', 'Urgente', 'Personalizado'],
-}
 const CANALES  = ['POS', 'MELI', 'TiendaNube', 'MP']
 
 const ESTADO_CFG: Record<EstadoEnvio, { label: string; color: string; icon: React.ReactNode }> = {

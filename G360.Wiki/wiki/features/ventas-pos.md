@@ -436,8 +436,9 @@ Aplica en 5 puntos de `VentasPage.tsx`:
 
 ### Selector courier propio/tercero (v1.8.41, pendiente PROD)
 - Al activar "Incluir envío" aparecen 2 botones: **🚗 Envío propio** | **📦 Courier / 3ro**
-- Si tercero: select de courier (OCA / Correo Argentino / Andreani / DHL Express / Otro) + campo de servicio
+- Si tercero: select de courier (OCA / Correo Argentino / Andreani / DHL Express / Otro) + **select de servicio dependiente del courier** (ISS-174 F1 — antes era texto libre; usa `serviciosDe()` del catálogo compartido `src/lib/couriers/catalogo.ts`, se resetea al cambiar de courier)
 - El envío auto-creado lleva `courier = 'Envío propio'` o el courier seleccionado + `servicio`
+- **ISS-174 (en progreso)**: la cotización automática por API de courier vive en [[wiki/features/envios]] → "Cotización de envíos por API de courier".
 
 ### Fixes integridad multi-sucursal (v1.8.40, ISS-críticos)
 - **Cambio de sucursal limpia el carrito automáticamente**: `useEffect` con `prevSucursalRef` detecta cambio (no inicial) y resetea carrito + draft. Toast explicativo.

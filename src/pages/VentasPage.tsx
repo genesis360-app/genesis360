@@ -16,6 +16,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
+import { COURIERS, serviciosDe } from '@/lib/couriers/catalogo'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
@@ -3522,21 +3523,20 @@ export default function VentasPage() {
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Courier</label>
-                            <select value={envioCourier} onChange={e => setEnvioCourier(e.target.value)}
+                            <select value={envioCourier} onChange={e => { setEnvioCourier(e.target.value); setEnvioServicio('') }}
                               className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                               <option value="">Seleccionar…</option>
-                              <option value="OCA">OCA</option>
-                              <option value="Correo Argentino">Correo Argentino</option>
-                              <option value="Andreani">Andreani</option>
-                              <option value="DHL Express">DHL Express</option>
-                              <option value="Otro">Otro</option>
+                              {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Servicio</label>
-                            <input value={envioServicio} onChange={e => setEnvioServicio(e.target.value)}
-                              placeholder="Ej: Estándar, Urgente"
-                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            <select value={envioServicio} onChange={e => setEnvioServicio(e.target.value)}
+                              disabled={!envioCourier || serviciosDe(envioCourier).length === 0}
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-50">
+                              <option value="">Seleccionar…</option>
+                              {serviciosDe(envioCourier).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
                           </div>
                         </div>
                       )}

@@ -58,6 +58,8 @@ export default function ProductoFormPage() {
     descripcion_marketplace: '',
     // G5 — precio en USD + moneda de venta
     precio_usd: '', moneda_venta: 'local',
+    // ISS-174 — peso/medidas para cotizar envíos (fuente 'producto')
+    peso_kg: '', largo_cm: '', ancho_cm: '', alto_cm: '',
   })
   const [showMarketplace, setShowMarketplace] = useState(false)
   const [showMayorista, setShowMayorista] = useState(false)
@@ -281,6 +283,10 @@ export default function ProductoFormPage() {
         moneda_venta: (productoData as any).moneda_venta ?? 'local',
         stock_reservado_marketplace: (productoData.stock_reservado_marketplace ?? 0).toString(),
         descripcion_marketplace: productoData.descripcion_marketplace ?? '',
+        peso_kg:  (productoData as any).peso_kg  != null ? (productoData as any).peso_kg.toString()  : '',
+        largo_cm: (productoData as any).largo_cm != null ? (productoData as any).largo_cm.toString() : '',
+        ancho_cm: (productoData as any).ancho_cm != null ? (productoData as any).ancho_cm.toString() : '',
+        alto_cm:  (productoData as any).alto_cm  != null ? (productoData as any).alto_cm.toString()  : '',
       })
       if (productoData.publicado_marketplace) setShowMarketplace(true)
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
@@ -379,6 +385,10 @@ export default function ProductoFormPage() {
         precio_venta: parseFloat(form.precio_venta) || 0,
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
         moneda_venta: form.moneda_venta || 'local',
+        peso_kg:  form.peso_kg  !== '' ? parseFloat(form.peso_kg)  : null,
+        largo_cm: form.largo_cm !== '' ? parseFloat(form.largo_cm) : null,
+        ancho_cm: form.ancho_cm !== '' ? parseFloat(form.ancho_cm) : null,
+        alto_cm:  form.alto_cm  !== '' ? parseFloat(form.alto_cm)  : null,
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida,
         codigo_barras: form.codigo_barras.trim() || null,
@@ -509,6 +519,10 @@ export default function ProductoFormPage() {
         precio_venta: parseFloat(form.precio_venta) || 0,
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
         moneda_venta: form.moneda_venta || 'local',
+        peso_kg:  form.peso_kg  !== '' ? parseFloat(form.peso_kg)  : null,
+        largo_cm: form.largo_cm !== '' ? parseFloat(form.largo_cm) : null,
+        ancho_cm: form.ancho_cm !== '' ? parseFloat(form.ancho_cm) : null,
+        alto_cm:  form.alto_cm  !== '' ? parseFloat(form.alto_cm)  : null,
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida,
         codigo_barras: null,
@@ -1083,6 +1097,27 @@ export default function ProductoFormPage() {
                       </optgroup>
                     )}
                   </select>
+                </div>
+              </div>
+
+              {/* ISS-174 — Peso y dimensiones para cotizar envíos */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Peso y dimensiones <span className="font-normal text-gray-400">(para cotizar envíos)</span></label>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Se usan cuando la cotización de envíos toma el peso del producto (Config → Envíos). Opcionales.</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {([
+                    { k: 'peso_kg'  as const, label: 'Peso (kg)', step: '0.001' },
+                    { k: 'largo_cm' as const, label: 'Largo (cm)', step: '0.1' },
+                    { k: 'ancho_cm' as const, label: 'Ancho (cm)', step: '0.1' },
+                    { k: 'alto_cm'  as const, label: 'Alto (cm)', step: '0.1' },
+                  ]).map(f => (
+                    <div key={f.k}>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{f.label}</label>
+                      <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step={f.step} value={form[f.k]} disabled={!canEdit}
+                        onChange={e => setForm(p => ({ ...p, [f.k]: e.target.value }))}
+                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
+                    </div>
+                  ))}
                 </div>
               </div>
 

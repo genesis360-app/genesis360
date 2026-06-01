@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | ISS-174 F1 — Fundación cotización de envíos por courier (DEV)
+
+Relevado con GO el diseño completo de ISS-174 (cotización + generación de envíos por API de courier) y arrancada la **Fase 1** (fundación, sin tocar APIs). Decisiones: **APIs directas** por courier (Andreani → Correo Argentino → OCA), alcance **completo** (cotizar + generar orden + etiqueta + tracking), **credenciales por tenant**, peso **configurable** (manual por envío | dato maestro del producto), cotizar en **POS + Envíos**, **CP estructurado**, operador **elige servicio** (precio editable). Diseño y fases en `project_pendientes.md` → sección ISS-174.
+
+**F1 implementado en DEV:**
+- **Parte 1** — *Servicio* de envío en el POS pasó de input libre a **select dependiente del courier** (igual que en Envíos). Catálogo `COURIERS`/`SERVICIOS_POR_COURIER` extraído a `src/lib/couriers/catalogo.ts` (compartido por `EnviosPage` y `VentasPage`).
+- **mig 162** — `courier_credenciales` (credenciales de API por tenant, RLS por tenant) + `tenants.envio_peso_fuente` ('manual'|'producto', default manual).
+- **mig 163** — idempotente: `codigo_postal` ya existía (sucursales mig 124, cliente_domicilios mig 074); re-documenta para ISS-174.
+- **mig 164** — `productos.peso_kg/largo_cm/ancho_cm/alto_cm`.
+- **Config → Envíos** — card "Peso y medidas para cotizar envíos" (toggle manual/producto) + `CourierCredencialesPanel` (owner-only; Andreani/Correo/OCA, campos por courier, secretos como password, estado "Configurado"). Campos peso/dim en `ProductoFormPage`. `AddressAutocompleteInput` ahora pasa `postcode` best-effort (Nominatim) para F2.
+- Typecheck + `vite build` OK. Migrations 162-164 aplicadas en DEV. `schema_full.sql` actualizado. **Pendiente**: deploy a PROD + F2 (Edge Functions cotizar/generar Andreani, requiere credenciales reales del negocio).
+
+---
+
 ## [2026-05-31] update | v1.12.0 PROD — Relevamiento Ventas E/F/G
 
 Deploy a PROD. Bump `APP_VERSION` v1.11.6 → **v1.12.0**. Migrations **159 + 160** aplicadas en PROD (aditivas, antes del merge). PR `dev → main` + merge → Vercel PROD. Release + tag `v1.12.0`.

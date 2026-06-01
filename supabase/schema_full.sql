@@ -63,6 +63,8 @@ CREATE TABLE tenants (
   cotizacion_usd_updated_at TIMESTAMPTZ,
   regla_inventario          TEXT NOT NULL DEFAULT 'FIFO',
   session_timeout_minutes   INT DEFAULT NULL,
+  envio_peso_fuente         TEXT NOT NULL DEFAULT 'manual'  -- ISS-174 (mig 162) — 'manual' | 'producto'
+    CHECK (envio_peso_fuente IN ('manual','producto')),
   created_at                TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
@@ -217,6 +219,10 @@ CREATE TABLE productos (
   precio_venta     DECIMAL(12,2) DEFAULT 0,
   precio_usd       DECIMAL(12,2),              -- G5 (mig 161) — precio en USD si moneda_venta='usd'
   moneda_venta     TEXT NOT NULL DEFAULT 'local', -- G5 (mig 161) — 'local' | 'usd' (convierte en POS)
+  peso_kg          DECIMAL(10,3),  -- ISS-174 (mig 164) — peso unitario para cotizar envíos (fuente 'producto')
+  largo_cm         DECIMAL(10,2),  -- ISS-174 (mig 164)
+  ancho_cm         DECIMAL(10,2),  -- ISS-174 (mig 164)
+  alto_cm          DECIMAL(10,2),  -- ISS-174 (mig 164)
   margen_ganancia  DECIMAL(5,2) GENERATED ALWAYS AS (
     CASE WHEN precio_costo > 0
       THEN ROUND(((precio_venta - precio_costo) / precio_costo) * 100, 2)
@@ -916,6 +922,31 @@ ALTER TABLE codigo_perfiles ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname='codigo_perfiles_tenant' AND tablename='codigo_perfiles') THEN
     CREATE POLICY "codigo_perfiles_tenant" ON codigo_perfiles FOR ALL
+      USING      (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+      WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;
+
+-- ============================================================
+-- COURIER CREDENCIALES (ISS-174, mig 162) — credenciales de API de courier por tenant
+-- Los secretos en `credenciales` solo se usan server-side (Edge Functions); el front
+-- no debe seleccionarlos en flujos de cotización. La UI de Config (owner-only) los edita.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS courier_credenciales (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  courier      TEXT NOT NULL,                       -- 'Andreani' | 'Correo Argentino' | 'OCA' | ...
+  credenciales JSONB NOT NULL DEFAULT '{}'::jsonb,  -- {client_id, client_secret, usuario, password, nro_contrato, ...}
+  activo       BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, courier)
+);
+CREATE INDEX IF NOT EXISTS idx_courier_credenciales_tenant ON courier_credenciales(tenant_id);
+ALTER TABLE courier_credenciales ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname='courier_credenciales_tenant' AND tablename='courier_credenciales') THEN
+    CREATE POLICY "courier_credenciales_tenant" ON courier_credenciales FOR ALL
       USING      (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
       WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
   END IF;

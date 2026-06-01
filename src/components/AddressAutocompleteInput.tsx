@@ -6,14 +6,14 @@ import { importLibrary } from '@googlemaps/js-api-loader'
 interface Props {
   value: string
   onChange: (address: string) => void
-  onPlaceSelected?: (address: string, placeId: string) => void
+  onPlaceSelected?: (address: string, placeId: string, postcode?: string) => void
   placeholder?: string
   className?: string
   disabled?: boolean
   savedAddresses?: string[]
 }
 
-type Sugg = { label: string; value: string; placeId: string }
+type Sugg = { label: string; value: string; placeId: string; postcode?: string }
 
 // ── Nominatim mejorado: usa display_name limpio + coordenadas ─────────────────
 async function searchNominatim(q: string): Promise<Sugg[]> {
@@ -39,7 +39,7 @@ async function searchNominatim(q: string): Promise<Sugg[]> {
       const prov   = a.state ?? ''
       const parts  = [calle ? (num ? `${calle} ${num}` : calle) : '', local, prov !== local ? prov : ''].filter(Boolean)
       const label  = parts.length >= 2 ? parts.join(', ') : full
-      return { label, value: full, placeId: `${d.lat},${d.lon}` }
+      return { label, value: full, placeId: `${d.lat},${d.lon}`, postcode: a.postcode ?? undefined }
     })
   } catch { return [] }
 }
@@ -162,9 +162,9 @@ export function AddressAutocompleteInput({
   )
   const showDrop = open && (filteredSaved.length > 0 || suggs.length > 0)
 
-  const pick = (label: string, placeId = '') => {
+  const pick = (label: string, placeId = '', postcode?: string) => {
     onChange(label)
-    onPlaceSelected?.(label, placeId)
+    onPlaceSelected?.(label, placeId, postcode)
     setSuggs([])
     setOpen(false)
     // Resetear sesión de Google para la próxima búsqueda (billing)
@@ -220,7 +220,7 @@ export function AddressAutocompleteInput({
                 Sugerencias
               </p>
               {suggs.map((s, i) => (
-                <button key={`g${i}`} onMouseDown={e => { e.preventDefault(); pick(s.value, s.placeId) }}
+                <button key={`g${i}`} onMouseDown={e => { e.preventDefault(); pick(s.value, s.placeId, s.postcode) }}
                   className="w-full text-left flex items-start gap-2 px-3 py-2 text-sm hover:bg-accent/5 transition-colors">
                   <MapPin size={12} className="text-accent shrink-0 mt-0.5" />
                   <span className="text-gray-700 dark:text-gray-300 leading-snug">{s.label}</span>

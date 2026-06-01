@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-161)
+# Historial de Migraciones (001-164)
 
-**Total al 2026-05-31:** 161 archivos de migración + 086b correctivo.  
+**Total al 2026-05-31:** 164 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -225,6 +225,9 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 159 | `159_presupuesto_numero.sql` | **Relevamiento Ventas F5** · `ventas.presupuesto_numero` + `presupuesto_numero_sucursal`. Trigger `gen_venta_numero` asigna correlativo de presupuesto independiente (solo si nace `estado='pendiente'`), sin tocar la numeración de ventas. Backfill de presupuestos existentes (deshabilita `trg_ventas_cierre` durante el UPDATE). UI: `formatTicket` → `PRES-{cod}-NNNN` |
 | 160 | `160_reservas_sena_vencimiento.sql` | **Relevamiento Ventas E1/E2/E6** · `tenants`: `reserva_sena_obligatoria`, `reserva_sena_minima_pct`, `reserva_vencimiento_dias` (NULL=sin venc.), `reserva_penalidad_pct`. `ventas.reservado_at`. Tabla `cliente_creditos` (ledger saldo a favor, RLS por tenant). Función `liberar_reservas_vencidas(tenant)` SECURITY DEFINER: libera stock reservado + cancela vencidas (NO toca dinero; cada reserva atómica, saltea período cerrado). GRANT a `authenticated` |
 | 161 | `161_producto_precio_usd.sql` | **Relevamiento Ventas G5** · `productos.precio_usd DECIMAL` + `productos.moneda_venta TEXT DEFAULT 'local'` (`'local'` \| `'usd'`). Si `'usd'`, el POS convierte `precio_usd` a moneda local a la cotización vigente al cargar al carrito |
+| 162 | `162_courier_credenciales.sql` | **ISS-174 F1** · Tabla `courier_credenciales` (`tenant_id, courier, credenciales JSONB, activo`, UNIQUE(tenant,courier), RLS por tenant) — credenciales de API de courier por tenant, usadas server-side. `tenants.envio_peso_fuente TEXT DEFAULT 'manual'` CHECK(`'manual'`\|`'producto'`) — fuente del peso/medidas al cotizar |
+| 163 | `163_codigo_postal.sql` | **ISS-174 F1** · Idempotente: `codigo_postal` ya existía en `sucursales` (mig 124) y `cliente_domicilios` (mig 074); re-documenta el propósito para cotización de envíos |
+| 164 | `164_productos_peso_dimensiones.sql` | **ISS-174 F1** · `productos.peso_kg DECIMAL(10,3)` + `largo_cm/ancho_cm/alto_cm DECIMAL(10,2)` (nullable) — dato maestro de peso/volumen para cotizar envíos cuando `envio_peso_fuente='producto'` |
 
 ---
 

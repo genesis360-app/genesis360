@@ -121,8 +121,17 @@ Capa de datos y config, sin tocar APIs todavía:
 - **CP estructurado**: `sucursales.codigo_postal` y `cliente_domicilios.codigo_postal` (ya existían, mig 124/074) son el origen/destino para cotizar. `AddressAutocompleteInput` ahora devuelve `postcode` best-effort (Nominatim) para autocompletar el CP en F2.
 - Migrations **162** (`courier_credenciales` + `envio_peso_fuente`), **163** (CP, idempotente), **164** (productos peso/dim).
 
-### F2+ — pendiente
-Edge Functions `courier-cotizar` / `courier-generar` (adapter Andreani primero) → lista servicio+precio+plazo en POS/Envíos, alta de orden, etiqueta PDF y tracking. Requiere que el negocio cargue credenciales B2B reales. Luego Correo Argentino (F3) y OCA SOAP (F4).
+### F2-F5 — Integración API (v1.14.0, PROD) ✅
+Edge Function **`courier-api`** (`supabase/functions/courier-api/`) con router por `action`:
+- **`cotizar`** → devuelve lista normalizada `[{servicio, precio, plazo_dias, codigo_servicio}]`.
+- **`generar`** → crea la orden en el courier y guarda tracking + etiqueta + `courier_orden_id` (mig 165: `envios.cotizacion_json/courier_orden_id/cotizado_api`).
+- **`tracking`** → eventos de seguimiento.
+- **Adapters**: `andreani.ts` (REST, F2), `correo.ts` (Paq.ar, F3), `oca.ts` (SOAP, F4); tracking en los tres (F5). Las credenciales (`courier_credenciales`) se leen SOLO server-side con service_role.
+- **Front** (`src/lib/couriers/api.ts`): `cotizarEnvio` / `generarEnvioCourier` / `trackingEnvioCourier`.
+  - **POS**: botón "Cotizar {courier}" (CP destino + peso) → elegir opción setea servicio + costo (editable).
+  - **EnviosPage**: "Cotizar" en el modal; "Generar con courier" / "Etiqueta" / "Actualizar tracking" en el panel del envío (solo couriers con API vía `esCourierApi()`).
+
+**⚠ Adapters pendientes de validar con cuentas B2B reales** — escritos según documentación pública de cada courier. Al cargar credenciales reales en Config → Envíos hay que validar/ajustar endpoints y mapeos. Sin credenciales la cotización devuelve un error claro y el alta manual de envíos sigue intacta.
 
 ## Estados del envío (v1.8.39+)
 

@@ -9,9 +9,16 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 30 de Mayo, 2026
+**Última actualización:** 31 de Mayo, 2026
 
 ---
+
+## v1.14.0 — ISS-174: cotización/generación de envíos por API de courier (PROD ✅)
+
+Integración directa con las APIs de los couriers para cotizar y generar envíos (mig **162-165**).
+- **F1 fundación**: servicio = select dependiente en POS; catálogo compartido `src/lib/couriers/catalogo.ts`; `courier_credenciales` (credenciales de API por tenant), `tenants.envio_peso_fuente` ('manual'|'producto'); peso/dim en producto; Config → Envíos (toggle peso-fuente + `CourierCredencialesPanel` owner-only).
+- **F2-F5 integración**: Edge Function `courier-api` (cotizar/generar/tracking) con adapters **Andreani** (REST), **Correo Argentino** (Paq.ar) y **OCA** (SOAP). Cliente `src/lib/couriers/api.ts`. Cotizar en POS + Envíos; "Generar con courier" + etiqueta + "Actualizar tracking" en Envíos. Credenciales solo server-side.
+- **⚠ Pendiente**: validar los adapters con cuentas B2B reales (escritos según docs públicas). Fail-safe sin credenciales.
 
 ## v1.13.0 — Relevamiento Ventas E/F/G completo: descuentos por rol + precio USD (PROD ✅)
 
@@ -695,7 +702,7 @@ Ver `wiki/development/reglas-negocio.md` sección "Plan de implementación".
 - **WMS Fase 3** — `wms_tareas` (putaway/picking/replenishment) + listas de picking con ruta óptima
 - **RecepcionesPage completa** — schema existe (migrations 050+059), falta flujo UI completo
 - **Sync catálogo TN/ML** — push nombre/precio/descripción hacia marketplaces
-- **Courier rates APIs (ISS-174)** — cotización + generación de envíos por API directa (Andreani → Correo Argentino → OCA). **F1 fundación ✅ en DEV** (catálogo compartido, servicio select en POS, `courier_credenciales` por tenant, peso configurable, peso/dim en producto · mig 162-164). Pendiente: deploy a PROD + F2 (Edge Functions, requiere cuentas B2B). Diseño en `project_pendientes.md` → ISS-174
+- ~~**Courier rates APIs (ISS-174)**~~ — ✅ **Hecho en v1.14.0** (F1-F5: cotizar/generar/tracking por API directa Andreani/Correo/OCA, Edge Function `courier-api`). Pendiente solo: validar adapters con cuentas B2B reales.
 - **WhatsApp automático** — espera WABA account
 
 ### Pendiente manual (no código)

@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.13.0** ✅ (Relevamiento Ventas E/F/G COMPLETO — G3 descuentos por rol + G5 precio USD · mig 161; sobre v1.12.0 reservas/presupuestos/mayorista mig 159+160) · DEV alineado con PROD
+Último release en PROD: **v1.14.0** ✅ (ISS-174 — cotización/generación de envíos por API de courier: Andreani/Correo/OCA · mig 162-165 · Edge Function `courier-api`; adapters pendientes de validar con cuentas B2B reales) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,20 +14,17 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.13.0` | `v1.13.0` |
-| Migrations | 001–**164** ✅ | 001–**161** ✅ |
-| Branch | `dev` (adelantado por ISS-174 F1) | `main` (release v1.13.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.13.0 |
+| APP_VERSION | `v1.14.0` | `v1.14.0` |
+| Migrations | 001–**165** ✅ | 001–**165** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.14.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.14.0 |
 
-**Migrations DEV pendientes de aplicar en PROD:** 162, 163, 164 (ISS-174 F1, todas aditivas).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
-**En DEV sin deployar (ISS-174 F1 — cotización de envíos, fundación · 2026-05-31):**
-- **Parte 1** — en el POS el *Servicio* de envío es ahora un **select dependiente del courier** (igual que en Envíos). Catálogo `COURIERS`/`SERVICIOS_POR_COURIER` movido a `src/lib/couriers/catalogo.ts` (compartido POS + Envíos).
-- **mig 162** — tabla `courier_credenciales` (credenciales de API por tenant) + `tenants.envio_peso_fuente` ('manual'|'producto', default manual).
-- **mig 163** — idempotente: `codigo_postal` ya existía en `sucursales` (mig 124) y `cliente_domicilios` (mig 074); re-documenta para ISS-174.
-- **mig 164** — `productos.peso_kg/largo_cm/ancho_cm/alto_cm` (dato maestro para cotizar cuando `envio_peso_fuente='producto'`).
-- **Config → Envíos** — card "Peso y medidas para cotizar envíos" (toggle manual/producto) + panel **Credenciales de courier** (owner-only, `CourierCredencialesPanel`, Andreani/Correo/OCA). Form de producto: campos peso/dim. `AddressAutocompleteInput` ahora pasa `postcode` best-effort (para F2).
-- **Pendiente F2+**: Edge Functions `courier-cotizar`/`courier-generar` (Andreani primero) — requiere que el negocio cargue credenciales reales.
+**ISS-174 — cotización/generación de envíos por API (v1.14.0, PROD):**
+- **F1 (fundación)** — servicio = select dependiente en POS; catálogo `src/lib/couriers/catalogo.ts`; mig 162 (`courier_credenciales` + `tenants.envio_peso_fuente`), 163 (CP idempotente), 164 (productos peso/dim); Config → Envíos (toggle peso-fuente + `CourierCredencialesPanel` owner-only); peso/dim en form de producto.
+- **F2-F5 (integración API)** — Edge Function `courier-api` (cotizar/generar/tracking) con adapters **Andreani / Correo Argentino / OCA**; mig 165 (`envios.cotizacion_json/courier_orden_id/cotizado_api`); cliente `src/lib/couriers/api.ts`; cotizar en POS + Envíos, "Generar con courier" + etiqueta + "Actualizar tracking" en Envíos.
+- **⚠ PENDIENTE crítico:** los adapters están escritos según docs públicas de cada courier pero **NO probados con cuentas B2B reales** (GO aún no las tiene). Al cargar credenciales reales, validar/ajustar endpoints y mapeos de cada adapter (`supabase/functions/courier-api/{andreani,correo,oca}.ts`). Fail-safe: sin credenciales la cotización muestra error claro y el alta manual sigue funcionando.
 
 **En DEV sin deployar (relevamiento Ventas E/F/G — 2026-05-31):**
 - **G4** — costo/margen ocultos para CAJERO/DEPOSITO (`permisosCosto.ts`). Sin migración.
@@ -61,7 +58,7 @@ type: project
 | ~~ISS-127~~ | Config + Inventario + Ventas + Recepciones | ✅ **Cerrado v1.11.6** — Códigos compuestos GS1 (GS1-128 + DataMatrix + QR) leer/escribir con múltiples AIs. Ver `escaneo-barcode.md` y diseño/fases abajo. | ✅ Hecho |
 | ISS-130 | Inventario + Ventas | Comandos por voz: hablarle a la app para rebajar/ingresar (SKU, cantidad, estado, ubicación, lote, fecha) y consultar ("¿qué hay en ubicación X?"). Web Speech API + parseo intenciones | Alta — UX nueva, requiere prototipo |
 | ISS-137 | Config | Evaluación: integración con Google Drive como almacenamiento propio del cliente para documentos/imágenes | Requiere evaluación primero |
-| ISS-174 | Ventas + Envíos | Servicio de envío como select (igual que en módulo Envíos) + cotización automática por API de cada courier (precio + disponibilidad según servicio, dirección y fecha). **Diseño relevado 2026-05-31 — ver sección ISS-174 abajo (APIs directas Andreani→Correo→OCA, cotizar+generar+etiqueta+tracking, F1-F5).** | Alta — depende APIs externas |
+| ~~ISS-174~~ | Ventas + Envíos | ✅ **Cerrado v1.14.0** (F1-F5) — servicio select en POS + cotización/generación por API directa (Andreani/Correo/OCA) vía Edge Function `courier-api`. Ver sección ISS-174 abajo. **Único pendiente:** validar adapters con cuentas B2B reales. | ✅ Hecho |
 
 ### ISS-127 — Códigos compuestos GS1 (diseño relevado con GO 2026-05-30)
 
@@ -127,10 +124,7 @@ type: project
 
 **Fases de entrega:**
 - **F1 — Fundación (datos + config, sin API) ✅ (en DEV, build OK):** Parte 1 (servicio como select dependiente en POS + catálogo compartido `src/lib/couriers/catalogo.ts`). Migrations 162 (`courier_credenciales` + `envio_peso_fuente`) + 163 (CP, idempotente: ya existía) + 164 (productos peso/dim). Config → Envíos: toggle peso-fuente (manual/producto, default manual) + `CourierCredencialesPanel` (owner-only). Campos peso/dim en form de producto. `AddressAutocompleteInput` pasa `postcode` best-effort. Pendiente deploy a PROD.
-- **F2 — Andreani (cotizar + generar):** Edge Functions `courier-cotizar` + `courier-generar` con adapter Andreani + migration D. POS: botón "Cotizar envío" → lista servicios+precio+plazo → elegir → carga costo editable. Envíos: "Cotizar" + "Generar con courier" (orden → tracking + etiqueta). Deploy.
-- **F3 — Correo Argentino:** adapter Paq.ar en las mismas Edge Functions. Deploy.
-- **F4 — OCA ePak (SOAP):** adapter SOAP (Tarifar + IngresoOR). Deploy.
-- **F5 (opcional) — tracking automático:** `courier-tracking` + sync de estado (sweep lazy o webhook si el courier lo soporta).
+- **F2-F5 — Integración API ✅ (DEV, build OK · v1.14.0):** Edge Function único **`courier-api`** (`action` = cotizar | generar | tracking) con adapters **Andreani** (F2), **Correo Argentino** (F3, Paq.ar) y **OCA** (F4, SOAP); tracking en los tres (F5). Migration **165** (`envios.cotizacion_json/courier_orden_id/cotizado_api`). Cliente front `src/lib/couriers/api.ts`. **POS**: botón "Cotizar {courier}" (CP destino + peso) → lista servicio+precio+plazo → elegir setea servicio+costo (editable). **Envíos**: "Cotizar" en el modal + "Generar con courier" / "Etiqueta" / "Actualizar tracking" en el panel del envío. Credenciales leídas SOLO server-side (service_role). **⚠ Adapters según docs públicas — pendientes de validar con credenciales B2B reales; fail-safe: sin credenciales → error claro, no rompe el alta manual.**
 
 **Riesgos/notas:** cada API requiere contrato B2B propio del negocio (sin cuenta → no hay cotización; fallback a tarifa manual `courier_tarifas`/KM como hoy). OCA es SOAP (parseo XML en Deno). Guardar secretos por tenant exige cuidado: no exponerlos al front, considerar Supabase Vault/pgsodium o columnas con RLS de solo-escritura. El peso volumétrico (dims) suele definir la tarifa: si `envio_peso_fuente='producto'` y faltan medidas, advertir/caer a manual.
 

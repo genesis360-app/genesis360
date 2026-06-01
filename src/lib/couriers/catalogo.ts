@@ -39,16 +39,20 @@ export interface CampoCredencial {
 // integrar cada API (F2+); el storage es JSONB en courier_credenciales.credenciales,
 // así que ajustar esta lista no requiere migración.
 export const CAMPOS_CREDENCIALES: Record<string, CampoCredencial[]> = {
+  // Andreani: API REST. Login Basic (usuario/password) → token; cotización/orden usan contrato + cliente.
   'Andreani': [
-    { key: 'client_id',     label: 'Client ID' },
-    { key: 'client_secret', label: 'Client Secret', secreto: true },
-    { key: 'nro_contrato',  label: 'Nº de contrato / cliente' },
+    { key: 'usuario',      label: 'Usuario API' },
+    { key: 'password',     label: 'Contraseña API', secreto: true },
+    { key: 'nro_contrato', label: 'Nº de contrato' },
+    { key: 'nro_cliente',  label: 'Nº de cliente / sucursal origen', placeholder: 'opcional' },
   ],
+  // Correo Argentino (Mi Correo Empresas / Paq.ar): REST con usuario + password + nº de cliente.
   'Correo Argentino': [
     { key: 'usuario',     label: 'Usuario' },
     { key: 'password',    label: 'Contraseña', secreto: true },
     { key: 'nro_cliente', label: 'Nº de cliente' },
   ],
+  // OCA ePak: web service SOAP. Usuario(email) + password + CUIT + nº de cuenta/operativa.
   'OCA': [
     { key: 'usuario',    label: 'Usuario / Email' },
     { key: 'password',   label: 'Contraseña', secreto: true },
@@ -59,4 +63,9 @@ export const CAMPOS_CREDENCIALES: Record<string, CampoCredencial[]> = {
 
 export function camposCredencialesDe(courier: string): CampoCredencial[] {
   return CAMPOS_CREDENCIALES[courier] ?? []
+}
+
+/** True si el courier tiene integración de API (cotizar/generar). */
+export function esCourierApi(courier: string | null | undefined): boolean {
+  return !!courier && (COURIERS_API as readonly string[]).includes(courier)
 }

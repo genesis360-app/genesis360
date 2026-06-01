@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] update | v1.14.0 PROD — ISS-174 F2-F5: cotización/generación de envíos por API de courier
+
+Continuación del mismo día: tras F1, se implementaron **todas las fases F2-F5** de ISS-174 y se deployó a PROD como **v1.14.0** (bump v1.13.0 → v1.14.0). Migration **165** aplicada en DEV+PROD. Edge Function `courier-api` deployada en DEV+PROD. PR `dev → main` + Vercel.
+
+- **Edge Function `courier-api`** (`supabase/functions/courier-api/`) — router por `action` (cotizar | generar | tracking) + adapters **Andreani** (F2, REST), **Correo Argentino** (F3, Paq.ar), **OCA** (F4, SOAP); tracking en los tres (F5). Auth por JWT → tenant; credenciales leídas SOLO server-side (service_role), nunca al front. Errores de negocio → 400 con mensaje accionable.
+- **mig 165** — `envios.cotizacion_json` (snapshot opciones) + `courier_orden_id` + `cotizado_api`.
+- **Front** — `src/lib/couriers/api.ts` (cotizarEnvio / generarEnvioCourier / trackingEnvioCourier). **POS**: botón "Cotizar {courier}" (CP destino + peso) → lista servicio/precio/plazo → elegir setea servicio + costo (editable). **Envíos**: "Cotizar" en el modal + "Generar con courier" / "Etiqueta" / "Actualizar tracking" en el panel del envío. `esCourierApi()` gatea la UI a Andreani/Correo/OCA.
+- **⚠ Adapters NO validados con cuentas reales** (GO aún no tiene contratos B2B). Escritos según documentación pública; al conseguir credenciales hay que validar/ajustar endpoints y mapeos. Fail-safe: sin credenciales → error claro, el alta manual de envíos no se ve afectada.
+- Typecheck + `vite build` OK. Edge Function deployada (el bundle Deno compila). `schema_full.sql` (F1 cols) + wiki actualizados.
+
+---
+
 ## [2026-05-31] update | ISS-174 F1 — Fundación cotización de envíos por courier (DEV)
 
 Relevado con GO el diseño completo de ISS-174 (cotización + generación de envíos por API de courier) y arrancada la **Fase 1** (fundación, sin tocar APIs). Decisiones: **APIs directas** por courier (Andreani → Correo Argentino → OCA), alcance **completo** (cotizar + generar orden + etiqueta + tracking), **credenciales por tenant**, peso **configurable** (manual por envío | dato maestro del producto), cotizar en **POS + Envíos**, **CP estructurado**, operador **elige servicio** (precio editable). Diseño y fases en `project_pendientes.md` → sección ISS-174.

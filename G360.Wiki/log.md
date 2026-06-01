@@ -6,6 +6,28 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-01] update | v1.15.0 PROD — Relevamiento Ventas VF1-VF3 (POS operativo + canales + auditoría)
+
+Implementadas las 3 primeras fases del backlog Ventas H-K (relevamiento respondido el 2026-06-01). Bump v1.14.1 → **v1.15.0**. Migrations **167-169** (DEV+PROD). PR `dev → main` + Vercel.
+
+**VF1 — POS operativo (H2-H5):**
+- **H4** — reserva y venta directa (incl. 100% CC) **siempre exigen caja abierta**; solo el presupuesto (`pendiente`) puede crearse sin caja. Se quitó la excepción que permitía despachar 100% CC sin caja (`registrarVenta`).
+- **H5** (mig 167) — flag **"Consumidor Final" vs "Cliente registrado"** al iniciar la venta (`ventas.consumidor_final`). Con facturación activa y no-CF → cliente obligatorio. Toggle en el panel Cliente (si `factHabilitada && permiteCF`); elegir cliente registrado lo marca como no-CF.
+- **H2** — botón **"Enviar por email"** en el modal de ticket (reusa el template `venta_confirmada` de `send-email`), junto a "Imprimir".
+- **H3** — reimpresión desde el historial ya disponible vía "Ver / Imprimir ticket" del detalle.
+
+**VF2 — Canales configurables + reglas online/presencial (I1+I2, mig 168):**
+- **I1** — tabla `canales_venta` por tenant (CRUD en Config → Ventas → Operativa, `CanalesVentaPanel`) con clasificación **online/presencial**; seed `SECURITY DEFINER` + trigger. El POS toma los canales del tenant (antes hardcodeado). **MP** no se seedea (es medio de pago). Hook `useCanalesVenta` (+ `clasificacionDe`/`reglaDe`).
+- **I2** — `tenants.reglas_canal` con reglas por clasificación, **aplicadas** en POS/devoluciones: `requiere_cliente` (cliente obligatorio), `descuento_max_pct` (tope por canal), `lista_precio` (fuerza minorista/mayorista en `precioTierEfectivo`), `devolucion_dias` (plazo en `abrirModalDevolucion`).
+
+**VF3 — Auditoría y permisos (J1-J3, mig 169):**
+- **J1** — tabla `venta_auditoria` + helper `logVentaAuditoria` + **timeline en el modal** de la venta. Se registran anulación, cambio de cliente y override de descuento.
+- **J2** — **clave maestra** (RPC `verificar_clave_maestra`) para **anular venta despachada**, **cambiar cliente** (botones nuevos en el detalle) y **override de descuento** (autoriza descuentos sobre el tope por rol/canal). Sin clave configurada no se exige.
+- **J3** — **CONTADOR** con acceso **read-only** a Ventas: ruta en `CONTADOR_ALLOWED` + nav visible + en VentasPage solo el historial (sin POS, sin devolución/anular/registrar).
+- Typecheck + `vite build` OK. `schema_full.sql` + wiki actualizados.
+
+---
+
 ## [2026-05-31] hotfix | v1.14.1 PROD — fix RLS en seed de categorías de gasto (onboarding roto)
 
 **Bug reportado por GO:** al registrar un negocio nuevo (Google + datos del negocio → "Crear") saltaba `new row violates row-level security policy for table "categorias_gasto"`.

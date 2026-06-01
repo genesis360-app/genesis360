@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
@@ -14,6 +14,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useCierreContable } from '@/hooks/useCierreContable'
+import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
@@ -115,10 +116,13 @@ function haversineKmCoordsStatic(c1: string, c2: string): number | null {
 
 export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
+  const esContador = user?.rol === 'CONTADOR'  // J3: acceso read-only a Ventas
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
+  const { canalesActivos, reglaDe } = useCanalesVenta()  // VF2 (I1/I2)
   const clienteObligatorio  = (tenant as any)?.cliente_obligatorio    ?? 'reservas'
   const clienteCreacionInline = (tenant as any)?.cliente_creacion_inline ?? true
+  const permiteCF           = (tenant as any)?.cliente_consumidor_final ?? true  // H5: ¿se puede vender como Consumidor Final?
   const clienteDatosMinimos = (tenant as any)?.cliente_datos_minimos   ?? 'nombre'
 
   // ISS-085: formatea el número de ticket por sucursal
@@ -141,17 +145,92 @@ export default function VentasPage() {
     }
     return `#${v?.numero ?? '?'}`
   }
+  // H2 — enviar el ticket/comprobante por email (reusa el template venta_confirmada)
+  const enviarTicketPorEmail = async (destino: string) => {
+    const email = destino.trim()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.error('Email inválido'); return }
+    if (!ticketVenta) return
+    setEmailTicketSending(true)
+    try {
+      const items = (ticketVenta.items ?? []).map((i: any) => ({
+        nombre: i.nombre ?? i.producto_nombre ?? 'Ítem',
+        cantidad: i.tiene_series ? (i.series_seleccionadas?.length ?? i.cantidad ?? 1) : (i.cantidad ?? 1),
+        subtotal: i.subtotal ?? ((i.precio_unitario ?? 0) * (i.cantidad ?? 1)),
+      }))
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          type: 'venta_confirmada',
+          to: email,
+          data: {
+            numero: ticketVenta.numero,
+            negocio: tenant!.nombre,
+            total: ticketVenta.total,
+            items,
+            medio_pago: typeof ticketVenta.medio_pago === 'string' ? formatMedioPago(ticketVenta.medio_pago) : '',
+          },
+        },
+      })
+      if (error) throw error
+      toast.success(`Ticket enviado a ${email}`)
+      setEmailTicketOpen(false); setEmailTicketValue('')
+    } catch (e: any) {
+      toast.error(e?.message ?? 'No se pudo enviar el email')
+    } finally { setEmailTicketSending(false) }
+  }
+  // VF3/J2 — pide la clave maestra (si está configurada) antes de ejecutar una acción sensible
+  const pedirClaveMaestra = (titulo: string, onOk: () => void) => {
+    if (!claveMaestraConfigurada) { onOk(); return }
+    setClaveInput(''); setClaveReq({ titulo, onOk })
+  }
+  const confirmarClaveMaestra = async () => {
+    if (!claveReq) return
+    setClaveVerificando(true)
+    try {
+      const { data: ok } = await supabase.rpc('verificar_clave_maestra', { p_tenant_id: tenant!.id, p_clave: claveInput.trim() })
+      if (!ok) { toast.error('Clave maestra incorrecta'); return }
+      const cb = claveReq.onOk
+      setClaveReq(null); setClaveInput('')
+      cb()
+    } finally { setClaveVerificando(false) }
+  }
+  // VF3/J1 — registra una acción sensible en el audit log de la venta (fire-and-forget)
+  const logVentaAuditoria = (ventaId: string, accion: string, detalle: any) => {
+    supabase.from('venta_auditoria').insert({
+      id: crypto.randomUUID(), tenant_id: tenant!.id, venta_id: ventaId, accion, detalle,
+      usuario_id: user?.id ?? null, usuario_nombre: (user as any)?.nombre_display ?? user?.rol ?? null,
+    }).then(() => {}, () => {})
+  }
+  // VF3/J2 — cambiar el cliente de una venta (con clave maestra + auditoría)
+  const confirmarCambioCliente = (c: any) => {
+    const venta = cambiarClienteVenta
+    if (!venta) return
+    pedirClaveMaestra('Cambiar el cliente de la venta', async () => {
+      const { error } = await supabase.from('ventas')
+        .update({ cliente_id: c.id, cliente_nombre: c.nombre, cliente_telefono: c.telefono ?? null, consumidor_final: false })
+        .eq('id', venta.id)
+      if (error) { toast.error(error.message); return }
+      logVentaAuditoria(venta.id, 'cambio_cliente', { cliente_anterior: venta.cliente_nombre ?? null, cliente_nuevo: c.nombre })
+      toast.success('Cliente actualizado')
+      setVentaDetalle((d: any) => d && d.id === venta.id ? { ...d, cliente_id: c.id, cliente_nombre: c.nombre } : d)
+      qc.invalidateQueries({ queryKey: ['venta-auditoria', venta.id] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      setCambiarClienteVenta(null); setClienteSearch('')
+    })
+  }
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>(() => searchParams.get('id') ? 'historial' : 'nueva')
+  // J3: CONTADOR es read-only → siempre en el historial, sin acceso al POS
+  useEffect(() => { if (esContador && tab !== 'historial') setTab('historial') }, [esContador, tab])
   const [ventaGrupoId, setVentaGrupoId] = useState<string | null>(null)
 
   // Nueva venta
   const [cart, setCart] = useState<CartItem[]>([])
   const [productoSearch, setProductoSearch] = useState('')
   const [clienteId, setClienteId] = useState<string | null>(null)
+  const [esConsumidorFinal, setEsConsumidorFinal] = useState(true)  // H5: flag por venta (CF vs cliente registrado)
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [clienteCCEnabled, setClienteCCEnabled] = useState(false)
@@ -171,6 +250,12 @@ export default function VentasPage() {
   const [committedAsignado, setCommittedAsignado] = useState(0)
   // ISS-103: canal de venta en POS
   const [canalPOS, setCanalPOS] = useState('POS')
+  // VF2/I1: si la default no matchea ningún canal configurado, usar el primero activo
+  useEffect(() => {
+    if (canalesActivos.length > 0 && !canalesActivos.some(c => c.nombre === canalPOS)) {
+      setCanalPOS(canalesActivos[0].nombre)
+    }
+  }, [canalesActivos])
   // ISS-086: cuotas por banco en tarjeta de crédito
   const [cuotasSeleccion, setCuotasSeleccion] = useState<Record<number, { banco: string; cuotas: number; interes: number; sinInteres: boolean }>>({})
   const cuotasBancos: { id: string; nombre: string; cuotas: { cant: number; sin_interes: boolean; interes: number }[] }[] =
@@ -200,6 +285,18 @@ export default function VentasPage() {
   const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
+  // H2 — enviar ticket por email
+  const [emailTicketOpen, setEmailTicketOpen] = useState(false)
+  const [emailTicketValue, setEmailTicketValue] = useState('')
+  const [emailTicketSending, setEmailTicketSending] = useState(false)
+  // VF3/J2 — clave maestra para acciones sensibles
+  const claveMaestraConfigurada = !!(tenant as any)?.clave_maestra
+  const [claveReq, setClaveReq] = useState<{ titulo: string; onOk: () => void } | null>(null)
+  const [claveInput, setClaveInput] = useState('')
+  const [claveVerificando, setClaveVerificando] = useState(false)
+  const [overrideDescuento, setOverrideDescuento] = useState(false)  // J2c — override de descuento autorizado
+  // VF3/J2 — cambiar cliente post-venta
+  const [cambiarClienteVenta, setCambiarClienteVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
   // E2/E3 — cancelación de reserva: motivo + (si hay seña) penalidad + destino devolución/crédito
   const [cancelReservaModal, setCancelReservaModal] = useState<{ venta: any; destino: 'devolucion' | 'credito'; motivo: string; observacion: string } | null>(null)
@@ -829,7 +926,20 @@ export default function VentasPage() {
       const { data } = await q
       return data ?? []
     },
-    enabled: !!tenant && clienteDropOpen,
+    enabled: !!tenant && (clienteDropOpen || !!cambiarClienteVenta),
+  })
+
+  // VF3/J1 — audit log de la venta abierta en el detalle
+  const ventaDetalleId = ventaDetalle?.id ?? null
+  const { data: ventaAuditoria = [] } = useQuery({
+    queryKey: ['venta-auditoria', ventaDetalleId],
+    enabled: !!ventaDetalleId,
+    queryFn: async () => {
+      const { data } = await supabase.from('venta_auditoria')
+        .select('id, accion, detalle, usuario_nombre, created_at')
+        .eq('venta_id', ventaDetalleId).order('created_at', { ascending: false })
+      return data ?? []
+    },
   })
 
   // Domicilios del cliente seleccionado — para autocompletar dirección de envío
@@ -1353,6 +1463,10 @@ export default function VentasPage() {
     const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
     const tiers = item.tiers
     if (!tiers || tiers.length === 0) return item.precio_unitario
+    // VF2/I2: la lista de precios por canal puede forzar minorista o mayorista
+    const lista = reglaDe(canalPOS).lista_precio
+    if (lista === 'minorista') return item.precio_unitario
+    if (lista === 'mayorista') return tiers[tiers.length - 1]?.precio ?? item.precio_unitario  // mejor tier (asc)
     let precio = item.precio_unitario
     for (const t of tiers) if (cant >= t.cantidad_minima) precio = t.precio  // tiers ya viene asc
     return precio
@@ -1557,6 +1671,7 @@ export default function VentasPage() {
   const montoCredito = mediosPago.filter(m => m.tipo === 'Crédito a favor').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
 
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
+    if (esContador) { toast.error('El CONTADOR tiene acceso de solo lectura en Ventas.'); return }
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
     for (const item of cart) {
       if (item.tiene_series && item.series_seleccionadas.length === 0) {
@@ -1570,34 +1685,54 @@ export default function VentasPage() {
         toast.error(`Cantidad inválida para "${item.nombre}". Corregila antes de guardar.`); return
       }
     }
-    // G3 — validación de descuentos por rol
+    // G3 + J2c — validación de descuentos por rol/canal, con override por clave maestra
     const rol = user?.rol
+    const reglaCanal = reglaDe(canalPOS)  // VF2/I2: reglas según clasificación del canal de venta
     const hayDescuentoItem = cart.some(i => i.descuento > 0)
     const hayDescuentoGlobal = descTotalVal > 0
-    // Bloqueo duro: roles no autorizados no pueden aplicar ningún descuento
-    if (descuentoBloqueadoCajero && (hayDescuentoItem || hayDescuentoGlobal)) {
-      toast.error('Solo DUEÑO, SUPERVISOR o ADMIN pueden aplicar descuentos. Pedí autorización.')
-      return
-    }
-    // Límite de % para SUPERVISOR (DUEÑO/ADMIN sin tope)
     const maxSupervisor = (tenant as any)?.descuento_max_supervisor_pct
-    if (rol === 'SUPERVISOR' && maxSupervisor != null) {
-      const itemConExceso = cart.find(item => item.descuento_tipo === 'pct' && item.descuento > maxSupervisor)
-      if (itemConExceso) {
-        toast.error(`Descuento del ${itemConExceso.descuento}% supera el límite del SUPERVISOR (${maxSupervisor}%). Solicitá autorización al DUEÑO.`)
-        return
+    const maxCanal = reglaCanal.descuento_max_pct
+    // Detectar la primera violación de descuento (si la hay)
+    let violacionDesc: string | null = null
+    if (descuentoBloqueadoCajero && (hayDescuentoItem || hayDescuentoGlobal)) {
+      violacionDesc = 'tu rol no puede aplicar descuentos'
+    } else if (rol === 'SUPERVISOR' && maxSupervisor != null) {
+      const itemExc = cart.find(i => i.descuento_tipo === 'pct' && i.descuento > maxSupervisor)
+      if (itemExc) violacionDesc = `${itemExc.descuento}% supera el límite del SUPERVISOR (${maxSupervisor}%)`
+      else if (descuentoTotalTipo === 'pct' && descTotalVal > maxSupervisor) violacionDesc = `el descuento global supera el límite del SUPERVISOR (${maxSupervisor}%)`
+    }
+    if (!violacionDesc && maxCanal != null && (hayDescuentoItem || hayDescuentoGlobal)) {
+      const itemExc = cart.find(i => i.descuento_tipo === 'pct' && i.descuento > maxCanal)
+      if (itemExc) violacionDesc = `${itemExc.descuento}% supera el máximo de este canal (${maxCanal}%)`
+      else if (descuentoTotalTipo === 'pct' && descTotalVal > maxCanal) violacionDesc = `el descuento global supera el máximo de este canal (${maxCanal}%)`
+    }
+    // Si hay violación: con clave maestra configurada se puede autorizar (override); sin clave, bloquea.
+    if (violacionDesc && !overrideDescuento) {
+      if (claveMaestraConfigurada) {
+        pedirClaveMaestra(`Autorizar descuento (${violacionDesc})`, () => {
+          setOverrideDescuento(true)
+          setTimeout(() => registrarVentaRef.current?.(estado), 0)
+        })
+      } else {
+        toast.error(`Descuento no autorizado: ${violacionDesc}. Pedí autorización a un DUEÑO/SUPERVISOR.`)
       }
-      if (descuentoTotalTipo === 'pct' && descTotalVal > maxSupervisor) {
-        toast.error(`El descuento global del ${descTotalVal}% supera el límite del SUPERVISOR (${maxSupervisor}%).`)
-        return
-      }
+      return
     }
 
     // Cliente obligatorio según config del tenant
+    // H5 (VF1): si el negocio factura y la venta NO es a Consumidor Final, el cliente
+    // es obligatorio (para poder facturar a un cliente identificado). Si CF no está
+    // permitido en Config, también es obligatorio.
+    const ventaCF = permiteCF && esConsumidorFinal
     const clienteRequerido = clienteObligatorio === 'siempre'
       || (clienteObligatorio === 'reservas' && (estado === 'pendiente' || estado === 'reservada'))
+      || (factHabilitada && !ventaCF)
+      || !permiteCF
+      || !!reglaCanal.requiere_cliente
     if (clienteRequerido && !clienteId) {
-      toast.error('Registrá o seleccioná un cliente para continuar.')
+      toast.error(factHabilitada && !ventaCF
+        ? 'Para facturar a un cliente registrado, seleccioná o creá el cliente (o marcá la venta como Consumidor Final).'
+        : 'Registrá o seleccioná un cliente para continuar.')
       return
     }
     // ISS-090: CC como método de pago parcial
@@ -1641,18 +1776,17 @@ export default function VentasPage() {
       toast.error('Seleccioná una sucursal antes de registrar la venta. El stock se descuenta por sucursal.')
       return
     }
+    // H4 (VF1): reserva y venta directa SIEMPRE exigen caja abierta — incluso 100% CC.
+    // Solo el presupuesto (estado 'pendiente') puede crearse sin caja. Se quitó la
+    // excepción que permitía despachar/reservar 100% CC sin caja (control de ingresos).
     if (estado === 'despachada' || estado === 'reservada') {
-      const montoNoCCAsignado = mediosPago.filter(m => m.tipo !== 'Cuenta Corriente').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
-      const necesitaCaja = montoNoCCAsignado > 0 || !modoCC
-      if (necesitaCaja) {
-        if (sesionesAbiertas.length === 0) {
-          toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas.')
-          return
-        }
-        if (sesionesAbiertas.length > 1 && !sesionCajaId) {
-          toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
-          return
-        }
+      if (sesionesAbiertas.length === 0) {
+        toast.error('No hay caja abierta. Abrí una caja antes de registrar ventas o reservas (incluso en cuenta corriente).')
+        return
+      }
+      if (sesionesAbiertas.length > 1 && !sesionCajaId) {
+        toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta.')
+        return
       }
     }
     const vuelto = calcularVuelto(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC)
@@ -1669,6 +1803,7 @@ export default function VentasPage() {
         cliente_id: clienteId || null,
         cliente_nombre: clienteNombre || null,
         cliente_telefono: clienteTelefono || null,
+        consumidor_final: permiteCF && esConsumidorFinal && !clienteId,  // H5
         estado,
         subtotal,
         descuento_total: descuentoTotalTipo === 'pct' ? descTotalVal : 0,
@@ -1701,6 +1836,15 @@ export default function VentasPage() {
       }).select().single()
       if (ventaError) throw ventaError
       ventaIdCreada = venta.id
+
+      // J2c/J1 — si la venta usó override de descuento autorizado por clave maestra, dejar traza
+      if (overrideDescuento) {
+        logVentaAuditoria(venta.id, 'override_descuento', {
+          descuento_global_pct: descuentoTotalTipo === 'pct' ? descTotalVal : null,
+          items_con_descuento: cart.filter(i => i.descuento > 0).map(i => ({ nombre: i.nombre, descuento: i.descuento })),
+        })
+        setOverrideDescuento(false)
+      }
 
       // Si el QR de MP fue pagado antes de crear la venta, aplicar monto_pagado del log
       if (preVentaId) {
@@ -2041,7 +2185,7 @@ export default function VentasPage() {
       }
 
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
-      setClienteCCEnabled(false)
+      setClienteCCEnabled(false); setEsConsumidorFinal(true); setOverrideDescuento(false)
       setMediosPago([{ tipo: '', monto: '' }]); setCommittedAsignado(0); setCuotasSeleccion({}); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada'); setCanalPOS('POS')
       setRequiereEnvio(false)
       setEnvioTransporte('propio'); setEnvioCourier(''); setEnvioServicio('')
@@ -2185,6 +2329,17 @@ export default function VentasPage() {
   }
 
   const abrirModalDevolucion = (venta: any) => {
+    if (esContador) { toast.error('El CONTADOR tiene acceso de solo lectura en Ventas.'); return }
+    // VF2/I2: plazo de devolución según la clasificación del canal de la venta
+    const reglaDev = reglaDe(venta.origen)
+    if (reglaDev.devolucion_dias != null) {
+      const base = new Date(venta.updated_at ?? venta.created_at ?? Date.now())
+      const dias = Math.floor((Date.now() - base.getTime()) / 86_400_000)
+      if (dias > reglaDev.devolucion_dias) {
+        toast.error(`El plazo de devolución de este canal es de ${reglaDev.devolucion_dias} días y ya pasaron ${dias}.`)
+        return
+      }
+    }
     const items = (venta.venta_items ?? []).map((item: any) => ({
       venta_item_id: item.id,
       producto_id: item.producto_id,
@@ -2968,7 +3123,7 @@ export default function VentasPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-700 -mb-2">
-        {[{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }, { id: 'canales', label: 'Canales', icon: Layers }].map(({ id, label, icon: Icon }) => (
+        {(esContador ? [{ id: 'historial', label: 'Historial', icon: FileText }] : [{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }, { id: 'canales', label: 'Canales', icon: Layers }]).map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id as Tab)}
             className={`flex items-center gap-2 py-2.5 px-4 text-sm font-medium transition-all border-b-2 -mb-px
               ${tab === id
@@ -3389,6 +3544,30 @@ export default function VentasPage() {
             {/* Cliente */}
             <div className="bg-surface rounded-xl p-4 shadow-sm border border-border-ds space-y-3">
               <h2 className="font-semibold text-primary flex items-center gap-2"><User size={16} /> Cliente</h2>
+              {/* H5: tipo de comprobante — Consumidor Final vs Cliente registrado (solo si factura) */}
+              {factHabilitada && permiteCF && (
+                <div>
+                  <div className="flex gap-2">
+                    {([
+                      { v: true,  t: 'Consumidor Final' },
+                      { v: false, t: 'Cliente registrado' },
+                    ] as const).map(opt => (
+                      <button key={String(opt.v)} type="button"
+                        onClick={() => {
+                          setEsConsumidorFinal(opt.v)
+                          if (opt.v) { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch(''); setClienteCCEnabled(false); setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente')) }
+                        }}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors
+                          ${esConsumidorFinal === opt.v ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                        {opt.t}
+                      </button>
+                    ))}
+                  </div>
+                  {!esConsumidorFinal && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">Para facturar a un cliente registrado tenés que seleccionarlo o crearlo.</p>
+                  )}
+                </div>
+              )}
               {/* Autocomplete cliente registrado */}
               <div className="relative">
                 {clienteId ? (
@@ -3417,6 +3596,7 @@ export default function VentasPage() {
                               setClienteNombre(c.nombre)
                               setClienteTelefono(c.telefono ?? '')
                               setClienteCCEnabled(c.cuenta_corriente_habilitada ?? false)
+                              setEsConsumidorFinal(false)   // H5: elegir cliente registrado → no es CF
                               setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente'))
                               setClienteSearch('')
                               setClienteDropOpen(false)
@@ -4009,11 +4189,10 @@ export default function VentasPage() {
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Canal de venta</label>
                     <select value={canalPOS} onChange={e => setCanalPOS(e.target.value)}
                       className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                      <option value="POS">🏪 Presencial</option>
-                      <option value="Instagram">📸 Instagram</option>
-                      <option value="Facebook">👤 Facebook</option>
-                      <option value="WhatsApp">💬 WhatsApp</option>
-                      <option value="Otros">📦 Otros</option>
+                      {canalesActivos.length === 0 && <option value="POS">🏪 Presencial</option>}
+                      {canalesActivos.map(c => (
+                        <option key={c.id} value={c.nombre}>{c.icono ? `${c.icono} ` : ''}{c.nombre}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">
@@ -4418,6 +4597,24 @@ export default function VentasPage() {
                 className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
                 <Printer size={15} /> Ver / Imprimir ticket
               </button>
+              {/* VF3/J1 — auditoría de la venta */}
+              {ventaAuditoria.length > 0 && (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5"><Lock size={12} /> Auditoría</p>
+                  <div className="space-y-1.5">
+                    {(ventaAuditoria as any[]).map(a => (
+                      <div key={a.id} className="text-xs text-gray-600 dark:text-gray-300 flex items-start gap-2">
+                        <span className="text-gray-400 whitespace-nowrap">{new Date(a.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="flex-1">
+                          <span className="font-medium">{({ anulacion: 'Anulación', cambio_cliente: 'Cambio de cliente', override_descuento: 'Override de descuento', edicion_items: 'Edición de ítems' } as any)[a.accion] ?? a.accion}</span>
+                          {a.usuario_nombre ? ` · ${a.usuario_nombre}` : ''}
+                          {a.accion === 'cambio_cliente' && a.detalle?.cliente_nuevo ? ` → ${a.detalle.cliente_nuevo}` : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* F1 — actualizar presupuesto on-demand (recrea con precios actuales + resetea contador de vencimiento) */}
               {ventaDetalle.estado === 'pendiente' && !isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias) && (
                 <button onClick={actualizarPrecios} disabled={actualizandoPrecios}
@@ -4496,6 +4693,23 @@ export default function VentasPage() {
                   className="w-full flex items-center justify-center gap-2 border-2 border-orange-200 text-orange-600 dark:text-orange-400 font-semibold py-2.5 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all text-sm">
                   <RotateCcw size={15} /> Devolver
                 </button>
+              )}
+              {/* J2 — acciones con clave maestra (anular despachada / cambiar cliente) */}
+              {!esContador && ['despachada', 'facturada'].includes(ventaDetalle.estado) && !isPeriodoCerrado(ventaDetalle.created_at) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => pedirClaveMaestra('Anular venta despachada', () => {
+                    logVentaAuditoria(ventaDetalle.id, 'anulacion', { estado_previo: ventaDetalle.estado, total: ventaDetalle.total })
+                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
+                  })}
+                    disabled={cambiarEstado.isPending}
+                    className="flex items-center justify-center gap-1.5 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm">
+                    <X size={15} /> Anular
+                  </button>
+                  <button onClick={() => { setCambiarClienteVenta(ventaDetalle); setClienteSearch('') }}
+                    className="flex items-center justify-center gap-1.5 border-2 border-blue-200 text-blue-600 dark:text-blue-400 font-semibold py-2.5 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm">
+                    <User size={15} /> Cambiar cliente
+                  </button>
+                </div>
               )}
               {ventaDetalle.estado === 'reservada' && (
                 <button onClick={modificarReserva} disabled={cambiarEstado.isPending}
@@ -4794,6 +5008,51 @@ export default function VentasPage() {
         </div>
       )}
 
+      {/* VF3/J2 — Modal clave maestra */}
+      {claveReq && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-xl w-full max-w-xs p-5 space-y-3">
+            <h3 className="font-semibold text-primary flex items-center gap-2"><Lock size={16} /> Clave maestra</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{claveReq.titulo}. Ingresá la clave maestra del DUEÑO para autorizar.</p>
+            <input type="password" value={claveInput} onChange={e => setClaveInput(e.target.value)} autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') confirmarClaveMaestra() }}
+              placeholder="Clave maestra"
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+            <div className="flex gap-2">
+              <button onClick={() => { setClaveReq(null); setClaveInput('') }}
+                className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm">Cancelar</button>
+              <button onClick={confirmarClaveMaestra} disabled={claveVerificando}
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2 rounded-xl text-sm disabled:opacity-60">
+                {claveVerificando ? 'Verificando…' : 'Autorizar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VF3/J2 — Modal cambiar cliente */}
+      {cambiarClienteVenta && (
+        <div className="fixed inset-0 bg-black/50 z-[55] flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-3">
+            <h3 className="font-semibold text-primary flex items-center gap-2"><User size={16} /> Cambiar cliente — Venta {formatTicket(cambiarClienteVenta)}</h3>
+            <input type="text" value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} autoFocus
+              placeholder="Buscar por nombre o DNI…"
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+            <div className="max-h-52 overflow-y-auto space-y-1">
+              {(clientesBusqueda as any[]).map(c => (
+                <button key={c.id} onClick={() => confirmarCambioCliente(c)}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm text-gray-700 dark:text-gray-200">
+                  {c.nombre}{c.dni ? ` · ${c.dni}` : ''}
+                </button>
+              ))}
+              {clientesBusqueda.length === 0 && <p className="text-xs text-gray-400 px-1 py-2">Escribí para buscar un cliente.</p>}
+            </div>
+            <button onClick={() => { setCambiarClienteVenta(null); setClienteSearch('') }}
+              className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm">Cerrar</button>
+          </div>
+        </div>
+      )}
+
       {/* Modal TICKET */}
       {ticketVenta && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -4963,15 +5222,33 @@ export default function VentasPage() {
             </p>
             </div>{/* end scroll area */}
 
-            <div className="flex gap-2 p-4 pt-2 border-t border-gray-100 dark:border-gray-700 shrink-0">
-              <button onClick={() => window.print()}
-                className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <Printer size={15} /> Imprimir
-              </button>
-              <button onClick={() => setTicketVenta(null)}
-                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2 rounded-xl text-sm transition-all">
-                Cerrar
-              </button>
+            <div className="p-4 pt-2 border-t border-gray-100 dark:border-gray-700 shrink-0 space-y-2">
+              {emailTicketOpen && (
+                <div className="flex gap-2">
+                  <input type="email" value={emailTicketValue} onChange={e => setEmailTicketValue(e.target.value)}
+                    placeholder="email@cliente.com" autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') enviarTicketPorEmail(emailTicketValue) }}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  <button onClick={() => enviarTicketPorEmail(emailTicketValue)} disabled={emailTicketSending}
+                    className="px-3 py-1.5 bg-accent text-white rounded-lg text-sm font-medium disabled:opacity-60">
+                    {emailTicketSending ? 'Enviando…' : 'Enviar'}
+                  </button>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => window.print()}
+                  className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <Printer size={15} /> Imprimir
+                </button>
+                <button onClick={() => { setEmailTicketOpen(o => !o); if (!emailTicketValue) setEmailTicketValue(ticketVenta.clientes?.email ?? ticketVenta.cliente_email ?? '') }}
+                  className="flex-1 flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <Send size={15} /> Email
+                </button>
+                <button onClick={() => { setTicketVenta(null); setEmailTicketOpen(false) }}
+                  className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2 rounded-xl text-sm transition-all">
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -65,6 +65,7 @@ CREATE TABLE tenants (
   session_timeout_minutes   INT DEFAULT NULL,
   envio_peso_fuente         TEXT NOT NULL DEFAULT 'manual'  -- ISS-174 (mig 162) — 'manual' | 'producto'
     CHECK (envio_peso_fuente IN ('manual','producto')),
+  reglas_canal              JSONB NOT NULL DEFAULT '{}'::jsonb,  -- VF2/I2 (mig 168) — reglas por clasificación online/presencial
   created_at                TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
@@ -448,6 +449,7 @@ CREATE TABLE ventas (
   cliente_nombre  TEXT,
   cliente_telefono TEXT,
   estado          TEXT NOT NULL DEFAULT 'pendiente',
+  consumidor_final BOOLEAN NOT NULL DEFAULT TRUE,  -- VF1/H5 (mig 167) — venta a Consumidor Final vs cliente registrado
   subtotal        DECIMAL(12,2) NOT NULL DEFAULT 0,
   descuento_total DECIMAL(12,2) NOT NULL DEFAULT 0,
   total           DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -947,6 +949,55 @@ ALTER TABLE courier_credenciales ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname='courier_credenciales_tenant' AND tablename='courier_credenciales') THEN
     CREATE POLICY "courier_credenciales_tenant" ON courier_credenciales FOR ALL
+      USING      (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+      WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;
+
+-- ============================================================
+-- CANALES DE VENTA (VF2/I1, mig 168) — canales por tenant + clasificación online/presencial
+-- Seed automático al alta del tenant vía trigger SECURITY DEFINER (ver mig 168). MP no es canal.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS canales_venta (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre        TEXT NOT NULL,
+  clasificacion TEXT NOT NULL DEFAULT 'presencial' CHECK (clasificacion IN ('online','presencial')),
+  icono         TEXT,
+  activo        BOOLEAN NOT NULL DEFAULT TRUE,
+  predefinido   BOOLEAN NOT NULL DEFAULT FALSE,
+  orden         INT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, nombre)
+);
+CREATE INDEX IF NOT EXISTS idx_canales_venta_tenant ON canales_venta(tenant_id);
+ALTER TABLE canales_venta ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname='canales_venta_tenant' AND tablename='canales_venta') THEN
+    CREATE POLICY "canales_venta_tenant" ON canales_venta FOR ALL
+      USING      (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
+      WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  END IF;
+END $$;
+
+-- ============================================================
+-- VENTA AUDITORIA (VF3/J1, mig 169) — audit log detallado por venta
+-- ============================================================
+CREATE TABLE IF NOT EXISTS venta_auditoria (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  venta_id        UUID NOT NULL REFERENCES ventas(id) ON DELETE CASCADE,
+  accion          TEXT NOT NULL,
+  detalle         JSONB,
+  usuario_id      UUID,
+  usuario_nombre  TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_venta_auditoria_venta ON venta_auditoria(venta_id, created_at);
+ALTER TABLE venta_auditoria ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname='venta_auditoria_tenant' AND tablename='venta_auditoria') THEN
+    CREATE POLICY "venta_auditoria_tenant" ON venta_auditoria FOR ALL
       USING      (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
       WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
   END IF;

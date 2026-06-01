@@ -474,3 +474,24 @@ Aplica en 5 puntos de `VentasPage.tsx`:
 ### Alertas geocodificación fallida (v1.8.39)
 - Si origen no geocodifica → mensaje rojo bajo el campo "Dirección de origen" con link directo a Sucursales
 - Si destino no geocodifica → mensaje rojo bajo "Dirección de entrega" con sugerencia de formato
+
+---
+
+## Relevamiento Ventas VF1-VF3 (v1.15.0, 2026-06-01)
+
+Primeras 3 fases del backlog Ventas H-K. Respuestas en `sources/raw/relevamiento_ventas_respuestas.md` (sección H-K); plan en `project_pendientes.md`.
+
+### VF1 — POS operativo (H2-H5)
+- **H4 — Caja obligatoria**: `reserva` y `venta directa` (incluida 100% Cuenta Corriente) **siempre exigen caja abierta**. Solo el **presupuesto** (`pendiente`) se crea sin caja. Se quitó la excepción que permitía despachar 100% CC sin caja (gate en `registrarVenta`).
+- **H5 — Consumidor Final**: flag al iniciar la venta **"Consumidor Final" vs "Cliente registrado"** (`ventas.consumidor_final`, mig 167). Si el negocio factura (`factHabilitada`) y NO es CF → **cliente obligatorio**. Toggle en el panel Cliente cuando `factHabilitada && cliente_consumidor_final`. Elegir un cliente registrado marca la venta como no-CF.
+- **H2 — Ticket**: botón **"Enviar por email"** en el modal de ticket (reusa `send-email` tipo `venta_confirmada`) junto a "Imprimir".
+- **H3 — Reimpresión**: desde el historial vía "Ver / Imprimir ticket" del detalle (cualquier rol con acceso a Ventas).
+
+### VF2 — Canales configurables + reglas online/presencial (I1-I2)
+- **I1**: tabla `canales_venta` por tenant (CRUD en **Config → Ventas → Operativa**, `CanalesVentaPanel`) con clasificación **online/presencial**; seed `SECURITY DEFINER` + trigger al alta del tenant. El selector de canal del POS toma los canales del tenant (antes hardcodeado). **MercadoPago no es canal** (es medio de pago) → no se seedea. Hook `src/hooks/useCanalesVenta.ts` (`clasificacionDe`, `reglaDe`).
+- **I2**: `tenants.reglas_canal JSONB` con reglas por clasificación, **aplicadas**: `requiere_cliente` (cliente obligatorio en `registrarVenta`), `descuento_max_pct` (tope de descuento por canal), `lista_precio` (fuerza minorista/mayorista en `precioTierEfectivo`), `devolucion_dias` (plazo en `abrirModalDevolucion`).
+
+### VF3 — Auditoría y permisos (J1-J3)
+- **J1**: `venta_auditoria` (mig 169) + `logVentaAuditoria()` + **timeline en el modal** de la venta (anulación / cambio de cliente / override de descuento).
+- **J2**: **clave maestra** (RPC `verificar_clave_maestra`) para **anular venta despachada**, **cambiar cliente** (botones nuevos en el detalle) y **override de descuento** (autoriza descuentos sobre el tope de rol/canal, re-ejecuta la venta con `overrideDescuento`). Sin `tenants.clave_maestra` configurada no se exige.
+- **J3**: **CONTADOR read-only** — `/ventas` en `CONTADOR_ALLOWED` + nav visible; en `VentasPage` solo el tab Historial (sin POS, sin devolución/anular/registrar; guards en `registrarVenta`/`abrirModalDevolucion`).

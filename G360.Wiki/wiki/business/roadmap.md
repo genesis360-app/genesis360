@@ -9,9 +9,21 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 31 de Mayo, 2026
+**Última actualización:** 1 de Junio, 2026
 
 ---
+
+## v1.15.0 — Relevamiento Ventas VF1-VF3: POS operativo + canales + auditoría (PROD ✅)
+
+Primeras 3 fases del backlog Ventas H-K (mig **167-169**).
+- **VF1 (H2-H5)**: caja obligatoria en reserva/venta directa incl. 100% CC (solo presupuesto sin caja); flag Consumidor Final vs cliente registrado (cliente obligatorio si factura); enviar ticket por email; reimpresión desde historial.
+- **VF2 (I1-I2)**: canales de venta configurables por tenant (online/presencial) + reglas distintas por clasificación (plazo devolución, descuento máx, lista de precios, requisito de cliente). MP deja de ser canal.
+- **VF3 (J1-J3)**: audit log por venta (anulación/cambio cliente/override descuento); clave maestra para esas acciones; CONTADOR read-only en Ventas.
+- Pendiente del backlog: VF4 (reportes/alertas) + VF5 (edición post-venta + NC interna). L1 (Top 3) sin responder.
+
+## v1.14.1 — Hotfix: registro de negocio nuevo roto por RLS (PROD ✅)
+
+Trigger de seed de `categorias_gasto` no era SECURITY DEFINER → fallaba el alta de tenant. Fix mig 166.
 
 ## v1.14.0 — ISS-174: cotización/generación de envíos por API de courier (PROD ✅)
 

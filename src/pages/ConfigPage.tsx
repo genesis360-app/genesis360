@@ -12,6 +12,7 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import { CodigoPerfilesPanel } from '@/components/CodigoPerfilesPanel'
 import { CourierCredencialesPanel } from '@/components/CourierCredencialesPanel'
+import { CanalesVentaPanel } from '@/components/CanalesVentaPanel'
 import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
@@ -3662,6 +3663,8 @@ export default function ConfigPage() {
           {/* Operativa sub-tab */}
           {tab === 'ventas' && ventasSubTab === 'operativa' && (
             <div className="space-y-4">
+              {/* VF2 — Canales de venta + reglas online/presencial */}
+              <CanalesVentaPanel />
               {/* Presupuesto */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300">Documentos</h2>

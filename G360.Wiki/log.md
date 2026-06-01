@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-01] update | v1.16.0 PROD — Relevamiento Ventas VF4 (reportes + alertas + export)
+
+Cuarta fase del backlog Ventas H-K. Bump v1.15.0 → **v1.16.0**. Migration **170** (DEV+PROD).
+
+- **K1 (ReportesPage)** — 5 reportes nuevos: **baja rotación** (unidades vendidas asc, incl. no vendidos), **más devoluciones** (ranking de productos por unidades devueltas), **anuladas y devueltas** (devoluciones + ventas canceladas con motivo), **comparativa por canal** (ventas/total/ticket promedio por canal + clasificación online/presencial vía `useCanalesVenta`), **margen real por venta** (total − costo histórico, % de margen).
+- **K3** — export **CSV** además de Excel/PDF en cada reporte (`exportarCSV` con `sheet_to_csv` + BOM UTF-8).
+- **K2 (mig 170)** — alertas **event-driven** a DUEÑO/SUPERVISOR/ADMIN (`notificarRolesVentas` → `notificaciones`): **margen negativo** al cerrar venta despachada (costo > total); **cliente/producto con >N devoluciones en M días** (chequeo al `procesarDevolucion`, fire-and-forget). Umbrales en Config → Ventas → Operativa (`alerta_margen_negativo`, `alerta_devoluciones_n`, `alerta_devoluciones_dias`).
+- Typecheck + `vite build` OK. `schema_full.sql` + wiki actualizados.
+
+---
+
 ## [2026-06-01] update | v1.15.0 PROD — Relevamiento Ventas VF1-VF3 (POS operativo + canales + auditoría)
 
 Implementadas las 3 primeras fases del backlog Ventas H-K (relevamiento respondido el 2026-06-01). Bump v1.14.1 → **v1.15.0**. Migrations **167-169** (DEV+PROD). PR `dev → main` + Vercel.

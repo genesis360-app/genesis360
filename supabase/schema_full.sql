@@ -66,6 +66,9 @@ CREATE TABLE tenants (
   envio_peso_fuente         TEXT NOT NULL DEFAULT 'manual'  -- ISS-174 (mig 162) — 'manual' | 'producto'
     CHECK (envio_peso_fuente IN ('manual','producto')),
   reglas_canal              JSONB NOT NULL DEFAULT '{}'::jsonb,  -- VF2/I2 (mig 168) — reglas por clasificación online/presencial
+  alerta_margen_negativo    BOOLEAN NOT NULL DEFAULT TRUE,       -- VF4/K2 (mig 170)
+  alerta_devoluciones_n     INT,                                -- VF4/K2 (mig 170) — NULL = off
+  alerta_devoluciones_dias  INT NOT NULL DEFAULT 30,            -- VF4/K2 (mig 170)
   created_at                TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;

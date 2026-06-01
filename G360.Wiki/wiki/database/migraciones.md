@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-169)
+# Historial de Migraciones (001-170)
 
-**Total al 2026-06-01:** 169 archivos de migración + 086b correctivo.  
+**Total al 2026-06-01:** 170 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -233,6 +233,7 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 167 | `167_ventas_consumidor_final.sql` | **VF1/H5** · `ventas.consumidor_final BOOLEAN DEFAULT TRUE`. Flag por venta (Consumidor Final vs cliente registrado); con facturación activa y no-CF el cliente es obligatorio |
 | 168 | `168_canales_venta.sql` | **VF2/I1+I2** · Tabla `canales_venta` (`tenant_id, nombre, clasificacion online\|presencial, icono, activo, predefinido, orden`) + seed `SECURITY DEFINER` + trigger AFTER INSERT en `tenants` + backfill. `tenants.reglas_canal JSONB` (reglas por clasificación: devolucion_dias, descuento_max_pct, lista_precio, requiere_cliente). MP no se seedea (es medio de pago) |
 | 169 | `169_venta_auditoria.sql` | **VF3/J1** · Tabla `venta_auditoria` (`tenant_id, venta_id, accion, detalle JSONB, usuario_id, usuario_nombre`) — audit log detallado por venta (anulación, cambio de cliente, override de descuento), visible en el modal de la venta. RLS por tenant |
+| 170 | `170_alertas_ventas_config.sql` | **VF4/K2** · `tenants.alerta_margen_negativo BOOLEAN`, `alerta_devoluciones_n INT` (NULL=off), `alerta_devoluciones_dias INT DEFAULT 30`. Umbrales de alertas de ventas event-driven (margen negativo al cerrar venta; cliente/producto con >N devoluciones en M días) |
 
 ---
 

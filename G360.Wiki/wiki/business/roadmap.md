@@ -13,6 +13,14 @@ updated: 2026-05-29
 
 ---
 
+## v1.16.0 — Relevamiento Ventas VF4: reportes + alertas + export (PROD ✅)
+
+Cuarta fase del backlog Ventas H-K (mig **170**).
+- **K1**: 5 reportes nuevos en ReportesPage — baja rotación, más devoluciones, anuladas/devueltas con motivo, comparativa por canal (online/presencial), margen real por venta.
+- **K3**: export CSV además de Excel/PDF en cada reporte.
+- **K2**: alertas event-driven (margen negativo al cerrar venta; cliente/producto con >N devoluciones en M días) a DUEÑO/SUPERVISOR/ADMIN, con umbrales en Config → Ventas → Operativa.
+- Pendiente del backlog: **VF5** (edición post-venta H1 + NC interna). L1 (Top 3) sin responder.
+
 ## v1.15.0 — Relevamiento Ventas VF1-VF3: POS operativo + canales + auditoría (PROD ✅)
 
 Primeras 3 fases del backlog Ventas H-K (mig **167-169**).

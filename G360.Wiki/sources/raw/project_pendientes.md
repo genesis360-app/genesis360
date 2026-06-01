@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.15.0** ✅ (Relevamiento Ventas VF1-VF3 — POS operativo H2-H5 + canales configurables/reglas online-presencial I1-I2 + auditoría/clave maestra/CONTADOR read-only J1-J3 · mig 167-169) · DEV alineado con PROD
+Último release en PROD: **v1.16.0** ✅ (Relevamiento Ventas VF4 — reportes K1 b/c/d/e/f + alertas K2 b/c/d + export CSV K3 · mig 170. Sobre VF1-VF3 v1.15.0) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,10 +14,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.15.0` | `v1.15.0` |
-| Migrations | 001–**169** ✅ | 001–**169** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.15.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.15.0 |
+| APP_VERSION | `v1.16.0` | `v1.16.0` |
+| Migrations | 001–**170** ✅ | 001–**170** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.16.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.16.0 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
@@ -132,7 +132,7 @@ type: project
 
 Respuestas finales en `relevamiento_ventas_respuestas.md` → sección H-K. Plan por fases (cada una deployable a PROD con su versión). Orden por dependencia/valor; **L1 (Top 3) pendiente** → reordenable.
 
-**Estado: VF1, VF2 y VF3 ✅ implementadas y en PROD (v1.15.0, mig 167-169, 2026-06-01).** Pendientes: VF4 (reportes/alertas) y VF5 (edición post-venta + NC interna). **L1 (Top 3) sin responder.**
+**Estado: VF1, VF2, VF3 ✅ (v1.15.0, mig 167-169) y VF4 ✅ (v1.16.0, mig 170) implementadas y en PROD (2026-06-01).** Pendiente: **VF5** (edición post-venta H1 + NC interna). **L1 (Top 3) sin responder.**
 
 **VF1 — POS operativo (H2, H3, H4, H5)** ✅ · bajo riesgo, valor diario:
 - **H4** — caja: `presupuesto` se puede crear **sin caja abierta**; `reserva` y venta directa (incl. 100% CC) **exigen caja**. Revertir la excepción actual de venta 100% CC sin caja (revisar `useCierreContable`/`validarDespacho` y el gate de caja en `registrarVenta`). Posible flag config si quieren permitir presupuesto-sin-caja on/off.
@@ -149,7 +149,7 @@ Respuestas finales en `relevamiento_ventas_respuestas.md` → sección H-K. Plan
 - **J2** — clave maestra DUEÑO para **anular venta despachada** + **cambiar cliente** + **override descuento** (extiende `tenants.clave_maestra`).
 - **J3** — **CONTADOR read-only** en Ventas: nav + ruta + guard que permite ver historial/detalle/export pero bloquea crear/editar.
 
-**VF4 — Reportes y alertas de Ventas (K1, K2, K3)** · depende de VF2 (comparativa por canal):
+**VF4 — Reportes y alertas de Ventas (K1, K2, K3)** ✅ · depende de VF2 (comparativa por canal):
 - **K1** — reportes: baja rotación, más devoluciones, anuladas/devueltas con motivo, comparativa por canal, **margen real por venta**. Página/sección Reportes de Ventas.
 - **K2** — alertas automáticas: **margen negativo**, **cliente con >N devoluciones en M días**, **producto con >N devoluciones en M días** (umbrales config). Sweep lazy o al registrar venta/devolución → `notificaciones`.
 - **K3** — export **Excel + PDF + CSV** en cada reporte (consistente con Caja).

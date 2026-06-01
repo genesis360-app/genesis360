@@ -11,12 +11,14 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
 
 type ReporteId = 'stock' | 'movimientos' | 'ventas' | 'criticos' | 'rotacion' | 'valorizado' | 'productos-atributos'
+  | 'baja-rotacion' | 'mas-devoluciones' | 'anuladas-devueltas' | 'comparativa-canal' | 'margen-real'
 
 interface ReporteConfig {
   id: ReporteId
@@ -34,6 +36,12 @@ const REPORTES: ReporteConfig[] = [
   { id: 'rotacion',   titulo: 'Rotación de stock',      descripcion: 'Cuánto se vendió de cada producto en el período',         icon: TrendingUp,      color: 'bg-orange-50 text-orange-600' },
   { id: 'valorizado',          titulo: 'Inventario valorizado',   descripcion: 'Stock actual multiplicado por precio de costo',                    icon: DollarSign,  color: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600' },
   { id: 'productos-atributos', titulo: 'Ficha de productos',      descripcion: 'Todos los productos con precios, categoría, proveedor y atributos', icon: Tag,         color: 'bg-teal-50 dark:bg-teal-900/20 text-teal-600' },
+  // VF4/K1 — reportes de Ventas
+  { id: 'baja-rotacion',       titulo: 'Baja rotación',           descripcion: 'Productos con pocas (o ninguna) unidades vendidas en el período', icon: TrendingUp,  color: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600' },
+  { id: 'mas-devoluciones',    titulo: 'Más devoluciones',        descripcion: 'Ranking de productos por unidades devueltas',                      icon: ArrowLeftRight, color: 'bg-rose-50 dark:bg-rose-900/20 text-rose-600' },
+  { id: 'anuladas-devueltas',  titulo: 'Anuladas y devueltas',    descripcion: 'Ventas anuladas y devoluciones con su motivo',                     icon: AlertTriangle, color: 'bg-red-50 dark:bg-red-900/20 text-red-500' },
+  { id: 'comparativa-canal',   titulo: 'Comparativa por canal',   descripcion: 'Ventas, total y ticket promedio por canal (online/presencial)',   icon: BarChart2,   color: 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600' },
+  { id: 'margen-real',         titulo: 'Margen real por venta',   descripcion: 'Margen de cada venta (total − costo) considerando descuentos',     icon: DollarSign,  color: 'bg-green-50 dark:bg-green-900/20 text-green-600' },
 ]
 
 function formatFecha(fecha: string) {
@@ -46,6 +54,7 @@ import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 export default function ReportesPage() {
   const { limits } = usePlanLimits()
   const { tenant, user } = useAuthStore()
+  const { clasificacionDe } = useCanalesVenta()  // VF4/K1 — comparativa por canal
   const formatMoneda = (valor: number) => formatMonedaLib(valor, (tenant as any)?.moneda ?? 'ARS')
 
   const [reporteActivo, setReporteActivo] = useState<ReporteId | null>(null)
@@ -199,6 +208,36 @@ export default function ReportesPage() {
     enabled: !!tenant,
   })
 
+  // VF4/K1 — devoluciones del período (con ítems + datos de la venta)
+  const { data: devoluciones = [] } = useQuery({
+    queryKey: ['reporte-devoluciones', tenant?.id, fechaDesde, fechaHasta],
+    queryFn: async () => {
+      const { data } = await supabase.from('devoluciones')
+        .select('*, devolucion_items(cantidad, productos(nombre, sku)), ventas(numero, cliente_nombre)')
+        .eq('tenant_id', tenant!.id)
+        .gte('created_at', fechaDesde + 'T00:00:00')
+        .lte('created_at', fechaHasta + 'T23:59:59')
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  // VF4/K1 — ventas anuladas (canceladas) del período
+  const { data: anuladas = [] } = useQuery({
+    queryKey: ['reporte-anuladas', tenant?.id, fechaDesde, fechaHasta],
+    queryFn: async () => {
+      const { data } = await supabase.from('ventas')
+        .select('numero, cliente_nombre, total, notas, updated_at, created_at')
+        .eq('tenant_id', tenant!.id).eq('estado', 'cancelada')
+        .gte('created_at', fechaDesde + 'T00:00:00')
+        .lte('created_at', fechaHasta + 'T23:59:59')
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
   // ── Datos procesados ─────────────────────────────────────────────────────────
 
   const datosPorReporte = {
@@ -319,6 +358,88 @@ export default function ReportesPage() {
       Notas: p.notas ?? '',
       Activo: p.activo ? 'Sí' : 'No',
     })),
+
+    // VF4/K1.b — baja rotación: unidades vendidas por producto, ascendente (incluye los no vendidos)
+    'baja-rotacion': (() => {
+      const vendidas: Record<string, number> = {}
+      ventas.forEach((v: any) => (v.venta_items ?? []).forEach((it: any) => {
+        if (it.producto_id) vendidas[it.producto_id] = (vendidas[it.producto_id] ?? 0) + it.cantidad
+      }))
+      return productos
+        .map((p: any) => ({
+          Producto: p.nombre,
+          SKU: p.sku ?? '',
+          Categoría: p.categorias?.nombre ?? '',
+          'Unidades vendidas': vendidas[p.id] ?? 0,
+          'Stock actual': p.stock_actual ?? 0,
+        }))
+        .sort((a: any, b: any) => a['Unidades vendidas'] - b['Unidades vendidas'])
+    })(),
+
+    // VF4/K1.c — más devoluciones: ranking de productos por unidades devueltas
+    'mas-devoluciones': (() => {
+      const dev: Record<string, { nombre: string; sku: string; cant: number; veces: number }> = {}
+      ;(devoluciones as any[]).forEach(d => (d.devolucion_items ?? []).forEach((it: any) => {
+        const key = it.productos?.sku || it.productos?.nombre || 's/d'
+        if (!dev[key]) dev[key] = { nombre: it.productos?.nombre ?? '', sku: it.productos?.sku ?? '', cant: 0, veces: 0 }
+        dev[key].cant += it.cantidad ?? 0
+        dev[key].veces += 1
+      }))
+      return Object.values(dev).sort((a, b) => b.cant - a.cant).map(d => ({
+        Producto: d.nombre, SKU: d.sku, 'Unidades devueltas': d.cant, 'N° de devoluciones': d.veces,
+      }))
+    })(),
+
+    // VF4/K1.d — anuladas y devueltas con motivo
+    'anuladas-devueltas': (() => {
+      const filas = [
+        ...(devoluciones as any[]).map(d => ({
+          Fecha: formatFecha(d.created_at), Tipo: 'Devolución', 'N° Venta': d.ventas?.numero ?? '',
+          Cliente: d.ventas?.cliente_nombre ?? '', Motivo: d.motivo ?? '', Monto: d.monto_total ?? 0,
+        })),
+        ...(anuladas as any[]).map(a => ({
+          Fecha: formatFecha(a.created_at), Tipo: 'Anulación', 'N° Venta': a.numero,
+          Cliente: a.cliente_nombre ?? '', Motivo: a.notas ?? '', Monto: a.total ?? 0,
+        })),
+      ]
+      return filas.sort((a, b) => (a.Fecha < b.Fecha ? 1 : -1))
+    })(),
+
+    // VF4/K1.e — comparativa por canal (online/presencial)
+    'comparativa-canal': (() => {
+      const porCanal: Record<string, { clasif: string; n: number; total: number }> = {}
+      ventas.forEach((v: any) => {
+        const canal = v.origen || 'Sin canal'
+        if (!porCanal[canal]) porCanal[canal] = { clasif: clasificacionDe(v.origen), n: 0, total: 0 }
+        porCanal[canal].n += 1
+        porCanal[canal].total += v.total
+      })
+      return Object.entries(porCanal)
+        .sort((a, b) => b[1].total - a[1].total)
+        .map(([canal, d]) => ({
+          Canal: canal,
+          Clasificación: d.clasif,
+          'N° ventas': d.n,
+          Total: d.total,
+          'Ticket promedio': d.n > 0 ? Math.round(d.total / d.n) : 0,
+        }))
+    })(),
+
+    // VF4/K1.f — margen real por venta (total − costo histórico)
+    'margen-real': ventas.map((v: any) => {
+      const costo = (v.venta_items ?? []).reduce((acc: number, it: any) => acc + ((it.precio_costo_historico ?? 0) * it.cantidad), 0)
+      const margen = v.total - costo
+      return {
+        Fecha: formatFecha(v.created_at),
+        'N° Venta': v.numero,
+        Cliente: v.cliente_nombre ?? '',
+        Total: v.total,
+        Descuento: v.descuento_total ?? 0,
+        Costo: costo,
+        'Margen $': margen,
+        'Margen %': v.total > 0 ? Math.round((margen / v.total) * 100) : 0,
+      }
+    }),
   }
 
   const totalesReporte = {
@@ -386,6 +507,27 @@ export default function ReportesPage() {
       XLSX.utils.book_append_sheet(wb, ws, reporte.titulo)
       XLSX.writeFile(wb, `genesis360_${id}_${new Date().toISOString().split('T')[0]}.xlsx`)
       toast.success('Excel descargado')
+    } finally {
+      setGenerando(false)
+    }
+  }
+
+  // ── Exportar CSV (K3) ────────────────────────────────────────────────────────
+  const exportarCSV = (id: ReporteId) => {
+    setGenerando(true)
+    try {
+      const datos = datosPorReporte[id]
+      if (datos.length === 0) { toast.error('No hay datos para exportar'); return }
+      const ws = XLSX.utils.json_to_sheet(datos)
+      const csv = XLSX.utils.sheet_to_csv(ws)
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `genesis360_${id}_${new Date().toISOString().split('T')[0]}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('CSV descargado')
     } finally {
       setGenerando(false)
     }
@@ -574,6 +716,10 @@ export default function ReportesPage() {
               <button onClick={() => exportarPDF(reporteActivo)} disabled={generando || datos.length === 0}
                 className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50">
                 <FileText size={15} /> PDF
+              </button>
+              <button onClick={() => exportarCSV(reporteActivo)} disabled={generando || datos.length === 0}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50">
+                <Download size={15} /> CSV
               </button>
             </div>
           </div>

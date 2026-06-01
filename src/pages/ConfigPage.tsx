@@ -424,6 +424,10 @@ export default function ConfigPage() {
   const [bizPresupuestoValidez, setBizPresupuestoValidez] = useState<string>(
     String((tenant as any)?.presupuesto_validez_dias ?? 30)
   )
+  // VF4/K2 — alertas de ventas
+  const [bizAlertaMargenNeg, setBizAlertaMargenNeg] = useState<boolean>((tenant as any)?.alerta_margen_negativo ?? true)
+  const [bizAlertaDevN, setBizAlertaDevN] = useState<string>((tenant as any)?.alerta_devoluciones_n != null ? String((tenant as any).alerta_devoluciones_n) : '')
+  const [bizAlertaDevDias, setBizAlertaDevDias] = useState<string>(String((tenant as any)?.alerta_devoluciones_dias ?? 30))
   // Reservas (E1/E2/E6)
   const [bizReservaSenaObligatoria, setBizReservaSenaObligatoria] = useState<boolean>((tenant as any)?.reserva_sena_obligatoria ?? true)
   const [bizReservaSenaMinimaPct, setBizReservaSenaMinimaPct] = useState<string>(
@@ -580,6 +584,9 @@ export default function ConfigPage() {
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
       trazabilidad_asignacion: bizTrazaAsignacion,
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
+      alerta_margen_negativo: bizAlertaMargenNeg,
+      alerta_devoluciones_n: bizAlertaDevN !== '' ? parseInt(bizAlertaDevN) : null,
+      alerta_devoluciones_dias: parseInt(bizAlertaDevDias) || 30,
       // Reservas (E1/E2/E6)
       reserva_sena_obligatoria: bizReservaSenaObligatoria,
       reserva_sena_minima_pct: parseFloat(bizReservaSenaMinimaPct) || 0,
@@ -3665,6 +3672,47 @@ export default function ConfigPage() {
             <div className="space-y-4">
               {/* VF2 — Canales de venta + reglas online/presencial */}
               <CanalesVentaPanel />
+              {/* VF4/K2 — Alertas automáticas de ventas */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"><Bell size={18} className="text-accent" /> Alertas de ventas</h2>
+                <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">Notifican a DUEÑO/SUPERVISOR/ADMIN automáticamente.</p>
+                <div className="flex items-center justify-between py-1">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Margen negativo</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Avisar cuando una venta se cierra con costo mayor al total.</p>
+                  </div>
+                  <button type="button" disabled={!canEdit} onClick={() => setBizAlertaMargenNeg(v => !v)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${bizAlertaMargenNeg ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${bizAlertaMargenNeg ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alertar si las devoluciones superan</label>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min="1" onWheel={e => e.currentTarget.blur()} value={bizAlertaDevN} disabled={!canEdit}
+                        onChange={e => setBizAlertaDevN(e.target.value)} placeholder="Desactivado"
+                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                      <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">por cliente/producto</span>
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = sin alerta de devoluciones.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">En los últimos (días)</label>
+                    <input type="number" min="1" max="365" onWheel={e => e.currentTarget.blur()} value={bizAlertaDevDias} disabled={!canEdit}
+                      onChange={e => setBizAlertaDevDias(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
               {/* Presupuesto */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300">Documentos</h2>

@@ -495,3 +495,8 @@ Primeras 3 fases del backlog Ventas H-K. Respuestas en `sources/raw/relevamiento
 - **J1**: `venta_auditoria` (mig 169) + `logVentaAuditoria()` + **timeline en el modal** de la venta (anulación / cambio de cliente / override de descuento).
 - **J2**: **clave maestra** (RPC `verificar_clave_maestra`) para **anular venta despachada**, **cambiar cliente** (botones nuevos en el detalle) y **override de descuento** (autoriza descuentos sobre el tope de rol/canal, re-ejecuta la venta con `overrideDescuento`). Sin `tenants.clave_maestra` configurada no se exige.
 - **J3**: **CONTADOR read-only** — `/ventas` en `CONTADOR_ALLOWED` + nav visible; en `VentasPage` solo el tab Historial (sin POS, sin devolución/anular/registrar; guards en `registrarVenta`/`abrirModalDevolucion`).
+
+### VF4 — Reportes y alertas (K1-K3, v1.16.0)
+- **K1** (`ReportesPage`): reportes nuevos **baja-rotacion**, **mas-devoluciones**, **anuladas-devueltas** (devoluciones + ventas canceladas con motivo), **comparativa-canal** (online/presencial vía `useCanalesVenta`), **margen-real** (total − `precio_costo_historico`).
+- **K3**: export **CSV** (`exportarCSV` + `sheet_to_csv`) además de Excel/PDF.
+- **K2** (mig 170): alertas event-driven a DUEÑO/SUPERVISOR/ADMIN (`notificarRolesVentas`): **margen negativo** al cerrar venta despachada; **cliente/producto con >N devoluciones en M días** al `procesarDevolucion`. Umbrales `tenants.alerta_margen_negativo` / `alerta_devoluciones_n` / `alerta_devoluciones_dias` en Config → Ventas → Operativa.

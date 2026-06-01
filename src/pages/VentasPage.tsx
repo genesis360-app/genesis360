@@ -200,6 +200,17 @@ export default function VentasPage() {
       usuario_id: user?.id ?? null, usuario_nombre: (user as any)?.nombre_display ?? user?.rol ?? null,
     }).then(() => {}, () => {})
   }
+  // VF4/K2 — notificar a DUEÑO/SUPERVISOR/ADMIN (alertas de ventas)
+  const notificarRolesVentas = async (tipo: string, titulo: string, mensaje: string) => {
+    try {
+      const { data: us } = await supabase.from('users').select('id')
+        .eq('tenant_id', tenant!.id).in('rol', ['DUEÑO', 'SUPERVISOR', 'ADMIN', 'SUPER_USUARIO'])
+      if (!us || us.length === 0) return
+      await supabase.from('notificaciones').insert(us.map((u: any) => ({
+        tenant_id: tenant!.id, user_id: u.id, tipo, titulo, mensaje, action_url: '/ventas',
+      })))
+    } catch { /* las alertas no bloquean el flujo */ }
+  }
   // VF3/J2 — cambiar el cliente de una venta (con clave maestra + auditoría)
   const confirmarCambioCliente = (c: any) => {
     const venta = cambiarClienteVenta
@@ -1845,6 +1856,14 @@ export default function VentasPage() {
         })
         setOverrideDescuento(false)
       }
+      // K2 — alerta de margen negativo (venta despachada con costo > total)
+      if (estado === 'despachada' && ((tenant as any)?.alerta_margen_negativo ?? true)) {
+        const costoTotal = cart.reduce((acc, i) => acc + ((i.precio_costo || 0) * (i.tiene_series ? i.series_seleccionadas.length : i.cantidad)), 0)
+        if (costoTotal > total + 0.5) {
+          notificarRolesVentas('warning', `Venta #${venta.numero} con margen negativo`,
+            `Se cerró la venta #${venta.numero} por $${total.toLocaleString('es-AR', { maximumFractionDigits: 0 })} con un costo de $${costoTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}.`)
+        }
+      }
 
       // Si el QR de MP fue pagado antes de crear la venta, aplicar monto_pagado del log
       if (preVentaId) {
@@ -2656,6 +2675,31 @@ export default function VentasPage() {
       qc.invalidateQueries({ queryKey: ['ventas'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+
+      // K2 — alertas: cliente/producto con > N devoluciones en M días (fire-and-forget)
+      const N_dev = (tenant as any)?.alerta_devoluciones_n
+      if (N_dev != null) {
+        const M_dev = (tenant as any)?.alerta_devoluciones_dias ?? 30
+        const desdeISO = new Date(Date.now() - M_dev * 86_400_000).toISOString()
+        const ventaDev = devolucionVenta
+        const items = itemsADevolver
+        void (async () => {
+          if (ventaDev.cliente_id) {
+            const { count } = await supabase.from('devoluciones')
+              .select('id, ventas!inner(cliente_id)', { count: 'exact', head: true })
+              .eq('tenant_id', tenant!.id).eq('ventas.cliente_id', ventaDev.cliente_id).gte('created_at', desdeISO)
+            if ((count ?? 0) >= N_dev) notificarRolesVentas('warning', 'Cliente con muchas devoluciones',
+              `${ventaDev.cliente_nombre ?? 'Un cliente'} acumula ${count} devoluciones en los últimos ${M_dev} días.`)
+          }
+          for (const item of items) {
+            const { count } = await supabase.from('devolucion_items')
+              .select('id, devoluciones!inner(created_at, tenant_id)', { count: 'exact', head: true })
+              .eq('producto_id', item.producto_id).eq('devoluciones.tenant_id', tenant!.id).gte('devoluciones.created_at', desdeISO)
+            if ((count ?? 0) >= N_dev) notificarRolesVentas('warning', 'Producto con muchas devoluciones',
+              `"${item.nombre}" acumula ${count} devoluciones en los últimos ${M_dev} días.`)
+          }
+        })()
+      }
 
       // Mostrar comprobante
       setDevComprobante({

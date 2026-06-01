@@ -14,6 +14,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useCierreContable } from '@/hooks/useCierreContable'
+import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
@@ -117,6 +118,7 @@ export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
+  const { canalesActivos, reglaDe } = useCanalesVenta()  // VF2 (I1/I2)
   const clienteObligatorio  = (tenant as any)?.cliente_obligatorio    ?? 'reservas'
   const clienteCreacionInline = (tenant as any)?.cliente_creacion_inline ?? true
   const permiteCF           = (tenant as any)?.cliente_consumidor_final ?? true  // H5: ¿se puede vender como Consumidor Final?
@@ -205,6 +207,12 @@ export default function VentasPage() {
   const [committedAsignado, setCommittedAsignado] = useState(0)
   // ISS-103: canal de venta en POS
   const [canalPOS, setCanalPOS] = useState('POS')
+  // VF2/I1: si la default no matchea ningún canal configurado, usar el primero activo
+  useEffect(() => {
+    if (canalesActivos.length > 0 && !canalesActivos.some(c => c.nombre === canalPOS)) {
+      setCanalPOS(canalesActivos[0].nombre)
+    }
+  }, [canalesActivos])
   // ISS-086: cuotas por banco en tarjeta de crédito
   const [cuotasSeleccion, setCuotasSeleccion] = useState<Record<number, { banco: string; cuotas: number; interes: number; sinInteres: boolean }>>({})
   const cuotasBancos: { id: string; nombre: string; cuotas: { cant: number; sin_interes: boolean; interes: number }[] }[] =
@@ -1391,6 +1399,10 @@ export default function VentasPage() {
     const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
     const tiers = item.tiers
     if (!tiers || tiers.length === 0) return item.precio_unitario
+    // VF2/I2: la lista de precios por canal puede forzar minorista o mayorista
+    const lista = reglaDe(canalPOS).lista_precio
+    if (lista === 'minorista') return item.precio_unitario
+    if (lista === 'mayorista') return tiers[tiers.length - 1]?.precio ?? item.precio_unitario  // mejor tier (asc)
     let precio = item.precio_unitario
     for (const t of tiers) if (cant >= t.cantidad_minima) precio = t.precio  // tiers ya viene asc
     return precio
@@ -1610,6 +1622,7 @@ export default function VentasPage() {
     }
     // G3 — validación de descuentos por rol
     const rol = user?.rol
+    const reglaCanal = reglaDe(canalPOS)  // VF2/I2: reglas según clasificación del canal de venta
     const hayDescuentoItem = cart.some(i => i.descuento > 0)
     const hayDescuentoGlobal = descTotalVal > 0
     // Bloqueo duro: roles no autorizados no pueden aplicar ningún descuento
@@ -1630,6 +1643,19 @@ export default function VentasPage() {
         return
       }
     }
+    // VF2/I2 — tope de descuento por canal (online/presencial), aplica a todos los roles
+    const maxCanal = reglaCanal.descuento_max_pct
+    if (maxCanal != null && (hayDescuentoItem || hayDescuentoGlobal)) {
+      const itemExc = cart.find(i => i.descuento_tipo === 'pct' && i.descuento > maxCanal)
+      if (itemExc) {
+        toast.error(`El descuento del ${itemExc.descuento}% supera el máximo de este canal (${maxCanal}%).`)
+        return
+      }
+      if (descuentoTotalTipo === 'pct' && descTotalVal > maxCanal) {
+        toast.error(`El descuento global supera el máximo de este canal (${maxCanal}%).`)
+        return
+      }
+    }
 
     // Cliente obligatorio según config del tenant
     // H5 (VF1): si el negocio factura y la venta NO es a Consumidor Final, el cliente
@@ -1640,6 +1666,7 @@ export default function VentasPage() {
       || (clienteObligatorio === 'reservas' && (estado === 'pendiente' || estado === 'reservada'))
       || (factHabilitada && !ventaCF)
       || !permiteCF
+      || !!reglaCanal.requiere_cliente
     if (clienteRequerido && !clienteId) {
       toast.error(factHabilitada && !ventaCF
         ? 'Para facturar a un cliente registrado, seleccioná o creá el cliente (o marcá la venta como Consumidor Final).'
@@ -2231,6 +2258,16 @@ export default function VentasPage() {
   }
 
   const abrirModalDevolucion = (venta: any) => {
+    // VF2/I2: plazo de devolución según la clasificación del canal de la venta
+    const reglaDev = reglaDe(venta.origen)
+    if (reglaDev.devolucion_dias != null) {
+      const base = new Date(venta.updated_at ?? venta.created_at ?? Date.now())
+      const dias = Math.floor((Date.now() - base.getTime()) / 86_400_000)
+      if (dias > reglaDev.devolucion_dias) {
+        toast.error(`El plazo de devolución de este canal es de ${reglaDev.devolucion_dias} días y ya pasaron ${dias}.`)
+        return
+      }
+    }
     const items = (venta.venta_items ?? []).map((item: any) => ({
       venta_item_id: item.id,
       producto_id: item.producto_id,
@@ -4080,11 +4117,10 @@ export default function VentasPage() {
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Canal de venta</label>
                     <select value={canalPOS} onChange={e => setCanalPOS(e.target.value)}
                       className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                      <option value="POS">🏪 Presencial</option>
-                      <option value="Instagram">📸 Instagram</option>
-                      <option value="Facebook">👤 Facebook</option>
-                      <option value="WhatsApp">💬 WhatsApp</option>
-                      <option value="Otros">📦 Otros</option>
+                      {canalesActivos.length === 0 && <option value="POS">🏪 Presencial</option>}
+                      {canalesActivos.map(c => (
+                        <option key={c.id} value={c.nombre}>{c.icono ? `${c.icono} ` : ''}{c.nombre}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">

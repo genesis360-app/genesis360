@@ -29,7 +29,7 @@ import { ConfigButton } from '@/components/ConfigButton'
 // ─── Orden según DS Sprint 2 ──────────────────────────────────────────────────
 const navItems = [
   { to: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard',      modulo: 'dashboard',     contadorVisible: true },
-  { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas',         modulo: 'ventas',        cajeroVisible: true },
+  { to: '/ventas',        icon: ShoppingCart,    label: 'Ventas',         modulo: 'ventas',        cajeroVisible: true, contadorVisible: true },
   { to: '/gastos',        icon: TrendingDown,    label: 'Gastos',         modulo: 'gastos',        contadorVisible: true },
   { to: '/caja',          icon: DollarSign,      label: 'Caja',           modulo: 'caja',          cajeroVisible: true, contadorVisible: true },
   { to: '/productos',     icon: Package,         label: 'Productos',      modulo: 'inventario',    depositoVisible: true },
@@ -55,7 +55,7 @@ const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
-const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion']
+const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion', '/ventas']  // J3: CONTADOR read-only en Ventas
 const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones']
 
 export function AppLayout() {

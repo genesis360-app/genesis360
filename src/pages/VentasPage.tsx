@@ -116,6 +116,7 @@ function haversineKmCoordsStatic(c1: string, c2: string): number | null {
 
 export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
+  const esContador = user?.rol === 'CONTADOR'  // J3: acceso read-only a Ventas
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
   const { canalesActivos, reglaDe } = useCanalesVenta()  // VF2 (I1/I2)
@@ -176,11 +177,53 @@ export default function VentasPage() {
       toast.error(e?.message ?? 'No se pudo enviar el email')
     } finally { setEmailTicketSending(false) }
   }
+  // VF3/J2 — pide la clave maestra (si está configurada) antes de ejecutar una acción sensible
+  const pedirClaveMaestra = (titulo: string, onOk: () => void) => {
+    if (!claveMaestraConfigurada) { onOk(); return }
+    setClaveInput(''); setClaveReq({ titulo, onOk })
+  }
+  const confirmarClaveMaestra = async () => {
+    if (!claveReq) return
+    setClaveVerificando(true)
+    try {
+      const { data: ok } = await supabase.rpc('verificar_clave_maestra', { p_tenant_id: tenant!.id, p_clave: claveInput.trim() })
+      if (!ok) { toast.error('Clave maestra incorrecta'); return }
+      const cb = claveReq.onOk
+      setClaveReq(null); setClaveInput('')
+      cb()
+    } finally { setClaveVerificando(false) }
+  }
+  // VF3/J1 — registra una acción sensible en el audit log de la venta (fire-and-forget)
+  const logVentaAuditoria = (ventaId: string, accion: string, detalle: any) => {
+    supabase.from('venta_auditoria').insert({
+      id: crypto.randomUUID(), tenant_id: tenant!.id, venta_id: ventaId, accion, detalle,
+      usuario_id: user?.id ?? null, usuario_nombre: (user as any)?.nombre_display ?? user?.rol ?? null,
+    }).then(() => {}, () => {})
+  }
+  // VF3/J2 — cambiar el cliente de una venta (con clave maestra + auditoría)
+  const confirmarCambioCliente = (c: any) => {
+    const venta = cambiarClienteVenta
+    if (!venta) return
+    pedirClaveMaestra('Cambiar el cliente de la venta', async () => {
+      const { error } = await supabase.from('ventas')
+        .update({ cliente_id: c.id, cliente_nombre: c.nombre, cliente_telefono: c.telefono ?? null, consumidor_final: false })
+        .eq('id', venta.id)
+      if (error) { toast.error(error.message); return }
+      logVentaAuditoria(venta.id, 'cambio_cliente', { cliente_anterior: venta.cliente_nombre ?? null, cliente_nuevo: c.nombre })
+      toast.success('Cliente actualizado')
+      setVentaDetalle((d: any) => d && d.id === venta.id ? { ...d, cliente_id: c.id, cliente_nombre: c.nombre } : d)
+      qc.invalidateQueries({ queryKey: ['venta-auditoria', venta.id] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+      setCambiarClienteVenta(null); setClienteSearch('')
+    })
+  }
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
   const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>(() => searchParams.get('id') ? 'historial' : 'nueva')
+  // J3: CONTADOR es read-only → siempre en el historial, sin acceso al POS
+  useEffect(() => { if (esContador && tab !== 'historial') setTab('historial') }, [esContador, tab])
   const [ventaGrupoId, setVentaGrupoId] = useState<string | null>(null)
 
   // Nueva venta
@@ -246,6 +289,14 @@ export default function VentasPage() {
   const [emailTicketOpen, setEmailTicketOpen] = useState(false)
   const [emailTicketValue, setEmailTicketValue] = useState('')
   const [emailTicketSending, setEmailTicketSending] = useState(false)
+  // VF3/J2 — clave maestra para acciones sensibles
+  const claveMaestraConfigurada = !!(tenant as any)?.clave_maestra
+  const [claveReq, setClaveReq] = useState<{ titulo: string; onOk: () => void } | null>(null)
+  const [claveInput, setClaveInput] = useState('')
+  const [claveVerificando, setClaveVerificando] = useState(false)
+  const [overrideDescuento, setOverrideDescuento] = useState(false)  // J2c — override de descuento autorizado
+  // VF3/J2 — cambiar cliente post-venta
+  const [cambiarClienteVenta, setCambiarClienteVenta] = useState<any | null>(null)
   const [saldoModal, setSaldoModal] = useState<{ ventaId: string; total: number; montoPagado: number; mediosPago: MedioPagoItem[]; targetEstado?: 'despachada' | 'reservada' } | null>(null)
   // E2/E3 — cancelación de reserva: motivo + (si hay seña) penalidad + destino devolución/crédito
   const [cancelReservaModal, setCancelReservaModal] = useState<{ venta: any; destino: 'devolucion' | 'credito'; motivo: string; observacion: string } | null>(null)
@@ -875,7 +926,20 @@ export default function VentasPage() {
       const { data } = await q
       return data ?? []
     },
-    enabled: !!tenant && clienteDropOpen,
+    enabled: !!tenant && (clienteDropOpen || !!cambiarClienteVenta),
+  })
+
+  // VF3/J1 — audit log de la venta abierta en el detalle
+  const ventaDetalleId = ventaDetalle?.id ?? null
+  const { data: ventaAuditoria = [] } = useQuery({
+    queryKey: ['venta-auditoria', ventaDetalleId],
+    enabled: !!ventaDetalleId,
+    queryFn: async () => {
+      const { data } = await supabase.from('venta_auditoria')
+        .select('id, accion, detalle, usuario_nombre, created_at')
+        .eq('venta_id', ventaDetalleId).order('created_at', { ascending: false })
+      return data ?? []
+    },
   })
 
   // Domicilios del cliente seleccionado — para autocompletar dirección de envío
@@ -1607,6 +1671,7 @@ export default function VentasPage() {
   const montoCredito = mediosPago.filter(m => m.tipo === 'Crédito a favor').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
 
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
+    if (esContador) { toast.error('El CONTADOR tiene acceso de solo lectura en Ventas.'); return }
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
     for (const item of cart) {
       if (item.tiene_series && item.series_seleccionadas.length === 0) {
@@ -1620,41 +1685,38 @@ export default function VentasPage() {
         toast.error(`Cantidad inválida para "${item.nombre}". Corregila antes de guardar.`); return
       }
     }
-    // G3 — validación de descuentos por rol
+    // G3 + J2c — validación de descuentos por rol/canal, con override por clave maestra
     const rol = user?.rol
     const reglaCanal = reglaDe(canalPOS)  // VF2/I2: reglas según clasificación del canal de venta
     const hayDescuentoItem = cart.some(i => i.descuento > 0)
     const hayDescuentoGlobal = descTotalVal > 0
-    // Bloqueo duro: roles no autorizados no pueden aplicar ningún descuento
-    if (descuentoBloqueadoCajero && (hayDescuentoItem || hayDescuentoGlobal)) {
-      toast.error('Solo DUEÑO, SUPERVISOR o ADMIN pueden aplicar descuentos. Pedí autorización.')
-      return
-    }
-    // Límite de % para SUPERVISOR (DUEÑO/ADMIN sin tope)
     const maxSupervisor = (tenant as any)?.descuento_max_supervisor_pct
-    if (rol === 'SUPERVISOR' && maxSupervisor != null) {
-      const itemConExceso = cart.find(item => item.descuento_tipo === 'pct' && item.descuento > maxSupervisor)
-      if (itemConExceso) {
-        toast.error(`Descuento del ${itemConExceso.descuento}% supera el límite del SUPERVISOR (${maxSupervisor}%). Solicitá autorización al DUEÑO.`)
-        return
-      }
-      if (descuentoTotalTipo === 'pct' && descTotalVal > maxSupervisor) {
-        toast.error(`El descuento global del ${descTotalVal}% supera el límite del SUPERVISOR (${maxSupervisor}%).`)
-        return
-      }
-    }
-    // VF2/I2 — tope de descuento por canal (online/presencial), aplica a todos los roles
     const maxCanal = reglaCanal.descuento_max_pct
-    if (maxCanal != null && (hayDescuentoItem || hayDescuentoGlobal)) {
+    // Detectar la primera violación de descuento (si la hay)
+    let violacionDesc: string | null = null
+    if (descuentoBloqueadoCajero && (hayDescuentoItem || hayDescuentoGlobal)) {
+      violacionDesc = 'tu rol no puede aplicar descuentos'
+    } else if (rol === 'SUPERVISOR' && maxSupervisor != null) {
+      const itemExc = cart.find(i => i.descuento_tipo === 'pct' && i.descuento > maxSupervisor)
+      if (itemExc) violacionDesc = `${itemExc.descuento}% supera el límite del SUPERVISOR (${maxSupervisor}%)`
+      else if (descuentoTotalTipo === 'pct' && descTotalVal > maxSupervisor) violacionDesc = `el descuento global supera el límite del SUPERVISOR (${maxSupervisor}%)`
+    }
+    if (!violacionDesc && maxCanal != null && (hayDescuentoItem || hayDescuentoGlobal)) {
       const itemExc = cart.find(i => i.descuento_tipo === 'pct' && i.descuento > maxCanal)
-      if (itemExc) {
-        toast.error(`El descuento del ${itemExc.descuento}% supera el máximo de este canal (${maxCanal}%).`)
-        return
+      if (itemExc) violacionDesc = `${itemExc.descuento}% supera el máximo de este canal (${maxCanal}%)`
+      else if (descuentoTotalTipo === 'pct' && descTotalVal > maxCanal) violacionDesc = `el descuento global supera el máximo de este canal (${maxCanal}%)`
+    }
+    // Si hay violación: con clave maestra configurada se puede autorizar (override); sin clave, bloquea.
+    if (violacionDesc && !overrideDescuento) {
+      if (claveMaestraConfigurada) {
+        pedirClaveMaestra(`Autorizar descuento (${violacionDesc})`, () => {
+          setOverrideDescuento(true)
+          setTimeout(() => registrarVentaRef.current?.(estado), 0)
+        })
+      } else {
+        toast.error(`Descuento no autorizado: ${violacionDesc}. Pedí autorización a un DUEÑO/SUPERVISOR.`)
       }
-      if (descuentoTotalTipo === 'pct' && descTotalVal > maxCanal) {
-        toast.error(`El descuento global supera el máximo de este canal (${maxCanal}%).`)
-        return
-      }
+      return
     }
 
     // Cliente obligatorio según config del tenant
@@ -1774,6 +1836,15 @@ export default function VentasPage() {
       }).select().single()
       if (ventaError) throw ventaError
       ventaIdCreada = venta.id
+
+      // J2c/J1 — si la venta usó override de descuento autorizado por clave maestra, dejar traza
+      if (overrideDescuento) {
+        logVentaAuditoria(venta.id, 'override_descuento', {
+          descuento_global_pct: descuentoTotalTipo === 'pct' ? descTotalVal : null,
+          items_con_descuento: cart.filter(i => i.descuento > 0).map(i => ({ nombre: i.nombre, descuento: i.descuento })),
+        })
+        setOverrideDescuento(false)
+      }
 
       // Si el QR de MP fue pagado antes de crear la venta, aplicar monto_pagado del log
       if (preVentaId) {
@@ -2114,7 +2185,7 @@ export default function VentasPage() {
       }
 
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
-      setClienteCCEnabled(false); setEsConsumidorFinal(true)
+      setClienteCCEnabled(false); setEsConsumidorFinal(true); setOverrideDescuento(false)
       setMediosPago([{ tipo: '', monto: '' }]); setCommittedAsignado(0); setCuotasSeleccion({}); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada'); setCanalPOS('POS')
       setRequiereEnvio(false)
       setEnvioTransporte('propio'); setEnvioCourier(''); setEnvioServicio('')
@@ -2258,6 +2329,7 @@ export default function VentasPage() {
   }
 
   const abrirModalDevolucion = (venta: any) => {
+    if (esContador) { toast.error('El CONTADOR tiene acceso de solo lectura en Ventas.'); return }
     // VF2/I2: plazo de devolución según la clasificación del canal de la venta
     const reglaDev = reglaDe(venta.origen)
     if (reglaDev.devolucion_dias != null) {
@@ -3051,7 +3123,7 @@ export default function VentasPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-700 -mb-2">
-        {[{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }, { id: 'canales', label: 'Canales', icon: Layers }].map(({ id, label, icon: Icon }) => (
+        {(esContador ? [{ id: 'historial', label: 'Historial', icon: FileText }] : [{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }, { id: 'canales', label: 'Canales', icon: Layers }]).map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id as Tab)}
             className={`flex items-center gap-2 py-2.5 px-4 text-sm font-medium transition-all border-b-2 -mb-px
               ${tab === id
@@ -4525,6 +4597,24 @@ export default function VentasPage() {
                 className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
                 <Printer size={15} /> Ver / Imprimir ticket
               </button>
+              {/* VF3/J1 — auditoría de la venta */}
+              {ventaAuditoria.length > 0 && (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5"><Lock size={12} /> Auditoría</p>
+                  <div className="space-y-1.5">
+                    {(ventaAuditoria as any[]).map(a => (
+                      <div key={a.id} className="text-xs text-gray-600 dark:text-gray-300 flex items-start gap-2">
+                        <span className="text-gray-400 whitespace-nowrap">{new Date(a.created_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="flex-1">
+                          <span className="font-medium">{({ anulacion: 'Anulación', cambio_cliente: 'Cambio de cliente', override_descuento: 'Override de descuento', edicion_items: 'Edición de ítems' } as any)[a.accion] ?? a.accion}</span>
+                          {a.usuario_nombre ? ` · ${a.usuario_nombre}` : ''}
+                          {a.accion === 'cambio_cliente' && a.detalle?.cliente_nuevo ? ` → ${a.detalle.cliente_nuevo}` : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* F1 — actualizar presupuesto on-demand (recrea con precios actuales + resetea contador de vencimiento) */}
               {ventaDetalle.estado === 'pendiente' && !isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias) && (
                 <button onClick={actualizarPrecios} disabled={actualizandoPrecios}
@@ -4603,6 +4693,23 @@ export default function VentasPage() {
                   className="w-full flex items-center justify-center gap-2 border-2 border-orange-200 text-orange-600 dark:text-orange-400 font-semibold py-2.5 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all text-sm">
                   <RotateCcw size={15} /> Devolver
                 </button>
+              )}
+              {/* J2 — acciones con clave maestra (anular despachada / cambiar cliente) */}
+              {!esContador && ['despachada', 'facturada'].includes(ventaDetalle.estado) && !isPeriodoCerrado(ventaDetalle.created_at) && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => pedirClaveMaestra('Anular venta despachada', () => {
+                    logVentaAuditoria(ventaDetalle.id, 'anulacion', { estado_previo: ventaDetalle.estado, total: ventaDetalle.total })
+                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
+                  })}
+                    disabled={cambiarEstado.isPending}
+                    className="flex items-center justify-center gap-1.5 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm">
+                    <X size={15} /> Anular
+                  </button>
+                  <button onClick={() => { setCambiarClienteVenta(ventaDetalle); setClienteSearch('') }}
+                    className="flex items-center justify-center gap-1.5 border-2 border-blue-200 text-blue-600 dark:text-blue-400 font-semibold py-2.5 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-sm">
+                    <User size={15} /> Cambiar cliente
+                  </button>
+                </div>
               )}
               {ventaDetalle.estado === 'reservada' && (
                 <button onClick={modificarReserva} disabled={cambiarEstado.isPending}
@@ -4897,6 +5004,51 @@ export default function VentasPage() {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* VF3/J2 — Modal clave maestra */}
+      {claveReq && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-xl w-full max-w-xs p-5 space-y-3">
+            <h3 className="font-semibold text-primary flex items-center gap-2"><Lock size={16} /> Clave maestra</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{claveReq.titulo}. Ingresá la clave maestra del DUEÑO para autorizar.</p>
+            <input type="password" value={claveInput} onChange={e => setClaveInput(e.target.value)} autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') confirmarClaveMaestra() }}
+              placeholder="Clave maestra"
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+            <div className="flex gap-2">
+              <button onClick={() => { setClaveReq(null); setClaveInput('') }}
+                className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm">Cancelar</button>
+              <button onClick={confirmarClaveMaestra} disabled={claveVerificando}
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2 rounded-xl text-sm disabled:opacity-60">
+                {claveVerificando ? 'Verificando…' : 'Autorizar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VF3/J2 — Modal cambiar cliente */}
+      {cambiarClienteVenta && (
+        <div className="fixed inset-0 bg-black/50 z-[55] flex items-center justify-center p-4">
+          <div className="bg-surface rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-3">
+            <h3 className="font-semibold text-primary flex items-center gap-2"><User size={16} /> Cambiar cliente — Venta {formatTicket(cambiarClienteVenta)}</h3>
+            <input type="text" value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} autoFocus
+              placeholder="Buscar por nombre o DNI…"
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+            <div className="max-h-52 overflow-y-auto space-y-1">
+              {(clientesBusqueda as any[]).map(c => (
+                <button key={c.id} onClick={() => confirmarCambioCliente(c)}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm text-gray-700 dark:text-gray-200">
+                  {c.nombre}{c.dni ? ` · ${c.dni}` : ''}
+                </button>
+              ))}
+              {clientesBusqueda.length === 0 && <p className="text-xs text-gray-400 px-1 py-2">Escribí para buscar un cliente.</p>}
+            </div>
+            <button onClick={() => { setCambiarClienteVenta(null); setClienteSearch('') }}
+              className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm">Cerrar</button>
           </div>
         </div>
       )}

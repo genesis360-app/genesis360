@@ -112,6 +112,43 @@ updated: 2026-05-31
 
 ---
 
+## H-K. Respuestas finales (relevadas 2026-06-01)
+
+### H. Edición y permisos en el POS
+| # | Respuesta | Resumen para implementación |
+|---|---|---|
+| H1 | **(b) + autorización + NC interna** | Quitar/editar ítem: **libre antes de cobrar**. Una vez **cobrada**, requiere **autorización SUPERVISOR/DUEÑO**; y si la venta **se facturó**, genera **nota de crédito INTERNA/manual** (ajuste + motivo, sin emitir contra AFIP por ahora — la NC electrónica AFIP es feature aparte, ver L1). |
+| H2 | **(b) ambas** | Imprimir ticket **opcional**: botón "Imprimir" + "Enviar por email" (las dos disponibles). |
+| H3 | **(a)** | Reimprimir ticket de venta anterior: **cualquier rol con acceso a Ventas** desde el historial. |
+| H4 | **Quitar excepción 100% CC** | **Presupuesto**: puede crearse **sin caja abierta**. **Reservas y venta directa (incluida 100% CC)**: **siempre exigen caja abierta**. ⚠ Revertir la lógica actual que permitía venta 100% CC sin caja. |
+| H5 | **Flag consumidor final + (d)** | Al **iniciar la venta** (armar carrito) un flag **"Consumidor final"** vs **"Cliente registrado"**. Si el negocio tiene **facturación activa** y NO es consumidor final → **cliente obligatorio** (para poder facturar A/B/C). Se apoya en el Config existente **"Cliente en el punto de venta"**. |
+
+### I. Canales de venta
+| # | Respuesta | Resumen para implementación |
+|---|---|---|
+| I1 | **(c) sin MP** | Catálogo de canales **configurable por tenant** + **jerarquía/clasificación online vs presencial**. **Quitar "MP"** del catálogo de canales (es medio de pago, no canal). |
+| I2 | **online vs presencial — las 4 reglas** | Reglas configurables distinto por clasificación **online/presencial**: **plazo de devolución**, **descuento máximo**, **lista de precios por defecto**, **requisito de cliente/factura**. |
+| I3 | **(a)** | Numeración: **única (correlativo por sucursal)**, como hoy. Sin cambios. |
+| I4 | **(a)** | Sync stock online: **stock real publicado, sin buffer**, como hoy. Sin cambios. |
+
+### J. Auditoría y permisos
+| # | Respuesta | Resumen para implementación |
+|---|---|---|
+| J1 | **(b)** | **Audit log detallado por venta** (diff de ítems, precios, cliente) accesible **desde el modal** de la venta. |
+| J2 | **(b)** | Clave maestra del DUEÑO requerida además para: **anular venta despachada** + **cambiar cliente** + **override de descuento** (suma a lo existente: cierre caja ajena, corregir movimientos). |
+| J3 | **(b) — recomendación Claude** | **CONTADOR**: acceso **read-only al historial completo** de ventas (filtros, detalle, export); **no crea ni edita**. (Los campos fiscales se fijan al emitir, no se editan a mano.) |
+
+### K. Reportes y alertas
+| # | Respuesta | Resumen para implementación |
+|---|---|---|
+| K1 | **b, c, d, e, f** | Reportes: **baja rotación** (b), **más devoluciones** (c), **anuladas/devueltas con motivo agrupado** (d), **comparativa por canal** (e), **margen real por venta** (f). (NO "top vendedores".) |
+| K2 | **b, c, d** | Alertas: **margen negativo** (b), **cliente con >N devoluciones en M días** (c), **producto con >N devoluciones en M días** (d). Umbrales N/M configurables. |
+| K3 | **(a)** | Exportaciones: **Excel + PDF + CSV** en cada reporte (consistente con Caja). |
+
+> **L (Top 3 prioridad)**: pendiente de responder por GO. El plan propone un orden por dependencia/valor; reordenable según L1.
+
+---
+
 ## Preguntas abiertas — recomendaciones de Claude
 
 ### A10 — NC electrónica AFIP automática

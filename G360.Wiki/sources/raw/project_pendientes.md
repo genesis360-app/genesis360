@@ -128,6 +128,35 @@ type: project
 
 **Riesgos/notas:** cada API requiere contrato B2B propio del negocio (sin cuenta → no hay cotización; fallback a tarifa manual `courier_tarifas`/KM como hoy). OCA es SOAP (parseo XML en Deno). Guardar secretos por tenant exige cuidado: no exponerlos al front, considerar Supabase Vault/pgsodium o columnas con RLS de solo-escritura. El peso volumétrico (dims) suele definir la tarifa: si `envio_peso_fuente='producto'` y faltan medidas, advertir/caer a manual.
 
+### Relevamiento Ventas H-K — plan de implementación (relevado completo 2026-06-01)
+
+Respuestas finales en `relevamiento_ventas_respuestas.md` → sección H-K. Plan por fases (cada una deployable a PROD con su versión). Orden por dependencia/valor; **L1 (Top 3) pendiente** → reordenable.
+
+**VF1 — POS operativo (H2, H3, H4, H5)** · bajo riesgo, valor diario:
+- **H4** — caja: `presupuesto` se puede crear **sin caja abierta**; `reserva` y venta directa (incl. 100% CC) **exigen caja**. Revertir la excepción actual de venta 100% CC sin caja (revisar `useCierreContable`/`validarDespacho` y el gate de caja en `registrarVenta`). Posible flag config si quieren permitir presupuesto-sin-caja on/off.
+- **H5** — flag **"Consumidor final" vs "Cliente registrado"** al iniciar la venta (estado del carrito). Si `facturacion activa` + no consumidor final → cliente obligatorio. Integra con Config "Cliente en el punto de venta". Sin migración (o flag en `ventas` si se quiere persistir el tipo).
+- **H2** — imprimir ticket **opcional**: botones "Imprimir" + "Enviar por email" (reusar `send-email` + `formatTicket`). Config tenant para default (siempre/opcional). 
+- **H3** — **reimprimir** desde el historial de Ventas (cualquier rol con acceso). Botón en el detalle de venta.
+
+**VF2 — Canales configurables + reglas online/presencial (I1, I2)** · modelo de datos nuevo, foundational:
+- **I1** — tabla `canales_venta` por tenant (CRUD en Config) con `clasificacion ('online'|'presencial')`. **Quitar "MP"** del catálogo (migrar ventas con `origen='MP'`: mantener histórico, sacar de selects). Reemplaza el array hardcodeado `CANALES`.
+- **I2** — reglas por clasificación online/presencial (config): **plazo de devolución**, **descuento máximo**, **lista de precios por defecto**, **requisito de cliente/factura**. Tabla/JSON `reglas_canal` por tenant {online:{...}, presencial:{...}}. El POS/devoluciones aplican la regla según la clasificación del canal de la venta.
+
+**VF3 — Auditoría y permisos (J1, J2, J3)** · governance:
+- **J1** — **audit log detallado por venta** (diff de ítems/precio/cliente). Tabla `venta_auditoria` (o reusar `actividad_log` con payload diff) accesible desde el modal de la venta.
+- **J2** — clave maestra DUEÑO para **anular venta despachada** + **cambiar cliente** + **override descuento** (extiende `tenants.clave_maestra`).
+- **J3** — **CONTADOR read-only** en Ventas: nav + ruta + guard que permite ver historial/detalle/export pero bloquea crear/editar.
+
+**VF4 — Reportes y alertas de Ventas (K1, K2, K3)** · depende de VF2 (comparativa por canal):
+- **K1** — reportes: baja rotación, más devoluciones, anuladas/devueltas con motivo, comparativa por canal, **margen real por venta**. Página/sección Reportes de Ventas.
+- **K2** — alertas automáticas: **margen negativo**, **cliente con >N devoluciones en M días**, **producto con >N devoluciones en M días** (umbrales config). Sweep lazy o al registrar venta/devolución → `notificaciones`.
+- **K3** — export **Excel + PDF + CSV** en cada reporte (consistente con Caja).
+
+**VF5 — Edición post-venta + NC interna (H1)** · el más delicado, toca facturación/devoluciones:
+- **H1** — quitar/editar ítem libre **antes de cobrar**; **post-cobro** requiere autorización SUPERVISOR/DUEÑO; si la venta **se facturó** → **NC interna/manual** (registro + motivo + ajuste contable, sin AFIP). Integra con devoluciones y el modelo de NC. La **NC electrónica AFIP** queda como feature separada (L1).
+
+**Dependencias clave:** VF4 (comparativa por canal) usa el modelo de VF2. VF5 se apoya en el flujo de devoluciones existente. VF1/VF3 son independientes y pueden ir primero.
+
 ### Bugs / mejoras UX puntuales
 
 | ID | Módulo | Descripción | Estado |

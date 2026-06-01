@@ -84,6 +84,7 @@ Objetivo: evitar consumo innecesario de tokens leyendo código que ya está resu
 - **`medio_pago`** en `ventas`: JSON string `[{"tipo":"Efectivo","monto":1500}]`
 - **Google OAuth → nuevo tenant**: `await loadUserData(userId)` ANTES de `navigate('/dashboard')`. Sin esto la store Zustand no tiene datos del tenant.
 - **RLS SELECT-after-INSERT**: generar UUID en cliente con `crypto.randomUUID()`. Nunca hacer SELECT del tenant/user recién insertado.
+- **Seeds en alta de tenant = `SECURITY DEFINER`**: el onboarding inserta `tenants` ANTES que `users`. Cualquier trigger `AFTER INSERT ON tenants` que seedee tablas con RLS (`categorias_gasto`, defaults, caja, etc.) corre antes de existir la fila en `users`, así que la función **debe** ser `SECURITY DEFINER` (+ `SET search_path = public`) o el `WITH CHECK` la rechaza. Bug histórico arreglado en mig 166.
 - **`ventas.numero`**: lo asigna el trigger `set_venta_numero`. **Nunca** incluirlo en el INSERT.
 - **`linea_id` en `venta_items`**: guarda el LPN principal del despacho (se escribe en `registrarVenta`). El desglose completo cuando un ítem sale de varios LPN vive en `venta_item_despachos` (ISS-075, mig 153).
 - **MP suscripciones**: modelo preapproval, `init_point` construido en frontend directo. No usar `POST /preapproval` vía Edge Function.

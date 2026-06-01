@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.14.0** ✅ (ISS-174 — cotización/generación de envíos por API de courier: Andreani/Correo/OCA · mig 162-165 · Edge Function `courier-api`; adapters pendientes de validar con cuentas B2B reales) · DEV alineado con PROD
+Último release en PROD: **v1.14.1** ✅ (hotfix: seed de `categorias_gasto` a SECURITY DEFINER — registro de negocio nuevo estaba roto por RLS · mig 166. Sobre v1.14.0 ISS-174 envíos por API de courier · mig 162-165, adapters pendientes de validar con cuentas B2B) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,10 +14,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.14.0` | `v1.14.0` |
-| Migrations | 001–**165** ✅ | 001–**165** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.14.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.14.0 |
+| APP_VERSION | `v1.14.1` | `v1.14.1` |
+| Migrations | 001–**166** ✅ | 001–**166** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.14.1) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.14.1 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna.
 

@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-05-31] hotfix | v1.14.1 PROD — fix RLS en seed de categorías de gasto (onboarding roto)
+
+**Bug reportado por GO:** al registrar un negocio nuevo (Google + datos del negocio → "Crear") saltaba `new row violates row-level security policy for table "categorias_gasto"`.
+
+**Causa raíz:** el onboarding (`OnboardingPage.tsx`) inserta **tenant primero, users después**. El trigger `trg_seed_categorias_gasto_new_tenant` (AFTER INSERT en `tenants`, mig 130) seedea `categorias_gasto` durante el INSERT del tenant — antes de que exista la fila en `users` que liga al usuario con el tenant. La función `fn_seed_categorias_gasto_new_tenant` / `seed_categorias_gasto` **NO eran SECURITY DEFINER**, así que el INSERT quedaba sujeto al RLS `WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))` → conjunto vacío → rechazo. Las otras 2 funciones de seed del tenant (`fn_seed_tenant_defaults`, `fn_crear_caja_fuerte`) ya eran SECURITY DEFINER; ésta quedó sin serlo desde mig 130. No relacionado con ISS-174.
+
+**Fix (mig 166):** ambas funciones pasan a `SECURITY DEFINER` + `SET search_path = public`. Aplicada en DEV + PROD; verificado `prosecdef=true`. Surte efecto inmediato (fix de función en DB). Bump v1.14.0 → v1.14.1.
+
+---
+
 ## [2026-05-31] update | v1.14.0 PROD — ISS-174 F2-F5: cotización/generación de envíos por API de courier
 
 Continuación del mismo día: tras F1, se implementaron **todas las fases F2-F5** de ISS-174 y se deployó a PROD como **v1.14.0** (bump v1.13.0 → v1.14.0). Migration **165** aplicada en DEV+PROD. Edge Function `courier-api` deployada en DEV+PROD. PR `dev → main` + Vercel.

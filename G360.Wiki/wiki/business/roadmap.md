@@ -695,7 +695,7 @@ Ver `wiki/development/reglas-negocio.md` sección "Plan de implementación".
 - **WMS Fase 3** — `wms_tareas` (putaway/picking/replenishment) + listas de picking con ruta óptima
 - **RecepcionesPage completa** — schema existe (migrations 050+059), falta flujo UI completo
 - **Sync catálogo TN/ML** — push nombre/precio/descripción hacia marketplaces
-- **Courier rates APIs** — OCA/Andreani/CorreoAR reales
+- **Courier rates APIs (ISS-174)** — cotización + generación de envíos por API directa (Andreani → Correo Argentino → OCA). **F1 fundación ✅ en DEV** (catálogo compartido, servicio select en POS, `courier_credenciales` por tenant, peso configurable, peso/dim en producto · mig 162-164). Pendiente: deploy a PROD + F2 (Edge Functions, requiere cuentas B2B). Diseño en `project_pendientes.md` → ISS-174
 - **WhatsApp automático** — espera WABA account
 
 ### Pendiente manual (no código)

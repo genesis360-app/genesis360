@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-06-01 — 53 páginas + 3 manuales + relevamientos · DEV: migrations 001-**170** + 086b · PROD: 001-**170** + 086b · **v1.16.0 PROD** ✅ (Relevamiento Ventas VF4: reportes K1 + alertas K2 + export CSV K3 · mig 170). VF1-VF3 v1.15.0 (POS/canales/auditoría). v1.14.x: ISS-174 envíos por API de courier + hotfix onboarding. Pendiente Ventas: VF5 (edición post-venta + NC interna).*
+*Última actualización: 2026-06-01 — 53 páginas + 3 manuales + relevamientos · DEV: migrations 001-**170** + 086b · PROD: 001-**170** + 086b · **v1.17.0 PROD** ✅ (Relevamiento Ventas VF5: edición post-venta + NC interna, sin migración — **Relevamiento Ventas A-K COMPLETO**). VF4 v1.16.0 (reportes/alertas), VF1-VF3 v1.15.0 (POS/canales/auditoría). v1.14.x: ISS-174 envíos por API de courier + hotfix onboarding.*

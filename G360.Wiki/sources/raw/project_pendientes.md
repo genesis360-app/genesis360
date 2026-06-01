@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.16.0** ✅ (Relevamiento Ventas VF4 — reportes K1 b/c/d/e/f + alertas K2 b/c/d + export CSV K3 · mig 170. Sobre VF1-VF3 v1.15.0) · DEV alineado con PROD
+Último release en PROD: **v1.17.0** ✅ (Relevamiento Ventas VF5 — edición post-venta H1 con autorización + NC interna · sin migración. **Relevamiento Ventas A-K COMPLETO**) · DEV alineado con PROD
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,10 +14,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.16.0` | `v1.16.0` |
+| APP_VERSION | `v1.17.0` | `v1.17.0` |
 | Migrations | 001–**170** ✅ | 001–**170** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.16.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.16.0 |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.17.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.17.0 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
@@ -132,7 +132,7 @@ type: project
 
 Respuestas finales en `relevamiento_ventas_respuestas.md` → sección H-K. Plan por fases (cada una deployable a PROD con su versión). Orden por dependencia/valor; **L1 (Top 3) pendiente** → reordenable.
 
-**Estado: VF1, VF2, VF3 ✅ (v1.15.0, mig 167-169) y VF4 ✅ (v1.16.0, mig 170) implementadas y en PROD (2026-06-01).** Pendiente: **VF5** (edición post-venta H1 + NC interna). **L1 (Top 3) sin responder.**
+**Estado: VF1-VF5 ✅ TODAS en PROD (2026-06-01).** VF1-VF3 v1.15.0 (mig 167-169), VF4 v1.16.0 (mig 170), VF5 v1.17.0 (sin migración). **Relevamiento Ventas A-K COMPLETO.** Pendientes futuros (fuera del relevamiento): NC electrónica AFIP (L1), venta física en USD/caja USD (G5). **L1 (Top 3) sin responder.**
 
 **VF1 — POS operativo (H2, H3, H4, H5)** ✅ · bajo riesgo, valor diario:
 - **H4** — caja: `presupuesto` se puede crear **sin caja abierta**; `reserva` y venta directa (incl. 100% CC) **exigen caja**. Revertir la excepción actual de venta 100% CC sin caja (revisar `useCierreContable`/`validarDespacho` y el gate de caja en `registrarVenta`). Posible flag config si quieren permitir presupuesto-sin-caja on/off.
@@ -154,7 +154,7 @@ Respuestas finales en `relevamiento_ventas_respuestas.md` → sección H-K. Plan
 - **K2** — alertas automáticas: **margen negativo**, **cliente con >N devoluciones en M días**, **producto con >N devoluciones en M días** (umbrales config). Sweep lazy o al registrar venta/devolución → `notificaciones`.
 - **K3** — export **Excel + PDF + CSV** en cada reporte (consistente con Caja).
 
-**VF5 — Edición post-venta + NC interna (H1)** · el más delicado, toca facturación/devoluciones:
+**VF5 — Edición post-venta + NC interna (H1)** ✅ · el más delicado, toca facturación/devoluciones:
 - **H1** — quitar/editar ítem libre **antes de cobrar**; **post-cobro** requiere autorización SUPERVISOR/DUEÑO; si la venta **se facturó** → **NC interna/manual** (registro + motivo + ajuste contable, sin AFIP). Integra con devoluciones y el modelo de NC. La **NC electrónica AFIP** queda como feature separada (L1).
 
 **Dependencias clave:** VF4 (comparativa por canal) usa el modelo de VF2. VF5 se apoya en el flujo de devoluciones existente. VF1/VF3 son independientes y pueden ir primero.

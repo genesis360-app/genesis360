@@ -13,6 +13,13 @@ updated: 2026-05-29
 
 ---
 
+## v1.17.0 — Relevamiento Ventas VF5: edición post-venta + NC interna (PROD ✅)
+
+Quinta y última fase del backlog Ventas H-K (sin migración). **Relevamiento Ventas A-K completo.**
+- **H1a**: quitar/editar ítems de una venta cobrada (vía Devolver) requiere DUEÑO/SUPERVISOR/ADMIN; otros roles necesitan la clave maestra para autorizar.
+- **H1b**: al ajustar una venta facturada, el comprobante se identifica como "Nota de Crédito interna · no fiscal" + queda en el audit log de la venta.
+- Pendiente futuro (fuera del relevamiento): NC electrónica AFIP (L1), venta física en USD (G5).
+
 ## v1.16.0 — Relevamiento Ventas VF4: reportes + alertas + export (PROD ✅)
 
 Cuarta fase del backlog Ventas H-K (mig **170**).

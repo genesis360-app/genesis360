@@ -2264,6 +2264,8 @@ ALTER TABLE gastos        ADD COLUMN IF NOT EXISTS categoria_id UUID REFERENCES 
 ALTER TABLE gastos_fijos  ADD COLUMN IF NOT EXISTS categoria_id UUID REFERENCES categorias_gasto(id) ON DELETE SET NULL;
 
 -- Función seed_categorias_gasto + trigger AFTER INSERT en tenants para alta automática
+-- (mig 166: SECURITY DEFINER — el seed corre antes de existir la fila en users durante
+--  el onboarding, así que debe bypassear RLS como las otras funciones de seed del tenant)
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Migration 131 — settings de Gastos en tenants (v1.8.42)

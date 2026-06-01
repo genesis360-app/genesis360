@@ -11,6 +11,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import { CodigoPerfilesPanel } from '@/components/CodigoPerfilesPanel'
+import { CourierCredencialesPanel } from '@/components/CourierCredencialesPanel'
 import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
@@ -448,6 +449,10 @@ export default function ConfigPage() {
   const [bizWAPlantilla, setBizWAPlantilla] = useState<string>((tenant as any)?.whatsapp_plantilla ?? '')
   // Envíos
   const [bizCostoKm, setBizCostoKm] = useState<string>(String((tenant as any)?.costo_envio_por_km ?? ''))
+  // ISS-174 — fuente del peso/medidas para cotizar (manual por envío | dato maestro del producto)
+  const [bizPesoFuente, setBizPesoFuente] = useState<'manual' | 'producto'>(
+    (tenant as any)?.envio_peso_fuente === 'producto' ? 'producto' : 'manual'
+  )
   // ISS-178 — Rangos horarios de entrega
   const [bizEnvioRangos, setBizEnvioRangos] = useState<Array<{ desde: string; hasta: string }>>(
     Array.isArray((tenant as any)?.envio_rangos_horarios)
@@ -581,6 +586,7 @@ export default function ConfigPage() {
       reserva_penalidad_pct: parseFloat(bizReservaPenalidadPct) || 0,
       whatsapp_plantilla: bizWAPlantilla.trim() || null,
       costo_envio_por_km: bizCostoKm ? parseFloat(bizCostoKm) : null,
+      envio_peso_fuente: bizPesoFuente,
       envio_rangos_horarios: bizEnvioRangos.filter(r => r.desde && r.hasta),
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
@@ -3110,6 +3116,43 @@ export default function ConfigPage() {
               </div>
             )}
           </div>
+
+          {/* ISS-174 — fuente del peso/medidas para cotizar */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Package size={18} className="text-accent" /> Peso y medidas para cotizar envíos
+            </h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
+              Define de dónde sale el peso y las dimensiones al cotizar un envío por courier.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {([
+                { v: 'manual',   t: 'Manual por envío',     d: 'El operador carga peso y medidas del bulto al cotizar cada envío.' },
+                { v: 'producto', t: 'Dato maestro del producto', d: 'Se toma el peso y las medidas de cada producto y se suma el carrito.' },
+              ] as const).map(opt => (
+                <button key={opt.v} type="button" disabled={!canEdit}
+                  onClick={() => setBizPesoFuente(opt.v)}
+                  className={`text-left p-3 rounded-xl border transition-colors disabled:opacity-60
+                    ${bizPesoFuente === opt.v
+                      ? 'border-accent bg-accent/5'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
+                  <p className={`text-sm font-medium ${bizPesoFuente === opt.v ? 'text-accent' : 'text-gray-700 dark:text-gray-300'}`}>{opt.t}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{opt.d}</p>
+                </button>
+              ))}
+            </div>
+            {canEdit && (
+              <div className="flex justify-end">
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ISS-174 — credenciales de courier (owner-only) */}
+          {canEdit && <CourierCredencialesPanel />}
 
           {canEdit && (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">

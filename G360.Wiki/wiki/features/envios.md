@@ -1,15 +1,15 @@
 ---
 title: Módulo Envíos
 category: features
-tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista]
+tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-29
+updated: 2026-05-31
 ---
 
 # Módulo Envíos
 
 Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.  
-**Última actualización:** v1.8.40 (2026-05-23) — POD, página transportista, pagos courier, QR remito.
+**Última actualización:** ISS-174 F1 (2026-05-31, DEV) — fundación para cotización de envíos por API de courier.
 
 **Página:** `src/pages/EnviosPage.tsx` (`/envios`)  
 **Página transportista:** `src/pages/TransportistePage.tsx` (`/transporte/:token` — pública sin auth)  
@@ -105,6 +105,33 @@ VITE_GOOGLE_MAPS_API_KEY=...   # Places API + Distance Matrix API habilitadas
 - **Selector de venta**: excluye automáticamente ventas que ya tienen un envío asignado (v1.8.7)
 
 ---
+
+## Cotización de envíos por API de courier (ISS-174 — en progreso)
+
+Reemplaza el costo manual/KM por cotización en tiempo real contra la API de cada courier y genera la orden + etiqueta + tracking. **Integración: APIs directas** (Andreani → Correo Argentino → OCA). **Credenciales por tenant.** Cotización en POS y en Envíos. Operador elige servicio (precio editable). Diseño completo en `sources/raw/project_pendientes.md` → ISS-174.
+
+### F1 — Fundación (2026-05-31, DEV) ✅
+Capa de datos y config, sin tocar APIs todavía:
+- **Catálogo compartido** `src/lib/couriers/catalogo.ts` (`COURIERS`, `SERVICIOS_POR_COURIER`, `serviciosDe`, `CAMPOS_CREDENCIALES`). Usado por `EnviosPage` y `VentasPage`.
+- **POS** (`VentasPage`): el campo *Servicio* del modal de envío pasó de texto libre a **select dependiente del courier** (igual que Envíos); se resetea al cambiar de courier.
+- **Config → Envíos**:
+  - Card "**Peso y medidas para cotizar envíos**" → toggle `tenants.envio_peso_fuente`: `manual` (operador carga peso/medidas del bulto por envío, default) o `producto` (se toma del dato maestro y se suma el carrito).
+  - Panel "**Credenciales de courier**" (`CourierCredencialesPanel`, owner-only): carga por courier (Andreani/Correo/OCA) con campos típicos de cada API; secretos como `password`; estado "Configurado". Guarda en `courier_credenciales` (JSONB por tenant). Aún no se usan.
+- **Producto** (`ProductoFormPage`): campos `peso_kg / largo_cm / ancho_cm / alto_cm` (para fuente `producto`).
+- **CP estructurado**: `sucursales.codigo_postal` y `cliente_domicilios.codigo_postal` (ya existían, mig 124/074) son el origen/destino para cotizar. `AddressAutocompleteInput` ahora devuelve `postcode` best-effort (Nominatim) para autocompletar el CP en F2.
+- Migrations **162** (`courier_credenciales` + `envio_peso_fuente`), **163** (CP, idempotente), **164** (productos peso/dim).
+
+### F2-F5 — Integración API (v1.14.0, PROD) ✅
+Edge Function **`courier-api`** (`supabase/functions/courier-api/`) con router por `action`:
+- **`cotizar`** → devuelve lista normalizada `[{servicio, precio, plazo_dias, codigo_servicio}]`.
+- **`generar`** → crea la orden en el courier y guarda tracking + etiqueta + `courier_orden_id` (mig 165: `envios.cotizacion_json/courier_orden_id/cotizado_api`).
+- **`tracking`** → eventos de seguimiento.
+- **Adapters**: `andreani.ts` (REST, F2), `correo.ts` (Paq.ar, F3), `oca.ts` (SOAP, F4); tracking en los tres (F5). Las credenciales (`courier_credenciales`) se leen SOLO server-side con service_role.
+- **Front** (`src/lib/couriers/api.ts`): `cotizarEnvio` / `generarEnvioCourier` / `trackingEnvioCourier`.
+  - **POS**: botón "Cotizar {courier}" (CP destino + peso) → elegir opción setea servicio + costo (editable).
+  - **EnviosPage**: "Cotizar" en el modal; "Generar con courier" / "Etiqueta" / "Actualizar tracking" en el panel del envío (solo couriers con API vía `esCourierApi()`).
+
+**⚠ Adapters pendientes de validar con cuentas B2B reales** — escritos según documentación pública de cada courier. Al cargar credenciales reales en Config → Envíos hay que validar/ajustar endpoints y mapeos. Sin credenciales la cotización devuelve un error claro y el alta manual de envíos sigue intacta.
 
 ## Estados del envío (v1.8.39+)
 

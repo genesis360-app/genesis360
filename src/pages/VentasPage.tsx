@@ -16,6 +16,8 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
+import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
+import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import toast from 'react-hot-toast'
@@ -178,6 +180,11 @@ export default function VentasPage() {
   const [envioCourier, setEnvioCourier] = useState('')
   const [envioServicio, setEnvioServicio] = useState('')
   const [costoEnvioVenta, setCostoEnvioVenta] = useState('')
+  // ISS-174 F2 — cotización por API en el POS
+  const [cotizandoVenta, setCotizandoVenta] = useState(false)
+  const [cotizacionesVenta, setCotizacionesVenta] = useState<CotizacionOpcion[]>([])
+  const [cpDestinoVenta, setCpDestinoVenta] = useState('')
+  const [pesoVenta, setPesoVenta] = useState('')
   const [envioTipoVenta, setEnvioTipoVenta]   = useState<'monto' | 'km'>('monto')
   const [envioKmVenta, setEnvioKmVenta]       = useState('')
   const [precioPorKmVenta, setPrecioPorKmVenta] = useState('')
@@ -840,6 +847,26 @@ export default function VentasPage() {
   const domiciliosFormateadosVenta = (domiciliosClienteVenta as any[]).map(d =>
     [d.calle, d.numero, d.piso_depto, d.ciudad, d.provincia, d.codigo_postal].filter(Boolean).join(', ')
   )
+
+  // ISS-174 — cotizar el envío por API del courier en el POS
+  const cpOrigenVenta = (sucursales as any[]).find(s => s.id === sucursalId)?.codigo_postal || ''
+  const cpDestinoEfectivo = cpDestinoVenta.trim() || (domiciliosClienteVenta as any[])[0]?.codigo_postal || ''
+  const handleCotizarVenta = async () => {
+    if (!esCourierApi(envioCourier)) { toast.error(`${envioCourier || 'El courier'} no tiene cotización por API`); return }
+    if (!cpOrigenVenta) { toast.error('La sucursal no tiene código postal (cargalo en Sucursales)'); return }
+    if (!cpDestinoEfectivo) { toast.error('Ingresá el código postal de destino'); return }
+    setCotizandoVenta(true); setCotizacionesVenta([])
+    try {
+      const ops = await cotizarEnvio({
+        courier: envioCourier, origen_cp: cpOrigenVenta, destino_cp: cpDestinoEfectivo,
+        peso_kg: parseFloat(pesoVenta) || 1,
+      })
+      setCotizacionesVenta(ops)
+      if (ops.length === 0) toast('Sin opciones para ese destino', { icon: 'ℹ️' })
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al cotizar')
+    } finally { setCotizandoVenta(false) }
+  }
 
   const { data: categoriasHistorial = [] } = useQuery({
     queryKey: ['categorias-historial', tenant?.id],
@@ -3522,22 +3549,56 @@ export default function VentasPage() {
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Courier</label>
-                            <select value={envioCourier} onChange={e => setEnvioCourier(e.target.value)}
+                            <select value={envioCourier} onChange={e => { setEnvioCourier(e.target.value); setEnvioServicio('') }}
                               className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                               <option value="">Seleccionar…</option>
-                              <option value="OCA">OCA</option>
-                              <option value="Correo Argentino">Correo Argentino</option>
-                              <option value="Andreani">Andreani</option>
-                              <option value="DHL Express">DHL Express</option>
-                              <option value="Otro">Otro</option>
+                              {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Servicio</label>
-                            <input value={envioServicio} onChange={e => setEnvioServicio(e.target.value)}
-                              placeholder="Ej: Estándar, Urgente"
-                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            <select value={envioServicio} onChange={e => setEnvioServicio(e.target.value)}
+                              disabled={!envioCourier || serviciosDe(envioCourier).length === 0}
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-50">
+                              <option value="">Seleccionar…</option>
+                              {serviciosDe(envioCourier).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
                           </div>
+                        </div>
+                      )}
+
+                      {/* ISS-174 — Cotizar por API del courier */}
+                      {envioTransporte === 'tercero' && esCourierApi(envioCourier) && (
+                        <div className="rounded-lg border border-accent/30 bg-accent/5 p-2.5 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button type="button" onClick={handleCotizarVenta} disabled={cotizandoVenta}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-60 font-medium">
+                              {cotizandoVenta ? <RefreshCw size={12} className="animate-spin" /> : <DollarSign size={12} />}
+                              {cotizandoVenta ? 'Cotizando…' : `Cotizar ${envioCourier}`}
+                            </button>
+                            <input type="text" value={cpDestinoVenta} onChange={e => setCpDestinoVenta(e.target.value)}
+                              placeholder={cpDestinoEfectivo ? `CP destino (${cpDestinoEfectivo})` : 'CP destino'} inputMode="numeric"
+                              className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            <input type="number" value={pesoVenta} onChange={e => setPesoVenta(e.target.value)}
+                              placeholder="Peso kg" min="0" step="0.1" onWheel={e => e.currentTarget.blur()}
+                              className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          </div>
+                          {cotizacionesVenta.length > 0 && (
+                            <div className="space-y-1">
+                              {cotizacionesVenta.map((op, i) => (
+                                <button key={i} type="button"
+                                  onClick={() => { setEnvioServicio(op.servicio); setEnvioTipoVenta('monto'); setCostoEnvioVenta(String(op.precio)); toast.success(`${op.servicio} — $${op.precio.toLocaleString('es-AR')}`) }}
+                                  className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border text-xs transition-colors
+                                    ${envioServicio === op.servicio ? 'border-accent bg-accent/10' : 'border-gray-200 dark:border-gray-600 hover:border-accent/50 bg-white dark:bg-gray-700'}`}>
+                                  <span className="font-medium text-gray-700 dark:text-gray-200">{op.servicio}</span>
+                                  <span className="flex items-center gap-2">
+                                    {op.plazo_dias != null && <span className="text-gray-400">{op.plazo_dias}d</span>}
+                                    <span className="font-semibold text-accent">${op.precio.toLocaleString('es-AR')}</span>
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
 

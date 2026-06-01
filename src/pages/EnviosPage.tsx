@@ -18,6 +18,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { buildWhatsAppUrl, expandirPlantilla, PLANTILLA_DEFAULT } from '@/lib/whatsapp'
+import { COURIERS, SERVICIOS_POR_COURIER, esCourierApi } from '@/lib/couriers/catalogo'
+import { cotizarEnvio, generarEnvioCourier, trackingEnvioCourier, type CotizacionOpcion } from '@/lib/couriers/api'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
@@ -27,15 +29,6 @@ type TabEnvio = 'envios' | 'pagos'
 
 const MEDIOS_PAGO_COURIER = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro']
 
-const COURIERS = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 'Otro']
-
-const SERVICIOS_POR_COURIER: Record<string, string[]> = {
-  'OCA':              ['Estándar', 'Urgente', 'OCA al Centro', 'Plus', 'Internacional'],
-  'Correo Argentino': ['Encomienda Clásica', 'Encomienda Plus', 'Small Pack', 'Express'],
-  'Andreani':         ['Estándar', 'Urgente', 'Expreso'],
-  'DHL Express':      ['Express Worldwide', 'Economy Select', 'Express Easy'],
-  'Otro':             ['Estándar', 'Urgente', 'Personalizado'],
-}
 const CANALES  = ['POS', 'MELI', 'TiendaNube', 'MP']
 
 const ESTADO_CFG: Record<EstadoEnvio, { label: string; color: string; icon: React.ReactNode }> = {
@@ -110,6 +103,12 @@ export default function EnviosPage() {
   const [saving, setSaving]         = useState(false)
   const [tipoEnvio, setTipoEnvio]   = useState<'propio' | 'tercero'>('tercero')
   const [distanciaKm, setDistanciaKm] = useState<number | null>(null)
+  // ISS-174 F2 — cotización por API de courier
+  const [cotizando, setCotizando]   = useState(false)
+  const [cotizaciones, setCotizaciones] = useState<CotizacionOpcion[]>([])
+  const [destinoCpManual, setDestinoCpManual] = useState('')
+  const [generandoId, setGenerandoId] = useState<string | null>(null)
+  const [trackingId, setTrackingId]   = useState<string | null>(null)
   const [calculandoKm, setCalculandoKm] = useState(false)
   const [direccionEntrega, setDireccionEntrega] = useState('')
 
@@ -289,6 +288,61 @@ export default function EnviosPage() {
       const tarifa = (courierTarifas as any[]).find(t => t.courier === courier)
       return { ...f, courier, costo_cotizado: tarifa ? String(tarifa.precio) : f.costo_cotizado }
     })
+    setCotizaciones([])
+  }
+
+  // ISS-174 — CP de destino: del domicilio elegido o ingreso manual
+  const destinoCp = (() => {
+    const dom = (domiciliosCliente as any[]).find(d => d.id === form.destino_id)
+    return dom?.codigo_postal || destinoCpManual.trim()
+  })()
+  const origenCp = (sucursalActiva as any)?.codigo_postal || ''
+
+  const handleCotizar = async () => {
+    if (!form.courier) { toast.error('Elegí un courier'); return }
+    if (!esCourierApi(form.courier)) { toast.error(`${form.courier} todavía no tiene cotización por API`); return }
+    if (!origenCp) { toast.error('La sucursal de origen no tiene código postal (cargalo en Sucursales)'); return }
+    if (!destinoCp) { toast.error('Falta el código postal de destino'); return }
+    setCotizando(true); setCotizaciones([])
+    try {
+      const ops = await cotizarEnvio({
+        courier: form.courier, origen_cp: origenCp, destino_cp: destinoCp,
+        peso_kg: parseFloat(form.peso_kg) || 1,
+        largo_cm: form.largo_cm ? parseFloat(form.largo_cm) : undefined,
+        ancho_cm: form.ancho_cm ? parseFloat(form.ancho_cm) : undefined,
+        alto_cm: form.alto_cm ? parseFloat(form.alto_cm) : undefined,
+      })
+      setCotizaciones(ops)
+      if (ops.length === 0) toast('Sin opciones para ese destino', { icon: 'ℹ️' })
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al cotizar')
+    } finally { setCotizando(false) }
+  }
+
+  const elegirCotizacion = (op: CotizacionOpcion) => {
+    setForm(f => ({ ...f, servicio: op.servicio, costo_cotizado: String(op.precio) }))
+    toast.success(`Servicio "${op.servicio}" — $${op.precio.toLocaleString('es-AR')}`)
+  }
+
+  const handleGenerarCourier = async (envioId: string) => {
+    setGenerandoId(envioId)
+    try {
+      const r = await generarEnvioCourier(envioId)
+      toast.success(r.tracking_number ? `Orden generada · tracking ${r.tracking_number}` : 'Orden generada')
+      qc.invalidateQueries({ queryKey: ['envios'] })
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al generar la orden')
+    } finally { setGenerandoId(null) }
+  }
+
+  const handleActualizarTracking = async (envioId: string) => {
+    setTrackingId(envioId)
+    try {
+      const r = await trackingEnvioCourier(envioId)
+      toast.success(r.estado ? `Estado courier: ${r.estado}` : `${r.eventos.length} eventos de tracking`)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al consultar tracking')
+    } finally { setTrackingId(null) }
   }
 
   // ── Mutations ────────────────────────────────────────────────────────────────
@@ -974,6 +1028,29 @@ export default function EnviosPage() {
                                       <ExternalLink size={13} /> Ver tracking
                                     </a>
                                   )}
+                                  {/* ISS-174 — Generar orden con el courier (API) */}
+                                  {esCourierApi(e.courier) && !e.courier_orden_id && e.estado !== 'cancelado' && (
+                                    <button onClick={() => handleGenerarCourier(e.id)} disabled={generandoId === e.id}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-blue-300 dark:border-blue-700 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-60">
+                                      {generandoId === e.id ? <Loader2 size={13} className="animate-spin" /> : <Package2 size={13} />}
+                                      {generandoId === e.id ? 'Generando…' : 'Generar con courier'}
+                                    </button>
+                                  )}
+                                  {/* ISS-174 — Etiqueta del courier */}
+                                  {e.etiqueta_url && (
+                                    <a href={e.etiqueta_url} target="_blank" rel="noreferrer"
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-blue-300 dark:border-blue-700 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                                      <Tag size={13} /> Etiqueta
+                                    </a>
+                                  )}
+                                  {/* ISS-174 — Actualizar tracking desde el courier */}
+                                  {esCourierApi(e.courier) && e.tracking_number && (
+                                    <button onClick={() => handleActualizarTracking(e.id)} disabled={trackingId === e.id}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-60">
+                                      {trackingId === e.id ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                                      Actualizar tracking
+                                    </button>
+                                  )}
                                   {e.ventas?.id && (
                                     <button onClick={() => navigate(`/ventas?id=${e.venta_id}`)}
                                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
@@ -1409,6 +1486,40 @@ export default function EnviosPage() {
                     onChange={e => setForm(f => ({ ...f, costo_cotizado: e.target.value }))} placeholder="0" min="0"
                     className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
+                {/* ISS-174 — Cotizar por API del courier */}
+                {tipoEnvio === 'tercero' && esCourierApi(form.courier) && (
+                  <div className="col-span-2 rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button type="button" onClick={handleCotizar} disabled={cotizando}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-60 font-medium">
+                        {cotizando ? <Loader2 size={13} className="animate-spin" /> : <DollarSign size={13} />}
+                        {cotizando ? 'Cotizando…' : `Cotizar con ${form.courier}`}
+                      </button>
+                      {!destinoCp && (
+                        <input type="text" value={destinoCpManual} onChange={e => setDestinoCpManual(e.target.value)}
+                          placeholder="CP destino" inputMode="numeric"
+                          className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      )}
+                      <span className="text-[11px] text-gray-400">Origen CP {origenCp || '—'} → destino CP {destinoCp || '—'}</span>
+                    </div>
+                    {cotizaciones.length > 0 && (
+                      <div className="space-y-1">
+                        {cotizaciones.map((op, i) => (
+                          <button key={i} type="button" onClick={() => elegirCotizacion(op)}
+                            className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs transition-colors
+                              ${form.servicio === op.servicio ? 'border-accent bg-accent/10' : 'border-gray-200 dark:border-gray-600 hover:border-accent/50 bg-white dark:bg-gray-700'}`}>
+                            <span className="font-medium text-gray-700 dark:text-gray-200">{op.servicio}</span>
+                            <span className="flex items-center gap-3">
+                              {op.plazo_dias != null && <span className="text-gray-400">{op.plazo_dias}d</span>}
+                              <span className="font-semibold text-accent">${op.precio.toLocaleString('es-AR')}</span>
+                            </span>
+                          </button>
+                        ))}
+                        <p className="text-[10px] text-gray-400">Elegí una opción: setea servicio y costo (editable arriba).</p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* Zona */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Zona de entrega</label>

@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-166)
+# Historial de Migraciones (001-169)
 
-**Total al 2026-05-31:** 166 archivos de migración + 086b correctivo.  
+**Total al 2026-06-01:** 169 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -230,6 +230,9 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 164 | `164_productos_peso_dimensiones.sql` | **ISS-174 F1** · `productos.peso_kg DECIMAL(10,3)` + `largo_cm/ancho_cm/alto_cm DECIMAL(10,2)` (nullable) — dato maestro de peso/volumen para cotizar envíos cuando `envio_peso_fuente='producto'` |
 | 165 | `165_envios_cotizacion_api.sql` | **ISS-174 F2** · `envios.cotizacion_json JSONB` (snapshot de la opción elegida + opciones) + `courier_orden_id TEXT` (ID de la orden en el courier) + `cotizado_api BOOLEAN DEFAULT false`. Metadata de la integración por API (Edge Function `courier-api`) |
 | 166 | `166_fix_seed_categorias_gasto_security_definer.sql` | **Hotfix onboarding (v1.14.1)** · `seed_categorias_gasto()` + `fn_seed_categorias_gasto_new_tenant()` pasan a **SECURITY DEFINER** (+ `search_path=public`). El trigger AFTER INSERT en `tenants` seedeaba categorías de gasto antes de existir la fila en `users`, y el RLS WITH CHECK rechazaba el INSERT → registro de negocio nuevo fallaba. Las otras 2 funciones de seed del tenant ya eran SECURITY DEFINER |
+| 167 | `167_ventas_consumidor_final.sql` | **VF1/H5** · `ventas.consumidor_final BOOLEAN DEFAULT TRUE`. Flag por venta (Consumidor Final vs cliente registrado); con facturación activa y no-CF el cliente es obligatorio |
+| 168 | `168_canales_venta.sql` | **VF2/I1+I2** · Tabla `canales_venta` (`tenant_id, nombre, clasificacion online\|presencial, icono, activo, predefinido, orden`) + seed `SECURITY DEFINER` + trigger AFTER INSERT en `tenants` + backfill. `tenants.reglas_canal JSONB` (reglas por clasificación: devolucion_dias, descuento_max_pct, lista_precio, requiere_cliente). MP no se seedea (es medio de pago) |
+| 169 | `169_venta_auditoria.sql` | **VF3/J1** · Tabla `venta_auditoria` (`tenant_id, venta_id, accion, detalle JSONB, usuario_id, usuario_nombre`) — audit log detallado por venta (anulación, cambio de cliente, override de descuento), visible en el modal de la venta. RLS por tenant |
 
 ---
 

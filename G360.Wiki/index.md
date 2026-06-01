@@ -140,4 +140,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-05-31 — 53 páginas + 3 manuales + relevamientos · DEV: migrations 001-**165** + 086b · PROD: 001-**165** + 086b · **v1.14.0 PROD** ✅ (ISS-174 — cotización/generación de envíos por API de courier Andreani/Correo/OCA, Edge Function `courier-api`; adapters pendientes de validar con cuentas B2B reales)*
+*Última actualización: 2026-06-01 — 53 páginas + 3 manuales + relevamientos · DEV: migrations 001-**169** + 086b · PROD: 001-**169** + 086b · **v1.15.0 PROD** ✅ (Relevamiento Ventas VF1-VF3: POS operativo H2-H5 + canales configurables/reglas online-presencial I1-I2 + auditoría/clave maestra/CONTADOR read-only J1-J3 · mig 167-169). v1.14.x: ISS-174 envíos por API de courier (adapters pendientes de validar con cuentas B2B) + hotfix onboarding RLS.*

@@ -107,7 +107,7 @@ export default function ClientesPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [pageTab, setPageTab] = useState<'lista' | 'cc'>('lista')
+  const [pageTab, setPageTab] = useState<'lista' | 'cc' | 'reportes'>('lista')
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -116,7 +116,7 @@ export default function ClientesPage() {
   const [dniError, setDniError] = useState<string | null>(null)
   const [telError, setTelError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(() => searchParams.get('id'))
-  const [innerTab, setInnerTab] = useState<'historial' | 'domicilios' | 'notas'>('historial')
+  const [innerTab, setInnerTab] = useState<'historial' | 'domicilios' | 'notas' | 'cambios'>('historial')
   const [filtroEtiqueta, setFiltroEtiqueta] = useState('')
   const [nuevaNota, setNuevaNota] = useState('')
   const [savingNota, setSavingNota] = useState(false)
@@ -258,7 +258,7 @@ export default function ClientesPage() {
         .map((v: any) => ({ ...v, condonada: esCondonadaCC(v.medio_pago) }))
         .filter((v: any) => (v.total ?? 0) - (v.monto_pagado ?? 0) > 0.5 || v.condonada)
     },
-    enabled: !!tenant && pageTab === 'cc',
+    enabled: !!tenant && (pageTab === 'cc' || pageTab === 'reportes'),
   })
 
   const { data: clientesCC = [] } = useQuery({
@@ -271,7 +271,7 @@ export default function ClientesPage() {
         .order('nombre')
       return data ?? []
     },
-    enabled: !!tenant && pageTab === 'cc',
+    enabled: !!tenant && (pageTab === 'cc' || pageTab === 'reportes'),
   })
 
   // E2 — saldo a favor por cliente (cliente_creditos, saldo = SUM(monto))
@@ -297,6 +297,19 @@ export default function ClientesPage() {
       return data ?? []
     },
     enabled: !!expandedId && innerTab === 'notas',
+  })
+
+  // F4 — audit log de cambios del cliente (actividad_log)
+  const { data: cambiosCliente = [] } = useQuery({
+    queryKey: ['cliente-cambios', expandedId],
+    queryFn: async () => {
+      const { data } = await supabase.from('actividad_log')
+        .select('accion, valor_nuevo, usuario_nombre, created_at')
+        .eq('tenant_id', tenant!.id).eq('entidad', 'cliente').eq('entidad_id', expandedId!)
+        .order('created_at', { ascending: false }).limit(50)
+      return data ?? []
+    },
+    enabled: !!expandedId && innerTab === 'cambios',
   })
 
   const agregarNota = async () => {
@@ -432,6 +445,9 @@ export default function ClientesPage() {
       if (editId) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editId)
         if (error) throw error
+        // F4 — audit log de cambios de datos del cliente
+        logActividad({ entidad: 'cliente', entidad_id: editId, entidad_nombre: payload.nombre, accion: 'editar',
+          valor_nuevo: `Tel: ${payload.telefono ?? '—'} · Email: ${payload.email ?? '—'} · CC: ${payload.cuenta_corriente_habilitada ? 'sí' : 'no'}${payload.limite_credito ? ` (límite ${formatMoneda(payload.limite_credito)})` : ''}`, pagina: '/clientes' })
         toast.success('Cliente actualizado')
       } else {
         const { error } = await supabase.from('clientes').insert({ tenant_id: tenant!.id, ...payload })
@@ -439,6 +455,7 @@ export default function ClientesPage() {
         toast.success('Cliente creado')
       }
       qc.invalidateQueries({ queryKey: ['clientes'] })
+      qc.invalidateQueries({ queryKey: ['cliente-cambios'] })
       qc.invalidateQueries({ queryKey: ['clientes-stats'] })
       setModalOpen(false)
     } catch (err: any) {
@@ -788,6 +805,7 @@ export default function ClientesPage() {
         {([
           { id: 'lista' as const, label: 'Clientes', icon: Users },
           { id: 'cc' as const, label: 'Cuenta Corriente', icon: CreditCard },
+          { id: 'reportes' as const, label: 'Reportes', icon: TrendingUp },
         ]).map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setPageTab(id)}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors
@@ -1033,6 +1051,84 @@ export default function ClientesPage() {
         )
       })()}
 
+      {/* ═══════════════ TAB REPORTES (G1 + G3) ═══════════════ */}
+      {pageTab === 'reportes' && (() => {
+        const ahora = Date.now()
+        const DIA = 86400000
+        const topClientes = (clientes as any[])
+          .map(c => ({ nombre: c.nombre, ...(statsMap[c.id] ?? { total: 0, count: 0, ultima: '' }) }))
+          .filter(c => c.total > 0).sort((a, b) => b.total - a.total).slice(0, 10)
+        const inactivos = (clientes as any[])
+          .map(c => ({ nombre: c.nombre, telefono: c.telefono, ...(statsMap[c.id] ?? { total: 0, count: 0, ultima: '' }) }))
+          .filter(c => c.count > 0 && c.ultima && (ahora - new Date(c.ultima).getTime()) > 60 * DIA)
+          .sort((a, b) => new Date(a.ultima).getTime() - new Date(b.ultima).getTime())
+        const aging = { '0-30': 0, '31-60': 0, '61-90': 0, '+90': 0 }
+        for (const v of ventasCC as any[]) {
+          if (v.condonada) continue
+          const saldo = (v.total ?? 0) - (v.monto_pagado ?? 0) + (v.interes_cc ?? 0)
+          if (saldo <= 0.5) continue
+          const ref = v.fecha_vencimiento_cc ? new Date(v.fecha_vencimiento_cc + 'T12:00:00').getTime() : new Date(v.created_at).getTime()
+          const dias = Math.floor((ahora - ref) / DIA)
+          if (dias <= 30) aging['0-30'] += saldo
+          else if (dias <= 60) aging['31-60'] += saldo
+          else if (dias <= 90) aging['61-90'] += saldo
+          else aging['+90'] += saldo
+        }
+        const exportarReporte = () => {
+          const wb = XLSX.utils.book_new()
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topClientes.map(c => ({ Cliente: c.nombre, Total: Math.round(c.total), Compras: c.count, 'Última': c.ultima ? new Date(c.ultima).toLocaleDateString('es-AR') : '' }))), 'Top clientes')
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inactivos.map(c => ({ Cliente: c.nombre, Teléfono: c.telefono ?? '', 'Última compra': c.ultima ? new Date(c.ultima).toLocaleDateString('es-AR') : '', Total: Math.round(c.total) }))), 'Inactivos +60d')
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ '0-30': Math.round(aging['0-30']), '31-60': Math.round(aging['31-60']), '61-90': Math.round(aging['61-90']), '+90': Math.round(aging['+90']) }]), 'Aging CC')
+          XLSX.writeFile(wb, `reportes_clientes_${new Date().toISOString().slice(0, 10)}.xlsx`)
+        }
+        return (
+          <div className="space-y-5">
+            <div className="flex justify-end">
+              <button onClick={exportarReporte} className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
+                <FileSpreadsheet size={15} /> Exportar Excel
+              </button>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+              <p className="font-semibold text-gray-700 dark:text-gray-300 mb-3">Deuda CC por antigüedad (aging)</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {([['0-30', '0 a 30 días', 'text-gray-700 dark:text-gray-200'], ['31-60', '31 a 60 días', 'text-amber-600 dark:text-amber-400'], ['61-90', '61 a 90 días', 'text-orange-600 dark:text-orange-400'], ['+90', '+90 días', 'text-red-600 dark:text-red-400']] as const).map(([k, lbl, color]) => (
+                  <div key={k} className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-3">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{lbl}</p>
+                    <p className={`text-lg font-bold ${color}`}>{formatMoneda((aging as any)[k])}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+              <p className="font-semibold text-gray-700 dark:text-gray-300 mb-3">Top 10 clientes por volumen</p>
+              {topClientes.length === 0 ? <p className="text-sm text-gray-400 py-2">Sin datos de ventas.</p> : (
+                <div className="space-y-1.5">
+                  {topClientes.map((c, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm border-b border-gray-50 dark:border-gray-700 last:border-0 py-1.5">
+                      <span className="text-gray-700 dark:text-gray-200"><span className="text-gray-400 mr-2">{i + 1}.</span>{c.nombre}</span>
+                      <span className="font-semibold text-gray-800 dark:text-gray-100">{formatMoneda(c.total)} <span className="text-xs text-gray-400 font-normal">· {c.count} compras</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+              <p className="font-semibold text-gray-700 dark:text-gray-300 mb-3">Clientes inactivos (sin compras hace +60 días) · {inactivos.length}</p>
+              {inactivos.length === 0 ? <p className="text-sm text-gray-400 py-2">No hay clientes inactivos.</p> : (
+                <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                  {inactivos.slice(0, 50).map((c, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm border-b border-gray-50 dark:border-gray-700 last:border-0 py-1.5">
+                      <span className="text-gray-700 dark:text-gray-200">{c.nombre}</span>
+                      <span className="text-xs text-gray-400">última: {c.ultima ? new Date(c.ultima).toLocaleDateString('es-AR') : '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ═══════════════ TAB LISTA ═══════════════ */}
       {pageTab === 'lista' && <>
 
@@ -1262,6 +1358,7 @@ export default function ClientesPage() {
                         { id: 'historial' as const, label: 'Historial de compras', icon: <ShoppingCart size={12} /> },
                         { id: 'domicilios' as const, label: 'Domicilios',          icon: <MapPin size={12} /> },
                         { id: 'notas'     as const, label: 'Notas',                icon: <StickyNote size={12} /> },
+                        { id: 'cambios'   as const, label: 'Cambios',              icon: <Clock size={12} /> },
                       ].map(t => (
                         <button key={t.id} onClick={() => setInnerTab(t.id)}
                           className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px transition-colors
@@ -1484,6 +1581,26 @@ export default function ClientesPage() {
                               </div>
                             ))}
                           </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tab: Cambios (F4 — audit log) */}
+                    {innerTab === 'cambios' && (
+                      <div className="space-y-2">
+                        {(cambiosCliente as any[]).length === 0 ? (
+                          <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Sin cambios registrados</p>
+                        ) : (
+                          (cambiosCliente as any[]).map((ev: any, i: number) => (
+                            <div key={i} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-600 p-3">
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className={`px-1.5 py-0.5 rounded font-medium ${ev.accion === 'incobrable' ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'}`}>{ev.accion === 'incobrable' ? 'Incobrable' : 'Edición'}</span>
+                                <span className="text-gray-400 dark:text-gray-500">{new Date(ev.created_at).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' })}</span>
+                                {ev.usuario_nombre && <span className="text-gray-400 dark:text-gray-500">· {ev.usuario_nombre}</span>}
+                              </div>
+                              {ev.valor_nuevo && <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">{ev.valor_nuevo}</p>}
+                            </div>
+                          ))
                         )}
                       </div>
                     )}

@@ -2453,3 +2453,15 @@ CREATE INDEX IF NOT EXISTS idx_clientes_cuenta_token ON clientes(cuenta_token) W
 -- Migration 174: Fix — DROP CONSTRAINT ventas_origen_check (canal configurable desde mig 168)
 -- ─────────────────────────────────────────────────────────────────────────────
 ALTER TABLE ventas DROP CONSTRAINT IF EXISTS ventas_origen_check;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 175: Clientes CL4 (notificaciones CC + cumpleaños, config por tenant)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE tenants
+  ADD COLUMN IF NOT EXISTS cc_notif_canales        TEXT[] NOT NULL DEFAULT ARRAY['whatsapp']::TEXT[], -- email|whatsapp
+  ADD COLUMN IF NOT EXISTS cc_notif_registro_deuda BOOLEAN NOT NULL DEFAULT FALSE,  -- C1
+  ADD COLUMN IF NOT EXISTS cc_notif_pago           BOOLEAN NOT NULL DEFAULT FALSE,  -- C4
+  ADD COLUMN IF NOT EXISTS cc_notif_pre_venc_dias  INT DEFAULT 3,                   -- C2 (NULL=off)
+  ADD COLUMN IF NOT EXISTS cc_notif_escalado_dias  INT,                             -- C3 (NULL=off)
+  ADD COLUMN IF NOT EXISTS cumple_notif_cliente    BOOLEAN NOT NULL DEFAULT FALSE,  -- C5
+  ADD COLUMN IF NOT EXISTS cumple_notif_duenio     BOOLEAN NOT NULL DEFAULT FALSE;  -- C5

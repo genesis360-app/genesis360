@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
+import { notificarPagoCC } from '@/lib/notificacionesCC'
 import { logActividad } from '@/lib/actividadLog'
 import { generarEstadoCuentaPDF } from '@/lib/estadoCuentaPDF'
 import * as XLSX from 'xlsx'
@@ -455,6 +456,8 @@ export default function ClientesPage() {
       const { aplicado } = await cobrarDeudaCCFIFO(supabase, { tenantId: tenant!.id, clienteId, monto, metodo: pagoMetodo })
       if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
       toast.success(`Pago de ${formatMoneda(aplicado)} registrado`)
+      const nomb = (clientesCC as any[]).find(c => c.id === clienteId)?.nombre ?? 'cliente'
+      void notificarPagoCC(tenant, clienteId, nomb, aplicado)  // CL4/C4
       qc.invalidateQueries({ queryKey: ['ventas-cc'] })
       setPagoInlineId(null); setPagoMonto(''); setPagoMetodo('Efectivo')
     } catch (e: any) { toast.error(e.message ?? 'Error al registrar pago') }
@@ -869,7 +872,8 @@ export default function ClientesPage() {
                       : null
                     const diasVto = fechaVto ? Math.ceil((fechaVto.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null
                     const vencida = (diasVto !== null && diasVto < 0) || (d?.vencidaReal ?? false)
-                    const proxima = !vencida && diasVto !== null && diasVto >= 0 && diasVto <= 5
+                    const umbralPreVenc = (tenant as any)?.cc_notif_pre_venc_dias ?? 5  // C2 configurable
+                    const proxima = !vencida && diasVto !== null && diasVto >= 0 && diasVto <= umbralPreVenc
 
                     return (
                       <div key={c.id} className="px-4 py-4">
@@ -1031,6 +1035,34 @@ export default function ClientesPage() {
 
       {/* ═══════════════ TAB LISTA ═══════════════ */}
       {pageTab === 'lista' && <>
+
+      {/* C5 — Cumpleaños de hoy (si el dueño lo habilitó en Config) */}
+      {(tenant as any)?.cumple_notif_duenio && (() => {
+        const hoy = new Date()
+        const cumpleHoy = (clientes as any[]).filter(c => {
+          if (!c.fecha_nacimiento) return false
+          const n = new Date(c.fecha_nacimiento + 'T12:00:00')
+          return n.getDate() === hoy.getDate() && n.getMonth() === hoy.getMonth()
+        })
+        if (cumpleHoy.length === 0) return null
+        return (
+          <div className="bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-800 rounded-xl p-4">
+            <p className="text-sm font-semibold text-pink-700 dark:text-pink-300 mb-2 flex items-center gap-2">🎂 Cumpleaños de hoy ({cumpleHoy.length})</p>
+            <div className="flex flex-wrap gap-2">
+              {cumpleHoy.map((c: any) => (
+                <span key={c.id} className="inline-flex items-center gap-2 bg-white dark:bg-gray-800 border border-pink-200 dark:border-pink-700 rounded-lg px-2.5 py-1 text-sm text-gray-700 dark:text-gray-200">
+                  {c.nombre}
+                  {(tenant as any)?.cumple_notif_cliente && c.telefono && (
+                    <a href={buildWhatsAppUrl(c.telefono, `¡Feliz cumpleaños, ${c.nombre}! 🎉 Te saludamos desde ${(tenant as any)?.nombre ?? 'el negocio'}. ¡Que tengas un gran día!`)}
+                      target="_blank" rel="noreferrer" title="Enviar saludo por WhatsApp"
+                      className="text-green-600 hover:text-green-700"><MessageCircle size={14} /></a>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Stats cards */}
       {clientesConCompras > 0 && (

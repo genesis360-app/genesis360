@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
+import { notificarPagoCC } from '@/lib/notificacionesCC'
 import toast from 'react-hot-toast'
 
 /**
@@ -73,6 +74,8 @@ export default function CajaCobranzasCC() {
       const { aplicado } = await cobrarDeudaCCFIFO(supabase, { tenantId: tenant!.id, clienteId, monto: m, metodo })
       if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
       toast.success(`Cobranza de ${formatMoneda(aplicado)} registrada`)
+      const nomb = conDeuda.find(x => x.id === clienteId)?.nombre ?? 'cliente'
+      void notificarPagoCC(tenant, clienteId, nomb, aplicado)  // CL4/C4
       setCobrarId(null); setMonto(''); setMetodo('Efectivo')
       qc.invalidateQueries({ queryKey: ['caja-cobranzas-cc'] })
     } catch (e: any) { toast.error(e.message ?? 'Error al registrar la cobranza') }

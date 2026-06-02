@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-02] deploy | v1.23.0 PROD — Clientes CL4+CL5+CL6 — MÓDULO CLIENTES COMPLETO
+
+**Deployado a PROD** (PR #143). Migrations 175 (CL4) + 176 (CL5) en DEV y PROD; CL6 sin migración. Build verde. Sesión retomada tras reinicio de máquina (estado verificado: mig 171-174 + v1.20.0 ya en PROD).
+
+- **CL4 notificaciones (mig 175):** `lib/notificacionesCC.ts` (email event-driven vía `send-email`). C1 email al registrar deuda CC; C4 comprobante de pago en las 3 vías (ficha/POS/Caja); C2 umbral pre-vencimiento configurable (resaltado tab CC); C5 panel cumpleaños + saludo WA. Config en ConfigPage → Ventas → Operativa. Defaults OFF (opt-in). C3 escalado configurable (envío background no disponible sin pg_cron).
+- **CL5 CC proveedores (mig 176):** tabla `proveedor_cuentas_bancarias` (D6) + CRUD en modal CC; PDF estado de cuenta proveedor (D3); columnas `nc_numero`/`adjunto_url` (D4). D2/D5 ya existían.
+- **CL6 reportes/audit (sin migración):** tab "Reportes" (top clientes, inactivos +60d, aging CC 0-30/31-60/61-90/+90); export Excel (G3); audit log de cambios del cliente en sub-tab "Cambios" (F4); tipos `EntidadLog`/`AccionLog` ya extendidos en CL3.
+- **🐛 Fix autofill:** Chrome escribía un email guardado en el buscador de ventas (Historial) al aparecer el input de clave maestra. Fix: `autoComplete="new-password"` en el password + `autoComplete="off"` en los buscadores.
+
+**🎉 Módulo Clientes CL1–CL6 COMPLETO.** Backlog diferido: B7, C6, F2, D4 UI NC, C3 background (cron), cobranza CC con impacto en arqueo.
+
+---
+
 ## [2026-06-02] deploy | v1.20.0 PROD — Clientes CL3 (incobrables + estado de cuenta) + bugfix origen
 
 **Deployado a PROD.** Migrations 173 (CL3) + **174 (bugfix)**, ambas en DEV y PROD. Build verde.

@@ -13,6 +13,15 @@ updated: 2026-05-29
 
 ---
 
+## v1.23.0 — Relevamiento Clientes CL4+CL5+CL6: módulo Clientes COMPLETO (PROD ✅)
+
+Cierre del relevamiento de Clientes. Migrations 175 (CL4) + 176 (CL5); CL6 sin migración.
+- **CL4 notificaciones:** email automático al registrar deuda CC (C1) y al pagar (C4); umbral pre-vencimiento configurable (C2); panel de cumpleaños + saludo WA (C5). Config en Config → Ventas → Operativa. Defaults OFF.
+- **CL5 CC proveedores:** cuentas bancarias múltiples (D6), PDF estado de cuenta (D3), columnas de NC con correlativo/adjunto (D4).
+- **CL6 reportes/audit:** tab Reportes (top clientes, inactivos +60d, aging CC), export Excel (G3), audit log de cambios del cliente (F4).
+- **Fix:** autofill del navegador en el buscador de ventas al abrir el modal de clave maestra.
+- **🎉 Módulo Clientes CL1–CL6 completo.**
+
 ## v1.20.0 — Relevamiento Clientes CL3: incobrables + estado de cuenta (PROD ✅)
 
 Tercera fase del backlog Clientes. Migration 173 + bugfix 174.

@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-174)
+# Historial de Migraciones (001-176)
 
-**Total al 2026-06-02:** 174 archivos de migración + 086b correctivo.  
+**Total al 2026-06-02:** 176 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -238,6 +238,8 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 172 | `172_clientes_cl2_cc.sql` | **Clientes CL2** · CC clientes. `tenants.limite_cc_default`, `cc_enforcement_politica` (permitir\|avisar\|bloquear), `cc_morosidad_politica` (permitir\|bloqueo_cc\|bloqueo_total), `cc_dias_vencimiento INT`, `cc_interes_mensual_pct`. `ventas.fecha_vencimiento_cc DATE` + `interes_cc DECIMAL`. RPC `cliente_cc_estado(cliente)` (deuda_total/vencida/interés, SECURITY DEFINER tenant-scoped) + `recalcular_intereses_cc(tenant)` (sweep-lazy idempotente de intereses de mora; pg_cron no habilitado) |
 | 173 | `173_clientes_cl3.sql` | **Clientes CL3** · B8 estado de cuenta. `clientes.cuenta_token TEXT UNIQUE` + índice parcial. RPC `get_cuenta_cliente_by_token(token)` → JSONB (cliente + ventas CC pendientes), SECURITY DEFINER, GRANT anon — portal público `/cuenta/:token`. B6 incobrable se resuelve en app (sin DDL) |
 | 174 | `174_fix_ventas_origen_check.sql` | **Bugfix** · `DROP CONSTRAINT ventas_origen_check`. Desde mig 168 el canal de venta (`ventas.origen`) es configurable por tenant (catálogo `canales_venta`); la constraint rígida (lista fija, mig 122) rechazaba canales nuevos → "new row violates check constraint ventas_origen_check" al vender. El canal se valida a nivel de app |
+| 175 | `175_clientes_cl4_notif.sql` | **Clientes CL4** · Config de notificaciones CC en `tenants`: `cc_notif_canales TEXT[]` (email\|whatsapp), `cc_notif_registro_deuda` (C1), `cc_notif_pago` (C4), `cc_notif_pre_venc_dias INT` (C2, default 3), `cc_notif_escalado_dias INT` (C3), `cumple_notif_cliente`/`cumple_notif_duenio` (C5). Defaults OFF (opt-in). Emails event-driven vía Edge Function `send-email` |
+| 176 | `176_proveedores_cl5.sql` | **Clientes CL5** · D6: tabla `proveedor_cuentas_bancarias` (banco/titular/cbu/alias/cuenta/es_principal, RLS por tenant) — cuentas bancarias múltiples por proveedor. D4: `proveedor_cc_movimientos.nc_numero` + `adjunto_url` (correlativo y comprobante de NC) |
 
 ---
 

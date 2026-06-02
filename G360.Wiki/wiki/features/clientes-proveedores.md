@@ -228,6 +228,23 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 ### CL3 — Incobrables + estado de cuenta (mig 173) · v1.20.0
 - **Incobrables (B6):** botón "Incobrable" en el tab CC (DUEÑO/ADMIN/SUPER_USUARIO) → modal con motivo + **clave maestra** del dueño (si está configurada). Condona toda la deuda CC del cliente (tag `Incobrable`, excluido de ingresos) + genera **gasto automático "Deudores incobrables"** + audit (`actividad_log`).
 - **Estado de cuenta (B8):** **PDF** descargable (`src/lib/estadoCuentaPDF.ts`) desde la ficha + **portal público** `/cuenta/:token` (`CuentaClientePage`, sin login) vía `clientes.cuenta_token` + RPC `get_cuenta_cliente_by_token` (SECURITY DEFINER, anon). Botón "Link cliente" genera/copia el link.
+
+### CL4 — Notificaciones (mig 175) · v1.23.0
+- **C1/C4:** email automático al registrar deuda CC y al registrar un pago (las 3 vías) — `src/lib/notificacionesCC.ts`, event-driven vía Edge Function `send-email`.
+- **C2:** umbral `cc_notif_pre_venc_dias` (default 3) resalta "próxima a vencer" en el tab CC.
+- **C5:** panel "🎂 Cumpleaños de hoy" en Clientes + saludo por WhatsApp.
+- Config en Config → Ventas → Operativa → Cuenta corriente (canales email/WhatsApp). **Defaults OFF** (opt-in). WhatsApp manual; sin envío background (no hay pg_cron).
+
+### CL5 — CC proveedores (mig 176) · v1.23.0
+- **D6:** cuentas bancarias múltiples por proveedor (tabla `proveedor_cuentas_bancarias`, RLS por tenant) + CRUD en el modal CC.
+- **D3:** PDF estado de cuenta del proveedor.
+- **D4:** `proveedor_cc_movimientos.nc_numero` + `adjunto_url` (correlativo/comprobante de NC). D2 (bloqueo) y D5 (pago parcial) ya existían.
+
+### CL6 — Reportes + export + audit · v1.23.0 (sin migración)
+- **G1:** tab "Reportes" en Clientes — top 10 por volumen, inactivos +60d, aging de deuda CC (0-30/31-60/61-90/+90).
+- **G3:** export a Excel de los reportes.
+- **F4:** audit log de cambios del cliente (`actividad_log`, entidad `cliente`) + sub-tab "Cambios" en la ficha.
+- **G2:** alertas de deuda vencida ya en `DashClientesArea` (dashboard) + el aging report.
 - **Config:** ConfigPage → Ventas → Operativa → "Cuenta corriente de clientes".
 
 ---

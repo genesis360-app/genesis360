@@ -4,9 +4,11 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.20.0** ✅ (Relevamiento Clientes **CL3** mig 173 — incobrables B6 con gasto automático + clave maestra, estado de cuenta PDF + portal público `/cuenta/:token` B8 · **+ bugfix mig 174** `DROP CONSTRAINT ventas_origen_check`). Previos: CL1 (171) + CL2 (172) en v1.19.0. Ver `relevamiento_clientes_respuestas.md`.
+Último release en PROD: **v1.23.0** ✅ (Relevamiento Clientes **CL4+CL5+CL6** — notificaciones CC mig 175, CC proveedores mig 176, reportes/export/audit sin migración). **🎉 MÓDULO CLIENTES COMPLETO (CL1–CL6).** Ver `relevamiento_clientes_respuestas.md`.
 
-**Próximo:** CL4 (notificaciones C1-C5). Backlog Clientes CL4-CL6 en este archivo.
+**Historial Clientes:** v1.19.0 (CL1+CL2), v1.20.0 (CL3 + bugfix origen), v1.23.0 (CL4+CL5+CL6).
+
+**Próximo:** sin tareas asignadas de Clientes. Backlog diferido: B7 tope deuda global, C6 marketing bulk, F2 fidelización, D4 UI de NC manual, C3 envío background (requiere cron), cobranza CC con impacto en arqueo.
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -16,12 +18,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.20.0` | `v1.20.0` |
-| Migrations | 001–**174** ✅ | 001–**174** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.20.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.20.0 |
+| APP_VERSION | `v1.23.0` | `v1.23.0` |
+| Migrations | 001–**176** ✅ | 001–**176** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.23.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.23.0 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (171-174 ya en PROD; **174 es bugfix de constraint, aplicado directo en PROD**).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (171-176 ya en PROD).
 
 **ISS-174 — cotización/generación de envíos por API (v1.14.0, PROD):**
 - **F1 (fundación)** — servicio = select dependiente en POS; catálogo `src/lib/couriers/catalogo.ts`; mig 162 (`courier_credenciales` + `tenants.envio_peso_fuente`), 163 (CP idempotente), 164 (productos peso/dim); Config → Envíos (toggle peso-fuente + `CourierCredencialesPanel` owner-only); peso/dim en form de producto.
@@ -52,7 +54,9 @@ type: project
 
 ## Backlog — pendientes próxima sesión
 
-### Relevamiento Clientes — plan por fases CL1-CL6 (relevado 2026-06-01, GO + socio)
+### Relevamiento Clientes — plan por fases CL1-CL6 (relevado 2026-06-01, GO + socio) — ✅ COMPLETO
+
+**🎉 Las 6 fases implementadas y deployadas a PROD** (v1.19.0 → v1.23.0). Detalle de implementación por ítem en `relevamiento_clientes_respuestas.md`. Tabla original del plan abajo (referencia histórica).
 
 Respuestas completas y cruce con Ventas en `relevamiento_clientes_respuestas.md`. **GO pidió implementar TODO (sin Top 3).** Varios ítems de CC clientes comparten definición con Ventas sección D (respondida, sin implementar — se implementa acá). **Transversal:** `pg_cron` NO habilitado → disparos por tiempo van por sweep lazy vía RPC.
 

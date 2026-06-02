@@ -433,9 +433,13 @@ CREATE TABLE clientes (
   email       TEXT,
   notas       TEXT,
   activo      BOOLEAN DEFAULT TRUE,
+  motivo_baja TEXT,                          -- CL1/A6 (mig 171) — razón de la baja (soft delete)
+  baja_at     TIMESTAMPTZ,                    -- CL1/A6 (mig 171)
+  baja_por    UUID REFERENCES users(id),      -- CL1/A6 (mig 171)
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS clientes_dni_tenant ON clientes(tenant_id, dni) WHERE dni IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_clientes_activo ON clientes(tenant_id) WHERE activo;  -- CL1 (mig 171)
 ALTER TABLE clientes ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
@@ -2401,3 +2405,38 @@ ALTER TABLE autorizaciones_cc ENABLE ROW LEVEL SECURITY;
 CREATE POLICY autoriz_cc_tenant ON autorizaciones_cc FOR ALL
   USING      (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
   WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 171: Relevamiento Clientes · Fase CL1 (soft delete + catálogo etiquetas)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE clientes
+  ADD COLUMN IF NOT EXISTS motivo_baja TEXT,
+  ADD COLUMN IF NOT EXISTS baja_at     TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS baja_por    UUID REFERENCES users(id);
+CREATE INDEX IF NOT EXISTS idx_clientes_activo ON clientes(tenant_id) WHERE activo;
+
+ALTER TABLE tenants
+  ADD COLUMN IF NOT EXISTS cliente_etiquetas_catalogo TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 172: Relevamiento Clientes · Fase CL2 (CC clientes: límite/vencimiento/interés/morosidad)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE tenants
+  ADD COLUMN IF NOT EXISTS limite_cc_default       DECIMAL(12,2),                      -- B1/D1
+  ADD COLUMN IF NOT EXISTS cc_enforcement_politica TEXT NOT NULL DEFAULT 'avisar',     -- B1: permitir|avisar|bloquear
+  ADD COLUMN IF NOT EXISTS cc_morosidad_politica   TEXT NOT NULL DEFAULT 'bloqueo_cc', -- B4: permitir|bloqueo_cc|bloqueo_total
+  ADD COLUMN IF NOT EXISTS cc_dias_vencimiento     INT,                                -- B3 (NULL = sin venc.)
+  ADD COLUMN IF NOT EXISTS cc_interes_mensual_pct  DECIMAL(6,3) NOT NULL DEFAULT 0;    -- B3
+ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_cc_enforcement_chk;
+ALTER TABLE tenants ADD CONSTRAINT tenants_cc_enforcement_chk CHECK (cc_enforcement_politica IN ('permitir','avisar','bloquear'));
+ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_cc_morosidad_chk;
+ALTER TABLE tenants ADD CONSTRAINT tenants_cc_morosidad_chk CHECK (cc_morosidad_politica IN ('permitir','bloqueo_cc','bloqueo_total'));
+
+ALTER TABLE ventas
+  ADD COLUMN IF NOT EXISTS fecha_vencimiento_cc DATE,                   -- B3
+  ADD COLUMN IF NOT EXISTS interes_cc DECIMAL(12,2) NOT NULL DEFAULT 0; -- B3 (lo recalcula recalcular_intereses_cc)
+CREATE INDEX IF NOT EXISTS idx_ventas_cc_venc ON ventas(tenant_id, fecha_vencimiento_cc) WHERE es_cuenta_corriente = TRUE;
+
+-- RPC cliente_cc_estado(cliente) → deuda_total, deuda_vencida, interes_total (tenant-scoped, SECURITY DEFINER)
+-- RPC recalcular_intereses_cc(tenant) → recalcula interes_cc de ventas CC vencidas (sweep-lazy idempotente)
+-- (definiciones completas en supabase/migrations/172_clientes_cl2_cc.sql)

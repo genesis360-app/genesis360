@@ -5,6 +5,7 @@ import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCar
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
+import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
@@ -246,6 +247,12 @@ export default function VentasPage() {
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [clienteCCEnabled, setClienteCCEnabled] = useState(false)
   const [clienteCredito, setClienteCredito] = useState(0)  // E2 — saldo a favor del cliente (cliente_creditos)
+  // B5 — cobranza de deuda CC desde el POS
+  const [clienteCCDeuda, setClienteCCDeuda] = useState(0)
+  const [cobrarCCOpen, setCobrarCCOpen] = useState(false)
+  const [cobrarCCMonto, setCobrarCCMonto] = useState('')
+  const [cobrarCCMetodo, setCobrarCCMetodo] = useState('Efectivo')
+  const [cobrarCCSaving, setCobrarCCSaving] = useState(false)
   const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
@@ -600,6 +607,29 @@ export default function VentasPage() {
       })
     return () => { cancelado = true }
   }, [clienteId, tenant?.id])
+
+  // B5 — deuda CC del cliente seleccionado (para mostrar "Cobrar deuda" en el POS)
+  const fetchClienteCCDeuda = async () => {
+    if (!clienteId) { setClienteCCDeuda(0); return }
+    const { data } = await supabase.rpc('cliente_cc_estado', { p_cliente: clienteId })
+    setClienteCCDeuda(Number(data?.[0]?.deuda_total ?? 0))
+  }
+  useEffect(() => { fetchClienteCCDeuda() }, [clienteId])
+
+  const registrarCobranzaCC = async () => {
+    const monto = parseFloat(cobrarCCMonto)
+    if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    if (!clienteId) return
+    setCobrarCCSaving(true)
+    try {
+      const { aplicado } = await cobrarDeudaCCFIFO(supabase, { tenantId: tenant!.id, clienteId, monto, metodo: cobrarCCMetodo })
+      if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
+      toast.success(`Cobranza de $${Math.round(aplicado).toLocaleString('es-AR')} registrada`)
+      setCobrarCCOpen(false); setCobrarCCMonto(''); setCobrarCCMetodo('Efectivo')
+      await fetchClienteCCDeuda()
+    } catch (e: any) { toast.error(e.message ?? 'Error al registrar la cobranza') }
+    finally { setCobrarCCSaving(false) }
+  }
 
   // Auto-calcular costo de envío cuando cambian km o precio/km
   useEffect(() => {
@@ -1751,6 +1781,34 @@ export default function VentasPage() {
       if (!clienteId) { toast.error('Seleccioná un cliente para usar cuenta corriente.'); return }
       if (!clienteCCEnabled) { toast.error('Este cliente no tiene cuenta corriente habilitada.'); return }
     }
+    // CL2 — morosidad (B4) + enforcement de límite de CC (B1).
+    // bloqueo_total aplica a cualquier venta; bloqueo_cc/enforcement solo a la parte CC.
+    const morosidadPol = (tenant as any)?.cc_morosidad_politica ?? 'bloqueo_cc'
+    if (estado !== 'pendiente' && clienteId && (modoCC || morosidadPol === 'bloqueo_total')) {
+      const { data: ccData } = await supabase.rpc('cliente_cc_estado', { p_cliente: clienteId })
+      const est = (ccData?.[0] ?? { deuda_total: 0, deuda_vencida: 0 }) as { deuda_total: number; deuda_vencida: number }
+      const fmtCC = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+      // B4 — morosidad: deuda vencida impaga
+      if (est.deuda_vencida > 0.5) {
+        if (morosidadPol === 'bloqueo_total') {
+          toast.error(`Cliente con deuda vencida (${fmtCC(est.deuda_vencida)}). No puede comprar hasta saldar.`); return
+        }
+        if (morosidadPol === 'bloqueo_cc' && modoCC) {
+          toast.error(`Cliente con deuda vencida (${fmtCC(est.deuda_vencida)}). No puede sumar a cuenta corriente; cobrá por otro medio.`); return
+        }
+      }
+      // B1 — enforcement de límite (solo sobre la parte que va a CC)
+      if (modoCC && montoCC > 0.5) {
+        const { data: cli } = await supabase.from('clientes').select('limite_credito').eq('id', clienteId).maybeSingle()
+        const limite = cli?.limite_credito ?? (tenant as any)?.limite_cc_default ?? null
+        if (limite != null && est.deuda_total + montoCC > limite + 0.5) {
+          const pol = (tenant as any)?.cc_enforcement_politica ?? 'avisar'
+          const msg = `Esta venta deja la cuenta corriente en ${fmtCC(est.deuda_total + montoCC)}, supera el límite de ${fmtCC(limite)}.`
+          if (pol === 'bloquear') { toast.error(msg + ' Operación bloqueada.'); return }
+          if (pol === 'avisar' && !confirm(msg + ' ¿Continuar igual?')) return
+        }
+      }
+    }
     // E2: crédito a favor — requiere cliente y no puede superar el saldo disponible
     if (montoCredito > 0.001) {
       if (!clienteId) { toast.error('Seleccioná un cliente para usar su crédito a favor.'); return }
@@ -1833,6 +1891,10 @@ export default function VentasPage() {
           )
         })(),
         es_cuenta_corriente: modoCC,
+        // B3 — vencimiento de la venta CC = hoy + cc_dias_vencimiento (si está configurado)
+        ...(modoCC && montoCC > 0.5 && ((tenant as any)?.cc_dias_vencimiento ?? null) != null
+          ? { fecha_vencimiento_cc: new Date(Date.now() + ((tenant as any).cc_dias_vencimiento) * 86400000).toISOString().slice(0, 10) }
+          : {}),
         notas: notas || null,
         usuario_id: user?.id,
         sucursal_id: sucursalId || null,
@@ -3633,8 +3695,15 @@ export default function VentasPage() {
               {/* Autocomplete cliente registrado */}
               <div className="relative">
                 {clienteId ? (
-                  <div className="flex items-center gap-2 px-3 py-2.5 border border-blue-300 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-sm">
+                  <div className="flex items-center gap-2 px-3 py-2.5 border border-blue-300 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-sm flex-wrap">
                     <span className="flex-1 font-medium text-blue-800 dark:text-blue-400">{clienteNombre}</span>
+                    {clienteCCDeuda > 0.5 && (
+                      <button onClick={() => { setCobrarCCOpen(true); setCobrarCCMonto(String(Math.round(clienteCCDeuda))); setCobrarCCMetodo('Efectivo') }}
+                        className="flex items-center gap-1 text-xs bg-red-500 hover:bg-red-600 text-white px-2.5 py-1 rounded-lg transition-colors"
+                        title="Cobrar deuda de cuenta corriente">
+                        <DollarSign size={12} /> Deuda CC ${Math.round(clienteCCDeuda).toLocaleString('es-AR')}
+                      </button>
+                    )}
                     <button onClick={() => { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch(''); setClienteCCEnabled(false); setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente')) }} title="Quitar cliente" className="text-blue-400 hover:text-blue-700 dark:text-blue-400"><X size={14} /></button>
                   </div>
                 ) : (
@@ -5997,6 +6066,42 @@ export default function VentasPage() {
                 {emitendoNC
                   ? <><span className="animate-spin">⟳</span> Emitiendo…</>
                   : <>📋 Emitir {ncTipo}</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* B5 — Cobrar deuda CC desde el POS */}
+      {cobrarCCOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setCobrarCCOpen(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2"><DollarSign size={16} className="text-red-500" /> Cobrar deuda CC</h3>
+              <button onClick={() => setCobrarCCOpen(false)} className="text-gray-400 hover:text-gray-600 p-1"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-500 dark:text-gray-400">{clienteNombre} · deuda total <span className="font-semibold text-red-600 dark:text-red-400">${Math.round(clienteCCDeuda).toLocaleString('es-AR')}</span></p>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Monto a cobrar</label>
+                <input type="number" min="0" onWheel={e => e.currentTarget.blur()} value={cobrarCCMonto}
+                  onChange={e => setCobrarCCMonto(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Medio de pago</label>
+                <select value={cobrarCCMetodo} onChange={e => setCobrarCCMetodo(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  {['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'MercadoPago', 'Otro'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500">Se aplica FIFO sobre las ventas CC más antiguas del cliente.</p>
+            </div>
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3">
+              <button onClick={() => setCobrarCCOpen(false)} className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">Cancelar</button>
+              <button onClick={registrarCobranzaCC} disabled={cobrarCCSaving}
+                className="bg-red-500 hover:bg-red-600 text-white font-semibold px-5 py-2 rounded-xl text-sm disabled:opacity-50 transition-all">
+                {cobrarCCSaving ? 'Registrando...' : 'Registrar cobranza'}
               </button>
             </div>
           </div>

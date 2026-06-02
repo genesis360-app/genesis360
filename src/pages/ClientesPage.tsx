@@ -6,8 +6,10 @@ import {
   ChevronDown, ChevronUp, ShoppingCart, TrendingUp, Clock, Pencil, Trash2, Award,
   Upload, Download, CheckCircle, XCircle, FileSpreadsheet, ExternalLink, MapPin, Star,
   Tag, Calendar, StickyNote, CreditCard, AlertCircle, MessageCircle, DollarSign,
+  UserX, RotateCcw,
 } from 'lucide-react'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
+import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -21,6 +23,8 @@ interface FilaCliente {
   telefono?: string
   email?: string
   notas?: string
+  etiquetas?: string[]
+  matchId?: string   // id del cliente existente si es duplicado (A5)
   estado: 'nuevo' | 'duplicado' | 'error'
   errores: string[]
 }
@@ -120,6 +124,14 @@ export default function ClientesPage() {
   // ISS-107: cancelación de deuda CC
   const [cancelandoDeudaId, setCancelandoDeudaId] = useState<string | null>(null)
   const puedeGestionarCC = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
+  // H2 — CONTADOR entra read-only (ve CC, historial, fiscales; no crea/edita/borra)
+  const esContador = user?.rol === 'CONTADOR'
+  const puedeEditar = !esContador
+  // A6 — baja con razón (soft delete) + ver inactivos
+  const [verInactivos, setVerInactivos] = useState(false)
+  const [bajaCliente, setBajaCliente] = useState<{ id: string; nombre: string } | null>(null)
+  const [bajaMotivo, setBajaMotivo] = useState('')
+  const [savingBaja, setSavingBaja] = useState(false)
   const [showDomForm, setShowDomForm] = useState(false)
   const [editDomId, setEditDomId] = useState<string | null>(null)
   const [domForm, setDomForm] = useState({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false })
@@ -130,17 +142,33 @@ export default function ClientesPage() {
   const [showImport, setShowImport] = useState(false)
   const [filasImport, setFilasImport] = useState<FilaCliente[]>([])
   const [importando, setImportando] = useState(false)
-  const [resultadoImport, setResultadoImport] = useState<{ creados: number; errores: number } | null>(null)
+  const [resultadoImport, setResultadoImport] = useState<{ creados: number; actualizados: number; ignorados: number; errores: number } | null>(null)
+  // A5 — modo de resolución de duplicados (espeja importar productos)
+  const [importModo, setImportModo] = useState<'ignorar_existentes' | 'ignorar_nuevos' | 'procesar_todos'>('ignorar_existentes')
 
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: clientes = [], isLoading } = useQuery({
-    queryKey: ['clientes', tenant?.id, search],
+    queryKey: ['clientes', tenant?.id, search, verInactivos],
     queryFn: async () => {
       let q = supabase.from('clientes').select('*').eq('tenant_id', tenant!.id).order('nombre')
+      if (!verInactivos) q = q.eq('activo', true)   // A6 — ocultar dados de baja por defecto
       if (search) q = q.or(`nombre.ilike.%${search}%,dni.ilike.%${search}%`)
       const { data, error } = await q
       if (error) throw error
       return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  // F1 — catálogo de etiquetas: predefinidas del tenant ∪ las ya usadas en clientes
+  const { data: etiquetasCatalogo = [] } = useQuery({
+    queryKey: ['cliente-etiquetas-catalogo', tenant?.id],
+    queryFn: async () => {
+      const predef: string[] = ((tenant as any)?.cliente_etiquetas_catalogo ?? []) as string[]
+      const { data } = await supabase.from('clientes').select('etiquetas').eq('tenant_id', tenant!.id)
+      const usadas = new Set<string>()
+      for (const row of (data ?? []) as any[]) (row.etiquetas ?? []).forEach((e: string) => e && usadas.add(e))
+      return Array.from(new Set([...predef, ...usadas])).sort((a, b) => a.localeCompare(b))
     },
     enabled: !!tenant,
   })
@@ -206,8 +234,10 @@ export default function ClientesPage() {
   const { data: ventasCC = [] } = useQuery({
     queryKey: ['ventas-cc', tenant?.id],
     queryFn: async () => {
+      // B3 — recálculo de intereses de mora (sweep-lazy) antes de leer; pg_cron no está habilitado
+      await supabase.rpc('recalcular_intereses_cc', { p_tenant: tenant!.id })
       const { data } = await supabase.from('ventas')
-        .select('id, numero, total, monto_pagado, estado, created_at, despachado_at, cliente_id, cliente_nombre, medio_pago')
+        .select('id, numero, total, monto_pagado, estado, created_at, despachado_at, cliente_id, cliente_nombre, medio_pago, fecha_vencimiento_cc, interes_cc')
         .eq('tenant_id', tenant!.id)
         .eq('es_cuenta_corriente', true)
         .in('estado', ['despachada', 'facturada'])
@@ -355,6 +385,20 @@ export default function ClientesPage() {
     setDniError(errDni)
     setTelError(errTel)
     if (errDni || errTel) { toast.error('Corregí los errores antes de guardar'); return }
+    // A2 — alerta de posible duplicado al crear (DNI exacto lo bloquea el índice único;
+    // acá avisamos por teléfono o nombre similar y dejamos decidir al operador).
+    if (!editId) {
+      const tel = form.telefono.replace(/\D/g, '')
+      const { data: posibles } = await supabase.from('clientes')
+        .select('nombre, dni, telefono')
+        .eq('tenant_id', tenant!.id)
+        .or(`dni.eq.${form.dni.trim()},nombre.ilike.${form.nombre.trim()}`)
+      const match = (posibles ?? []).find((c: any) =>
+        c.dni === form.dni.trim() ||
+        c.nombre.trim().toLowerCase() === form.nombre.trim().toLowerCase() ||
+        (tel && (c.telefono ?? '').replace(/\D/g, '') === tel))
+      if (match && !confirm(`Posible duplicado: ya existe "${match.nombre}"${match.dni ? ` (DNI ${match.dni})` : ''}. ¿Crear de todas formas?`)) return
+    }
     setSaving(true)
     try {
       const etiquetasArr = form.etiquetas.trim()
@@ -396,30 +440,11 @@ export default function ClientesPage() {
   const registrarPagoCC = async (clienteId: string) => {
     const monto = parseFloat(pagoMonto)
     if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
-    const ventasDelCliente = (ventasCC as any[]).filter(v => v.cliente_id === clienteId)
-    if (!ventasDelCliente.length) { toast.error('Sin ventas CC pendientes'); return }
     setSavingPago(true)
     try {
-      // Distribuir el pago entre las ventas más antiguas primero
-      let restante = monto
-      for (const venta of ventasDelCliente.sort((a: any, b: any) => a.created_at.localeCompare(b.created_at))) {
-        if (restante <= 0) break
-        const saldo = (venta.total ?? 0) - (venta.monto_pagado ?? 0)
-        const abono = Math.min(restante, saldo)
-        const nuevoMontoPagado = (venta.monto_pagado ?? 0) + abono
-        const nuevoEstado = nuevoMontoPagado >= (venta.total ?? 0) - 0.5 ? 'despachada' : venta.estado
-        // Acumular medio de pago
-        let medios: any[] = []
-        try { medios = JSON.parse(venta.medio_pago ?? '[]') } catch { medios = [] }
-        medios.push({ tipo: pagoMetodo, monto: abono })
-        await supabase.from('ventas').update({
-          monto_pagado: nuevoMontoPagado,
-          estado: nuevoEstado,
-          medio_pago: JSON.stringify(medios),
-        }).eq('id', venta.id)
-        restante -= abono
-      }
-      toast.success(`Pago de ${formatMoneda(monto)} registrado`)
+      const { aplicado } = await cobrarDeudaCCFIFO(supabase, { tenantId: tenant!.id, clienteId, monto, metodo: pagoMetodo })
+      if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
+      toast.success(`Pago de ${formatMoneda(aplicado)} registrado`)
       qc.invalidateQueries({ queryKey: ['ventas-cc'] })
       setPagoInlineId(null); setPagoMonto(''); setPagoMetodo('Efectivo')
     } catch (e: any) { toast.error(e.message ?? 'Error al registrar pago') }
@@ -476,30 +501,43 @@ export default function ClientesPage() {
     finally { setCancelandoDeudaId(null) }
   }
 
-  const eliminar = async (id: string, nombre: string) => {
-    if (!confirm(`¿Eliminar a ${nombre}? Sus ventas quedarán sin cliente asignado.`)) return
-    // Desasociar ventas y envíos antes de eliminar (evita error de FK)
-    await Promise.all([
-      supabase.from('ventas').update({ cliente_id: null }).eq('cliente_id', id),
-      supabase.from('envios').update({ destino_id: null }).eq('destino_id', id),
-    ])
-    const { error } = await supabase.from('clientes').delete().eq('id', id)
-    if (error) { toast.error('No se pudo eliminar: ' + error.message); return }
-    toast.success('Cliente eliminado')
+  // A6 — Baja = soft delete (conserva historial). El modal pide la razón.
+  const confirmarBaja = async () => {
+    if (!bajaCliente) return
+    setSavingBaja(true)
+    const { error } = await supabase.from('clientes').update({
+      activo: false,
+      motivo_baja: bajaMotivo.trim() || null,
+      baja_at: new Date().toISOString(),
+      baja_por: user?.id ?? null,
+    }).eq('id', bajaCliente.id)
+    setSavingBaja(false)
+    if (error) { toast.error('No se pudo dar de baja: ' + error.message); return }
+    toast.success('Cliente dado de baja')
+    setBajaCliente(null); setBajaMotivo('')
     qc.invalidateQueries({ queryKey: ['clientes'] })
     qc.invalidateQueries({ queryKey: ['clientes-stats'] })
+  }
+
+  const reactivar = async (id: string) => {
+    const { error } = await supabase.from('clientes').update({
+      activo: true, motivo_baja: null, baja_at: null, baja_por: null,
+    }).eq('id', id)
+    if (error) { toast.error('No se pudo reactivar: ' + error.message); return }
+    toast.success('Cliente reactivado')
+    qc.invalidateQueries({ queryKey: ['clientes'] })
   }
 
   // ── Importación masiva ───────────────────────────────────────────────────
   const descargarPlantilla = () => {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['nombre', 'dni', 'telefono', 'email', 'notas'],
-      ['Juan Pérez', '20123456', '+54 11 1234-5678', 'juan@email.com', 'Cliente frecuente'],
-      ['María García', '27654321', '', 'maria@empresa.com', ''],
+      ['nombre', 'dni', 'telefono', 'email', 'notas', 'etiquetas'],
+      ['Juan Pérez', '20123456', '+54 11 1234-5678', 'juan@email.com', 'Cliente frecuente', 'mayorista, vip'],
+      ['María García', '27654321', '', 'maria@empresa.com', '', 'zona-norte'],
     ])
     const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-    ;['A', 'B', 'C', 'D', 'E'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
-    ws['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 28 }, { wch: 35 }]
+    ;['A', 'B', 'C', 'D', 'E', 'F'].forEach(c => { if (ws[`${c}1`]) ws[`${c}1`].s = hdr })
+    ws['!cols'] = [{ wch: 25 }, { wch: 20 }, { wch: 28 }, { wch: 35 }, { wch: 25 }, { wch: 22 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Clientes')
     XLSX.writeFile(wb, 'plantilla_clientes.xlsx')
@@ -508,27 +546,46 @@ export default function ClientesPage() {
   const procesarArchivo = (file: File) => {
     setResultadoImport(null)
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const wb = XLSX.read(new Uint8Array(e.target!.result as ArrayBuffer), { type: 'array' })
         const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' })
         if (!rows.length) { toast.error('El archivo está vacío'); return }
 
-        const nombresActuales = new Set((clientes as any[]).map(c => c.nombre.toLowerCase()))
+        // A5 — detección de duplicados contra TODA la base (por DNI, teléfono o nombre)
+        const { data: existentes } = await supabase.from('clientes')
+          .select('id, nombre, dni, telefono').eq('tenant_id', tenant!.id)
+        const norm = (s: string) => (s ?? '').replace(/\D/g, '')
+        const porDni = new Map<string, string>()
+        const porTel = new Map<string, string>()
+        const porNombre = new Map<string, string>()
+        for (const c of (existentes ?? []) as any[]) {
+          if (c.dni) porDni.set(String(c.dni).trim(), c.id)
+          if (c.telefono && norm(c.telefono)) porTel.set(norm(c.telefono), c.id)
+          porNombre.set(c.nombre.trim().toLowerCase(), c.id)
+        }
 
         const filas: FilaCliente[] = rows.map((row, idx) => {
           const errores: string[] = []
           const nombre = String(row.nombre || '').trim()
           if (!nombre) errores.push('Nombre requerido')
-          const isDuplicado = nombresActuales.has(nombre.toLowerCase())
+          const dni = String(row.dni || '').trim() || undefined
+          const telefono = String(row.telefono || '').trim() || undefined
+          const etiquetasRaw = String(row.etiquetas || '').trim()
+          const matchId =
+            (dni && porDni.get(dni)) ||
+            (telefono && porTel.get(norm(telefono))) ||
+            porNombre.get(nombre.toLowerCase()) || undefined
           return {
             idx,
             nombre,
-            dni: String(row.dni || '').trim() || undefined,
-            telefono: String(row.telefono || '').trim() || undefined,
+            dni,
+            telefono,
             email: String(row.email || '').trim() || undefined,
             notas: String(row.notas || '').trim() || undefined,
-            estado: errores.length > 0 ? 'error' : isDuplicado ? 'duplicado' : 'nuevo',
+            etiquetas: etiquetasRaw ? etiquetasRaw.split(/[,;]/).map(s => s.trim()).filter(Boolean) : undefined,
+            matchId,
+            estado: errores.length > 0 ? 'error' : matchId ? 'duplicado' : 'nuevo',
             errores,
           }
         })
@@ -540,26 +597,41 @@ export default function ClientesPage() {
 
   const confirmarImport = async () => {
     setImportando(true)
-    let creados = 0, errores = 0
-    for (const fila of filasImport.filter(f => f.estado === 'nuevo')) {
+    let creados = 0, actualizados = 0, ignorados = 0, errores = 0
+    // A5 — modo: ignorar_existentes (solo nuevos) · ignorar_nuevos (solo actualizar) · procesar_todos
+    for (const fila of filasImport) {
+      if (fila.estado === 'error') { errores++; continue }
+      const esDup = fila.estado === 'duplicado'
+      // Decidir acción según el modo
+      if (esDup && importModo === 'ignorar_existentes') { ignorados++; continue }
+      if (!esDup && importModo === 'ignorar_nuevos') { ignorados++; continue }
       try {
-        const { error } = await supabase.from('clientes').insert({
-          tenant_id: tenant!.id,
+        const base = {
           nombre: fila.nombre,
           dni: fila.dni ?? null,
           telefono: fila.telefono ?? null,
           email: fila.email ?? null,
           notas: fila.notas ?? null,
-          sucursal_id: sucursalId || null,
-        })
-        if (error) throw error
-        creados++
+          etiquetas: fila.etiquetas ?? null,
+        }
+        if (esDup && fila.matchId) {
+          const { error } = await supabase.from('clientes').update(base).eq('id', fila.matchId)
+          if (error) throw error
+          actualizados++
+        } else {
+          const { error } = await supabase.from('clientes').insert({
+            tenant_id: tenant!.id, ...base, sucursal_id: sucursalId || null,
+          })
+          if (error) throw error
+          creados++
+        }
       } catch { errores++ }
     }
     qc.invalidateQueries({ queryKey: ['clientes'] })
-    setResultadoImport({ creados, errores })
+    qc.invalidateQueries({ queryKey: ['cliente-etiquetas-catalogo'] })
+    setResultadoImport({ creados, actualizados, ignorados, errores })
     setImportando(false)
-    toast.success(`${creados} clientes importados`)
+    toast.success(`${creados} creados · ${actualizados} actualizados`)
   }
 
   const exportarClientes = (format: 'json' | 'csv') => {
@@ -604,14 +676,22 @@ export default function ClientesPage() {
                 <button onClick={() => exportarClientes('csv')}  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">CSV</button>
               </div>
             </div>
-            <button onClick={() => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }}
-              className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
-              <Upload size={16} /> Importar
+            <button onClick={() => setVerInactivos(v => !v)}
+              className={`flex items-center gap-2 border font-medium px-4 py-2.5 rounded-xl text-sm transition-all
+                ${verInactivos ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+              title="Mostrar también clientes dados de baja">
+              <UserX size={16} /> {verInactivos ? 'Ver activos' : 'Ver inactivos'}
             </button>
-            <button onClick={() => abrirModal()}
-              className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
-              <Plus size={18} /> Nuevo cliente
-            </button>
+            {puedeEditar && <>
+              <button onClick={() => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }}
+                className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
+                <Upload size={16} /> Importar
+              </button>
+              <button onClick={() => abrirModal()}
+                className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
+                <Plus size={18} /> Nuevo cliente
+              </button>
+            </>}
           </>}
         </div>
       </div>
@@ -633,14 +713,18 @@ export default function ClientesPage() {
       {/* ═══════════════ TAB CUENTA CORRIENTE ═══════════════ */}
       {pageTab === 'cc' && (() => {
         // Agrupar ventas CC por cliente
-        const deudaMap: Record<string, { total: number; count: number; masAntigua: string; masNueva: string }> = {}
+        const hoyISO = new Date().toISOString().slice(0, 10)
+        const deudaMap: Record<string, { total: number; interes: number; count: number; masAntigua: string; masNueva: string; vencidaReal: boolean }> = {}
         for (const v of ventasCC as any[]) {
           const cid = v.cliente_id
           if (!cid) continue
           const saldo = (v.total ?? 0) - (v.monto_pagado ?? 0)
-          if (!deudaMap[cid]) deudaMap[cid] = { total: 0, count: 0, masAntigua: v.created_at, masNueva: v.created_at }
-          deudaMap[cid].total += saldo
+          const interes = v.interes_cc ?? 0
+          if (!deudaMap[cid]) deudaMap[cid] = { total: 0, interes: 0, count: 0, masAntigua: v.created_at, masNueva: v.created_at, vencidaReal: false }
+          deudaMap[cid].total += saldo + interes  // B3 — la deuda mostrada incluye el interés de mora
+          deudaMap[cid].interes += interes
           deudaMap[cid].count += 1
+          if (v.fecha_vencimiento_cc && v.fecha_vencimiento_cc < hoyISO) deudaMap[cid].vencidaReal = true
           if (v.created_at < deudaMap[cid].masAntigua) deudaMap[cid].masAntigua = v.created_at
           if (v.created_at > deudaMap[cid].masNueva) deudaMap[cid].masNueva = v.created_at
         }
@@ -700,8 +784,8 @@ export default function ClientesPage() {
                       ? new Date(new Date(d.masAntigua).getTime() + plazo * 24 * 60 * 60 * 1000)
                       : null
                     const diasVto = fechaVto ? Math.ceil((fechaVto.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null
-                    const vencida = diasVto !== null && diasVto < 0
-                    const proxima = diasVto !== null && diasVto >= 0 && diasVto <= 5
+                    const vencida = (diasVto !== null && diasVto < 0) || (d?.vencidaReal ?? false)
+                    const proxima = !vencida && diasVto !== null && diasVto >= 0 && diasVto <= 5
 
                     return (
                       <div key={c.id} className="px-4 py-4">
@@ -718,6 +802,7 @@ export default function ClientesPage() {
                               {c.telefono && <span className="flex items-center gap-1"><Phone size={10} /> {c.telefono}</span>}
                               <span>Plazo: {plazo} días</span>
                               {c.limite_credito && <span>Límite: {formatMoneda(c.limite_credito)}</span>}
+                              {d && d.interes > 0.5 && <span className="text-red-500 dark:text-red-400">Interés mora: {formatMoneda(d.interes)}</span>}
                               {d && <span>{d.count} venta{d.count !== 1 ? 's' : ''} pendiente{d.count !== 1 ? 's' : ''}</span>}
                             </div>
                           </div>
@@ -940,7 +1025,14 @@ export default function ClientesPage() {
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{c.nombre}</p>
+                    <p className="font-semibold text-gray-800 dark:text-gray-100 truncate flex items-center gap-2">
+                      {c.nombre}
+                      {c.activo === false && (
+                        <span className="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded font-medium" title={c.motivo_baja ? `Motivo: ${c.motivo_baja}` : 'Cliente dado de baja'}>
+                          Baja{c.motivo_baja ? ` · ${c.motivo_baja}` : ''}
+                        </span>
+                      )}
+                    </p>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       {c.dni && <span className="text-xs text-gray-400 dark:text-gray-500">DNI {c.dni}</span>}
                       {c.cuit_receptor && <span className="text-xs text-gray-400 dark:text-gray-500">CUIT {c.cuit_receptor}</span>}
@@ -998,11 +1090,27 @@ export default function ClientesPage() {
                       className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 transition-colors" title="Ver historial">
                       {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
-                    <button onClick={() => abrirModal(c)}
-                      className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 transition-colors"
-                      title="Editar cliente">
-                      <Pencil size={14} />
-                    </button>
+                    {puedeEditar && c.activo !== false && (
+                      <button onClick={() => abrirModal(c)}
+                        className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 transition-colors"
+                        title="Editar cliente">
+                        <Pencil size={14} />
+                      </button>
+                    )}
+                    {puedeEditar && c.activo !== false && (
+                      <button onClick={() => { setBajaCliente({ id: c.id, nombre: c.nombre }); setBajaMotivo('') }}
+                        className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors"
+                        title="Dar de baja">
+                        <UserX size={14} />
+                      </button>
+                    )}
+                    {puedeEditar && c.activo === false && (
+                      <button onClick={() => reactivar(c.id)}
+                        className="p-1.5 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg text-gray-400 dark:text-gray-500 hover:text-green-600 transition-colors"
+                        title="Reactivar cliente">
+                        <RotateCcw size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1308,7 +1416,12 @@ export default function ClientesPage() {
                 </label>
                 <input type="text" value={form.etiquetas} onChange={e => setForm(f => ({ ...f, etiquetas: e.target.value }))}
                   placeholder="mayorista, vip, zona-norte (separadas por coma)"
+                  list="etiquetas-catalogo"
                   className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                {/* F1 — autocomplete: catálogo predefinido del tenant ∪ etiquetas ya usadas */}
+                <datalist id="etiquetas-catalogo">
+                  {(etiquetasCatalogo as string[]).map(et => <option key={et} value={et} />)}
+                </datalist>
               </div>
 
               {/* Facturación */}
@@ -1354,14 +1467,17 @@ export default function ClientesPage() {
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-3 flex items-center gap-1.5">
                   <CreditCard size={12} /> Cuenta Corriente
                 </p>
-                <label className="flex items-center gap-3 cursor-pointer mb-3">
+                <label className={`flex items-center gap-3 mb-3 ${puedeGestionarCC ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
                   <div
-                    onClick={() => setForm(f => ({ ...f, cuenta_corriente_habilitada: !f.cuenta_corriente_habilitada }))}
+                    onClick={() => { if (puedeGestionarCC) setForm(f => ({ ...f, cuenta_corriente_habilitada: !f.cuenta_corriente_habilitada })) }}
                     className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${form.cuenta_corriente_habilitada ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}`}>
                     <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${form.cuenta_corriente_habilitada ? 'translate-x-4' : 'translate-x-0'}`} />
                   </div>
                   <span className="text-sm text-gray-700 dark:text-gray-300">Habilitar cuenta corriente</span>
                 </label>
+                {!puedeGestionarCC && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-3 -mt-1">Solo DUEÑO/SUPERVISOR puede habilitar la cuenta corriente.</p>
+                )}
                 {form.cuenta_corriente_habilitada && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -1423,7 +1539,7 @@ export default function ClientesPage() {
                   <CheckCircle size={18} className="text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
                   <div>
                     <p className="font-semibold text-green-800 dark:text-green-400">Importación completada</p>
-                    <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">{resultadoImport.creados} creados · {resultadoImport.errores} errores</p>
+                    <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">{resultadoImport.creados} creados · {resultadoImport.actualizados} actualizados · {resultadoImport.ignorados} ignorados · {resultadoImport.errores} errores</p>
                     <button onClick={() => setShowImport(false)} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">Cerrar →</button>
                   </div>
                 </div>
@@ -1454,7 +1570,7 @@ export default function ClientesPage() {
                     </span>
                     {filasImport.filter(f => f.estado === 'duplicado').length > 0 && (
                       <span className="text-amber-600 dark:text-amber-400 font-medium">
-                        ⚠ {filasImport.filter(f => f.estado === 'duplicado').length} duplicados (se omitirán)
+                        ⚠ {filasImport.filter(f => f.estado === 'duplicado').length} ya existen
                       </span>
                     )}
                     {filasImport.filter(f => f.estado === 'error').length > 0 && (
@@ -1463,6 +1579,26 @@ export default function ClientesPage() {
                       </span>
                     )}
                   </div>
+
+                  {/* A5 — modo de resolución de duplicados */}
+                  {filasImport.filter(f => f.estado === 'duplicado').length > 0 && (
+                    <div className="bg-gray-50 dark:bg-gray-700/40 border border-gray-100 dark:border-gray-700 rounded-xl p-3">
+                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Hay clientes que ya existen. ¿Qué hago con ellos?</p>
+                      <div className="space-y-1.5">
+                        {([
+                          { v: 'ignorar_existentes' as const, label: 'Ignorar existentes — solo crear los nuevos' },
+                          { v: 'ignorar_nuevos' as const, label: 'Ignorar nuevos — solo actualizar los existentes' },
+                          { v: 'procesar_todos' as const, label: 'Procesar todos — crear nuevos y actualizar existentes' },
+                        ]).map(opt => (
+                          <label key={opt.v} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                            <input type="radio" name="import-modo" checked={importModo === opt.v}
+                              onChange={() => setImportModo(opt.v)} className="accent-accent" />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="border border-gray-100 rounded-xl overflow-hidden">
                     <table className="w-full text-sm">
@@ -1501,10 +1637,19 @@ export default function ClientesPage() {
                       className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
                       Limpiar
                     </button>
-                    <button onClick={confirmarImport} disabled={importando || filasImport.filter(f => f.estado === 'nuevo').length === 0}
-                      className="bg-accent hover:bg-accent/90 text-white font-semibold px-5 py-2.5 rounded-xl text-sm disabled:opacity-50 transition-all">
-                      {importando ? 'Importando...' : `Importar ${filasImport.filter(f => f.estado === 'nuevo').length} clientes`}
-                    </button>
+                    {(() => {
+                      const nuevos = filasImport.filter(f => f.estado === 'nuevo').length
+                      const dups = filasImport.filter(f => f.estado === 'duplicado').length
+                      const aProcesar = importModo === 'ignorar_existentes' ? nuevos
+                        : importModo === 'ignorar_nuevos' ? dups
+                        : nuevos + dups
+                      return (
+                        <button onClick={confirmarImport} disabled={importando || aProcesar === 0}
+                          className="bg-accent hover:bg-accent/90 text-white font-semibold px-5 py-2.5 rounded-xl text-sm disabled:opacity-50 transition-all">
+                          {importando ? 'Importando...' : `Procesar ${aProcesar} ${aProcesar === 1 ? 'cliente' : 'clientes'}`}
+                        </button>
+                      )
+                    })()}
                   </div>
                 </>
               )}
@@ -1517,9 +1662,48 @@ export default function ClientesPage() {
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>
                   <FileSpreadsheet size={32} className="text-gray-300 mx-auto mb-2" />
                   <p className="text-sm text-gray-500 dark:text-gray-400">Arrastrá o hacé click para subir tu Excel</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Columnas: nombre, dni, telefono, email, notas</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Columnas: nombre, dni, telefono, email, notas, etiquetas</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MODAL BAJA DE CLIENTE (A6) ═══════════════ */}
+      {bajaCliente && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setBajaCliente(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <UserX size={18} className="text-red-500" />
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Dar de baja a {bajaCliente.nombre}</h3>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                El cliente se oculta de las búsquedas pero conserva su historial de compras y CC. Podés reactivarlo después.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Razón de la baja</label>
+                <select value={bajaMotivo} onChange={e => setBajaMotivo(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  <option value="">Sin especificar</option>
+                  <option value="Se mudó">Se mudó</option>
+                  <option value="Cerró / dejó de comprar">Cerró / dejó de comprar</option>
+                  <option value="Conflicto">Conflicto</option>
+                  <option value="Duplicado">Duplicado</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3">
+              <button onClick={() => setBajaCliente(null)}
+                className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
+                Cancelar
+              </button>
+              <button onClick={confirmarBaja} disabled={savingBaja}
+                className="bg-red-500 hover:bg-red-600 text-white font-semibold px-5 py-2 rounded-xl text-sm disabled:opacity-50 transition-all">
+                {savingBaja ? 'Dando de baja...' : 'Dar de baja'}
+              </button>
             </div>
           </div>
         </div>

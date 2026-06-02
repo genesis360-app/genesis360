@@ -4,7 +4,9 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.17.0** ✅ (Relevamiento Ventas VF5 — edición post-venta H1 con autorización + NC interna · sin migración. **Relevamiento Ventas A-K COMPLETO**) · DEV alineado con PROD
+Último release en PROD: **v1.17.0** ✅ (Relevamiento Ventas VF5 — edición post-venta H1 con autorización + NC interna · sin migración. **Relevamiento Ventas A-K COMPLETO**)
+
+**DEV adelantado a `v1.19.0`** (sin deployar): **Relevamiento Clientes CL1 (v1.18.0, mig 171) + CL2 (v1.19.0, mig 172)** implementados y con build verde. Ver `relevamiento_clientes_respuestas.md`. Pendiente de CL2: B5 cobranza en POS/Caja (la cobranza por ficha funciona).
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -14,12 +16,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.17.0` | `v1.17.0` |
-| Migrations | 001–**170** ✅ | 001–**170** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.17.0) |
+| APP_VERSION | `v1.19.0` | `v1.17.0` |
+| Migrations | 001–**172** ✅ | 001–**170** ✅ |
+| Branch | `dev` (adelantado: Clientes CL1+CL2) | `main` (release v1.17.0) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.17.0 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna.
+**Migrations DEV pendientes de aplicar en PROD:** **171** (Clientes CL1 — soft delete + catálogo etiquetas), **172** (Clientes CL2 — CC límite/vencimiento/interés/morosidad + RPCs `cliente_cc_estado` y `recalcular_intereses_cc`).
 
 **ISS-174 — cotización/generación de envíos por API (v1.14.0, PROD):**
 - **F1 (fundación)** — servicio = select dependiente en POS; catálogo `src/lib/couriers/catalogo.ts`; mig 162 (`courier_credenciales` + `tenants.envio_peso_fuente`), 163 (CP idempotente), 164 (productos peso/dim); Config → Envíos (toggle peso-fuente + `CourierCredencialesPanel` owner-only); peso/dim en form de producto.
@@ -49,6 +51,23 @@ type: project
 ---
 
 ## Backlog — pendientes próxima sesión
+
+### Relevamiento Clientes — plan por fases CL1-CL6 (relevado 2026-06-01, GO + socio)
+
+Respuestas completas y cruce con Ventas en `relevamiento_clientes_respuestas.md`. **GO pidió implementar TODO (sin Top 3).** Varios ítems de CC clientes comparten definición con Ventas sección D (respondida, sin implementar — se implementa acá). **Transversal:** `pg_cron` NO habilitado → disparos por tiempo van por sweep lazy vía RPC.
+
+| Fase | Versión | Alcance | Migrations clave |
+|---|---|---|---|
+| **CL1 — Fundación datos + permisos** | `v1.18.0` | A2 alerta duplicado (vs rechazo duro) · A6 soft delete + razón de baja · A5 import 3 modos + etiquetas CSV · F1 catálogo etiquetas predefinidas+libres · B2 gate habilitar CC (DUEÑO/SUPERVISOR) · H1/H2 permisos (CONTADOR read-only = Ventas J3) | `clientes.activo/motivo_baja`, catálogo etiquetas |
+| **CL2 — CC: límite + vencimiento + morosidad** | `v1.19.0` | B1 enforcement configurable (enforce/avisar/permitir, default avisar) · B3 vencimiento + interés mora (sweep lazy) = Ventas D2 · B4 morosidad configurable = Ventas D6 · B5 cobranza ficha+POS+caja masiva = Ventas D5 | `clientes.limite_cc`, `tenants.limite_cc_default/cc_dias_vencimiento/cc_interes_mensual_pct/cc_morosidad_politica/cc_enforcement_politica`, `ventas.fecha_vencimiento_cc` |
+| **CL3 — Incobrables + estado de cuenta** | `v1.20.0` | B6 incobrables (gasto auto "Deudores incobrables" + clave maestra DUEÑO + motivo + audit) = Ventas D7 · B8 PDF estado de cuenta + portal público con token (SECURITY DEFINER anon) | token público, categoría gasto reservada |
+| **CL4 — Notificaciones al cliente** | `v1.21.0` | C1 registro deuda · C2 recordatorio pre-venc (N días + canal preferido + plantilla) · C3 aviso al vencer + cada 7d + escalado DUEÑO · C4 confirmación pago · C5 cumpleaños (saludo+cupón default ON, lista al dueño opcional). Configurable por canal, sweep lazy | `tenants.cc_notificacion_canales`, plantillas, config cumpleaños |
+| **CL5 — CC proveedores** | `v1.22.0` | D2 notif venc + bloqueo · D3 PDF + reporte consolidado vencimientos · D4 NC auto al devolver + correlativo + adjunto · D5 pago parcial FIFO/manual · D6 múltiples cuentas bancarias por proveedor | `proveedor_cuentas_bancarias`, correlativo NC |
+| **CL6 — Reportes, alertas, export** | `v1.23.0` | G1 top clientes + inactivos + aging 0-30/31-60/61-90/+90 + cohort + top proveedores · G2 alertas (deuda vencida, DNI sospechoso, prov CC vencida) · G3 export Excel+PDF+CSV · F4 audit log cambios cliente | — |
+
+**Backlog diferido (no en CL1-CL6):** B7 tope deuda global (= Ventas D8) · C6 marketing bulk (solo segmentación+export) · F2 fidelización puntos · F3 descartado (precio solo por cantidad, Ventas G2) · E1-E4 "mantener como está" (E1b proveedor principal = mejora opcional barata).
+
+> Las versiones CL son tentativas; pueden correrse por releases de bugfix intermedios. Confirmar el número real en cada deploy contra `brand.ts`.
 
 ### Features grandes (requieren relevamiento o diseño antes de implementar)
 

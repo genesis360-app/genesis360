@@ -16,12 +16,13 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
 
-type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'reportes' | 'configuracion'
+type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'reportes' | 'configuracion' | 'cobranzas'
 
 // formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
 import { formatMoneda as formatMonedaLib, MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { puede as cajaPuede, type ConfigCaja } from '@/lib/cajaPermisos'
 import CajaReportes from '@/components/CajaReportes'
+import CajaCobranzasCC from '@/components/CajaCobranzasCC'
 
 const MONEDAS_LISTA = MONEDAS_DISPONIBLES.map(m => m.code)
 
@@ -1381,6 +1382,7 @@ export default function CajaPage() {
         const puedeCajaFuerte = !!user?.rol && cajaFuerteRoles.includes(user.rol)
         const tabs = [
           { id: 'caja', label: 'Caja actual', visible: true },
+          { id: 'cobranzas', label: '💳 Cobranzas CC', visible: true },
           { id: 'historial', label: 'Historial', visible: true },
           { id: 'caja_fuerte', label: '🔒 Caja Fuerte', visible: puedeCajaFuerte && !!cajaFuerte },
           { id: 'reportes', label: '📊 Reportes', visible: puedeAdministrarCaja || puedeReimprimirTicket },
@@ -1858,6 +1860,8 @@ export default function CajaPage() {
       {/* ── CAJA FUERTE ── */}
       {/* ── CAJA FUERTE TAB ── */}
       {/* ── REPORTES (Fase 2.4 / I1+I2) ── */}
+      {tab === 'cobranzas' && <CajaCobranzasCC />}
+
       {tab === 'reportes' && <CajaReportes />}
 
       {tab === 'caja_fuerte' && cajaFuerte && (

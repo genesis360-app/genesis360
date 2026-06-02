@@ -4,9 +4,9 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.19.0** ✅ (Relevamiento Clientes **CL1** mig 171 + **CL2** mig 172 — soft delete, import 3 modos, catálogo etiquetas, permisos; CC clientes con límite/vencimiento/interés/morosidad + cobranza ficha/POS/Caja). PR #140 mergeado, migrations 171+172 aplicadas en PROD. DEV alineado con PROD. Ver `relevamiento_clientes_respuestas.md`.
+Último release en PROD: **v1.20.0** ✅ (Relevamiento Clientes **CL3** mig 173 — incobrables B6 con gasto automático + clave maestra, estado de cuenta PDF + portal público `/cuenta/:token` B8 · **+ bugfix mig 174** `DROP CONSTRAINT ventas_origen_check`). Previos: CL1 (171) + CL2 (172) en v1.19.0. Ver `relevamiento_clientes_respuestas.md`.
 
-**Próximo:** CL3 (incobrables + estado de cuenta PDF/portal). Backlog Clientes CL3-CL6 en este archivo.
+**Próximo:** CL4 (notificaciones C1-C5). Backlog Clientes CL4-CL6 en este archivo.
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -16,12 +16,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.19.0` | `v1.19.0` |
-| Migrations | 001–**172** ✅ | 001–**172** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.19.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.19.0 |
+| APP_VERSION | `v1.20.0` | `v1.20.0` |
+| Migrations | 001–**174** ✅ | 001–**174** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.20.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.20.0 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna.
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (171-174 ya en PROD; **174 es bugfix de constraint, aplicado directo en PROD**).
 
 **ISS-174 — cotización/generación de envíos por API (v1.14.0, PROD):**
 - **F1 (fundación)** — servicio = select dependiente en POS; catálogo `src/lib/couriers/catalogo.ts`; mig 162 (`courier_credenciales` + `tenants.envio_peso_fuente`), 163 (CP idempotente), 164 (productos peso/dim); Config → Envíos (toggle peso-fuente + `CourierCredencialesPanel` owner-only); peso/dim en form de producto.

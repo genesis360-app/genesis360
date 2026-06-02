@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
+import { logActividad } from '@/lib/actividadLog'
+import { generarEstadoCuentaPDF } from '@/lib/estadoCuentaPDF'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -81,7 +83,7 @@ function validarTelefono(valor: string): string | null {
 }
 
 // ISS-151: tags de condonación de CC (write-off). No son ingresos reales.
-const TAGS_CONDONACION_CC = ['Condonación CC', 'Cancelación CC']
+const TAGS_CONDONACION_CC = ['Condonación CC', 'Cancelación CC', 'Incobrable']
 function esCondonadaCC(medioPago: string | null | undefined): boolean {
   try {
     const arr = JSON.parse(medioPago ?? '[]')
@@ -124,6 +126,14 @@ export default function ClientesPage() {
   // ISS-107: cancelación de deuda CC
   const [cancelandoDeudaId, setCancelandoDeudaId] = useState<string | null>(null)
   const puedeGestionarCC = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
+  // B6 — dar de baja incobrable (decisión patrimonial: DUEÑO + clave maestra)
+  const puedeIncobrable = ['DUEÑO', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
+  const [incobrableCliente, setIncobrableCliente] = useState<{ id: string; nombre: string; total: number } | null>(null)
+  const [incobrableMotivo, setIncobrableMotivo] = useState('')
+  const [incobrableClave, setIncobrableClave] = useState('')
+  const [savingIncobrable, setSavingIncobrable] = useState(false)
+  // B8 — link público de estado de cuenta
+  const [linkCuenta, setLinkCuenta] = useState<{ nombre: string; url: string } | null>(null)
   // H2 — CONTADOR entra read-only (ve CC, historial, fiscales; no crea/edita/borra)
   const esContador = user?.rol === 'CONTADOR'
   const puedeEditar = !esContador
@@ -254,7 +264,7 @@ export default function ClientesPage() {
     queryKey: ['clientes-cc', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('clientes')
-        .select('id, nombre, telefono, plazo_pago_dias, limite_credito')
+        .select('id, nombre, telefono, email, plazo_pago_dias, limite_credito, cuenta_token')
         .eq('tenant_id', tenant!.id)
         .eq('cuenta_corriente_habilitada', true)
         .order('nombre')
@@ -499,6 +509,80 @@ export default function ClientesPage() {
       qc.invalidateQueries({ queryKey: ['ventas-cc'] })
     } catch (e: any) { toast.error(e.message ?? 'Error al revertir') }
     finally { setCancelandoDeudaId(null) }
+  }
+
+  // B6 — Dar de baja incobrable: condona toda la deuda CC del cliente + gasto automático
+  // "Deudores incobrables" + clave maestra del DUEÑO (si está configurada) + audit.
+  const confirmarIncobrable = async () => {
+    if (!incobrableCliente) return
+    const claveConfigurada = !!(tenant as any)?.clave_maestra
+    if (claveConfigurada) {
+      if (!incobrableClave.trim()) { toast.error('Ingresá la clave maestra del dueño'); return }
+      const { data: ok } = await supabase.rpc('verificar_clave_maestra', { p_tenant_id: tenant!.id, p_clave: incobrableClave.trim() })
+      if (!ok) { toast.error('Clave maestra incorrecta'); return }
+    }
+    setSavingIncobrable(true)
+    try {
+      const pendientes = (ventasCC as any[]).filter((v: any) => v.cliente_id === incobrableCliente.id && !v.condonada)
+      let totalIncobrable = 0
+      for (const v of pendientes) {
+        let medios: any[] = []
+        try { medios = JSON.parse(v.medio_pago ?? '[]') } catch { medios = [] }
+        const saldo = (v.total ?? 0) - medios.filter((m: any) => m.tipo !== 'Cuenta Corriente').reduce((a: number, m: any) => a + (m.monto || 0), 0)
+        if (saldo > 0.5) {
+          medios.push({ tipo: 'Incobrable', monto: saldo, motivo: incobrableMotivo.trim() || null, por: user?.nombre_display ?? user?.id, at: new Date().toISOString() })
+          totalIncobrable += saldo
+        }
+        await supabase.from('ventas').update({ monto_pagado: v.total, medio_pago: JSON.stringify(medios) }).eq('id', v.id)
+      }
+      if (totalIncobrable > 0.5) {
+        // Gasto automático: registra la pérdida (deudor incobrable) para reportes/contador
+        await supabase.from('gastos').insert({
+          tenant_id: tenant!.id,
+          descripcion: `Deudor incobrable: ${incobrableCliente.nombre}${incobrableMotivo.trim() ? ' — ' + incobrableMotivo.trim() : ''}`,
+          monto: Math.round(totalIncobrable * 100) / 100,
+          categoria: 'Deudores incobrables',
+          fecha: new Date().toISOString().slice(0, 10),
+          usuario_id: user?.id,
+        })
+      }
+      logActividad({ entidad: 'cliente', entidad_id: incobrableCliente.id, entidad_nombre: incobrableCliente.nombre,
+        accion: 'incobrable', valor_nuevo: `Baja incobrable ${formatMoneda(totalIncobrable)}${incobrableMotivo.trim() ? ' — ' + incobrableMotivo.trim() : ''}`, pagina: '/clientes' })
+      toast.success(`Deuda dada de baja como incobrable (${formatMoneda(totalIncobrable)})`)
+      setIncobrableCliente(null); setIncobrableMotivo(''); setIncobrableClave('')
+      qc.invalidateQueries({ queryKey: ['ventas-cc'] })
+      qc.invalidateQueries({ queryKey: ['clientes-cc'] })
+    } catch (e: any) { toast.error(e.message ?? 'Error al dar de baja') }
+    finally { setSavingIncobrable(false) }
+  }
+
+  // B8 — Estado de cuenta: descarga PDF + genera link público con token.
+  const ventasParaPDF = (clienteId: string) =>
+    (ventasCC as any[]).filter((v: any) => v.cliente_id === clienteId && !v.condonada).map((v: any) => ({
+      numero: v.numero, fecha: v.created_at,
+      saldo: (v.total ?? 0) - (v.monto_pagado ?? 0), interes: v.interes_cc ?? 0,
+      vencimiento: v.fecha_vencimiento_cc,
+    }))
+
+  const descargarEstadoCuenta = (c: any) => {
+    generarEstadoCuentaPDF({
+      negocio: (tenant as any)?.nombre ?? 'Genesis360',
+      moneda: (tenant as any)?.moneda ?? 'ARS',
+      cliente: { nombre: c.nombre, telefono: c.telefono, email: c.email },
+      ventas: ventasParaPDF(c.id),
+    })
+  }
+
+  const generarLinkCuenta = async (c: any) => {
+    let token = c.cuenta_token
+    if (!token) {
+      token = crypto.randomUUID()
+      const { error } = await supabase.from('clientes').update({ cuenta_token: token }).eq('id', c.id)
+      if (error) { toast.error('No se pudo generar el link: ' + error.message); return }
+      qc.invalidateQueries({ queryKey: ['clientes-cc'] })
+    }
+    const base = (import.meta as any).env?.VITE_APP_URL ?? window.location.origin
+    setLinkCuenta({ nombre: c.nombre, url: `${base}/cuenta/${token}` })
   }
 
   // A6 — Baja = soft delete (conserva historial). El modal pide la razón.
@@ -837,6 +921,29 @@ export default function ClientesPage() {
                             className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors ${pagoInlineId === c.id ? 'bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200' : 'bg-accent hover:bg-accent/90 text-white'}`}>
                             <DollarSign size={12} /> {pagoInlineId === c.id ? 'Cancelar' : 'Registrar pago'}
                           </button>
+                          {/* B8 — estado de cuenta: PDF + link público */}
+                          {d && (
+                            <button onClick={() => descargarEstadoCuenta(c)}
+                              className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                              title="Descargar estado de cuenta (PDF)">
+                              <FileText size={12} /> Estado de cuenta
+                            </button>
+                          )}
+                          {d && (
+                            <button onClick={() => generarLinkCuenta(c)}
+                              className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                              title="Link público para que el cliente vea su estado de cuenta">
+                              <ExternalLink size={12} /> Link cliente
+                            </button>
+                          )}
+                          {/* B6 — dar de baja incobrable (DUEÑO + clave maestra) */}
+                          {d && puedeIncobrable && (
+                            <button onClick={() => { setIncobrableCliente({ id: c.id, nombre: c.nombre, total: d.total }); setIncobrableMotivo(''); setIncobrableClave('') }}
+                              className="flex items-center gap-1.5 text-xs border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                              title="Dar de baja la deuda como incobrable (genera gasto + audit)">
+                              <AlertCircle size={12} /> Incobrable
+                            </button>
+                          )}
                         </div>
                         {/* Ventas CC del cliente */}
                         {d && (
@@ -1704,6 +1811,71 @@ export default function ClientesPage() {
                 className="bg-red-500 hover:bg-red-600 text-white font-semibold px-5 py-2 rounded-xl text-sm disabled:opacity-50 transition-all">
                 {savingBaja ? 'Dando de baja...' : 'Dar de baja'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MODAL INCOBRABLE (B6) ═══════════════ */}
+      {incobrableCliente && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setIncobrableCliente(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <AlertCircle size={18} className="text-red-500" />
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Dar de baja incobrable</h3>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Se da por <span className="font-semibold">perdida</span> toda la deuda de <span className="font-semibold">{incobrableCliente.nombre}</span> (<span className="text-red-600 dark:text-red-400 font-semibold">{formatMoneda(incobrableCliente.total)}</span>).
+                Genera un gasto <span className="font-medium">"Deudores incobrables"</span> y queda registrado en el historial. No cuenta como ingreso.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
+                <input value={incobrableMotivo} onChange={e => setIncobrableMotivo(e.target.value)}
+                  placeholder="Ej: quiebra, ilocalizable, acuerdo..."
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+              </div>
+              {!!(tenant as any)?.clave_maestra && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Clave maestra del dueño</label>
+                  <input type="password" value={incobrableClave} onChange={e => setIncobrableClave(e.target.value)}
+                    placeholder="Requerida para confirmar"
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                </div>
+              )}
+            </div>
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3">
+              <button onClick={() => setIncobrableCliente(null)}
+                className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">Cancelar</button>
+              <button onClick={confirmarIncobrable} disabled={savingIncobrable}
+                className="bg-red-500 hover:bg-red-600 text-white font-semibold px-5 py-2 rounded-xl text-sm disabled:opacity-50 transition-all">
+                {savingIncobrable ? 'Procesando...' : 'Confirmar baja'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════ MODAL LINK ESTADO DE CUENTA (B8) ═══════════════ */}
+      {linkCuenta && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setLinkCuenta(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <ExternalLink size={18} className="text-accent" />
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">Link de estado de cuenta</h3>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Compartí este link con {linkCuenta.nombre} para que vea su estado de cuenta sin necesidad de cuenta:</p>
+              <div className="flex gap-2">
+                <input readOnly value={linkCuenta.url} onClick={e => e.currentTarget.select()}
+                  className="flex-1 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-xs bg-gray-50 dark:bg-gray-900 focus:outline-none" />
+                <button onClick={() => { navigator.clipboard.writeText(linkCuenta.url); toast.success('Link copiado') }}
+                  className="bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium">Copiar</button>
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+              <button onClick={() => setLinkCuenta(null)}
+                className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">Cerrar</button>
             </div>
           </div>
         </div>

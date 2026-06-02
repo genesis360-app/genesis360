@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-02] deploy | v1.20.0 PROD — Clientes CL3 (incobrables + estado de cuenta) + bugfix origen
+
+**Deployado a PROD.** Migrations 173 (CL3) + **174 (bugfix)**, ambas en DEV y PROD. Build verde.
+
+- **B6 incobrables:** botón "Incobrable" en tab CC (DUEÑO/ADMIN/SUPER_USUARIO) → modal motivo + clave maestra → condona deuda CC del cliente (tag `Incobrable`) + gasto automático "Deudores incobrables" + `logActividad`. Tipos `EntidadLog`/`AccionLog` extendidos (`cliente`/`incobrable`).
+- **B8 estado de cuenta:** lib `estadoCuentaPDF.ts` (PDF jspdf) + portal público `/cuenta/:token` (`CuentaClientePage`) vía `clientes.cuenta_token` (mig 173) + RPC `get_cuenta_cliente_by_token` (anon). Botones "Estado de cuenta" y "Link cliente" en el tab CC.
+- **🐛 Bugfix (mig 174):** `DROP CONSTRAINT ventas_origen_check`. Reportado por GO: "new row violates check constraint ventas_origen_check" al vender. Causa: mig 168 hizo el canal configurable por tenant, pero la constraint rígida (mig 122) seguía con lista fija. Aplicado directo en DEV+PROD (toma efecto inmediato).
+
+**Pendiente:** CL4 (notificaciones) · CL5-CL6.
+
+---
+
 ## [2026-06-01] deploy | v1.19.0 PROD — Clientes CL1 + CL2 (CC + cobranza)
 
 **Deployado a PROD.** PR #140 (`dev → main`) mergeado · release `v1.19.0` (`--latest`) · migrations **171 + 172 aplicadas en PROD** (aditivas/idempotentes) · DEV alineado con PROD · build verde. Vercel PROD deploy desde `main`.

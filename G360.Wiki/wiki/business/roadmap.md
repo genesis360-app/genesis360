@@ -13,6 +13,14 @@ updated: 2026-05-29
 
 ---
 
+## v1.20.0 — Relevamiento Clientes CL3: incobrables + estado de cuenta (PROD ✅)
+
+Tercera fase del backlog Clientes. Migration 173 + bugfix 174.
+- **B6 incobrables:** "Dar de baja incobrable" (DUEÑO + clave maestra) → condona la deuda CC + gasto automático "Deudores incobrables" + audit.
+- **B8 estado de cuenta:** PDF descargable + portal público `/cuenta/:token` (sin login, RPC anon).
+- **Bugfix (mig 174):** `DROP CONSTRAINT ventas_origen_check` — el canal de venta es configurable desde mig 168 y la constraint rígida rechazaba canales nuevos al vender.
+- **Próximo:** CL4 (notificaciones), CL5-CL6.
+
 ## v1.19.0 — Relevamiento Clientes CL1 + CL2: datos/permisos + CC clientes (PROD ✅)
 
 Primeras dos fases del backlog Clientes (relevamiento `relevamiento_clientes_respuestas.md`). Migrations 171 + 172.

@@ -20,8 +20,9 @@ export type EntidadLog =
   | 'asistencia'
   | 'recurso'
   | 'autorizacion_gasto'
+  | 'cliente'
 
-export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar' | 'solicitar' | 'aprobar' | 'rechazar' | 'ingreso_stock' | 'rebaje_stock'
+export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar' | 'solicitar' | 'aprobar' | 'rechazar' | 'ingreso_stock' | 'rebaje_stock' | 'incobrable'
 
 // Trazabilidad-extendida (mig 155): clasificación WMS de la transacción.
 export type TipoTransaccion = 'ingreso' | 'rebaje' | 'traslado' | 'ajuste' | 'edicion' | 'venta' | 'devolucion' | 'eliminacion'

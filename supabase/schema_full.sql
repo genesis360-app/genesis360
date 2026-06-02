@@ -1978,10 +1978,9 @@ ALTER TABLE ventas
   ADD COLUMN IF NOT EXISTS numero_comprobante TEXT,
   ADD COLUMN IF NOT EXISTS link_factura_pdf TEXT;
 
--- origen: de dónde vino la venta
-ALTER TABLE ventas
-  ADD CONSTRAINT ventas_origen_check
-  CHECK (origen IN ('POS', 'MELI', 'TiendaNube', 'Shopify', 'WooCommerce', 'MP'));
+-- origen: de dónde vino la venta (canal). Constraint eliminada en mig 174:
+-- desde mig 168 el canal es configurable por tenant (catálogo canales_venta),
+-- texto libre validado a nivel de app. NO recrear la CHECK.
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3. clientes — normalización de teléfono y optin de marketing
@@ -2440,3 +2439,17 @@ CREATE INDEX IF NOT EXISTS idx_ventas_cc_venc ON ventas(tenant_id, fecha_vencimi
 -- RPC cliente_cc_estado(cliente) → deuda_total, deuda_vencida, interes_total (tenant-scoped, SECURITY DEFINER)
 -- RPC recalcular_intereses_cc(tenant) → recalcula interes_cc de ventas CC vencidas (sweep-lazy idempotente)
 -- (definiciones completas en supabase/migrations/172_clientes_cl2_cc.sql)
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 173: Clientes CL3 (estado de cuenta — portal público por token)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE clientes ADD COLUMN IF NOT EXISTS cuenta_token TEXT UNIQUE;
+CREATE INDEX IF NOT EXISTS idx_clientes_cuenta_token ON clientes(cuenta_token) WHERE cuenta_token IS NOT NULL;
+-- RPC get_cuenta_cliente_by_token(token) → JSONB {cliente, negocio, moneda, ventas[]}
+--   SECURITY DEFINER, GRANT anon+authenticated. Portal público /cuenta/:token (B8).
+-- B6 incobrable: en app (condonación cliente + gasto "Deudores incobrables" + clave maestra + audit). Sin DDL.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 174: Fix — DROP CONSTRAINT ventas_origen_check (canal configurable desde mig 168)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE ventas DROP CONSTRAINT IF EXISTS ventas_origen_check;

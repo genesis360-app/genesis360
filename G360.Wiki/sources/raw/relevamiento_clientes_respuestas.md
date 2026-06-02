@@ -162,3 +162,12 @@ CC de clientes: límite + vencimiento + interés + morosidad. Reusa `clientes.li
 > Build verde. **Deployado a PROD en v1.19.0** (PR #140) — migrations 171+172 aplicadas en DEV y PROD. **CL1 + CL2 COMPLETOS.**
 
 > **Migrations:** 171 (CL1), 172 (CL2 + RPCs `cliente_cc_estado`, `recalcular_intereses_cc`). En DEV y PROD.
+
+### Fase CL3 — `v1.20.0` ✅ Implementado en DEV (2026-06-02) · mig 173
+
+| Ítem | Estado | Detalle |
+|---|---|---|
+| **B6** | ✅ | "Dar de baja incobrable" (botón en tab CC, solo DUEÑO/ADMIN/SUPER_USUARIO) → modal con motivo + **clave maestra** (si el tenant la tiene configurada, vía `verificar_clave_maestra`). Condona toda la deuda CC del cliente (tag `Incobrable` en `medio_pago`, excluido de ingresos) + crea **gasto automático "Deudores incobrables"** por el total + `logActividad` (entidad `cliente`, acción `incobrable`). |
+| **B8** | ✅ | **PDF estado de cuenta** (`src/lib/estadoCuentaPDF.ts`, jspdf+autotable) descargable desde la ficha. **Portal público** `/cuenta/:token` (`CuentaClientePage`) sin login — `clientes.cuenta_token` (mig 173) + RPC `get_cuenta_cliente_by_token` (SECURITY DEFINER, anon). Botón "Link cliente" genera/copia el link (usa `VITE_APP_URL`). |
+
+> Build verde. Migration 173 en DEV. Incluye **bugfix mig 174** (`DROP CONSTRAINT ventas_origen_check` — el canal es configurable desde mig 168 y la constraint rígida rechazaba canales nuevos al vender). **CL3 COMPLETO.**

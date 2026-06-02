@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-172)
+# Historial de Migraciones (001-174)
 
-**Total al 2026-06-01:** 172 archivos de migración + 086b correctivo.  
+**Total al 2026-06-02:** 174 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -236,6 +236,8 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 170 | `170_alertas_ventas_config.sql` | **VF4/K2** · `tenants.alerta_margen_negativo BOOLEAN`, `alerta_devoluciones_n INT` (NULL=off), `alerta_devoluciones_dias INT DEFAULT 30`. Umbrales de alertas de ventas event-driven (margen negativo al cerrar venta; cliente/producto con >N devoluciones en M días) |
 | 171 | `171_clientes_cl1.sql` | **Clientes CL1** · `clientes.motivo_baja/baja_at/baja_por` (A6 soft delete con razón) + índice parcial `idx_clientes_activo`. `tenants.cliente_etiquetas_catalogo TEXT[]` (F1 catálogo de etiquetas para autocomplete) |
 | 172 | `172_clientes_cl2_cc.sql` | **Clientes CL2** · CC clientes. `tenants.limite_cc_default`, `cc_enforcement_politica` (permitir\|avisar\|bloquear), `cc_morosidad_politica` (permitir\|bloqueo_cc\|bloqueo_total), `cc_dias_vencimiento INT`, `cc_interes_mensual_pct`. `ventas.fecha_vencimiento_cc DATE` + `interes_cc DECIMAL`. RPC `cliente_cc_estado(cliente)` (deuda_total/vencida/interés, SECURITY DEFINER tenant-scoped) + `recalcular_intereses_cc(tenant)` (sweep-lazy idempotente de intereses de mora; pg_cron no habilitado) |
+| 173 | `173_clientes_cl3.sql` | **Clientes CL3** · B8 estado de cuenta. `clientes.cuenta_token TEXT UNIQUE` + índice parcial. RPC `get_cuenta_cliente_by_token(token)` → JSONB (cliente + ventas CC pendientes), SECURITY DEFINER, GRANT anon — portal público `/cuenta/:token`. B6 incobrable se resuelve en app (sin DDL) |
+| 174 | `174_fix_ventas_origen_check.sql` | **Bugfix** · `DROP CONSTRAINT ventas_origen_check`. Desde mig 168 el canal de venta (`ventas.origen`) es configurable por tenant (catálogo `canales_venta`); la constraint rígida (lista fija, mig 122) rechazaba canales nuevos → "new row violates check constraint ventas_origen_check" al vender. El canal se valida a nivel de app |
 
 ---
 

@@ -224,6 +224,10 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 - **Vencimiento + interés (B3):** `ventas.fecha_vencimiento_cc` (= hoy + `tenants.cc_dias_vencimiento`). Interés de mora `tenants.cc_interes_mensual_pct` → `ventas.interes_cc`, recalculado por **`recalcular_intereses_cc(tenant)`** (sweep-lazy; pg_cron no habilitado). El tab CC muestra interés + vencimiento real.
 - **Morosidad (B4):** `tenants.cc_morosidad_politica` (permitir/bloqueo_cc/bloqueo_total). RPC **`cliente_cc_estado(cliente)`** (deuda_total/deuda_vencida/interes_total).
 - **Cobranza (B5):** FIFO desde las 3 vías — ficha del cliente, **POS** (botón "Deuda CC" en el chip del cliente) y **Caja** (tab "Cobranzas CC" masivo). Helper `src/lib/cobranzaCC.ts`. No genera movimiento de caja (comportamiento histórico).
+
+### CL3 — Incobrables + estado de cuenta (mig 173) · v1.20.0
+- **Incobrables (B6):** botón "Incobrable" en el tab CC (DUEÑO/ADMIN/SUPER_USUARIO) → modal con motivo + **clave maestra** del dueño (si está configurada). Condona toda la deuda CC del cliente (tag `Incobrable`, excluido de ingresos) + genera **gasto automático "Deudores incobrables"** + audit (`actividad_log`).
+- **Estado de cuenta (B8):** **PDF** descargable (`src/lib/estadoCuentaPDF.ts`) desde la ficha + **portal público** `/cuenta/:token` (`CuentaClientePage`, sin login) vía `clientes.cuenta_token` + RPC `get_cuenta_cliente_by_token` (SECURITY DEFINER, anon). Botón "Link cliente" genera/copia el link.
 - **Config:** ConfigPage → Ventas → Operativa → "Cuenta corriente de clientes".
 
 ---

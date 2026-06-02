@@ -2,9 +2,9 @@
 name: relevamiento_clientes_respuestas
 description: Respuestas consolidadas del relevamiento de reglas de negocio del módulo Clientes (GO + socio). Origen del backlog de implementación por fases CL1-CL6.
 type: project
-status: COMPLETO — A-H respondidas y resueltas (2026-06-01). Sin Top 3 (GO pidió implementar todo). Plan por fases definido.
+status: ✅ IMPLEMENTADO Y DEPLOYADO A PROD — CL1-CL6 completo (v1.19.0→v1.23.0, mig 171-176). Ver "Estado de implementación".
 source: relevamiento-clientes-reglas-negocio.html
-updated: 2026-06-01
+updated: 2026-06-02
 ---
 
 # Respuestas — Relevamiento Reglas de Negocio · Clientes

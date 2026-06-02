@@ -208,9 +208,9 @@ Botón CreditCard por proveedor → modal con:
 
 ---
 
-## Relevamiento Clientes — CL1 (v1.18.0) + CL2 (v1.19.0) · mig 171/172
+## Relevamiento Clientes — CL1–CL6 ✅ COMPLETO en PROD (mig 171-176)
 
-Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_respuestas.md`). DEV adelantado, no deployado a PROD.
+Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_respuestas.md`). **Las 6 fases deployadas a PROD**: v1.19.0 (CL1+CL2), v1.20.0 (CL3), v1.23.0 (CL4+CL5+CL6).
 
 ### CL1 — Fundación de datos + permisos (mig 171)
 - **Baja = soft delete (A6):** botón "Dar de baja" + modal con razón (`clientes.motivo_baja/baja_at/baja_por`). Badge "Baja" en la card, toggle "Ver inactivos", botón reactivar. Conserva historial. (Antes había un hard-delete que era código muerto.)

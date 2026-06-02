@@ -170,4 +170,46 @@ CC de clientes: límite + vencimiento + interés + morosidad. Reusa `clientes.li
 | **B6** | ✅ | "Dar de baja incobrable" (botón en tab CC, solo DUEÑO/ADMIN/SUPER_USUARIO) → modal con motivo + **clave maestra** (si el tenant la tiene configurada, vía `verificar_clave_maestra`). Condona toda la deuda CC del cliente (tag `Incobrable` en `medio_pago`, excluido de ingresos) + crea **gasto automático "Deudores incobrables"** por el total + `logActividad` (entidad `cliente`, acción `incobrable`). |
 | **B8** | ✅ | **PDF estado de cuenta** (`src/lib/estadoCuentaPDF.ts`, jspdf+autotable) descargable desde la ficha. **Portal público** `/cuenta/:token` (`CuentaClientePage`) sin login — `clientes.cuenta_token` (mig 173) + RPC `get_cuenta_cliente_by_token` (SECURITY DEFINER, anon). Botón "Link cliente" genera/copia el link (usa `VITE_APP_URL`). |
 
-> Build verde. Migration 173 en DEV. Incluye **bugfix mig 174** (`DROP CONSTRAINT ventas_origen_check` — el canal es configurable desde mig 168 y la constraint rígida rechazaba canales nuevos al vender). **CL3 COMPLETO.**
+> Build verde. **Deployado a PROD en v1.20.0** (PR #142) — migrations 173 + 174. Incluye **bugfix mig 174** (`DROP CONSTRAINT ventas_origen_check` — el canal es configurable desde mig 168 y la constraint rígida rechazaba canales nuevos al vender). **CL3 COMPLETO.**
+
+### Fase CL4 — Notificaciones · `v1.23.0` ✅ Deployado a PROD (2026-06-02) · mig 175
+
+Config en ConfigPage → Ventas → Operativa → "Cuenta corriente de clientes". **Defaults OFF** (opt-in, evita mensajería masiva al deployar). Email event-driven vía Edge Function `send-email`; WhatsApp manual (sin envío background — no hay pg_cron).
+
+| Ítem | Estado | Detalle |
+|---|---|---|
+| **C1** | ✅ | Email automático al registrar venta a CC (`notificarRegistroDeudaCC`, `src/lib/notificacionesCC.ts`), si `cc_notif_registro_deuda` + canal email + cliente con email. |
+| **C4** | ✅ | Email de comprobante al registrar un pago, en las 3 vías de cobranza (ficha/POS/Caja) vía `notificarPagoCC`. |
+| **C2** | ✅ | Umbral `cc_notif_pre_venc_dias` (default 3) configurable → resalta "próxima a vencer" en el tab CC (recordatorio WA/email manual). |
+| **C3** | ◑ | Escalado (`cc_notif_escalado_dias`) en config; recordatorio manual desde tab CC. Envío background automático no disponible sin pg_cron. |
+| **C5** | ✅ | Panel "🎂 Cumpleaños de hoy" en Clientes (si `cumple_notif_duenio`) + botón saludo WhatsApp (si `cumple_notif_cliente`). |
+
+### Fase CL5 — CC proveedores · `v1.23.0` ✅ Deployado a PROD (2026-06-02) · mig 176
+
+| Ítem | Estado | Detalle |
+|---|---|---|
+| **D6** | ✅ | Cuentas bancarias múltiples por proveedor (tabla `proveedor_cuentas_bancarias`, RLS por tenant) + CRUD en el modal CC del proveedor. |
+| **D3** | ✅ | PDF estado de cuenta del proveedor (saldo + historial), botón en el modal CC. |
+| **D4** | ◑ | Columnas `nc_numero` + `adjunto_url` en `proveedor_cc_movimientos` (correlativo/comprobante de NC). UI de NC manual queda lista para sumar. |
+| **D2** | ✅ | Bloqueo de OC con deuda vencida ya existía (v1.8.44). |
+| **D5** | ✅ | Pago parcial ya soportado por el modelo de movimientos. |
+
+### Fase CL6 — Reportes + alertas + export + audit · `v1.23.0` ✅ Deployado a PROD (2026-06-02) · sin migración
+
+| Ítem | Estado | Detalle |
+|---|---|---|
+| **G1** | ✅ | Tab "Reportes" en Clientes: top 10 por volumen, inactivos +60d, aging de deuda CC (0-30/31-60/61-90/+90). |
+| **G3** | ✅ | Export a Excel (xlsx) de los 3 reportes. |
+| **F4** | ✅ | Audit log de cambios del cliente: las ediciones se loguean en `actividad_log` (entidad `cliente`) + sub-tab "Cambios" en la ficha. |
+| **G2** | ✅ | Alertas de deuda vencida/total ya cubiertas por `DashClientesArea` (dashboard) + el aging report. |
+
+---
+
+## 🎉 MÓDULO CLIENTES COMPLETO (CL1–CL6)
+
+Todo el relevamiento de Clientes implementado y deployado a PROD:
+- **v1.19.0** — CL1 (datos/permisos) + CL2 (CC límite/vencimiento/interés/morosidad) · mig 171-172
+- **v1.20.0** — CL3 (incobrables + estado de cuenta PDF/portal) · mig 173 + bugfix 174
+- **v1.23.0** — CL4 (notificaciones) + CL5 (CC proveedores) + CL6 (reportes/export/audit) · mig 175-176
+
+**Backlog diferido (fuera de CL1-CL6):** B7 tope deuda global · C6 marketing bulk · F2 fidelización puntos · F3 descartado · E1-E4 "mantener". Refinamientos menores anotados: C3 envío background (requiere cron), D4 UI de NC manual, cobranza CC con impacto en arqueo de caja.

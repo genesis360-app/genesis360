@@ -4,9 +4,9 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.17.0** ✅ (Relevamiento Ventas VF5 — edición post-venta H1 con autorización + NC interna · sin migración. **Relevamiento Ventas A-K COMPLETO**)
+Último release en PROD: **v1.19.0** ✅ (Relevamiento Clientes **CL1** mig 171 + **CL2** mig 172 — soft delete, import 3 modos, catálogo etiquetas, permisos; CC clientes con límite/vencimiento/interés/morosidad + cobranza ficha/POS/Caja). PR #140 mergeado, migrations 171+172 aplicadas en PROD. DEV alineado con PROD. Ver `relevamiento_clientes_respuestas.md`.
 
-**DEV adelantado a `v1.19.0`** (sin deployar): **Relevamiento Clientes CL1 (v1.18.0, mig 171) + CL2 (v1.19.0, mig 172)** implementados y con build verde. Ver `relevamiento_clientes_respuestas.md`. Pendiente de CL2: B5 cobranza en POS/Caja (la cobranza por ficha funciona).
+**Próximo:** CL3 (incobrables + estado de cuenta PDF/portal). Backlog Clientes CL3-CL6 en este archivo.
 
 **Versionado:** Semántico — Major=breaking/hito grande · Minor=feature · Patch=bugfix.
 
@@ -16,12 +16,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.19.0` | `v1.17.0` |
-| Migrations | 001–**172** ✅ | 001–**170** ✅ |
-| Branch | `dev` (adelantado: Clientes CL1+CL2) | `main` (release v1.17.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.17.0 |
+| APP_VERSION | `v1.19.0` | `v1.19.0` |
+| Migrations | 001–**172** ✅ | 001–**172** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.19.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.19.0 |
 
-**Migrations DEV pendientes de aplicar en PROD:** **171** (Clientes CL1 — soft delete + catálogo etiquetas), **172** (Clientes CL2 — CC límite/vencimiento/interés/morosidad + RPCs `cliente_cc_estado` y `recalcular_intereses_cc`).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna.
 
 **ISS-174 — cotización/generación de envíos por API (v1.14.0, PROD):**
 - **F1 (fundación)** — servicio = select dependiente en POS; catálogo `src/lib/couriers/catalogo.ts`; mig 162 (`courier_credenciales` + `tenants.envio_peso_fuente`), 163 (CP idempotente), 164 (productos peso/dim); Config → Envíos (toggle peso-fuente + `CourierCredencialesPanel` owner-only); peso/dim en form de producto.

@@ -6,9 +6,11 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-01] update | Clientes CL1 (v1.18.0) + CL2 (v1.19.0) implementados en DEV
+## [2026-06-01] deploy | v1.19.0 PROD — Clientes CL1 + CL2 (CC + cobranza)
 
-Arranque de implementación del backlog Clientes. Build verde (`tsc && vite build`). Migrations 171+172 en DEV (faltan en PROD).
+**Deployado a PROD.** PR #140 (`dev → main`) mergeado · release `v1.19.0` (`--latest`) · migrations **171 + 172 aplicadas en PROD** (aditivas/idempotentes) · DEV alineado con PROD · build verde. Vercel PROD deploy desde `main`.
+
+Arranque de implementación del backlog Clientes. Build verde (`tsc && vite build`). Migrations 171+172 en DEV y PROD.
 
 **CL1 — v1.18.0 · mig 171 (soft delete + etiquetas):**
 - A6: baja = soft delete con razón (`clientes.motivo_baja/baja_at/baja_por`); botón "Dar de baja" + modal motivo, badge "Baja", toggle "Ver inactivos" + reactivar. El hard-delete (código muerto) se reemplazó.

@@ -6,6 +6,7 @@ import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
+import { notificarRegistroDeudaCC, notificarPagoCC } from '@/lib/notificacionesCC'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
@@ -625,6 +626,7 @@ export default function VentasPage() {
       const { aplicado } = await cobrarDeudaCCFIFO(supabase, { tenantId: tenant!.id, clienteId, monto, metodo: cobrarCCMetodo })
       if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
       toast.success(`Cobranza de $${Math.round(aplicado).toLocaleString('es-AR')} registrada`)
+      void notificarPagoCC(tenant, clienteId, clienteNombre || 'cliente', aplicado)  // CL4/C4
       setCobrarCCOpen(false); setCobrarCCMonto(''); setCobrarCCMetodo('Efectivo')
       await fetchClienteCCDeuda()
     } catch (e: any) { toast.error(e.message ?? 'Error al registrar la cobranza') }
@@ -1909,6 +1911,11 @@ export default function VentasPage() {
       }).select().single()
       if (ventaError) throw ventaError
       ventaIdCreada = venta.id
+
+      // CL4/C1 — notificar al cliente el alta de deuda en cuenta corriente (event-driven, fire-and-forget)
+      if (modoCC && montoCC > 0.5 && clienteId) {
+        void notificarRegistroDeudaCC(tenant, clienteId, clienteNombre || 'cliente', montoCC)
+      }
 
       // J2c/J1 — si la venta usó override de descuento autorizado por clave maestra, dejar traza
       if (overrideDescuento) {
@@ -4364,6 +4371,7 @@ export default function VentasPage() {
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
               <input type="text" value={searchHistorial} onChange={e => setSearchHistorial(e.target.value)}
                 placeholder="Buscar por N° o cliente..."
+                name="buscar-venta-historial" autoComplete="off"
                 className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
             </div>
             <select value={filterEstado} onChange={e => setFilterEstado(e.target.value as EstadoVenta | '')}
@@ -5156,9 +5164,12 @@ export default function VentasPage() {
           <div className="bg-surface rounded-2xl shadow-xl w-full max-w-xs p-5 space-y-3">
             <h3 className="font-semibold text-primary flex items-center gap-2"><Lock size={16} /> Clave maestra</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">{claveReq.titulo}. Ingresá la clave maestra del DUEÑO para autorizar.</p>
+            {/* autoComplete="new-password" evita que Chrome autocomplete el email/usuario
+                guardado en el buscador de texto que queda detrás del modal */}
             <input type="password" value={claveInput} onChange={e => setClaveInput(e.target.value)} autoFocus
               onKeyDown={e => { if (e.key === 'Enter') confirmarClaveMaestra() }}
               placeholder="Clave maestra"
+              name="clave-maestra-venta" autoComplete="new-password"
               className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
             <div className="flex gap-2">
               <button onClick={() => { setClaveReq(null); setClaveInput('') }}
@@ -5179,6 +5190,7 @@ export default function VentasPage() {
             <h3 className="font-semibold text-primary flex items-center gap-2"><User size={16} /> Cambiar cliente — Venta {formatTicket(cambiarClienteVenta)}</h3>
             <input type="text" value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} autoFocus
               placeholder="Buscar por nombre o DNI…"
+              name="buscar-cliente-cambio" autoComplete="off"
               className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
             <div className="max-h-52 overflow-y-auto space-y-1">
               {(clientesBusqueda as any[]).map(c => (

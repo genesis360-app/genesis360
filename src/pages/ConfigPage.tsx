@@ -449,6 +449,13 @@ export default function ConfigPage() {
     (tenant as any)?.cc_dias_vencimiento != null ? String((tenant as any).cc_dias_vencimiento) : ''
   )
   const [bizCCInteresMensual, setBizCCInteresMensual] = useState<string>(String((tenant as any)?.cc_interes_mensual_pct ?? 0))
+  // Notificaciones de CC (CL4 · C1-C5)
+  const [bizCCNotifCanales, setBizCCNotifCanales] = useState<string[]>((tenant as any)?.cc_notif_canales ?? ['whatsapp'])
+  const [bizCCNotifRegistroDeuda, setBizCCNotifRegistroDeuda] = useState<boolean>((tenant as any)?.cc_notif_registro_deuda ?? false)
+  const [bizCCNotifPago, setBizCCNotifPago] = useState<boolean>((tenant as any)?.cc_notif_pago ?? false)
+  const [bizCCPreVencDias, setBizCCPreVencDias] = useState<string>((tenant as any)?.cc_notif_pre_venc_dias != null ? String((tenant as any).cc_notif_pre_venc_dias) : '')
+  const [bizCumpleCliente, setBizCumpleCliente] = useState<boolean>((tenant as any)?.cumple_notif_cliente ?? false)
+  const [bizCumpleDuenio, setBizCumpleDuenio] = useState<boolean>((tenant as any)?.cumple_notif_duenio ?? false)
 
   // Facturación electrónica
   const [bizFactHabilitada,  setBizFactHabilitada]  = useState<boolean>((tenant as any)?.facturacion_habilitada ?? false)
@@ -608,6 +615,13 @@ export default function ConfigPage() {
       limite_cc_default: bizCCLimiteDefault.trim() === '' ? null : (parseFloat(bizCCLimiteDefault) || null),
       cc_dias_vencimiento: bizCCDiasVenc.trim() === '' ? null : (parseInt(bizCCDiasVenc) || null),
       cc_interes_mensual_pct: parseFloat(bizCCInteresMensual) || 0,
+      // Notificaciones de CC (CL4)
+      cc_notif_canales: bizCCNotifCanales,
+      cc_notif_registro_deuda: bizCCNotifRegistroDeuda,
+      cc_notif_pago: bizCCNotifPago,
+      cc_notif_pre_venc_dias: bizCCPreVencDias.trim() === '' ? null : (parseInt(bizCCPreVencDias) || null),
+      cumple_notif_cliente: bizCumpleCliente,
+      cumple_notif_duenio: bizCumpleDuenio,
       whatsapp_plantilla: bizWAPlantilla.trim() || null,
       costo_envio_por_km: bizCostoKm ? parseFloat(bizCostoKm) : null,
       envio_peso_fuente: bizPesoFuente,
@@ -3853,6 +3867,50 @@ export default function ConfigPage() {
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500">Vacío en vencimiento = la deuda no vence. El interés se aplica sobre el saldo vencido y se recalcula al abrir Clientes o Caja.</p>
+
+                {/* Notificaciones (CL4) */}
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
+                  <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Notificaciones al cliente</p>
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">Canales</label>
+                    <div className="flex gap-4">
+                      {[['email', 'Email'], ['whatsapp', 'WhatsApp']].map(([val, lbl]) => (
+                        <label key={val} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                          <input type="checkbox" disabled={!canEdit} className="w-4 h-4 accent-accent"
+                            checked={bizCCNotifCanales.includes(val)}
+                            onChange={e => setBizCCNotifCanales(prev => e.target.checked ? [...new Set([...prev, val])] : prev.filter(c => c !== val))} />
+                          {lbl}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">El email se envía automáticamente. WhatsApp se envía manualmente desde el botón en el tab Cuenta Corriente (no hay envío automático de WA).</p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" disabled={!canEdit} checked={bizCCNotifRegistroDeuda} onChange={e => setBizCCNotifRegistroDeuda(e.target.checked)} className="w-4 h-4 accent-accent" />
+                    Avisar por email al registrar una venta a cuenta corriente
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" disabled={!canEdit} checked={bizCCNotifPago} onChange={e => setBizCCNotifPago(e.target.checked)} className="w-4 h-4 accent-accent" />
+                    Enviar comprobante por email al registrar un pago
+                  </label>
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Resaltar próximas a vencer (días antes)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="60"
+                      value={bizCCPreVencDias} disabled={!canEdit} placeholder="Sin recordatorio"
+                      onChange={e => setBizCCPreVencDias(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Las deudas que vencen dentro de estos días se marcan en el tab Cuenta Corriente para recordarle al cliente (WhatsApp/email manual).</p>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-600 dark:text-gray-300 pt-1">Cumpleaños</p>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" disabled={!canEdit} checked={bizCumpleDuenio} onChange={e => setBizCumpleDuenio(e.target.checked)} className="w-4 h-4 accent-accent" />
+                    Mostrarme la lista de cumpleañeros del día en Clientes
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" disabled={!canEdit} checked={bizCumpleCliente} onChange={e => setBizCumpleCliente(e.target.checked)} className="w-4 h-4 accent-accent" />
+                    Habilitar saludo de cumpleaños al cliente (botón de envío en la lista)
+                  </label>
+                </div>
 
                 {canEdit && (
                   <div className="flex justify-end">

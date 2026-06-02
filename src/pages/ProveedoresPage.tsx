@@ -155,6 +155,9 @@ export default function ProveedoresPage() {
   const [ccPagoMonto, setCcPagoMonto]       = useState('')
   const [ccPagoMedio, setCcPagoMedio]       = useState('Transferencia')
   const [ccGuardando, setCcGuardando]       = useState(false)
+  // D6 — cuentas bancarias múltiples por proveedor
+  const [cuentaForm, setCuentaForm]         = useState<{ banco: string; titular: string; cbu: string; alias: string }>({ banco: '', titular: '', cbu: '', alias: '' })
+  const [showCuentaForm, setShowCuentaForm] = useState(false)
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: proveedores = [], isLoading: loadingProv } = useQuery({
@@ -209,6 +212,64 @@ export default function ProveedoresPage() {
   })
 
   const saldoCC = (ccMovimientos as any[]).reduce((s: number, m: any) => s + Number(m.monto ?? 0), 0)
+
+  // D6 — cuentas bancarias del proveedor abierto
+  const { data: cuentasBancarias = [], refetch: refetchCuentas } = useQuery({
+    queryKey: ['proveedor-cuentas', ccProvId],
+    queryFn: async () => {
+      const { data } = await supabase.from('proveedor_cuentas_bancarias')
+        .select('*').eq('proveedor_id', ccProvId!).order('es_principal', { ascending: false }).order('created_at')
+      return data ?? []
+    },
+    enabled: !!ccProvId,
+  })
+
+  const agregarCuentaBancaria = async () => {
+    if (!ccProvId || !cuentaForm.banco.trim()) { toast.error('Indicá al menos el banco'); return }
+    const { error } = await supabase.from('proveedor_cuentas_bancarias').insert({
+      tenant_id: tenant!.id, proveedor_id: ccProvId,
+      banco: cuentaForm.banco.trim() || null, titular: cuentaForm.titular.trim() || null,
+      cbu: cuentaForm.cbu.trim() || null, alias: cuentaForm.alias.trim() || null,
+      es_principal: (cuentasBancarias as any[]).length === 0,
+    })
+    if (error) { toast.error('No se pudo agregar: ' + error.message); return }
+    setCuentaForm({ banco: '', titular: '', cbu: '', alias: '' }); setShowCuentaForm(false)
+    refetchCuentas()
+  }
+
+  const eliminarCuentaBancaria = async (id: string) => {
+    await supabase.from('proveedor_cuentas_bancarias').delete().eq('id', id)
+    refetchCuentas()
+  }
+
+  // D3 — PDF estado de cuenta del proveedor
+  const descargarEstadoProveedor = () => {
+    const prov = (proveedores as any[]).find((p: any) => p.id === ccProvId)
+    if (!prov) return
+    const doc = new jsPDF()
+    const fmt = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+    doc.setFontSize(16); doc.setTextColor(30, 58, 95); doc.text(tenant?.nombre ?? 'Genesis360', 14, 18)
+    doc.setFontSize(12); doc.setTextColor(60); doc.text('Estado de cuenta — Proveedor', 14, 26)
+    doc.setFontSize(10); doc.setTextColor(90)
+    doc.text(`Proveedor: ${prov.nombre}`, 14, 34)
+    doc.text(`Saldo adeudado: ${fmt(saldoCC)}`, 14, 40)
+    doc.text(`Emitido: ${new Date().toLocaleDateString('es-AR')}`, 14, 46)
+    autoTable(doc, {
+      startY: 52,
+      head: [['Fecha', 'Concepto', 'Vencimiento', 'Monto']],
+      body: (ccMovimientos as any[]).map((m: any) => [
+        new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR'),
+        (m.descripcion ?? m.tipo) + (m.ordenes_compra ? ` (OC #${m.ordenes_compra.numero})` : ''),
+        m.fecha_vencimiento ? new Date(m.fecha_vencimiento + 'T00:00:00').toLocaleDateString('es-AR') : '—',
+        fmt(Number(m.monto ?? 0)),
+      ]),
+      foot: [['', '', 'Saldo', fmt(saldoCC)]],
+      theme: 'striped', headStyles: { fillColor: [30, 58, 95] },
+      footStyles: { fillColor: [240, 240, 240], textColor: [200, 30, 30], fontStyle: 'bold' },
+      styles: { fontSize: 9 },
+    })
+    doc.save(`estado_cuenta_${prov.nombre.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`)
+  }
 
   const registrarPagoCC = async () => {
     if (!ccProvId) return
@@ -2368,7 +2429,13 @@ export default function ProveedoresPage() {
                   <h3 className="font-semibold text-primary dark:text-white">Cuenta Corriente</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">{prov?.nombre ?? '—'}</p>
                 </div>
-                <button onClick={() => setCcProvId(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                <div className="flex items-center gap-1">
+                  <button onClick={descargarEstadoProveedor} title="Descargar estado de cuenta (PDF)"
+                    className="flex items-center gap-1.5 text-xs border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <FileText className="w-3.5 h-3.5" /> PDF
+                  </button>
+                  <button onClick={() => setCcProvId(null)} className="text-gray-400 hover:text-gray-600 p-1"><X className="w-5 h-5" /></button>
+                </div>
               </div>
 
               {/* Saldo */}
@@ -2405,6 +2472,41 @@ export default function ProveedoresPage() {
                   </button>
                 </div>
               )}
+
+              {/* D6 — Cuentas bancarias */}
+              <div className="mx-5 mt-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cuentas bancarias</p>
+                  <button onClick={() => setShowCuentaForm(v => !v)} className="text-xs text-accent hover:underline">{showCuentaForm ? 'Cancelar' : '+ Agregar'}</button>
+                </div>
+                {(cuentasBancarias as any[]).map((cb: any) => (
+                  <div key={cb.id} className="flex items-center justify-between gap-2 text-xs bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-1.5 mb-1">
+                    <div className="min-w-0">
+                      <span className="font-medium text-primary dark:text-white">{cb.banco}</span>
+                      {cb.alias && <span className="text-gray-400 ml-2">alias: {cb.alias}</span>}
+                      {cb.cbu && <span className="text-gray-400 ml-2">CBU: {cb.cbu}</span>}
+                      {cb.titular && <span className="text-gray-400 ml-2">· {cb.titular}</span>}
+                    </div>
+                    <button onClick={() => eliminarCuentaBancaria(cb.id)} className="text-gray-400 hover:text-red-500 flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                ))}
+                {(cuentasBancarias as any[]).length === 0 && !showCuentaForm && (
+                  <p className="text-xs text-gray-400 py-1">Sin cuentas cargadas.</p>
+                )}
+                {showCuentaForm && (
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2.5 grid grid-cols-2 gap-2 mt-1">
+                    <input value={cuentaForm.banco} onChange={e => setCuentaForm(f => ({ ...f, banco: e.target.value }))} placeholder="Banco *"
+                      className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 text-primary" />
+                    <input value={cuentaForm.titular} onChange={e => setCuentaForm(f => ({ ...f, titular: e.target.value }))} placeholder="Titular"
+                      className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 text-primary" />
+                    <input value={cuentaForm.cbu} onChange={e => setCuentaForm(f => ({ ...f, cbu: e.target.value }))} placeholder="CBU"
+                      className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 text-primary" />
+                    <input value={cuentaForm.alias} onChange={e => setCuentaForm(f => ({ ...f, alias: e.target.value }))} placeholder="Alias"
+                      className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 text-primary" />
+                    <button onClick={agregarCuentaBancaria} className="col-span-2 py-1.5 bg-accent text-white rounded-lg text-xs font-semibold hover:bg-accent/90">Guardar cuenta</button>
+                  </div>
+                )}
+              </div>
 
               {/* Historial */}
               <div className="flex-1 overflow-y-auto mx-5 mt-3 mb-5 space-y-2">

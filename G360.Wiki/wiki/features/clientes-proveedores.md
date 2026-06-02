@@ -208,6 +208,26 @@ Botón CreditCard por proveedor → modal con:
 
 ---
 
+## Relevamiento Clientes — CL1 (v1.18.0) + CL2 (v1.19.0) · mig 171/172
+
+Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_respuestas.md`). DEV adelantado, no deployado a PROD.
+
+### CL1 — Fundación de datos + permisos (mig 171)
+- **Baja = soft delete (A6):** botón "Dar de baja" + modal con razón (`clientes.motivo_baja/baja_at/baja_por`). Badge "Baja" en la card, toggle "Ver inactivos", botón reactivar. Conserva historial. (Antes había un hard-delete que era código muerto.)
+- **Alerta de duplicado (A2):** al crear, avisa por DNI/teléfono/nombre similar (no traba). El DNI idéntico lo sigue bloqueando el índice único.
+- **Import 3 modos (A5):** detecta duplicados contra toda la base (DNI/tel/nombre) + ignorar existentes / ignorar nuevos / procesar todos (UPDATE de existentes). Columna `etiquetas` en la plantilla.
+- **Catálogo de etiquetas (F1):** autocomplete (`<datalist>`) = `tenants.cliente_etiquetas_catalogo` ∪ etiquetas usadas.
+- **Permisos:** habilitar CC solo DUEÑO/SUPERVISOR (B2). CONTADOR read-only en `/clientes` (H2).
+
+### CL2 — Cuenta corriente: límite/vencimiento/interés/morosidad (mig 172)
+- **Enforcement de límite (B1):** `tenants.cc_enforcement_politica` (permitir/avisar/bloquear). Límite por cliente = `clientes.limite_credito`, fallback `tenants.limite_cc_default`. El POS controla al despachar a CC.
+- **Vencimiento + interés (B3):** `ventas.fecha_vencimiento_cc` (= hoy + `tenants.cc_dias_vencimiento`). Interés de mora `tenants.cc_interes_mensual_pct` → `ventas.interes_cc`, recalculado por **`recalcular_intereses_cc(tenant)`** (sweep-lazy; pg_cron no habilitado). El tab CC muestra interés + vencimiento real.
+- **Morosidad (B4):** `tenants.cc_morosidad_politica` (permitir/bloqueo_cc/bloqueo_total). RPC **`cliente_cc_estado(cliente)`** (deuda_total/deuda_vencida/interes_total).
+- **Cobranza (B5):** FIFO desde las 3 vías — ficha del cliente, **POS** (botón "Deuda CC" en el chip del cliente) y **Caja** (tab "Cobranzas CC" masivo). Helper `src/lib/cobranzaCC.ts`. No genera movimiento de caja (comportamiento histórico).
+- **Config:** ConfigPage → Ventas → Operativa → "Cuenta corriente de clientes".
+
+---
+
 ## Mejoras v1.8.21
 
 ### ISS-102 — Clientes y proveedores globales entre sucursales

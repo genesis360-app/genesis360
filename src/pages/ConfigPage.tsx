@@ -439,6 +439,16 @@ export default function ConfigPage() {
   const [bizReservaPenalidadPct, setBizReservaPenalidadPct] = useState<string>(
     String((tenant as any)?.reserva_penalidad_pct ?? 0)
   )
+  // Cuenta Corriente clientes (CL2 · B1/B3/B4)
+  const [bizCCEnforcement, setBizCCEnforcement] = useState<string>((tenant as any)?.cc_enforcement_politica ?? 'avisar')
+  const [bizCCMorosidad, setBizCCMorosidad] = useState<string>((tenant as any)?.cc_morosidad_politica ?? 'bloqueo_cc')
+  const [bizCCLimiteDefault, setBizCCLimiteDefault] = useState<string>(
+    (tenant as any)?.limite_cc_default != null ? String((tenant as any).limite_cc_default) : ''
+  )
+  const [bizCCDiasVenc, setBizCCDiasVenc] = useState<string>(
+    (tenant as any)?.cc_dias_vencimiento != null ? String((tenant as any).cc_dias_vencimiento) : ''
+  )
+  const [bizCCInteresMensual, setBizCCInteresMensual] = useState<string>(String((tenant as any)?.cc_interes_mensual_pct ?? 0))
 
   // Facturación electrónica
   const [bizFactHabilitada,  setBizFactHabilitada]  = useState<boolean>((tenant as any)?.facturacion_habilitada ?? false)
@@ -592,6 +602,12 @@ export default function ConfigPage() {
       reserva_sena_minima_pct: parseFloat(bizReservaSenaMinimaPct) || 0,
       reserva_vencimiento_dias: bizReservaVencimientoDias.trim() === '' ? null : (parseInt(bizReservaVencimientoDias) || null),
       reserva_penalidad_pct: parseFloat(bizReservaPenalidadPct) || 0,
+      // Cuenta Corriente clientes (CL2 · B1/B3/B4)
+      cc_enforcement_politica: bizCCEnforcement,
+      cc_morosidad_politica: bizCCMorosidad,
+      limite_cc_default: bizCCLimiteDefault.trim() === '' ? null : (parseFloat(bizCCLimiteDefault) || null),
+      cc_dias_vencimiento: bizCCDiasVenc.trim() === '' ? null : (parseInt(bizCCDiasVenc) || null),
+      cc_interes_mensual_pct: parseFloat(bizCCInteresMensual) || 0,
       whatsapp_plantilla: bizWAPlantilla.trim() || null,
       costo_envio_por_km: bizCostoKm ? parseFloat(bizCostoKm) : null,
       envio_peso_fuente: bizPesoFuente,
@@ -3773,6 +3789,70 @@ export default function ConfigPage() {
                     className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">0 = sin penalidad (se devuelve la seña completa). Ej: 10 retiene el 10% de la seña al cancelar.</p>
                 </div>
+
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Cuenta corriente de clientes (CL2 · B1/B3/B4) */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Cuenta corriente de clientes</h2>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Al superar el límite de crédito</label>
+                  <select value={bizCCEnforcement} disabled={!canEdit}
+                    onChange={e => setBizCCEnforcement(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    <option value="permitir">Permitir (no controlar el límite)</option>
+                    <option value="avisar">Avisar y dejar continuar (recomendado)</option>
+                    <option value="bloquear">Bloquear la venta a cuenta corriente</option>
+                  </select>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">El límite por cliente se carga en su ficha. Si un cliente no tiene límite propio, se usa el límite general de abajo.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Límite general de crédito ($)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0"
+                    value={bizCCLimiteDefault} disabled={!canEdit} placeholder="Sin límite"
+                    onChange={e => setBizCCLimiteDefault(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = sin límite general. Aplica a clientes que no tengan un límite propio cargado.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cliente con deuda vencida</label>
+                  <select value={bizCCMorosidad} disabled={!canEdit}
+                    onChange={e => setBizCCMorosidad(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    <option value="permitir">Sin restricción</option>
+                    <option value="bloqueo_cc">No puede sumar a cuenta corriente, sí pagar por otro medio (recomendado)</option>
+                    <option value="bloqueo_total">No puede comprar hasta saldar</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vencimiento de la deuda (días)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365"
+                      value={bizCCDiasVenc} disabled={!canEdit} placeholder="Sin vencimiento"
+                      onChange={e => setBizCCDiasVenc(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Interés por mora (% mensual)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.1"
+                      value={bizCCInteresMensual} disabled={!canEdit}
+                      onChange={e => setBizCCInteresMensual(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Vacío en vencimiento = la deuda no vence. El interés se aplica sobre el saldo vencido y se recalcula al abrir Clientes o Caja.</p>
 
                 {canEdit && (
                   <div className="flex justify-end">

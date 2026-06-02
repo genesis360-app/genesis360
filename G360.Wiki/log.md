@@ -6,6 +6,44 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-01] update | Clientes CL1 (v1.18.0) + CL2 (v1.19.0) implementados en DEV
+
+Arranque de implementación del backlog Clientes. Build verde (`tsc && vite build`). Migrations 171+172 en DEV (faltan en PROD).
+
+**CL1 — v1.18.0 · mig 171 (soft delete + etiquetas):**
+- A6: baja = soft delete con razón (`clientes.motivo_baja/baja_at/baja_por`); botón "Dar de baja" + modal motivo, badge "Baja", toggle "Ver inactivos" + reactivar. El hard-delete (código muerto) se reemplazó.
+- A2: alerta de duplicado al crear (DNI/tel/nombre) sin trabar.
+- A5: import detecta duplicados contra toda la base + 3 modos (ignorar existentes/nuevos/procesar todos) con UPDATE de existentes; columna `etiquetas` en plantilla.
+- F1: autocomplete de etiquetas (`<datalist>`) = `tenants.cliente_etiquetas_catalogo` ∪ usadas.
+- B2: habilitar CC solo DUEÑO/SUPERVISOR. H2: CONTADOR read-only en `/clientes`.
+
+**CL2 — v1.19.0 · mig 172 (CC: límite/vencimiento/interés/morosidad):**
+- B1: enforcement configurable (`cc_enforcement_politica` permitir/avisar/bloquear) + `limite_cc_default`; reusa `clientes.limite_credito`. Aplicado en el POS al despachar CC.
+- B3: `ventas.fecha_vencimiento_cc` al crear venta CC + interés de mora (`cc_interes_mensual_pct` → `ventas.interes_cc`) por RPC `recalcular_intereses_cc` (sweep-lazy, pg_cron no habilitado). Tab CC muestra interés + vencimiento.
+- B4: morosidad (`cc_morosidad_politica` permitir/bloqueo_cc/bloqueo_total) en el POS, con RPC `cliente_cc_estado`.
+- B5: cobranza FIFO desde las 3 vías — ficha + **POS** (botón "Deuda CC" en el chip) + **Caja** (tab "Cobranzas CC", `CajaCobranzasCC`). Helper compartido `src/lib/cobranzaCC.ts`. **CL2 COMPLETO.**
+- ConfigPage → Ventas → Operativa: sección "Cuenta corriente de clientes".
+
+**Pendiente:** CL3-CL6 · deploy a PROD (aplicar mig 171+172).
+
+---
+
+## [2026-06-01] update | Relevamiento Clientes COMPLETO — respuestas consolidadas + plan por fases CL1-CL6
+
+Relevamiento de reglas de negocio del módulo **Clientes** (GO + socio) procesado y cruzado con `relevamiento_ventas_respuestas.md`.
+
+**Qué se hizo:**
+- Volcadas todas las respuestas (A-H) a `sources/raw/relevamiento_clientes_respuestas.md`.
+- Cruce con Ventas donde GO lo pidió: B4↔Ventas D6, B5↔D5, B6↔D7, B7↔D8, B3↔D2, C1↔D3, H2↔J3. Coherencia confirmada.
+- **Resuelto contradicción F3 vs Ventas G2:** GO decidió **precio solo por cantidad por producto** (`producto_precios_mayorista`, ya en PROD). Se **descarta** lista atada al cliente (`cliente.lista_id`).
+- Sugerencias cerradas donde GO pidió "¿qué sugerís?": A2 (alerta duplicado vs rechazo duro), B1 (enforcement configurable), D3/D4/D5/D6 (proveedores).
+- **GO no eligió Top 3: entra todo.** Plan por fases **CL1-CL6** (v1.18.0 → v1.23.0) documentado en `project_pendientes.md`.
+- **Transversal:** disparos por tiempo (intereses, recordatorios, escalados) por sweep lazy (pg_cron no habilitado).
+
+**Pendiente:** arrancar implementación por CL1 (fundación datos + permisos, bajo riesgo). Sin código aún — esta sesión fue relevamiento + diseño.
+
+---
+
 ## [2026-06-01] update | v1.17.0 PROD — Relevamiento Ventas VF5 (edición post-venta + NC interna) — RELEVAMIENTO VENTAS COMPLETO
 
 Quinta y última fase del backlog Ventas H-K. Bump v1.16.0 → **v1.17.0**. **Sin migración** (reusa `devoluciones` + `venta_auditoria`).

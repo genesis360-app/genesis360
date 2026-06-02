@@ -159,6 +159,6 @@ CC de clientes: límite + vencimiento + interés + morosidad. Reusa `clientes.li
 | **B5** | ✅ | Cobranza FIFO desde **las 3 vías**: ficha del cliente (`registrarPagoCC`), **POS** (botón "Deuda CC $X" en el chip del cliente → modal de cobranza) y **Caja** (tab "💳 Cobranzas CC" masivo, `CajaCobranzasCC`). Helper compartido `src/lib/cobranzaCC.ts` (`cobrarDeudaCCFIFO`). Nota: la cobranza CC no genera movimiento de caja (comportamiento histórico, consistente en las 3 vías) — eventual follow-up si se quiere que impacte el arqueo. |
 | **Config** | ✅ | ConfigPage → Ventas → Operativa: nueva sección "Cuenta corriente de clientes" (enforcement, límite general, morosidad, días de vencimiento, interés mensual). |
 
-> Build verde. Migrations 171+172 aplicadas en DEV. Falta aplicar en PROD al deployar. **CL2 COMPLETO.**
+> Build verde. **Deployado a PROD en v1.19.0** (PR #140) — migrations 171+172 aplicadas en DEV y PROD. **CL1 + CL2 COMPLETOS.**
 
-> **Migrations DEV:** 171 (CL1), 172 (CL2 + RPCs `cliente_cc_estado`, `recalcular_intereses_cc`).
+> **Migrations:** 171 (CL1), 172 (CL2 + RPCs `cliente_cc_estado`, `recalcular_intereses_cc`). En DEV y PROD.

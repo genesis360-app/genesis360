@@ -13,6 +13,13 @@ updated: 2026-05-29
 
 ---
 
+## v1.19.0 — Relevamiento Clientes CL1 + CL2: datos/permisos + CC clientes (PROD ✅)
+
+Primeras dos fases del backlog Clientes (relevamiento `relevamiento_clientes_respuestas.md`). Migrations 171 + 172.
+- **CL1 (mig 171):** baja = soft delete con razón (A6); alerta de duplicado al crear (A2); import con 3 modos + actualización + etiquetas (A5); autocomplete de etiquetas (F1); habilitar CC solo DUEÑO/SUPERVISOR (B2); CONTADOR read-only en Clientes (H2).
+- **CL2 (mig 172):** enforcement de límite CC configurable + límite default (B1); vencimiento + interés de mora con recálculo sweep-lazy (B3); morosidad configurable (B4); cobranza FIFO desde ficha + POS + Caja (B5); config nueva en Configuración → Ventas → Operativa.
+- **Próximo:** CL3 (incobrables + estado de cuenta PDF/portal), CL4-CL6.
+
 ## v1.17.0 — Relevamiento Ventas VF5: edición post-venta + NC interna (PROD ✅)
 
 Quinta y última fase del backlog Ventas H-K (sin migración). **Relevamiento Ventas A-K completo.**

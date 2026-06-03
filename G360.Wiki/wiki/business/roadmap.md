@@ -13,6 +13,13 @@ updated: 2026-05-29
 
 ---
 
+## v1.23.1 — QA: lógica de CC testeable + ecosistema de subagentes (PROD ✅)
+
+Release interno de calidad (sin cambio de comportamiento, sin migración).
+- Lógica de cuenta corriente extraída a `src/lib/ccLogic.ts` (función pura, single source of truth) + **50 unit tests** nuevos. Suite total: 228 verdes.
+- Plan de escenarios de Clientes en `tests/specs/clientes.plan.md` (41 escenarios).
+- **9 subagentes de proyecto** en `.claude/agents/` (relevamiento, spec-extractor, test-author, test-runner, migration-reviewer, code-reviewer, bug-fixer, deploy-runner, wiki-keeper). Ver `wiki/development/agentes-claude-code.md`.
+
 ## v1.23.0 — Relevamiento Clientes CL4+CL5+CL6: módulo Clientes COMPLETO (PROD ✅)
 
 Cierre del relevamiento de Clientes. Migrations 175 (CL4) + 176 (CL5); CL6 sin migración.

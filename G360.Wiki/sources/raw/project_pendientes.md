@@ -34,7 +34,7 @@ type: project
 - **F2-F5 (integración API)** — Edge Function `courier-api` (cotizar/generar/tracking) con adapters **Andreani / Correo Argentino / OCA**; mig 165 (`envios.cotizacion_json/courier_orden_id/cotizado_api`); cliente `src/lib/couriers/api.ts`; cotizar en POS + Envíos, "Generar con courier" + etiqueta + "Actualizar tracking" en Envíos.
 - **⚠ PENDIENTE crítico:** los adapters están escritos según docs públicas de cada courier pero **NO probados con cuentas B2B reales** (GO aún no las tiene). Al cargar credenciales reales, validar/ajustar endpoints y mapeos de cada adapter (`supabase/functions/courier-api/{andreani,correo,oca}.ts`). Fail-safe: sin credenciales la cotización muestra error claro y el alta manual sigue funcionando.
 
-**En DEV sin deployar (relevamiento Ventas E/F/G — 2026-05-31):**
+**Relevamiento Ventas E/F/G — ✅ deployado a PROD (v1.12.0/v1.13.0, histórico):**
 - **G4** — costo/margen ocultos para CAJERO/DEPOSITO (`permisosCosto.ts`). Sin migración.
 - **F1** — botón "Actualizar presupuesto" on-demand (la config de validez ya existía).
 - **F5** (mig 159) — correlativo independiente de presupuestos `PRES-NNNN` por sucursal.

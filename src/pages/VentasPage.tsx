@@ -6,6 +6,7 @@ import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
+import { evaluarLimiteCC, evaluarMorosidad } from '@/lib/ccLogic'
 import { notificarRegistroDeudaCC, notificarPagoCC } from '@/lib/notificacionesCC'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
@@ -1790,24 +1791,23 @@ export default function VentasPage() {
       const { data: ccData } = await supabase.rpc('cliente_cc_estado', { p_cliente: clienteId })
       const est = (ccData?.[0] ?? { deuda_total: 0, deuda_vencida: 0 }) as { deuda_total: number; deuda_vencida: number }
       const fmtCC = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
-      // B4 — morosidad: deuda vencida impaga
-      if (est.deuda_vencida > 0.5) {
-        if (morosidadPol === 'bloqueo_total') {
-          toast.error(`Cliente con deuda vencida (${fmtCC(est.deuda_vencida)}). No puede comprar hasta saldar.`); return
-        }
-        if (morosidadPol === 'bloqueo_cc' && modoCC) {
-          toast.error(`Cliente con deuda vencida (${fmtCC(est.deuda_vencida)}). No puede sumar a cuenta corriente; cobrá por otro medio.`); return
-        }
+      // B4 — morosidad (lógica pura testeable en ccLogic.ts)
+      const moros = evaluarMorosidad({ deudaVencida: est.deuda_vencida, politica: morosidadPol, modoCC })
+      if (moros === 'bloquear_total') {
+        toast.error(`Cliente con deuda vencida (${fmtCC(est.deuda_vencida)}). No puede comprar hasta saldar.`); return
+      }
+      if (moros === 'bloquear_cc') {
+        toast.error(`Cliente con deuda vencida (${fmtCC(est.deuda_vencida)}). No puede sumar a cuenta corriente; cobrá por otro medio.`); return
       }
       // B1 — enforcement de límite (solo sobre la parte que va a CC)
       if (modoCC && montoCC > 0.5) {
         const { data: cli } = await supabase.from('clientes').select('limite_credito').eq('id', clienteId).maybeSingle()
         const limite = cli?.limite_credito ?? (tenant as any)?.limite_cc_default ?? null
-        if (limite != null && est.deuda_total + montoCC > limite + 0.5) {
-          const pol = (tenant as any)?.cc_enforcement_politica ?? 'avisar'
-          const msg = `Esta venta deja la cuenta corriente en ${fmtCC(est.deuda_total + montoCC)}, supera el límite de ${fmtCC(limite)}.`
-          if (pol === 'bloquear') { toast.error(msg + ' Operación bloqueada.'); return }
-          if (pol === 'avisar' && !confirm(msg + ' ¿Continuar igual?')) return
+        const enf = evaluarLimiteCC({ deudaTotal: est.deuda_total, montoCC, limite, politica: (tenant as any)?.cc_enforcement_politica ?? 'avisar' })
+        if (enf.supera) {
+          const msg = `Esta venta deja la cuenta corriente en ${fmtCC(est.deuda_total + montoCC)}, supera el límite de ${fmtCC(limite as number)}.`
+          if (enf.accion === 'bloquear') { toast.error(msg + ' Operación bloqueada.'); return }
+          if (enf.accion === 'avisar' && !confirm(msg + ' ¿Continuar igual?')) return
         }
       }
     }

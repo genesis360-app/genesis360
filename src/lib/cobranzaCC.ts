@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { planificarCobranzaFIFO } from '@/lib/ccLogic'
 
 /**
  * Cobranza de cuenta corriente — distribución FIFO sobre las ventas CC pendientes
@@ -24,27 +25,15 @@ export async function cobrarDeudaCCFIFO(
     .in('estado', ['despachada', 'facturada'])
     .order('created_at', { ascending: true })
 
-  const pendientes = (ventas ?? []).filter((v: any) => (v.total ?? 0) - (v.monto_pagado ?? 0) > 0.5)
+  // Reparto FIFO puro (lógica testeable en ccLogic.ts); las ventas vienen ordenadas asc.
+  const { updates, aplicado, ventasSaldadas } = planificarCobranzaFIFO(ventas ?? [], monto, metodo)
 
-  let restante = monto
-  let aplicado = 0
-  let saldadas = 0
-  for (const v of pendientes) {
-    if (restante <= 0.5) break
-    const saldo = (v.total ?? 0) - (v.monto_pagado ?? 0)
-    const abono = Math.min(restante, saldo)
-    const nuevoMontoPagado = (v.monto_pagado ?? 0) + abono
-    let medios: any[] = []
-    try { medios = JSON.parse(v.medio_pago ?? '[]') } catch { medios = [] }
-    medios.push({ tipo: metodo, monto: abono })
-    // No tocamos `estado`: la venta CC ya está despachada/facturada; solo salda el receivable.
+  // No tocamos `estado`: la venta CC ya está despachada/facturada; solo salda el receivable.
+  for (const u of updates) {
     await supabase.from('ventas').update({
-      monto_pagado: nuevoMontoPagado,
-      medio_pago: JSON.stringify(medios),
-    }).eq('id', v.id)
-    restante -= abono
-    aplicado += abono
-    if (nuevoMontoPagado >= (v.total ?? 0) - 0.5) saldadas++
+      monto_pagado: u.nuevoMontoPagado,
+      medio_pago: u.nuevoMedioPago,
+    }).eq('id', u.id)
   }
-  return { aplicado, ventasSaldadas: saldadas }
+  return { aplicado, ventasSaldadas }
 }

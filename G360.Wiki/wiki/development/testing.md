@@ -3,13 +3,15 @@ title: Testing — Unit + E2E
 category: development
 tags: [testing, vitest, playwright, e2e, unit-tests]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-06-03
 ---
 
 # Testing
 
 Genesis360 tiene cobertura con **Vitest** (unit tests) + **Playwright** (E2E).  
-Total al 2026-04-30: **154+ unit tests** · **12 archivos E2E spec** (todos los roles)
+Total al 2026-06-03: **228 unit tests** (12 archivos) · **16 archivos E2E spec** (todos los roles)
+
+> **Pipeline de QA con agentes (v1.23.1):** el ciclo `relevamiento → spec-extractor → test-author → test-runner → bug-fixer` está soportado por subagentes de proyecto (ver [[wiki/development/agentes-claude-code]]). El plan de escenarios por módulo vive en `tests/specs/<modulo>.plan.md`.
 
 ---
 
@@ -33,6 +35,7 @@ Total al 2026-04-30: **154+ unit tests** · **12 archivos E2E spec** (todos los 
 | `tests/unit/skuAuto.test.ts` | Generación SKU-XXXXX secuencial | 8 |
 | `tests/unit/lpnFuentes.test.ts` | calcularLpnFuentes: unitarios + integración sort+fuentes | 21 |
 | `tests/unit/ventasCantidad.test.ts` | esDecimal, parseCantidad, cantidades decimales | 24 |
+| `tests/unit/ccLogic.test.ts` | **Cuenta corriente clientes (v1.23.1)**: evaluarLimiteCC (B1), evaluarMorosidad (B4), calcularInteresMora (B3), calcularEstadoCC, planificarCobranzaFIFO (B5), agruparAgingCC (G1) | 50 |
 
 ### Qué se testea
 
@@ -149,10 +152,34 @@ parseCantidad(str)                  // parse con coma/punto
 calcularLpnFuentes(lineas, cant)    // qué LPNs cubren la cantidad
 ```
 
+## Funciones puras en `ccLogic.ts` (cuenta corriente · v1.23.1)
+
+Lógica de plata de CC extraída de los componentes (POS, ClientesPage) para testeo unitario. Single source of truth; los componentes la importan.
+
+```typescript
+evaluarLimiteCC({deudaTotal, montoCC, limite, politica})   // B1 enforcement (permitir|avisar|bloquear)
+evaluarMorosidad({deudaVencida, politica, modoCC})          // B4 (bloquear_total|bloquear_cc|ok)
+calcularInteresMora({saldo, pctMensual, diasVencido})       // B3 — espejo de recalcular_intereses_cc (mig 172)
+calcularEstadoCC(ventas, hoyISO)                            // espejo de cliente_cc_estado (mig 172)
+planificarCobranzaFIFO(ventasOrdenadas, monto, metodo)      // B5 — reparto FIFO (usado por cobranzaCC.ts)
+agruparAgingCC(ventas, ahoraMs)                             // G1 — buckets 0-30/31-60/61-90/+90
+```
+
+> Las funciones que terminan en RPC SQL (`calcularInteresMora`, `calcularEstadoCC`) son **espejos JS** de la lógica de la DB para poder testearla sin Supabase. Si se cambia la RPC, actualizar el espejo + sus tests.
+
+---
+
+## Specs de negocio — `tests/specs/`
+
+Plan de escenarios testeables por módulo, generado por el agente `spec-extractor` desde el relevamiento + el código. Formato Given/When/Then con ID ligado al ítem del relevamiento, tipo (unit/e2e) y estado (cubierto/falta).
+
+- `tests/specs/clientes.plan.md` — 41 escenarios de Clientes (CC, cobranza, aging, notificaciones).
+
 ---
 
 ## Links relacionados
 
 - [[wiki/development/workflow-git]]
+- [[wiki/development/agentes-claude-code]]
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/inventario-stock]]

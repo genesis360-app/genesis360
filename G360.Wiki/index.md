@@ -98,7 +98,8 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/development/workflow-git]] | Ramas main/dev, PRs, releases, checklist pre-deploy | ✅ |
 | [[wiki/development/convenciones-codigo]] | Naming, imports, patterns, reglas agente LLM | ✅ |
 | [[wiki/development/deploy]] | Vercel + Supabase, dominios, env vars, comandos | ✅ |
-| [[wiki/development/testing]] | 154+ unit tests Vitest + Playwright E2E todos los roles | ✅ |
+| [[wiki/development/testing]] | 228 unit tests Vitest + Playwright E2E todos los roles · pipeline QA con agentes · `tests/specs/` | ✅ |
+| [[wiki/development/agentes-claude-code]] | 9 subagentes de proyecto (.claude/agents/): relevamiento, spec-extractor, test-author, test-runner, migration-reviewer, code-reviewer, bug-fixer, deploy-runner, wiki-keeper | ✅ |
 | [[wiki/development/supabase-dev-vs-prod]] | DEV vs PROD, flujo migraciones, EF deploy, pg_cron | ✅ |
 | [[wiki/development/reglas-negocio]] | Reglas relevadas con GO: caja, ventas, inventario, clientes, **gastos** (Fases 1-5 completas, v1.8.42→v1.9.0) + UAT | ✅ |
 | [[wiki/development/cierre-contable]] | **HITO v1.9.0** — cierre contable mensual transversal (gastos+ventas+caja+OC) + notas de corrección + triggers de bloqueo + RPCs cerrar/reabrir | ✅ |
@@ -142,4 +143,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-06-02 — 53 páginas + 3 manuales + relevamientos · DEV: migrations 001-**176** + 086b · PROD: 001-**176** + 086b · **v1.23.0 PROD** ✅ (**Módulo Clientes COMPLETO CL1–CL6**: CL4 notificaciones, CL5 CC proveedores, CL6 reportes/export/audit. Previos: v1.19.0 CL1+CL2, v1.20.0 CL3+fix) (Relevamiento Ventas VF5: edición post-venta + NC interna, sin migración — **Relevamiento Ventas A-K COMPLETO**). VF4 v1.16.0 (reportes/alertas), VF1-VF3 v1.15.0 (POS/canales/auditoría). v1.14.x: ISS-174 envíos por API de courier + hotfix onboarding. · **Relevamiento Clientes A-H COMPLETO** (2026-06-01) → plan por fases CL1-CL6 (v1.18.0→v1.23.0) en `relevamiento_clientes_respuestas.md`. **CL1 (mig 171) + CL2 (mig 172) deployados en PROD** (v1.19.0, PR #140). Próximo: CL3.*
+*Última actualización: 2026-06-03 — 54 páginas + 3 manuales + relevamientos · DEV: migrations 001-**176** + 086b · PROD: 001-**176** + 086b · **v1.23.1 PROD** ✅ (QA: lógica de CC extraída a `ccLogic.ts` + 50 unit tests, suite 228 verdes · 9 subagentes de proyecto en `.claude/agents/`). **Módulo Clientes COMPLETO CL1–CL6** (v1.19.0-v1.23.0) (Relevamiento Ventas VF5: edición post-venta + NC interna, sin migración — **Relevamiento Ventas A-K COMPLETO**). VF4 v1.16.0 (reportes/alertas), VF1-VF3 v1.15.0 (POS/canales/auditoría). v1.14.x: ISS-174 envíos por API de courier + hotfix onboarding. · **Relevamiento Clientes A-H COMPLETO** (2026-06-01) → plan por fases CL1-CL6 (v1.18.0→v1.23.0) en `relevamiento_clientes_respuestas.md`. **CL1 (mig 171) + CL2 (mig 172) deployados en PROD** (v1.19.0, PR #140). Próximo: CL3.*

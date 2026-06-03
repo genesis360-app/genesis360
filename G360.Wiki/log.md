@@ -6,6 +6,24 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-03] update | v1.23.1 PROD — QA: lógica de CC testeable + ecosistema de subagentes
+
+**Deployado a PROD** (PR #148). Refactor interno + cobertura de tests, **sin cambio de comportamiento, sin migración**.
+
+**Ecosistema de subagentes de proyecto** (`.claude/agents/`, commiteados): 9 agentes — relevamiento, spec-extractor, test-author, test-runner, migration-reviewer, code-reviewer, bug-fixer, deploy-runner, wiki-keeper. Ver [[wiki/development/agentes-claude-code]].
+
+**Primer estreno del pipeline de QA** sobre Clientes:
+- `spec-extractor` → `tests/specs/clientes.plan.md` (41 escenarios; detectó que la lógica de plata de CC estaba 100% sin cubrir).
+- Lógica de CC extraída a `src/lib/ccLogic.ts` (single source of truth): `evaluarLimiteCC` (B1), `evaluarMorosidad` (B4), `calcularInteresMora` (B3, espejo RPC), `calcularEstadoCC` (espejo RPC), `planificarCobranzaFIFO` (B5), `agruparAgingCC` (G1). Rewire behavior-preserving en VentasPage/cobranzaCC/ClientesPage.
+- `test-author` → `tests/unit/ccLogic.test.ts` (50 casos) + detectó un error de cálculo en el plan (CL2-B3-08: 287.40 → 288.07; el código era correcto).
+- Suite total: **228 unit tests verdes**. Build verde.
+
+**Infra de testing confirmada (Fase 0):** `.env.test.local` + auth por rol (cajero/supervisor/rrhh/owner) + 16 specs e2e ya existían.
+
+**Caveat:** los subagentes creados a mitad de sesión recién son invocables por nombre al reiniciar Claude Code; en esta sesión se corrieron vía `general-purpose` embebiendo sus instrucciones.
+
+---
+
 ## [2026-06-02] deploy | v1.23.0 PROD — Clientes CL4+CL5+CL6 — MÓDULO CLIENTES COMPLETO
 
 **Deployado a PROD** (PR #143). Migrations 175 (CL4) + 176 (CL5) en DEV y PROD; CL6 sin migración. Build verde. Sesión retomada tras reinicio de máquina (estado verificado: mig 171-174 + v1.20.0 ya en PROD).

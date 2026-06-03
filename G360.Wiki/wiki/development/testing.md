@@ -9,9 +9,11 @@ updated: 2026-06-03
 # Testing
 
 Genesis360 tiene cobertura con **Vitest** (unit tests) + **Playwright** (E2E).  
-Total al 2026-06-03: **228 unit tests** (12 archivos) · **16 archivos E2E spec** (todos los roles)
+Total al 2026-06-03: **329 unit tests** (18 archivos) · **16 archivos E2E spec** (todos los roles)
 
 > **Pipeline de QA con agentes (v1.23.1):** el ciclo `relevamiento → spec-extractor → test-author → test-runner → bug-fixer` está soportado por subagentes de proyecto (ver [[wiki/development/agentes-claude-code]]). El plan de escenarios por módulo vive en `tests/specs/<modulo>.plan.md`.
+>
+> **v1.23.2 — extensión del QA a Caja / Inventario / Ventas (+101 tests):** se extrajo la lógica de arqueo de `CajaPage.tsx` a `src/lib/cajaArqueo.ts` (refactor behavior-preserving) y se cubrieron los gaps de lógica pura sin tocar comportamiento ni DB.
 
 ---
 
@@ -36,6 +38,12 @@ Total al 2026-06-03: **228 unit tests** (12 archivos) · **16 archivos E2E spec*
 | `tests/unit/lpnFuentes.test.ts` | calcularLpnFuentes: unitarios + integración sort+fuentes | 21 |
 | `tests/unit/ventasCantidad.test.ts` | esDecimal, parseCantidad, cantidades decimales | 24 |
 | `tests/unit/ccLogic.test.ts` | **Cuenta corriente clientes (v1.23.1)**: evaluarLimiteCC (B1), evaluarMorosidad (B4), calcularInteresMora (B3), calcularEstadoCC, planificarCobranzaFIFO (B5), agruparAgingCC (G1) | 50 |
+| `tests/unit/cajaArqueo.test.ts` | **Arqueo de Caja (v1.23.2)**: diferencia cierre/apertura, umbral de alerta, clasificación de ajuste, saldo de sesión, acumulado por método, ajuste de traspaso (ISS-193), parsing medio/nro venta | 38 |
+| `tests/unit/cajaPermisos.test.ts` | **Matriz J3 (v1.23.2)**: `puede` (roles × acción + config opcional SUPERVISOR), `requiereClaveMaestra` (B5/B6) | 19 |
+| `tests/unit/unidades.test.ts` | **Inventario (v1.23.2)**: convertirUnidad (kg↔gr/lt↔ml), unidadesCompatibles, tieneConversion, formatUnidad | 17 |
+| `tests/unit/ventasDescuentoCombo.test.ts` | **Ventas (v1.23.2)**: calcularDescuentoComboMulti (pct/monto/monto_usd) | 7 |
+| `tests/unit/permisosCosto.test.ts` | **Ventas G4 (v1.23.2)**: puedeVerCosto (costo/margen oculto a CAJERO/DEPOSITO/RRHH) | 8 |
+| `tests/unit/umbralGasto.test.ts` | **Gastos (v1.23.2)**: evaluarUmbralGasto (umbral por rol/sucursal), puedeAprobar (cadena de aprobación) | 13 |
 
 ### Qué se testea
 
@@ -174,6 +182,25 @@ agruparAgingCC(ventas, ahoraMs)                             // G1 — buckets 0-
 Plan de escenarios testeables por módulo, generado por el agente `spec-extractor` desde el relevamiento + el código. Formato Given/When/Then con ID ligado al ítem del relevamiento, tipo (unit/e2e) y estado (cubierto/falta).
 
 - `tests/specs/clientes.plan.md` — 41 escenarios de Clientes (CC, cobranza, aging, notificaciones).
+- `tests/specs/caja.plan.md` — 38 escenarios de Caja (arqueo de cierre/apertura, umbral de alerta, ajuste de traspaso, matriz de permisos J3/B5/B6).
+- `tests/specs/inventario.plan.md` — 17 escenarios de conversión de unidades (kg↔gr / lt↔ml).
+- `tests/specs/ventas.plan.md` — 22 escenarios de gaps de Ventas (descuento de combo, visibilidad de costo G4, umbral de gasto + cadena de aprobación).
+
+## Funciones puras en `cajaArqueo.ts` (arqueo de Caja · v1.23.2)
+
+Lógica de arqueo extraída de `CajaPage.tsx` (rewire behavior-preserving) para testeo unitario.
+
+```typescript
+signoMovimiento(tipo)                       // +1 ingreso / -1 egreso*
+saldoSesion({apertura, ingresos, egresos})  // saldo del sistema
+calcularDiferenciaCierre(montoRealStr, saldo)  // conteo - sistema (null si no contó)
+calcularDiferenciaApertura(real, sugerido)  // real - sugerido (null sin cierre previo)
+superaUmbralDiferencia(dif, umbral)         // B1/B2/B3 — alerta de descuadre
+clasificarAjusteDiferencia(dif)             // B4 — {tipo, etiqueta} del movimiento de ajuste
+tipoAjusteTraspaso(direccion, dif)          // ISS-193 — ajuste en la caja contraparte
+acumularTotalesPorMetodo(movimientos)       // neto por medio de pago
+extraerMedioPago / extraerNumeroVenta       // parsing de concepto
+```
 
 ---
 

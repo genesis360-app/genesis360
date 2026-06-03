@@ -9,9 +9,17 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 1 de Junio, 2026
+**Última actualización:** 3 de Junio, 2026
 
 ---
+
+## v1.23.2 — QA: extensión de tests a Caja / Inventario / Ventas (PROD ✅)
+
+Release interno de calidad (sin cambio de comportamiento, sin migración).
+- **Caja:** lógica de arqueo extraída a `src/lib/cajaArqueo.ts` (rewire behavior-preserving de `CajaPage.tsx`) + tests de la matriz de permisos `cajaPermisos` (J3/B5/B6). **+57 tests**.
+- **Inventario:** tests de `unidades.ts` (conversión kg↔gr / lt↔ml). **+17 tests**.
+- **Ventas:** tests de descuento de combo, visibilidad de costo (G4) y umbral de gasto. **+27 tests**.
+- Planes en `tests/specs/{caja,inventario,ventas}.plan.md`. **Suite total: 329 unit tests verdes.**
 
 ## v1.23.1 — QA: lógica de CC testeable + ecosistema de subagentes (PROD ✅)
 

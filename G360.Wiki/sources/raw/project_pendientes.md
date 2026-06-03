@@ -4,13 +4,13 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.23.1** ✅ (QA: lógica de CC extraída a `src/lib/ccLogic.ts` + 50 unit tests, suite 228 verdes · ecosistema de 9 subagentes de proyecto en `.claude/agents/`). Refactor interno sin cambio de comportamiento ni migración. Antes: **🎉 MÓDULO CLIENTES COMPLETO (CL1–CL6)** v1.23.0.
+Último release en PROD: **v1.23.2** ✅ (QA: extensión del pipeline de tests a **Caja / Inventario / Ventas**, +101 unit tests → **suite 329 verdes**. Lógica de arqueo de caja extraída a `src/lib/cajaArqueo.ts`, refactor behavior-preserving sin cambio de comportamiento ni migración). Antes: v1.23.1 (QA CC → `ccLogic.ts` + 50 tests · 9 subagentes en `.claude/agents/`). v1.23.0 **🎉 MÓDULO CLIENTES COMPLETO (CL1–CL6)**.
 
 **Historial Clientes:** v1.19.0 (CL1+CL2), v1.20.0 (CL3 + bugfix origen), v1.23.0 (CL4+CL5+CL6), v1.23.1 (QA/tests CC + agentes).
 
 **Subagentes** (`.claude/agents/`): relevamiento, spec-extractor, test-author, test-runner, migration-reviewer, code-reviewer, bug-fixer, deploy-runner, wiki-keeper. Ver `G360.Wiki/wiki/development/agentes-claude-code.md`.
 
-**Testing pendiente (próxima sesión):** extender el pipeline de QA al resto de la lógica pura (Ventas, Caja, Inventario) vía `spec-extractor` → `test-author`. Plan de Clientes en `tests/specs/clientes.plan.md` (8 escenarios e2e + restantes unit por escribir si se quiere ampliar).
+**Testing — estado (v1.23.2):** pipeline de QA extendido a **Caja** (`cajaArqueo.ts` + matriz `cajaPermisos`, 57 tests), **Inventario** (`unidades.ts`, 17 tests) y **Ventas** (descuento combo + `puedeVerCosto` G4 + `umbralGasto`, 27 tests). Planes en `tests/specs/{caja,inventario,ventas}.plan.md`. **Suite total: 329 unit tests verdes.** Pendiente futuro: convertir los planes e2e a tests Playwright reales (los `.plan.md` listan escenarios e2e fuera del alcance unit: apertura de caja ajena A2, multi-sesión CAJERO B2, validación de clave maestra real, propagación de traspaso end-to-end).
 
 **Backlog diferido Clientes:** B7 tope deuda global, C6 marketing bulk, F2 fidelización, D4 UI de NC manual, C3 envío background (requiere cron), cobranza CC con impacto en arqueo.
 
@@ -18,14 +18,14 @@ type: project
 
 ---
 
-## Estado actual DEV / PROD — cierre sesión 2026-05-31
+## Estado actual DEV / PROD — cierre sesión 2026-06-03
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.23.1` | `v1.23.1` |
+| APP_VERSION | `v1.23.2` | `v1.23.2` |
 | Migrations | 001–**176** ✅ | 001–**176** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.23.1) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.23.1 |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.23.2) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.23.2 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna (171-176 ya en PROD).
 

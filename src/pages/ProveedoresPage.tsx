@@ -158,6 +158,12 @@ export default function ProveedoresPage() {
   // D6 — cuentas bancarias múltiples por proveedor
   const [cuentaForm, setCuentaForm]         = useState<{ banco: string; titular: string; cbu: string; alias: string }>({ banco: '', titular: '', cbu: '', alias: '' })
   const [showCuentaForm, setShowCuentaForm] = useState(false)
+  // D4 — NC manual de proveedor (reduce deuda; nº de comprobante + adjunto)
+  const [showNCForm, setShowNCForm]         = useState(false)
+  const [ncMonto, setNcMonto]               = useState('')
+  const [ncNumero, setNcNumero]             = useState('')
+  const [ncMotivo, setNcMotivo]             = useState('')
+  const [ncFile, setNcFile]                 = useState<File | null>(null)
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: proveedores = [], isLoading: loadingProv } = useQuery({
@@ -302,6 +308,64 @@ export default function ProveedoresPage() {
       }
       toast.success('Pago registrado')
       setCcPagoMonto('')
+      refetchCC()
+      qc.invalidateQueries({ queryKey: ['oc-gastos'] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error')
+    } finally {
+      setCcGuardando(false)
+    }
+  }
+
+  // D4 — Correlativo sugerido para la NC: máximo NC-NNNN sobre TODA la historia del proveedor
+  // (no sobre los 50 movimientos del historial visible, para no sugerir un número repetido).
+  const { data: ncMaxNum = 0 } = useQuery({
+    queryKey: ['proveedor-nc-max', ccProvId],
+    queryFn: async () => {
+      const { data } = await supabase.from('proveedor_cc_movimientos')
+        .select('nc_numero').eq('proveedor_id', ccProvId!).not('nc_numero', 'is', null)
+      let max = 0
+      for (const r of (data ?? []) as any[]) {
+        const mm = String(r.nc_numero ?? '').match(/NC-(\d+)/i)
+        if (mm) max = Math.max(max, parseInt(mm[1], 10))
+      }
+      return max
+    },
+    enabled: !!ccProvId,
+  })
+  const ncNumeroSugerido = `NC-${String(ncMaxNum + 1).padStart(4, '0')}`
+
+  // D4 — Registrar una nota de crédito manual del proveedor (acredita / reduce la deuda).
+  const registrarNCManual = async () => {
+    if (!ccProvId) return
+    const monto = parseFloat(ncMonto.replace(',', '.'))
+    if (isNaN(monto) || monto <= 0) { toast.error('Ingresá un monto válido'); return }
+    setCcGuardando(true)
+    try {
+      const numero = (ncNumero.trim() || ncNumeroSugerido)
+      // Adjunto opcional (comprobante PDF/imagen) — reusa el bucket de comprobantes
+      let adjuntoUrl: string | null = null
+      if (ncFile) {
+        const ext = ncFile.name.split('.').pop() ?? 'pdf'
+        const path = `nc-proveedor/${tenant!.id}/${ccProvId}/${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage.from('comprobantes-gastos').upload(path, ncFile, { upsert: true })
+        if (upErr) throw new Error('No se pudo subir el comprobante: ' + upErr.message)
+        adjuntoUrl = path
+      }
+      const { error } = await supabase.from('proveedor_cc_movimientos').insert({
+        tenant_id:    tenant!.id,
+        proveedor_id: ccProvId,
+        tipo:         'nota_credito',
+        monto:        -monto,                     // negativo: acredita y reduce la deuda
+        fecha:        new Date().toISOString().split('T')[0],
+        descripcion:  `NC ${numero}${ncMotivo.trim() ? ` — ${ncMotivo.trim()}` : ''}`,
+        nc_numero:    numero,
+        adjunto_url:  adjuntoUrl,
+        created_by:   user!.id,
+      })
+      if (error) throw error
+      toast.success('Nota de crédito registrada')
+      setNcMonto(''); setNcNumero(''); setNcMotivo(''); setNcFile(null); setShowNCForm(false)
       refetchCC()
       qc.invalidateQueries({ queryKey: ['oc-gastos'] })
     } catch (e: any) {
@@ -1111,7 +1175,7 @@ export default function ProveedoresPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => { setCcProvId(p.id); setCcPagoMonto(''); setCcPagoMedio('Transferencia') }}
+                      <button onClick={() => { setCcProvId(p.id); setCcPagoMonto(''); setCcPagoMedio('Transferencia'); setShowNCForm(false); setNcMonto(''); setNcNumero(''); setNcMotivo(''); setNcFile(null) }}
                         className="p-1.5 rounded text-muted hover:text-purple-600" title="Cuenta Corriente">
                         <CreditCard className="w-4 h-4" />
                       </button>
@@ -2473,6 +2537,38 @@ export default function ProveedoresPage() {
                 </div>
               )}
 
+              {/* D4 — Nota de crédito manual del proveedor */}
+              <div className="mx-5 mt-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Nota de crédito</p>
+                  <button onClick={() => { setShowNCForm(v => !v); if (!showNCForm) setNcNumero(ncNumeroSugerido) }}
+                    className="text-xs text-accent hover:underline">{showNCForm ? 'Cancelar' : '+ Cargar NC'}</button>
+                </div>
+                {showNCForm && (
+                  <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2.5 space-y-2 mt-1">
+                    <div className="grid grid-cols-2 gap-2">
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={ncMonto} onChange={e => setNcMonto(e.target.value)} placeholder="Monto *"
+                        className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 text-primary" />
+                      <input value={ncNumero} onChange={e => setNcNumero(e.target.value)} placeholder={ncNumeroSugerido}
+                        className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 text-primary" />
+                    </div>
+                    <input value={ncMotivo} onChange={e => setNcMotivo(e.target.value)} placeholder="Motivo (devolución, ajuste, bonificación…)"
+                      className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 text-primary" />
+                    <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+                      <Paperclip className="w-3.5 h-3.5" />
+                      <span className="truncate">{ncFile ? ncFile.name : 'Adjuntar comprobante (opcional)'}</span>
+                      <input type="file" accept="image/*,.pdf" className="hidden" onChange={e => setNcFile(e.target.files?.[0] ?? null)} />
+                    </label>
+                    <p className="text-[11px] text-gray-400">La NC acredita ${(parseFloat(ncMonto.replace(',', '.')) || 0).toLocaleString('es-AR')} y reduce la deuda del proveedor.</p>
+                    <button onClick={registrarNCManual} disabled={ccGuardando || !ncMonto}
+                      className="w-full py-1.5 bg-accent text-white rounded-lg text-xs font-semibold hover:bg-accent/90 disabled:opacity-50 flex items-center justify-center gap-2">
+                      <FileText className="w-3.5 h-3.5" />
+                      {ccGuardando ? 'Guardando…' : 'Registrar nota de crédito'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* D6 — Cuentas bancarias */}
               <div className="mx-5 mt-3">
                 <div className="flex items-center justify-between mb-1.5">
@@ -2529,6 +2625,12 @@ export default function ProveedoresPage() {
                             <span>{new Date(m.fecha + 'T00:00:00').toLocaleDateString('es-AR')}</span>
                             {m.medio_pago && <span>· {m.medio_pago}</span>}
                             {venc && <span className={vencida ? 'text-red-500 font-medium' : 'text-amber-500'}>· Vence {new Date(venc + 'T00:00:00').toLocaleDateString('es-AR')}</span>}
+                            {m.adjunto_url && (
+                              <a href={supabase.storage.from('comprobantes-gastos').getPublicUrl(m.adjunto_url).data.publicUrl}
+                                target="_blank" rel="noreferrer" className="text-accent hover:underline inline-flex items-center gap-1">
+                                · <Paperclip className="w-3 h-3" /> Comprobante
+                              </a>
+                            )}
                           </div>
                         </div>
                         <span className={`text-sm font-bold flex-shrink-0 ${esDeuda ? 'text-red-500' : 'text-green-600'}`}>

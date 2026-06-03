@@ -110,6 +110,12 @@ export default function ClientesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [pageTab, setPageTab] = useState<'lista' | 'cc' | 'reportes'>('lista')
   const [search, setSearch] = useState('')
+  // C6 — segmentación de clientes para marketing (filtros + export)
+  const [segEtiqueta, setSegEtiqueta] = useState('')
+  const [segCC, setSegCC] = useState<'todos' | 'con_deuda' | 'sin_deuda' | 'habilitada'>('todos')
+  const [segActividad, setSegActividad] = useState<'todos' | 'con_compras' | 'sin_compras' | 'inactivos'>('todos')
+  const [segMinTotal, setSegMinTotal] = useState('')
+  const [segConContacto, setSegConContacto] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<ClienteForm>(FORM_VACIO)
@@ -1064,6 +1070,57 @@ export default function ClientesPage() {
           .filter(c => c.count > 0 && c.ultima && (ahora - new Date(c.ultima).getTime()) > 60 * DIA)
           .sort((a, b) => new Date(a.ultima).getTime() - new Date(b.ultima).getTime())
         const aging = agruparAgingCC(ventasCC as any[], ahora)  // CL6/G1 — lógica pura testeable (ccLogic.ts)
+
+        // C6 — segmentación de clientes para marketing (filtros + export)
+        const deudaSeg: Record<string, number> = {}
+        for (const v of ventasCC as any[]) {
+          const cid = v.cliente_id; if (!cid || v.condonada) continue
+          deudaSeg[cid] = (deudaSeg[cid] ?? 0) + ((v.total ?? 0) - (v.monto_pagado ?? 0))
+        }
+        const minTotalNum = parseFloat(segMinTotal.replace(',', '.')) || 0
+        const segmentados = (clientes as any[]).filter(c => {
+          const st = statsMap[c.id] ?? { total: 0, count: 0, ultima: '' }
+          const deuda = deudaSeg[c.id] ?? 0
+          if (segEtiqueta && !((c.etiquetas ?? []) as string[]).includes(segEtiqueta)) return false
+          if (segCC === 'con_deuda' && deuda <= 0.5) return false
+          if (segCC === 'sin_deuda' && deuda > 0.5) return false
+          if (segCC === 'habilitada' && !c.cuenta_corriente_habilitada) return false
+          if (segActividad === 'con_compras' && st.count === 0) return false
+          if (segActividad === 'sin_compras' && st.count > 0) return false
+          if (segActividad === 'inactivos' && !(st.count > 0 && st.ultima && (ahora - new Date(st.ultima).getTime()) > 60 * DIA)) return false
+          if (minTotalNum > 0 && st.total < minTotalNum) return false
+          if (segConContacto && !c.email && !c.telefono) return false
+          return true
+        })
+        const segRows = segmentados.map(c => {
+          const st = statsMap[c.id] ?? { total: 0, count: 0, ultima: '' }
+          return {
+            Nombre: c.nombre, DNI: c.dni ?? '', Teléfono: c.telefono ?? '', Email: c.email ?? '',
+            Etiquetas: ((c.etiquetas ?? []) as string[]).join(' | '),
+            'CC habilitada': c.cuenta_corriente_habilitada ? 'Sí' : 'No',
+            'Total comprado': Math.round(st.total), Compras: st.count,
+            'Última compra': st.ultima ? new Date(st.ultima).toLocaleDateString('es-AR') : '',
+            Deuda: Math.round(deudaSeg[c.id] ?? 0), 'Saldo a favor': Math.round(creditoMap[c.id] ?? 0),
+          }
+        })
+        const exportarSegmento = (fmt: 'csv' | 'xlsx') => {
+          if (segRows.length === 0) { toast.error('No hay clientes en el segmento'); return }
+          const fname = `segmento_clientes_${new Date().toISOString().slice(0, 10)}`
+          if (fmt === 'xlsx') {
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(segRows), 'Segmento')
+            XLSX.writeFile(wb, `${fname}.xlsx`)
+          } else {
+            const headers = Object.keys(segRows[0])
+            const lines = segRows.map(r => headers.map(h => {
+              const v = String((r as any)[h] ?? '')
+              return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v
+            }).join(','))
+            const blob = new Blob(['﻿' + [headers.join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8' })
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${fname}.csv`; a.click()
+          }
+        }
+
         const exportarReporte = () => {
           const wb = XLSX.utils.book_new()
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topClientes.map(c => ({ Cliente: c.nombre, Total: Math.round(c.total), Compras: c.count, 'Última': c.ultima ? new Date(c.ultima).toLocaleDateString('es-AR') : '' }))), 'Top clientes')
@@ -1077,6 +1134,54 @@ export default function ClientesPage() {
               <button onClick={exportarReporte} className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">
                 <FileSpreadsheet size={15} /> Exportar Excel
               </button>
+            </div>
+
+            {/* C6 — Segmentación de clientes (marketing) */}
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <p className="font-semibold text-gray-700 dark:text-gray-300">Segmentación de clientes</p>
+                <span className="text-sm text-gray-500 dark:text-gray-400">{segmentados.length} cliente{segmentados.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mb-3">
+                <select value={segEtiqueta} onChange={e => setSegEtiqueta(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 text-primary">
+                  <option value="">Todas las etiquetas</option>
+                  {(etiquetasCatalogo as string[]).map(e => <option key={e} value={e}>{e}</option>)}
+                </select>
+                <select value={segCC} onChange={e => setSegCC(e.target.value as any)}
+                  className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 text-primary">
+                  <option value="todos">CC: todos</option>
+                  <option value="habilitada">CC habilitada</option>
+                  <option value="con_deuda">Con deuda</option>
+                  <option value="sin_deuda">Sin deuda</option>
+                </select>
+                <select value={segActividad} onChange={e => setSegActividad(e.target.value as any)}
+                  className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 text-primary">
+                  <option value="todos">Actividad: todos</option>
+                  <option value="con_compras">Compraron alguna vez</option>
+                  <option value="sin_compras">Nunca compraron</option>
+                  <option value="inactivos">Inactivos +60d</option>
+                </select>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={segMinTotal} onChange={e => setSegMinTotal(e.target.value)} placeholder="Compró +$ (mín.)"
+                  className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 text-primary" />
+                <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl cursor-pointer">
+                  <input type="checkbox" checked={segConContacto} onChange={e => setSegConContacto(e.target.checked)} className="accent-accent" />
+                  Con email o tel.
+                </label>
+              </div>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-xs text-gray-400">Filtrá y exportá la lista para enviar desde tu herramienta de mailing/WhatsApp.</p>
+                <div className="flex gap-2">
+                  <button onClick={() => exportarSegmento('csv')} disabled={segmentados.length === 0}
+                    className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-medium px-3 py-1.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm disabled:opacity-40">
+                    <Download size={14} /> CSV
+                  </button>
+                  <button onClick={() => exportarSegmento('xlsx')} disabled={segmentados.length === 0}
+                    className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-medium px-3 py-1.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm disabled:opacity-40">
+                    <FileSpreadsheet size={14} /> Excel
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
               <p className="font-semibold text-gray-700 dark:text-gray-300 mb-3">Deuda CC por antigüedad (aging)</p>

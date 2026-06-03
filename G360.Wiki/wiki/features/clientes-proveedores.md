@@ -3,7 +3,7 @@ title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-04-30
+updated: 2026-06-03
 ---
 
 # Clientes y Proveedores
@@ -246,6 +246,12 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 - **F4:** audit log de cambios del cliente (`actividad_log`, entidad `cliente`) + sub-tab "Cambios" en la ficha.
 - **G2:** alertas de deuda vencida ya en `DashClientesArea` (dashboard) + el aging report.
 - **Config:** ConfigPage → Ventas → Operativa → "Cuenta corriente de clientes".
+
+### Backlog diferido — cerrado en v1.24.0 (sin migración)
+- **C6 — Segmentación de clientes (marketing):** en el tab "Reportes" de Clientes, sección "Segmentación de clientes". Filtros: etiqueta · estado CC (habilitada / con deuda / sin deuda) · actividad (compraron alguna vez / nunca / inactivos +60d) · mínimo comprado · con email o teléfono. Export **CSV/Excel** de la lista segmentada (nombre, DNI, teléfono, email, etiquetas, total comprado, compras, última compra, deuda, saldo a favor) para enviar desde una herramienta de mailing/WhatsApp externa. No hay bulk-sender nativo (decisión del relevamiento). Reusa `statsMap`/`ventasCC`/`creditoMap`/`etiquetasCatalogo`.
+- **D4 — NC manual de proveedor:** en el modal CC del proveedor, sección "Nota de crédito". Form con monto, nº de NC (correlativo `NC-NNNN` sugerido sobre toda la historia del proveedor, editable), motivo y adjunto opcional (bucket `comprobantes-gastos`). Inserta un movimiento `proveedor_cc_movimientos` con `tipo='nota_credito'` y `monto` negativo (acredita y reduce la deuda), guardando `nc_numero` + `adjunto_url` (columnas de mig 176). El historial muestra un link al comprobante. Completa el ◑ de CL5 (las columnas existían, faltaba la UI).
+
+**Diferidos restantes:** B7 (tope de deuda global, revisar en 3-6 meses) · F2 (fidelización por puntos, requiere relevamiento) · C3 (envío background automático, bloqueado por `pg_cron`).
 
 ---
 

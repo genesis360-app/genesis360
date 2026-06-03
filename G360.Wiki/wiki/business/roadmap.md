@@ -13,6 +13,15 @@ updated: 2026-05-29
 
 ---
 
+## v1.24.0 — Clientes: C6 segmentación+export + D4 NC manual de proveedor (PROD ✅)
+
+Backlog diferido de Clientes (sin migración).
+- **C6 — Segmentación para marketing:** filtros (etiqueta, estado CC, actividad, mínimo comprado, con contacto) + export CSV/Excel de la lista segmentada, en ClientesPage → Reportes. Para enviar desde una herramienta de mailing/WhatsApp externa.
+- **D4 — NC manual de proveedor:** form en el modal CC (monto, correlativo `NC-NNNN`, motivo, adjunto) que registra una nota de crédito que reduce la deuda. Cierra el ◑ que dejó CL5.
+- `code-reviewer` en el flujo pre-merge. Build verde, 330 tests verdes.
+
+Diferidos restantes: B7 (tope deuda global, "revisar en 3-6 meses"), F2 (fidelización puntos, requiere relevamiento), C3 (envío background, bloqueado por `pg_cron`).
+
 ## v1.23.2 — QA: extensión de tests a Caja / Inventario / Ventas (PROD ✅)
 
 Release interno de calidad (sin cambio de comportamiento, sin migración).

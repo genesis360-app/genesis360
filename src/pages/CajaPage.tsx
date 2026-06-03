@@ -21,6 +21,11 @@ type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'reportes' | 'configuracion' |
 // formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
 import { formatMoneda as formatMonedaLib, MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { puede as cajaPuede, type ConfigCaja } from '@/lib/cajaPermisos'
+import {
+  extraerNumeroVenta, extraerMedioPago, signoMovimiento, saldoSesion,
+  calcularDiferenciaCierre, calcularDiferenciaApertura, superaUmbralDiferencia,
+  clasificarAjusteDiferencia, tipoAjusteTraspaso, acumularTotalesPorMetodo,
+} from '@/lib/cajaArqueo'
 import CajaReportes from '@/components/CajaReportes'
 import CajaCobranzasCC from '@/components/CajaCobranzasCC'
 
@@ -38,24 +43,9 @@ const TIPO_LABEL: Record<string, string> = {
   egreso_traspaso:       'Traspaso ↑',
 }
 
-function extraerNumeroVenta(concepto: string): string | null {
-  const m = concepto.match(/#(\d+)/)
-  return m ? m[1] : null
-}
-
 function getTipoDisplay(tipo: string, concepto: string): string {
   if (tipo === 'ingreso') return extraerNumeroVenta(concepto) ? 'Venta' : 'Ingreso Manual'
   return TIPO_LABEL[tipo] ?? tipo
-}
-
-function extraerMedioPago(tipo: string, concepto: string): string {
-  if (tipo === 'ingreso_informativo' || tipo === 'egreso_informativo') {
-    const m = concepto.match(/^\[(.+?)\]/)
-    return m ? m[1] : 'No efectivo'
-  }
-  if (['ingreso','ingreso_reserva','egreso','egreso_devolucion_sena','ingreso_apertura'].includes(tipo)) return 'Efectivo'
-  if (tipo === 'ingreso_traspaso' || tipo === 'egreso_traspaso') return 'Traspaso'
-  return ''
 }
 
 export default function CajaPage() {
@@ -472,23 +462,14 @@ export default function CajaPage() {
   const totalEgresos = movimientos.filter((m: any) =>
     m.tipo === 'egreso' || m.tipo === 'egreso_devolucion_sena' || m.tipo === 'egreso_traspaso'
   ).reduce((a: number, m: any) => a + m.monto, 0)
-  const saldoActual = sesionActiva ? (sesionActiva.monto_apertura + totalIngresos - totalEgresos) : 0
+  const saldoActual = sesionActiva ? saldoSesion({ apertura: sesionActiva.monto_apertura, ingresos: totalIngresos, egresos: totalEgresos }) : 0
 
   // Totales por medio de pago para el resumen de movimientos
-  const totalesMedios = (() => {
-    const map: Record<string, number> = {}
-    for (const m of movimientos as any[]) {
-      const medio = extraerMedioPago(m.tipo, m.concepto)
-      if (!medio) continue
-      const signo = ['egreso','egreso_informativo','egreso_devolucion_sena','egreso_traspaso'].includes(m.tipo) ? -1 : 1
-      map[medio] = (map[medio] ?? 0) + signo * m.monto
-    }
-    return map
-  })()
+  const totalesMedios = acumularTotalesPorMetodo(movimientos as any[])
 
   // Diferencia al cierre
   const montoRealNum = parseFloat(montoRealCierre) || 0
-  const diferencia = montoRealCierre !== '' ? montoRealNum - saldoActual : null
+  const diferencia = calcularDiferenciaCierre(montoRealCierre, saldoActual)
 
   // Multi-usuario: quién abrió la sesión
   const abrioNombre = (sesionActiva as any)?.abrio?.nombre_display ?? null
@@ -533,7 +514,7 @@ export default function CajaPage() {
         throw new Error(`Esta caja ya está abierta por ${nombre}`)
       }
       const montoReal = parseFloat(montoApertura) || 0
-      const difApertura = montoSugerido !== null ? montoReal - montoSugerido : null
+      const difApertura = calcularDiferenciaApertura(montoReal, montoSugerido)
       const { error } = await supabase.from('caja_sesiones').insert({
         tenant_id: tenant!.id,
         caja_id: cajaId,
@@ -642,8 +623,7 @@ export default function CajaPage() {
       const movManuales: { tipo: string; concepto: string; monto: number; created_at: string }[] = []
       for (const m of movs) {
         const medio = extraerMedioPago(m.tipo, m.concepto)
-        const signo = ['egreso','egreso_informativo','egreso_devolucion_sena','egreso_traspaso'].includes(m.tipo) ? -1 : 1
-        const monto = signo * Number(m.monto || 0)
+        const monto = signoMovimiento(m.tipo) * Number(m.monto || 0)
         totalesPorMetodo[medio] = (totalesPorMetodo[medio] ?? 0) + monto
         const numVenta = extraerNumeroVenta(m.concepto)
         if (numVenta) {
@@ -690,13 +670,13 @@ export default function CajaPage() {
 
       // B4 — Si hay diferencia, registrar movimiento de ajuste asociado al cajero
       const dif = diferencia ?? 0
-      if (dif !== 0) {
-        const tipoMov = dif > 0 ? 'ingreso' : 'egreso'
+      const ajuste = clasificarAjusteDiferencia(dif)
+      if (ajuste.tipo) {
         await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id,
           sesion_id: sesionActiva.id,
-          tipo: tipoMov,
-          concepto: dif > 0 ? `[Diferencia caja] Sobrante en cierre` : `[Diferencia caja] Faltante en cierre`,
+          tipo: ajuste.tipo,
+          concepto: ajuste.etiqueta === 'sobrante' ? `[Diferencia caja] Sobrante en cierre` : `[Diferencia caja] Faltante en cierre`,
           monto: Math.abs(dif),
           usuario_id: sesionActiva.usuario_id,  // asociado al cajero responsable
         })
@@ -740,8 +720,7 @@ export default function CajaPage() {
         // B1/B2/B3 — Si hay diferencia que supera umbral configurado, alertar a roles configurados
         const dif = diferencia ?? 0
         const umbral = Number((tenant as any)?.diferencia_caja_umbral ?? 0)  // 0/NULL = alerta con cualquier dif
-        const superaUmbral = umbral > 0 ? Math.abs(dif) >= umbral : dif !== 0
-        if (superaUmbral) {
+        if (superaUmbralDiferencia(dif, umbral)) {
           const rolesAlerta: string[] = (tenant as any)?.diferencia_caja_alerta_roles ?? ['DUEÑO','SUPERVISOR']
           const canales: string[] = (tenant as any)?.diferencia_caja_alerta_canales ?? ['inapp','email']
           const tituloDif = `⚠ Diferencia en cierre ${cajaActual?.nombre ?? 'caja'}: ${dif > 0 ? '+' : ''}${formatMoneda(dif)}`
@@ -876,14 +855,7 @@ export default function CajaPage() {
           // Si destino recibió menos (diferencia<0): la origen recupera plata → ingreso en origen
           // Si destino recibió más  (diferencia>0): la origen pone plata extra → egreso  en origen
           // Análogo si propagás desde el origen al destino.
-          let tipoAjuste: 'ingreso' | 'egreso'
-          if (propagarAOrigen) {
-            tipoAjuste = diferencia < 0 ? 'ingreso' : 'egreso'
-          } else {
-            // si la corrección fue en el origen (egreso ajustado), la diferencia se traslada al destino
-            // diferencia<0 significa egreso menor: la destino debe recibir menos → egreso en destino
-            tipoAjuste = diferencia < 0 ? 'egreso' : 'ingreso'
-          }
+          const tipoAjuste = tipoAjusteTraspaso(propagarAOrigen ? 'a_origen' : 'a_destino', diferencia)
           const { error: e3 } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id,
             sesion_id: contraSesionId,

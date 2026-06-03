@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Inventario: Conteos 2.0 · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Inventario: Conteos 2.0</h1>
+<div class="meta">
+  Genesis360 · v1.24.0 · Fecha: 3 de junio de 2026 · Relevamiento con Gastón Otranto + socio · ISS-CONT
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas con
+  <span class="tag tag-existente">EXISTENTE</span> piden confirmar reglas ya implementadas;
+  <span class="tag tag-nuevo">NUEVO</span> piden definir reglas pendientes;
+  <span class="tag tag-cambio">CAMBIO</span> señalan contradicciones o comportamientos actuales a corregir.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo (v1.24.0):</strong>
+  Modelo en BD (mig 050): <code>inventario_conteos</code> con <code>tipo ∈ 'ubicacion' | 'producto'</code>, estado
+  <code>'borrador' | 'finalizado'</code>, <code>ajuste_aplicado</code>, <code>sucursal_id</code>, <code>created_by</code>, <code>notas</code>.
+  Items en <code>inventario_conteo_items</code> (<code>producto_id</code>, <code>lpn</code>, <code>cantidad_esperada</code>, <code>cantidad_contada</code>).
+  Flujo UI (InventarioPage, tab "Conteo"): elegir tipo → seleccionar ubicacion o producto → cargar lineas
+  → editar cantidades → guardar borrador (continuable) o Finalizar + Aplicar.
+  Al finalizar: por cada fila con diferencia, pisa <code>inventario_lineas.cantidad</code> y registra <code>movimientos_stock</code>
+  (<code>ajuste_ingreso</code> / <code>ajuste_rebaje</code>).
+  <strong>Debilidad principal:</strong> la <code>cantidad_contada</code> se precarga con la esperada — el operador ve el numero del sistema
+  antes de contar (sesgo de confirmacion). Sin filtro por marca, categoria ni sucursal completa. Sin control de ajustes grandes. Sin doble conteo.
+</div>
+
+<!-- ============================ A. SCOPE DEL CONTEO ============================ -->
+<h2>A. Scope del conteo — qué se puede contar</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Tipos de conteo disponibles <span class="tag tag-existente">EXISTENTE</span><span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: solo "por ubicacion" (filtra <code>inventario_lineas.ubicacion_id</code>) o "por producto" (filtra <code>producto_id</code>). El pedido de GO del 2026-06-03 es agregar "por Marca". <code>productos.marca TEXT</code> ya existe (mig 118).</div>
+  <ul class="opciones">
+    <li>(a) Agregar solo "Por Marca" (lo pedido) — mantener ubicacion y producto como hoy</li>
+    <li>(b) Agregar "Por Marca" + "Por Categoria" (<code>categoria_id</code> ya existe en productos)</li>
+    <li>(c) Agregar "Por Marca" + "Por Categoria" + "Sucursal completa / wall-to-wall" (todo el stock de la sucursal)</li>
+    <li>(d) Todos los anteriores + permitir combinaciones (ej. Marca X en Ubicacion Y)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Conteo wall-to-wall: ¿bloquea operaciones? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: no hay ningun bloqueo durante el conteo — ventas e ingresos continuan mientras se cuenta. Un conteo de sucursal completa puede tomar horas. Si durante ese tiempo se vende, la diferencia que calcula el sistema puede estar desactualizada.</div>
+  <ul class="opciones">
+    <li>(a) Sin bloqueo — el operador asume la responsabilidad de que el stock puede moverse mientras cuenta</li>
+    <li>(b) Advertencia visual al iniciar un wall-to-wall ("hay movimientos pendientes — los ajustes podrian no ser exactos")</li>
+    <li>(c) El sistema guarda un snapshot del stock al iniciar y lo usa como referencia al finalizar (no el stock "vivo" en ese momento)</li>
+    <li>(d) Wall-to-wall bloquea ingresos/ventas en la sucursal hasta que se cierre el conteo (requiere confirmacion de DUEÑO)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    ¿Qué tipo de conteo se usa mas en la practica? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: el tipo mas comun no esta registrado (no hay estadisticas de uso). La respuesta define que modo debe ser el default y cuanto esfuerzo dedicar a cada variante.</div>
+  <ul class="opciones">
+    <li>(a) Por ubicacion (ej. "que tengo en la estanteria A?") — es lo que hacen hoy</li>
+    <li>(b) Por producto (ej. "cuantas unidades de SKU-123 hay en toda la sucursal?")</li>
+    <li>(c) Por marca (lo que pide GO: "cuento todo lo de Marca X de una vez")</li>
+    <li>(d) Mixto — depende del dia: a veces ubic, a veces marca, rara vez todo</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. MODO DE CONTEO (BLIND VS INFORMED) ============================ -->
+<h2>B. Modo de conteo — ciego vs informado</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Conteo a ciegas (blind count) <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy: al cargar las lineas, <code>cantidad_contada</code> se precarga con la <code>cantidad_esperada</code> del sistema
+  (linea <code>cantidad_contada: String(cantEsperada)</code> en InventarioPage.tsx ~1404).
+  Esto es el anti-patron clasico de conteo: el operador tiende a confirmar el numero que ya ve en lugar de contar de verdad (sesgo de confirmacion).
+  Un conteo a ciegas arranca el campo vacio — el operador escribe lo que cuenta sin saber que dice el sistema.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como hoy — precarga la esperada (modo "informado")</li>
+    <li>(b) Cambiar el default a ciegas: el campo cantidad_contada arranca vacio</li>
+    <li>(c) Configurable por tenant: el DUEÑO elige si sus operadores ven o no el numero del sistema</li>
+    <li>(d) Elegible por conteo: al crear un conteo se elige "ciego" o "informado" para esa sesion</li>
+    <li>(e) Dos modos coexisten: "Conteo rapido" (informado, como hoy) + "Conteo guiado" (ciego). El operador elige al iniciar</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    ¿Quien puede ver la cantidad del sistema durante el conteo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: todos los roles ven la cantidad esperada (no hay restriccion por rol en la UI del conteo). Si se implementa modo ciego, hay que definir si algun rol puede "revelar" el numero antes de finalizar.</div>
+  <ul class="opciones">
+    <li>(a) En modo ciego nadie ve la cantidad del sistema hasta que se finaliza</li>
+    <li>(b) En modo ciego solo DUEÑO/SUPERVISOR puede revelar la cantidad esperada de una fila</li>
+    <li>(c) Cualquier rol puede revelar (queda registrado en el log del conteo)</li>
+    <li>(d) No aplica — se usa siempre el modo informado</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    ¿Que pasa con filas no contadas (sin valor ingresado) al finalizar? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: en modo informado todas las filas tienen valor (precargado con el esperado), por lo que al finalizar las filas sin diferencia no generan ajuste. En un modo ciego, una fila en blanco puede significar "no la conte" o "la conte y es cero".</div>
+  <ul class="opciones">
+    <li>(a) Fila en blanco = no contada → se omite del ajuste (no modifica el stock de ese LPN)</li>
+    <li>(b) Fila en blanco = 0 unidades → se ajusta a cero (puede generar un rebaje enorme si el operador no la completo)</li>
+    <li>(c) Fila en blanco bloquea el boton "Finalizar" — todas las filas deben tener un valor ingresado</li>
+    <li>(d) El sistema avisa cuantas filas quedaron en blanco y pide confirmacion antes de finalizar</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. DOBLE CONTEO DE DISCREPANCIAS ============================ -->
+<h2>C. Doble conteo de discrepancias</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    ¿Se implementa reconteo cuando la diferencia supera un umbral? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: cualquier diferencia se ajusta directamente al finalizar. No hay instancia de reconteo antes de aplicar. En un negocio con lector o muchos SKUs, una diferencia grande puede ser un error de tipeo del operador.</div>
+  <ul class="opciones">
+    <li>(a) No — una sola pasada, se aplica siempre directo</li>
+    <li>(b) Si — filas con diferencia mayor al umbral se marcan "pendiente de reconteo" antes de poder aplicar</li>
+    <li>(c) Solo en conteos guiados/avanzados — el conteo rapido aplica siempre directo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Umbral para disparar el reconteo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: no existe umbral. La respuesta a C1 debe ser (b) o (c) para que esta pregunta aplique. El umbral define a partir de que diferencia el sistema frena antes de ajustar.</div>
+  <ul class="opciones">
+    <li>(a) En unidades absolutas: ej. diferencia mayor a 5 unidades</li>
+    <li>(b) En porcentaje sobre el esperado: ej. mas del 10% de diferencia</li>
+    <li>(c) Combinado: diferencia mayor a X unidades O mayor al Y% (lo que ocurra primero)</li>
+    <li>(d) Configurable por tenant (el DUEÑO define los umbrales en Config)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    ¿Quien hace el reconteo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: solo hay un campo <code>created_by</code> a nivel de conteo (no por fila). No es posible registrar que un segundo operador reconto una fila especifica.</div>
+  <ul class="opciones">
+    <li>(a) El mismo operador — recuenta sus propias filas marcadas</li>
+    <li>(b) Un segundo operador distinto (el sistema lo pide; el primero no puede recontar sus propias filas)</li>
+    <li>(c) Cualquiera, pero se registra quién reconsto cada fila (trazabilidad)</li>
+    <li>(d) SUPERVISOR/DUEÑO es quien reconsta o aprueba el valor</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    ¿El reconteo es obligatorio u opcional? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Si el reconteo es opcional, el operador podria saltearlo. Si es obligatorio, no se puede finalizar hasta resolverlo.</div>
+  <ul class="opciones">
+    <li>(a) Obligatorio — no se puede aplicar el ajuste mientras haya filas marcadas para reconteo</li>
+    <li>(b) Opcional — se puede aplicar con override (clave maestra o confirmacion de SUPERVISOR)</li>
+    <li>(c) Obligatorio solo para ajustes de rebaje (bajan el stock); los de ingreso pueden aplicarse directo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. GATE DE AUTORIZACIÓN PARA AJUSTES GRANDES ============================ -->
+<h2>D. Gate de autorizacion para ajustes grandes</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    ¿Se implementa un gate de autorizacion? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: cualquier ajuste (incluso uno que borra 1000 unidades o $50.000 de stock) se aplica sin ningun gate de autorizacion.
+  Otros modulos ya tienen este patron: Caja usa clave maestra para cancelacion de deuda incobrable, Ventas para override de limite de CC.</div>
+  <ul class="opciones">
+    <li>(a) No — el operador que finaliza el conteo aplica el ajuste sin restriccion</li>
+    <li>(b) Si — ajustes que superen un umbral requieren clave maestra del DUEÑO</li>
+    <li>(c) Si — ajustes grandes requieren aprobacion de SUPERVISOR o DUEÑO (no clave, solo que el rol lo confirme)</li>
+    <li>(d) Configurable: el DUEÑO define si activa el gate y con que umbral</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Umbral del gate de autorizacion <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: no existe umbral. La respuesta a D1 debe ser (b), (c) o (d) para que esta pregunta aplique. Los ajustes chicos (diferencia de 1 o 2 unidades) no deberian frenar el flujo del operador.</div>
+  <ul class="opciones">
+    <li>(a) En unidades: ej. diferencia acumulada mayor a 20 unidades en el conteo</li>
+    <li>(b) En valor $: ej. diferencia valorizada (cantidad * precio_costo) mayor a $X</li>
+    <li>(c) En porcentaje del stock total contado: ej. diferencia mayor al 5% del total</li>
+    <li>(d) Combinado: unidades O valor $ superan los umbrales (lo que ocurra primero)</li>
+    <li>(e) Configurable por tenant con valores por defecto sugeridos</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    ¿Que roles pueden crear, finalizar y aplicar conteos? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: no hay gate por rol en la UI del conteo. Cualquier usuario con acceso al tab Inventario puede crear un conteo y aplicar ajustes.</div>
+  <ul class="opciones">
+    <li>(a) Todos los roles con acceso a Inventario pueden crear, finalizar y aplicar (como hoy)</li>
+    <li>(b) Cualquiera puede crear y contar; solo SUPERVISOR/DUEÑO puede aplicar el ajuste final</li>
+    <li>(c) DEPOSITO y CAJERO pueden contar; SUPERVISOR/DUEÑO aprueban y aplican</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. SCAN-TO-COUNT ============================ -->
+<h2>E. Scan-to-count — escaneo para contar</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    ¿Se implementa conteo por escaneo de codigo de barras/QR? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: el operador tipea la cantidad en cada fila. El stack GS1 ya existe (<code>gs1.ts</code>, <code>scanCompuesto.ts</code>, BarcodeDetector + ZXing) y se reutiliza en Ingresos, Rebajes, Ventas y Recepciones (mig 157-158, v1.11.5-v1.11.6).</div>
+  <ul class="opciones">
+    <li>(a) No — tipeo manual es suficiente</li>
+    <li>(b) Si — escanear el producto suma 1 unidad a su fila en el conteo (modo "scan = +1")</li>
+    <li>(c) Si — escanear muestra un cuadro para confirmar/editar la cantidad antes de sumar</li>
+    <li>(d) Si — escanear GS1 con AI de cantidad (ej. codigo con "37 unidades") carga esa cantidad automaticamente</li>
+    <li>(e) Si — scan-to-count solo en el modo guiado/avanzado; en el conteo rapido se tipea como hoy</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    ¿Que se escanea: el producto o el LPN? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: cada fila del conteo corresponde a una <code>inventario_linea</code> (que tiene LPN, producto_id, ubicacion_id). El LPN es el identificador unico de cada "pila" fisica. Se puede escanear el codigo del producto (SKU/GTIN, multiple LPN) o el QR del LPN (identifica exactamente el bin fisico).</div>
+  <ul class="opciones">
+    <li>(a) Escanear el producto (SKU/GTIN) — suma a la fila del producto en la ubicacion activa</li>
+    <li>(b) Escanear el LPN (QR de la etiqueta Genesis360) — identifica exactamente que linea sumar</li>
+    <li>(c) Ambos: si se escanea un producto busca el LPN por ubicacion; si es el QR del LPN va directo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    ¿Que pasa si se escanea un producto que no esta en el scope del conteo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ej: se esta haciendo un conteo de la Marca X y el operador escanea accidentalmente un producto de la Marca Y. Hoy no hay logica de validacion de scope porque no existe scan-to-count.</div>
+  <ul class="opciones">
+    <li>(a) Ignorar el escaneo (no suma nada) con aviso visual breve</li>
+    <li>(b) Agregar igual como fila extra del conteo (puede detectar productos "fuera de lugar")</li>
+    <li>(c) Preguntar al operador: "este producto no pertenece al scope — ¿agregarlo igual?"</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. CONTEO CÍCLICO PROGRAMADO ============================ -->
+<h2>F. Conteo ciclico programado</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    ¿Se implementa un plan ciclico de conteos? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: no hay ningun sistema de sugerencia o plan de conteos. Cada conteo se inicia ad-hoc cuando el usuario lo decide. Un plan ciclico significa rotar sistematicamente las marcas/categorias/ubicaciones para que todo el inventario se cuente con cierta frecuencia. <strong>Restriccion tecnica</strong>: Supabase no tiene <code>pg_cron</code> habilitado — no se pueden disparar conteos automaticamente desde la DB. La alternativa es un panel de sugerencias on-demand.</div>
+  <ul class="opciones">
+    <li>(a) No — los conteos siguen siendo ad-hoc (cuando el operador decide)</li>
+    <li>(b) Si — el sistema muestra una lista de sugerencias ("ya hace X dias que no se conta la Marca Y") pero sin automatismo</li>
+    <li>(c) Si — el DUEÑO define un plan (ej. cada marca se conta cada 30 dias) y el sistema alerta cuando vence</li>
+    <li>(d) Si — plan con clasificacion ABC: alta rotacion se conta cada 7 dias, media cada 30, baja cada 90</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Criterio de prioridad para el plan ciclico <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Si F1 resulta en (b), (c) o (d): hay que definir como se prioriza que contar primero. Hoy los productos no tienen clasificacion ABC, pero si tienen <code>marca</code>, <code>categoria_id</code> y <code>precio_costo</code> que podrian usarse como proxy de valor/riesgo.</div>
+  <ul class="opciones">
+    <li>(a) Por antiguedad del ultimo conteo (el que mas tiempo sin contar, primero)</li>
+    <li>(b) Por valor del stock ($): los productos de mayor valor total en inventario se cuentan mas seguido</li>
+    <li>(c) Por rotacion: los de mayor movimiento (ventas+recepciones recientes) se cuentan mas seguido</li>
+    <li>(d) Clasificacion ABC manual: el DUEÑO etiqueta cada marca/categoria como A/B/C y define la frecuencia de cada clase</li>
+    <li>(e) Combinacion de antiguedad + valor</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    ¿Con que frecuencia minima esperan contar todo el inventario? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Esta respuesta define el "periodo base" del plan ciclico (si se implementa). En ferreteria/indumentaria suele ser mensual o trimestral para productos de baja rotacion y semanal para los de alta.</div>
+  <ul class="opciones">
+    <li>(a) Todo el inventario una vez al mes (wall-to-wall mensual)</li>
+    <li>(b) Cada marca o categoria al menos una vez al mes; sin compromiso de cobertura total</li>
+    <li>(c) Solo los productos A (alta rotacion/valor) semanalmente; el resto mensual o trimestral</li>
+    <li>(d) Sin frecuencia fija — contamos cuando hay tiempo o sospechamos diferencias</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. RECONCILIACIÓN DE MOVIMIENTOS ============================ -->
+<h2>G. Reconciliacion de movimientos durante el conteo</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    ¿Que pasa si se vende (o ingresa) stock mientras el conteo esta en borrador? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy: cuando se inicia un conteo y se carga "stock esperado", ese numero es una foto del instante. Si despues el operador vende 5 unidades y luego finaliza el conteo (borrador de horas), el sistema compara la cantidad contada contra la esperada original y pisa <code>inventario_lineas.cantidad</code> con lo contado — revirtiendo efectivamente los 5 vendidos. Esto es un bug potencial para borradores de larga duracion.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como hoy — aceptar el riesgo (los conteos son cortos y el operador es responsable)</li>
+    <li>(b) Al finalizar, el sistema recalcula la "esperada" con los movimientos ocurridos desde que se cargaron las lineas y muestra el delta real</li>
+    <li>(c) Al finalizar, el sistema avisa si hubo movimientos durante el conteo (ventas/ingresos) y pide confirmacion</li>
+    <li>(d) El conteo guarda un timestamp de inicio y al aplicar ajusta por los movimientos intermedios (snapshot + reconciliacion)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Duracion maxima de un borrador de conteo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: un borrador puede permanecer abierto indefinidamente. Cuanto mas tiempo pase entre "cargar lineas" y "finalizar", mayor el riesgo de reconciliacion. No hay vencimiento de borrador.</div>
+  <ul class="opciones">
+    <li>(a) Sin limite — el borrador puede estar abierto dias si hace falta</li>
+    <li>(b) El sistema advierte si el borrador tiene mas de X horas sin actividad</li>
+    <li>(c) El sistema desactiva un borrador inactivo por mas de X horas (no lo elimina, solo lo marca como "vencido")</li>
+    <li>(d) El operador define la ventana de tiempo al iniciar el conteo ("voy a terminar en 2 horas")</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. REPORTES Y TRAZABILIDAD ============================ -->
+<h2>H. Reportes, exactitud y trazabilidad</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    ¿Que reportes quieren ver despues de un conteo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: el historial de conteos muestra la lista de conteos finalizados (fecha, tipo, notas, ajustes aplicados). No hay reporte de exactitud ni valorizado de diferencias. No se puede ver "cuanto perdimos en $ por diferencias de inventario este mes".</div>
+  <ul class="opciones">
+    <li>(a) Lista de diferencias por conteo (fila: producto, esperado, contado, diferencia unidades)</li>
+    <li>(b) Valorizado: diferencia en $ (diferencia * precio_costo) por conteo y acumulado del mes</li>
+    <li>(c) % de exactitud del inventario (lineas sin diferencia / total lineas contadas)</li>
+    <li>(d) Todos los anteriores en una pantalla de reporte de conteo</li>
+    <li>(e) Export del reporte (Excel/PDF) como en Caja y Ventas</li>
+    <li>(f) Marcar todos los que apliquen</li>
+    <li>(g) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Trazabilidad por operador <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: solo <code>created_by</code> a nivel de cabecera del conteo. No se registra quien modifico cada fila individual. En conteos grandes, multiples personas pueden contar distintas secciones.</div>
+  <ul class="opciones">
+    <li>(a) Solo el creador del conteo (como hoy) — suficiente</li>
+    <li>(b) Registrar quién cargo el valor de cada fila (columna <code>contado_por</code> en <code>inventario_conteo_items</code>)</li>
+    <li>(c) Registrar creador + quién aplico el ajuste final (puede ser distinto al que conto)</li>
+    <li>(d) Log completo: quién conto, quién reconsto (si aplica), quién aprobo y aplico</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H3</span><span class="pregunta-titulo">
+    ¿Que pasa con el historial de conteos? ¿Se puede borrar? <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: los borradores se pueden eliminar (boton "Eliminar borrador"). Los conteos finalizados con <code>ajuste_aplicado = true</code> no tienen boton de borrado en la UI — pero no hay constraint de DB que lo impida.</div>
+  <ul class="opciones">
+    <li>(a) Mantener: borradores eliminables, finalizados permanentes</li>
+    <li>(b) Borradores eliminables solo por DUEÑO/SUPERVISOR (no el operador que lo creo)</li>
+    <li>(c) Nadie puede borrar un conteo finalizado — constraint a nivel DB</li>
+    <li>(d) Conteos finalizados permanentes + soft delete con motivo (auditoria)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. UX DE DOS VELOCIDADES ============================ -->
+<h2>I. UX de dos velocidades — flujo rapido vs guiado</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    ¿Se mantiene el flujo rapido actual como opcion? <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: el flujo es siempre "rapido" — elegir tipo → cargar → editar → guardar/finalizar. Es simple y va en 3 clicks. El pedido de GO es que lo potente (ciego, doble conteo, gate) no estorbe al operador que solo quiere ajustar rapido.</div>
+  <ul class="opciones">
+    <li>(a) Si — "Conteo Rapido" queda como default; el modo avanzado es opt-in</li>
+    <li>(b) Si — pero el conteo rapido solo para SUPERVISOR/DUEÑO; operadores de deposito usan siempre el guiado</li>
+    <li>(c) No — unificar en un solo flujo que incluya los controles pero sea igual de rapido</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    ¿Como se activa el modo guiado/avanzado? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hay que definir si el modo avanzado se activa por tenant (siempre activo para todos), por rol (solo los operadores de deposito lo usan), o por conteo (el que crea elige).</div>
+  <ul class="opciones">
+    <li>(a) Toggle global por tenant: el DUEÑO lo habilita en Config y aplica a todos</li>
+    <li>(b) El usuario que crea el conteo elige: "Conteo Rapido" o "Conteo Guiado"</li>
+    <li>(c) Por rol: DEPOSITO siempre usa guiado; SUPERVISOR/DUEÑO pueden elegir</li>
+    <li>(d) El modo guiado se activa automaticamente cuando el scope es "wall-to-wall" o el scope supera N productos</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I3</span><span class="pregunta-titulo">
+    Orden de las filas en la pantalla de conteo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: las filas del conteo se cargan en el orden que devuelve la query a <code>inventario_lineas</code> (sin orden explicito definido en la UI). Para scan-to-count o conteos de muchos items, el orden importa para la eficiencia operativa.</div>
+  <ul class="opciones">
+    <li>(a) Mantener orden actual (sin cambio)</li>
+    <li>(b) Ordenar por ubicacion fisica (pasillo/estante) para que el operador recorra de corrido</li>
+    <li>(c) Ordenar por nombre de producto (alfabetico)</li>
+    <li>(d) Ordenar por diferencia detectada (mostrar primero los items con mayor discrepancia)</li>
+    <li>(e) Configurable: el operador elige el orden al iniciar</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ J. PERMISOS POR ROL ============================ -->
+<h2>J. Permisos por rol</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J1</span><span class="pregunta-titulo">
+    ¿Que roles pueden iniciar un conteo? <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: no hay gate por rol — cualquier usuario que accede al tab Inventario puede abrir el tab Conteo y crear un conteo. No existe un <code>permiso_conteo</code> ni chequeo de rol en la mutation.</div>
+  <ul class="opciones">
+    <li>(a) Mantener: todos los roles con acceso a Inventario pueden iniciar conteos</li>
+    <li>(b) CAJERO no puede iniciar conteos (solo DEPOSITO, SUPERVISOR, DUEÑO)</li>
+    <li>(c) Solo DEPOSITO, SUPERVISOR y DUEÑO — CAJERO y CONTADOR no</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J2</span><span class="pregunta-titulo">
+    ¿Que roles pueden aplicar el ajuste (finalizar con <code>ajuste_aplicado = true</code>)? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: cualquier usuario que pueda ver el conteo puede hacer click en "Finalizar y Aplicar". El ajuste modifica directamente <code>inventario_lineas.cantidad</code> y genera <code>movimientos_stock</code> sin gate de rol.</div>
+  <ul class="opciones">
+    <li>(a) Mantener: cualquiera que inicio el conteo puede aplicarlo</li>
+    <li>(b) Solo SUPERVISOR/DUEÑO pueden aplicar el ajuste final (los demas solo pueden guardar borrador)</li>
+    <li>(c) El que conto puede aplicar ajustes chicos; ajustes que superen umbral requieren SUPERVISOR/DUEÑO</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J3</span><span class="pregunta-titulo">
+    ¿El CONTADOR tiene acceso a ver el historial de conteos? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: el CONTADOR no tiene acceso al modulo Inventario. El historial de conteos y las diferencias valorizadas pueden ser datos relevantes para la contabilidad.</div>
+  <ul class="opciones">
+    <li>(a) CONTADOR sin acceso a Conteos (como hoy)</li>
+    <li>(b) CONTADOR read-only en historial de conteos y reporte de diferencias</li>
+    <li>(c) CONTADOR read-only + puede exportar el reporte de diferencias valorizadas</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ K. FASES DE IMPLEMENTACIÓN ============================ -->
+<h2>K. Fases de implementacion — que va primero</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K1</span><span class="pregunta-titulo">
+    Prioridad entre las mejoras <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">El analisis tecnico sugiere 4 fases naturales. Validar con GO cual es el orden de valor.</div>
+  <ul class="opciones">
+    <li>(a) F1 primero: scope por Marca/Categoria/wall-to-wall (lo pedido explicitamente)</li>
+    <li>(b) F2 primero: conteo a ciegas + scan-to-count (mayor impacto en calidad del dato)</li>
+    <li>(c) F3 primero: gate de autorizacion + doble conteo (mayor impacto en seguridad del ajuste)</li>
+    <li>(d) F1 → F2 → F3 → F4 en ese orden (fases como fueron planificadas)</li>
+    <li>(e) Otro orden: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K2</span><span class="pregunta-titulo">
+    ¿Que caracteristica de la F4 (avanzada) es mas urgente si se adelanta? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">La F4 planificada incluye: conteo ciclico programado + reporte de exactitud/valorizado + reconciliacion de movimientos + trazabilidad por operador. Si alguna de estas piezas vale la pena adelantar, definirlo ahora.</div>
+  <ul class="opciones">
+    <li>(a) Reporte de diferencias valorizado ($) — necesitamos saber cuanto estamos perdiendo</li>
+    <li>(b) Reconciliacion de movimientos durante el borrador — es el riesgo tecnico mas serio</li>
+    <li>(c) Trazabilidad por operador — necesitamos saber quien conto que</li>
+    <li>(d) Conteo ciclico programado — queremos que el sistema nos recuerde que contar</li>
+    <li>(e) Ninguna — implementar F4 completa cuando llegue su turno</li>
+    <li>(f) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ L. TOP 3 PRIORITARIO ============================ -->
+<h2>L. Top 3 prioritario / temas abiertos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L1</span><span class="pregunta-titulo">
+    ¿Que 3 mejoras de Conteos son mas urgentes? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto va a backlog.</div>
+  <ul class="opciones">
+    <li>(   ) Conteo por Marca (lo pedido — scope ampliado)</li>
+    <li>(   ) Conteo por Categoria</li>
+    <li>(   ) Wall-to-wall / sucursal completa</li>
+    <li>(   ) Conteo a ciegas (campo vacio, sin ver el numero del sistema)</li>
+    <li>(   ) Scan-to-count (escanear para contar, reusar el lector GS1 existente)</li>
+    <li>(   ) Gate de autorizacion para ajustes grandes</li>
+    <li>(   ) Doble conteo de discrepancias</li>
+    <li>(   ) Reporte de diferencias valorizado en $</li>
+    <li>(   ) Reconciliacion de movimientos durante el borrador</li>
+    <li>(   ) Plan ciclico / sugerencias de conteo</li>
+    <li>(   ) Trazabilidad por operador (quién conto cada fila)</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L2</span><span class="pregunta-titulo">
+    Comentarios libres
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio — Inventario: Conteos 2.0 · ISS-CONT · 2026-06-03<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar la implementacion.
+</div>
+
+</body>
+</html>

@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-03] deploy | v1.23.2 PROD — QA: extensión de tests a Caja / Inventario / Ventas (+101)
+
+**Deployado a PROD.** Refactor interno + cobertura de tests, **sin cambio de comportamiento, sin migración**. Sesión autónoma (GO autorizó alcance + deploy de antemano).
+
+Segundo estreno del pipeline de QA, ahora sobre **3 módulos**:
+
+- **Caja:** lógica de arqueo extraída de `CajaPage.tsx` a `src/lib/cajaArqueo.ts` (rewire behavior-preserving): `signoMovimiento`, `saldoSesion`, `calcularDiferenciaCierre`, `calcularDiferenciaApertura`, `superaUmbralDiferencia` (B1/B2/B3), `clasificarAjusteDiferencia` (B4), `tipoAjusteTraspaso` (ISS-193), `acumularTotalesPorMetodo`, `extraerMedioPago`/`extraerNumeroVenta`. Tests: `cajaArqueo.test.ts` (38) + `cajaPermisos.test.ts` (matriz J3 / B5 / B6, 19). **+57**.
+- **Inventario:** `unidades.test.ts` (17) — conversión kg↔gr / lt↔ml, compatibilidad, formato es-AR.
+- **Ventas:** `ventasDescuentoCombo.test.ts` (7, gap `calcularDescuentoComboMulti`) + `permisosCosto.test.ts` (8, `puedeVerCosto` G4) + `umbralGasto.test.ts` (13, `evaluarUmbralGasto` + `puedeAprobar`). **+28**.
+- Planes de escenarios: `tests/specs/{caja,inventario,ventas}.plan.md`.
+
+**Suite total: 329 unit tests verdes** (228 → +101). Build verde (`tsc && vite build`).
+
+---
+
 ## [2026-06-03] update | v1.23.1 PROD — QA: lógica de CC testeable + ecosistema de subagentes
 
 **Deployado a PROD** (PR #148). Refactor interno + cobertura de tests, **sin cambio de comportamiento, sin migración**.

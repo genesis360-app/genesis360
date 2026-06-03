@@ -142,6 +142,12 @@ describe('acumularTotalesPorMetodo', () => {
   it('CAJA-MET-05 lista vacía → {}', () => {
     expect(acumularTotalesPorMetodo([])).toEqual({})
   })
+  it('CAJA-MET-06 egreso_informativo netea negativo bajo su medio (review v1.23.2)', () => {
+    expect(acumularTotalesPorMetodo([
+      { tipo: 'ingreso_informativo', concepto: '[Tarjeta] venta', monto: 2000 },
+      { tipo: 'egreso_informativo', concepto: '[Tarjeta] devolución', monto: 500 },
+    ])).toEqual({ Tarjeta: 1500 })
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

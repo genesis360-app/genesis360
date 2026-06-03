@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-03] deploy | v1.24.0 PROD — Clientes C6 (segmentación+export) + D4 (NC manual proveedor)
+
+**Deployado a PROD.** Backlog diferido de Clientes, **sin migración** (usa columnas de mig 176 + el tipo `'nota_credito'` ya en el CHECK de mig 085). Build verde, 330 tests verdes.
+
+- **C6 — segmentación de clientes (marketing):** en ClientesPage → tab Reportes, sección "Segmentación de clientes". Filtros por etiqueta, estado CC (habilitada/con deuda/sin deuda), actividad (compraron/nunca/inactivos +60d), mínimo comprado y con contacto (email/tel). Export CSV/Excel de la lista segmentada con datos de marketing. Reusa `statsMap`/`ventasCC`/`creditoMap`/`etiquetasCatalogo`. Cierra C6 (era "solo segmentación+export, sin bulk-sender nativo").
+- **D4 — NC manual de proveedor:** en ProveedoresPage → modal CC, sección "Nota de crédito". Form (monto, nº `NC-NNNN` correlativo sugerido sobre toda la historia del proveedor + editable, motivo, adjunto opcional al bucket `comprobantes-gastos`). Inserta movimiento `tipo='nota_credito'`, `monto` negativo (acredita/reduce deuda), con `nc_numero` + `adjunto_url`. Link al comprobante en el historial. Cierra el ◑ que dejó CL5 (las columnas existían, faltaba la UI).
+
+**Flujo de QA estrenado:** `code-reviewer` (subagente, vía Agent) revisó el diff antes de mergear → confirmó behavior/multi-tenant OK y detectó 2 cosas que se arreglaron: correlativo calculado sobre los 50 movimientos visibles (→ query dedicada al máximo real) + form NC sin resetear al cambiar de proveedor (→ reset al abrir el panel). Ver [[feedback_usar_subagentes_proyecto]] (modelo híbrido: grueso inline + agente para revisión read-only del diff).
+
+---
+
 ## [2026-06-03] deploy | v1.23.2 PROD — QA: extensión de tests a Caja / Inventario / Ventas (+101)
 
 **Deployado a PROD.** Refactor interno + cobertura de tests, **sin cambio de comportamiento, sin migración**. Sesión autónoma (GO autorizó alcance + deploy de antemano).

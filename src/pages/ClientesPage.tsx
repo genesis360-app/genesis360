@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
+import { agruparAgingCC } from '@/lib/ccLogic'
 import { notificarPagoCC } from '@/lib/notificacionesCC'
 import { logActividad } from '@/lib/actividadLog'
 import { generarEstadoCuentaPDF } from '@/lib/estadoCuentaPDF'
@@ -1062,18 +1063,7 @@ export default function ClientesPage() {
           .map(c => ({ nombre: c.nombre, telefono: c.telefono, ...(statsMap[c.id] ?? { total: 0, count: 0, ultima: '' }) }))
           .filter(c => c.count > 0 && c.ultima && (ahora - new Date(c.ultima).getTime()) > 60 * DIA)
           .sort((a, b) => new Date(a.ultima).getTime() - new Date(b.ultima).getTime())
-        const aging = { '0-30': 0, '31-60': 0, '61-90': 0, '+90': 0 }
-        for (const v of ventasCC as any[]) {
-          if (v.condonada) continue
-          const saldo = (v.total ?? 0) - (v.monto_pagado ?? 0) + (v.interes_cc ?? 0)
-          if (saldo <= 0.5) continue
-          const ref = v.fecha_vencimiento_cc ? new Date(v.fecha_vencimiento_cc + 'T12:00:00').getTime() : new Date(v.created_at).getTime()
-          const dias = Math.floor((ahora - ref) / DIA)
-          if (dias <= 30) aging['0-30'] += saldo
-          else if (dias <= 60) aging['31-60'] += saldo
-          else if (dias <= 90) aging['61-90'] += saldo
-          else aging['+90'] += saldo
-        }
+        const aging = agruparAgingCC(ventasCC as any[], ahora)  // CL6/G1 — lógica pura testeable (ccLogic.ts)
         const exportarReporte = () => {
           const wb = XLSX.utils.book_new()
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(topClientes.map(c => ({ Cliente: c.nombre, Total: Math.round(c.total), Compras: c.count, 'Última': c.ultima ? new Date(c.ultima).toLocaleDateString('es-AR') : '' }))), 'Top clientes')

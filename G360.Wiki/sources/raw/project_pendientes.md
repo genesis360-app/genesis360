@@ -85,7 +85,41 @@ Respuestas completas y cruce con Ventas en `relevamiento_clientes_respuestas.md`
 | ~~ISS-127~~ | Config + Inventario + Ventas + Recepciones | ✅ **Cerrado v1.11.6** — Códigos compuestos GS1 (GS1-128 + DataMatrix + QR) leer/escribir con múltiples AIs. Ver `escaneo-barcode.md` y diseño/fases abajo. | ✅ Hecho |
 | ISS-130 | Inventario + Ventas | Comandos por voz: hablarle a la app para rebajar/ingresar (SKU, cantidad, estado, ubicación, lote, fecha) y consultar ("¿qué hay en ubicación X?"). Web Speech API + parseo intenciones | Alta — UX nueva, requiere prototipo |
 | ISS-137 | Config | Evaluación: integración con Google Drive como almacenamiento propio del cliente para documentos/imágenes | Requiere evaluación primero |
+| ISS-CONT | Inventario → Conteos | **Conteos 2.0** — conteo cíclico / wall-to-wall **por Marca** (pedido GO 2026-06-03) + ampliar scope (categoría, toda la sucursal) + endurecer contra errores del operador (conteo a ciegas, doble conteo de discrepancias, gate de ajustes grandes, scan-to-count) manteniendo el flujo rápido actual. Detalle + fases abajo. | Media-Alta — requiere relevamiento (umbrales, autorizaciones, blind por default) |
 | ~~ISS-174~~ | Ventas + Envíos | ✅ **Cerrado v1.14.0** (F1-F5) — servicio select en POS + cotización/generación por API directa (Andreani/Correo/OCA) vía Edge Function `courier-api`. Ver sección ISS-174 abajo. **Único pendiente:** validar adapters con cuentas B2B reales. | ✅ Hecho |
+
+### ISS-CONT — Conteos 2.0 (pedido GO 2026-06-03, SIN relevar todavía)
+
+**Pedido explícito de GO:** poder hacer un **conteo cíclico o wall-to-wall por Marca** del producto (el maestro ya tiene `productos.marca TEXT`, mig 118). Y, en general: revisar el submódulo de Conteos para que sea **fácil y rápido como hoy** pero que también ofrezca un modo **más potente y a prueba de errores del operador**.
+
+**Cómo está hoy (código real):**
+- Modelo: `inventario_conteos` (`tipo` ∈ `'ubicacion'|'producto'`, `ubicacion_id`/`producto_id`, `estado` ∈ `'borrador'|'finalizado'`, `ajuste_aplicado`, `sucursal_id`, `created_by`, `notas`) + `inventario_conteo_items` (`producto_id`, `lpn`, `cantidad_esperada`, `cantidad_contada`). Mig 050.
+- Flujo (InventarioPage → tab Conteo): elegir tipo (ubicación **o** producto único) → `cargarLineasParaConteo` trae las líneas de la sucursal → editar cantidades → guardar borrador (continuable, ISS-100) o **finalizar y aplicar**: por cada fila con diferencia, pisa `inventario_lineas.cantidad` y registra `movimientos_stock` (`ajuste_ingreso`/`ajuste_rebaje`).
+
+**Debilidades detectadas (oportunidades de mejora):**
+1. 🔴 **El conteo NO es a ciegas**: la `cantidad_contada` se **precarga con la esperada** (`String(cantEsperada)`). El operador ve el número del sistema → tiende a confirmarlo sin contar de verdad (sesgo de confirmación). Es el anti-patrón clásico de conteo.
+2. 🔴 **Sin reconciliación de movimientos durante el conteo**: al finalizar pisa `cantidad` con lo contado sin contemplar ventas/movimientos ocurridos entre que se cargó el esperado y se cerró (sobre todo en borradores que duran). Puede revertir ventas.
+3. 🟡 **Sin filtro por Marca / Categoría / wall-to-wall**: solo ubicación o producto único. (Lo que pide GO.)
+4. 🟡 **Sin doble conteo de discrepancias**: cualquier diferencia se ajusta directo; no hay reconteo (idealmente por otro operador) ante diferencias grandes.
+5. 🟡 **Sin gate de autorización para ajustes grandes**: un ajuste que borra mucho stock (o mucho **$**) se aplica sin aprobación. Otros módulos (caja, incobrables) ya usan clave maestra.
+6. 🟢 **Sin scan-to-count**: se cuenta tipeando (riesgo de fila/tipeo equivocado). El stack de escaneo GS1 (`gs1.ts`, `scanCompuesto.ts`, BarcodeDetector) ya existe y es reutilizable.
+7. 🟢 **Sin reporte de exactitud ni valorización**: no se mide el % de exactitud del inventario ni el valor $ de la diferencia (sobrante/faltante).
+8. 🟢 **Trazabilidad por operador limitada**: solo `created_by` del conteo, no quién contó/reconto cada ítem.
+
+**Mejoras propuestas (a confirmar en relevamiento):**
+- **Scope ampliado** (incluye lo pedido): `tipo` ∈ `marca` | `categoria` | `ubicacion` | `producto` | `sucursal_completa` (wall-to-wall), combinables (ej. marca X en ubicación Y). Snapshot del criterio en el conteo (`marca TEXT`, `categoria_id`).
+- **Conteo a ciegas configurable**: opción de NO mostrar la esperada (arranca vacío; el sistema compara al cerrar). Toggle por tenant/por conteo. Se conserva el modo rápido actual (informed) para velocidad.
+- **Doble conteo de discrepancias**: filas que superen un umbral (u o %) se marcan para **recontar** antes de aplicar; idealmente segundo operador.
+- **Gate de ajuste**: ajustes que superen umbral (unidades / % / **valorización $**) requieren clave maestra o aprobación SUPERVISOR/DUEÑO.
+- **Scan-to-count**: contar escaneando (reusa GS1/BarcodeDetector); el scan suma a la fila correcta → menos errores; encaja natural con el modo a ciegas.
+- **Conteo cíclico programado**: plan rotativo (por marca/categoría/clase ABC — los de mayor valor más seguido); el sistema sugiere qué contar cada día (sweep lazy o lista on-demand, `pg_cron` no disponible).
+- **Reconciliación de movimientos** (freeze/snapshot con timestamp) al aplicar el ajuste → no pisar ventas hechas durante el conteo.
+- **Reporte de exactitud + valorización** (% exactitud, ítems con diferencia, $ sobrante/faltante) por conteo y acumulado + export. **Trazabilidad por operador** (quién contó/reconto cada ítem).
+- **UX de dos velocidades** (lo que pide GO): mantener "conteo rápido" como default (elegí → contá → listo) y un "conteo guiado/avanzado" que active a ciegas + doble conteo + gate paso a paso. Que lo potente no estorbe a lo simple.
+
+**Fases tentativas:** F1 scope por Marca/Categoría/wall-to-wall (lo pedido; migración chica: `tipo` nuevo + columnas snapshot) · F2 conteo a ciegas + scan-to-count (anti-error, alto impacto) · F3 doble conteo + gate de autorización por umbral/$ · F4 cíclico programado + reporte de exactitud/valorización + reconciliación de movimientos + trazabilidad por operador.
+
+**Pendiente:** relevar con GO antes de implementar (decisiones: ¿a ciegas por default o configurable? umbrales de discrepancia y de gate, ¿quién autoriza?, ¿clase ABC para el cíclico?, ¿reconteo obligatorio u opcional?). Generar HTML de relevamiento (subagente `relevamiento`).
 
 ### ISS-127 — Códigos compuestos GS1 (diseño relevado con GO 2026-05-30)
 

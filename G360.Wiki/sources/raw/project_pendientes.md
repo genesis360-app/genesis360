@@ -119,7 +119,9 @@ Respuestas completas y cruce con Ventas en `relevamiento_clientes_respuestas.md`
 
 **Fases tentativas:** F1 scope por Marca/Categoría/wall-to-wall (lo pedido; migración chica: `tipo` nuevo + columnas snapshot) · F2 conteo a ciegas + scan-to-count (anti-error, alto impacto) · F3 doble conteo + gate de autorización por umbral/$ · F4 cíclico programado + reporte de exactitud/valorización + reconciliación de movimientos + trazabilidad por operador.
 
-**Pendiente:** relevar con GO antes de implementar (decisiones: ¿a ciegas por default o configurable? umbrales de discrepancia y de gate, ¿quién autoriza?, ¿clase ABC para el cíclico?, ¿reconteo obligatorio u opcional?). Generar HTML de relevamiento (subagente `relevamiento`).
+**✅ RELEVADO (2026-06-03, GO+socio).** Respuestas + diseño consolidado + modelo de datos + plan por fases en **`relevamiento_conteos_respuestas.md`**. Decisiones clave: scope combinable (marca/categoría/wall-to-wall) · modo configurable Rápido/Guiado(ciego)/Elegir · doble conteo con umbral combinado u/%/$ · ajustes de conteo van al **tab Autorizaciones existente** (tipo `ajuste_conteo`) · reconciliación por **delta** (no pisar `cantidad`) · nuevos campos `productos.clase_abc` (ABC auto) y `ubicaciones.secuencia` (recorrido conteo+picking) · cíclico solo sugerencia (sin cron).
+
+**Plan por fases (pendiente implementar):** **F1** scope Marca/Categoría/Wall-to-wall *(lo pedido — arrancar acá)* · **F2** modos + ciego + scan-to-count + secuencia ubicación · **F3** gate de ajustes + tab Autorizaciones + doble conteo + reconciliación delta · **F4** clase ABC + cíclico sugerido + reportes exactitud/valorización + trazabilidad. **Top 3: F1 → F3 → F2.** Menores a confirmar (no bloquean F1): ¿1 campo ABC o separar velocidad-picking?, alcance del bloqueo wall-to-wall, defaults de umbrales.
 
 ### ISS-127 — Códigos compuestos GS1 (diseño relevado con GO 2026-05-30)
 

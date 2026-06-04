@@ -419,6 +419,13 @@ export default function ConfigPage() {
   const [bizOverReceipt, setBizOverReceipt] = useState(tenant?.permite_over_receipt ?? false)
   const [bizTrazaAsignacion, setBizTrazaAsignacion] = useState((tenant as any)?.trazabilidad_asignacion ?? true)
   const [bizConteoModo, setBizConteoModo] = useState<'rapido' | 'guiado' | 'elegir'>((tenant as any)?.conteo_modo ?? 'rapido')
+  // F3 — gate de ajustes de conteo + umbrales de doble conteo
+  const num = (v: any) => v != null ? String(v) : ''
+  const [bizConteoGate, setBizConteoGate] = useState({
+    activo: !!(tenant as any)?.conteo_gate_activo,
+    gateU: num((tenant as any)?.conteo_gate_umbral_u), gatePct: num((tenant as any)?.conteo_gate_umbral_pct), gateValor: num((tenant as any)?.conteo_gate_umbral_valor),
+    recU: num((tenant as any)?.conteo_reconteo_umbral_u), recPct: num((tenant as any)?.conteo_reconteo_umbral_pct), recValor: num((tenant as any)?.conteo_reconteo_umbral_valor),
+  })
   const [bizTimeout, setBizTimeout] = useState<string>(
     tenant?.session_timeout_minutes != null ? String(tenant.session_timeout_minutes) : 'nunca'
   )
@@ -602,6 +609,13 @@ export default function ConfigPage() {
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
       trazabilidad_asignacion: bizTrazaAsignacion,
       conteo_modo: bizConteoModo,
+      conteo_gate_activo: bizConteoGate.activo,
+      conteo_gate_umbral_u: bizConteoGate.gateU !== '' ? Number(bizConteoGate.gateU) : null,
+      conteo_gate_umbral_pct: bizConteoGate.gatePct !== '' ? Number(bizConteoGate.gatePct) : null,
+      conteo_gate_umbral_valor: bizConteoGate.gateValor !== '' ? Number(bizConteoGate.gateValor) : null,
+      conteo_reconteo_umbral_u: bizConteoGate.recU !== '' ? Number(bizConteoGate.recU) : null,
+      conteo_reconteo_umbral_pct: bizConteoGate.recPct !== '' ? Number(bizConteoGate.recPct) : null,
+      conteo_reconteo_umbral_valor: bizConteoGate.recValor !== '' ? Number(bizConteoGate.recValor) : null,
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
       alerta_margen_negativo: bizAlertaMargenNeg,
       alerta_devoluciones_n: bizAlertaDevN !== '' ? parseInt(bizAlertaDevN) : null,
@@ -2397,6 +2411,33 @@ export default function ConfigPage() {
                       {label}
                     </button>
                   ))}
+                </div>
+              </div>
+              {/* F3 — Aprobación de ajustes de conteo */}
+              <div className="py-1 border-t border-gray-100 dark:border-gray-700 pt-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Aprobación de ajustes de conteo</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Las diferencias de un conteo no tocan el stock hasta que un DUEÑO/SUPERVISOR las aprueba en <strong>Inventario → Autorizaciones</strong>. Si el gate está <strong>desactivado</strong>, TODA diferencia requiere aprobación. Si lo <strong>activás</strong>, solo las que superen algún umbral (lo menor que pongas) van a aprobación; el resto se aplica directo.</p>
+                  </div>
+                  <button type="button" disabled={!canEdit} onClick={() => setBizConteoGate(g => ({ ...g, activo: !g.activo }))}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ml-3
+                      ${bizConteoGate.activo ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} ${!canEdit ? 'opacity-50' : ''}`}>
+                    <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${bizConteoGate.activo ? 'translate-x-5' : 'translate-x-0'}`} />
+                  </button>
+                </div>
+                {bizConteoGate.activo && (
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <input type="number" disabled={!canEdit} placeholder="Umbral unidades" value={bizConteoGate.gateU} onChange={e => setBizConteoGate(g => ({ ...g, gateU: e.target.value }))} title="Diferencia en unidades que dispara aprobación" className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                    <input type="number" disabled={!canEdit} placeholder="Umbral %" value={bizConteoGate.gatePct} onChange={e => setBizConteoGate(g => ({ ...g, gatePct: e.target.value }))} title="Diferencia en % sobre lo esperado" className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                    <input type="number" disabled={!canEdit} placeholder="Umbral $ valor" value={bizConteoGate.gateValor} onChange={e => setBizConteoGate(g => ({ ...g, gateValor: e.target.value }))} title="Valor $ de la diferencia (cantidad × costo)" className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 mb-1">Umbral de <strong>doble conteo</strong>: diferencias que lo superen avisan al operador para recontar antes de finalizar (en blanco = no avisa).</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="number" disabled={!canEdit} placeholder="Reconteo unidades" value={bizConteoGate.recU} onChange={e => setBizConteoGate(g => ({ ...g, recU: e.target.value }))} className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                  <input type="number" disabled={!canEdit} placeholder="Reconteo %" value={bizConteoGate.recPct} onChange={e => setBizConteoGate(g => ({ ...g, recPct: e.target.value }))} className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                  <input type="number" disabled={!canEdit} placeholder="Reconteo $ valor" value={bizConteoGate.recValor} onChange={e => setBizConteoGate(g => ({ ...g, recValor: e.target.value }))} className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
                 </div>
               </div>
               {canEdit && (

@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-178)
+# Historial de Migraciones (001-179)
 
-**Total al 2026-06-03:** 178 archivos de migración + 086b correctivo.  
+**Total al 2026-06-03:** 179 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -242,6 +242,7 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 176 | `176_proveedores_cl5.sql` | **Clientes CL5** · D6: tabla `proveedor_cuentas_bancarias` (banco/titular/cbu/alias/cuenta/es_principal, RLS por tenant) — cuentas bancarias múltiples por proveedor. D4: `proveedor_cc_movimientos.nc_numero` + `adjunto_url` (correlativo y comprobante de NC) |
 | 177 | `177_conteos_scope.sql` | **Conteos 2.0 F1** · amplía el CHECK de `inventario_conteos.tipo` (`+ 'marca','categoria','sucursal'`) y agrega `filtros JSONB DEFAULT '{}'` (criterio del conteo cuando el alcance no es FK directa: `{marca}`/`{categoria_id,categoria_nombre}`). Aditiva, idempotente, sin impacto en RLS |
 | 178 | `178_conteos_f2a.sql` | **Conteos 2.0 F2a** · `tenants.conteo_modo` (rapido\|guiado\|elegir) · `ubicaciones.secuencia INTEGER` (orden recorrido conteo+picking) · `inventario_conteos.modo` (rapido\|guiado) · `inventario_conteo_items.cantidad_contada` → **NULLABLE** (distingue no-contada de cero, B3). CHECKs idempotentes vía `information_schema.table_constraints` |
+| 179 | `179_conteos_f3.sql` | **Conteos 2.0 F3** · `'ajuste_conteo'` en el CHECK de `autorizaciones_inventario.tipo` (gate de aprobación de diferencias de conteo) · `tenants` + 7 columnas de config: `conteo_gate_activo BOOLEAN` + umbrales gate (`_umbral_u/_pct/_valor`) + umbrales reconteo (`_reconteo_umbral_u/_pct/_valor`). Aditiva |
 
 ---
 

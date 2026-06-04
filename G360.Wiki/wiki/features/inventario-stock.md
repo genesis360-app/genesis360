@@ -163,7 +163,14 @@ Primera fase del proyecto **Conteos 2.0** (ISS-CONT, relevado con GO — diseño
 - **Input "Contado" respeta la unidad de medida:** unidades/piezas → enteros (step 1, redondeo); kg/gr/lt/ml → decimales (`esDecimal`). Corrige el bug de que la flechita pasaba 15 → 14,999 en productos por unidad.
 - **`ubicaciones.secuencia`** (I3): orden de recorrido físico para conteo **y** picking (distinto de `prioridad`, que es orden de rebaje al vender). Editable en Config → Inventario → Ubicaciones. El conteo ordena las líneas por esta secuencia (fallback prioridad → nombre).
 
-**Pendiente (fases siguientes):** F2b scan-to-count (reusa GS1) · F3 gate de ajustes + integración con tab Autorizaciones (`ajuste_conteo`) + doble conteo + reconciliación por delta · F4 `productos.clase_abc` + cíclico sugerido + reportes de exactitud/valorización.
+### Conteos 2.0 — F3: gate de ajustes + autorizaciones + reconciliación delta (v1.27.0 · migration 179)
+
+- **Gate de aprobación (D):** las diferencias de un conteo no tocan el stock hasta que se aprueban. Config en Config → Inventario → Reglas → "Aprobación de ajustes de conteo": toggle `conteo_gate_activo` + umbrales (unidades / % / valor $). **Gate inactivo → toda diferencia va a aprobación**; activo → solo las que superen algún umbral, el resto se aplica directo.
+- **Tab Autorizaciones (D1):** las diferencias que pasan el gate quedan en `autorizaciones_inventario` con `tipo='ajuste_conteo'` (motivo "Diferencia Conteo"); un DUEÑO/SUPERVISOR las aprueba en Inventario → Autorizaciones y ahí se aplican.
+- **Reconciliación por delta (G1):** al aplicar (directo o aprobado) se usa `stock_vivo + (contado − esperada_snapshot)` en vez de pisar la cantidad → respeta ventas/movimientos ocurridos durante el conteo. (`reconciliarDelta` en `src/lib/conteoAjuste.ts`, testeada.)
+- **Doble conteo (C):** umbrales `conteo_reconteo_umbral_*`; al finalizar, avisa qué filas superan el umbral de discrepancia para recontar (versión "aviso").
+
+**Pendiente (fases siguientes):** F2b scan-to-count (reusa GS1) · F3b doble conteo formal (re-ingreso por 2º operador + clave maestra para saltar) + snapshot de costo por ítem · F4 `productos.clase_abc` + cíclico sugerido + reportes de exactitud/valorización.
 
 ---
 

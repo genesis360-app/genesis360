@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.24.0** ✅ (backlog diferido Clientes: **C6** segmentación de clientes para marketing + export CSV/Excel en Reportes · **D4** UI de nota de crédito manual de proveedor con correlativo + adjunto. Sin migración — usa columnas/CHECK ya existentes. `code-reviewer` en el flujo pre-merge). Antes: v1.23.2 (QA tests Caja/Inv/Ventas, suite 330 verdes, `cajaArqueo.ts`). v1.23.1 (QA CC → `ccLogic.ts`). v1.23.0 **🎉 MÓDULO CLIENTES COMPLETO (CL1–CL6)**.
+Último release en PROD: **v1.25.0** ✅ (**Conteos 2.0 · Fase F1** — conteo de inventario por **Marca / Categoría / Sucursal completa (wall-to-wall)** además de ubicación/producto. Mig 177 (CHECK `tipo` ampliado + `filtros JSONB`). Aislamiento por sucursal: scopes amplios exigen sucursal específica. `migration-reviewer` + `code-reviewer` en el flujo). Antes: v1.24.0 (Clientes C6 segmentación+export · D4 NC manual proveedor). v1.23.2 (QA tests, suite 330). v1.23.0 **🎉 MÓDULO CLIENTES COMPLETO (CL1–CL6)**.
 
 **Historial Clientes:** v1.19.0 (CL1+CL2), v1.20.0 (CL3 + bugfix origen), v1.23.0 (CL4+CL5+CL6), v1.23.1 (QA/tests CC + agentes).
 
@@ -22,10 +22,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.24.0` | `v1.24.0` |
-| Migrations | 001–**176** ✅ | 001–**176** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.24.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.24.0 |
+| APP_VERSION | `v1.25.0` | `v1.25.0` |
+| Migrations | 001–**177** ✅ | 001–**177** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.25.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.25.0 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna (171-176 ya en PROD).
 
@@ -85,7 +85,43 @@ Respuestas completas y cruce con Ventas en `relevamiento_clientes_respuestas.md`
 | ~~ISS-127~~ | Config + Inventario + Ventas + Recepciones | ✅ **Cerrado v1.11.6** — Códigos compuestos GS1 (GS1-128 + DataMatrix + QR) leer/escribir con múltiples AIs. Ver `escaneo-barcode.md` y diseño/fases abajo. | ✅ Hecho |
 | ISS-130 | Inventario + Ventas | Comandos por voz: hablarle a la app para rebajar/ingresar (SKU, cantidad, estado, ubicación, lote, fecha) y consultar ("¿qué hay en ubicación X?"). Web Speech API + parseo intenciones | Alta — UX nueva, requiere prototipo |
 | ISS-137 | Config | Evaluación: integración con Google Drive como almacenamiento propio del cliente para documentos/imágenes | Requiere evaluación primero |
+| ISS-CONT | Inventario → Conteos | **Conteos 2.0** — conteo cíclico / wall-to-wall **por Marca** (pedido GO 2026-06-03) + ampliar scope (categoría, toda la sucursal) + endurecer contra errores del operador (conteo a ciegas, doble conteo de discrepancias, gate de ajustes grandes, scan-to-count) manteniendo el flujo rápido actual. Detalle + fases abajo. | Media-Alta — requiere relevamiento (umbrales, autorizaciones, blind por default) |
 | ~~ISS-174~~ | Ventas + Envíos | ✅ **Cerrado v1.14.0** (F1-F5) — servicio select en POS + cotización/generación por API directa (Andreani/Correo/OCA) vía Edge Function `courier-api`. Ver sección ISS-174 abajo. **Único pendiente:** validar adapters con cuentas B2B reales. | ✅ Hecho |
+
+### ISS-CONT — Conteos 2.0 (pedido GO 2026-06-03, SIN relevar todavía)
+
+**Pedido explícito de GO:** poder hacer un **conteo cíclico o wall-to-wall por Marca** del producto (el maestro ya tiene `productos.marca TEXT`, mig 118). Y, en general: revisar el submódulo de Conteos para que sea **fácil y rápido como hoy** pero que también ofrezca un modo **más potente y a prueba de errores del operador**.
+
+**Cómo está hoy (código real):**
+- Modelo: `inventario_conteos` (`tipo` ∈ `'ubicacion'|'producto'`, `ubicacion_id`/`producto_id`, `estado` ∈ `'borrador'|'finalizado'`, `ajuste_aplicado`, `sucursal_id`, `created_by`, `notas`) + `inventario_conteo_items` (`producto_id`, `lpn`, `cantidad_esperada`, `cantidad_contada`). Mig 050.
+- Flujo (InventarioPage → tab Conteo): elegir tipo (ubicación **o** producto único) → `cargarLineasParaConteo` trae las líneas de la sucursal → editar cantidades → guardar borrador (continuable, ISS-100) o **finalizar y aplicar**: por cada fila con diferencia, pisa `inventario_lineas.cantidad` y registra `movimientos_stock` (`ajuste_ingreso`/`ajuste_rebaje`).
+
+**Debilidades detectadas (oportunidades de mejora):**
+1. 🔴 **El conteo NO es a ciegas**: la `cantidad_contada` se **precarga con la esperada** (`String(cantEsperada)`). El operador ve el número del sistema → tiende a confirmarlo sin contar de verdad (sesgo de confirmación). Es el anti-patrón clásico de conteo.
+2. 🔴 **Sin reconciliación de movimientos durante el conteo**: al finalizar pisa `cantidad` con lo contado sin contemplar ventas/movimientos ocurridos entre que se cargó el esperado y se cerró (sobre todo en borradores que duran). Puede revertir ventas.
+3. 🟡 **Sin filtro por Marca / Categoría / wall-to-wall**: solo ubicación o producto único. (Lo que pide GO.)
+4. 🟡 **Sin doble conteo de discrepancias**: cualquier diferencia se ajusta directo; no hay reconteo (idealmente por otro operador) ante diferencias grandes.
+5. 🟡 **Sin gate de autorización para ajustes grandes**: un ajuste que borra mucho stock (o mucho **$**) se aplica sin aprobación. Otros módulos (caja, incobrables) ya usan clave maestra.
+6. 🟢 **Sin scan-to-count**: se cuenta tipeando (riesgo de fila/tipeo equivocado). El stack de escaneo GS1 (`gs1.ts`, `scanCompuesto.ts`, BarcodeDetector) ya existe y es reutilizable.
+7. 🟢 **Sin reporte de exactitud ni valorización**: no se mide el % de exactitud del inventario ni el valor $ de la diferencia (sobrante/faltante).
+8. 🟢 **Trazabilidad por operador limitada**: solo `created_by` del conteo, no quién contó/reconto cada ítem.
+
+**Mejoras propuestas (a confirmar en relevamiento):**
+- **Scope ampliado** (incluye lo pedido): `tipo` ∈ `marca` | `categoria` | `ubicacion` | `producto` | `sucursal_completa` (wall-to-wall), combinables (ej. marca X en ubicación Y). Snapshot del criterio en el conteo (`marca TEXT`, `categoria_id`).
+- **Conteo a ciegas configurable**: opción de NO mostrar la esperada (arranca vacío; el sistema compara al cerrar). Toggle por tenant/por conteo. Se conserva el modo rápido actual (informed) para velocidad.
+- **Doble conteo de discrepancias**: filas que superen un umbral (u o %) se marcan para **recontar** antes de aplicar; idealmente segundo operador.
+- **Gate de ajuste**: ajustes que superen umbral (unidades / % / **valorización $**) requieren clave maestra o aprobación SUPERVISOR/DUEÑO.
+- **Scan-to-count**: contar escaneando (reusa GS1/BarcodeDetector); el scan suma a la fila correcta → menos errores; encaja natural con el modo a ciegas.
+- **Conteo cíclico programado**: plan rotativo (por marca/categoría/clase ABC — los de mayor valor más seguido); el sistema sugiere qué contar cada día (sweep lazy o lista on-demand, `pg_cron` no disponible).
+- **Reconciliación de movimientos** (freeze/snapshot con timestamp) al aplicar el ajuste → no pisar ventas hechas durante el conteo.
+- **Reporte de exactitud + valorización** (% exactitud, ítems con diferencia, $ sobrante/faltante) por conteo y acumulado + export. **Trazabilidad por operador** (quién contó/reconto cada ítem).
+- **UX de dos velocidades** (lo que pide GO): mantener "conteo rápido" como default (elegí → contá → listo) y un "conteo guiado/avanzado" que active a ciegas + doble conteo + gate paso a paso. Que lo potente no estorbe a lo simple.
+
+**Fases tentativas:** F1 scope por Marca/Categoría/wall-to-wall (lo pedido; migración chica: `tipo` nuevo + columnas snapshot) · F2 conteo a ciegas + scan-to-count (anti-error, alto impacto) · F3 doble conteo + gate de autorización por umbral/$ · F4 cíclico programado + reporte de exactitud/valorización + reconciliación de movimientos + trazabilidad por operador.
+
+**✅ RELEVADO (2026-06-03, GO+socio).** Respuestas + diseño consolidado + modelo de datos + plan por fases en **`relevamiento_conteos_respuestas.md`**. Decisiones clave: scope combinable (marca/categoría/wall-to-wall) · modo configurable Rápido/Guiado(ciego)/Elegir · doble conteo con umbral combinado u/%/$ · ajustes de conteo van al **tab Autorizaciones existente** (tipo `ajuste_conteo`) · reconciliación por **delta** (no pisar `cantidad`) · nuevos campos `productos.clase_abc` (ABC auto) y `ubicaciones.secuencia` (recorrido conteo+picking) · cíclico solo sugerencia (sin cron).
+
+**Plan por fases:** **F1 ✅ DEPLOYADO PROD (v1.25.0, mig 177)** — scope Marca/Categoría/Wall-to-wall (`inventario_conteos.tipo` ampliado + `filtros JSONB`; UI con toggle de 5 alcances + carga dinámica `productos!inner`; marcas/categorías derivadas del stock de la sucursal; scopes amplios exigen sucursal específica por aislamiento). · **F2** (pendiente) modos Rápido/Guiado/Elegir + ciego + scan-to-count + `ubicaciones.secuencia` · **F3** (pendiente) gate de ajustes + tab Autorizaciones (`ajuste_conteo`) + doble conteo + reconciliación delta · **F4** (pendiente) `productos.clase_abc` + cíclico sugerido + reportes exactitud/valorización + trazabilidad. **Top 3: ~~F1~~ → F3 → F2.** Menores a confirmar (no bloquean F2/F3): ¿1 campo ABC o separar velocidad-picking?, defaults de umbrales. **Pendiente menor de F1:** el "combinable" (marca X en ubicación Y) quedó fuera de F1 — sumar si se pide.
 
 ### ISS-127 — Códigos compuestos GS1 (diseño relevado con GO 2026-05-30)
 
@@ -247,7 +283,7 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 |---|---|
 | **Aislamiento por sucursal a nivel RLS** | **Pedido GO 2026-05-30.** Hoy el aislamiento por sucursal es **solo cliente** (triple blindaje: fijado al cargar + selector oculto + guard de `setSucursal`). La RLS de la DB es por `tenant_id`, no por `sucursal_id` → un usuario técnico con credenciales podría leer otra sucursal vía API directa. Para que sea **imposible a nivel servidor**: RLS por sucursal en tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …) cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. Cambio grande (políticas en N tablas) — diseñar antes. Detalle en `multi-sucursal.md`. |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
-| Relevamientos | 5 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos) esperando respuestas de GO + socio. Ventas A-D ya respondido (ver `relevamiento_ventas_respuestas.md`), faltan E-L |
+| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / **Conteos** ✨). Ventas y Clientes ya respondidos + implementados. **`relevamiento-conteos-reglas-negocio.html`** (ISS-CONT, generado 2026-06-03, subagente `relevamiento`): 34 preguntas en 12 secciones (scope/marca, ciego vs informado, doble conteo, gate de ajustes, scan-to-count, cíclico, reconciliación, reportes, UX 2 velocidades, permisos, fases, Top 3) — **esperando respuestas de GO + socio**. RRHH / Compras / Envíos / Caja sin responder |
 
 ---
 

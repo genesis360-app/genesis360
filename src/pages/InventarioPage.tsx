@@ -199,7 +199,7 @@ export default function InventarioPage() {
     linea_id: string; producto_id: string; nombre: string; sku: string
     unidad_medida: string; lpn: string; cantidad_esperada: number; cantidad_contada: string
   }
-  const [conteoTipo, setConteoTipo] = useState<'ubicacion' | 'producto'>('ubicacion')
+  const [conteoTipo, setConteoTipo] = useState<'ubicacion' | 'producto' | 'marca' | 'categoria' | 'sucursal'>('ubicacion')
   const [conteoRefId, setConteoRefId] = useState('')
   const [conteoRows, setConteoRows] = useState<ConteoRow[]>([])
   const [conteoNotas, setConteoNotas] = useState('')
@@ -533,6 +533,40 @@ export default function InventarioPage() {
       const { data } = await supabase.from('productos')
         .select('id, nombre, sku').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
+    },
+    enabled: !!tenant && tab === 'conteo',
+  })
+
+  // F1 Conteos 2.0 — marcas/categorías que tienen stock en la sucursal activa (no del maestro entero,
+  // para no ofrecer scopes vacíos; coherente con "inventario sucursal estricto").
+  const { data: marcasParaConteo = [] } = useQuery({
+    queryKey: ['marcas-para-conteo', tenant?.id, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('inventario_lineas')
+        .select('productos!inner(marca)').eq('tenant_id', tenant!.id).eq('activo', true)
+        .not('productos.marca', 'is', null)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
+      const set = new Set<string>()
+      for (const r of (data ?? []) as any[]) { const m = String(r.productos?.marca ?? '').trim(); if (m) set.add(m) }
+      return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'))
+    },
+    enabled: !!tenant && tab === 'conteo',
+  })
+  const { data: categoriasParaConteo = [] } = useQuery({
+    queryKey: ['categorias-para-conteo', tenant?.id, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('inventario_lineas')
+        .select('productos!inner(categoria_id, categorias(id,nombre))').eq('tenant_id', tenant!.id).eq('activo', true)
+        .not('productos.categoria_id', 'is', null)
+      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      const { data } = await q
+      const map = new Map<string, string>()
+      for (const r of (data ?? []) as any[]) {
+        const cid = r.productos?.categoria_id; const nom = r.productos?.categorias?.nombre
+        if (cid && !map.has(cid)) map.set(cid, nom ?? '—')
+      }
+      return Array.from(map, ([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
     },
     enabled: !!tenant && tab === 'conteo',
   })
@@ -1376,17 +1410,29 @@ export default function InventarioPage() {
   // ── Conteo helpers ─────────────────────────────────────────────────────────
   const cargarLineasParaConteo = async () => {
     if (!conteoRefId || !tenant) return
+    // F1 — aislamiento por sucursal: los scopes amplios (marca/categoría/wall-to-wall) pueden abarcar
+    // varias sucursales. Sin una sucursal activa, el ajuste pisaría stock de otras → exigir sucursal.
+    if (['marca', 'categoria', 'sucursal'].includes(conteoTipo) && !sucursalId) {
+      toast.error('Seleccioná una sucursal específica para un conteo por marca, categoría o wall-to-wall')
+      return
+    }
     setConteoLoading(true)
     try {
+      // F1: join !inner a productos para poder filtrar por marca/categoría (columnas del maestro).
+      // El inner join es intencional; las líneas siempre tienen producto (FK not null).
       let q = supabase.from('inventario_lineas')
-        .select('id, producto_id, lpn, cantidad, activo, productos(nombre,sku,unidad_medida), inventario_series(id,activo)')
+        .select('id, producto_id, lpn, cantidad, activo, productos!inner(nombre,sku,unidad_medida,marca,categoria_id), inventario_series(id,activo)')
         .eq('tenant_id', tenant.id).eq('activo', true)
       if (conteoTipo === 'ubicacion') {
         if (conteoRefId === '__sin__') q = (q as any).is('ubicacion_id', null)
         else q = q.eq('ubicacion_id', conteoRefId)
-      } else {
+      } else if (conteoTipo === 'producto') {
         q = q.eq('producto_id', conteoRefId)
-      }
+      } else if (conteoTipo === 'marca') {
+        q = q.eq('productos.marca', conteoRefId)
+      } else if (conteoTipo === 'categoria') {
+        q = q.eq('productos.categoria_id', conteoRefId)
+      } // 'sucursal' (wall-to-wall): sin filtro extra, solo sucursal + activo
       if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       const { data } = await q
       const rows: ConteoRow[] = (data ?? []).map((l: any) => {
@@ -1404,7 +1450,7 @@ export default function InventarioPage() {
           cantidad_contada: String(cantEsperada),
         }
       })
-      if (rows.length === 0) toast('No hay stock en esta ubicación/producto', { icon: 'ℹ️' })
+      if (rows.length === 0) toast('No hay stock para el alcance de este conteo', { icon: 'ℹ️' })
       setConteoRows(rows)
     } finally {
       setConteoLoading(false)
@@ -1413,13 +1459,33 @@ export default function InventarioPage() {
 
   const resetConteoForm = () => {
     setShowConteoForm(false); setConteoRows([]); setConteoNotas(''); setConteoRefId('')
-    setContinuandoConteoId(null)
+    setConteoTipo('ubicacion'); setContinuandoConteoId(null)
+  }
+
+  // F1 — campos de alcance del conteo según el tipo elegido (tipo + ubicacion_id/producto_id + filtros JSONB)
+  const conteoScopeFields = () => {
+    const ubicacion_id = conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null
+    const producto_id = conteoTipo === 'producto' ? conteoRefId : null
+    let filtros: Record<string, any> = {}
+    if (conteoTipo === 'marca') filtros = { marca: conteoRefId }
+    else if (conteoTipo === 'categoria') {
+      const cat = (categoriasParaConteo as any[]).find(c => c.id === conteoRefId)
+      filtros = { categoria_id: conteoRefId, categoria_nombre: cat?.nombre ?? null }
+    }
+    return { tipo: conteoTipo, ubicacion_id, producto_id, filtros }
   }
 
   // ISS-100: Cargar borrador en el form para continuar editando
   const continuarConteo = (c: InventarioConteo) => {
     setConteoTipo(c.tipo)
-    setConteoRefId(c.ubicacion_id ?? c.producto_id ?? '')
+    // F1: el refId del scope viene de la FK (ubicacion/producto) o de filtros (marca/categoria); 'sucursal' usa sentinel
+    const f = (c as any).filtros ?? {}
+    setConteoRefId(
+      c.tipo === 'sucursal' ? '__all__'
+      : c.tipo === 'marca' ? (f.marca ?? '')
+      : c.tipo === 'categoria' ? (f.categoria_id ?? '')
+      : (c.ubicacion_id ?? c.producto_id ?? '')
+    )
     setConteoNotas(c.notas ?? '')
     setConteoRows((c.inventario_conteo_items ?? []).map(item => ({
       linea_id: item.inventario_linea_id ?? '',
@@ -1448,9 +1514,7 @@ export default function InventarioPage() {
         await supabase.from('inventario_conteo_items').delete().eq('conteo_id', conteoId)
       } else {
         const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
-          tenant_id: tenant!.id, tipo: conteoTipo,
-          ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
-          producto_id: conteoTipo === 'producto' ? conteoRefId : null,
+          tenant_id: tenant!.id, ...conteoScopeFields(),
           estado: 'borrador', notas: conteoNotas || null, ajuste_aplicado: false,
           created_by: user?.id, sucursal_id: sucursalId || null,
         }).select().single()
@@ -1486,9 +1550,7 @@ export default function InventarioPage() {
         await supabase.from('inventario_conteo_items').delete().eq('conteo_id', conteoId)
       } else {
         const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
-          tenant_id: tenant!.id, tipo: conteoTipo,
-          ubicacion_id: conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null,
-          producto_id: conteoTipo === 'producto' ? conteoRefId : null,
+          tenant_id: tenant!.id, ...conteoScopeFields(),
           estado: 'finalizado', notas: conteoNotas || null, ajuste_aplicado: true,
           created_by: user?.id, sucursal_id: sucursalId || null,
         }).select().single()
@@ -4493,35 +4555,67 @@ export default function InventarioPage() {
                 )}
               </div>
 
-              {/* Toggle tipo — deshabilitado si se continúa un borrador */}
-              <div className="flex gap-2">
-                {(['ubicacion', 'producto'] as const).map(t => (
-                  <button key={t} onClick={() => { setConteoTipo(t); setConteoRefId(''); setConteoRows([]) }}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border-2
+              {/* Toggle tipo de alcance (F1: + marca / categoría / sucursal completa) */}
+              <div className="flex gap-2 flex-wrap">
+                {([
+                  ['ubicacion', '📍 Por ubicación'],
+                  ['producto', '📦 Por producto'],
+                  ['marca', '🏷️ Por marca'],
+                  ['categoria', '🗂️ Por categoría'],
+                  ['sucursal', '🏬 Sucursal completa'],
+                ] as const).map(([t, label]) => {
+                  // Scopes amplios requieren una sucursal específica (aislamiento por sucursal)
+                  const requiereSucursal = ['marca', 'categoria', 'sucursal'].includes(t)
+                  const bloqueado = !!continuandoConteoId || (requiereSucursal && !sucursalId)
+                  return (
+                  <button key={t} disabled={bloqueado}
+                    title={requiereSucursal && !sucursalId ? 'Seleccioná una sucursal específica para usar este alcance' : undefined}
+                    onClick={() => { setConteoTipo(t); setConteoRefId(t === 'sucursal' ? '__all__' : ''); setConteoRows([]) }}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border-2 disabled:opacity-50 disabled:cursor-not-allowed
                       ${conteoTipo === t ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
-                    {t === 'ubicacion' ? '📍 Por ubicación' : '📦 Por producto'}
+                    {label}
                   </button>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Selector + botón cargar */}
               <div className="flex gap-2">
-                <select value={conteoRefId}
-                  onChange={e => { setConteoRefId(e.target.value); setConteoRows([]) }}
-                  className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:border-accent">
-                  {conteoTipo === 'ubicacion' ? (
-                    <>
-                      <option value="">Seleccioná una ubicación</option>
-                      <option value="__sin__">Sin ubicación</option>
-                      {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-                    </>
-                  ) : (
-                    <>
-                      <option value="">Seleccioná un producto</option>
-                      {(productosParaConteo as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.sku}</option>)}
-                    </>
-                  )}
-                </select>
+                {conteoTipo === 'sucursal' ? (
+                  <div className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400">
+                    🏬 Se contará <strong className="text-gray-700 dark:text-gray-200">todo el stock de la sucursal</strong> (wall-to-wall). Puede tardar en cargar.
+                  </div>
+                ) : (
+                  <select value={conteoRefId} disabled={!!continuandoConteoId}
+                    onChange={e => { setConteoRefId(e.target.value); setConteoRows([]) }}
+                    className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:border-accent disabled:opacity-50">
+                    {conteoTipo === 'ubicacion' && (
+                      <>
+                        <option value="">Seleccioná una ubicación</option>
+                        <option value="__sin__">Sin ubicación</option>
+                        {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      </>
+                    )}
+                    {conteoTipo === 'producto' && (
+                      <>
+                        <option value="">Seleccioná un producto</option>
+                        {(productosParaConteo as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.sku}</option>)}
+                      </>
+                    )}
+                    {conteoTipo === 'marca' && (
+                      <>
+                        <option value="">Seleccioná una marca</option>
+                        {(marcasParaConteo as string[]).map(m => <option key={m} value={m}>{m}</option>)}
+                      </>
+                    )}
+                    {conteoTipo === 'categoria' && (
+                      <>
+                        <option value="">Seleccioná una categoría</option>
+                        {(categoriasParaConteo as any[]).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      </>
+                    )}
+                  </select>
+                )}
                 <button onClick={cargarLineasParaConteo} disabled={!conteoRefId || conteoLoading}
                   className="px-4 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                   {conteoLoading ? 'Cargando...' : 'Cargar stock'}
@@ -4642,9 +4736,12 @@ export default function InventarioPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">
-                              {c.tipo === 'ubicacion'
-                                ? `Por ubicación: ${(c as any).ubicaciones?.nombre ?? 'Sin ubicación'}`
-                                : `Por producto: ${(c as any).productos?.nombre ?? '—'}`}
+                              {c.tipo === 'ubicacion' ? `Por ubicación: ${(c as any).ubicaciones?.nombre ?? 'Sin ubicación'}`
+                                : c.tipo === 'producto' ? `Por producto: ${(c as any).productos?.nombre ?? '—'}`
+                                : c.tipo === 'marca' ? `Por marca: ${(c as any).filtros?.marca ?? '—'}`
+                                : c.tipo === 'categoria' ? `Por categoría: ${(c as any).filtros?.categoria_nombre ?? '—'}`
+                                : c.tipo === 'sucursal' ? 'Sucursal completa (wall-to-wall)'
+                                : c.tipo}
                             </span>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium
                               ${c.estado === 'finalizado' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'

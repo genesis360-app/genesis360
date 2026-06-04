@@ -3,7 +3,7 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos]
 sources: [CLAUDE.md, reglas_negocio.md]
-updated: 2026-04-30
+updated: 2026-06-03
 ---
 
 # Inventario y Stock
@@ -134,13 +134,25 @@ DEPOSITO no puede ejecutar cambios directamente — quedan pendientes de aprobac
 
 ## Conteo de inventario (migration 050 · v0.83.0)
 
-- Toggle tipo: Por ubicación / Por producto
+- Toggle tipo de alcance: **Por ubicación / Por producto / Por marca / Por categoría / Sucursal completa (wall-to-wall)** *(marca/categoría/sucursal desde v1.25.0 — ver abajo)*
 - Tabla editable por LPN: cantidad esperada vs contada
 - Colores: verde (igual) / ámbar (diferente) / rojo (< 0)
 - **Guardar borrador**: no afecta stock
 - **Finalizar y ajustar**: aplica `ajuste_ingreso` o `ajuste_rebaje` automáticamente
 - Historial de conteos con detalle expandible
 - DEPOSITO → ajustes quedan pendientes de aprobación
+
+### Conteos 2.0 — F1: scope ampliado (v1.25.0 · migration 177)
+
+Primera fase del proyecto **Conteos 2.0** (ISS-CONT, relevado con GO — diseño completo en `relevamiento_conteos_respuestas.md`). El conteo deja de ser solo ubicación/producto:
+
+- **Nuevos alcances:** Por **Marca** (pedido original de GO), por **Categoría** y **Sucursal completa (wall-to-wall)**.
+- **Mig 177:** CHECK de `inventario_conteos.tipo` ampliado (`+ marca, categoria, sucursal`) + `filtros JSONB` (guarda el criterio cuando no es FK directa: `{marca}` / `{categoria_id, categoria_nombre}`).
+- `cargarLineasParaConteo` arma el query dinámico con `productos!inner` para filtrar por `marca`/`categoria_id`. Wall-to-wall trae todo el stock de la sucursal.
+- Las marcas/categorías del selector se **derivan del stock de la sucursal activa** (no del maestro entero) → no se ofrecen scopes vacíos.
+- **Aislamiento por sucursal:** los scopes amplios (marca/categoría/wall-to-wall) **exigen una sucursal específica** (no "Todas") — guard al cargar + toggles deshabilitados con tooltip. Evita que el ajuste pise stock de otra sucursal.
+
+**Pendiente (fases siguientes):** F2 modos Rápido/Guiado + conteo a ciegas + scan-to-count + `ubicaciones.secuencia` · F3 gate de ajustes + integración con tab Autorizaciones (`ajuste_conteo`) + doble conteo + reconciliación por delta · F4 `productos.clase_abc` + cíclico sugerido + reportes de exactitud/valorización.
 
 ---
 

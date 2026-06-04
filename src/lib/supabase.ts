@@ -343,9 +343,10 @@ export interface ProductoEstructura {
 export interface InventarioConteo {
   id: string
   tenant_id: string
-  tipo: 'ubicacion' | 'producto'
+  tipo: 'ubicacion' | 'producto' | 'marca' | 'categoria' | 'sucursal'
   ubicacion_id?: string | null
   producto_id?: string | null
+  filtros?: { marca?: string; categoria_id?: string; categoria_nombre?: string | null } | null
   estado: 'borrador' | 'finalizado'
   notas?: string | null
   ajuste_aplicado: boolean

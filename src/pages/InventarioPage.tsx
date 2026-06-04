@@ -28,6 +28,7 @@ import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 import { esDecimal } from '@/lib/ventasValidation'
+import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
 
 type Tab = 'inventario' | 'agregar' | 'quitar' | 'kits' | 'conteo' | 'historial' | 'autorizaciones'
 type ModalType = 'ingreso' | 'rebaje' | null
@@ -200,6 +201,7 @@ export default function InventarioPage() {
   type ConteoRow = {
     linea_id: string; producto_id: string; nombre: string; sku: string
     unidad_medida: string; lpn: string; cantidad_esperada: number; cantidad_contada: string
+    costo: number  // F3 — precio de costo unitario (para el umbral de valor $ del gate/reconteo)
   }
   const [conteoTipo, setConteoTipo] = useState<'ubicacion' | 'producto' | 'marca' | 'categoria' | 'sucursal'>('ubicacion')
   const [conteoRefId, setConteoRefId] = useState('')
@@ -216,6 +218,14 @@ export default function InventarioPage() {
   // B2 — en modo a ciegas, líneas cuya cantidad esperada fue revelada (solo DUEÑO/SUPERVISOR)
   const [conteoRevelados, setConteoRevelados] = useState<Set<string>>(new Set())
   const puedeRevelarEsperado = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
+  // F3 — config de gate de ajustes (D) y de doble conteo (C), desde el tenant
+  const conteoGateActivo = !!(tenant as any)?.conteo_gate_activo
+  const conteoGateConfig: UmbralConfig = {
+    u: (tenant as any)?.conteo_gate_umbral_u, pct: (tenant as any)?.conteo_gate_umbral_pct, valor: (tenant as any)?.conteo_gate_umbral_valor,
+  }
+  const conteoReconteoConfig: UmbralConfig = {
+    u: (tenant as any)?.conteo_reconteo_umbral_u, pct: (tenant as any)?.conteo_reconteo_umbral_pct, valor: (tenant as any)?.conteo_reconteo_umbral_valor,
+  }
 
   // ── Historial filters ──────────────────────────────────────────────────────
   const [filterHistFechaDesde, setFilterHistFechaDesde] = useState('')
@@ -525,7 +535,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('inventario_conteos')
-        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida)), users:created_by(nombre_display)')
+        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida,precio_costo)), users:created_by(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(30)
@@ -702,11 +712,31 @@ export default function InventarioPage() {
           const { error } = await supabase.from('inventario_lineas').update(campos).in('id', linea_ids)
           if (error) throw error
         }
+      } else if (aut.tipo === 'ajuste_conteo') {
+        // F3 — al aprobar, aplicar la diferencia de conteo con reconciliación por delta (G1)
+        const { esperada_snapshot, contada, producto_id, lpn, sucursal_id: sucId } = aut.datos_cambio
+        const { data: lineaViva } = await supabase.from('inventario_lineas').select('cantidad').eq('id', aut.linea_id).single()
+        const vivo = Number(lineaViva?.cantidad ?? esperada_snapshot)
+        const nuevo = reconciliarDelta(vivo, contada, esperada_snapshot)
+        const deltaReal = nuevo - vivo
+        const stockAntes = await getStockAntesSucursal(producto_id, sucId ?? null)  // ANTES de mutar la línea
+        const { error } = await supabase.from('inventario_lineas').update({ cantidad: nuevo, activo: nuevo > 0 }).eq('id', aut.linea_id)
+        if (error) throw error
+        if (Math.abs(deltaReal) > 0.001) {
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant!.id, producto_id,
+            tipo: deltaReal > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje', cantidad: Math.abs(deltaReal),
+            stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes + deltaReal),
+            motivo: `Diferencia Conteo aprobada${lpn ? ` — LPN ${lpn}` : ''}`,
+            usuario_id: user?.id, linea_id: aut.linea_id, sucursal_id: sucId ?? null,
+          })
+        }
       }
       await supabase.from('autorizaciones_inventario').update({ estado: 'aprobada', aprobado_por: user?.id }).eq('id', aut.id)
       const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad'
         : aut.tipo === 'eliminar_serie' ? 'Eliminación de serie'
         : aut.tipo === 'eliminar_lpn' ? 'Eliminación de LPN'
+        : aut.tipo === 'ajuste_conteo' ? 'Diferencia de conteo'
         : 'Edición masiva de atributos'
       logActividad({
         entidad: 'inventario_linea',
@@ -1430,7 +1460,7 @@ export default function InventarioPage() {
       // F1: join !inner a productos para poder filtrar por marca/categoría (columnas del maestro).
       // El inner join es intencional; las líneas siempre tienen producto (FK not null).
       let q = supabase.from('inventario_lineas')
-        .select('id, producto_id, lpn, cantidad, activo, productos!inner(nombre,sku,unidad_medida,marca,categoria_id), ubicaciones(secuencia,prioridad,nombre), inventario_series(id,activo)')
+        .select('id, producto_id, lpn, cantidad, activo, precio_costo_snapshot, productos!inner(nombre,sku,unidad_medida,marca,categoria_id,precio_costo), ubicaciones(secuencia,prioridad,nombre), inventario_series(id,activo)')
         .eq('tenant_id', tenant.id).eq('activo', true)
       if (conteoTipo === 'ubicacion') {
         if (conteoRefId === '__sin__') q = (q as any).is('ubicacion_id', null)
@@ -1465,6 +1495,7 @@ export default function InventarioPage() {
           cantidad_esperada: cantEsperada,
           // F2a (B1): en modo guiado (a ciegas) el campo arranca vacío; en rápido precarga la esperada
           cantidad_contada: conteoEsGuiado ? '' : String(cantEsperada),
+          costo: Number(l.precio_costo_snapshot ?? prod.precio_costo ?? 0),
         }
       })
       if (rows.length === 0) toast('No hay stock para el alcance de este conteo', { icon: 'ℹ️' })
@@ -1531,6 +1562,7 @@ export default function InventarioPage() {
       lpn: item.lpn ?? '',
       cantidad_esperada: item.cantidad_esperada,
       cantidad_contada: item.cantidad_contada == null ? '' : String(item.cantidad_contada),
+      costo: Number((item as any).productos?.precio_costo ?? 0),
     })))
     setContinuandoConteoId(c.id)
     setShowConteoForm(true)
@@ -1599,28 +1631,53 @@ export default function InventarioPage() {
           cantidad_contada: parseContado(row.cantidad_contada, row.unidad_medida),
         }))
       )
-      let ajustes = 0
+      let ajustes = 0       // aplicados directo
+      let pendientes = 0    // enviados a autorización (gate D)
       for (const row of conteoRows) {
         const contada = parseContado(row.cantidad_contada, row.unidad_medida)
         if (contada === null) continue  // B3: fila no contada (en blanco) → no se ajusta
         const diff = contada - row.cantidad_esperada
-        if (Math.abs(diff) < 0.001) continue
-        await supabase.from('inventario_lineas').update({ cantidad: contada, activo: contada > 0 }).eq('id', row.linea_id)
-        const stockAntes = await getStockAntesSucursal(row.producto_id, sucursalId)
-        await supabase.from('movimientos_stock').insert({
-          tenant_id: tenant!.id, producto_id: row.producto_id,
-          tipo: diff > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje', cantidad: Math.abs(diff),
-          stock_antes: stockAntes,
-          stock_despues: Math.max(0, stockAntes + diff),
-          motivo: `Conteo de inventario${row.lpn ? ` — LPN ${row.lpn}` : ` — ${row.sku}`}`,
-          usuario_id: user?.id, linea_id: row.linea_id, sucursal_id: sucursalId || null,
-        })
+        const diffAbs = Math.abs(diff)
+        if (diffAbs < 0.001) continue
+        const valorDiff = diffAbs * (row.costo || 0)
+        // D — gate: si supera el umbral (o el gate está inactivo) la diferencia va a aprobación, no se aplica todavía
+        if (requiereAutorizacion(conteoGateActivo, diffAbs, row.cantidad_esperada, valorDiff, conteoGateConfig)) {
+          await supabase.from('autorizaciones_inventario').insert({
+            tenant_id: tenant!.id, tipo: 'ajuste_conteo', linea_id: row.linea_id, estado: 'pendiente',
+            solicitado_por: user?.id,
+            datos_cambio: {
+              conteo_id: conteoId, producto_id: row.producto_id, sku: row.sku, lpn: row.lpn || null,
+              esperada_snapshot: row.cantidad_esperada, contada, sucursal_id: sucursalId || null,
+              motivo: 'Diferencia Conteo',
+            },
+          })
+          pendientes++
+          continue
+        }
+        // G1 — reconciliación por delta: no pisar; aplicar (contada - esperada_snapshot) sobre el stock vivo
+        const { data: lineaViva } = await supabase.from('inventario_lineas').select('cantidad').eq('id', row.linea_id).single()
+        const vivo = Number(lineaViva?.cantidad ?? row.cantidad_esperada)
+        const nuevo = reconciliarDelta(vivo, contada, row.cantidad_esperada)
+        const deltaReal = nuevo - vivo
+        const stockAntes = await getStockAntesSucursal(row.producto_id, sucursalId)  // ANTES de mutar la línea
+        await supabase.from('inventario_lineas').update({ cantidad: nuevo, activo: nuevo > 0 }).eq('id', row.linea_id)
+        if (Math.abs(deltaReal) > 0.001) {
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant!.id, producto_id: row.producto_id,
+            tipo: deltaReal > 0 ? 'ajuste_ingreso' : 'ajuste_rebaje', cantidad: Math.abs(deltaReal),
+            stock_antes: stockAntes,
+            stock_despues: Math.max(0, stockAntes + deltaReal),
+            motivo: `Conteo de inventario${row.lpn ? ` — LPN ${row.lpn}` : ` — ${row.sku}`}`,
+            usuario_id: user?.id, linea_id: row.linea_id, sucursal_id: sucursalId || null,
+          })
+        }
         ajustes++
       }
-      return ajustes
+      return { ajustes, pendientes }
     },
-    onSuccess: (ajustes) => {
-      toast.success(`Conteo finalizado — ${ajustes} ajuste${ajustes !== 1 ? 's' : ''} aplicado${ajustes !== 1 ? 's' : ''}`)
+    onSuccess: ({ ajustes, pendientes }) => {
+      toast.success(`Conteo finalizado — ${ajustes} ajuste${ajustes !== 1 ? 's' : ''} aplicado${ajustes !== 1 ? 's' : ''}${pendientes > 0 ? ` · ${pendientes} pendiente${pendientes !== 1 ? 's' : ''} de aprobación` : ''}`)
+      qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
       qc.invalidateQueries({ queryKey: ['conteo-historial'] })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -4796,6 +4853,15 @@ export default function InventarioPage() {
                     <button onClick={() => {
                         // B3: avisar si quedaron filas sin contar (no se ajustan)
                         if (enBlanco > 0 && !window.confirm(`Quedan ${enBlanco} línea${enBlanco !== 1 ? 's' : ''} sin contar — esas NO se ajustarán (se asume que no se contaron). ¿Finalizar igual?`)) return
+                        // C (doble conteo): avisar las filas que superan el umbral de discrepancia configurado
+                        const aRecontar = conteoRows.filter(r => {
+                          const c = parseContado(r.cantidad_contada, r.unidad_medida)
+                          if (c === null) return false
+                          const d = Math.abs(c - r.cantidad_esperada)
+                          return requiereReconteo(d, r.cantidad_esperada, d * (r.costo || 0), conteoReconteoConfig)
+                        })
+                        if (aRecontar.length > 0 && !window.confirm(`${aRecontar.length} línea${aRecontar.length !== 1 ? 's superan' : ' supera'} el umbral de discrepancia. Conviene recontar${aRecontar.length !== 1 ? 'las' : 'la'} antes de ajustar. ¿Confirmás el conteo y querés finalizar?`)) return
+                        // D (gate): avisar si los ajustes irán a aprobación en vez de aplicarse directo
                         finalizarConteoYAplicar.mutate()
                       }}
                       disabled={finalizarConteoYAplicar.isPending}

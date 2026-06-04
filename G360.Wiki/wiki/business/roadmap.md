@@ -13,6 +13,16 @@ updated: 2026-05-29
 
 ---
 
+## v1.27.0 — Conteos 2.0 · F3: gate de ajustes + autorizaciones + reconciliación delta (PROD ✅)
+
+Tercera fase de **Conteos 2.0** — el control de los ajustes (lo más sensible para la plata).
+- **Gate de aprobación**: las diferencias de un conteo van al tab **Autorizaciones** (`ajuste_conteo`) antes de tocar el stock. Configurable por umbral (unidades/%/$); sin gate → todo a aprobación.
+- **Reconciliación por delta**: al aplicar no se pisa el stock — respeta ventas ocurridas durante el conteo.
+- **Doble conteo**: aviso al finalizar de las filas que superan el umbral de discrepancia.
+- Lógica pura testeada (`conteoAjuste.ts`, +16 tests → 346). Mig 179. `migration-reviewer` + `code-reviewer` en el flujo.
+
+Pendiente: F2b (scan-to-count) · F3b (doble conteo formal + clave maestra) · F4 (clase ABC + cíclico + reportes).
+
 ## v1.26.0 — Conteos 2.0 · F2a: modos + conteo a ciegas + unidad de medida + secuencia (PROD ✅)
 
 Segunda fase de **Conteos 2.0**.

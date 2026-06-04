@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-03] deploy | v1.27.0 PROD — Conteos 2.0 F3 (gate de ajustes + autorizaciones + reconciliación delta)
+
+**Deployado a PROD.** Migración **179** en DEV y PROD. Build verde, **346 tests verdes** (+16 de `conteoAjuste`).
+
+- **Gate de aprobación de ajustes (D):** las diferencias de un conteo ya no tocan el stock directo. Config en Config → Inventario: `tenants.conteo_gate_activo` + umbrales `conteo_gate_umbral_u/_pct/_valor`. **Gate inactivo → toda diferencia va a aprobación**; activo → solo las que superen algún umbral (unidades / % / valor $), el resto se aplica directo.
+- **Tab Autorizaciones (D1):** las diferencias que pasan el gate se insertan en `autorizaciones_inventario` con `tipo='ajuste_conteo'` (motivo "Diferencia Conteo") → un DUEÑO/SUPERVISOR las aprueba en Inventario → Autorizaciones. `aprobarAutorizacion` aplica el ajuste al aprobar.
+- **Reconciliación por delta (G1):** al aplicar (directo o aprobado) NO se pisa el stock; se aplica `vivo + (contado − esperada_snapshot)` sobre el stock vivo → respeta ventas ocurridas durante el conteo en vez de revertirlas. `reconciliarDelta` (testeada).
+- **Doble conteo (C):** umbrales `conteo_reconteo_umbral_u/_pct/_valor`; al finalizar avisa qué filas superan el umbral para recontar (versión "aviso", `window.confirm`).
+- **Lógica pura** en `src/lib/conteoAjuste.ts`: `superaUmbral` (combinado u/%/$), `requiereAutorizacion`, `requiereReconteo`, `reconciliarDelta` + 16 tests.
+
+**QA (híbrido):** `migration-reviewer` (APTA) + `code-reviewer` detectó 2 bloqueantes — `stock_antes` se leía después de mutar la línea (auditoría errónea, **bug preexistente**) + posible movimiento con cantidad 0 → ambos corregidos en finalizar y en aprobar.
+
+**Pendiente Conteos 2.0:** F2b (scan-to-count) · F3b (doble conteo formal con 2º operador + clave maestra C4; snapshot de costo por ítem) · F4 (clase ABC + cíclico + reportes exactitud/valorización).
+
+---
+
 ## [2026-06-03] deploy | v1.26.0 PROD — Conteos 2.0 F2a (modos + a ciegas + unidad de medida + secuencia)
 
 **Deployado a PROD.** Migración **178** en DEV y PROD. Build verde, 330 tests verdes.

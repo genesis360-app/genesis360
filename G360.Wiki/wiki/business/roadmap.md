@@ -13,6 +13,18 @@ updated: 2026-05-29
 
 ---
 
+## v1.26.0 — Conteos 2.0 · F2a: modos + conteo a ciegas + unidad de medida + secuencia (PROD ✅)
+
+Segunda fase de **Conteos 2.0**.
+- **Modo configurable** (Rápido / Guiado a ciegas / Elegir al crear), en Config → Inventario.
+- **Conteo a ciegas**: el operador cuenta sin ver el stock del sistema (anti sesgo de confirmación); revelar fila puntual (DUEÑO/SUPERVISOR).
+- **Filas en blanco**: distingue "no contada" (se omite) de "contó cero" (ajusta).
+- **Fix**: el campo "Contado" respeta la unidad — enteros en piezas/unidades, decimales en kg/gr (corrige el 15→14,999).
+- **`ubicaciones.secuencia`**: orden de recorrido para conteo y picking. Mig 178.
+- `migration-reviewer` + `code-reviewer` en el flujo. 330 tests verdes.
+
+Próximas: F2b (scan-to-count) · F3 (gate de ajustes + autorizaciones + doble conteo) · F4 (clase ABC + cíclico + reportes).
+
 ## v1.25.0 — Conteos 2.0 · F1: scope por Marca / Categoría / Wall-to-wall (PROD ✅)
 
 Primera fase de **Conteos 2.0** (ISS-CONT, relevado con GO). El conteo de inventario deja de ser solo por ubicación/producto:

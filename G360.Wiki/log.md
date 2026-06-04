@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-03] deploy | v1.25.0 PROD — Conteos 2.0 F1 (scope por Marca / Categoría / Wall-to-wall)
+
+**Deployado a PROD.** Migración **177** aplicada en DEV y PROD. Build verde, 330 tests verdes. Primera fase de **Conteos 2.0** (ISS-CONT), arrancando por lo que pidió GO: conteo por **Marca**.
+
+- **Scope ampliado:** el conteo de inventario (InventarioPage → tab Conteo) ahora soporta **por Marca, por Categoría y Sucursal completa (wall-to-wall)**, además de ubicación/producto. Toggle de 5 alcances + selector dinámico.
+- **Mig 177:** CHECK de `inventario_conteos.tipo` ampliado (`+ marca, categoria, sucursal`) + `filtros JSONB` (guarda el criterio cuando no es FK directa).
+- `cargarLineasParaConteo` arma el query dinámico con `productos!inner` para filtrar por `marca`/`categoria_id`. Las marcas/categorías del selector se derivan del **stock de la sucursal activa** (no del maestro entero).
+- **Aislamiento por sucursal:** los scopes amplios (marca/categoría/wall-to-wall) **exigen una sucursal específica** (no "Todas") — guard en la carga + toggles deshabilitados con tooltip.
+
+**Flujo de QA (modelo híbrido):** `migration-reviewer` → APTA (nombre de constraint correcto, idempotencia aceptable, sin DDL destructivo). `code-reviewer` → detectó **un bloqueante**: wall-to-wall con `sucursalId=null` cruzaba sucursales y el ajuste pisaba stock ajeno → corregido (guard + toggles). También reset de `conteoTipo` y filtrado de marcas/categorías por sucursal. Ver [[feedback_usar_subagentes_proyecto]].
+
+**Pendiente Conteos 2.0:** F2 (modos + ciego + scan + secuencia ubicación) · F3 (gate ajustes + tab Autorizaciones + doble conteo + reconciliación delta) · F4 (clase ABC + cíclico + reportes). Diseño completo en `relevamiento_conteos_respuestas.md`.
+
+---
+
 ## [2026-06-03] deploy | v1.24.0 PROD — Clientes C6 (segmentación+export) + D4 (NC manual proveedor)
 
 **Deployado a PROD.** Backlog diferido de Clientes, **sin migración** (usa columnas de mig 176 + el tipo `'nota_credito'` ya en el CHECK de mig 085). Build verde, 330 tests verdes.

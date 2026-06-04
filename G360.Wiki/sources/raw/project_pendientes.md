@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.24.0** ✅ (backlog diferido Clientes: **C6** segmentación de clientes para marketing + export CSV/Excel en Reportes · **D4** UI de nota de crédito manual de proveedor con correlativo + adjunto. Sin migración — usa columnas/CHECK ya existentes. `code-reviewer` en el flujo pre-merge). Antes: v1.23.2 (QA tests Caja/Inv/Ventas, suite 330 verdes, `cajaArqueo.ts`). v1.23.1 (QA CC → `ccLogic.ts`). v1.23.0 **🎉 MÓDULO CLIENTES COMPLETO (CL1–CL6)**.
+Último release en PROD: **v1.25.0** ✅ (**Conteos 2.0 · Fase F1** — conteo de inventario por **Marca / Categoría / Sucursal completa (wall-to-wall)** además de ubicación/producto. Mig 177 (CHECK `tipo` ampliado + `filtros JSONB`). Aislamiento por sucursal: scopes amplios exigen sucursal específica. `migration-reviewer` + `code-reviewer` en el flujo). Antes: v1.24.0 (Clientes C6 segmentación+export · D4 NC manual proveedor). v1.23.2 (QA tests, suite 330). v1.23.0 **🎉 MÓDULO CLIENTES COMPLETO (CL1–CL6)**.
 
 **Historial Clientes:** v1.19.0 (CL1+CL2), v1.20.0 (CL3 + bugfix origen), v1.23.0 (CL4+CL5+CL6), v1.23.1 (QA/tests CC + agentes).
 
@@ -22,10 +22,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.24.0` | `v1.24.0` |
-| Migrations | 001–**176** ✅ | 001–**176** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.24.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.24.0 |
+| APP_VERSION | `v1.25.0` | `v1.25.0` |
+| Migrations | 001–**177** ✅ | 001–**177** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.25.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.25.0 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna (171-176 ya en PROD).
 
@@ -121,7 +121,7 @@ Respuestas completas y cruce con Ventas en `relevamiento_clientes_respuestas.md`
 
 **✅ RELEVADO (2026-06-03, GO+socio).** Respuestas + diseño consolidado + modelo de datos + plan por fases en **`relevamiento_conteos_respuestas.md`**. Decisiones clave: scope combinable (marca/categoría/wall-to-wall) · modo configurable Rápido/Guiado(ciego)/Elegir · doble conteo con umbral combinado u/%/$ · ajustes de conteo van al **tab Autorizaciones existente** (tipo `ajuste_conteo`) · reconciliación por **delta** (no pisar `cantidad`) · nuevos campos `productos.clase_abc` (ABC auto) y `ubicaciones.secuencia` (recorrido conteo+picking) · cíclico solo sugerencia (sin cron).
 
-**Plan por fases (pendiente implementar):** **F1** scope Marca/Categoría/Wall-to-wall *(lo pedido — arrancar acá)* · **F2** modos + ciego + scan-to-count + secuencia ubicación · **F3** gate de ajustes + tab Autorizaciones + doble conteo + reconciliación delta · **F4** clase ABC + cíclico sugerido + reportes exactitud/valorización + trazabilidad. **Top 3: F1 → F3 → F2.** Menores a confirmar (no bloquean F1): ¿1 campo ABC o separar velocidad-picking?, alcance del bloqueo wall-to-wall, defaults de umbrales.
+**Plan por fases:** **F1 ✅ DEPLOYADO PROD (v1.25.0, mig 177)** — scope Marca/Categoría/Wall-to-wall (`inventario_conteos.tipo` ampliado + `filtros JSONB`; UI con toggle de 5 alcances + carga dinámica `productos!inner`; marcas/categorías derivadas del stock de la sucursal; scopes amplios exigen sucursal específica por aislamiento). · **F2** (pendiente) modos Rápido/Guiado/Elegir + ciego + scan-to-count + `ubicaciones.secuencia` · **F3** (pendiente) gate de ajustes + tab Autorizaciones (`ajuste_conteo`) + doble conteo + reconciliación delta · **F4** (pendiente) `productos.clase_abc` + cíclico sugerido + reportes exactitud/valorización + trazabilidad. **Top 3: ~~F1~~ → F3 → F2.** Menores a confirmar (no bloquean F2/F3): ¿1 campo ABC o separar velocidad-picking?, defaults de umbrales. **Pendiente menor de F1:** el "combinable" (marca X en ubicación Y) quedó fuera de F1 — sumar si se pide.
 
 ### ISS-127 — Códigos compuestos GS1 (diseño relevado con GO 2026-05-30)
 

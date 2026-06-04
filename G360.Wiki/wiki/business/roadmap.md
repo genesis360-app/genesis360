@@ -13,6 +13,16 @@ updated: 2026-05-29
 
 ---
 
+## v1.25.0 — Conteos 2.0 · F1: scope por Marca / Categoría / Wall-to-wall (PROD ✅)
+
+Primera fase de **Conteos 2.0** (ISS-CONT, relevado con GO). El conteo de inventario deja de ser solo por ubicación/producto:
+- **Por Marca** (lo pedido), **por Categoría** y **Sucursal completa (wall-to-wall)**.
+- Mig 177 (`inventario_conteos.tipo` ampliado + `filtros JSONB`). UI con toggle de 5 alcances + carga dinámica.
+- Marcas/categorías derivadas del stock de la sucursal; scopes amplios exigen sucursal específica (aislamiento).
+- `migration-reviewer` + `code-reviewer` en el flujo (corrigió un cruce de sucursales en wall-to-wall). 330 tests verdes.
+
+Próximas fases: F2 (modos rápido/guiado + ciego + scan + secuencia de ubicación) · F3 (gate de ajustes + autorizaciones + doble conteo) · F4 (clase ABC + cíclico + reportes).
+
 ## v1.24.0 — Clientes: C6 segmentación+export + D4 NC manual de proveedor (PROD ✅)
 
 Backlog diferido de Clientes (sin migración).

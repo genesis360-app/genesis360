@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-03] deploy | v1.26.0 PROD — Conteos 2.0 F2a (modos + a ciegas + unidad de medida + secuencia)
+
+**Deployado a PROD.** Migración **178** en DEV y PROD. Build verde, 330 tests verdes.
+
+- **Modo de conteo configurable** (`tenants.conteo_modo` = rapido | guiado | elegir; Config → Inventario): **Rápido** = informado (precarga la esperada, como antes); **Guiado** = a ciegas (input vacío, oculta Esperado/Diferencia); **Elegir** = el operador decide al crear el conteo (toggle).
+- **Conteo a ciegas (B1/B2):** en guiado no se ve el stock del sistema; DUEÑO/SUPERVISOR/ADMIN puede "revelar" la esperada de una fila puntual (botón ojo). Banner de modo.
+- **Filas en blanco (B3):** `inventario_conteo_items.cantidad_contada` ahora nullable. `null` = no contada → se omite del ajuste; `0` = contó cero → ajusta. Al finalizar avisa cuántas quedaron sin contar.
+- **🐛 Fix (pedido GO): el input "Contado" respeta la unidad de medida.** Antes, con la flechita, 15 → 14,999 en productos de unidades. Ahora: unidades/piezas → enteros (step 1, redondeo); kg/gr/lt/ml → decimales. Reusa `esDecimal()`.
+- **`ubicaciones.secuencia`** (I3): nuevo campo de orden de recorrido (conteo + picking), editable en Config → Inventario → Ubicaciones (junto a prioridad de rebaje, que es distinta). El conteo ordena las líneas por esta secuencia (fallback prioridad → nombre).
+
+**QA (híbrido):** `migration-reviewer` corrigió el patrón del CHECK (usar `information_schema.table_constraints` con `table_name`, como mig 134/135). `code-reviewer` detectó 2: `modo` no se persistía al actualizar un borrador + valor negativo tratado como "no contada" en silencio → ambos corregidos.
+
+**Pendiente Conteos 2.0:** F2b (scan-to-count) · F3 (gate ajustes + autorizaciones + doble conteo + reconciliación delta) · F4 (clase ABC + cíclico + reportes).
+
+---
+
 ## [2026-06-03] deploy | v1.25.0 PROD — Conteos 2.0 F1 (scope por Marca / Categoría / Wall-to-wall)
 
 **Deployado a PROD.** Migración **177** aplicada en DEV y PROD. Build verde, 330 tests verdes. Primera fase de **Conteos 2.0** (ISS-CONT), arrancando por lo que pidió GO: conteo por **Marca**.

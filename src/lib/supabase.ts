@@ -347,6 +347,7 @@ export interface InventarioConteo {
   ubicacion_id?: string | null
   producto_id?: string | null
   filtros?: { marca?: string; categoria_id?: string; categoria_nombre?: string | null } | null
+  modo?: 'rapido' | 'guiado'
   estado: 'borrador' | 'finalizado'
   notas?: string | null
   ajuste_aplicado: boolean
@@ -366,7 +367,7 @@ export interface InventarioConteoItem {
   producto_id: string
   lpn?: string | null
   cantidad_esperada: number
-  cantidad_contada: number
+  cantidad_contada: number | null
   productos?: { nombre: string; sku: string; unidad_medida: string }
 }
 

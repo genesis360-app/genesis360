@@ -6,6 +6,7 @@ import {
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
   ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check, SlidersHorizontal, ScanBarcode,
+  Eye, EyeOff,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -26,6 +27,7 @@ import toast from 'react-hot-toast'
 import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
+import { esDecimal } from '@/lib/ventasValidation'
 
 type Tab = 'inventario' | 'agregar' | 'quitar' | 'kits' | 'conteo' | 'historial' | 'autorizaciones'
 type ModalType = 'ingreso' | 'rebaje' | null
@@ -207,6 +209,13 @@ export default function InventarioPage() {
   const [conteoExpandedId, setConteoExpandedId] = useState<string | null>(null)
   const [continuandoConteoId, setContinuandoConteoId] = useState<string | null>(null)
   const [conteoLoading, setConteoLoading] = useState(false)
+  // F2a — modo del conteo: 'rapido' (informado, precarga esperada) | 'guiado' (a ciegas, arranca vacío)
+  const conteoModoTenant = ((tenant as any)?.conteo_modo ?? 'rapido') as 'rapido' | 'guiado' | 'elegir'
+  const [conteoModo, setConteoModo] = useState<'rapido' | 'guiado'>(conteoModoTenant === 'guiado' ? 'guiado' : 'rapido')
+  const conteoEsGuiado = conteoModo === 'guiado'
+  // B2 — en modo a ciegas, líneas cuya cantidad esperada fue revelada (solo DUEÑO/SUPERVISOR)
+  const [conteoRevelados, setConteoRevelados] = useState<Set<string>>(new Set())
+  const puedeRevelarEsperado = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
 
   // ── Historial filters ──────────────────────────────────────────────────────
   const [filterHistFechaDesde, setFilterHistFechaDesde] = useState('')
@@ -1421,7 +1430,7 @@ export default function InventarioPage() {
       // F1: join !inner a productos para poder filtrar por marca/categoría (columnas del maestro).
       // El inner join es intencional; las líneas siempre tienen producto (FK not null).
       let q = supabase.from('inventario_lineas')
-        .select('id, producto_id, lpn, cantidad, activo, productos!inner(nombre,sku,unidad_medida,marca,categoria_id), inventario_series(id,activo)')
+        .select('id, producto_id, lpn, cantidad, activo, productos!inner(nombre,sku,unidad_medida,marca,categoria_id), ubicaciones(secuencia,prioridad,nombre), inventario_series(id,activo)')
         .eq('tenant_id', tenant.id).eq('activo', true)
       if (conteoTipo === 'ubicacion') {
         if (conteoRefId === '__sin__') q = (q as any).is('ubicacion_id', null)
@@ -1435,7 +1444,14 @@ export default function InventarioPage() {
       } // 'sucursal' (wall-to-wall): sin filtro extra, solo sucursal + activo
       if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       const { data } = await q
-      const rows: ConteoRow[] = (data ?? []).map((l: any) => {
+      // F2a (I3): ordenar por secuencia de recorrido de la ubicación (fallback prioridad → nombre)
+      const ordenadas = [...(data ?? [])].sort((a: any, b: any) => {
+        const ua = a.ubicaciones ?? {}, ub = b.ubicaciones ?? {}
+        const sa = ua.secuencia ?? ua.prioridad ?? 9e9, sb = ub.secuencia ?? ub.prioridad ?? 9e9
+        if (sa !== sb) return sa - sb
+        return String(ua.nombre ?? '').localeCompare(String(ub.nombre ?? ''), 'es')
+      })
+      const rows: ConteoRow[] = ordenadas.map((l: any) => {
         const prod = l.productos ?? {}
         const seriesActivas = (l.inventario_series ?? []).filter((s: any) => s.activo).length
         const cantEsperada = seriesActivas > 0 ? seriesActivas : (l.cantidad ?? 0)
@@ -1447,7 +1463,8 @@ export default function InventarioPage() {
           unidad_medida: prod.unidad_medida ?? '',
           lpn: l.lpn ?? '',
           cantidad_esperada: cantEsperada,
-          cantidad_contada: String(cantEsperada),
+          // F2a (B1): en modo guiado (a ciegas) el campo arranca vacío; en rápido precarga la esperada
+          cantidad_contada: conteoEsGuiado ? '' : String(cantEsperada),
         }
       })
       if (rows.length === 0) toast('No hay stock para el alcance de este conteo', { icon: 'ℹ️' })
@@ -1459,7 +1476,14 @@ export default function InventarioPage() {
 
   const resetConteoForm = () => {
     setShowConteoForm(false); setConteoRows([]); setConteoNotas(''); setConteoRefId('')
-    setConteoTipo('ubicacion'); setContinuandoConteoId(null)
+    setConteoTipo('ubicacion'); setContinuandoConteoId(null); setConteoRevelados(new Set())
+  }
+
+  // F2a — abre un conteo nuevo inicializando el modo según la config del tenant
+  const abrirNuevoConteo = () => {
+    setConteoModo(conteoModoTenant === 'guiado' ? 'guiado' : 'rapido')
+    setConteoRevelados(new Set())
+    setShowConteoForm(true)
   }
 
   // F1 — campos de alcance del conteo según el tipo elegido (tipo + ubicacion_id/producto_id + filtros JSONB)
@@ -1472,12 +1496,23 @@ export default function InventarioPage() {
       const cat = (categoriasParaConteo as any[]).find(c => c.id === conteoRefId)
       filtros = { categoria_id: conteoRefId, categoria_nombre: cat?.nombre ?? null }
     }
-    return { tipo: conteoTipo, ubicacion_id, producto_id, filtros }
+    return { tipo: conteoTipo, ubicacion_id, producto_id, filtros, modo: conteoModo }
+  }
+
+  // F2a (B3) — parsea lo contado: '' → null (no contada, se omite); respeta la unidad de medida
+  // (enteras → redondea a entero; decimales → float). Permite 0 (contó y no hay unidades).
+  const parseContado = (val: string, unidad: string): number | null => {
+    if (val == null || String(val).trim() === '') return null
+    const n = parseFloat(String(val).replace(',', '.'))
+    if (isNaN(n) || n < 0) return null
+    return esDecimal(unidad) ? n : Math.round(n)
   }
 
   // ISS-100: Cargar borrador en el form para continuar editando
   const continuarConteo = (c: InventarioConteo) => {
     setConteoTipo(c.tipo)
+    setConteoModo(((c as any).modo ?? 'rapido') === 'guiado' ? 'guiado' : 'rapido')
+    setConteoRevelados(new Set())
     // F1: el refId del scope viene de la FK (ubicacion/producto) o de filtros (marca/categoria); 'sucursal' usa sentinel
     const f = (c as any).filtros ?? {}
     setConteoRefId(
@@ -1495,7 +1530,7 @@ export default function InventarioPage() {
       unidad_medida: item.productos?.unidad_medida ?? 'unidad',
       lpn: item.lpn ?? '',
       cantidad_esperada: item.cantidad_esperada,
-      cantidad_contada: String(item.cantidad_contada),
+      cantidad_contada: item.cantidad_contada == null ? '' : String(item.cantidad_contada),
     })))
     setContinuandoConteoId(c.id)
     setShowConteoForm(true)
@@ -1509,7 +1544,7 @@ export default function InventarioPage() {
       if (conteoId) {
         // ISS-100: actualizar borrador existente
         const { error: uErr } = await supabase.from('inventario_conteos')
-          .update({ notas: conteoNotas || null }).eq('id', conteoId)
+          .update({ notas: conteoNotas || null, modo: conteoModo }).eq('id', conteoId)
         if (uErr) throw uErr
         await supabase.from('inventario_conteo_items').delete().eq('conteo_id', conteoId)
       } else {
@@ -1525,7 +1560,7 @@ export default function InventarioPage() {
         conteoRows.map(row => ({
           conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
           lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
-          cantidad_contada: parseFloat(row.cantidad_contada) || 0,
+          cantidad_contada: parseContado(row.cantidad_contada, row.unidad_medida),
         }))
       )
       if (iErr) throw iErr
@@ -1545,7 +1580,7 @@ export default function InventarioPage() {
       if (conteoId) {
         // ISS-100: actualizar borrador existente → marcar como finalizado
         const { error: uErr } = await supabase.from('inventario_conteos')
-          .update({ estado: 'finalizado', notas: conteoNotas || null, ajuste_aplicado: true }).eq('id', conteoId)
+          .update({ estado: 'finalizado', notas: conteoNotas || null, ajuste_aplicado: true, modo: conteoModo }).eq('id', conteoId)
         if (uErr) throw uErr
         await supabase.from('inventario_conteo_items').delete().eq('conteo_id', conteoId)
       } else {
@@ -1561,12 +1596,13 @@ export default function InventarioPage() {
         conteoRows.map(row => ({
           conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
           lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
-          cantidad_contada: parseFloat(row.cantidad_contada) || 0,
+          cantidad_contada: parseContado(row.cantidad_contada, row.unidad_medida),
         }))
       )
       let ajustes = 0
       for (const row of conteoRows) {
-        const contada = parseFloat(row.cantidad_contada) || 0
+        const contada = parseContado(row.cantidad_contada, row.unidad_medida)
+        if (contada === null) continue  // B3: fila no contada (en blanco) → no se ajusta
         const diff = contada - row.cantidad_esperada
         if (Math.abs(diff) < 0.001) continue
         await supabase.from('inventario_lineas').update({ cantidad: contada, activo: contada > 0 }).eq('id', row.linea_id)
@@ -1667,7 +1703,7 @@ export default function InventarioPage() {
           e.preventDefault()
           if (!showConteoForm) {
             // Estado 1: abrir nuevo conteo
-            setShowConteoForm(true)
+            abrirNuevoConteo()
           } else if (conteoRows.length === 0 && conteoRefId && !conteoLoading) {
             // Estado 2: cargar stock (solo si hay ubicación/SKU seleccionado)
             cargarLineasParaConteo()
@@ -2085,7 +2121,7 @@ export default function InventarioPage() {
           </div>
         )}
         {tab === 'conteo' && !showConteoForm && (
-          <button onClick={() => setShowConteoForm(true)}
+          <button onClick={abrirNuevoConteo}
             className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all">
             <Plus size={16} /> Nuevo conteo
           </button>
@@ -4579,6 +4615,21 @@ export default function InventarioPage() {
                 })}
               </div>
 
+              {/* Modo de conteo — solo si el tenant lo dejó "a elección" (B1/I2). Bloqueado al continuar borrador */}
+              {conteoModoTenant === 'elegir' && conteoRows.length === 0 && (
+                <div className="flex gap-2 items-center">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Modo:</span>
+                  {([['rapido', '⚡ Rápido', 'Ves el stock del sistema mientras contás'], ['guiado', '🙈 Guiado (a ciegas)', 'Contás sin ver el sistema — más a prueba de errores']] as const).map(([m, label, desc]) => (
+                    <button key={m} disabled={!!continuandoConteoId} title={desc}
+                      onClick={() => setConteoModo(m)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border disabled:opacity-50
+                        ${conteoModo === m ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Selector + botón cargar */}
               <div className="flex gap-2">
                 {conteoTipo === 'sucursal' ? (
@@ -4622,26 +4673,41 @@ export default function InventarioPage() {
                 </button>
               </div>
 
+              {/* Banner de modo (F2a) */}
+              {conteoRows.length > 0 && conteoEsGuiado && (
+                <div className="flex items-center gap-2 text-xs bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 rounded-xl px-3 py-2">
+                  <EyeOff size={14} /> <span><strong>Conteo guiado (a ciegas):</strong> contás sin ver el stock del sistema. La diferencia se calcula al finalizar.{puedeRevelarEsperado ? ' Podés revelar una fila si lo necesitás.' : ''}</span>
+                </div>
+              )}
+
               {/* Tabla de conteo */}
-              {conteoRows.length > 0 && (
+              {conteoRows.length > 0 && (() => {
+                const verEsperado = !conteoEsGuiado          // columna Esperado/Diferencia visible
+                const colReveal = conteoEsGuiado && puedeRevelarEsperado  // columna de revelar (solo guiado + permiso)
+                const stepFor = (u: string) => esDecimal(u) ? '0.001' : '1'
+                const fmtNum = (n: number) => n % 1 === 0 ? String(n) : n.toFixed(3).replace(/\.?0+$/, '')
+                const enBlanco = conteoRows.filter(r => parseContado(r.cantidad_contada, r.unidad_medida) === null).length
+                return (
                 <>
                   <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm min-w-[560px]">
+                      <table className="w-full text-sm min-w-[480px]">
                         <thead>
                           <tr className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400">Producto</th>
                             <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">LPN</th>
-                            <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Esperado</th>
+                            {verEsperado && <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Esperado</th>}
                             <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">Contado</th>
-                            <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Diferencia</th>
+                            {verEsperado && <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Diferencia</th>}
+                            {colReveal && <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Sistema</th>}
                           </tr>
                         </thead>
                         <tbody>
                           {conteoRows.map((row, idx) => {
-                            const contada = parseFloat(row.cantidad_contada) || 0
-                            const diff = contada - row.cantidad_esperada
+                            const contadaNum = parseContado(row.cantidad_contada, row.unidad_medida)
+                            const diff = (contadaNum ?? row.cantidad_esperada) - row.cantidad_esperada
                             const sinDiff = Math.abs(diff) < 0.001
+                            const revelada = conteoRevelados.has(row.linea_id)
                             return (
                               <tr key={row.linea_id} className="border-b border-gray-100 dark:border-gray-700 last:border-0">
                                 <td className="px-3 py-2.5">
@@ -4649,43 +4715,65 @@ export default function InventarioPage() {
                                   <p className="text-xs text-gray-400">{row.sku}{row.unidad_medida ? ` · ${row.unidad_medida}` : ''}</p>
                                 </td>
                                 <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 font-mono">{row.lpn || '—'}</td>
-                                <td className="px-3 py-2.5 text-right text-sm text-gray-600 dark:text-gray-300">{row.cantidad_esperada}</td>
+                                {verEsperado && <td className="px-3 py-2.5 text-right text-sm text-gray-600 dark:text-gray-300">{fmtNum(row.cantidad_esperada)}</td>}
                                 <td className="px-3 py-2.5">
-                                  <input type="number" min="0" step="0.001"
+                                  <input type="number" min="0" step={stepFor(row.unidad_medida)}
                                     onWheel={e => e.currentTarget.blur()}
                                     value={row.cantidad_contada}
+                                    placeholder={conteoEsGuiado ? 'contar' : ''}
                                     onChange={e => {
+                                      let v = e.target.value
+                                      // El campo respeta la unidad: enteras (unidades/piezas) sin decimales
+                                      if (v !== '' && !esDecimal(row.unidad_medida)) {
+                                        const n = parseFloat(v.replace(',', '.'))
+                                        if (!isNaN(n)) v = String(Math.round(n))
+                                      }
+                                      // Evitar negativos (un valor < 0 se trataría como "no contada" en silencio)
+                                      if (v !== '' && parseFloat(v.replace(',', '.')) < 0) v = '0'
                                       const updated = [...conteoRows]
-                                      updated[idx] = { ...row, cantidad_contada: e.target.value }
+                                      updated[idx] = { ...row, cantidad_contada: v }
                                       setConteoRows(updated)
                                     }}
                                     className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent bg-white dark:bg-gray-700" />
                                 </td>
-                                <td className={`px-3 py-2.5 text-right text-sm font-semibold
-                                  ${sinDiff ? 'text-gray-300 dark:text-gray-600' : diff > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
-                                  {sinDiff ? <Check size={14} className="inline" /> : `${diff > 0 ? '+' : ''}${diff % 1 === 0 ? diff : diff.toFixed(3)}`}
-                                </td>
+                                {verEsperado && (
+                                  <td className={`px-3 py-2.5 text-right text-sm font-semibold
+                                    ${contadaNum === null ? 'text-gray-300 dark:text-gray-600' : sinDiff ? 'text-gray-300 dark:text-gray-600' : diff > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                                    {contadaNum === null ? '—' : sinDiff ? <Check size={14} className="inline" /> : `${diff > 0 ? '+' : ''}${fmtNum(diff)}`}
+                                  </td>
+                                )}
+                                {colReveal && (
+                                  <td className="px-3 py-2.5 text-right text-xs">
+                                    {revelada
+                                      ? <span className="text-gray-500 dark:text-gray-400">{fmtNum(row.cantidad_esperada)}{contadaNum !== null && !sinDiff ? <span className={diff > 0 ? 'text-green-600 ml-1' : 'text-red-500 ml-1'}>({diff > 0 ? '+' : ''}{fmtNum(diff)})</span> : ''}</span>
+                                      : <button onClick={() => setConteoRevelados(prev => new Set(prev).add(row.linea_id))}
+                                          className="inline-flex items-center gap-1 text-accent hover:underline"><Eye size={12} /> Ver</button>}
+                                  </td>
+                                )}
                               </tr>
                             )
                           })}
                         </tbody>
                         <tfoot>
                           <tr className="bg-gray-50 dark:bg-gray-700">
-                            <td colSpan={2} className="px-3 py-2 text-xs text-gray-500">{conteoRows.length} línea{conteoRows.length !== 1 ? 's' : ''}</td>
-                            <td className="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300">
-                              {conteoRows.reduce((s, r) => s + r.cantidad_esperada, 0)}
+                            <td colSpan={2} className="px-3 py-2 text-xs text-gray-500">
+                              {conteoRows.length} línea{conteoRows.length !== 1 ? 's' : ''}{enBlanco > 0 ? ` · ${enBlanco} sin contar` : ''}
                             </td>
+                            {verEsperado && <td className="px-3 py-2 text-right text-xs font-semibold text-gray-600 dark:text-gray-300">{fmtNum(conteoRows.reduce((s, r) => s + r.cantidad_esperada, 0))}</td>}
                             <td className="px-3 py-2 text-center text-xs font-semibold text-gray-600 dark:text-gray-300">
-                              {conteoRows.reduce((s, r) => s + (parseFloat(r.cantidad_contada) || 0), 0).toFixed(3).replace(/\.?0+$/, '')}
+                              {fmtNum(conteoRows.reduce((s, r) => s + (parseContado(r.cantidad_contada, r.unidad_medida) ?? 0), 0))}
                             </td>
-                            <td className="px-3 py-2 text-right text-xs font-semibold">
-                              {(() => {
-                                const totalDiff = conteoRows.reduce((s, r) => s + ((parseFloat(r.cantidad_contada) || 0) - r.cantidad_esperada), 0)
-                                return <span className={totalDiff === 0 ? 'text-gray-400' : totalDiff > 0 ? 'text-green-600' : 'text-red-500'}>
-                                  {totalDiff === 0 ? '✓' : `${totalDiff > 0 ? '+' : ''}${totalDiff % 1 === 0 ? totalDiff : totalDiff.toFixed(3)}`}
-                                </span>
-                              })()}
-                            </td>
+                            {verEsperado && (
+                              <td className="px-3 py-2 text-right text-xs font-semibold">
+                                {(() => {
+                                  const totalDiff = conteoRows.reduce((s, r) => { const c = parseContado(r.cantidad_contada, r.unidad_medida); return s + (c === null ? 0 : c - r.cantidad_esperada) }, 0)
+                                  return <span className={totalDiff === 0 ? 'text-gray-400' : totalDiff > 0 ? 'text-green-600' : 'text-red-500'}>
+                                    {totalDiff === 0 ? '✓' : `${totalDiff > 0 ? '+' : ''}${fmtNum(totalDiff)}`}
+                                  </span>
+                                })()}
+                              </td>
+                            )}
+                            {colReveal && <td />}
                           </tr>
                         </tfoot>
                       </table>
@@ -4705,14 +4793,19 @@ export default function InventarioPage() {
                       className="flex-1 py-2.5 border-2 border-accent text-accent rounded-xl text-sm font-semibold hover:bg-accent/5 transition-all disabled:opacity-50">
                       {guardarConteoBorrador.isPending ? 'Guardando...' : 'Guardar borrador'}
                     </button>
-                    <button onClick={() => finalizarConteoYAplicar.mutate()}
+                    <button onClick={() => {
+                        // B3: avisar si quedaron filas sin contar (no se ajustan)
+                        if (enBlanco > 0 && !window.confirm(`Quedan ${enBlanco} línea${enBlanco !== 1 ? 's' : ''} sin contar — esas NO se ajustarán (se asume que no se contaron). ¿Finalizar igual?`)) return
+                        finalizarConteoYAplicar.mutate()
+                      }}
                       disabled={finalizarConteoYAplicar.isPending}
                       className="flex-1 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
                       {finalizarConteoYAplicar.isPending ? 'Aplicando...' : 'Finalizar y aplicar ajustes'}
                     </button>
                   </div>
                 </>
-              )}
+                )
+              })()}
             </div>
           ) : (
             /* ── HISTORIAL DE CONTEOS ── */
@@ -4726,7 +4819,7 @@ export default function InventarioPage() {
               ) : (
                 conteoHistorial.map(c => {
                   const items = c.inventario_conteo_items ?? []
-                  const conDiff = items.filter(i => Math.abs(i.cantidad_contada - i.cantidad_esperada) >= 0.001)
+                  const conDiff = items.filter(i => i.cantidad_contada != null && Math.abs(i.cantidad_contada - i.cantidad_esperada) >= 0.001)
                   const isExpanded = conteoExpandedId === c.id
                   return (
                     <div key={c.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -4798,7 +4891,8 @@ export default function InventarioPage() {
                               </thead>
                               <tbody>
                                 {items.map(item => {
-                                  const diff = item.cantidad_contada - item.cantidad_esperada
+                                  const noContada = item.cantidad_contada == null
+                                  const diff = noContada ? 0 : item.cantidad_contada! - item.cantidad_esperada
                                   const sinDiff = Math.abs(diff) < 0.001
                                   return (
                                     <tr key={item.id} className="border-t border-gray-100 dark:border-gray-700">
@@ -4808,10 +4902,10 @@ export default function InventarioPage() {
                                       </td>
                                       <td className="px-3 py-2 text-gray-400 font-mono">{item.lpn || '—'}</td>
                                       <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.cantidad_esperada}</td>
-                                      <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{item.cantidad_contada}</td>
+                                      <td className="px-3 py-2 text-right text-gray-600 dark:text-gray-300">{noContada ? '—' : item.cantidad_contada}</td>
                                       <td className={`px-3 py-2 text-right font-semibold
-                                        ${sinDiff ? 'text-gray-300 dark:text-gray-600' : diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                                        {sinDiff ? '✓' : `${diff > 0 ? '+' : ''}${diff % 1 === 0 ? diff : diff.toFixed(3)}`}
+                                        ${noContada || sinDiff ? 'text-gray-300 dark:text-gray-600' : diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                        {noContada ? 'sin contar' : sinDiff ? '✓' : `${diff > 0 ? '+' : ''}${diff % 1 === 0 ? diff : diff.toFixed(3)}`}
                                       </td>
                                     </tr>
                                   )

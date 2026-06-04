@@ -418,6 +418,7 @@ export default function ConfigPage() {
   const [bizRegla, setBizRegla] = useState(tenant?.regla_inventario ?? 'FIFO')
   const [bizOverReceipt, setBizOverReceipt] = useState(tenant?.permite_over_receipt ?? false)
   const [bizTrazaAsignacion, setBizTrazaAsignacion] = useState((tenant as any)?.trazabilidad_asignacion ?? true)
+  const [bizConteoModo, setBizConteoModo] = useState<'rapido' | 'guiado' | 'elegir'>((tenant as any)?.conteo_modo ?? 'rapido')
   const [bizTimeout, setBizTimeout] = useState<string>(
     tenant?.session_timeout_minutes != null ? String(tenant.session_timeout_minutes) : 'nunca'
   )
@@ -600,6 +601,7 @@ export default function ConfigPage() {
       nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla,
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
       trazabilidad_asignacion: bizTrazaAsignacion,
+      conteo_modo: bizConteoModo,
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
       alerta_margen_negativo: bizAlertaMargenNeg,
       alerta_devoluciones_n: bizAlertaDevN !== '' ? parseInt(bizAlertaDevN) : null,
@@ -762,6 +764,7 @@ export default function ConfigPage() {
   const [newUbicNombre, setNewUbicNombre] = useState('')
   const [newUbicDesc, setNewUbicDesc] = useState('')
   const [newUbicPrioridad, setNewUbicPrioridad] = useState('0')
+  const [newUbicSecuencia, setNewUbicSecuencia] = useState('')
   const [newUbicSucursalId, setNewUbicSucursalId] = useState<string>('')
   const [newUbicMonoSku, setNewUbicMonoSku] = useState(false)
   const [newUbicWmsOpen, setNewUbicWmsOpen] = useState(false)
@@ -775,6 +778,7 @@ export default function ConfigPage() {
   const [editUbicNombre, setEditUbicNombre] = useState('')
   const [editUbicDesc, setEditUbicDesc] = useState('')
   const [editUbicPrioridad, setEditUbicPrioridad] = useState('0')
+  const [editUbicSecuencia, setEditUbicSecuencia] = useState('')
   const [editUbicTipo, setEditUbicTipo] = useState('')
   const [editUbicAlto, setEditUbicAlto] = useState('')
   const [editUbicAncho, setEditUbicAncho] = useState('')
@@ -794,6 +798,7 @@ export default function ConfigPage() {
       nombre: newUbicNombre.trim(),
       descripcion: newUbicDesc || null,
       prioridad: parseInt(newUbicPrioridad) || 0,
+      secuencia: newUbicSecuencia !== '' ? parseInt(newUbicSecuencia) : null,
       sucursal_id: sucId,
       mono_sku: newUbicMonoSku,
       tipo_ubicacion: newUbicTipo || null,
@@ -807,7 +812,7 @@ export default function ConfigPage() {
     toast.success('Ubicación agregada')
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
     logActividad({ entidad: 'ubicacion', entidad_nombre: newUbicNombre.trim(), accion: 'crear', pagina: '/configuracion' })
-    setNewUbicNombre(''); setNewUbicDesc(''); setNewUbicPrioridad('0')
+    setNewUbicNombre(''); setNewUbicDesc(''); setNewUbicPrioridad('0'); setNewUbicSecuencia('')
     setNewUbicSucursalId(''); setNewUbicMonoSku(false); setNewUbicWmsOpen(false)
     setNewUbicTipo(''); setNewUbicAlto(''); setNewUbicAncho(''); setNewUbicLargo(''); setNewUbicPeso(''); setNewUbicPallets('')
   }
@@ -816,6 +821,7 @@ export default function ConfigPage() {
     setEditUbicNombre(u.nombre)
     setEditUbicDesc(u.descripcion ?? '')
     setEditUbicPrioridad(String(u.prioridad ?? 0))
+    setEditUbicSecuencia(u.secuencia != null ? String(u.secuencia) : '')
     setEditUbicTipo(u.tipo_ubicacion ?? '')
     setEditUbicAlto(u.alto_cm != null ? String(u.alto_cm) : '')
     setEditUbicAncho(u.ancho_cm != null ? String(u.ancho_cm) : '')
@@ -832,6 +838,7 @@ export default function ConfigPage() {
       nombre: editUbicNombre.trim(),
       descripcion: editUbicDesc || null,
       prioridad: parseInt(editUbicPrioridad) || 0,
+      secuencia: editUbicSecuencia !== '' ? parseInt(editUbicSecuencia) : null,
       tipo_ubicacion: editUbicTipo || null,
       alto_cm: editUbicAlto ? parseFloat(editUbicAlto) : null,
       ancho_cm: editUbicAncho ? parseFloat(editUbicAncho) : null,
@@ -2377,6 +2384,21 @@ export default function ConfigPage() {
                     ${bizTrazaAsignacion ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
               </div>
+              {/* F2a — Modo de conteo de inventario */}
+              <div className="py-1">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Modo de conteo de inventario</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 mb-2">El modo <strong>Guiado</strong> es "a ciegas": el operador cuenta sin ver el stock del sistema (evita que confirme el número sin contar). El <strong>Rápido</strong> precarga la cantidad esperada (como hasta ahora). <strong>Elegir</strong> deja decidir al crear cada conteo.</p>
+                <div className="flex gap-2 flex-wrap">
+                  {([['rapido', '⚡ Rápido', 'Precarga la cantidad del sistema (informado)'], ['guiado', '🙈 Guiado (a ciegas)', 'El operador cuenta sin ver el sistema'], ['elegir', '🔀 Elegir al crear', 'Se elige rápido/guiado en cada conteo']] as const).map(([m, label, desc]) => (
+                    <button key={m} type="button" disabled={!canEdit} title={desc}
+                      onClick={() => setBizConteoModo(m)}
+                      className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors border-2 disabled:opacity-50
+                        ${bizConteoModo === m ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {canEdit && (
                 <div className="flex justify-end">
                   <button onClick={handleSaveBiz} disabled={savingBiz}
@@ -2418,6 +2440,10 @@ export default function ConfigPage() {
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Prioridad" value={newUbicPrioridad}
                 onChange={e => setNewUbicPrioridad(e.target.value)}
                 title="Prioridad de rebaje (menor = primero)"
+                className="w-24 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Secuencia" value={newUbicSecuencia}
+                onChange={e => setNewUbicSecuencia(e.target.value)}
+                title="Secuencia de recorrido para conteo y picking (menor = primero)"
                 className="w-24 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
               <button onClick={addUbicacion} disabled={!newUbicNombre.trim()}
                 className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
@@ -2489,7 +2515,9 @@ export default function ConfigPage() {
                           <input type="text" value={editUbicDesc} onChange={e => setEditUbicDesc(e.target.value)}
                             placeholder="Descripción" className="w-32 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
                           <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={editUbicPrioridad} onChange={e => setEditUbicPrioridad(e.target.value)}
-                            className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent" title="Prioridad" />
+                            className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent" title="Prioridad de rebaje" />
+                          <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={editUbicSecuencia} onChange={e => setEditUbicSecuencia(e.target.value)}
+                            placeholder="Sec." className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent" title="Secuencia de recorrido (conteo/picking)" />
                           <button onClick={() => saveUbicacion(u.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 p-1"><Check size={15} /></button>
                           <button onClick={() => setEditUbicId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 p-1"><X size={15} /></button>
                         </div>

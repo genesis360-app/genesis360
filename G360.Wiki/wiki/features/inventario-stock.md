@@ -152,7 +152,18 @@ Primera fase del proyecto **Conteos 2.0** (ISS-CONT, relevado con GO — diseño
 - Las marcas/categorías del selector se **derivan del stock de la sucursal activa** (no del maestro entero) → no se ofrecen scopes vacíos.
 - **Aislamiento por sucursal:** los scopes amplios (marca/categoría/wall-to-wall) **exigen una sucursal específica** (no "Todas") — guard al cargar + toggles deshabilitados con tooltip. Evita que el ajuste pise stock de otra sucursal.
 
-**Pendiente (fases siguientes):** F2 modos Rápido/Guiado + conteo a ciegas + scan-to-count + `ubicaciones.secuencia` · F3 gate de ajustes + integración con tab Autorizaciones (`ajuste_conteo`) + doble conteo + reconciliación por delta · F4 `productos.clase_abc` + cíclico sugerido + reportes de exactitud/valorización.
+### Conteos 2.0 — F2a: modos + conteo a ciegas + unidad de medida + secuencia (v1.26.0 · migration 178)
+
+- **Modo de conteo configurable** (`tenants.conteo_modo`, Config → Inventario → Reglas):
+  - **Rápido** = informado: precarga la cantidad del sistema (como hasta v1.25.0).
+  - **Guiado** = a ciegas: el input arranca vacío y se ocultan las columnas Esperado/Diferencia; el operador cuenta sin ver el sistema (evita el sesgo de confirmar el número). La diferencia se calcula al finalizar.
+  - **Elegir** = el operador decide Rápido/Guiado al crear cada conteo (toggle en el form).
+- **Revelar (B2):** en guiado, DUEÑO/SUPERVISOR/ADMIN/SUPER_USUARIO puede revelar la cantidad esperada de una fila puntual (botón ojo).
+- **Filas en blanco (B3):** `inventario_conteo_items.cantidad_contada` es **nullable**. `NULL` = no contada → se omite del ajuste; `0` = contó y no hay unidades → ajusta. Al finalizar, avisa cuántas filas quedaron sin contar.
+- **Input "Contado" respeta la unidad de medida:** unidades/piezas → enteros (step 1, redondeo); kg/gr/lt/ml → decimales (`esDecimal`). Corrige el bug de que la flechita pasaba 15 → 14,999 en productos por unidad.
+- **`ubicaciones.secuencia`** (I3): orden de recorrido físico para conteo **y** picking (distinto de `prioridad`, que es orden de rebaje al vender). Editable en Config → Inventario → Ubicaciones. El conteo ordena las líneas por esta secuencia (fallback prioridad → nombre).
+
+**Pendiente (fases siguientes):** F2b scan-to-count (reusa GS1) · F3 gate de ajustes + integración con tab Autorizaciones (`ajuste_conteo`) + doble conteo + reconciliación por delta · F4 `productos.clase_abc` + cíclico sugerido + reportes de exactitud/valorización.
 
 ---
 

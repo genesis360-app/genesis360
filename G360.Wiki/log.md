@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-05] deploy | v1.30.1 PROD — ISS-151: excluir 'Incobrable' del Dashboard + unificar pseudo-métodos
+
+**Deployado a PROD.** Bugfix frontend, sin migración. Build verde, **366 tests verdes** (+4). PR #159, release v1.30.1, dev=main. Cierra **ISS-151**.
+
+- **Fix:** el write-off `Incobrable` (B6) se guarda en `medio_pago` pero el Dashboard solo excluía `Cuenta Corriente`/`Cancelación CC`/`Condonación CC` → contaba como ingreso y distorsionaba la ganancia. Ahora se excluye.
+- **Unificación:** `PSEUDO_METODOS_PAGO` + `esMetodoRealPago` en `src/lib/ccLogic.ts` (fuente única, testeada) reemplazan los 3 sets duplicados en `MixCajaChart` y `MetricasPage`.
+- **Nota:** Condonar/Revertir CC + las exclusiones base ya estaban en PROD desde un release previo (el wiki tenía el estado 🔄 DEV desactualizado); este patch cerró el gap real (`Incobrable`).
+
+---
+
 ## [2026-06-05] deploy | v1.30.0 PROD — Conteos 2.0 cierre 100% (F2b-ref + F3b + A2)
 
 **Deployado a PROD.** Migración **181** (aditiva) en DEV y PROD. Build verde, **362 tests verdes**. PR #158 mergeado, release v1.30.0, dev=main. Vercel PROD en build al cierre. Cierra el 100% de Conteos 2.0 (ISS-CONT).

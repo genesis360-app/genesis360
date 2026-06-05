@@ -22,10 +22,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.30.0` | `v1.30.0` |
+| APP_VERSION | `v1.30.1` | `v1.30.1` |
 | Migrations | 001–**181** ✅ | 001–**181** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.30.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.30.0 |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.30.1) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.30.1 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna (181 ya en PROD).
 
@@ -230,7 +230,7 @@ Respuestas finales en `relevamiento_ventas_respuestas.md` → sección H-K. Plan
 | ISS-080 | Alertas | Filtrar por sucursal todas las queries de AlertasPage | ✅ Resuelto 2026-05-28 — cruce client-side con `inventario_lineas`+`PSMSS` para stock; cruce con `inventario_lineas` para productos sin categoría |
 | ISS-108 | Header / Mobile | Selector de sucursal invisible en celular | ✅ Resuelto 2026-05-28 — bloque mobile con ícono Building2 + nombre + `<select>` transparente superpuesto |
 | ISS-148 | Recursos | Input texto libre para ubicación | ✅ Resuelto 2026-05-28 — componente `UbicacionPicker` (select con opciones del histórico de la sucursal + opción "+ Nueva ubicación") en form crear/editar, modal asignar y edit inline |
-| ISS-151 | Dashboard + CC | Dashboard sumaba "Cancelación CC" como método de pago → distorsionaba la ganancia. **🔄 Implementado en DEV:** (1) `MixCajaChart` + `MetricasPage` excluyen pseudo-métodos (`Cuenta Corriente`, `Cancelación CC`, `Condonación CC`); (2) `ClientesPage` reemplaza el botón único por **Condonar** (write-off, tag `Condonación CC`) y **Revertir** (restaura la deuda), ambos solo DUEÑO/SUPERVISOR/ADMIN; las condonadas quedan visibles con badge para poder revertir. Ambas acciones mantienen la venta **despachada** (no tocan stock ni estado de entrega — P4). Sin migración. Ver modelo abajo. | 🔄 DEV |
+| ISS-151 | Dashboard + CC | ✅ **CERRADO (v1.30.1)**. (1) `MixCajaChart` + `MetricasPage` excluyen pseudo-métodos vía constante única `PSEUDO_METODOS_PAGO` en `src/lib/ccLogic.ts` = `Cuenta Corriente` + `Cancelación CC` + `Condonación CC` + **`Incobrable`** (este último era el gap que faltaba: el write-off B6 se escribe en `medio_pago` y distorsionaba la ganancia); (2) `ClientesPage` con **Condonar** (write-off, tag `Condonación CC`) y **Revertir** (restaura la deuda), ambos solo DUEÑO/SUPERVISOR/ADMIN; condonadas con badge para revertir. Ambas mantienen la venta **despachada** (no tocan stock — P4). Sin migración. +4 tests (`esMetodoRealPago`). | ✅ v1.30.1 |
 
 ### ISS-151 — modelo alineado (relevado con GO + socio, 2026-05-29)
 

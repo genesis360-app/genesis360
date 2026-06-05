@@ -170,7 +170,25 @@ Primera fase del proyecto **Conteos 2.0** (ISS-CONT, relevado con GO — diseño
 - **Reconciliación por delta (G1):** al aplicar (directo o aprobado) se usa `stock_vivo + (contado − esperada_snapshot)` en vez de pisar la cantidad → respeta ventas/movimientos ocurridos durante el conteo. (`reconciliarDelta` en `src/lib/conteoAjuste.ts`, testeada.)
 - **Doble conteo (C):** umbrales `conteo_reconteo_umbral_*`; al finalizar, avisa qué filas superan el umbral de discrepancia para recontar (versión "aviso").
 
-**Pendiente (fases siguientes):** F2b scan-to-count (reusa GS1) · F3b doble conteo formal (re-ingreso por 2º operador + clave maestra para saltar) + snapshot de costo por ítem · F4 `productos.clase_abc` + cíclico sugerido + reportes de exactitud/valorización.
+### Conteos 2.0 — F2b: scan-to-count (v1.29.0)
+
+- Botón **"Escanear para contar"** en el tab Conteo (cualquier alcance/modo, con líneas cargadas) abre el `BarcodeScanner` en modo **persistente** (sigue escaneando tras cada lectura).
+- Cada scan resuelve el código con `resolverScanCompuesto` (GS1, con fallback a `codigo_barras`/`sku`) y **suma a la fila del producto**: la cantidad del AI GS1 `(30)` si el código la trae, si no **+1**.
+- Respeta la unidad (enteros vs decimales); ref espejo `conteoRowsRef` para no perder scans rápidos consecutivos; toast `+N Producto → total`.
+- Encaja con el **modo a ciegas** (F2a): el operador escanea sin ver el esperado, el sistema acumula el contado.
+- `BarcodeScanner` ganó la prop `persistentCloseLabel` (para no decir "Finalizar venta" fuera del POS).
+- **Limitación conocida:** si se escanea un producto que no está en el conteo (p.ej. 0 esperado en wall-to-wall) da error en vez de agregar la fila (refinamiento futuro).
+
+### Conteos 2.0 — F4: clase ABC + cíclico + reportes + trazabilidad (v1.29.0 · migration 180)
+
+Cierre del módulo. Panel **"Clasificación ABC y conteo cíclico"** en el historial de conteos (DUEÑO/SUPERVISOR/ADMIN):
+
+- **Clase ABC** (`productos.clase_abc` A/B/C + `clase_abc_manual` + `ultimo_conteo_at`): botón **"Recalcular ABC"** computa client-side la clasificación **Pareto 80/95** por valor de movimiento de los últimos 12 meses (`Σ cantidad × precio_costo_historico` de ventas no anuladas/presupuesto). Los productos sin movimiento → C. Respeta los overrides manuales (3 updates agrupados por clase). Override por producto desde el selector A/B/C del panel (`clase_abc_manual = true`). Lógica: `clasificarABC` en `src/lib/conteoAbc.ts`.
+- **Conteo cíclico sugerido** (`tenants.conteo_ciclico_dias_a/_b/_c`, default 30/90/180, editables en Config → Inventario → Reglas): panel **"Conviene contar"** lista los productos vencidos según su clase y la última fecha de conteo (nunca contado = prioridad máxima), ordenados por mayor atraso. Botón **"Contar"** abre un conteo por producto preseleccionado. Sin automatismo (pg_cron no disponible). Lógica: `sugerirConteoCiclico`.
+- **Reportes de exactitud + valorización** (`reporteExactitud`): % de exactitud (líneas exactas / contadas) + valor $ faltante/sobrante/neto. Por conteo (barra en el detalle finalizado, con export **Excel**) y **acumulado** (panel, sobre los conteos finalizados cargados).
+- **Trazabilidad por operador** (`inventario_conteo_items.contado_por`): se registra quién contó cada ítem; columna "Contado por" en el detalle. `productos.ultimo_conteo_at` se actualiza al finalizar (alimenta el cíclico).
+
+**Conteos 2.0 (ISS-CONT) cerrado — F1-F4 en PROD.** Pendientes futuros (no bloqueantes): F2b-refinamiento (alta de fila al escanear fuera de scope) · F3b doble conteo formal (re-ingreso por 2º operador + clave maestra C4 + snapshot de costo por ítem) · wall-to-wall A2 (bloqueo de POS/movimientos durante el conteo full).
 
 ---
 

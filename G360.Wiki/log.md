@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-05] deploy | v1.29.0 PROD — Conteos 2.0 F2b (scan-to-count) + F4 (ABC/cíclico/reportes/trazabilidad) — cierre del módulo
+
+**Deployado a PROD.** Migración **180** (aditiva) en DEV y PROD. Build verde, **362 tests verdes** (+16 de `conteoAbc`). PR #157 mergeado, release v1.29.0, dev=main. Vercel PROD en build al cierre.
+
+- **F2b — scan-to-count:** botón "Escanear para contar" en el tab Conteo abre `BarcodeScanner` en modo **persistente** (sigue escaneando). Cada lectura resuelve el código (GS1 vía `resolverScanCompuesto` con fallback a barcode/SKU) y **suma a la fila del producto** la cantidad del AI GS1 (30) o **+1**. Respeta unidad entera/decimal; ref espejo `conteoRowsRef` para scans rápidos consecutivos; toast `+N Producto → total`. `BarcodeScanner` gana prop `persistentCloseLabel` (para no decir "Finalizar venta" fuera del POS).
+- **F4 — cierre de Conteos 2.0 (4 piezas):**
+  - **Clase ABC:** `productos.clase_abc` (A/B/C, CHECK) + `clase_abc_manual` + `ultimo_conteo_at`. "Recalcular ABC" client-side (reusa `clasificarABC`, **Pareto 80/95** por valor de movimiento de 12m = Σ cantidad × `precio_costo_historico`); respeta overrides manuales; 3 updates agrupados por clase. Override por producto desde el panel.
+  - **Conteo cíclico sugerido:** `tenants.conteo_ciclico_dias_a/b/c` (default 30/90/180, editables en Config → Inventario). Panel "Conviene contar" (vencidos por clase, nunca contado = prioridad máxima) con atajo "Contar" → conteo por producto preseleccionado.
+  - **Reportes de exactitud + valorización:** `reporteExactitud` (% exactitud + $ faltante/sobrante/neto). Por conteo (detalle finalizado) + **acumulado** (panel) + **export Excel** por conteo.
+  - **Trazabilidad por operador:** `inventario_conteo_items.contado_por` seteado al guardar + columna "Contado por" en el detalle.
+- **Lógica pura** en `src/lib/conteoAbc.ts` (`clasificarABC`, `sugerirConteoCiclico`, `reporteExactitud`) + 16 tests.
+- **schema_full.sql** actualizado con bloque consolidado Conteos 2.0 (mig 177-180), que estaba desfasado en mig 176.
+
+**Conteos 2.0 (ISS-CONT) CERRADO — F1-F4 en PROD.** Pendientes futuros (no bloqueantes): F2b-refinamiento (alta de fila al escanear fuera de scope) · F3b (doble conteo formal 2º operador + clave maestra C4 + snapshot de costo) · wall-to-wall A2 (bloqueo POS durante conteo full).
+
+---
+
 ## [2026-06-03] deploy | v1.27.0 PROD — Conteos 2.0 F3 (gate de ajustes + autorizaciones + reconciliación delta)
 
 **Deployado a PROD.** Migración **179** en DEV y PROD. Build verde, **346 tests verdes** (+16 de `conteoAjuste`).

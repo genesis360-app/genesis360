@@ -13,6 +13,15 @@ updated: 2026-05-29
 
 ---
 
+## v1.29.0 — Conteos 2.0 · F2b (scan-to-count) + F4 (ABC/cíclico/reportes/trazabilidad) — cierre del módulo (PROD ✅)
+
+Cierre de **Conteos 2.0** (ISS-CONT), F1-F4 en PROD.
+- **F2b — scan-to-count**: "Escanear para contar" abre cámara persistente que suma a la fila del producto escaneado (cantidad del AI GS1 o +1; reusa el stack GS1).
+- **F4 — clase ABC** (auto Pareto 80/95 por valor de movimiento de 12m + override manual), **conteo cíclico sugerido** (días por clase configurables, panel "Conviene contar"), **reportes de exactitud + valorización** ($ faltante/sobrante/neto, por conteo y acumulado + export Excel) y **trazabilidad por operador** (quién contó cada ítem).
+- Lógica pura testeada (`conteoAbc.ts`, +16 tests → 362). Mig 180 (aditiva).
+
+Pendientes futuros (no bloqueantes): F2b-refinamiento (alta de fila al escanear fuera de scope) · F3b (doble conteo formal por 2º operador + clave maestra C4 + snapshot de costo) · wall-to-wall A2 (bloqueo POS durante conteo full).
+
 ## v1.27.0 — Conteos 2.0 · F3: gate de ajustes + autorizaciones + reconciliación delta (PROD ✅)
 
 Tercera fase de **Conteos 2.0** — el control de los ajustes (lo más sensible para la plata).

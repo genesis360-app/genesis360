@@ -13,6 +13,16 @@ updated: 2026-05-29
 
 ---
 
+## v1.30.0 — Conteos 2.0 · cierre 100% (F2b-ref + F3b + A2) (PROD ✅)
+
+Cierre **100%** de Conteos 2.0 (ISS-CONT).
+- **F2b-ref**: escanear un producto fuera del alcance con stock en la sucursal → fila "fuera de alcance" (mercadería mal ubicada); sin stock → aviso hacia Ingreso.
+- **F3b**: snapshot de costo por ítem (valorización estable al continuar borradores) + **doble conteo formal** (re-ingreso de filas sobre umbral en columna "Recontar"; saltable con clave maestra SUPERVISOR/DUEÑO).
+- **A2**: toggle `conteo_wall_to_wall_bloquea` (default OFF) — el conteo de sucursal completa con confirmación de DUEÑO bloquea ventas (reserva/despacho) y movimientos hasta cerrarlo.
+- Mig 181 (aditiva). Build verde, 362 tests verdes.
+
+🎉 **Conteos 2.0 (F1-F4 + refinamientos) cerrado al 100%.**
+
 ## v1.29.0 — Conteos 2.0 · F2b (scan-to-count) + F4 (ABC/cíclico/reportes/trazabilidad) — cierre del módulo (PROD ✅)
 
 Cierre de **Conteos 2.0** (ISS-CONT), F1-F4 en PROD.

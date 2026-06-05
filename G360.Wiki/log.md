@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-05] deploy | v1.30.0 PROD — Conteos 2.0 cierre 100% (F2b-ref + F3b + A2)
+
+**Deployado a PROD.** Migración **181** (aditiva) en DEV y PROD. Build verde, **362 tests verdes**. PR #158 mergeado, release v1.30.0, dev=main. Vercel PROD en build al cierre. Cierra el 100% de Conteos 2.0 (ISS-CONT).
+
+- **F2b-ref (E3):** escanear durante el conteo un producto **fuera de alcance** que tiene stock en la sucursal lo agrega como fila "fuera de alcance" (mercadería mal ubicada, badge en la tabla); sin stock en la sucursal → aviso accionable hacia Ingreso (el alta de stock nuevo sigue siendo del flujo Ingreso, con LPN/lote/serie). `inventario_conteo_items.fuera_de_scope`.
+- **F3b — doble conteo formal + snapshot de costo:**
+  - `inventario_conteo_items.costo_snapshot` — el costo se congela al cargar la línea; la valorización deja de usar el `precio_costo` actual al continuar un borrador (bug del pending note).
+  - Doble conteo **formal**: las filas cuyo 1er conteo supera el umbral de discrepancia (`conteo_reconteo_*`) exigen **re-ingreso** (columna "Recontar", idealmente otro operador) antes de finalizar; se puede **saltar con clave maestra** (SUPERVISOR/DUEÑO, `verificar_clave_maestra`). Persiste `cantidad_reconteo` + `reconteo_por`; el ajuste usa el valor recontado (`contadaEfectiva`).
+- **A2 — wall-to-wall bloquea la sucursal:** toggle `tenants.conteo_wall_to_wall_bloquea` (**default OFF** → sin cambios para tenants actuales). Al iniciar un conteo de sucursal completa con el toggle on: confirmación (DUEÑO/SUPERVISOR) + se crea el borrador con `inventario_conteos.bloquea_movimientos=true` en el acto. Mientras esté abierto, el **POS** no permite reservar/despachar (presupuesto sí, no mueve stock) y el **Inventario** no permite ingreso/rebaje en esa sucursal. Hook compartido `src/hooks/useConteoBloqueante.ts`; badge "🔒 Bloqueante" en el historial; se libera al finalizar/eliminar el conteo.
+
+**🎉 Conteos 2.0 (ISS-CONT) CERRADO al 100% — F1-F4 + refinamientos en PROD.** Diseño/relevamiento en `relevamiento_conteos_respuestas.md`.
+
+---
+
 ## [2026-06-05] deploy | v1.29.0 PROD — Conteos 2.0 F2b (scan-to-count) + F4 (ABC/cíclico/reportes/trazabilidad) — cierre del módulo
 
 **Deployado a PROD.** Migración **180** (aditiva) en DEV y PROD. Build verde, **362 tests verdes** (+16 de `conteoAbc`). PR #157 mergeado, release v1.29.0, dev=main. Vercel PROD en build al cierre.

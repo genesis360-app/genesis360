@@ -426,6 +426,12 @@ export default function ConfigPage() {
     gateU: num((tenant as any)?.conteo_gate_umbral_u), gatePct: num((tenant as any)?.conteo_gate_umbral_pct), gateValor: num((tenant as any)?.conteo_gate_umbral_valor),
     recU: num((tenant as any)?.conteo_reconteo_umbral_u), recPct: num((tenant as any)?.conteo_reconteo_umbral_pct), recValor: num((tenant as any)?.conteo_reconteo_umbral_valor),
   })
+  // F4 — días de ciclo de conteo por clase ABC (sugerencia cíclica)
+  const [bizConteoCiclo, setBizConteoCiclo] = useState({
+    a: num((tenant as any)?.conteo_ciclico_dias_a ?? 30),
+    b: num((tenant as any)?.conteo_ciclico_dias_b ?? 90),
+    c: num((tenant as any)?.conteo_ciclico_dias_c ?? 180),
+  })
   const [bizTimeout, setBizTimeout] = useState<string>(
     tenant?.session_timeout_minutes != null ? String(tenant.session_timeout_minutes) : 'nunca'
   )
@@ -616,6 +622,9 @@ export default function ConfigPage() {
       conteo_reconteo_umbral_u: bizConteoGate.recU !== '' ? Number(bizConteoGate.recU) : null,
       conteo_reconteo_umbral_pct: bizConteoGate.recPct !== '' ? Number(bizConteoGate.recPct) : null,
       conteo_reconteo_umbral_valor: bizConteoGate.recValor !== '' ? Number(bizConteoGate.recValor) : null,
+      conteo_ciclico_dias_a: parseInt(bizConteoCiclo.a) || 30,
+      conteo_ciclico_dias_b: parseInt(bizConteoCiclo.b) || 90,
+      conteo_ciclico_dias_c: parseInt(bizConteoCiclo.c) || 180,
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
       alerta_margen_negativo: bizAlertaMargenNeg,
       alerta_devoluciones_n: bizAlertaDevN !== '' ? parseInt(bizAlertaDevN) : null,
@@ -2438,6 +2447,12 @@ export default function ConfigPage() {
                   <input type="number" disabled={!canEdit} placeholder="Reconteo unidades" value={bizConteoGate.recU} onChange={e => setBizConteoGate(g => ({ ...g, recU: e.target.value }))} className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
                   <input type="number" disabled={!canEdit} placeholder="Reconteo %" value={bizConteoGate.recPct} onChange={e => setBizConteoGate(g => ({ ...g, recPct: e.target.value }))} className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
                   <input type="number" disabled={!canEdit} placeholder="Reconteo $ valor" value={bizConteoGate.recValor} onChange={e => setBizConteoGate(g => ({ ...g, recValor: e.target.value }))} className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 mb-1"><strong>Conteo cíclico</strong>: cada cuántos días conviene recontar según la clase ABC del producto (mayor valor = más seguido). El sistema sugiere qué contar; no cuenta solo.</p>
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="number" min="1" disabled={!canEdit} placeholder="Clase A (días)" value={bizConteoCiclo.a} onChange={e => setBizConteoCiclo(c => ({ ...c, a: e.target.value }))} title="Cada cuántos días recontar productos clase A (alto valor)" className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                  <input type="number" min="1" disabled={!canEdit} placeholder="Clase B (días)" value={bizConteoCiclo.b} onChange={e => setBizConteoCiclo(c => ({ ...c, b: e.target.value }))} title="Cada cuántos días recontar productos clase B (valor medio)" className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                  <input type="number" min="1" disabled={!canEdit} placeholder="Clase C (días)" value={bizConteoCiclo.c} onChange={e => setBizConteoCiclo(c => ({ ...c, c: e.target.value }))} title="Cada cuántos días recontar productos clase C (bajo valor)" className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
                 </div>
               </div>
               {canEdit && (

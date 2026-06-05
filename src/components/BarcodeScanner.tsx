@@ -6,6 +6,7 @@ interface Props {
   onClose: () => void
   title?: string
   persistent?: boolean  // mantiene el scanner abierto tras cada detección (modo POS)
+  persistentCloseLabel?: string  // texto del botón de cierre en modo persistente (default "Finalizar venta")
 }
 
 // BarcodeDetector no está en todos los typings de TS
@@ -77,7 +78,7 @@ async function getZXingDM() {
   return zxingDecodeDM
 }
 
-export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un código', persistent = false }: Props) {
+export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un código', persistent = false, persistentCloseLabel = 'Finalizar venta' }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -365,7 +366,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
                 {persistent && (
                   <button onClick={onClose}
                     className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-600 font-medium">
-                    Finalizar venta
+                    {persistentCloseLabel}
                   </button>
                 )}
               </div>

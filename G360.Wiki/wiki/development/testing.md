@@ -9,7 +9,7 @@ updated: 2026-06-03
 # Testing
 
 Genesis360 tiene cobertura con **Vitest** (unit tests) + **Playwright** (E2E).  
-Total al 2026-06-03: **329 unit tests** (18 archivos) · **16 archivos E2E spec** (todos los roles)
+Total al 2026-06-03: **346 unit tests** (19 archivos) · **16 archivos E2E spec** (todos los roles)
 
 > **Pipeline de QA con agentes (v1.23.1):** el ciclo `relevamiento → spec-extractor → test-author → test-runner → bug-fixer` está soportado por subagentes de proyecto (ver [[wiki/development/agentes-claude-code]]). El plan de escenarios por módulo vive en `tests/specs/<modulo>.plan.md`.
 >
@@ -44,6 +44,7 @@ Total al 2026-06-03: **329 unit tests** (18 archivos) · **16 archivos E2E spec*
 | `tests/unit/ventasDescuentoCombo.test.ts` | **Ventas (v1.23.2)**: calcularDescuentoComboMulti (pct/monto/monto_usd) | 7 |
 | `tests/unit/permisosCosto.test.ts` | **Ventas G4 (v1.23.2)**: puedeVerCosto (costo/margen oculto a CAJERO/DEPOSITO/RRHH) | 8 |
 | `tests/unit/umbralGasto.test.ts` | **Gastos (v1.23.2)**: evaluarUmbralGasto (umbral por rol/sucursal), puedeAprobar (cadena de aprobación) | 13 |
+| `tests/unit/conteoAjuste.test.ts` | **Conteos 2.0 F3 (v1.27.0)**: superaUmbral (combinado u/%/$), requiereAutorizacion (gate D1), requiereReconteo (C1), reconciliarDelta (G1) | 16 |
 
 ### Qué se testea
 

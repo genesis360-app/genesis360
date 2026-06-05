@@ -16,6 +16,7 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -121,6 +122,8 @@ export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const esContador = user?.rol === 'CONTADOR'  // J3: acceso read-only a Ventas
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
+  // A2 — conteo wall-to-wall en curso en la sucursal → bloquea reservas/despachos (mueven stock)
+  const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
   const { canalesActivos, reglaDe } = useCanalesVenta()  // VF2 (I1/I2)
   const clienteObligatorio  = (tenant as any)?.cliente_obligatorio    ?? 'reservas'
@@ -1716,6 +1719,12 @@ export default function VentasPage() {
 
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
     if (esContador) { toast.error('El CONTADOR tiene acceso de solo lectura en Ventas.'); return }
+    // A2 — durante un conteo wall-to-wall bloqueante no se puede mover stock (reserva/despacho).
+    // El presupuesto ('pendiente') sí se permite porque no afecta stock.
+    if (estado !== 'pendiente' && conteoBloqueante) {
+      toast.error('Hay un conteo wall-to-wall en curso en esta sucursal. No se pueden reservar ni despachar ventas hasta que se cierre.')
+      return
+    }
     if (cart.length === 0) { toast.error('Agregá al menos un producto'); return }
     for (const item of cart) {
       if (item.tiene_series && item.series_seleccionadas.length === 0) {

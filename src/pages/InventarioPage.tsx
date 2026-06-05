@@ -23,6 +23,7 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import toast from 'react-hot-toast'
 import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
@@ -204,6 +205,8 @@ export default function InventarioPage() {
     linea_id: string; producto_id: string; nombre: string; sku: string
     unidad_medida: string; lpn: string; cantidad_esperada: number; cantidad_contada: string
     costo: number  // F3 — precio de costo unitario (para el umbral de valor $ del gate/reconteo)
+    fueraScope?: boolean  // F2b-ref (E3) — fila agregada al escanear un producto fuera del alcance
+    reconteo?: string     // F3b — segundo conteo (re-ingreso) de filas sobre umbral; '' = sin recontar
   }
   const [conteoTipo, setConteoTipo] = useState<'ubicacion' | 'producto' | 'marca' | 'categoria' | 'sucursal'>('ubicacion')
   const [conteoRefId, setConteoRefId] = useState('')
@@ -235,6 +238,22 @@ export default function InventarioPage() {
   const conteoReconteoConfig: UmbralConfig = {
     u: (tenant as any)?.conteo_reconteo_umbral_u, pct: (tenant as any)?.conteo_reconteo_umbral_pct, valor: (tenant as any)?.conteo_reconteo_umbral_valor,
   }
+  // A2 — wall-to-wall puede bloquear movimientos de la sucursal hasta cerrar el conteo
+  const conteoWtwBloquea = !!(tenant as any)?.conteo_wall_to_wall_bloquea
+  const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
+  // F3b — doble conteo formal: modo de re-ingreso activo + clave maestra para saltarlo
+  const [reconteoActivo, setReconteoActivo] = useState(false)
+  const [reconteoSkipModal, setReconteoSkipModal] = useState(false)
+  const [reconteoClave, setReconteoClave] = useState('')
+  const reconteoSkippedRef = useRef(false)  // saltado con clave maestra → no volver a exigir reconteo
+  // Filas que requieren reconteo formal (su 1er conteo superó el umbral y aún no fueron recontadas)
+  const filasReconteoPendiente = () => conteoRows.filter(r => {
+    const c = parseContado(r.cantidad_contada, r.unidad_medida)
+    if (c === null) return false
+    const d = Math.abs(c - r.cantidad_esperada)
+    if (!requiereReconteo(d, r.cantidad_esperada, d * (r.costo || 0), conteoReconteoConfig)) return false
+    return r.reconteo == null || String(r.reconteo).trim() === ''  // todavía sin recontar
+  })
 
   // ── Historial filters ──────────────────────────────────────────────────────
   const [filterHistFechaDesde, setFilterHistFechaDesde] = useState('')
@@ -965,6 +984,8 @@ export default function InventarioPage() {
 
   const ingresoMutation = useMutation({
     mutationFn: async () => {
+      // A2 — wall-to-wall en curso: no permitir mover stock hasta cerrar el conteo
+      if (conteoBloqueante) throw new Error('Hay un conteo wall-to-wall en curso en esta sucursal. Finalizalo o eliminalo antes de ingresar stock.')
       if (limits && !limits.puede_crear_movimiento)
         throw new Error('Límite de movimientos del plan alcanzado. Upgradeá tu plan o comprá movimientos extra.')
       if (!selectedProduct) throw new Error('Seleccioná un producto')
@@ -1106,6 +1127,8 @@ export default function InventarioPage() {
 
   const rebajeMutation = useMutation({
     mutationFn: async () => {
+      // A2 — wall-to-wall en curso: no permitir mover stock hasta cerrar el conteo
+      if (conteoBloqueante) throw new Error('Hay un conteo wall-to-wall en curso en esta sucursal. Finalizalo o eliminalo antes de rebajar stock.')
       if (limits && !limits.puede_crear_movimiento)
         throw new Error('Límite de movimientos del plan alcanzado. Upgradeá tu plan o comprá movimientos extra.')
       if (!selectedProduct || !rebajeLinea) throw new Error('Seleccioná producto y línea')
@@ -1476,6 +1499,12 @@ export default function InventarioPage() {
       toast.error('Seleccioná una sucursal específica para un conteo por marca, categoría o wall-to-wall')
       return
     }
+    // A2 — wall-to-wall bloqueante: confirmación + rol antes de bloquear la sucursal
+    const iniciaBloqueante = conteoTipo === 'sucursal' && conteoWtwBloquea && !continuandoConteoId
+    if (iniciaBloqueante) {
+      if (!puedeGestionarConteo) { toast.error('Solo DUEÑO/SUPERVISOR puede iniciar un conteo wall-to-wall bloqueante'); return }
+      if (!window.confirm('Este conteo wall-to-wall BLOQUEARÁ ventas y movimientos de stock de la sucursal hasta que lo finalices o lo elimines. ¿Iniciar?')) return
+    }
     setConteoLoading(true)
     try {
       // F1: join !inner a productos para poder filtrar por marca/categoría (columnas del maestro).
@@ -1521,6 +1550,21 @@ export default function InventarioPage() {
       })
       if (rows.length === 0) toast('No hay stock para el alcance de este conteo', { icon: 'ℹ️' })
       setConteoRows(rows)
+      // A2 — crea el borrador bloqueante en el acto para que el gate de POS/movimientos se active ya
+      if (iniciaBloqueante && rows.length > 0) {
+        const { data: conteo, error: cErr } = await supabase.from('inventario_conteos').insert({
+          tenant_id: tenant.id, ...conteoScopeFields(), estado: 'borrador', ajuste_aplicado: false,
+          bloquea_movimientos: true, created_by: user?.id, sucursal_id: sucursalId,
+        }).select().single()
+        if (cErr) { toast.error('No se pudo iniciar el conteo bloqueante: ' + cErr.message) }
+        else {
+          await supabase.from('inventario_conteo_items').insert(rows.map(r => conteoItemRow(r, conteo.id)))
+          setContinuandoConteoId(conteo.id)
+          qc.invalidateQueries({ queryKey: ['conteo-bloqueante'] })
+          qc.invalidateQueries({ queryKey: ['conteo-historial'] })
+          toast('Conteo wall-to-wall iniciado — la sucursal queda bloqueada hasta cerrarlo', { icon: '🔒' })
+        }
+      }
     } finally {
       setConteoLoading(false)
     }
@@ -1529,6 +1573,8 @@ export default function InventarioPage() {
   const resetConteoForm = () => {
     setShowConteoForm(false); setConteoRows([]); setConteoNotas(''); setConteoRefId('')
     setConteoTipo('ubicacion'); setContinuandoConteoId(null); setConteoRevelados(new Set())
+    setReconteoActivo(false); setReconteoSkipModal(false); setReconteoClave('')
+    reconteoSkippedRef.current = false
   }
 
   // F2a — abre un conteo nuevo inicializando el modo según la config del tenant
@@ -1592,6 +1638,28 @@ export default function InventarioPage() {
     return esDecimal(unidad) ? n : Math.round(n)
   }
 
+  // F3b — valor de conteo efectivo: si la fila fue recontada (doble conteo), vale el reconteo.
+  const contadaEfectiva = (row: ConteoRow): number | null => {
+    if (row.reconteo != null && String(row.reconteo).trim() !== '') return parseContado(row.reconteo, row.unidad_medida)
+    return parseContado(row.cantidad_contada, row.unidad_medida)
+  }
+
+  // Mapeo de una fila a registro de inventario_conteo_items (DRY entre borrador y finalizar).
+  const conteoItemRow = (row: ConteoRow, conteoId: string) => {
+    const contada = parseContado(row.cantidad_contada, row.unidad_medida)
+    const recont = parseContado(row.reconteo ?? '', row.unidad_medida)
+    return {
+      conteo_id: conteoId, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
+      lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
+      cantidad_contada: contada,
+      contado_por: contada != null ? user?.id : null,   // F4/H3 — trazabilidad por operador
+      costo_snapshot: row.costo,                          // F3b — costo congelado al cargar
+      fuera_de_scope: !!row.fueraScope,                   // F2b-ref (E3)
+      cantidad_reconteo: recont,                          // F3b — segundo conteo
+      reconteo_por: recont != null ? user?.id : null,
+    }
+  }
+
   // ISS-100: Cargar borrador en el form para continuar editando
   const continuarConteo = (c: InventarioConteo) => {
     setConteoTipo(c.tipo)
@@ -1615,7 +1683,10 @@ export default function InventarioPage() {
       lpn: item.lpn ?? '',
       cantidad_esperada: item.cantidad_esperada,
       cantidad_contada: item.cantidad_contada == null ? '' : String(item.cantidad_contada),
-      costo: Number((item as any).productos?.precio_costo ?? 0),
+      // F3b — usar el costo congelado al cargar el conteo; fallback al precio actual (borradores viejos)
+      costo: Number((item as any).costo_snapshot ?? (item as any).productos?.precio_costo ?? 0),
+      fueraScope: !!(item as any).fuera_de_scope,
+      reconteo: (item as any).cantidad_reconteo == null ? '' : String((item as any).cantidad_reconteo),
     })))
     setContinuandoConteoId(c.id)
     setShowConteoForm(true)
@@ -1642,15 +1713,7 @@ export default function InventarioPage() {
         conteoId = conteo.id
       }
       const { error: iErr } = await supabase.from('inventario_conteo_items').insert(
-        conteoRows.map(row => {
-          const contada = parseContado(row.cantidad_contada, row.unidad_medida)
-          return {
-            conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
-            lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
-            cantidad_contada: contada,
-            contado_por: contada != null ? user?.id : null,  // F4/H3 — trazabilidad por operador
-          }
-        })
+        conteoRows.map(row => conteoItemRow(row, conteoId!))
       )
       if (iErr) throw iErr
     },
@@ -1682,19 +1745,11 @@ export default function InventarioPage() {
         conteoId = conteo.id
       }
       await supabase.from('inventario_conteo_items').insert(
-        conteoRows.map(row => {
-          const contada = parseContado(row.cantidad_contada, row.unidad_medida)
-          return {
-            conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
-            lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
-            cantidad_contada: contada,
-            contado_por: contada != null ? user?.id : null,  // F4/H3 — trazabilidad por operador
-          }
-        })
+        conteoRows.map(row => conteoItemRow(row, conteoId!))
       )
       // F4 — marcar última fecha de conteo de los productos efectivamente contados (cíclico)
       const contadosIds = Array.from(new Set(
-        conteoRows.filter(r => parseContado(r.cantidad_contada, r.unidad_medida) != null).map(r => r.producto_id)
+        conteoRows.filter(r => contadaEfectiva(r) != null).map(r => r.producto_id)
       ))
       if (contadosIds.length > 0) {
         await supabase.from('productos').update({ ultimo_conteo_at: new Date().toISOString() })
@@ -1703,7 +1758,7 @@ export default function InventarioPage() {
       let ajustes = 0       // aplicados directo
       let pendientes = 0    // enviados a autorización (gate D)
       for (const row of conteoRows) {
-        const contada = parseContado(row.cantidad_contada, row.unidad_medida)
+        const contada = contadaEfectiva(row)  // F3b — vale el reconteo si la fila fue recontada
         if (contada === null) continue  // B3: fila no contada (en blanco) → no se ajusta
         const diff = contada - row.cantidad_esperada
         const diffAbs = Math.abs(diff)
@@ -1752,10 +1807,42 @@ export default function InventarioPage() {
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
       qc.invalidateQueries({ queryKey: ['alertas'] })
+      qc.invalidateQueries({ queryKey: ['conteo-bloqueante'] })  // A2 — levantar bloqueo wall-to-wall
       resetConteoForm()
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  // F3b — intento de finalizar: si hay filas que requieren doble conteo y no fueron recontadas
+  // (ni saltadas con clave maestra), activa el modo reconteo en vez de finalizar.
+  const intentarFinalizar = () => {
+    if (finalizarConteoYAplicar.isPending) return
+    if (!reconteoSkippedRef.current) {
+      const pend = filasReconteoPendiente()
+      if (pend.length > 0) {
+        setReconteoActivo(true)
+        toast(`${pend.length} fila${pend.length !== 1 ? 's' : ''} con discrepancia: recontá (doble conteo) o saltá con clave maestra.`, { icon: '🔁' })
+        return
+      }
+    }
+    finalizarConteoYAplicar.mutate()
+  }
+
+  // F3b — saltar el doble conteo con clave maestra (SUPERVISOR/DUEÑO)
+  const confirmarSkipReconteo = async () => {
+    if (!['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')) {
+      toast.error('Solo DUEÑO o SUPERVISOR pueden saltar el doble conteo'); return
+    }
+    const claveConfigurada = !!(tenant as any)?.clave_maestra
+    if (claveConfigurada) {
+      if (!reconteoClave.trim()) { toast.error('Ingresá la clave maestra'); return }
+      const { data: ok } = await supabase.rpc('verificar_clave_maestra', { p_tenant_id: tenant!.id, p_clave: reconteoClave.trim() })
+      if (!ok) { toast.error('Clave maestra incorrecta'); return }
+    }
+    reconteoSkippedRef.current = true
+    setReconteoSkipModal(false); setReconteoClave(''); setReconteoActivo(false)
+    finalizarConteoYAplicar.mutate()
+  }
 
   // ISS-100: eliminar borrador de conteo
   const eliminarConteo = useMutation({
@@ -1766,6 +1853,7 @@ export default function InventarioPage() {
     onSuccess: () => {
       toast.success('Borrador eliminado')
       qc.invalidateQueries({ queryKey: ['conteo-historial'] })
+      qc.invalidateQueries({ queryKey: ['conteo-bloqueante'] })  // A2 — por si era un wall-to-wall bloqueante
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -1930,12 +2018,38 @@ export default function InventarioPage() {
     }
 
     // Buscar la fila del conteo (lee del ref para no perder scans rápidos consecutivos)
-    const prev = conteoRowsRef.current
-    const idx = prev.findIndex(r => r.producto_id === producto.id)
+    let prev = conteoRowsRef.current
+    let idx = prev.findIndex(r => r.producto_id === producto.id)
+
+    // F2b-ref (E3) — el producto no está en el alcance del conteo. Si tiene stock en la sucursal,
+    // lo agregamos como fila "fuera de alcance" (mercadería mal ubicada); si no, avisamos.
     if (idx < 0) {
-      toast.error(`"${producto.nombre}" no está en este conteo.`)
-      return
+      if (!sucursalId) {
+        toast.error(`"${producto.nombre}" no está en este conteo (seleccioná una sucursal para contar fuera de alcance).`)
+        return
+      }
+      const { data: lineas } = await supabase.from('inventario_lineas')
+        .select('id, producto_id, lpn, cantidad, precio_costo_snapshot, productos!inner(nombre,sku,unidad_medida,precio_costo), inventario_series(id,activo)')
+        .eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).eq('producto_id', producto.id).eq('activo', true)
+      if (!lineas || lineas.length === 0) {
+        toast.error(`"${producto.nombre}" no tiene stock en esta sucursal. Si lo recibiste, cargalo con Ingreso de stock.`)
+        return
+      }
+      const nuevasFilas: ConteoRow[] = (lineas as any[]).map(l => {
+        const p = l.productos ?? {}
+        const seriesActivas = (l.inventario_series ?? []).filter((s: any) => s.activo).length
+        const esperada = seriesActivas > 0 ? seriesActivas : (l.cantidad ?? 0)
+        return {
+          linea_id: l.id, producto_id: l.producto_id, nombre: p.nombre ?? producto.nombre, sku: p.sku ?? '',
+          unidad_medida: p.unidad_medida ?? '', lpn: l.lpn ?? '', cantidad_esperada: esperada,
+          cantidad_contada: '', costo: Number(l.precio_costo_snapshot ?? p.precio_costo ?? 0), fueraScope: true,
+        }
+      })
+      prev = [...prev, ...nuevasFilas]
+      idx = prev.findIndex(r => r.producto_id === producto.id)
+      toast(`Fuera de alcance: ${producto.nombre} — agregado al conteo`, { icon: '⚠️' })
     }
+
     const lineasDelProducto = prev.filter(r => r.producto_id === producto.id).length
     const row = prev[idx]
     const prevContada = parseContado(row.cantidad_contada, row.unidad_medida) ?? 0
@@ -4929,6 +5043,42 @@ export default function InventarioPage() {
                 />
               )}
 
+              {/* F3b — modal de clave maestra para saltar el doble conteo */}
+              {reconteoSkipModal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+                    <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
+                      <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <RotateCcw size={16} className="text-amber-500" /> Saltar doble conteo
+                      </h3>
+                      <button onClick={() => { setReconteoSkipModal(false); setReconteoClave('') }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+                    </div>
+                    <div className="p-5 space-y-3">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        Hay diferencias que superan el umbral de discrepancia. Para finalizar sin recontar, ingresá la clave maestra (SUPERVISOR/DUEÑO).
+                      </p>
+                      {!!(tenant as any)?.clave_maestra && (
+                        <input type="password" autoComplete="new-password" value={reconteoClave}
+                          onChange={e => setReconteoClave(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && confirmarSkipReconteo()}
+                          placeholder="Clave maestra"
+                          className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700" />
+                      )}
+                      <div className="flex gap-2">
+                        <button onClick={() => { setReconteoSkipModal(false); setReconteoClave('') }}
+                          className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700">
+                          Cancelar
+                        </button>
+                        <button onClick={confirmarSkipReconteo} disabled={finalizarConteoYAplicar.isPending}
+                          className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50">
+                          Saltar y finalizar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Tabla de conteo */}
               {conteoRows.length > 0 && (() => {
                 const verEsperado = !conteoEsGuiado          // columna Esperado/Diferencia visible
@@ -4949,6 +5099,7 @@ export default function InventarioPage() {
                             <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">Contado</th>
                             {verEsperado && <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Diferencia</th>}
                             {colReveal && <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-24">Sistema</th>}
+                            {reconteoActivo && <th className="text-center px-3 py-2.5 text-xs font-semibold text-amber-600 dark:text-amber-400 w-28">Recontar</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -4957,10 +5108,15 @@ export default function InventarioPage() {
                             const diff = (contadaNum ?? row.cantidad_esperada) - row.cantidad_esperada
                             const sinDiff = Math.abs(diff) < 0.001
                             const revelada = conteoRevelados.has(row.linea_id)
+                            // F3b — ¿esta fila requiere doble conteo? (su 1er conteo superó el umbral)
+                            const necesitaReconteo = contadaNum !== null && requiereReconteo(Math.abs(diff), row.cantidad_esperada, Math.abs(diff) * (row.costo || 0), conteoReconteoConfig)
                             return (
-                              <tr key={row.linea_id} className="border-b border-gray-100 dark:border-gray-700 last:border-0">
+                              <tr key={`${row.linea_id}-${idx}`} className="border-b border-gray-100 dark:border-gray-700 last:border-0">
                                 <td className="px-3 py-2.5">
-                                  <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">{row.nombre}</p>
+                                  <p className="font-medium text-gray-800 dark:text-gray-100 text-sm">
+                                    {row.nombre}
+                                    {row.fueraScope && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold align-middle">fuera de alcance</span>}
+                                  </p>
                                   <p className="text-xs text-gray-400">{row.sku}{row.unidad_medida ? ` · ${row.unidad_medida}` : ''}</p>
                                 </td>
                                 <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400 font-mono">{row.lpn || '—'}</td>
@@ -4999,6 +5155,28 @@ export default function InventarioPage() {
                                           className="inline-flex items-center gap-1 text-accent hover:underline"><Eye size={12} /> Ver</button>}
                                   </td>
                                 )}
+                                {reconteoActivo && (
+                                  <td className="px-3 py-2.5">
+                                    {necesitaReconteo ? (
+                                      <input type="number" min="0" step={stepFor(row.unidad_medida)}
+                                        onWheel={e => e.currentTarget.blur()}
+                                        value={row.reconteo ?? ''}
+                                        placeholder="recontar"
+                                        onChange={e => {
+                                          let v = e.target.value
+                                          if (v !== '' && !esDecimal(row.unidad_medida)) {
+                                            const n = parseFloat(v.replace(',', '.'))
+                                            if (!isNaN(n)) v = String(Math.round(n))
+                                          }
+                                          if (v !== '' && parseFloat(v.replace(',', '.')) < 0) v = '0'
+                                          const updated = [...conteoRows]
+                                          updated[idx] = { ...row, reconteo: v }
+                                          setConteoRows(updated)
+                                        }}
+                                        className="w-full px-2 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-center focus:outline-none focus:border-amber-500 bg-amber-50/40 dark:bg-amber-900/10" />
+                                    ) : <span className="block text-center text-gray-300 dark:text-gray-600">—</span>}
+                                  </td>
+                                )}
                               </tr>
                             )
                           })}
@@ -5023,6 +5201,7 @@ export default function InventarioPage() {
                               </td>
                             )}
                             {colReveal && <td />}
+                            {reconteoActivo && <td />}
                           </tr>
                         </tfoot>
                       </table>
@@ -5036,29 +5215,38 @@ export default function InventarioPage() {
                       className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 resize-none" />
                   </div>
 
-                  <div className="flex gap-3">
+                  {/* F3b — banner de doble conteo formal cuando hay filas pendientes de recontar */}
+                  {reconteoActivo && (() => {
+                    const pend = filasReconteoPendiente().length
+                    return (
+                      <div className="flex items-center gap-2 text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 rounded-xl px-3 py-2">
+                        <RotateCcw size={14} /> <span><strong>Doble conteo:</strong> {pend > 0 ? `recontá las ${pend} fila${pend !== 1 ? 's' : ''} marcadas (columna "Recontar") — idealmente otro operador` : 'todas recontadas, ya podés finalizar'}. O saltalo con clave maestra (SUPERVISOR/DUEÑO).</span>
+                      </div>
+                    )
+                  })()}
+
+                  <div className="flex gap-3 flex-wrap">
                     <button onClick={() => guardarConteoBorrador.mutate()}
                       disabled={guardarConteoBorrador.isPending}
                       className="flex-1 py-2.5 border-2 border-accent text-accent rounded-xl text-sm font-semibold hover:bg-accent/5 transition-all disabled:opacity-50">
                       {guardarConteoBorrador.isPending ? 'Guardando...' : 'Guardar borrador'}
                     </button>
+                    {reconteoActivo && (
+                      <button onClick={() => setReconteoSkipModal(true)}
+                        disabled={finalizarConteoYAplicar.isPending}
+                        className="flex-1 py-2.5 border-2 border-amber-400 text-amber-600 dark:text-amber-400 rounded-xl text-sm font-semibold hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-all disabled:opacity-50">
+                        Saltar con clave maestra
+                      </button>
+                    )}
                     <button onClick={() => {
                         // B3: avisar si quedaron filas sin contar (no se ajustan)
                         if (enBlanco > 0 && !window.confirm(`Quedan ${enBlanco} línea${enBlanco !== 1 ? 's' : ''} sin contar — esas NO se ajustarán (se asume que no se contaron). ¿Finalizar igual?`)) return
-                        // C (doble conteo): avisar las filas que superan el umbral de discrepancia configurado
-                        const aRecontar = conteoRows.filter(r => {
-                          const c = parseContado(r.cantidad_contada, r.unidad_medida)
-                          if (c === null) return false
-                          const d = Math.abs(c - r.cantidad_esperada)
-                          return requiereReconteo(d, r.cantidad_esperada, d * (r.costo || 0), conteoReconteoConfig)
-                        })
-                        if (aRecontar.length > 0 && !window.confirm(`${aRecontar.length} línea${aRecontar.length !== 1 ? 's superan' : ' supera'} el umbral de discrepancia. Conviene recontar${aRecontar.length !== 1 ? 'las' : 'la'} antes de ajustar. ¿Confirmás el conteo y querés finalizar?`)) return
-                        // D (gate): avisar si los ajustes irán a aprobación en vez de aplicarse directo
-                        finalizarConteoYAplicar.mutate()
+                        // C/F3b: doble conteo formal — exige recontar las filas sobre umbral (o saltar con clave)
+                        intentarFinalizar()
                       }}
                       disabled={finalizarConteoYAplicar.isPending}
                       className="flex-1 py-2.5 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
-                      {finalizarConteoYAplicar.isPending ? 'Aplicando...' : 'Finalizar y aplicar ajustes'}
+                      {finalizarConteoYAplicar.isPending ? 'Aplicando...' : reconteoActivo ? 'Confirmar reconteo y finalizar' : 'Finalizar y aplicar ajustes'}
                     </button>
                   </div>
                 </>
@@ -5214,6 +5402,11 @@ export default function InventarioPage() {
                             {c.ajuste_aplicado && (
                               <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full">
                                 Ajustado
+                              </span>
+                            )}
+                            {(c as any).bloquea_movimientos && c.estado === 'borrador' && (
+                              <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 px-2 py-0.5 rounded-full font-medium">
+                                🔒 Bloqueante
                               </span>
                             )}
                           </div>

@@ -2482,3 +2482,31 @@ ALTER TABLE proveedor_cuentas_bancarias ENABLE ROW LEVEL SECURITY;
 -- RLS: prov_cuentas_tenant (tenant_id IN users del auth.uid)
 ALTER TABLE proveedor_cc_movimientos
   ADD COLUMN IF NOT EXISTS nc_numero TEXT, ADD COLUMN IF NOT EXISTS adjunto_url TEXT;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migrations 177-180: Conteos 2.0 (ISS-CONT) — F1 scope · F2a modos/ciego/secuencia · F3 gate/reconteo · F4 ABC/cíclico/trazabilidad
+-- ─────────────────────────────────────────────────────────────────────────────
+-- F1 (177): scope ampliado del conteo
+ALTER TABLE inventario_conteos ADD COLUMN IF NOT EXISTS filtros JSONB;  -- {marca?, categoria_id?, categoria_nombre?}
+-- (inventario_conteos.tipo CHECK ampliado: ubicacion|producto|marca|categoria|sucursal)
+-- F2a (178): modos + conteo a ciegas + secuencia de recorrido
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS conteo_modo TEXT NOT NULL DEFAULT 'rapido';  -- rapido|guiado|elegir
+ALTER TABLE ubicaciones ADD COLUMN IF NOT EXISTS secuencia INTEGER;  -- orden de recorrido (conteo + picking)
+ALTER TABLE inventario_conteos ADD COLUMN IF NOT EXISTS modo TEXT NOT NULL DEFAULT 'rapido';  -- rapido|guiado
+ALTER TABLE inventario_conteo_items ALTER COLUMN cantidad_contada DROP NOT NULL;  -- null=no contada, 0=contó cero
+-- F3 (179): gate de ajustes + doble conteo + autorizaciones tipo ajuste_conteo
+ALTER TABLE tenants
+  ADD COLUMN IF NOT EXISTS conteo_gate_activo BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS conteo_gate_umbral_u NUMERIC, ADD COLUMN IF NOT EXISTS conteo_gate_umbral_pct NUMERIC, ADD COLUMN IF NOT EXISTS conteo_gate_umbral_valor NUMERIC,
+  ADD COLUMN IF NOT EXISTS conteo_reconteo_umbral_u NUMERIC, ADD COLUMN IF NOT EXISTS conteo_reconteo_umbral_pct NUMERIC, ADD COLUMN IF NOT EXISTS conteo_reconteo_umbral_valor NUMERIC;
+-- (autorizaciones_inventario.tipo CHECK ampliado: + 'ajuste_conteo')
+-- F4 (180): clase ABC (auto + override) + última fecha de conteo + trazabilidad por operador + config cíclico
+ALTER TABLE productos
+  ADD COLUMN IF NOT EXISTS clase_abc TEXT,  -- A|B|C (CHECK), Pareto 80/95
+  ADD COLUMN IF NOT EXISTS clase_abc_manual BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS ultimo_conteo_at TIMESTAMPTZ;
+ALTER TABLE inventario_conteo_items ADD COLUMN IF NOT EXISTS contado_por UUID REFERENCES users(id);
+ALTER TABLE tenants
+  ADD COLUMN IF NOT EXISTS conteo_ciclico_dias_a INTEGER NOT NULL DEFAULT 30,
+  ADD COLUMN IF NOT EXISTS conteo_ciclico_dias_b INTEGER NOT NULL DEFAULT 90,
+  ADD COLUMN IF NOT EXISTS conteo_ciclico_dias_c INTEGER NOT NULL DEFAULT 180;

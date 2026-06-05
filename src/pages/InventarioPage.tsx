@@ -6,7 +6,7 @@ import {
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
   ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check, SlidersHorizontal, ScanBarcode,
-  Eye, EyeOff,
+  Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -29,6 +29,8 @@ import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
+import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
+import * as XLSX from 'xlsx'
 
 type Tab = 'inventario' | 'agregar' | 'quitar' | 'kits' | 'conteo' | 'historial' | 'autorizaciones'
 type ModalType = 'ingreso' | 'rebaje' | null
@@ -217,6 +219,13 @@ export default function InventarioPage() {
   const conteoEsGuiado = conteoModo === 'guiado'
   // B2 — en modo a ciegas, líneas cuya cantidad esperada fue revelada (solo DUEÑO/SUPERVISOR)
   const [conteoRevelados, setConteoRevelados] = useState<Set<string>>(new Set())
+  // F2b — scan-to-count: cámara persistente que suma a la fila del producto escaneado
+  const [conteoScannerOpen, setConteoScannerOpen] = useState(false)
+  // Ref espejo de conteoRows para que scans rápidos consecutivos lean siempre el estado fresco
+  const conteoRowsRef = useRef<ConteoRow[]>([])
+  // F4 — panel de gestión (clase ABC + conteo cíclico + reportes); colapsable en el historial
+  const [conteoGestionOpen, setConteoGestionOpen] = useState(false)
+  const puedeGestionarConteo = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
   const puedeRevelarEsperado = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
   // F3 — config de gate de ajustes (D) y de doble conteo (C), desde el tenant
   const conteoGateActivo = !!(tenant as any)?.conteo_gate_activo
@@ -535,7 +544,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('inventario_conteos')
-        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida,precio_costo)), users:created_by(nombre_display)')
+        .select('*, ubicaciones(nombre), productos(nombre,sku), inventario_conteo_items(*, productos(nombre,sku,unidad_medida,precio_costo), contado_por_user:contado_por(nombre_display)), users:created_by(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(30)
@@ -586,6 +595,18 @@ export default function InventarioPage() {
         if (cid && !map.has(cid)) map.set(cid, nom ?? '—')
       }
       return Array.from(map, ([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    },
+    enabled: !!tenant && tab === 'conteo',
+  })
+
+  // F4 — productos con clase ABC + última fecha de conteo (para sugerencia cíclica + clasificación)
+  const { data: productosABC = [] } = useQuery({
+    queryKey: ['productos-abc', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos')
+        .select('id, nombre, sku, clase_abc, clase_abc_manual, ultimo_conteo_at')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return (data ?? []) as any[]
     },
     enabled: !!tenant && tab === 'conteo',
   })
@@ -1517,6 +1538,38 @@ export default function InventarioPage() {
     setShowConteoForm(true)
   }
 
+  // F4 — desde una sugerencia cíclica: abre un conteo por producto con el ítem preseleccionado
+  const contarProductoSugerido = (productoId: string) => {
+    setContinuandoConteoId(null); setConteoRows([]); setConteoNotas('')
+    setConteoTipo('producto'); setConteoRefId(productoId)
+    abrirNuevoConteo()
+  }
+
+  // F4 (H2) — export Excel del detalle de un conteo (líneas + diferencia + valorización)
+  const exportarConteo = (c: any) => {
+    const items = (c.inventario_conteo_items ?? []) as any[]
+    const rows = items.map(i => {
+      const noContada = i.cantidad_contada == null
+      const diff = noContada ? null : Number(i.cantidad_contada) - Number(i.cantidad_esperada)
+      const costo = Number(i.productos?.precio_costo ?? 0)
+      return {
+        Producto: i.productos?.nombre ?? '—',
+        SKU: i.productos?.sku ?? '',
+        LPN: i.lpn ?? '',
+        Esperado: Number(i.cantidad_esperada ?? 0),
+        Contado: noContada ? '' : Number(i.cantidad_contada),
+        Diferencia: diff ?? '',
+        'Valor diferencia $': diff == null ? '' : Math.round(Math.abs(diff) * costo * 100) / 100,
+        'Contado por': i.contado_por_user?.nombre_display ?? '',
+      }
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Conteo')
+    const fecha = new Date(c.created_at).toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `conteo_${fecha}_${String(c.id).slice(0, 8)}.xlsx`)
+  }
+
   // F1 — campos de alcance del conteo según el tipo elegido (tipo + ubicacion_id/producto_id + filtros JSONB)
   const conteoScopeFields = () => {
     const ubicacion_id = conteoTipo === 'ubicacion' && conteoRefId && conteoRefId !== '__sin__' ? conteoRefId : null
@@ -1589,11 +1642,15 @@ export default function InventarioPage() {
         conteoId = conteo.id
       }
       const { error: iErr } = await supabase.from('inventario_conteo_items').insert(
-        conteoRows.map(row => ({
-          conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
-          lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
-          cantidad_contada: parseContado(row.cantidad_contada, row.unidad_medida),
-        }))
+        conteoRows.map(row => {
+          const contada = parseContado(row.cantidad_contada, row.unidad_medida)
+          return {
+            conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
+            lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
+            cantidad_contada: contada,
+            contado_por: contada != null ? user?.id : null,  // F4/H3 — trazabilidad por operador
+          }
+        })
       )
       if (iErr) throw iErr
     },
@@ -1625,12 +1682,24 @@ export default function InventarioPage() {
         conteoId = conteo.id
       }
       await supabase.from('inventario_conteo_items').insert(
-        conteoRows.map(row => ({
-          conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
-          lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
-          cantidad_contada: parseContado(row.cantidad_contada, row.unidad_medida),
-        }))
+        conteoRows.map(row => {
+          const contada = parseContado(row.cantidad_contada, row.unidad_medida)
+          return {
+            conteo_id: conteoId!, inventario_linea_id: row.linea_id, producto_id: row.producto_id,
+            lpn: row.lpn || null, cantidad_esperada: row.cantidad_esperada,
+            cantidad_contada: contada,
+            contado_por: contada != null ? user?.id : null,  // F4/H3 — trazabilidad por operador
+          }
+        })
       )
+      // F4 — marcar última fecha de conteo de los productos efectivamente contados (cíclico)
+      const contadosIds = Array.from(new Set(
+        conteoRows.filter(r => parseContado(r.cantidad_contada, r.unidad_medida) != null).map(r => r.producto_id)
+      ))
+      if (contadosIds.length > 0) {
+        await supabase.from('productos').update({ ultimo_conteo_at: new Date().toISOString() })
+          .in('id', contadosIds).eq('tenant_id', tenant!.id)
+      }
       let ajustes = 0       // aplicados directo
       let pendientes = 0    // enviados a autorización (gate D)
       for (const row of conteoRows) {
@@ -1697,6 +1766,60 @@ export default function InventarioPage() {
     onSuccess: () => {
       toast.success('Borrador eliminado')
       qc.invalidateQueries({ queryKey: ['conteo-historial'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // F4 — recálculo automático de clase ABC (Pareto 80/95 por valor de movimiento).
+  // Client-side reusando la lib pura `clasificarABC`; respeta los overrides manuales.
+  const recalcularABC = useMutation({
+    mutationFn: async () => {
+      const cutoff = new Date(Date.now() - 365 * 86_400_000).toISOString()
+      // Consumo (valor) por producto en los últimos 365 días, ventas reales (no presupuesto/anulada)
+      const { data: vitems } = await supabase.from('venta_items')
+        .select('producto_id, cantidad, precio_costo_historico, ventas!inner(estado, created_at)')
+        .eq('tenant_id', tenant!.id)
+        .gte('ventas.created_at', cutoff)
+        .not('ventas.estado', 'in', '("anulada","pendiente")')
+      const valorMap = new Map<string, number>()
+      for (const r of (vitems ?? []) as any[]) {
+        const v = Number(r.cantidad ?? 0) * Number(r.precio_costo_historico ?? 0)
+        valorMap.set(r.producto_id, (valorMap.get(r.producto_id) ?? 0) + v)
+      }
+      // Todos los productos activos (los sin venta entran con valor 0 → C)
+      const items: ItemValor[] = (productosABC as any[]).map(p => ({ id: p.id, valor: valorMap.get(p.id) ?? 0 }))
+      if (items.length === 0) return { A: 0, B: 0, C: 0 }
+      const clases = clasificarABC(items)
+      // Solo actualizamos los que NO tienen override manual; agrupamos por clase (3 updates)
+      const manualSet = new Set((productosABC as any[]).filter(p => p.clase_abc_manual).map(p => p.id))
+      const porClase: Record<'A' | 'B' | 'C', string[]> = { A: [], B: [], C: [] }
+      for (const [id, clase] of clases) { if (!manualSet.has(id)) porClase[clase].push(id) }
+      for (const clase of ['A', 'B', 'C'] as const) {
+        if (porClase[clase].length === 0) continue
+        const { error } = await supabase.from('productos').update({ clase_abc: clase })
+          .in('id', porClase[clase]).eq('tenant_id', tenant!.id)
+        if (error) throw error
+      }
+      return { A: porClase.A.length, B: porClase.B.length, C: porClase.C.length }
+    },
+    onSuccess: ({ A, B, C }) => {
+      toast.success(`Clase ABC recalculada — A:${A} · B:${B} · C:${C}`)
+      qc.invalidateQueries({ queryKey: ['productos-abc'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // F4 — override manual de clase ABC de un producto (queda fijo, el recálculo no lo pisa)
+  const setClaseManual = useMutation({
+    mutationFn: async ({ id, clase }: { id: string; clase: 'A' | 'B' | 'C' }) => {
+      const { error } = await supabase.from('productos')
+        .update({ clase_abc: clase, clase_abc_manual: true }).eq('id', id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Clase fijada manualmente')
+      qc.invalidateQueries({ queryKey: ['productos-abc'] })
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -1775,6 +1898,58 @@ export default function InventarioPage() {
     return () => document.removeEventListener('keydown', handler)
   }, [tab, modal, lpnAcciones, showConteoForm, conteoRows.length, conteoRefId,
       conteoLoading, finalizarConteoYAplicar.isPending])
+
+  // F2b — mantener el ref espejo al día para el scan-to-count
+  useEffect(() => { conteoRowsRef.current = conteoRows }, [conteoRows])
+
+  // F2b — scan-to-count: resuelve el código (GS1 o plano) y suma a la fila del producto.
+  // La cantidad sumada es la del AI (30) si el código GS1 la trae, si no +1.
+  const handleConteoScan = async (code: string) => {
+    let producto: any = null
+    let qty = 1
+
+    const comp = await resolverScanCompuesto(code, tenant!.id)
+    if (comp) {
+      if (!comp.producto) {
+        toast.error('Código GS1 leído, pero el GTIN no coincide con ningún producto.')
+        return
+      }
+      producto = comp.producto
+      if (comp.fields.cantidad != null && comp.fields.cantidad > 0) qty = comp.fields.cantidad
+    } else {
+      const { data: prods } = await supabase.from('productos')
+        .select('id, nombre, sku')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+        .or(`codigo_barras.eq.${code},sku.eq.${code}`)
+        .limit(1)
+      producto = prods?.[0] ?? null
+      if (!producto) {
+        toast.error(`No se encontró ningún producto con código "${code}"`)
+        return
+      }
+    }
+
+    // Buscar la fila del conteo (lee del ref para no perder scans rápidos consecutivos)
+    const prev = conteoRowsRef.current
+    const idx = prev.findIndex(r => r.producto_id === producto.id)
+    if (idx < 0) {
+      toast.error(`"${producto.nombre}" no está en este conteo.`)
+      return
+    }
+    const lineasDelProducto = prev.filter(r => r.producto_id === producto.id).length
+    const row = prev[idx]
+    const prevContada = parseContado(row.cantidad_contada, row.unidad_medida) ?? 0
+    const suma = prevContada + qty
+    const nueva = esDecimal(row.unidad_medida) ? suma : Math.round(suma)
+    const next = [...prev]
+    next[idx] = { ...row, cantidad_contada: String(nueva) }
+    conteoRowsRef.current = next
+    setConteoRows(next)
+
+    // Si el producto está en varias líneas (LPN/ubicación), avisamos que sumó a la primera
+    const extra = lineasDelProducto > 1 ? ` · sumado al LPN ${row.lpn || '—'} (${lineasDelProducto} líneas)` : ''
+    toast.success(`+${qty} ${producto.nombre} → ${nueva}${extra}`)
+  }
 
   const handleBarcodeScan = async (code: string) => {
     setMovScannerOpen(false)
@@ -4737,6 +4912,23 @@ export default function InventarioPage() {
                 </div>
               )}
 
+              {/* F2b — scan-to-count: cámara persistente que suma a la fila del producto escaneado */}
+              {conteoRows.length > 0 && (
+                <button onClick={() => setConteoScannerOpen(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-accent/40 hover:border-accent text-accent rounded-xl text-sm font-medium transition-colors">
+                  <ScanBarcode size={16} /> Escanear para contar
+                </button>
+              )}
+              {conteoScannerOpen && (
+                <BarcodeScanner
+                  persistent
+                  persistentCloseLabel="Terminar de escanear"
+                  title="Escaneá para contar"
+                  onDetected={handleConteoScan}
+                  onClose={() => setConteoScannerOpen(false)}
+                />
+              )}
+
               {/* Tabla de conteo */}
               {conteoRows.length > 0 && (() => {
                 const verEsperado = !conteoEsGuiado          // columna Esperado/Diferencia visible
@@ -4876,6 +5068,118 @@ export default function InventarioPage() {
           ) : (
             /* ── HISTORIAL DE CONTEOS ── */
             <div className="space-y-3">
+              {/* F4 — panel de gestión: clase ABC + conteo cíclico + exactitud acumulada */}
+              {puedeGestionarConteo && (() => {
+                const cicloCfg = {
+                  diasA: (tenant as any)?.conteo_ciclico_dias_a ?? 30,
+                  diasB: (tenant as any)?.conteo_ciclico_dias_b ?? 90,
+                  diasC: (tenant as any)?.conteo_ciclico_dias_c ?? 180,
+                }
+                const sugerencias = sugerirConteoCiclico(productosABC as any[], cicloCfg, new Date())
+                const claseBadge = (c: string | null) =>
+                  c === 'A' ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'
+                  : c === 'B' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                  : c === 'C' ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                  : 'bg-gray-50 dark:bg-gray-800 text-gray-400'
+                // Exactitud acumulada sobre los conteos finalizados cargados
+                const itemsAcum = (conteoHistorial as any[])
+                  .filter(c => c.estado === 'finalizado')
+                  .flatMap(c => (c.inventario_conteo_items ?? []).map((i: any) => ({
+                    cantidad_esperada: Number(i.cantidad_esperada ?? 0),
+                    cantidad_contada: i.cantidad_contada == null ? null : Number(i.cantidad_contada),
+                    costo: Number(i.productos?.precio_costo ?? 0),
+                  })))
+                const acum = reporteExactitud(itemsAcum)
+                const abcCount = (cl: string) => (productosABC as any[]).filter(p => p.clase_abc === cl).length
+                return (
+                  <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <button onClick={() => setConteoGestionOpen(o => !o)}
+                      className="w-full flex items-center gap-2 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-left">
+                      <BarChart3 size={16} className="text-accent flex-shrink-0" />
+                      <span className="font-medium text-sm text-gray-800 dark:text-gray-100">Clasificación ABC y conteo cíclico</span>
+                      {sugerencias.length > 0 && (
+                        <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">
+                          {sugerencias.length} a contar
+                        </span>
+                      )}
+                      <ChevronRight size={16} className={`text-gray-400 ml-auto transition-transform ${conteoGestionOpen ? 'rotate-90' : ''}`} />
+                    </button>
+
+                    {conteoGestionOpen && (
+                      <div className="border-t border-gray-100 dark:border-gray-700 p-4 space-y-4">
+                        {/* Clase ABC */}
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span className={`px-2 py-0.5 rounded-full font-medium ${claseBadge('A')}`}>A: {abcCount('A')}</span>
+                            <span className={`px-2 py-0.5 rounded-full font-medium ${claseBadge('B')}`}>B: {abcCount('B')}</span>
+                            <span className={`px-2 py-0.5 rounded-full font-medium ${claseBadge('C')}`}>C: {abcCount('C')}</span>
+                          </div>
+                          <button onClick={() => recalcularABC.mutate()} disabled={recalcularABC.isPending}
+                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg font-medium transition-colors disabled:opacity-50">
+                            <RefreshCw size={13} className={recalcularABC.isPending ? 'animate-spin' : ''} /> Recalcular ABC
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
+                          El ABC se calcula por valor de movimiento de los últimos 12 meses (Pareto 80/95). Los productos con clase fijada manualmente no se pisan.
+                        </p>
+
+                        {/* Exactitud acumulada */}
+                        {acum.lineasContadas > 0 && (
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg py-2">
+                              <p className="text-lg font-bold text-gray-800 dark:text-gray-100">{acum.exactitudPct.toFixed(1)}%</p>
+                              <p className="text-[11px] text-gray-400">Exactitud</p>
+                            </div>
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg py-2">
+                              <p className="text-lg font-bold text-red-500">−${acum.valorFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                              <p className="text-[11px] text-gray-400">Faltante $</p>
+                            </div>
+                            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg py-2">
+                              <p className="text-lg font-bold text-green-600">+${acum.valorSobrante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                              <p className="text-[11px] text-gray-400">Sobrante $</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Sugerencias de conteo cíclico */}
+                        <div>
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                            <CalendarClock size={14} className="text-accent" /> Conviene contar
+                          </div>
+                          {sugerencias.length === 0 ? (
+                            <p className="text-xs text-gray-400 py-2">Nada vencido por ahora. Recalculá el ABC o esperá a que pase el ciclo.</p>
+                          ) : (
+                            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                              {sugerencias.slice(0, 30).map(s => (
+                                <div key={s.id} className="flex items-center gap-2 text-sm bg-gray-50 dark:bg-gray-700/40 rounded-lg px-3 py-2">
+                                  <select value={s.clase} title="Fijar clase ABC manualmente"
+                                    onChange={e => setClaseManual.mutate({ id: s.id, clase: e.target.value as 'A' | 'B' | 'C' })}
+                                    className={`text-[11px] px-1 py-0.5 rounded font-bold border-0 focus:outline-none cursor-pointer ${claseBadge(s.clase)}`}>
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                  </select>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-medium text-gray-800 dark:text-gray-100 truncate text-xs">{s.nombre}</p>
+                                    <p className="text-[11px] text-gray-400">
+                                      {s.diasDesde == null ? 'Nunca contado' : `Hace ${s.diasDesde}d · ciclo ${s.cadaDias}d`}
+                                    </p>
+                                  </div>
+                                  <button onClick={() => contarProductoSugerido(s.id)}
+                                    className="text-[11px] px-2 py-1 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors flex-shrink-0">
+                                    Contar
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
               {conteoHistorial.length === 0 ? (
                 <div className="text-center py-12 text-gray-400 dark:text-gray-500">
                   <ClipboardList size={36} className="mx-auto mb-3 opacity-30" />
@@ -4944,6 +5248,28 @@ export default function InventarioPage() {
                           {c.notas && (
                             <p className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 italic">{c.notas}</p>
                           )}
+                          {/* F4 (H1/H2) — reporte de exactitud + valorización + export */}
+                          {c.estado === 'finalizado' && (() => {
+                            const rep = reporteExactitud(items.map((i: any) => ({
+                              cantidad_esperada: Number(i.cantidad_esperada ?? 0),
+                              cantidad_contada: i.cantidad_contada == null ? null : Number(i.cantidad_contada),
+                              costo: Number(i.productos?.precio_costo ?? 0),
+                            })))
+                            return (
+                              <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gray-50 dark:bg-gray-700/40 border-b border-gray-100 dark:border-gray-700 flex-wrap">
+                                <div className="flex items-center gap-3 text-xs flex-wrap">
+                                  <span className="text-gray-600 dark:text-gray-300">Exactitud <strong className="text-gray-800 dark:text-gray-100">{rep.exactitudPct.toFixed(1)}%</strong></span>
+                                  {rep.valorFaltante > 0 && <span className="text-red-500">Faltante −${rep.valorFaltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
+                                  {rep.valorSobrante > 0 && <span className="text-green-600">Sobrante +${rep.valorSobrante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
+                                  {rep.lineasSinContar > 0 && <span className="text-gray-400">{rep.lineasSinContar} sin contar</span>}
+                                </div>
+                                <button onClick={() => exportarConteo(c)}
+                                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors">
+                                  <Download size={13} /> Excel
+                                </button>
+                              </div>
+                            )
+                          })()}
                           <div className="overflow-x-auto">
                             <table className="w-full text-xs min-w-[480px]">
                               <thead>
@@ -4953,6 +5279,7 @@ export default function InventarioPage() {
                                   <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Esperado</th>
                                   <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Contado</th>
                                   <th className="text-right px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Diferencia</th>
+                                  <th className="text-left px-3 py-2 text-gray-500 dark:text-gray-400 font-medium">Contado por</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -4973,6 +5300,7 @@ export default function InventarioPage() {
                                         ${noContada || sinDiff ? 'text-gray-300 dark:text-gray-600' : diff > 0 ? 'text-green-600' : 'text-red-500'}`}>
                                         {noContada ? 'sin contar' : sinDiff ? '✓' : `${diff > 0 ? '+' : ''}${diff % 1 === 0 ? diff : diff.toFixed(3)}`}
                                       </td>
+                                      <td className="px-3 py-2 text-gray-400">{(item as any).contado_por_user?.nombre_display ?? '—'}</td>
                                     </tr>
                                   )
                                 })}

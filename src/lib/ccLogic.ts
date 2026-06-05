@@ -9,6 +9,20 @@ export type MorosidadPolitica = 'permitir' | 'bloqueo_cc' | 'bloqueo_total'
 export const EPS_CC = 0.5
 
 /**
+ * ISS-151 — pseudo-métodos de pago: NO son ingresos reales y deben excluirse de los
+ * gráficos/métricas de medios de pago (distorsionan la ganancia). Incluye la deuda CC
+ * pendiente y todos los write-offs (condonación / cancelación / incobrable).
+ * Fuente única de verdad para MixCajaChart, MetricasPage y demás reportes.
+ */
+export const PSEUDO_METODOS_PAGO = new Set<string>([
+  'Cuenta Corriente', 'Cancelación CC', 'Condonación CC', 'Incobrable',
+])
+
+/** ¿El tipo de medio de pago es un ingreso real (no pseudo-método)? */
+export const esMetodoRealPago = (tipo: string | null | undefined): boolean =>
+  !!tipo && !PSEUDO_METODOS_PAGO.has(tipo)
+
+/**
  * B1 — Decisión de enforcement del límite de CC sobre la parte que va a cuenta corriente.
  * `limite` NULL = sin límite. Devuelve la acción según la política cuando se supera.
  */

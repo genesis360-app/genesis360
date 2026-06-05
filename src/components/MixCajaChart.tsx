@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { PSEUDO_METODOS_PAGO } from '@/lib/ccLogic'
 import type { PeriodoDash, Moneda } from './FilterBar'
 import { getFechasDashboard } from './FilterBar'
 
@@ -15,10 +16,11 @@ interface Props {
   cotizacion: number
 }
 
-// ISS-151: pseudo-métodos que NO son ingresos reales (deuda CC + condonaciones).
+// ISS-151: pseudo-métodos que NO son ingresos reales (deuda CC + write-offs).
 // No deben contar en el Mix de Caja. El cobro real de una CC se agrega como su
 // método real (Efectivo, Transferencia, etc.) al abonar, y ése sí aparece acá.
-const PSEUDO_METODOS = new Set(['Cuenta Corriente', 'Cancelación CC', 'Condonación CC'])
+// Fuente única en ccLogic (incluye 'Incobrable').
+const PSEUDO_METODOS = PSEUDO_METODOS_PAGO
 
 const FALLBACK_COLORS: Record<string, string> = {
   Efectivo:            '#22c55e',

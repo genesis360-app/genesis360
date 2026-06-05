@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-180)
+# Historial de Migraciones (001-181)
 
-**Total al 2026-06-05:** 180 archivos de migración + 086b correctivo.  
+**Total al 2026-06-05:** 181 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -244,6 +244,7 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 178 | `178_conteos_f2a.sql` | **Conteos 2.0 F2a** · `tenants.conteo_modo` (rapido\|guiado\|elegir) · `ubicaciones.secuencia INTEGER` (orden recorrido conteo+picking) · `inventario_conteos.modo` (rapido\|guiado) · `inventario_conteo_items.cantidad_contada` → **NULLABLE** (distingue no-contada de cero, B3). CHECKs idempotentes vía `information_schema.table_constraints` |
 | 179 | `179_conteos_f3.sql` | **Conteos 2.0 F3** · `'ajuste_conteo'` en el CHECK de `autorizaciones_inventario.tipo` (gate de aprobación de diferencias de conteo) · `tenants` + 7 columnas de config: `conteo_gate_activo BOOLEAN` + umbrales gate (`_umbral_u/_pct/_valor`) + umbrales reconteo (`_reconteo_umbral_u/_pct/_valor`). Aditiva |
 | 180 | `180_conteos_f4.sql` | **Conteos 2.0 F4** · `productos.clase_abc TEXT` (CHECK A/B/C) + `clase_abc_manual BOOLEAN` (override que el recálculo no pisa) + `ultimo_conteo_at TIMESTAMPTZ` · `inventario_conteo_items.contado_por UUID REFERENCES users(id)` (trazabilidad por operador) · `tenants.conteo_ciclico_dias_a/_b/_c INTEGER DEFAULT 30/90/180` (config cíclico) · índice `idx_productos_clase_abc(tenant_id, clase_abc, ultimo_conteo_at)`. Aditiva, idempotente, sin impacto en RLS |
+| 181 | `181_conteos_f2bref_f3b_a2.sql` | **Conteos 2.0 cierre 100%** · F2b-ref: `inventario_conteo_items.fuera_de_scope BOOLEAN` (mercadería mal ubicada escaneada) · F3b: `costo_snapshot NUMERIC` (costo congelado al cargar) + `cantidad_reconteo NUMERIC` + `reconteo_por UUID REFERENCES users(id)` (doble conteo formal) · A2: `inventario_conteos.bloquea_movimientos BOOLEAN` + `tenants.conteo_wall_to_wall_bloquea BOOLEAN` (wall-to-wall bloquea sucursal) + índice parcial `idx_conteos_bloqueo`. Aditiva, idempotente |
 
 ---
 

@@ -7,6 +7,8 @@ import {
   planificarCobranzaFIFO,
   agruparAgingCC,
   EPS_CC,
+  PSEUDO_METODOS_PAGO,
+  esMetodoRealPago,
   type VentaEstadoCC,
   type VentaSaldoFIFO,
   type VentaAgingCC,
@@ -342,5 +344,35 @@ describe('agruparAgingCC', () => {
       { total: 3000, monto_pagado: 0, interes_cc: 0, fecha_vencimiento_cc: vencHaceDias(120), created_at: '' },
     ]
     expect(agruparAgingCC(ventas, AHORA)).toEqual({ '0-30': 1000, '31-60': 2000, '61-90': 0, '+90': 3000 })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ISS-151 — pseudo-métodos de pago (excluidos de los gráficos de medios de pago)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('PSEUDO_METODOS_PAGO / esMetodoRealPago', () => {
+  it('incluye la deuda CC y todos los write-offs (incl. Incobrable)', () => {
+    expect(PSEUDO_METODOS_PAGO.has('Cuenta Corriente')).toBe(true)
+    expect(PSEUDO_METODOS_PAGO.has('Cancelación CC')).toBe(true)
+    expect(PSEUDO_METODOS_PAGO.has('Condonación CC')).toBe(true)
+    expect(PSEUDO_METODOS_PAGO.has('Incobrable')).toBe(true)  // gap de ISS-151 cerrado
+  })
+
+  it('los medios reales no son pseudo', () => {
+    expect(esMetodoRealPago('Efectivo')).toBe(true)
+    expect(esMetodoRealPago('Transferencia')).toBe(true)
+    expect(esMetodoRealPago('Mercado Pago')).toBe(true)
+  })
+
+  it('los pseudo-métodos no cuentan como ingreso real', () => {
+    expect(esMetodoRealPago('Cuenta Corriente')).toBe(false)
+    expect(esMetodoRealPago('Incobrable')).toBe(false)
+    expect(esMetodoRealPago('Condonación CC')).toBe(false)
+  })
+
+  it('null/undefined/vacío no son medios reales', () => {
+    expect(esMetodoRealPago(null)).toBe(false)
+    expect(esMetodoRealPago(undefined)).toBe(false)
+    expect(esMetodoRealPago('')).toBe(false)
   })
 })

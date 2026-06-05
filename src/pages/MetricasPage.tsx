@@ -15,6 +15,7 @@ type Periodo = '7d' | '30d' | '90d' | 'mes' | 'custom'
 const COLORES = [BRAND.color.primary, BRAND.color.accent, '#7DB9E8', '#22c55e', '#f97316', '#8b5cf6', '#ef4444', '#eab308']
 
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { PSEUDO_METODOS_PAGO } from '@/lib/ccLogic'
 // formatMoneda local: usa moneda del tenant (v1.8.44)
 
 function StatCard({ label, value, sub, icon: Icon, color, trend }: any) {
@@ -217,8 +218,8 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
     .slice(0, 10)
 
   // Ventas por medio de pago — medio_pago se guarda como JSON string
-  // ISS-151: pseudo-métodos (deuda CC + condonaciones) no son ingresos reales
-  const PSEUDO_METODOS_PAGO = new Set(['Cuenta Corriente', 'Cancelación CC', 'Condonación CC'])
+  // ISS-151: pseudo-métodos (deuda CC + write-offs, incl. Incobrable) no son ingresos reales.
+  // Constante compartida en ccLogic (fuente única de verdad).
   const ventasPorMedio: Record<string, number> = {}
   ventasPeriodo.forEach((v: any) => {
     if (!v.medio_pago) {

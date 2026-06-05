@@ -188,7 +188,17 @@ Cierre del módulo. Panel **"Clasificación ABC y conteo cíclico"** en el histo
 - **Reportes de exactitud + valorización** (`reporteExactitud`): % de exactitud (líneas exactas / contadas) + valor $ faltante/sobrante/neto. Por conteo (barra en el detalle finalizado, con export **Excel**) y **acumulado** (panel, sobre los conteos finalizados cargados).
 - **Trazabilidad por operador** (`inventario_conteo_items.contado_por`): se registra quién contó cada ítem; columna "Contado por" en el detalle. `productos.ultimo_conteo_at` se actualiza al finalizar (alimenta el cíclico).
 
-**Conteos 2.0 (ISS-CONT) cerrado — F1-F4 en PROD.** Pendientes futuros (no bloqueantes): F2b-refinamiento (alta de fila al escanear fuera de scope) · F3b doble conteo formal (re-ingreso por 2º operador + clave maestra C4 + snapshot de costo por ítem) · wall-to-wall A2 (bloqueo de POS/movimientos durante el conteo full).
+### Conteos 2.0 — cierre 100%: F2b-ref + F3b + A2 (v1.30.0 · migration 181)
+
+Refinamientos que cierran el módulo al 100%:
+
+- **F2b-ref (E3) — escanear fuera de alcance:** durante el scan-to-count, si se escanea un producto que **no está en el alcance** del conteo pero **tiene stock en la sucursal**, se agrega como fila "fuera de alcance" (badge en la tabla) — sirve para detectar mercadería mal ubicada. Si el producto **no tiene stock** en la sucursal, se avisa de forma accionable hacia Ingreso (el alta de stock nuevo sigue siendo del flujo Ingreso, con LPN/lote/serie). `inventario_conteo_items.fuera_de_scope`.
+- **F3b — snapshot de costo + doble conteo formal:**
+  - `inventario_conteo_items.costo_snapshot`: el costo unitario se congela al cargar la línea, así la valorización es estable aunque cambie `precio_costo` (antes, al continuar un borrador, usaba el precio actual).
+  - **Doble conteo formal:** las filas cuyo primer conteo supera el umbral de discrepancia (`conteo_reconteo_*`) exigen un **re-ingreso** (columna "Recontar", idealmente por otro operador) antes de finalizar. Se puede **saltar con clave maestra** (SUPERVISOR/DUEÑO, `verificar_clave_maestra`). Persiste `cantidad_reconteo` + `reconteo_por`; el ajuste usa el valor recontado.
+- **A2 — wall-to-wall bloquea la sucursal:** toggle `tenants.conteo_wall_to_wall_bloquea` (Config → Inventario → Reglas, **default OFF**). Al iniciar un conteo de **sucursal completa** con el toggle activo: confirmación de DUEÑO/SUPERVISOR + se crea el borrador con `inventario_conteos.bloquea_movimientos=true`. Mientras esté abierto, el **POS** no permite reservar/despachar (presupuesto sí, no mueve stock) y el **Inventario** no permite ingreso/rebaje en esa sucursal. Hook compartido `useConteoBloqueante`; badge "🔒 Bloqueante" en el historial; se libera al finalizar o eliminar el conteo.
+
+**🎉 Conteos 2.0 (ISS-CONT) cerrado al 100% — F1-F4 + refinamientos en PROD.**
 
 ---
 

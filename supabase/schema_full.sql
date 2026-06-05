@@ -2510,3 +2510,11 @@ ALTER TABLE tenants
   ADD COLUMN IF NOT EXISTS conteo_ciclico_dias_a INTEGER NOT NULL DEFAULT 30,
   ADD COLUMN IF NOT EXISTS conteo_ciclico_dias_b INTEGER NOT NULL DEFAULT 90,
   ADD COLUMN IF NOT EXISTS conteo_ciclico_dias_c INTEGER NOT NULL DEFAULT 180;
+-- 181 (cierre F2b-ref + F3b + A2):
+ALTER TABLE inventario_conteo_items
+  ADD COLUMN IF NOT EXISTS fuera_de_scope BOOLEAN NOT NULL DEFAULT false,  -- F2b-ref (E3) mercadería mal ubicada
+  ADD COLUMN IF NOT EXISTS costo_snapshot NUMERIC,                          -- F3b costo congelado al cargar
+  ADD COLUMN IF NOT EXISTS cantidad_reconteo NUMERIC,                       -- F3b segundo conteo (doble conteo formal)
+  ADD COLUMN IF NOT EXISTS reconteo_por UUID REFERENCES users(id);
+ALTER TABLE inventario_conteos ADD COLUMN IF NOT EXISTS bloquea_movimientos BOOLEAN NOT NULL DEFAULT false;  -- A2 wall-to-wall
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS conteo_wall_to_wall_bloquea BOOLEAN NOT NULL DEFAULT false;     -- A2 config

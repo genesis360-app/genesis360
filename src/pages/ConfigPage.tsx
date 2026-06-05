@@ -432,6 +432,8 @@ export default function ConfigPage() {
     b: num((tenant as any)?.conteo_ciclico_dias_b ?? 90),
     c: num((tenant as any)?.conteo_ciclico_dias_c ?? 180),
   })
+  // A2 — wall-to-wall bloquea ventas/movimientos de la sucursal hasta cerrar el conteo
+  const [bizConteoWtwBloquea, setBizConteoWtwBloquea] = useState(!!(tenant as any)?.conteo_wall_to_wall_bloquea)
   const [bizTimeout, setBizTimeout] = useState<string>(
     tenant?.session_timeout_minutes != null ? String(tenant.session_timeout_minutes) : 'nunca'
   )
@@ -625,6 +627,7 @@ export default function ConfigPage() {
       conteo_ciclico_dias_a: parseInt(bizConteoCiclo.a) || 30,
       conteo_ciclico_dias_b: parseInt(bizConteoCiclo.b) || 90,
       conteo_ciclico_dias_c: parseInt(bizConteoCiclo.c) || 180,
+      conteo_wall_to_wall_bloquea: bizConteoWtwBloquea,
       presupuesto_validez_dias: parseInt(bizPresupuestoValidez) || 30,
       alerta_margen_negativo: bizAlertaMargenNeg,
       alerta_devoluciones_n: bizAlertaDevN !== '' ? parseInt(bizAlertaDevN) : null,
@@ -2454,6 +2457,10 @@ export default function ConfigPage() {
                   <input type="number" min="1" disabled={!canEdit} placeholder="Clase B (días)" value={bizConteoCiclo.b} onChange={e => setBizConteoCiclo(c => ({ ...c, b: e.target.value }))} title="Cada cuántos días recontar productos clase B (valor medio)" className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
                   <input type="number" min="1" disabled={!canEdit} placeholder="Clase C (días)" value={bizConteoCiclo.c} onChange={e => setBizConteoCiclo(c => ({ ...c, c: e.target.value }))} title="Cada cuántos días recontar productos clase C (bajo valor)" className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
                 </div>
+                <label className="flex items-center gap-2 mt-3 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" disabled={!canEdit} checked={bizConteoWtwBloquea} onChange={e => setBizConteoWtwBloquea(e.target.checked)} className="rounded" />
+                  <span><strong>Wall-to-wall bloquea la sucursal</strong> — al iniciar un conteo de sucursal completa, se bloquean ventas (reserva/despacho) y movimientos de stock hasta finalizarlo o eliminarlo (requiere confirmación de DUEÑO/SUPERVISOR al iniciar).</span>
+                </label>
               </div>
               {canEdit && (
                 <div className="flex justify-end">

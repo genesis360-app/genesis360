@@ -224,6 +224,11 @@ export interface OrdenCompra {
   oc_padre_id?: string | null
   es_derivada?: boolean
   tiene_reembolso_pendiente?: boolean
+  // Migration 182 (CO1 — gobierno OC)
+  numero_sucursal?: number | null
+  requiere_aprobacion?: boolean | null
+  aprobada_por?: string | null
+  aprobada_at?: string | null
   // joins
   proveedores?: Pick<Proveedor, 'id' | 'nombre'>
   orden_compra_items?: OrdenCompraItem[]

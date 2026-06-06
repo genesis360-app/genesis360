@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { capacidadCrearOC, ocRequiereAprobacion, puedeEnviarOC } from '@/lib/comprasPermisos'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
@@ -99,6 +100,13 @@ export default function ProveedoresPage() {
   const { tenant, user } = useAuthStore()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
+  // CO1 — gobierno de OC: capacidad de creación por rol + config de aprobación por umbral
+  const capOC = capacidadCrearOC(user?.rol)
+  const ocAprobacionCfg = { activa: (tenant as any)?.oc_aprobacion_activa, umbral: (tenant as any)?.oc_aprobacion_umbral }
+  // A5 — etiqueta del número de OC según la numeración configurada (default por sucursal)
+  const ocNumeracion = (tenant as any)?.oc_numeracion ?? 'sucursal'
+  const ocNumLabel = (oc: OrdenCompra) =>
+    ocNumeracion === 'sucursal' && oc.numero_sucursal != null ? `S-OC-${String(oc.numero_sucursal).padStart(4, '0')}` : `#${oc.numero}`
   const navigate = useNavigate()
 
   const [tab, setTab] = useState<Tab>('proveedores')
@@ -782,12 +790,20 @@ export default function ProveedoresPage() {
   // ── OC mutations ───────────────────────────────────────────────────────────
   const saveOC = useMutation({
     mutationFn: async () => {
+      if (capOC === 'ninguna') throw new Error('Tu rol no puede crear órdenes de compra')
       if (!ocForm.proveedor_id) throw new Error('Seleccioná un proveedor')
       if (ocItems.length === 0) throw new Error('Agregá al menos un producto')
+      // A4 — sucursal obligatoria en la OC
+      if (!editOcId && !sucursalId) throw new Error('Seleccioná una sucursal específica para crear la OC (no "Todas")')
       for (const it of ocItems) {
         if (!it.producto_id) throw new Error('Seleccioná un producto en cada línea')
         if (!it.cantidad || parseFloat(it.cantidad) <= 0) throw new Error('Cantidad inválida')
       }
+
+      // A2 — ¿la OC requiere aprobación antes de enviar? (según monto total + config)
+      const montoTotal = ocItems.reduce((s, it) =>
+        s + (parseFloat(it.cantidad) || 0) * (parseFloat(it.precio_unitario) || 0), 0)
+      const requiereAprob = ocRequiereAprobacion(montoTotal, ocAprobacionCfg)
 
       let ocId: string
       if (editOcId) {
@@ -795,6 +811,7 @@ export default function ProveedoresPage() {
           proveedor_id: ocForm.proveedor_id,
           fecha_esperada: ocForm.fecha_esperada || null,
           notas: ocForm.notas.trim() || null,
+          requiere_aprobacion: requiereAprob,  // A2 — recalcula al editar montos
         }).eq('id', editOcId)
         if (error) throw error
         ocId = editOcId
@@ -810,6 +827,7 @@ export default function ProveedoresPage() {
           tiene_envio: ocForm.tiene_envio,
           costo_envio: ocForm.tiene_envio && ocForm.costo_envio ? parseFloat(ocForm.costo_envio) : null,
           sucursal_id: sucursalId || null,
+          requiere_aprobacion: requiereAprob,  // A2
           created_by: (await supabase.auth.getUser()).data.user?.id,
         }).select('id').single()
         if (error) throw error
@@ -897,6 +915,33 @@ export default function ProveedoresPage() {
       toast.success(`OC ${ESTADO_OC_LABEL[vars.estado].toLowerCase()}`)
       qc.invalidateQueries({ queryKey: ['ordenes_compra'] })
       if (showOcDetail?.id === vars.id) setShowOcDetail(prev => prev ? { ...prev, estado: vars.estado } : null)
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  // A2 — enviar OC al proveedor con gate de aprobación por umbral/rol.
+  // Si la OC requiere aprobación y aún no está aprobada, solo un rol aprobador puede enviarla
+  // (y al hacerlo queda registrada la aprobación). Si no la requiere, la envía cualquiera con capacidad completa.
+  const enviarOC = useMutation({
+    mutationFn: async (oc: OrdenCompra) => {
+      if (!puedeEnviarOC(user?.rol, oc as any)) {
+        if (oc.requiere_aprobacion && !(oc as any).aprobada_por)
+          throw new Error('Esta OC supera el umbral y requiere aprobación de DUEÑO/SUPERVISOR antes de enviarse.')
+        throw new Error('Tu rol no puede enviar esta OC.')
+      }
+      const patch: any = { estado: 'enviada' }
+      if (oc.requiere_aprobacion && !(oc as any).aprobada_por) {
+        patch.aprobada_por = user?.id
+        patch.aprobada_at = new Date().toISOString()
+      }
+      const { error } = await supabase.from('ordenes_compra').update(patch).eq('id', oc.id)
+      if (error) throw error
+      return patch
+    },
+    onSuccess: (patch, oc) => {
+      toast.success(patch.aprobada_por ? 'OC aprobada y enviada' : 'OC enviada')
+      qc.invalidateQueries({ queryKey: ['ordenes_compra'] })
+      if (showOcDetail?.id === oc.id) setShowOcDetail(prev => prev ? { ...prev, ...patch } : null)
     },
     onError: (e: any) => toast.error(e.message),
   })
@@ -1094,12 +1139,13 @@ export default function ProveedoresPage() {
             <Plus className="w-4 h-4" /> Nuevo servicio
           </button>
         )}
-        {tab === 'ordenes' && (
+        {tab === 'ordenes' && capOC !== 'ninguna' && (
           <button
             onClick={openNewOC}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent/90"
+            title={capOC === 'borrador' ? 'Podés crear borradores; el envío lo confirma un DUEÑO/SUPERVISOR' : undefined}
           >
-            <Plus className="w-4 h-4" /> Nueva OC
+            <Plus className="w-4 h-4" /> Nueva OC{capOC === 'borrador' ? ' (borrador)' : ''}
           </button>
         )}
       </div>
@@ -1627,7 +1673,7 @@ export default function ProveedoresPage() {
                   <div key={oc.id} className="bg-surface rounded-xl shadow-sm border border-border-ds overflow-hidden">
                     <div className="flex items-center gap-3 p-4">
                       {/* OC number */}
-                      <span className="text-sm font-bold text-primary shrink-0">OC #{oc.numero}</span>
+                      <span className="text-sm font-bold text-primary shrink-0">OC {ocNumLabel(oc)}</span>
 
                       {/* Proveedor */}
                       <span className="text-sm text-primary flex-1 truncate">
@@ -1683,15 +1729,20 @@ export default function ProveedoresPage() {
                         )}
 
                         {/* Lifecycle */}
-                        {oc.estado === 'borrador' && (
-                          <button
-                            onClick={() => cambiarEstadoOC.mutate({ id: oc.id, estado: 'enviada' })}
-                            className="p-1.5 rounded text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                            title="Enviar al proveedor"
-                          >
-                            <Send className="w-4 h-4" />
-                          </button>
-                        )}
+                        {oc.estado === 'borrador' && (() => {
+                          const necesitaAprob = oc.requiere_aprobacion && !(oc as any).aprobada_por
+                          const puede = puedeEnviarOC(user?.rol, oc as any)
+                          return (
+                            <button
+                              onClick={() => enviarOC.mutate(oc)}
+                              disabled={!puede}
+                              className={`p-1.5 rounded disabled:opacity-40 disabled:cursor-not-allowed ${necesitaAprob ? 'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20' : 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
+                              title={necesitaAprob ? (puede ? 'Aprobar y enviar (supera umbral)' : 'Requiere aprobación de DUEÑO/SUPERVISOR') : 'Enviar al proveedor'}
+                            >
+                              <Send className="w-4 h-4" />
+                            </button>
+                          )
+                        })()}
                         {oc.estado === 'enviada' && (() => {
                           const bloqueada = !['pagada','cuenta_corriente'].includes((oc as any).estado_pago)
                           const tooltipMsg = (oc as any).estado_pago === 'pendiente_pago'
@@ -2177,7 +2228,10 @@ export default function ProveedoresPage() {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                    OC #{showOcDetail.numero}
+                    OC {ocNumLabel(showOcDetail)}
+                    {showOcDetail.requiere_aprobacion && !showOcDetail.aprobada_por && showOcDetail.estado === 'borrador' && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium">Requiere aprobación</span>
+                    )}
                     {showOcDetail.tiene_reembolso_pendiente && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 font-medium">Reembolso pendiente</span>
                     )}
@@ -2431,14 +2485,20 @@ export default function ProveedoresPage() {
 
               {/* Lifecycle desde detalle */}
               <div className="flex flex-wrap gap-2 mt-3">
-                {showOcDetail.estado === 'borrador' && (
-                  <button
-                    onClick={() => cambiarEstadoOC.mutate({ id: showOcDetail.id, estado: 'enviada' })}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    <Send className="w-4 h-4" /> Enviar al proveedor
-                  </button>
-                )}
+                {showOcDetail.estado === 'borrador' && (() => {
+                  const necesitaAprob = showOcDetail.requiere_aprobacion && !(showOcDetail as any).aprobada_por
+                  const puede = puedeEnviarOC(user?.rol, showOcDetail as any)
+                  return (
+                    <button
+                      onClick={() => enviarOC.mutate(showOcDetail)}
+                      disabled={!puede}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-white disabled:opacity-40 disabled:cursor-not-allowed ${necesitaAprob ? 'bg-amber-500 hover:bg-amber-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+                      title={necesitaAprob && !puede ? 'Requiere aprobación de DUEÑO/SUPERVISOR' : undefined}
+                    >
+                      <Send className="w-4 h-4" /> {necesitaAprob ? (puede ? 'Aprobar y enviar' : 'Requiere aprobación') : 'Enviar al proveedor'}
+                    </button>
+                  )
+                })()}
                 {showOcDetail.estado === 'enviada' && (() => {
                   const bloqueada = !['pagada','cuenta_corriente'].includes((showOcDetail as any).estado_pago)
                   const tooltipMsg = (showOcDetail as any).estado_pago === 'pendiente_pago'

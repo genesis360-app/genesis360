@@ -564,6 +564,11 @@ export default function ConfigPage() {
   const [gDiasAlertaBorrador,  setGDiasAlertaBorrador]  = useState<string>(String(t142?.gastos_dias_alerta_borrador ?? 7))
   const [gDiasAlertaAnticipo,  setGDiasAlertaAnticipo]  = useState<string>(String(t142?.gastos_dias_alerta_anticipo_oc ?? 15))
   const [savingGastosCfg,      setSavingGastosCfg]      = useState(false)
+  // CO1 — gobierno de OC (Compras)
+  const [ocAprobActiva,        setOcAprobActiva]        = useState<boolean>((t142 as any)?.oc_aprobacion_activa ?? false)
+  const [ocAprobUmbral,        setOcAprobUmbral]        = useState<string>((t142 as any)?.oc_aprobacion_umbral != null ? String((t142 as any).oc_aprobacion_umbral) : '')
+  const [ocNumeracion,         setOcNumeracion]         = useState<string>((t142 as any)?.oc_numeracion ?? 'sucursal')
+  const [ocDobleFirmaUmbral,   setOcDobleFirmaUmbral]   = useState<string>((t142 as any)?.oc_pago_doble_firma_umbral != null ? String((t142 as any).oc_pago_doble_firma_umbral) : '')
   const [newCategoria,         setNewCategoria]         = useState<{ nombre: string; requiere_sucursal: boolean }>({ nombre: '', requiere_sucursal: false })
 
 
@@ -746,6 +751,11 @@ export default function ConfigPage() {
       gastos_comp_siempre:             gCompSiempre,
       gastos_dias_alerta_borrador:     Math.max(1, parseInt(gDiasAlertaBorrador) || 7),
       gastos_dias_alerta_anticipo_oc:  Math.max(1, parseInt(gDiasAlertaAnticipo) || 15),
+      // CO1 — gobierno de OC
+      oc_aprobacion_activa:            ocAprobActiva,
+      oc_aprobacion_umbral:            ocAprobUmbral !== '' ? parseFloat(ocAprobUmbral) : null,
+      oc_numeracion:                   ocNumeracion,
+      oc_pago_doble_firma_umbral:      ocDobleFirmaUmbral !== '' ? parseFloat(ocDobleFirmaUmbral) : null,
     }
     const { data, error } = await supabase.from('tenants').update(payload).eq('id', tenant!.id).select('*').single()
     if (error) toast.error(error.message)
@@ -3366,6 +3376,44 @@ export default function ConfigPage() {
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si una OC tiene anticipo (pago hecho) y pasaron N días sin recibir mercadería, el badge se pone en rojo.</p>
               </div>
             </div>
+
+            {/* CO1 — Gobierno de Órdenes de Compra */}
+            <div className="pt-4 mt-2 border-t border-gray-100 dark:border-gray-700 space-y-4">
+              <h3 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Órdenes de compra (OC)</h3>
+              <div className="flex items-start gap-3">
+                <button onClick={() => canEdit && setOcAprobActiva(v => !v)} disabled={!canEdit} className="flex-shrink-0 mt-0.5">
+                  {ocAprobActiva ? <ToggleRight size={26} className="text-accent" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-700 dark:text-gray-200 text-sm">Requerir aprobación antes de enviar al proveedor</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">La OC que supere el umbral debe ser aprobada por DUEÑO/SUPERVISOR antes de enviarse. Sin umbral = todas requieren aprobación.</p>
+                  {ocAprobActiva && (
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={ocAprobUmbral} disabled={!canEdit}
+                      onChange={e => setOcAprobUmbral(e.target.value)} placeholder="Umbral $ (vacío = siempre)" min="0" step="0.01"
+                      className="mt-2 w-48 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700" />
+                  )}
+                </div>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Numeración de OC</label>
+                  <select value={ocNumeracion} onChange={e => setOcNumeracion(e.target.value)} disabled={!canEdit}
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700">
+                    <option value="sucursal">Por sucursal (S1-OC-0001)</option>
+                    <option value="tenant">Única por negocio</option>
+                    <option value="proveedor">Por proveedor</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Doble firma de pago — umbral $</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} value={ocDobleFirmaUmbral} disabled={!canEdit}
+                    onChange={e => setOcDobleFirmaUmbral(e.target.value)} placeholder="Vacío = sin doble firma" min="0" step="0.01"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Pagos de OC sobre este monto piden la clave maestra. (El CONTADOR nunca registra pagos.)</p>
+                </div>
+              </div>
+            </div>
+
             {canEdit && (
               <div className="flex justify-end pt-2">
                 <button onClick={handleSaveGastosCfg} disabled={savingGastosCfg}

@@ -2518,3 +2518,18 @@ ALTER TABLE inventario_conteo_items
   ADD COLUMN IF NOT EXISTS reconteo_por UUID REFERENCES users(id);
 ALTER TABLE inventario_conteos ADD COLUMN IF NOT EXISTS bloquea_movimientos BOOLEAN NOT NULL DEFAULT false;  -- A2 wall-to-wall
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS conteo_wall_to_wall_bloquea BOOLEAN NOT NULL DEFAULT false;     -- A2 config
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 182: Compras · CO1 (Gobierno de OC)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE tenants
+  ADD COLUMN IF NOT EXISTS oc_aprobacion_activa BOOLEAN NOT NULL DEFAULT false,  -- A2
+  ADD COLUMN IF NOT EXISTS oc_aprobacion_umbral NUMERIC,
+  ADD COLUMN IF NOT EXISTS oc_numeracion TEXT NOT NULL DEFAULT 'sucursal',       -- A5 (tenant|sucursal|proveedor)
+  ADD COLUMN IF NOT EXISTS oc_pago_doble_firma_umbral NUMERIC;                   -- D5
+ALTER TABLE ordenes_compra
+  ADD COLUMN IF NOT EXISTS numero_sucursal INTEGER,                              -- A5 correlativo por sucursal
+  ADD COLUMN IF NOT EXISTS requiere_aprobacion BOOLEAN NOT NULL DEFAULT false,   -- A2
+  ADD COLUMN IF NOT EXISTS aprobada_por UUID REFERENCES users(id),
+  ADD COLUMN IF NOT EXISTS aprobada_at TIMESTAMPTZ;
+-- set_oc_numero() actualizado: asigna numero (tenant) + numero_sucursal (por sucursal).

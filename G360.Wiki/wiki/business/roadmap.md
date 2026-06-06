@@ -13,6 +13,14 @@ updated: 2026-05-29
 
 ---
 
+## v1.34.0 — Compras CO4: devolución a proveedor (PROD ✅)
+
+Entidad separada `devoluciones_proveedor` (+ items). Desde una OC recibida → "Devolver a proveedor": ítems + cantidades, motivo (catálogo) + obs opcional, forma del reembolso: crédito en CC (nota de crédito) / efectivo (ingreso a caja) / reposición (OC nueva borrador). Rebaja stock FIFO + movimiento; valida disponible. Cierra el `tiene_reembolso_pendiente` huérfano. Lib `devolucionProveedor.ts` + 9 tests → suite 412. Mig 185.
+
+## v1.33.0 — Compras CO3: costos (PROD ✅)
+
+E1 alerta de cambio de costo al recibir + el operador decide actualizar (umbral % config) · E2 costos accesorios sueltos en la OC (aduana/comisión/otros) · B6 editar precio en recepción con audit · E3 alta rápida de producto desde la recepción (DUEÑO/SUPERVISOR, pendiente de revisión). Lib `comprasCostos.ts` + 10 tests → suite 403. Mig 184.
+
 ## v1.32.0 — Compras CO2: recepción robusta (PROD ✅)
 
 Segunda fase del módulo Compras. **B5 (fix):** el estado de la OC se recalcula desde el acumulado de todas las recepciones confirmadas (no solo la actual) → OC completada en parciales llega bien a `recibida`. + B3 over-receipt umbral % · B4 motivo de faltante + alerta · B1c over/under requiere SUPERVISOR+ · B7 adjuntar remito (bucket privado scoped por tenant) · B2 sin OC exige proveedor. Lib `recepcionLogic.ts` + 13 tests → suite 393. Mig 183.

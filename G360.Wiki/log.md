@@ -6,6 +6,26 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-05] deploy | v1.33.0 + v1.34.0 PROD — Compras CO3 (costos) + CO4 (devolución a proveedor)
+
+Dos fases más del módulo **Compras** a PROD. Migraciones **184** (CO3) y **185** (CO4), ambas en DEV y PROD. Build verde, **412 tests** (+10 `comprasCostos`, +9 `devolucionProveedor`).
+
+**CO3 — Costos (v1.33.0, mig 184):**
+- E1 alerta de cambio de costo al recibir (`tenants.compras_costo_alerta_pct`, default 10%) → checkbox por línea para actualizar el `precio_costo` del producto (lib `comprasCostos.superaAlertaCosto`).
+- E2 costos accesorios sueltos en la OC (`costo_aduana/comision/otros`, sin distribuir).
+- B6 editar precio en recepción con audit (`actividad_log`).
+- E3 alta rápida de producto desde la recepción (DUEÑO/SUPERVISOR → `productos.pendiente_revision=true`).
+- Config en Config → Gastos. (E4-reporte de diferencias OC vs recepción se hace en CO8.)
+
+**CO4 — Devolución a proveedor (v1.34.0, mig 185):**
+- C1 entidad separada `devoluciones_proveedor` + `devolucion_proveedor_items` (RLS por tenant + trigger correlativo).
+- Desde el detalle de una OC recibida → "Devolver a proveedor": ítems + cantidades, motivo (catálogo C3) + observación opcional, forma del reembolso (C2): **crédito_cc** (nota de crédito en `proveedor_cc_movimientos`, reduce deuda) / **efectivo** (ingreso a caja abierta) / **reposicion** (OC nueva borrador).
+- Al confirmar rebaja stock FIFO por producto en la sucursal + movimiento `ajuste_rebaje`; valida stock disponible (`devolucionProveedor.validarDevolucion`). Cierra el `tiene_reembolso_pendiente` huérfano.
+
+**Pendiente Compras:** CO5 (anticipo/contra-entrega) · CO6 (cheques) · CO7 (envío+inteligente+servicios) · CO8 (reportes + E4-reporte + calificación proveedor). Plan en `relevamiento_compras_respuestas.md`.
+
+---
+
 ## [2026-06-05] deploy | v1.31.0 + v1.32.0 PROD — Compras CO1 (gobierno OC) + CO2 (recepción robusta)
 
 Dos fases del módulo **Compras** deployadas a PROD. Migraciones **182** (CO1) y **183** (CO2), ambas en DEV y PROD. Build verde, **393 tests** (+14 `comprasPermisos`, +13 `recepcionLogic`).

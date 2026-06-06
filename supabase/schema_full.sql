@@ -2556,3 +2556,29 @@ ALTER TABLE ordenes_compra
   ADD COLUMN IF NOT EXISTS costo_otros NUMERIC;
 ALTER TABLE productos ADD COLUMN IF NOT EXISTS pendiente_revision BOOLEAN NOT NULL DEFAULT false;    -- E3 alta en recepción
 -- B6 (editar precio en recepción) = audit vía actividad_log, sin columna.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 185: Compras · CO4 (Devolución a proveedor)
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS devoluciones_proveedor (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  numero INTEGER, proveedor_id UUID NOT NULL REFERENCES proveedores(id),
+  oc_id UUID REFERENCES ordenes_compra(id) ON DELETE SET NULL,
+  recepcion_id UUID REFERENCES recepciones(id) ON DELETE SET NULL,
+  sucursal_id UUID REFERENCES sucursales(id),
+  forma TEXT NOT NULL,        -- 'credito_cc'|'efectivo'|'reposicion' (C2)
+  motivo TEXT NOT NULL, observacion TEXT,  -- catálogo + libre (C3)
+  monto NUMERIC NOT NULL DEFAULT 0, estado TEXT NOT NULL DEFAULT 'confirmada',
+  caja_sesion_id UUID REFERENCES caja_sesiones(id), oc_reposicion_id UUID REFERENCES ordenes_compra(id),
+  created_by UUID REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE devoluciones_proveedor ENABLE ROW LEVEL SECURITY;  -- policy devprov_tenant
+CREATE TABLE IF NOT EXISTS devolucion_proveedor_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  devolucion_id UUID NOT NULL REFERENCES devoluciones_proveedor(id) ON DELETE CASCADE,
+  producto_id UUID NOT NULL REFERENCES productos(id),
+  cantidad NUMERIC NOT NULL, costo_unitario NUMERIC NOT NULL DEFAULT 0, lpn TEXT
+);
+ALTER TABLE devolucion_proveedor_items ENABLE ROW LEVEL SECURITY;  -- policy devprov_items_tenant
+-- trigger set_devprov_numero (correlativo por tenant). Confirm/stock/CC/caja/reposición en la app.

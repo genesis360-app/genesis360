@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-05] ingest | Relevamiento Compras respondido — plan por fases CO1-CO8
+
+GO + socio respondieron el relevamiento de Compras (OC + Recepciones, 34 preguntas A-H). Consolidado en `relevamiento_compras_respuestas.md`: respuestas + diseño + modelo de datos + plan por fases **CO1-CO8** + mis sugerencias donde difiero.
+
+- **Hallazgos del código:** (1) B2 — la recepción **ya admite sin OC** (`oc_id` nullable, `RecepcionesPage.tsx:433`), está OK; (2) **B5 — NO es robusto hoy**: el estado de la OC se recalcula solo con la recepción actual, no acumulando entre múltiples recepciones (`RecepcionesPage.tsx:538-548`) → se arregla en CO2.
+- **Sugerencias propuestas (esperan OK de GO):** E3 alta rápida de producto en recepción (rol alto + "pendiente revisión") en vez de "no permitir"; B6 editar precio en recepción con audit; D2 schedule opcional; A6 WA por link.
+- **Top 3 recomendado:** CO2 (recepción robusta) → CO3 (costos) → CO4 (devolución a proveedor). CO1 (governance) puede ir 1º.
+
+**Pendiente:** confirmar decisiones abiertas con GO → implementar por fases (cada una deployable a PROD).
+
+---
+
 ## [2026-06-05] deploy | v1.30.1 PROD — ISS-151: excluir 'Incobrable' del Dashboard + unificar pseudo-métodos
 
 **Deployado a PROD.** Bugfix frontend, sin migración. Build verde, **366 tests verdes** (+4). PR #159, release v1.30.1, dev=main. Cierra **ISS-151**.

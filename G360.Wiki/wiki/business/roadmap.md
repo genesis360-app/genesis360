@@ -13,6 +13,14 @@ updated: 2026-05-29
 
 ---
 
+## v1.32.0 — Compras CO2: recepción robusta (PROD ✅)
+
+Segunda fase del módulo Compras. **B5 (fix):** el estado de la OC se recalcula desde el acumulado de todas las recepciones confirmadas (no solo la actual) → OC completada en parciales llega bien a `recibida`. + B3 over-receipt umbral % · B4 motivo de faltante + alerta · B1c over/under requiere SUPERVISOR+ · B7 adjuntar remito (bucket privado scoped por tenant) · B2 sin OC exige proveedor. Lib `recepcionLogic.ts` + 13 tests → suite 393. Mig 183.
+
+## v1.31.0 — Compras CO1: gobierno de OC (PROD ✅)
+
+Primera fase del módulo Compras. A1 creación por rol (DEPOSITO solo borradores) · A2 aprobación de OC por umbral antes de enviar · A4 sucursal obligatoria · A5 numeración configurable (default por sucursal) · D5 pago (CONTADOR read-only + doble firma por umbral con clave maestra). Lib `comprasPermisos.ts` + 14 tests. Config en Config → Gastos. Mig 182.
+
 ## v1.30.1 — ISS-151: excluir 'Incobrable' del Dashboard (PROD ✅)
 
 Bugfix: el write-off 'Incobrable' (B6) contaba como ingreso en los gráficos de medios de pago → distorsionaba la ganancia. Se excluye junto a los demás pseudo-métodos, unificados en `PSEUDO_METODOS_PAGO`/`esMetodoRealPago` (`src/lib/ccLogic.ts`, +4 tests). Cierra ISS-151 (Condonar/Revertir CC ya estaban en PROD).

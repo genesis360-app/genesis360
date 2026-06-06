@@ -569,6 +569,10 @@ export default function ConfigPage() {
   const [ocAprobUmbral,        setOcAprobUmbral]        = useState<string>((t142 as any)?.oc_aprobacion_umbral != null ? String((t142 as any).oc_aprobacion_umbral) : '')
   const [ocNumeracion,         setOcNumeracion]         = useState<string>((t142 as any)?.oc_numeracion ?? 'sucursal')
   const [ocDobleFirmaUmbral,   setOcDobleFirmaUmbral]   = useState<string>((t142 as any)?.oc_pago_doble_firma_umbral != null ? String((t142 as any).oc_pago_doble_firma_umbral) : '')
+  // CO3 — costos
+  const [ocCostoAlertaPct,     setOcCostoAlertaPct]     = useState<string>(String((t142 as any)?.compras_costo_alerta_pct ?? 10))
+  const [ocRemitoObligatorio,  setOcRemitoObligatorio]  = useState<boolean>(!!(t142 as any)?.recepcion_remito_obligatorio)
+  const [ocOverReceiptPct,     setOcOverReceiptPct]     = useState<string>((t142 as any)?.over_receipt_pct_max != null ? String((t142 as any).over_receipt_pct_max) : '')
   const [newCategoria,         setNewCategoria]         = useState<{ nombre: string; requiere_sucursal: boolean }>({ nombre: '', requiere_sucursal: false })
 
 
@@ -756,6 +760,10 @@ export default function ConfigPage() {
       oc_aprobacion_umbral:            ocAprobUmbral !== '' ? parseFloat(ocAprobUmbral) : null,
       oc_numeracion:                   ocNumeracion,
       oc_pago_doble_firma_umbral:      ocDobleFirmaUmbral !== '' ? parseFloat(ocDobleFirmaUmbral) : null,
+      // CO3 — costos + recepción
+      compras_costo_alerta_pct:        parseFloat(ocCostoAlertaPct) || 10,
+      recepcion_remito_obligatorio:    ocRemitoObligatorio,
+      over_receipt_pct_max:            ocOverReceiptPct !== '' ? parseFloat(ocOverReceiptPct) : null,
     }
     const { data, error } = await supabase.from('tenants').update(payload).eq('id', tenant!.id).select('*').single()
     if (error) toast.error(error.message)
@@ -3410,6 +3418,32 @@ export default function ConfigPage() {
                     onChange={e => setOcDobleFirmaUmbral(e.target.value)} placeholder="Vacío = sin doble firma" min="0" step="0.01"
                     className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Pagos de OC sobre este monto piden la clave maestra. (El CONTADOR nunca registra pagos.)</p>
+                </div>
+              </div>
+              {/* CO3 — costos + recepción */}
+              <div className="grid sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Alerta de cambio de costo (%)</label>
+                  <input type="number" min="0" onWheel={e => e.currentTarget.blur()} value={ocCostoAlertaPct} disabled={!canEdit}
+                    onChange={e => setOcCostoAlertaPct(e.target.value)}
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Al recibir, si el costo varía más que este %, se avisa y el operador decide actualizarlo.</p>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Over-receipt máximo (%)</label>
+                  <input type="number" min="0" onWheel={e => e.currentTarget.blur()} value={ocOverReceiptPct} disabled={!canEdit}
+                    onChange={e => setOcOverReceiptPct(e.target.value)} placeholder="Vacío = sin tope"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Tope para recibir más de lo pedido (requiere "permitir over-receipt" activo en Inventario).</p>
+                </div>
+                <div className="flex items-start gap-2 pt-6">
+                  <button onClick={() => canEdit && setOcRemitoObligatorio(v => !v)} disabled={!canEdit} className="flex-shrink-0">
+                    {ocRemitoObligatorio ? <ToggleRight size={26} className="text-accent" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
+                  </button>
+                  <div>
+                    <p className="font-medium text-gray-700 dark:text-gray-200 text-sm">Remito obligatorio</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">Exige adjuntar el remito del proveedor al confirmar una recepción.</p>
+                  </div>
                 </div>
               </div>
             </div>

@@ -2545,3 +2545,14 @@ ALTER TABLE tenants
   ADD COLUMN IF NOT EXISTS recepcion_alerta_faltante_dias INTEGER NOT NULL DEFAULT 7;    -- B4
 -- B5 robustez = recálculo del estado de la OC desde el acumulado de recepciones (en la app).
 -- B7 bucket privado 'remitos' (path <tenant_id>/<uuid>) + policies scoped por tenant.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 184: Compras · CO3 (Costos)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS compras_costo_alerta_pct NUMERIC NOT NULL DEFAULT 10;  -- E1
+ALTER TABLE ordenes_compra
+  ADD COLUMN IF NOT EXISTS costo_aduana NUMERIC,      -- E2 accesorios sueltos
+  ADD COLUMN IF NOT EXISTS costo_comision NUMERIC,
+  ADD COLUMN IF NOT EXISTS costo_otros NUMERIC;
+ALTER TABLE productos ADD COLUMN IF NOT EXISTS pendiente_revision BOOLEAN NOT NULL DEFAULT false;    -- E3 alta en recepción
+-- B6 (editar precio en recepción) = audit vía actividad_log, sin columna.

@@ -68,6 +68,9 @@ interface FormOC {
   notas: string
   tiene_envio: boolean
   costo_envio: string
+  costo_aduana: string    // CO3/E2
+  costo_comision: string  // CO3/E2
+  costo_otros: string     // CO3/E2
 }
 
 interface FormOCItem {
@@ -147,7 +150,7 @@ export default function ProveedoresPage() {
   const [ocFiltroProv, setOcFiltroProv] = useState('')
   const [showOcForm, setShowOcForm] = useState(false)
   const [editOcId, setEditOcId] = useState<string | null>(null)
-  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '' })
+  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '' })
   const [ocItems, setOcItems] = useState<FormOCItem[]>([])
   const [expandedOc, setExpandedOc] = useState<string | null>(null)
   const [showOcDetail, setShowOcDetail] = useState<OrdenCompra | null>(null)
@@ -812,6 +815,9 @@ export default function ProveedoresPage() {
           fecha_esperada: ocForm.fecha_esperada || null,
           notas: ocForm.notas.trim() || null,
           requiere_aprobacion: requiereAprob,  // A2 — recalcula al editar montos
+          costo_aduana: ocForm.costo_aduana ? parseFloat(ocForm.costo_aduana) : null,      // CO3/E2
+          costo_comision: ocForm.costo_comision ? parseFloat(ocForm.costo_comision) : null,
+          costo_otros: ocForm.costo_otros ? parseFloat(ocForm.costo_otros) : null,
         }).eq('id', editOcId)
         if (error) throw error
         ocId = editOcId
@@ -826,6 +832,9 @@ export default function ProveedoresPage() {
           notas: ocForm.notas.trim() || null,
           tiene_envio: ocForm.tiene_envio,
           costo_envio: ocForm.tiene_envio && ocForm.costo_envio ? parseFloat(ocForm.costo_envio) : null,
+          costo_aduana: ocForm.costo_aduana ? parseFloat(ocForm.costo_aduana) : null,      // CO3/E2
+          costo_comision: ocForm.costo_comision ? parseFloat(ocForm.costo_comision) : null,
+          costo_otros: ocForm.costo_otros ? parseFloat(ocForm.costo_otros) : null,
           sucursal_id: sucursalId || null,
           requiere_aprobacion: requiereAprob,  // A2
           created_by: (await supabase.auth.getUser()).data.user?.id,
@@ -998,7 +1007,7 @@ export default function ProveedoresPage() {
 
   const openNewOC = () => {
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '' })
+    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '' })
     setOcItems([{ _key: ++itemKey, producto_id: '', cantidad: '', precio_unitario: '', notas: '' }])
     setShowOcForm(true)
   }
@@ -1015,6 +1024,9 @@ export default function ProveedoresPage() {
       notas: oc.notas ?? '',
       tiene_envio: (oc as any).tiene_envio ?? false,
       costo_envio: (oc as any).costo_envio ? String((oc as any).costo_envio) : '',
+      costo_aduana: (oc as any).costo_aduana ? String((oc as any).costo_aduana) : '',
+      costo_comision: (oc as any).costo_comision ? String((oc as any).costo_comision) : '',
+      costo_otros: (oc as any).costo_otros ? String((oc as any).costo_otros) : '',
     })
     setOcItems((data ?? []).map(it => ({
       _key: ++itemKey,
@@ -1029,7 +1041,7 @@ export default function ProveedoresPage() {
   const closeOcForm = () => {
     setShowOcForm(false)
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '' })
+    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '' })
     setOcItems([])
   }
 
@@ -2102,6 +2114,22 @@ export default function ProveedoresPage() {
                           className="flex-1 px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent" />
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* CO3/E2 — costos accesorios (no se distribuyen al costo unitario) */}
+                <div>
+                  <label className="block text-sm font-medium text-primary mb-2">Costos accesorios (opcional)</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([['costo_aduana', 'Aduana'], ['costo_comision', 'Comisión'], ['costo_otros', 'Otros']] as const).map(([f, label]) => (
+                      <div key={f}>
+                        <label className="block text-xs text-muted mb-1">{label} ($)</label>
+                        <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
+                          value={ocForm[f]} onChange={e => setOcForm(prev => ({ ...prev, [f]: e.target.value }))}
+                          placeholder="0.00"
+                          className="w-full px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent" />
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>

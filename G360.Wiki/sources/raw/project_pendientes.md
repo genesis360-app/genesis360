@@ -22,10 +22,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.30.1` | `v1.30.1` |
-| Migrations | 001–**181** ✅ | 001–**181** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.30.1) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.30.1 |
+| APP_VERSION | `v1.32.0` | `v1.32.0` |
+| Migrations | 001–**183** ✅ | 001–**183** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.32.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.32.0 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna (181 ya en PROD).
 
@@ -226,8 +226,8 @@ Respuestas finales en `relevamiento_ventas_respuestas.md` → sección H-K. Plan
 
 Respuestas A-H + diseño + modelo de datos + sugerencias completas en **`relevamiento_compras_respuestas.md`**. Plan deployable por fases:
 
-- **CO1 — Gobierno de OC:** creación rol/umbral (DEPOSITO borradores) · aprobación por umbral/rol (reusa autorizaciones) · sucursal obligatoria · numeración configurable (default por sucursal) · permisos de pago (CONTADOR read-only + doble firma umbral).
-- **CO2 — Recepción robusta (Top 3 #1):** **arregla B5** (acumulado de `cantidad_recibida` por `oc_item` + recálculo de estado OC entre múltiples recepciones — hoy se calcula solo con la recepción actual, bug) · over-receipt umbral % · under-receipt motivo obligatorio + alerta · adjuntar remito · ajuste cant requiere SUPERVISOR+.
+- **CO1 — Gobierno de OC ✅ DEPLOYADO PROD (v1.31.0, mig 182):** A1 creación por rol (`comprasPermisos.capacidadCrearOC`: DUEÑO/ADMIN/SUPERVISOR completa, DEPOSITO solo borradores, CAJERO/CONTADOR sin acceso) · A2 aprobación por umbral (`ocRequiereAprobacion` + `requiere_aprobacion`/`aprobada_por`; "Aprobar y enviar" gateado por `puedeEnviarOC`) · A4 sucursal obligatoria · A5 numeración configurable (`tenants.oc_numeracion`, default sucursal, `numero_sucursal` vía trigger, etiqueta `S-OC-0001`) · D5 pago (CONTADOR read-only + doble firma por umbral con clave maestra). Config en Config → Gastos. Lib `comprasPermisos.ts` + 14 tests.
+- **CO2 — Recepción robusta ✅ DEPLOYADO PROD (v1.32.0, mig 183):** **B5 arreglado** — estado de OC se recalcula desde el **acumulado de todas las recepciones confirmadas** (`recepcionLogic.estadoOCdesdeRecibido`), no solo la actual · B3 over-receipt umbral % acumulado (`superaOverReceipt`) · B4 motivo de faltante obligatorio (catálogo) + `recepcion_alerta_faltante_dias` · B1c over/under requiere SUPERVISOR+ (`esAjusteCantidad`) · B7 adjuntar remito (bucket privado `remitos` scoped por tenant, `recepcion_remito_obligatorio`) · B2 recepción sin OC exige proveedor. Lib `recepcionLogic.ts` + 13 tests → suite 393.
 - **CO3 — Costos (Top 3 #2):** alerta cambio de costo X% + operador decide (E1) · campos accesorios sueltos (E2) · editar precio en recepción con audit (B6, **sujeto a OK de GO**) · reporte diferencias OC vs recepción.
 - **CO4 — Devolución a proveedor (Top 3 #3):** entidad separada `devoluciones_proveedor` · forma crédito CC/efectivo/reposición (operador elige) · catálogo motivo + obs opcional · link con faltante B4. Cierra el `tiene_reembolso_pendiente` huérfano.
 - **CO5 — Pago anticipo/contra-entrega:** modo de pago por proveedor + % anticipo + OC paga con anticipo + escalado · schedule configurable por OC · transferencia con comprobante.
@@ -235,7 +235,7 @@ Respuestas A-H + diseño + modelo de datos + sugerencias completas en **`relevam
 - **CO7 — Envío + OC inteligente + servicios:** enviar OC email/WA · sugerencia/auto-draft desde stock bajo · servicios recurrentes (sweep lazy) · catálogo ambos modos · comparar presupuestos.
 - **CO8 — Reportes + alertas + export:** todos los reportes/alertas G1/G2 + Excel/PDF/CSV + PDF OC + calificación proveedor.
 
-**Decisiones a confirmar con GO antes de codear:** E3 (alta rápida de producto en recepción — sugerido sí, GO había puesto "no permitir") · B6 (editar precio en recepción con audit — sugerido) · D1 (modos de pago exactos por proveedor) · A6 (WA por link `wa.me`, sin API). **Top 3:** CO2 → CO3 → CO4 (CO1 puede ir 1º; reordenable).
+**Decisiones confirmadas por GO (2026-06-05):** E3 alta rápida de producto en recepción ✅ SÍ (rol alto + "pendiente revisión") · B6 editar precio en recepción con audit ✅ SÍ · D1 modos `contado/anticipo/contra_entrega/cuenta_corriente` + % anticipo por proveedor (override opcional por OC) ✅ · A6 WA por link `wa.me` ✅. **Estado:** ✅ CO1 (v1.31.0) + ✅ CO2 (v1.32.0) en PROD. **Pendientes:** CO3 (costos: E1/E2/B6/E4-reporte) · CO4 (devolución a proveedor) · CO5 (anticipo/contra-entrega) · CO6 (cheques) · CO7 (envío+OC inteligente+servicios) · CO8 (reportes/alertas/export).
 
 ### Bugs / mejoras UX puntuales
 

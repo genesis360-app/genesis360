@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { puedeRegistrarPagoOC, requiereDobleFirmaPago } from '@/lib/comprasPermisos'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
@@ -226,6 +227,7 @@ export default function GastosPage() {
   const [ocDescuento, setOcDescuento]               = useState('0')
   const [ocDescuentoTipo, setOcDescuentoTipo]       = useState<'monto' | 'pct'>('monto')
   const [ocCajaSeleccionadaId, setOcCajaSeleccionadaId] = useState<string | null>(null)
+  const [ocClaveMaestra, setOcClaveMaestra]         = useState('')  // D5 — doble firma de pago por umbral
   // ISS-096: comprobante de pago en OC
   const [ocSubiendoFile, setOcSubiendoFile]         = useState(false)
 
@@ -670,6 +672,16 @@ export default function GastosPage() {
       const montoNoCc = mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
       const montoTotalMedios = montoCC + montoNoCc
 
+      // D5 — permisos de pago de OC: CONTADOR es read-only; doble firma por umbral requiere clave maestra.
+      if (!puedeRegistrarPagoOC(user?.rol)) { toast.error('El CONTADOR tiene acceso de solo lectura — no puede registrar pagos.'); setOcGuardando(false); return }
+      if (requiereDobleFirmaPago(montoTotalMedios, { umbral: (tenant as any)?.oc_pago_doble_firma_umbral })) {
+        if ((tenant as any)?.clave_maestra) {
+          if (!ocClaveMaestra.trim()) { toast.error('Este pago supera el umbral de doble firma: ingresá la clave maestra.'); setOcGuardando(false); return }
+          const { data: okClave } = await supabase.rpc('verificar_clave_maestra', { p_tenant_id: tenant!.id, p_clave: ocClaveMaestra.trim() })
+          if (!okClave) { toast.error('Clave maestra incorrecta.'); setOcGuardando(false); return }
+        }
+      }
+
       if (montoTotalMedios > saldo + 0.5) {
         toast.error(`El monto $${montoTotalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })} supera el saldo de $${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`)
         setOcGuardando(false); return
@@ -760,6 +772,7 @@ export default function GastosPage() {
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
       qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas'] })
       setOcModalId(null)
+      setOcClaveMaestra('')
       setOcMediosPago([{ tipo: 'Transferencia', monto: '' }])
       setOcPagoCondiciones('')
       setOcDescuento('0'); setOcDescuentoTipo('monto')
@@ -3161,8 +3174,23 @@ export default function GastosPage() {
                     })()}
                   </div>
                 </div>
+                {/* D5 — doble firma: clave maestra si el pago supera el umbral configurado */}
+                {(() => {
+                  const totalPago = ocMediosPago.reduce((s, m) => s + (parseFloat(m.monto.replace(',', '.')) || 0), 0)
+                  if (!(tenant as any)?.clave_maestra) return null
+                  if (!requiereDobleFirmaPago(totalPago, { umbral: (tenant as any)?.oc_pago_doble_firma_umbral })) return null
+                  return (
+                    <div className="px-5 pb-2">
+                      <label className="text-xs font-medium text-amber-700 dark:text-amber-400">🔒 Pago sobre el umbral de doble firma — clave maestra</label>
+                      <input type="password" autoComplete="new-password" value={ocClaveMaestra}
+                        onChange={e => setOcClaveMaestra(e.target.value)}
+                        placeholder="Clave maestra del dueño"
+                        className="w-full mt-1 px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-xl text-sm bg-white dark:bg-gray-700" />
+                    </div>
+                  )
+                })()}
                 <div className="flex gap-2 px-5 pb-5">
-                  <button onClick={() => setOcModalId(null)} className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
+                  <button onClick={() => { setOcModalId(null); setOcClaveMaestra('') }} className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
                   <button onClick={registrarPagoOC}
                     disabled={ocGuardando || !ocMediosPago.some(m => parseFloat(m.monto.replace(',','.')) > 0)}
                     className="flex-1 py-2.5 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-accent/90 disabled:opacity-50">

@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.30.1 — ISS-151: excluir 'Incobrable' del Dashboard (PROD ✅)
+
+Bugfix: el write-off 'Incobrable' (B6) contaba como ingreso en los gráficos de medios de pago → distorsionaba la ganancia. Se excluye junto a los demás pseudo-métodos, unificados en `PSEUDO_METODOS_PAGO`/`esMetodoRealPago` (`src/lib/ccLogic.ts`, +4 tests). Cierra ISS-151 (Condonar/Revertir CC ya estaban en PROD).
+
 ## v1.30.0 — Conteos 2.0 · cierre 100% (F2b-ref + F3b + A2) (PROD ✅)
 
 Cierre **100%** de Conteos 2.0 (ISS-CONT).

@@ -22,10 +22,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.30.0` | `v1.30.0` |
+| APP_VERSION | `v1.30.1` | `v1.30.1` |
 | Migrations | 001–**181** ✅ | 001–**181** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.30.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.30.0 |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.30.1) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.30.1 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna (181 ya en PROD).
 
@@ -222,6 +222,21 @@ Respuestas finales en `relevamiento_ventas_respuestas.md` → sección H-K. Plan
 
 **Dependencias clave:** VF4 (comparativa por canal) usa el modelo de VF2. VF5 se apoya en el flujo de devoluciones existente. VF1/VF3 son independientes y pueden ir primero.
 
+### Relevamiento Compras (OC + Recepciones) — plan por fases CO1-CO8 (respondido 2026-06-05)
+
+Respuestas A-H + diseño + modelo de datos + sugerencias completas en **`relevamiento_compras_respuestas.md`**. Plan deployable por fases:
+
+- **CO1 — Gobierno de OC:** creación rol/umbral (DEPOSITO borradores) · aprobación por umbral/rol (reusa autorizaciones) · sucursal obligatoria · numeración configurable (default por sucursal) · permisos de pago (CONTADOR read-only + doble firma umbral).
+- **CO2 — Recepción robusta (Top 3 #1):** **arregla B5** (acumulado de `cantidad_recibida` por `oc_item` + recálculo de estado OC entre múltiples recepciones — hoy se calcula solo con la recepción actual, bug) · over-receipt umbral % · under-receipt motivo obligatorio + alerta · adjuntar remito · ajuste cant requiere SUPERVISOR+.
+- **CO3 — Costos (Top 3 #2):** alerta cambio de costo X% + operador decide (E1) · campos accesorios sueltos (E2) · editar precio en recepción con audit (B6, **sujeto a OK de GO**) · reporte diferencias OC vs recepción.
+- **CO4 — Devolución a proveedor (Top 3 #3):** entidad separada `devoluciones_proveedor` · forma crédito CC/efectivo/reposición (operador elige) · catálogo motivo + obs opcional · link con faltante B4. Cierra el `tiene_reembolso_pendiente` huérfano.
+- **CO5 — Pago anticipo/contra-entrega:** modo de pago por proveedor + % anticipo + OC paga con anticipo + escalado · schedule configurable por OC · transferencia con comprobante.
+- **CO6 — Cheques diferidos:** tabla cheques (cobro futuro + alerta + endoso) + flujo cheque.
+- **CO7 — Envío + OC inteligente + servicios:** enviar OC email/WA · sugerencia/auto-draft desde stock bajo · servicios recurrentes (sweep lazy) · catálogo ambos modos · comparar presupuestos.
+- **CO8 — Reportes + alertas + export:** todos los reportes/alertas G1/G2 + Excel/PDF/CSV + PDF OC + calificación proveedor.
+
+**Decisiones a confirmar con GO antes de codear:** E3 (alta rápida de producto en recepción — sugerido sí, GO había puesto "no permitir") · B6 (editar precio en recepción con audit — sugerido) · D1 (modos de pago exactos por proveedor) · A6 (WA por link `wa.me`, sin API). **Top 3:** CO2 → CO3 → CO4 (CO1 puede ir 1º; reordenable).
+
 ### Bugs / mejoras UX puntuales
 
 | ID | Módulo | Descripción | Estado |
@@ -230,7 +245,7 @@ Respuestas finales en `relevamiento_ventas_respuestas.md` → sección H-K. Plan
 | ISS-080 | Alertas | Filtrar por sucursal todas las queries de AlertasPage | ✅ Resuelto 2026-05-28 — cruce client-side con `inventario_lineas`+`PSMSS` para stock; cruce con `inventario_lineas` para productos sin categoría |
 | ISS-108 | Header / Mobile | Selector de sucursal invisible en celular | ✅ Resuelto 2026-05-28 — bloque mobile con ícono Building2 + nombre + `<select>` transparente superpuesto |
 | ISS-148 | Recursos | Input texto libre para ubicación | ✅ Resuelto 2026-05-28 — componente `UbicacionPicker` (select con opciones del histórico de la sucursal + opción "+ Nueva ubicación") en form crear/editar, modal asignar y edit inline |
-| ISS-151 | Dashboard + CC | Dashboard sumaba "Cancelación CC" como método de pago → distorsionaba la ganancia. **🔄 Implementado en DEV:** (1) `MixCajaChart` + `MetricasPage` excluyen pseudo-métodos (`Cuenta Corriente`, `Cancelación CC`, `Condonación CC`); (2) `ClientesPage` reemplaza el botón único por **Condonar** (write-off, tag `Condonación CC`) y **Revertir** (restaura la deuda), ambos solo DUEÑO/SUPERVISOR/ADMIN; las condonadas quedan visibles con badge para poder revertir. Ambas acciones mantienen la venta **despachada** (no tocan stock ni estado de entrega — P4). Sin migración. Ver modelo abajo. | 🔄 DEV |
+| ISS-151 | Dashboard + CC | ✅ **CERRADO (v1.30.1)**. (1) `MixCajaChart` + `MetricasPage` excluyen pseudo-métodos vía constante única `PSEUDO_METODOS_PAGO` en `src/lib/ccLogic.ts` = `Cuenta Corriente` + `Cancelación CC` + `Condonación CC` + **`Incobrable`** (este último era el gap que faltaba: el write-off B6 se escribe en `medio_pago` y distorsionaba la ganancia); (2) `ClientesPage` con **Condonar** (write-off, tag `Condonación CC`) y **Revertir** (restaura la deuda), ambos solo DUEÑO/SUPERVISOR/ADMIN; condonadas con badge para revertir. Ambas mantienen la venta **despachada** (no tocan stock — P4). Sin migración. +4 tests (`esMetodoRealPago`). | ✅ v1.30.1 |
 
 ### ISS-151 — modelo alineado (relevado con GO + socio, 2026-05-29)
 
@@ -283,7 +298,7 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 |---|---|
 | **Aislamiento por sucursal a nivel RLS** | **Pedido GO 2026-05-30.** Hoy el aislamiento por sucursal es **solo cliente** (triple blindaje: fijado al cargar + selector oculto + guard de `setSucursal`). La RLS de la DB es por `tenant_id`, no por `sucursal_id` → un usuario técnico con credenciales podría leer otra sucursal vía API directa. Para que sea **imposible a nivel servidor**: RLS por sucursal en tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …) cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. Cambio grande (políticas en N tablas) — diseñar antes. Detalle en `multi-sucursal.md`. |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
-| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / **Conteos** ✨). Ventas y Clientes ya respondidos + implementados. **`relevamiento-conteos-reglas-negocio.html`** (ISS-CONT, generado 2026-06-03, subagente `relevamiento`): 34 preguntas en 12 secciones (scope/marca, ciego vs informado, doble conteo, gate de ajustes, scan-to-count, cíclico, reconciliación, reportes, UX 2 velocidades, permisos, fases, Top 3) — **esperando respuestas de GO + socio**. RRHH / Compras / Envíos / Caja sin responder |
+| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos. **Compras ✅ RESPONDIDO (2026-06-05)** → respuestas + diseño + plan por fases CO1-CO8 en `relevamiento_compras_respuestas.md` (ver sección abajo). **Pendientes de implementar Compras** (plan listo). **Sin responder:** RRHH / Envíos / Caja |
 
 ---
 

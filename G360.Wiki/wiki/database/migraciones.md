@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-185)
+# Historial de Migraciones (001-186)
 
-**Total al 2026-06-05:** 185 archivos de migración + 086b correctivo.  
+**Total al 2026-06-06:** 186 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -249,6 +249,7 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 183 | `183_compras_co2_recepcion.sql` | **Compras CO2** · `recepcion_items.motivo_faltante` (B4) · `recepciones.remito_url` (B7) · `tenants.over_receipt_pct_max` (B3) + `recepcion_remito_obligatorio` (B7) + `recepcion_alerta_faltante_dias` (B4) · bucket privado `remitos` + policies scoped por tenant. (B5 robustez = recálculo acumulado en la app.) Aditiva |
 | 184 | `184_compras_co3_costos.sql` | **Compras CO3** · `tenants.compras_costo_alerta_pct` (E1, default 10) · `ordenes_compra.costo_aduana/comision/otros` (E2) · `productos.pendiente_revision` (E3) + índice parcial. B6 editar precio = audit en `actividad_log`. Aditiva |
 | 185 | `185_compras_co4_devolucion_proveedor.sql` | **Compras CO4** · tablas `devoluciones_proveedor` (proveedor/oc/recepcion/sucursal, `forma` CHECK credito_cc\|efectivo\|reposicion, motivo, observacion, monto, caja_sesion_id, oc_reposicion_id) + `devolucion_proveedor_items` (producto/cantidad/costo_unitario/lpn), RLS por tenant + trigger `set_devprov_numero` (correlativo). Confirm/stock/CC/caja/reposición en la app |
+| 186 | `186_compras_co5_pago_anticipo.sql` | **Compras CO5** · `proveedores.modo_pago` (CHECK contado\|anticipo\|contra_entrega\|cuenta_corriente) + `anticipo_pct` (D1) · `ordenes_compra.paga_con_anticipo` + `anticipo_pct` snapshot (D1) + `pago_schedule JSONB` (D2). D3 transferencia con comprobante reusa `ordenes_compra.comprobante_url` (sin columna). Aditiva |
 
 ---
 

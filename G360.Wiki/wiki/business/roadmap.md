@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.35.0 — Compras CO5: pago anticipo/contra-entrega + schedule (DEV ⏳)
+
+D1 modo de pago por proveedor (`proveedores.modo_pago` contado/anticipo/contra_entrega/cuenta_corriente + `anticipo_pct`) → la OC propone "paga con anticipo" + % al elegir el proveedor (override por OC, snapshot en `ordenes_compra.paga_con_anticipo`/`anticipo_pct`). D2 plan de pagos opcional por OC (`pago_schedule JSONB`, valida suma 100%, guía en el modal de pago). D3 comprobante de transferencia (reusa `ordenes_compra.comprobante_url`). Lib pura `comprasPago.ts` + 16 tests → suite 428. Mig 186 (aditiva, en DEV).
+
 ## v1.34.0 — Compras CO4: devolución a proveedor (PROD ✅)
 
 Entidad separada `devoluciones_proveedor` (+ items). Desde una OC recibida → "Devolver a proveedor": ítems + cantidades, motivo (catálogo) + obs opcional, forma del reembolso: crédito en CC (nota de crédito) / efectivo (ingreso a caja) / reposición (OC nueva borrador). Rebaja stock FIFO + movimiento; valida disponible. Cierra el `tiene_reembolso_pendiente` huérfano. Lib `devolucionProveedor.ts` + 9 tests → suite 412. Mig 185.

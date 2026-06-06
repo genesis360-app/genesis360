@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-06] update | Compras CO5 — pago anticipo/contra-entrega + schedule (v1.35.0, mig 186, en DEV)
+
+**Implementada la fase CO5 de Compras** (D1/D2/D3). En DEV, build + 428 tests verdes. Mig 186 aplicada en DEV (aditiva), **pendiente PROD**.
+
+- **D1 — modo de pago por proveedor:** `proveedores.modo_pago` (`contado|anticipo|contra_entrega|cuenta_corriente`, CHECK) + `anticipo_pct`. En el form de proveedor: select de modo + % anticipo (solo si modo=anticipo). Al elegir el proveedor en una OC se propone "paga con anticipo" + % (`defaultAnticipoOC`), con override por OC: `ordenes_compra.paga_con_anticipo` + `anticipo_pct` (snapshot). El badge 💰 Anticipo + alerta por días sin recepción ya existía en Gastos → OC (escalado D1b).
+- **D2 — plan de pagos opcional por OC:** `ordenes_compra.pago_schedule JSONB` = `[{etiqueta,base 'confirmacion'|'recepcion'|'dias',dias?,pct}]`. Editor de cuotas en el form de OC (valida suma 100% con `scheduleValido`); se muestra como guía en el modal de pago de Gastos → OC.
+- **D3 — comprobante de transferencia:** reusa `ordenes_compra.comprobante_url` (ISS-096). En el modal de pago, cuando hay un medio Transferencia con monto, aparece "Adjuntar comprobante" (o "Ver" si ya está) vía `subirComprobanteOC`/`verComprobante`.
+- **Lib pura nueva:** `src/lib/comprasPago.ts` (`MODOS_PAGO_PROVEEDOR`, `defaultAnticipoOC`, `montoAnticipo`, `scheduleValido`, `totalPctSchedule`, `montoCuota`, `labelBaseCuota`) + `tests/unit/comprasPago.test.ts` (16 tests).
+- **Tocado:** `ProveedoresPage.tsx` (form proveedor + form OC + saveOC), `GastosPage.tsx` (modal de pago de OC), `brand.ts` (v1.35.0), `schema_full.sql`.
+
+**Próximo paso (Compras CO6-CO8):** CO6 cheques diferidos + endoso (D4) · CO7 enviar OC email/WA + auto-draft stock bajo + servicios recurrentes (A6/A3/F1/F2/F3) · CO8 reportes/alertas/export + reporte diferencias OC vs recepción (E4) + calificación de proveedor (G1/G2/G3).
+
+---
+
 ## [2026-06-05] cierre-sesión | Resumen para retomar (estado: PROD v1.34.0, mig 185)
 
 **Sesión larga — todo deployado a PROD, dev=main (salvo commits docs en dev, se foldean en el próximo PR). Suite 412 tests verdes.**

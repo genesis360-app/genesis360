@@ -125,7 +125,7 @@ OC confirmada → botón "Recibir mercadería" → `/recepciones/nuevo?oc_id=XXX
 
 ## Módulo Compras 2.0 (relevado 2026-06-05 — plan CO1-CO8)
 
-Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO4 en PROD (v1.31.0-v1.34.0, mig 182-185).** Filosofía: simple para el usuario PyME, robusto por dentro.
+Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO4 en PROD (v1.31.0-v1.34.0, mig 182-185) · CO5 en DEV (v1.35.0, mig 186).** Filosofía: simple para el usuario PyME, robusto por dentro.
 
 ### CO1 — Gobierno de OC (v1.31.0, mig 182)
 - **A1 creación por rol** (`src/lib/comprasPermisos.ts` → `capacidadCrearOC`): DUEÑO/ADMIN/SUPERVISOR completa · **DEPOSITO solo borradores** ("Nueva OC (borrador)") · CAJERO/CONTADOR sin acceso.
@@ -152,8 +152,13 @@ Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_co
   - **reposicion** → OC nueva (borrador) por los mismos ítems
 - Al confirmar **rebaja stock FIFO** por producto en la sucursal + movimiento `ajuste_rebaje`; valida stock disponible. Reemplaza el flujo huérfano `tiene_reembolso_pendiente`.
 
-### Pendiente (CO5-CO8)
-- **CO5** anticipo/contra-entrega por proveedor + % anticipo + schedule de pago (D1/D2/D3).
+### CO5 — Pago: anticipo + contra-entrega + schedule (v1.35.0, mig 186 · en DEV)
+Lógica pura en `src/lib/comprasPago.ts`.
+- **D1 — modo de pago por proveedor:** `proveedores.modo_pago` (`contado | anticipo | contra_entrega | cuenta_corriente`, CHECK) + `anticipo_pct`. En el form de proveedor: select de modo + % de anticipo (visible solo si modo = anticipo). Al elegir el proveedor en una OC, `defaultAnticipoOC` propone **"paga con anticipo" + %**; se puede destildar u override del % por OC. Snapshot en `ordenes_compra.paga_con_anticipo` + `anticipo_pct`. El badge **💰 Anticipo** + alerta por días sin recepción ya vive en **Gastos → OC** (escalado D1b).
+- **D2 — plan de pagos opcional por OC:** `ordenes_compra.pago_schedule JSONB` = `[{etiqueta, base 'confirmacion'|'recepcion'|'dias', dias?, pct}]`. Editor de cuotas en el form de OC; `scheduleValido` exige que sumen 100%. Es **opcional** (plantilla, no obligatorio) y se muestra como **guía** en el modal de pago.
+- **D3 — comprobante de transferencia:** reusa `ordenes_compra.comprobante_url` (ISS-096). En el modal de pago, cuando hay un medio **Transferencia** con monto, aparece **"Adjuntar comprobante"** (o "Ver" si ya está) — bucket `comprobantes-gastos`, path `<tenant>/oc/<ocId>.<ext>`.
+
+### Pendiente (CO6-CO8)
 - **CO6** cheques diferidos + endoso (D4).
 - **CO7** enviar OC por email/WA + auto-draft desde stock bajo + servicios recurrentes (A6/A3/F1/F2/F3).
 - **CO8** reportes/alertas/export + reporte de diferencias OC vs recepción (E4) + calificación de proveedor (G1/G2/G3).

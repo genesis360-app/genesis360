@@ -5,6 +5,10 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { capacidadCrearOC, ocRequiereAprobacion, puedeEnviarOC } from '@/lib/comprasPermisos'
 import { montoDevolucion, validarDevolucion, MOTIVOS_DEVOLUCION_PROVEEDOR, type FormaDevolucion } from '@/lib/devolucionProveedor'
+import {
+  MODOS_PAGO_PROVEEDOR, defaultAnticipoOC, montoAnticipo, scheduleValido,
+  totalPctSchedule, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
+} from '@/lib/comprasPago'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
@@ -36,6 +40,8 @@ interface FormProv {
   email: string
   condicion_iva: string
   plazo_pago_dias: string
+  modo_pago: ModoPagoProveedor  // CO5/D1
+  anticipo_pct: string          // CO5/D1
   banco: string
   cbu: string
   domicilio: string
@@ -46,7 +52,8 @@ interface FormProv {
 const FORM_PROV_EMPTY: FormProv = {
   tipo: 'proveedor', nombre: '', razon_social: '', dni: '', cuit: '',
   codigo_fiscal: '', regimen_fiscal: '', contacto: '', telefono: '',
-  email: '', condicion_iva: '', plazo_pago_dias: '', banco: '', cbu: '',
+  email: '', condicion_iva: '', plazo_pago_dias: '', modo_pago: 'contado',
+  anticipo_pct: '', banco: '', cbu: '',
   domicilio: '', notas: '', etiquetas: '',
 }
 
@@ -72,6 +79,9 @@ interface FormOC {
   costo_aduana: string    // CO3/E2
   costo_comision: string  // CO3/E2
   costo_otros: string     // CO3/E2
+  paga_con_anticipo: boolean   // CO5/D1
+  anticipo_pct: string         // CO5/D1
+  pago_schedule: CuotaSchedule[]  // CO5/D2
 }
 
 interface FormOCItem {
@@ -151,7 +161,7 @@ export default function ProveedoresPage() {
   const [ocFiltroProv, setOcFiltroProv] = useState('')
   const [showOcForm, setShowOcForm] = useState(false)
   const [editOcId, setEditOcId] = useState<string | null>(null)
-  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '' })
+  const [ocForm, setOcForm] = useState<FormOC>({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
   const [ocItems, setOcItems] = useState<FormOCItem[]>([])
   const [expandedOc, setExpandedOc] = useState<string | null>(null)
   const [showOcDetail, setShowOcDetail] = useState<OrdenCompra | null>(null)
@@ -562,6 +572,8 @@ export default function ProveedoresPage() {
         email: form.email.trim() || null,
         condicion_iva: form.condicion_iva || null,
         plazo_pago_dias: form.plazo_pago_dias ? parseInt(form.plazo_pago_dias) : null,
+        modo_pago: form.modo_pago,                                                   // CO5/D1
+        anticipo_pct: form.modo_pago === 'anticipo' && form.anticipo_pct ? parseFloat(form.anticipo_pct) : null,  // CO5/D1
         banco: form.banco.trim() || null,
         cbu: form.cbu.trim() || null,
         domicilio: form.domicilio.trim() || null,
@@ -816,6 +828,14 @@ export default function ProveedoresPage() {
         s + (parseFloat(it.cantidad) || 0) * (parseFloat(it.precio_unitario) || 0), 0)
       const requiereAprob = ocRequiereAprobacion(montoTotal, ocAprobacionCfg)
 
+      // CO5/D2 — el schedule de pago es opcional, pero si se definió debe sumar 100%.
+      if (!scheduleValido(ocForm.pago_schedule)) {
+        throw new Error('El plan de pagos debe sumar 100% y cada cuota necesita días válidos.')
+      }
+      const scheduleJson = ocForm.pago_schedule.length ? ocForm.pago_schedule : null
+      // CO5/D1 — snapshot del anticipo en la OC.
+      const antPct = ocForm.paga_con_anticipo && ocForm.anticipo_pct ? parseFloat(ocForm.anticipo_pct) : null
+
       let ocId: string
       if (editOcId) {
         const { error } = await supabase.from('ordenes_compra').update({
@@ -826,6 +846,9 @@ export default function ProveedoresPage() {
           costo_aduana: ocForm.costo_aduana ? parseFloat(ocForm.costo_aduana) : null,      // CO3/E2
           costo_comision: ocForm.costo_comision ? parseFloat(ocForm.costo_comision) : null,
           costo_otros: ocForm.costo_otros ? parseFloat(ocForm.costo_otros) : null,
+          paga_con_anticipo: ocForm.paga_con_anticipo,  // CO5/D1
+          anticipo_pct: antPct,                         // CO5/D1
+          pago_schedule: scheduleJson,                  // CO5/D2
         }).eq('id', editOcId)
         if (error) throw error
         ocId = editOcId
@@ -845,6 +868,9 @@ export default function ProveedoresPage() {
           costo_otros: ocForm.costo_otros ? parseFloat(ocForm.costo_otros) : null,
           sucursal_id: sucursalId || null,
           requiere_aprobacion: requiereAprob,  // A2
+          paga_con_anticipo: ocForm.paga_con_anticipo,  // CO5/D1
+          anticipo_pct: antPct,                         // CO5/D1
+          pago_schedule: scheduleJson,                  // CO5/D2
           created_by: (await supabase.auth.getUser()).data.user?.id,
         }).select('id').single()
         if (error) throw error
@@ -1106,6 +1132,8 @@ export default function ProveedoresPage() {
       email: p.email ?? '',
       condicion_iva: p.condicion_iva ?? '',
       plazo_pago_dias: p.plazo_pago_dias?.toString() ?? '',
+      modo_pago: (p.modo_pago as ModoPagoProveedor) ?? 'contado',                     // CO5/D1
+      anticipo_pct: p.anticipo_pct != null ? String(p.anticipo_pct) : '',             // CO5/D1
       banco: p.banco ?? '',
       cbu: p.cbu ?? '',
       domicilio: p.domicilio ?? '',
@@ -1130,7 +1158,7 @@ export default function ProveedoresPage() {
 
   const openNewOC = () => {
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '' })
+    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
     setOcItems([{ _key: ++itemKey, producto_id: '', cantidad: '', precio_unitario: '', notas: '' }])
     setShowOcForm(true)
   }
@@ -1150,6 +1178,9 @@ export default function ProveedoresPage() {
       costo_aduana: (oc as any).costo_aduana ? String((oc as any).costo_aduana) : '',
       costo_comision: (oc as any).costo_comision ? String((oc as any).costo_comision) : '',
       costo_otros: (oc as any).costo_otros ? String((oc as any).costo_otros) : '',
+      paga_con_anticipo: (oc as any).paga_con_anticipo ?? false,                       // CO5/D1
+      anticipo_pct: (oc as any).anticipo_pct != null ? String((oc as any).anticipo_pct) : '',  // CO5/D1
+      pago_schedule: Array.isArray((oc as any).pago_schedule) ? (oc as any).pago_schedule : [],  // CO5/D2
     })
     setOcItems((data ?? []).map(it => ({
       _key: ++itemKey,
@@ -1164,7 +1195,7 @@ export default function ProveedoresPage() {
   const closeOcForm = () => {
     setShowOcForm(false)
     setEditOcId(null)
-    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '' })
+    setOcForm({ proveedor_id: '', fecha_esperada: '', notas: '', tiene_envio: false, costo_envio: '', costo_aduana: '', costo_comision: '', costo_otros: '', paga_con_anticipo: false, anticipo_pct: '', pago_schedule: [] })
     setOcItems([])
   }
 
@@ -2115,6 +2146,32 @@ export default function ProveedoresPage() {
                     placeholder="Ej: 30"
                   />
                 </div>
+                {/* CO5/D1 — Modo de pago */}
+                <div>
+                  <label className="block text-xs font-medium text-muted mb-1">Modo de pago</label>
+                  <select
+                    className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
+                    value={form.modo_pago}
+                    onChange={e => setForm(f => ({ ...f, modo_pago: e.target.value as ModoPagoProveedor }))}
+                  >
+                    {MODOS_PAGO_PROVEEDOR.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                </div>
+                {/* CO5/D1 — % de anticipo (solo si el modo es anticipo) */}
+                {form.modo_pago === 'anticipo' && (
+                  <div>
+                    <label className="block text-xs font-medium text-muted mb-1">% de anticipo</label>
+                    <input
+                      type="number" min={0} max={100}
+                      className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
+                      value={form.anticipo_pct}
+                      onChange={e => setForm(f => ({ ...f, anticipo_pct: e.target.value }))}
+                      onWheel={e => e.currentTarget.blur()}
+                      placeholder="Ej: 30"
+                    />
+                    <p className="text-[11px] text-muted mt-0.5">Se propone como anticipo al crear una OC de este proveedor.</p>
+                  </div>
+                )}
                 {/* Banco */}
                 <div>
                   <label className="block text-xs font-medium text-muted mb-1">Banco</label>
@@ -2187,7 +2244,16 @@ export default function ProveedoresPage() {
                   <select
                     className="w-full px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm"
                     value={ocForm.proveedor_id}
-                    onChange={e => setOcForm(f => ({ ...f, proveedor_id: e.target.value }))}
+                    onChange={e => {
+                      const provId = e.target.value
+                      const prov = (proveedores as any[]).find(p => p.id === provId)
+                      const def = defaultAnticipoOC(prov)  // CO5/D1 — propone anticipo del proveedor
+                      setOcForm(f => ({
+                        ...f, proveedor_id: provId,
+                        paga_con_anticipo: def.paga_con_anticipo,
+                        anticipo_pct: def.anticipo_pct != null ? String(def.anticipo_pct) : '',
+                      }))
+                    }}
                   >
                     <option value="">Seleccioná un proveedor…</option>
                     {proveedores.filter(p => p.activo).map(p => (
@@ -2256,6 +2322,97 @@ export default function ProveedoresPage() {
                   </div>
                 </div>
               </div>
+
+              {/* CO5 — Condiciones de pago (anticipo D1 + schedule D2) */}
+              {(() => {
+                const montoTotalOC = ocItems.reduce((s, it) =>
+                  s + (parseFloat(it.cantidad) || 0) * (parseFloat(it.precio_unitario) || 0), 0)
+                const antPctNum = parseFloat(ocForm.anticipo_pct) || 0
+                const totalPct = totalPctSchedule(ocForm.pago_schedule)
+                const schedOk = scheduleValido(ocForm.pago_schedule)
+                return (
+                  <div className="mb-6 border border-border-ds rounded-xl p-4 space-y-4">
+                    <h3 className="text-sm font-semibold text-primary">Condiciones de pago</h3>
+
+                    {/* D1 — anticipo */}
+                    <div>
+                      <label className="flex items-center gap-2 text-sm text-primary cursor-pointer">
+                        <input type="checkbox" checked={ocForm.paga_con_anticipo}
+                          onChange={e => setOcForm(f => ({ ...f, paga_con_anticipo: e.target.checked }))} />
+                        Esta OC se paga con anticipo
+                      </label>
+                      {ocForm.paga_con_anticipo && (
+                        <div className="mt-2 flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted">% anticipo</span>
+                            <input type="number" min={0} max={100} onWheel={e => e.currentTarget.blur()}
+                              value={ocForm.anticipo_pct}
+                              onChange={e => setOcForm(f => ({ ...f, anticipo_pct: e.target.value }))}
+                              placeholder="Ej: 30"
+                              className="w-24 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent" />
+                          </div>
+                          {antPctNum > 0 && montoTotalOC > 0 && (
+                            <span className="text-xs text-accent font-medium">
+                              Anticipo ≈ ${montoAnticipo(montoTotalOC, antPctNum).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* D2 — schedule de pago (opcional) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-medium text-muted">Plan de pagos (opcional)</label>
+                        <button type="button"
+                          onClick={() => setOcForm(f => ({ ...f, pago_schedule: [...f.pago_schedule, { etiqueta: '', base: 'confirmacion' as BaseCuota, pct: 0 }] }))}
+                          className="flex items-center gap-1 text-xs text-accent hover:underline">
+                          <Plus className="w-3 h-3" /> Agregar cuota
+                        </button>
+                      </div>
+                      {ocForm.pago_schedule.length === 0 ? (
+                        <p className="text-[11px] text-muted">Sin plan: el pago se registra libremente en Gastos → OC.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {ocForm.pago_schedule.map((c, i) => (
+                            <div key={i} className="flex items-center gap-2 flex-wrap">
+                              <input value={c.etiqueta ?? ''} placeholder="Etiqueta"
+                                onChange={e => setOcForm(f => ({ ...f, pago_schedule: f.pago_schedule.map((x, j) => j === i ? { ...x, etiqueta: e.target.value } : x) }))}
+                                className="w-28 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent" />
+                              <select value={c.base}
+                                onChange={e => setOcForm(f => ({ ...f, pago_schedule: f.pago_schedule.map((x, j) => j === i ? { ...x, base: e.target.value as BaseCuota } : x) }))}
+                                className="px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent">
+                                <option value="confirmacion">Al confirmar</option>
+                                <option value="recepcion">Al recibir</option>
+                                <option value="dias">A N días</option>
+                              </select>
+                              {c.base === 'dias' && (
+                                <input type="number" min={1} onWheel={e => e.currentTarget.blur()} value={c.dias ?? ''} placeholder="días"
+                                  onChange={e => setOcForm(f => ({ ...f, pago_schedule: f.pago_schedule.map((x, j) => j === i ? { ...x, dias: parseInt(e.target.value) || null } : x) }))}
+                                  className="w-16 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent" />
+                              )}
+                              <div className="flex items-center gap-1">
+                                <input type="number" min={0} max={100} onWheel={e => e.currentTarget.blur()} value={c.pct || ''} placeholder="%"
+                                  onChange={e => setOcForm(f => ({ ...f, pago_schedule: f.pago_schedule.map((x, j) => j === i ? { ...x, pct: parseFloat(e.target.value) || 0 } : x) }))}
+                                  className="w-16 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent" />
+                                <span className="text-xs text-muted">%</span>
+                              </div>
+                              {montoTotalOC > 0 && c.pct > 0 && (
+                                <span className="text-[11px] text-muted">${montoAnticipo(montoTotalOC, c.pct).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                              )}
+                              <button type="button" onClick={() => setOcForm(f => ({ ...f, pago_schedule: f.pago_schedule.filter((_, j) => j !== i) }))}
+                                className="text-muted hover:text-red-500"><X size={14} /></button>
+                            </div>
+                          ))}
+                          <p className={`text-xs font-medium ${schedOk ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                            Total: {totalPct}% {schedOk ? '✓' : '(debe sumar 100%)'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })()}
 
               {/* Items */}
               <div>

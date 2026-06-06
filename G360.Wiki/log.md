@@ -6,6 +6,24 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-05] cierre-sesión | Resumen para retomar (estado: PROD v1.34.0, mig 185)
+
+**Sesión larga — todo deployado a PROD, dev=main (salvo commits docs en dev, se foldean en el próximo PR). Suite 412 tests verdes.**
+
+Lo hecho en esta sesión, en orden:
+1. **Conteos 2.0 cerrado al 100%** — F2b scan-to-count (v1.28→1.29), F4 ABC/cíclico/reportes/trazabilidad (v1.29.0, mig 180), y cierre F2b-ref + F3b (doble conteo formal) + A2 (wall-to-wall bloquea sucursal) (v1.30.0, mig 181). Módulo sin pendientes. Memoria: `project_conteos2_backlog.md`.
+2. **ISS-151 cerrado** (v1.30.1) — excluir `Incobrable` de los medios de pago del Dashboard + unificar `PSEUDO_METODOS_PAGO` en `ccLogic.ts`.
+3. **Relevamiento Compras respondido** por GO → `relevamiento_compras_respuestas.md` (plan CO1-CO8). Decisiones GO: E3/B6/D1/A6 ✅.
+4. **Compras CO1-CO4 deployado a PROD:** CO1 gobierno OC (v1.31.0, mig 182) · CO2 recepción robusta + fix B5 (v1.32.0, mig 183) · CO3 costos (v1.33.0, mig 184) · CO4 devolución a proveedor (v1.34.0, mig 185).
+
+**Próximo paso (Compras CO5-CO8):** CO5 anticipo/contra-entrega por proveedor + schedule de pago (D1/D2/D3) · CO6 cheques diferidos + endoso (D4) · CO7 enviar OC email/WA + auto-draft desde stock bajo + servicios recurrentes (A6/A3/F1/F2/F3) · CO8 reportes/alertas/export + reporte diferencias OC vs recepción (E4) + calificación de proveedor (G1/G2/G3). Detalle y diseño en `relevamiento_compras_respuestas.md` + `project_pendientes.md`.
+
+**Otros pendientes abiertos (fuera de Compras):** RLS por sucursal a nivel servidor (deuda técnica, pedido GO) · relevamientos sin responder: RRHH/Envíos/Caja · bug GastosPage (espera stack trace Sentry) · Clientes diferidos (B7 tope deuda global, F2 fidelización -necesita relevamiento-, cobranza CC→arqueo) · convertir planes `.plan.md` e2e a Playwright reales.
+
+**Libs puras nuevas de la sesión:** `conteoAbc.ts`, `comprasPermisos.ts`, `recepcionLogic.ts`, `comprasCostos.ts`, `devolucionProveedor.ts` (todas con tests).
+
+---
+
 ## [2026-06-05] deploy | v1.33.0 + v1.34.0 PROD — Compras CO3 (costos) + CO4 (devolución a proveedor)
 
 Dos fases más del módulo **Compras** a PROD. Migraciones **184** (CO3) y **185** (CO4), ambas en DEV y PROD. Build verde, **412 tests** (+10 `comprasCostos`, +9 `devolucionProveedor`).

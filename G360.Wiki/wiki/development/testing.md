@@ -9,7 +9,7 @@ updated: 2026-06-03
 # Testing
 
 Genesis360 tiene cobertura con **Vitest** (unit tests) + **Playwright** (E2E).  
-Total al 2026-06-03: **346 unit tests** (19 archivos) · **16 archivos E2E spec** (todos los roles)
+Total al 2026-06-05: **412 unit tests** (25 archivos) · **16 archivos E2E spec** (todos los roles)
 
 > **Pipeline de QA con agentes (v1.23.1):** el ciclo `relevamiento → spec-extractor → test-author → test-runner → bug-fixer` está soportado por subagentes de proyecto (ver [[wiki/development/agentes-claude-code]]). El plan de escenarios por módulo vive en `tests/specs/<modulo>.plan.md`.
 >
@@ -45,6 +45,12 @@ Total al 2026-06-03: **346 unit tests** (19 archivos) · **16 archivos E2E spec*
 | `tests/unit/permisosCosto.test.ts` | **Ventas G4 (v1.23.2)**: puedeVerCosto (costo/margen oculto a CAJERO/DEPOSITO/RRHH) | 8 |
 | `tests/unit/umbralGasto.test.ts` | **Gastos (v1.23.2)**: evaluarUmbralGasto (umbral por rol/sucursal), puedeAprobar (cadena de aprobación) | 13 |
 | `tests/unit/conteoAjuste.test.ts` | **Conteos 2.0 F3 (v1.27.0)**: superaUmbral (combinado u/%/$), requiereAutorizacion (gate D1), requiereReconteo (C1), reconciliarDelta (G1) | 16 |
+| `tests/unit/conteoAbc.test.ts` | **Conteos 2.0 F4 (v1.29.0)**: clasificarABC (Pareto 80/95), sugerirConteoCiclico, reporteExactitud (exactitud %/valorización) | 16 |
+| `tests/unit/comprasPermisos.test.ts` | **Compras CO1 (v1.31.0)**: capacidadCrearOC, ocRequiereAprobacion, puedeEnviarOC, puedeRegistrarPagoOC, requiereDobleFirmaPago | 14 |
+| `tests/unit/recepcionLogic.test.ts` | **Compras CO2 (v1.32.0)**: estadoOCdesdeRecibido (acumulado B5), superaOverReceipt (B3), tieneFaltante (B4), esAjusteCantidad (B1c) | 13 |
+| `tests/unit/comprasCostos.test.ts` | **Compras CO3 (v1.33.0)**: cambioCostoPct, superaAlertaCosto (E1), totalOCconAccesorios (E2) | 10 |
+| `tests/unit/devolucionProveedor.test.ts` | **Compras CO4 (v1.34.0)**: montoDevolucion, validarDevolucion (stock disponible/forma/motivo) | 9 |
+| `tests/unit/ccLogic.test.ts` (ISS-151) | + PSEUDO_METODOS_PAGO / esMetodoRealPago (excluir Incobrable del dashboard) | +4 |
 
 ### Qué se testea
 

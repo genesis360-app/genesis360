@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
+import { estadoOCdesdeRecibido, superaOverReceipt, tieneFaltante, esAjusteCantidad } from '@/lib/recepcionLogic'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import type { Recepcion, ProductoEstructura } from '@/lib/supabase'
 
@@ -55,6 +56,7 @@ type FormItem = {
   series_txt: string
   precio_costo: string
   estructura_id: string
+  motivo_faltante: string  // CO2/B4 — motivo del faltante en under-receipt
   // Atributos de variante
   pais_origen: string
   talle: string
@@ -97,7 +99,7 @@ function nuevoItem(overrides: Partial<FormItem> = {}): FormItem {
     unidad_medida: 'unidad', precio_costo_default: 0,
     oc_item_id: '', cantidad_esperada: 0, cantidad_recibida: '1',
     ubicacion_id: '', estado_id: '', nro_lote: '', fecha_vencimiento: '',
-    lpn: '', series_txt: '', precio_costo: '', estructura_id: '',
+    lpn: '', series_txt: '', precio_costo: '', estructura_id: '', motivo_faltante: '',
     pais_origen: '', talle: '', color: '', encaje: '', formato: '', sabor_aroma: '',
     expanded: false,
     ...overrides,
@@ -109,6 +111,10 @@ function nuevoItem(overrides: Partial<FormItem> = {}): FormItem {
 export default function RecepcionesPage() {
   const { tenant, user, sucursales, sucursalId: sucursalCtx } = useAuthStore()
   const { applyFilter, sucursalId } = useSucursalFilter()
+  // CO2 — config + rol para over-receipt, motivo de faltante y remito
+  const esSupervisorPlus = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
+  const overReceiptCfg = { permite: !!(tenant as any)?.permite_over_receipt, pctMax: (tenant as any)?.over_receipt_pct_max }
+  const remitoObligatorio = !!(tenant as any)?.recepcion_remito_obligatorio
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const qc = useQueryClient()
@@ -126,6 +132,7 @@ export default function RecepcionesPage() {
   const [ocPagada, setOcPagada] = useState(false)
   const [fSucursalId, setFSucursalId] = useState(sucursalCtx ?? '')
   const [fNotas, setFNotas] = useState('')
+  const [remitoFile, setRemitoFile] = useState<File | null>(null)  // CO2/B7 — comprobante del proveedor
   const [items, setItems] = useState<FormItem[]>([])
   const [prodSearch, setProdSearch] = useState('')
   const [showScanner, setShowScanner] = useState(false)  // ISS-127 F3
@@ -420,11 +427,70 @@ export default function RecepcionesPage() {
         toast.error(errores[0])
         return
       }
+
+      // CO2/B2 — recepción sin OC debe tener proveedor
+      if (!fOcId && !fProveedorId) { toast.error('Seleccioná un proveedor para una recepción sin OC'); return }
+
+      // Cantidad recibida efectiva por ítem
+      const cantDe = (it: FormItem) => it.tiene_series
+        ? it.series_txt.split('\n').filter(s => s.trim()).length
+        : Number(it.cantidad_recibida)
+
+      // CO2/B1c — over/under requiere SUPERVISOR+ ; CO2/B4 — faltante requiere motivo
+      for (const it of items) {
+        const cant = cantDe(it)
+        if (cant === 0) continue
+        if (it.oc_item_id && esAjusteCantidad(cant, it.cantidad_esperada) && !esSupervisorPlus) {
+          toast.error(`Ajustar la cantidad de "${it.producto_nombre}" (pedido ${it.cantidad_esperada}, recibís ${cant}) requiere SUPERVISOR o DUEÑO`)
+          return
+        }
+      }
+
+      // CO2/B3 + B4 — recibido ACUMULADO por ítem de OC (suma de recepciones confirmadas previas)
+      const ocItemIds = items.filter(it => it.oc_item_id).map(it => it.oc_item_id)
+      const prevPorItem = new Map<string, number>()
+      if (ocItemIds.length > 0) {
+        const { data: prev } = await supabase.from('recepcion_items')
+          .select('oc_item_id, cantidad_recibida, recepciones!inner(estado)')
+          .in('oc_item_id', ocItemIds).eq('recepciones.estado', 'confirmada')
+        for (const r of (prev ?? []) as any[]) {
+          prevPorItem.set(r.oc_item_id, (prevPorItem.get(r.oc_item_id) ?? 0) + Number(r.cantidad_recibida ?? 0))
+        }
+      }
+      for (const it of items) {
+        const cant = cantDe(it)
+        if (cant === 0) continue
+        const acum = (it.oc_item_id ? (prevPorItem.get(it.oc_item_id) ?? 0) : 0) + cant
+        // B3 — over-receipt acumulado sobre el tope permitido
+        if (it.oc_item_id && superaOverReceipt(acum, it.cantidad_esperada, overReceiptCfg)) {
+          toast.error(`"${it.producto_nombre}": recibido acumulado ${acum} supera lo permitido sobre lo pedido (${it.cantidad_esperada})`)
+          return
+        }
+        // B4 — faltante (acumulado por debajo de lo pedido) requiere motivo
+        if (it.oc_item_id && tieneFaltante(acum, it.cantidad_esperada) && !it.motivo_faltante.trim()) {
+          setItems(prev => prev.map(x => x._key === it._key ? { ...x, expanded: true } : x))
+          toast.error(`Indicá el motivo del faltante de "${it.producto_nombre}" (recibís menos de lo pedido)`)
+          return
+        }
+      }
+
+      // CO2/B7 — remito obligatorio
+      if (remitoObligatorio && !remitoFile) { toast.error('Adjuntá el remito del proveedor (obligatorio)'); return }
     }
 
     setSaving(true)
     try {
       const estado = confirmar ? 'confirmada' : 'borrador'
+
+      // CO2/B7 — subir remito a Storage si se adjuntó
+      let remitoUrl: string | null = null
+      if (remitoFile) {
+        const ext = remitoFile.name.split('.').pop() || 'pdf'
+        const path = `${tenant!.id}/${crypto.randomUUID()}.${ext}`
+        const { error: upErr } = await supabase.storage.from('remitos').upload(path, remitoFile, { upsert: false })
+        if (upErr) { toast.error('No se pudo subir el remito: ' + upErr.message); setSaving(false); return }
+        remitoUrl = path
+      }
 
       const { data: rec, error: recErr } = await supabase
         .from('recepciones')
@@ -435,6 +501,7 @@ export default function RecepcionesPage() {
           estado,
           notas: fNotas || null,
           sucursal_id: fSucursalId || null,
+          remito_url: remitoUrl,  // CO2/B7
           created_by: user!.id,
         })
         .select('id, numero')
@@ -519,6 +586,7 @@ export default function RecepcionesPage() {
             series_txt: it.tiene_series ? it.series_txt : null,
             inventario_linea_id: linea.id,
             precio_costo: it.precio_costo ? Number(it.precio_costo) : null,
+            motivo_faltante: it.motivo_faltante.trim() || null,  // CO2/B4
           })
         } else {
           await supabase.from('recepcion_items').insert({
@@ -530,23 +598,36 @@ export default function RecepcionesPage() {
             nro_lote: it.nro_lote || null,
             fecha_vencimiento: it.fecha_vencimiento || null,
             lpn: it.lpn || null,
+            motivo_faltante: it.motivo_faltante.trim() || null,  // CO2/B4
           })
         }
       }
 
-      // Actualizar estado de OC vinculada
+      // CO2/B5 — recalcular el estado de la OC desde el ACUMULADO de TODAS sus recepciones
+      // confirmadas (no solo la actual). Antes se calculaba solo con esta recepción → una OC
+      // completada en varias parciales quedaba mal en 'recibida_parcial'.
       if (confirmar && fOcId) {
-        const ocItems = items.filter(it => it.oc_item_id)
-        const allFull = ocItems.every(it => {
-          const cant = it.tiene_series
-            ? it.series_txt.split('\n').filter(s => s.trim()).length
-            : Number(it.cantidad_recibida)
-          return cant >= it.cantidad_esperada
-        })
+        const { data: ocItemsFull } = await supabase.from('orden_compra_items')
+          .select('id, cantidad').eq('orden_compra_id', fOcId)
+        const idsOC = (ocItemsFull ?? []).map((o: any) => o.id)
+        const recibidoPorItem = new Map<string, number>()
+        if (idsOC.length > 0) {
+          const { data: recs } = await supabase.from('recepcion_items')
+            .select('oc_item_id, cantidad_recibida, recepciones!inner(estado)')
+            .in('oc_item_id', idsOC).eq('recepciones.estado', 'confirmada')
+          for (const r of (recs ?? []) as any[]) {
+            recibidoPorItem.set(r.oc_item_id, (recibidoPorItem.get(r.oc_item_id) ?? 0) + Number(r.cantidad_recibida ?? 0))
+          }
+        }
+        const itemsRecibido = (ocItemsFull ?? []).map((o: any) => ({
+          esperada: Number(o.cantidad ?? 0), recibidoAcum: recibidoPorItem.get(o.id) ?? 0,
+        }))
+        const estadoOC = estadoOCdesdeRecibido(itemsRecibido)
         await supabase.from('ordenes_compra').update({
-          estado: allFull ? 'recibida' : 'recibida_parcial',
+          estado: estadoOC === 'recibida' ? 'recibida' : 'recibida_parcial',
         }).eq('id', fOcId)
         qc.invalidateQueries({ queryKey: ['ordenes', tenant?.id] })
+        qc.invalidateQueries({ queryKey: ['ordenes_compra'] })
       }
 
       // Gasto automático al confirmar recepción vinculada a una OC
@@ -612,7 +693,7 @@ export default function RecepcionesPage() {
 
   const resetForm = () => {
     setFProveedorId(''); setFOcId(''); setFSucursalId(sucursalCtx ?? '')
-    setFNotas(''); setItems([]); setProdSearch('')
+    setFNotas(''); setItems([]); setProdSearch(''); setRemitoFile(null)
   }
 
   const crearOCDerivada = useMutation({
@@ -1070,6 +1151,16 @@ export default function RecepcionesPage() {
               placeholder="Opcional..."
               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
           </div>
+          {/* CO2/B7 — remito del proveedor */}
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Remito del proveedor {remitoObligatorio ? <span className="text-red-500">*</span> : <span className="text-gray-400 text-xs">(opcional)</span>}
+            </label>
+            <input type="file" accept="image/*,application/pdf"
+              onChange={e => setRemitoFile(e.target.files?.[0] ?? null)}
+              className="w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-accent/10 file:text-accent file:text-sm file:font-medium" />
+            {remitoFile && <p className="text-xs text-gray-500 mt-1">📎 {remitoFile.name}</p>}
+          </div>
         </div>
       </div>
 
@@ -1159,6 +1250,26 @@ export default function RecepcionesPage() {
                     <Trash2 size={15} />
                   </button>
                 </div>
+
+                {/* CO2/B4 — motivo del faltante (cuando se recibe menos que lo pedido en una OC) */}
+                {(() => {
+                  const cant = it.tiene_series ? it.series_txt.split('\n').filter(s => s.trim()).length : Number(it.cantidad_recibida)
+                  if (!(it.oc_item_id && it.cantidad_esperada > 0 && cant < it.cantidad_esperada)) return null
+                  return (
+                    <div className="px-4 pb-2 -mt-1">
+                      <select value={it.motivo_faltante} onChange={e => updItem(it._key, { motivo_faltante: e.target.value })}
+                        className="w-full px-2 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg text-xs bg-amber-50/40 dark:bg-amber-900/10 focus:outline-none">
+                        <option value="">⚠ Motivo del faltante (obligatorio)…</option>
+                        <option value="No entregado por proveedor">No entregado por proveedor</option>
+                        <option value="Rotura / dañado">Rotura / dañado</option>
+                        <option value="Faltante de stock del proveedor">Faltante de stock del proveedor</option>
+                        <option value="Cancelado por proveedor">Cancelado por proveedor</option>
+                        <option value="Entrega parcial (resto pendiente)">Entrega parcial (resto pendiente)</option>
+                        <option value="Otro">Otro</option>
+                      </select>
+                    </div>
+                  )
+                })()}
 
                 {/* Detalles expandibles */}
                 {it.expanded && (

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { capacidadCrearOC, ocRequiereAprobacion, puedeEnviarOC } from '@/lib/comprasPermisos'
+import { montoDevolucion, validarDevolucion, MOTIVOS_DEVOLUCION_PROVEEDOR, type FormaDevolucion } from '@/lib/devolucionProveedor'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
@@ -16,7 +17,7 @@ import {
   FileText, Send, CheckCircle, XCircle, Package, Hash, Calendar,
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
-  Upload, Download, DollarSign, AlertCircle, TrendingDown, FileDown,
+  Upload, Download, DollarSign, AlertCircle, TrendingDown, FileDown, RotateCcw,
 } from 'lucide-react'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes'
@@ -154,6 +155,13 @@ export default function ProveedoresPage() {
   const [ocItems, setOcItems] = useState<FormOCItem[]>([])
   const [expandedOc, setExpandedOc] = useState<string | null>(null)
   const [showOcDetail, setShowOcDetail] = useState<OrdenCompra | null>(null)
+  // CO4 — devolución a proveedor
+  const [devModalOC, setDevModalOC] = useState<OrdenCompra | null>(null)
+  const [devCantidades, setDevCantidades] = useState<Record<string, string>>({})
+  const [devMotivo, setDevMotivo] = useState('')
+  const [devObs, setDevObs] = useState('')
+  const [devForma, setDevForma] = useState<FormaDevolucion>('credito_cc')
+  const [devGuardando, setDevGuardando] = useState(false)
   const [ocDetailTab, setOcDetailTab] = useState<'pedido' | 'entregas' | 'diferencias'>('pedido')
 
   const abrirOcDetail = (oc: OrdenCompra) => {
@@ -954,6 +962,121 @@ export default function ProveedoresPage() {
     },
     onError: (e: any) => toast.error(e.message),
   })
+
+  // CO4 — confirmar devolución a proveedor: rebaja stock (FIFO) + crea la devolución +
+  // aplica la forma (crédito CC / efectivo a caja / reposición = OC nueva).
+  const abrirDevolucion = (oc: OrdenCompra) => {
+    setDevModalOC(oc); setDevCantidades({}); setDevMotivo(''); setDevObs(''); setDevForma('credito_cc')
+  }
+  const confirmarDevolucion = async () => {
+    const oc = devModalOC
+    if (!oc) return
+    const sucId = (oc as any).sucursal_id ?? sucursalId
+    if (!sucId) { toast.error('La OC no tiene sucursal asignada — no se puede devolver stock'); return }
+
+    const itemsSel = (ocItemsData as any[]).map(it => ({
+      producto_id: it.producto_id,
+      nombre: it.productos?.nombre ?? '—',
+      cantidad: parseFloat(devCantidades[it.producto_id] || '0') || 0,
+      costo_unitario: Number(it.precio_unitario ?? it.productos?.precio_costo ?? 0),
+    })).filter(x => x.cantidad > 0)
+
+    // Stock disponible por producto en la sucursal (suma de líneas activas)
+    const stockMap: Record<string, number> = {}
+    for (const it of itemsSel) {
+      const { data: ls } = await supabase.from('inventario_lineas')
+        .select('cantidad').eq('tenant_id', tenant!.id).eq('producto_id', it.producto_id)
+        .eq('sucursal_id', sucId).eq('activo', true)
+      stockMap[it.producto_id] = (ls ?? []).reduce((s: number, l: any) => s + Number(l.cantidad ?? 0), 0)
+    }
+    const val = validarDevolucion({ proveedorId: oc.proveedor_id, motivo: devMotivo, forma: devForma,
+      items: itemsSel.map(x => ({ ...x, stockDisponible: stockMap[x.producto_id] ?? 0 })) })
+    if (!val.ok) { toast.error(val.error!); return }
+
+    setDevGuardando(true)
+    try {
+      const monto = montoDevolucion(itemsSel)
+      const hoy = new Date().toISOString().split('T')[0]
+
+      // 1) Rebaja de stock FIFO por producto + movimiento ajuste_rebaje
+      for (const it of itemsSel) {
+        let restante = it.cantidad
+        const { data: prod } = await supabase.from('productos').select('stock_actual').eq('id', it.producto_id).single()
+        const stockAntes = Number(prod?.stock_actual ?? 0)
+        const { data: lineas } = await supabase.from('inventario_lineas')
+          .select('id, cantidad').eq('tenant_id', tenant!.id).eq('producto_id', it.producto_id)
+          .eq('sucursal_id', sucId).eq('activo', true).gt('cantidad', 0).order('created_at', { ascending: true })
+        for (const l of (lineas ?? []) as any[]) {
+          if (restante <= 0.001) break
+          const quita = Math.min(Number(l.cantidad), restante)
+          const nueva = Number(l.cantidad) - quita
+          await supabase.from('inventario_lineas').update({ cantidad: nueva, activo: nueva > 0 }).eq('id', l.id)
+          restante -= quita
+        }
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id, producto_id: it.producto_id, tipo: 'ajuste_rebaje',
+          cantidad: it.cantidad, stock_antes: stockAntes, stock_despues: Math.max(0, stockAntes - it.cantidad),
+          motivo: `Devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
+          usuario_id: user?.id, sucursal_id: sucId,
+        })
+      }
+
+      // 2) Forma del reembolso
+      let cajaSesionId: string | null = null
+      let ocReposicionId: string | null = null
+      if (devForma === 'credito_cc') {
+        await supabase.from('proveedor_cc_movimientos').insert({
+          tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, oc_id: oc.id,
+          tipo: 'nota_credito', monto: -monto, fecha: hoy,
+          descripcion: `Devolución a proveedor (OC #${oc.numero}) — crédito a favor`, created_by: user?.id,
+        })
+      } else if (devForma === 'efectivo') {
+        cajaSesionId = (cajasAbiertasProv as any[])[0]?.id ?? null
+        if (cajaSesionId) {
+          await supabase.from('caja_movimientos').insert({
+            tenant_id: tenant!.id, sesion_id: cajaSesionId, tipo: 'ingreso', monto,
+            concepto: `Reembolso devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
+            usuario_id: user?.id,
+          })
+        } else {
+          toast(`⚠ Sin caja abierta — el reembolso en efectivo de $${monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se registró en caja`, { icon: '⚠' })
+        }
+      } else if (devForma === 'reposicion') {
+        const { data: newOC, error: ocErr } = await supabase.from('ordenes_compra').insert({
+          tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, numero: 0, estado: 'borrador',
+          sucursal_id: sucId, notas: `Reposición por devolución de OC #${oc.numero}`, created_by: user?.id,
+        }).select('id, numero').single()
+        if (ocErr) throw ocErr
+        ocReposicionId = newOC.id
+        await supabase.from('orden_compra_items').insert(itemsSel.map(it => ({
+          orden_compra_id: newOC.id, producto_id: it.producto_id, cantidad: it.cantidad, precio_unitario: it.costo_unitario,
+          notas: 'Reposición por devolución',
+        })))
+      }
+
+      // 3) Registrar la devolución + ítems
+      const { data: dev, error: devErr } = await supabase.from('devoluciones_proveedor').insert({
+        tenant_id: tenant!.id, numero: 0, proveedor_id: oc.proveedor_id, oc_id: oc.id, sucursal_id: sucId,
+        forma: devForma, motivo: devMotivo, observacion: devObs.trim() || null, monto, estado: 'confirmada',
+        caja_sesion_id: cajaSesionId, oc_reposicion_id: ocReposicionId, created_by: user?.id,
+      }).select('id, numero').single()
+      if (devErr) throw devErr
+      await supabase.from('devolucion_proveedor_items').insert(itemsSel.map(it => ({
+        devolucion_id: dev.id, producto_id: it.producto_id, cantidad: it.cantidad, costo_unitario: it.costo_unitario,
+      })))
+
+      const formaLabel = devForma === 'credito_cc' ? 'crédito en CC' : devForma === 'efectivo' ? 'reembolso en efectivo' : `reposición (OC nueva)`
+      toast.success(`Devolución #${dev.numero} registrada — ${formaLabel}`)
+      qc.invalidateQueries({ queryKey: ['ordenes_compra'] })
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.invalidateQueries({ queryKey: ['proveedor-cc'] })
+      setDevModalOC(null)
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al registrar la devolución')
+    } finally {
+      setDevGuardando(false)
+    }
+  }
 
   const deleteOC = useMutation({
     mutationFn: async (id: string) => {
@@ -2558,6 +2681,15 @@ export default function ProveedoresPage() {
                     <XCircle className="w-4 h-4" /> Cancelar OC
                   </button>
                 )}
+                {/* CO4 — devolución a proveedor (OC ya recibida total o parcial) */}
+                {(showOcDetail.estado === 'recibida' || showOcDetail.estado === 'recibida_parcial') && (
+                  <button
+                    onClick={() => abrirDevolucion(showOcDetail)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-amber-300 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                  >
+                    <RotateCcw className="w-4 h-4" /> Devolver a proveedor
+                  </button>
+                )}
               </div>
 
               <div className="flex justify-end mt-4">
@@ -2569,6 +2701,90 @@ export default function ProveedoresPage() {
           </div>
         </div>
       )}
+      {/* ── CO4: Modal Devolución a Proveedor ── */}
+      {devModalOC && (() => {
+        const itemsSel = (ocItemsData as any[]).map(it => ({
+          producto_id: it.producto_id,
+          nombre: it.productos?.nombre ?? '—', sku: it.productos?.sku ?? '',
+          cantidad: parseFloat(devCantidades[it.producto_id] || '0') || 0,
+          costo_unitario: Number(it.precio_unitario ?? it.productos?.precio_costo ?? 0),
+        })).filter(x => x.cantidad > 0)
+        const monto = montoDevolucion(itemsSel)
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
+                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <RotateCcw size={16} className="text-amber-500" /> Devolver a proveedor — OC {ocNumLabel(devModalOC)}
+                </h3>
+                <button onClick={() => setDevModalOC(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Productos y cantidad a devolver</label>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-100 dark:divide-gray-700">
+                    {(ocItemsData as any[]).map(it => (
+                      <div key={it.id} className="flex items-center gap-3 px-3 py-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-800 dark:text-gray-100 truncate">{it.productos?.nombre}</p>
+                          <p className="text-xs text-gray-400">{it.productos?.sku} · costo ${Number(it.precio_unitario ?? it.productos?.precio_costo ?? 0).toLocaleString('es-AR')}</p>
+                        </div>
+                        <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
+                          value={devCantidades[it.producto_id] ?? ''}
+                          onChange={e => setDevCantidades(prev => ({ ...prev, [it.producto_id]: e.target.value }))}
+                          placeholder="0"
+                          className="w-20 px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-center dark:bg-gray-700" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
+                  <select value={devMotivo} onChange={e => setDevMotivo(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm dark:bg-gray-700">
+                    <option value="">Elegí un motivo…</option>
+                    {MOTIVOS_DEVOLUCION_PROVEEDOR.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Observación (opcional)</label>
+                  <input type="text" value={devObs} onChange={e => setDevObs(e.target.value)} placeholder="Opcional…"
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm dark:bg-gray-700" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Forma del reembolso</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([['credito_cc', 'Crédito en CC'], ['efectivo', 'Efectivo'], ['reposicion', 'Reposición']] as const).map(([f, label]) => (
+                      <button key={f} onClick={() => setDevForma(f)}
+                        className={`px-2 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${devForma === f ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {devForma === 'credito_cc' ? 'Genera nota de crédito que reduce la deuda con el proveedor.'
+                      : devForma === 'efectivo' ? 'Ingreso a la caja abierta (reembolso del proveedor).'
+                      : 'Crea una OC nueva (borrador) por los mismos productos.'}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-sm text-gray-500">Total devolución</span>
+                  <span className="text-lg font-bold text-gray-800 dark:text-gray-100">${monto.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setDevModalOC(null)}
+                    className="flex-1 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
+                  <button onClick={confirmarDevolucion} disabled={devGuardando || monto <= 0}
+                    className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-semibold disabled:opacity-50">
+                    {devGuardando ? 'Procesando…' : 'Confirmar devolución'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── Modal Cuenta Corriente Proveedor ── */}
       {ccProvId && (() => {
         const prov = (proveedores as any[]).find((p: any) => p.id === ccProvId)

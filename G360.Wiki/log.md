@@ -6,6 +6,28 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-05] deploy | v1.31.0 + v1.32.0 PROD — Compras CO1 (gobierno OC) + CO2 (recepción robusta)
+
+Dos fases del módulo **Compras** deployadas a PROD. Migraciones **182** (CO1) y **183** (CO2), ambas en DEV y PROD. Build verde, **393 tests** (+14 `comprasPermisos`, +13 `recepcionLogic`).
+
+**CO1 — Gobierno de OC (v1.31.0, mig 182):**
+- A1 creación por rol (`comprasPermisos.capacidadCrearOC`): DUEÑO/ADMIN/SUPERVISOR completa · DEPOSITO solo borradores · CAJERO/CONTADOR sin acceso.
+- A2 aprobación por umbral: OC sobre `oc_aprobacion_umbral` queda `requiere_aprobacion` y solo un rol aprobador la envía ("Aprobar y enviar" → `aprobada_por/at`). `puedeEnviarOC`.
+- A4 sucursal obligatoria en la OC. A5 numeración configurable `tenants.oc_numeracion` (default sucursal; `set_oc_numero` asigna `numero_sucursal`; etiqueta `S-OC-0001`).
+- D5 pago: CONTADOR read-only (`puedeRegistrarPagoOC`) + doble firma por umbral (`oc_pago_doble_firma_umbral`) con clave maestra en el modal de pago de Gastos.
+- Config en Config → Gastos → Órdenes de compra. Lib pura `src/lib/comprasPermisos.ts`.
+
+**CO2 — Recepción robusta (v1.32.0, mig 183):**
+- **B5 (el bug):** el estado de la OC se recalcula desde el **acumulado de todas las recepciones confirmadas** (`recepcionLogic.estadoOCdesdeRecibido`), no solo la actual → una OC completada en varias parciales ahora llega bien a `recibida`. (Antes `RecepcionesPage` lo calculaba solo con la recepción en curso.)
+- B3 over-receipt con umbral % acumulado (`tenants.over_receipt_pct_max`, `superaOverReceipt`). B4 motivo de faltante obligatorio en under-receipt (catálogo) + `recepcion_alerta_faltante_dias`. B1c over/under requiere SUPERVISOR+ (`esAjusteCantidad`). B7 adjuntar remito (bucket privado `remitos` scoped por tenant + `recepcion_remito_obligatorio`). B2 recepción sin OC exige proveedor.
+- Lib pura `src/lib/recepcionLogic.ts`.
+
+**Decisiones de GO confirmadas en sesión:** E3 alta producto en recepción ✅ · B6 editar precio remito ✅ · D1 modos de pago por proveedor ✅ · A6 WA por link ✅ (van en CO3/CO5/CO7).
+
+**Pendiente Compras:** CO3 (costos) · CO4 (devolución a proveedor) · CO5 (anticipo/contra-entrega) · CO6 (cheques) · CO7 (envío+inteligente+servicios) · CO8 (reportes). Plan en `relevamiento_compras_respuestas.md`.
+
+---
+
 ## [2026-06-05] ingest | Relevamiento Compras respondido — plan por fases CO1-CO8
 
 GO + socio respondieron el relevamiento de Compras (OC + Recepciones, 34 preguntas A-H). Consolidado en `relevamiento_compras_respuestas.md`: respuestas + diseño + modelo de datos + plan por fases **CO1-CO8** + mis sugerencias donde difiero.

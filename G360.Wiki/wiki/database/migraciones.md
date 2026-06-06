@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-181)
+# Historial de Migraciones (001-183)
 
-**Total al 2026-06-05:** 181 archivos de migración + 086b correctivo.  
+**Total al 2026-06-05:** 183 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -245,6 +245,8 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 179 | `179_conteos_f3.sql` | **Conteos 2.0 F3** · `'ajuste_conteo'` en el CHECK de `autorizaciones_inventario.tipo` (gate de aprobación de diferencias de conteo) · `tenants` + 7 columnas de config: `conteo_gate_activo BOOLEAN` + umbrales gate (`_umbral_u/_pct/_valor`) + umbrales reconteo (`_reconteo_umbral_u/_pct/_valor`). Aditiva |
 | 180 | `180_conteos_f4.sql` | **Conteos 2.0 F4** · `productos.clase_abc TEXT` (CHECK A/B/C) + `clase_abc_manual BOOLEAN` (override que el recálculo no pisa) + `ultimo_conteo_at TIMESTAMPTZ` · `inventario_conteo_items.contado_por UUID REFERENCES users(id)` (trazabilidad por operador) · `tenants.conteo_ciclico_dias_a/_b/_c INTEGER DEFAULT 30/90/180` (config cíclico) · índice `idx_productos_clase_abc(tenant_id, clase_abc, ultimo_conteo_at)`. Aditiva, idempotente, sin impacto en RLS |
 | 181 | `181_conteos_f2bref_f3b_a2.sql` | **Conteos 2.0 cierre 100%** · F2b-ref: `inventario_conteo_items.fuera_de_scope BOOLEAN` (mercadería mal ubicada escaneada) · F3b: `costo_snapshot NUMERIC` (costo congelado al cargar) + `cantidad_reconteo NUMERIC` + `reconteo_por UUID REFERENCES users(id)` (doble conteo formal) · A2: `inventario_conteos.bloquea_movimientos BOOLEAN` + `tenants.conteo_wall_to_wall_bloquea BOOLEAN` (wall-to-wall bloquea sucursal) + índice parcial `idx_conteos_bloqueo`. Aditiva, idempotente |
+| 182 | `182_compras_co1_gobierno.sql` | **Compras CO1** · `tenants.oc_aprobacion_activa/_umbral` (A2 aprobación) + `oc_numeracion` (A5, CHECK tenant\|sucursal\|proveedor) + `oc_pago_doble_firma_umbral` (D5) · `ordenes_compra.numero_sucursal` (A5) + `requiere_aprobacion`/`aprobada_por`/`aprobada_at` (A2) · `set_oc_numero()` actualizado (asigna numero + numero_sucursal). Aditiva |
+| 183 | `183_compras_co2_recepcion.sql` | **Compras CO2** · `recepcion_items.motivo_faltante` (B4) · `recepciones.remito_url` (B7) · `tenants.over_receipt_pct_max` (B3) + `recepcion_remito_obligatorio` (B7) + `recepcion_alerta_faltante_dias` (B4) · bucket privado `remitos` + policies scoped por tenant. (B5 robustez = recálculo acumulado en la app.) Aditiva |
 
 ---
 

@@ -8,6 +8,8 @@ import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
 import { estadoOCdesdeRecibido, superaOverReceipt, tieneFaltante, esAjusteCantidad } from '@/lib/recepcionLogic'
+import { cambioCostoPct, superaAlertaCosto } from '@/lib/comprasCostos'
+import { logActividad } from '@/lib/actividadLog'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import type { Recepcion, ProductoEstructura } from '@/lib/supabase'
 
@@ -57,6 +59,7 @@ type FormItem = {
   precio_costo: string
   estructura_id: string
   motivo_faltante: string  // CO2/B4 — motivo del faltante en under-receipt
+  actualizar_costo: boolean // CO3/E1 — el operador decide actualizar el precio_costo del producto
   // Atributos de variante
   pais_origen: string
   talle: string
@@ -99,7 +102,7 @@ function nuevoItem(overrides: Partial<FormItem> = {}): FormItem {
     unidad_medida: 'unidad', precio_costo_default: 0,
     oc_item_id: '', cantidad_esperada: 0, cantidad_recibida: '1',
     ubicacion_id: '', estado_id: '', nro_lote: '', fecha_vencimiento: '',
-    lpn: '', series_txt: '', precio_costo: '', estructura_id: '', motivo_faltante: '',
+    lpn: '', series_txt: '', precio_costo: '', estructura_id: '', motivo_faltante: '', actualizar_costo: false,
     pais_origen: '', talle: '', color: '', encaje: '', formato: '', sabor_aroma: '',
     expanded: false,
     ...overrides,
@@ -115,6 +118,7 @@ export default function RecepcionesPage() {
   const esSupervisorPlus = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
   const overReceiptCfg = { permite: !!(tenant as any)?.permite_over_receipt, pctMax: (tenant as any)?.over_receipt_pct_max }
   const remitoObligatorio = !!(tenant as any)?.recepcion_remito_obligatorio
+  const costoAlertaPct = Number((tenant as any)?.compras_costo_alerta_pct ?? 10)  // CO3/E1
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const qc = useQueryClient()
@@ -353,6 +357,25 @@ export default function RecepcionesPage() {
     })])
     setProdSearch('')
     setProdFocused(false)
+  }
+
+  // CO3/E3 — alta rápida de producto desde la recepción (DUEÑO/SUPERVISOR). Queda "pendiente de revisión".
+  const crearProductoRapido = async () => {
+    const nombre = prodSearch.trim()
+    if (!nombre) return
+    if (!esSupervisorPlus) { toast.error('Solo DUEÑO/SUPERVISOR puede dar de alta un producto desde la recepción'); return }
+    const sku = `REC-${Date.now().toString(36).toUpperCase()}`
+    const { data, error } = await supabase.from('productos').insert({
+      tenant_id: tenant!.id, nombre, sku, unidad_medida: 'unidad',
+      precio_costo: 0, precio_venta: 0, activo: true, pendiente_revision: true,
+      proveedor_id: fProveedorId || null,
+    }).select('id, nombre, sku, tiene_series, tiene_lote, tiene_vencimiento, unidad_medida, precio_costo, estado_id').single()
+    if (error) { toast.error('No se pudo crear el producto: ' + error.message); return }
+    toast.success(`Producto "${nombre}" creado (pendiente de revisión)`)
+    logActividad({ entidad: 'producto', entidad_id: data.id, entidad_nombre: nombre, accion: 'crear',
+      valor_nuevo: 'Alta rápida desde recepción — pendiente de revisión', pagina: '/recepciones' })
+    qc.invalidateQueries({ queryKey: ['productos'] })
+    await agregarProducto(data)
   }
 
   // ISS-127 F3: leer un código (GS1 compuesto o plano) y agregarlo a la recepción.
@@ -628,6 +651,26 @@ export default function RecepcionesPage() {
         }).eq('id', fOcId)
         qc.invalidateQueries({ queryKey: ['ordenes', tenant?.id] })
         qc.invalidateQueries({ queryKey: ['ordenes_compra'] })
+      }
+
+      // CO3/E1 — actualizar el precio_costo del producto para los ítems donde el operador lo decidió.
+      // CO3/B6 — auditar las ediciones de precio (precio recibido distinto del costo del producto).
+      if (confirmar && !ocPagada) {
+        for (const it of itemsValidos) {
+          const nuevo = Number(it.precio_costo || 0)
+          if (nuevo <= 0) continue
+          const cambio = superaAlertaCosto(it.precio_costo_default, nuevo, 0)  // hubo cambio de costo
+          if (it.actualizar_costo && Math.abs(nuevo - it.precio_costo_default) > 0.001) {
+            await supabase.from('productos').update({ precio_costo: nuevo }).eq('id', it.producto_id)
+            qc.invalidateQueries({ queryKey: ['productos'] })
+            logActividad({ entidad: 'producto', entidad_id: it.producto_id, entidad_nombre: it.producto_nombre, accion: 'editar',
+              campo: 'precio_costo', valor_nuevo: `Recepción #${rec.numero}: ${it.precio_costo_default} → ${nuevo}`, pagina: '/recepciones' })
+          } else if (cambio) {
+            // B6 — quedó registrado que el precio del remito difiere del costo del producto (sin actualizar)
+            logActividad({ entidad: 'producto', entidad_id: it.producto_id, entidad_nombre: it.producto_nombre, accion: 'editar',
+              campo: 'precio_costo', valor_nuevo: `Recepción #${rec.numero} (${nuevo}) difiere del costo (${it.precio_costo_default}) — no actualizado`, pagina: '/recepciones' })
+          }
+        }
       }
 
       // Gasto automático al confirmar recepción vinculada a una OC
@@ -1198,7 +1241,15 @@ export default function RecepcionesPage() {
           {(prodSearch.length > 0 && prodFocused) && (
             <div className="absolute z-20 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-52 overflow-y-auto">
               {(prodsBusqueda as any[]).length === 0 ? (
-                <p className="px-4 py-3 text-sm text-gray-400">Sin resultados</p>
+                esSupervisorPlus ? (
+                  <button type="button" onMouseDown={crearProductoRapido}
+                    className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    <span className="text-accent font-medium">➕ Crear producto "{prodSearch.trim()}"</span>
+                    <span className="block text-xs text-gray-400">Alta rápida — queda pendiente de revisión</span>
+                  </button>
+                ) : (
+                  <p className="px-4 py-3 text-sm text-gray-400">Sin resultados</p>
+                )
               ) : (
                 (prodsBusqueda as any[]).map(p => (
                   <button key={p.id} type="button"
@@ -1386,6 +1437,21 @@ export default function RecepcionesPage() {
                             placeholder={String(it.precio_costo_default)}
                             className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
                         )}
+                        {/* CO3/E1 — alerta de cambio de costo + el operador decide actualizar el maestro */}
+                        {!ocPagada && (() => {
+                          const nuevo = Number(it.precio_costo || 0)
+                          if (!superaAlertaCosto(it.precio_costo_default, nuevo, costoAlertaPct)) return null
+                          const pct = cambioCostoPct(it.precio_costo_default, nuevo)
+                          return (
+                            <label className="flex items-center gap-1.5 mt-1.5 text-xs cursor-pointer">
+                              <input type="checkbox" checked={it.actualizar_costo}
+                                onChange={e => updItem(it._key, { actualizar_costo: e.target.checked })} className="rounded" />
+                              <span className={pct > 0 ? 'text-red-500' : 'text-green-600'}>
+                                {pct > 0 ? '📈' : '📉'} El costo {pct > 0 ? 'subió' : 'bajó'} {Math.abs(pct).toFixed(0)}% — actualizar costo del producto
+                              </span>
+                            </label>
+                          )
+                        })()}
                       </div>
                       {it.tiene_series && (
                         <div className="col-span-2 sm:col-span-3">

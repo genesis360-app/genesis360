@@ -125,7 +125,7 @@ OC confirmada → botón "Recibir mercadería" → `/recepciones/nuevo?oc_id=XXX
 
 ## Módulo Compras 2.0 (relevado 2026-06-05 — plan CO1-CO8)
 
-Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO6 + CO7a en PROD (v1.31.0-v1.37.0, mig 182-187).** Filosofía: simple para el usuario PyME, robusto por dentro.
+Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO7 en PROD (v1.31.0-v1.38.0, mig 182-188).** Filosofía: simple para el usuario PyME, robusto por dentro.
 
 ### CO1 — Gobierno de OC (v1.31.0, mig 182)
 - **A1 creación por rol** (`src/lib/comprasPermisos.ts` → `capacidadCrearOC`): DUEÑO/ADMIN/SUPERVISOR completa · **DEPOSITO solo borradores** ("Nueva OC (borrador)") · CAJERO/CONTADOR sin acceso.
@@ -170,8 +170,13 @@ Lógica pura en `src/lib/ocPDF.ts`.
 - **A6 — enviar OC al proveedor:** desde el detalle de OC, botones **PDF** (`generarOCPDF`, jsPDF/autotable), **Email** (`send-email` con el resumen `textoOC`) y **WhatsApp** (link `wa.me` con plantilla, `waLinkOC`). La OC trae email/teléfono/CUIT/condiciones del proveedor.
 - **A3 — auto-draft desde stock bajo:** en Alertas, **"Generar OC sugerida"** consolida los productos bajo mínimo por proveedor (vía `proveedor_productos`) y crea OCs borrador con la cantidad faltante sugerida. Gateado por `capacidadCrearOC`; exige sucursal.
 
-### Pendiente (CO7b-CO8)
-- **CO7b** servicios: F1 recurrentes (sweep lazy) + F2 catálogo genérico del tenant + F3 comparar presupuestos lado a lado.
+### CO7b — Servicios (v1.38.0, mig 188 · PROD ✅)
+Lógica pura en `src/lib/serviciosRecurrentes.ts`. Tab Servicios en ProveedoresPage.
+- **F1 — recurrentes:** `servicio_items.recurrente`/`frecuencia` (mensual..anual)/`proximo_vencimiento`. Banner de recurrentes vencidos con **"Generar gasto"** (`generarGastoServicio`: crea el gasto y avanza el vencimiento con `proximoVencimiento`). Sweep lazy = al abrir el tab.
+- **F2 — catálogo genérico:** `servicio_items.proveedor_id` nullable → panel **"Servicios generales del negocio"** (servicios del tenant sin proveedor).
+- **F3 — comparar presupuestos:** modal que agrupa `servicio_presupuestos` por concepto normalizado (`compararPresupuestos`) y marca el **más barato** lado a lado.
+
+### Pendiente (CO8)
 - **CO8** reportes/alertas/export + reporte de diferencias OC vs recepción (E4) + calificación de proveedor (G1/G2/G3).
 
 ---

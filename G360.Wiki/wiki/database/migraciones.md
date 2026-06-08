@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-187)
+# Historial de Migraciones (001-188)
 
-**Total al 2026-06-06:** 187 archivos de migración + 086b correctivo.  
+**Total al 2026-06-06:** 188 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -251,6 +251,7 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 185 | `185_compras_co4_devolucion_proveedor.sql` | **Compras CO4** · tablas `devoluciones_proveedor` (proveedor/oc/recepcion/sucursal, `forma` CHECK credito_cc\|efectivo\|reposicion, motivo, observacion, monto, caja_sesion_id, oc_reposicion_id) + `devolucion_proveedor_items` (producto/cantidad/costo_unitario/lpn), RLS por tenant + trigger `set_devprov_numero` (correlativo). Confirm/stock/CC/caja/reposición en la app |
 | 186 | `186_compras_co5_pago_anticipo.sql` | **Compras CO5** · `proveedores.modo_pago` (CHECK contado\|anticipo\|contra_entrega\|cuenta_corriente) + `anticipo_pct` (D1) · `ordenes_compra.paga_con_anticipo` + `anticipo_pct` snapshot (D1) + `pago_schedule JSONB` (D2). D3 transferencia con comprobante reusa `ordenes_compra.comprobante_url` (sin columna). Aditiva |
 | 187 | `187_compras_co6_cheques.sql` | **Compras CO6** · tabla `cheques` (tipo propio/tercero, nro/banco/monto, fecha_emision/cobro, estado CHECK en_cartera\|entregado\|depositado\|cobrado\|endosado\|rechazado\|anulado, proveedor_id, endosado_a_proveedor_id, cliente_origen, oc_id, sucursal_id), RLS por tenant + trigger `set_cheque_numero` (correlativo) + `tenants.cheques_alerta_dias` (default 7). Aditiva |
+| 188 | `188_compras_co7b_servicios.sql` | **Compras CO7b** · `servicio_items` += `recurrente`/`frecuencia`/`proximo_vencimiento`/`activo` (F1) + `proveedor_id` ahora **nullable** (F2 servicios genéricos del tenant). F3 (comparar presupuestos) = vista en la app. Aditiva |
 
 ---
 

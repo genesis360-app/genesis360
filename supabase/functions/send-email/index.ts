@@ -5,8 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// TODO: Cambiar a 'Genesis360 <noreply@genesis360.pro>' cuando el dominio esté verificado en Resend
-const FROM = 'onboarding@resend.dev'
+// Dominio genesis360.pro verificado en Resend (Cloudflare DNS, región sa-east-1) — 2026-06-06.
+const FROM = 'Genesis360 <noreply@genesis360.pro>'
 const APP_URL = 'https://genesis360.pro'
 const BRAND = 'Genesis360'
 
@@ -165,6 +165,50 @@ function facturaEmitidaTemplate(data: {
   }
 }
 
+function ocTemplate(data: {
+  negocio: string
+  numeroLabel: string
+  proveedorNombre: string
+  fechaEsperada?: string | null
+  condiciones?: string | null
+  items: Array<{ nombre: string; cantidad: number; subtotal: number }>
+  total: number
+  anticipoPct?: number | null
+  anticipoMonto?: number | null
+  notas?: string | null
+}) {
+  const itemsHtml = data.items.map(i =>
+    `<tr>
+      <td>${i.nombre}</td>
+      <td class="right">${i.cantidad}</td>
+      <td class="right">$${Number(i.subtotal).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</td>
+    </tr>`
+  ).join('')
+
+  return {
+    subject: `Orden de Compra ${data.numeroLabel} — ${data.negocio}`,
+    html: templateBase(`
+      <p>Hola,</p>
+      <p><strong>${data.negocio}</strong> te envía la siguiente orden de compra. El detalle también va adjunto en PDF.</p>
+      <p><span class="tag">${data.numeroLabel}</span></p>
+      ${data.fechaEsperada ? `<p style="font-size:13px;color:#6b7280">Entrega esperada: ${data.fechaEsperada}</p>` : ''}
+      <table class="table">
+        <thead><tr><th>Producto</th><th class="right">Cant.</th><th class="right">Subtotal</th></tr></thead>
+        <tbody>
+          ${itemsHtml}
+          <tr class="total-row">
+            <td colspan="2">Total</td>
+            <td class="right">$${Number(data.total).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</td>
+          </tr>
+        </tbody>
+      </table>
+      ${data.anticipoPct && data.anticipoMonto ? `<div class="alert-box"><p>💰 Anticipo (${data.anticipoPct}%): <strong>$${Number(data.anticipoMonto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></p></div>` : ''}
+      ${data.condiciones ? `<p style="font-size:13px;color:#6b7280">Condiciones de pago: ${data.condiciones}</p>` : ''}
+      ${data.notas ? `<p style="font-size:13px;color:#6b7280">Notas: ${data.notas}</p>` : ''}
+    `),
+  }
+}
+
 function bugReportTemplate(data: { usuario: string; tenant: string; resumen: string }) {
   return {
     subject: `🐛 Bug Report — ${data.tenant} (${data.usuario})`,
@@ -198,7 +242,7 @@ serve(async (req) => {
   }
 
   try {
-    const { type, to, data } = await req.json()
+    const { type, to, data, attachments } = await req.json()
 
     const apiKey = Deno.env.get('RESEND_API_KEY')
     if (!apiKey) throw new Error('RESEND_API_KEY no configurado')
@@ -217,11 +261,17 @@ serve(async (req) => {
       ;({ subject, html } = notificacionTemplate(data))
     } else if (type === 'factura_emitida') {
       ;({ subject, html } = facturaEmitidaTemplate(data))
+    } else if (type === 'oc') {
+      ;({ subject, html } = ocTemplate(data))
     } else if (type === 'bug_report') {
       ;({ subject, html } = bugReportTemplate(data))
     } else {
       throw new Error(`Tipo de email desconocido: ${type}`)
     }
+
+    // attachments opcional: [{ filename, content (base64) }] — soportado por Resend.
+    const payload: Record<string, unknown> = { from: FROM, to, subject, html }
+    if (Array.isArray(attachments) && attachments.length > 0) payload.attachments = attachments
 
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -229,7 +279,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from: FROM, to, subject, html }),
+      body: JSON.stringify(payload),
     })
 
     const result = await res.json()

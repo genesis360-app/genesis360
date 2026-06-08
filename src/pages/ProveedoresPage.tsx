@@ -9,7 +9,7 @@ import {
   MODOS_PAGO_PROVEEDOR, defaultAnticipoOC, montoAnticipo, scheduleValido,
   totalPctSchedule, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
 } from '@/lib/comprasPago'
-import { generarOCPDF, textoOC, waLinkOC, type OCPDFData } from '@/lib/ocPDF'
+import { generarOCPDF, textoOC, waLinkOC, totalOC, type OCPDFData } from '@/lib/ocPDF'
 import {
   FRECUENCIAS_SERVICIO, proximoVencimiento, servicioVencido, compararPresupuestos,
   type PresupuestoComparable,
@@ -158,12 +158,42 @@ export default function ProveedoresPage() {
   const enviarOCEmail = async (oc: any, items: any[]) => {
     const email = oc.proveedores?.email
     if (!email) { toast.error('El proveedor no tiene email cargado'); return }
-    const d = buildOcPdfData(oc, items)
-    const { error } = await supabase.functions.invoke('send-email', {
-      body: { type: 'notificacion', to: email, data: { titulo: `Orden de Compra ${d.numeroLabel} — ${d.negocio}`, mensaje: textoOC(d) } },
-    })
-    if (error) toast.error('No se pudo enviar el email')
-    else toast.success(`OC enviada por email a ${email}`)
+    try {
+      const d = buildOcPdfData(oc, items)
+      const total = totalOC(d)
+      // PDF de la OC → base64 para adjuntar
+      const doc = generarOCPDF(d, 'doc')
+      const dataUri = doc.output('datauristring')
+      const base64 = dataUri.substring(dataUri.indexOf('base64,') + 'base64,'.length)
+      const emailItems = d.items.map(it => ({
+        nombre: it.nombre,
+        cantidad: it.cantidad,
+        subtotal: (Number(it.cantidad) || 0) * (Number(it.precio_unitario) || 0),
+      }))
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          type: 'oc',
+          to: email,
+          data: {
+            negocio: d.negocio,
+            numeroLabel: d.numeroLabel,
+            proveedorNombre: d.proveedor.nombre,
+            fechaEsperada: d.fechaEsperada ? new Date(d.fechaEsperada + 'T12:00:00').toLocaleDateString('es-AR') : null,
+            condiciones: d.proveedor.condiciones,
+            items: emailItems,
+            total,
+            anticipoPct: d.pagaConAnticipo ? d.anticipoPct : null,
+            anticipoMonto: d.pagaConAnticipo && d.anticipoPct ? montoAnticipo(total, d.anticipoPct) : null,
+            notas: d.notas,
+          },
+          attachments: [{ filename: `OC_${d.numeroLabel.replace(/[^\w-]/g, '_')}.pdf`, content: base64 }],
+        },
+      })
+      if (error) toast.error('No se pudo enviar el email')
+      else toast.success(`OC enviada por email a ${email} (con PDF adjunto)`)
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo enviar el email')
+    }
   }
 
   const [tab, setTab] = useState<Tab>('proveedores')

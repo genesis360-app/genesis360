@@ -20,12 +20,13 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { buildWhatsAppUrl, expandirPlantilla, PLANTILLA_DEFAULT } from '@/lib/whatsapp'
 import { COURIERS, SERVICIOS_POR_COURIER, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, generarEnvioCourier, trackingEnvioCourier, type CotizacionOpcion } from '@/lib/couriers/api'
+import { agruparPagosPorCourier, desgloseIvaFlete, requiereDobleFirma, diffFactura } from '@/lib/enviosCourierPago'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'en_bodega' | 'entregado' | 'devolucion' | 'cancelado'
-type TabEnvio = 'envios' | 'pagos'
+type TabEnvio = 'envios' | 'pagos' | 'facturas'
 
 const MEDIOS_PAGO_COURIER = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro']
 
@@ -135,6 +136,14 @@ export default function EnviosPage() {
   const [pagoMedio, setPagoMedio]           = useState('Transferencia')
   const [pagoFecha, setPagoFecha]           = useState(new Date().toISOString().split('T')[0])
   const [savingPago, setSavingPago]         = useState(false)
+  // EN1/C4 — doble firma por umbral
+  const [pagoClaveMaestra, setPagoClaveMaestra] = useState('')
+
+  // EN1/C3 — factura del courier (conciliación)
+  const [factForm, setFactForm] = useState({ courier: '', nro_factura: '', periodo_desde: '', periodo_hasta: '', total_facturado: '', notas: '' })
+  const [factArchivo, setFactArchivo] = useState<File | null>(null)
+  const [savingFact, setSavingFact] = useState(false)
+  const factFileRef = useRef<HTMLInputElement>(null)
 
   // Edición inline de domicilios
   const [editandoDomId, setEditandoDomId] = useState<string | null>(null)
@@ -245,7 +254,7 @@ export default function EnviosPage() {
       // ISS-175: solo pagos a COURIER (tercero) pendientes. Envío propio nunca se le paga a un courier;
       // y los envíos cuyo costo ya cobró el cliente en la venta vienen con costo_pagado=true.
       let q = supabase.from('envios')
-        .select('id, numero, courier, costo_cotizado, estado, created_at, ventas(numero, numero_sucursal, sucursal_id, clientes(nombre))')
+        .select('id, numero, courier, costo_cotizado, estado, created_at, sucursal_id, ventas(numero, numero_sucursal, sucursal_id, clientes(nombre))')
         .eq('tenant_id', tenant!.id)
         .eq('costo_pagado', false)
         .gt('costo_cotizado', 0)
@@ -255,7 +264,46 @@ export default function EnviosPage() {
       const { data } = await q
       return data ?? []
     },
-    enabled: !!tenant && tab === 'pagos',
+    enabled: !!tenant && (tab === 'pagos' || tab === 'facturas'),
+  })
+
+  // EN1/C2 — categoría de gasto "Transporte y fletes" (predefinida, mig 130) para el gasto auto del courier
+  const { data: categoriaFleteId } = useQuery({
+    queryKey: ['categoria-flete', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categorias_gasto')
+        .select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Transporte y fletes').maybeSingle()
+      return data?.id ?? null
+    },
+    enabled: !!tenant && (tab === 'pagos' || tab === 'facturas'),
+  })
+
+  // EN1/C2 — sesión de caja abierta del usuario en la sucursal (para egreso si paga efectivo)
+  const { data: sesionCajaPago } = useQuery({
+    queryKey: ['caja-sesion-pago-courier', tenant?.id, sucursalId, user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, usuario_id, cajas(sucursal_id, es_caja_fuerte)')
+        .eq('tenant_id', tenant!.id).is('cerrada_at', null)
+      const abiertas = (data ?? []).filter((s: any) => s.cajas?.sucursal_id === sucursalId && !s.cajas?.es_caja_fuerte)
+      return abiertas.find((s: any) => s.usuario_id === user?.id)?.id ?? abiertas[0]?.id ?? null
+    },
+    enabled: !!tenant && !!sucursalId && tab === 'pagos',
+  })
+
+  // EN1/C3 — facturas del courier cargadas (conciliación)
+  const { data: courierFacturas = [] } = useQuery({
+    queryKey: ['courier-facturas', tenant?.id, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('courier_facturas')
+        .select('*, courier_factura_lineas(id, envio_id, monto_registrado, monto_facturado)')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at', { ascending: false })
+      q = applyFilter(q)
+      const { data } = await q
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'facturas',
   })
 
   // Auto-calcular KM cuando hay dirección de entrega + sucursal con dirección
@@ -490,24 +538,158 @@ export default function EnviosPage() {
   }
 
 
-  // ── ISS-169: Marcar envíos seleccionados como pagados ───────────────────────
+  // ── EN1/C2+C4: Marcar envíos pagados + gasto contable (solo courier tercero) ──
   const marcarPagados = async () => {
     if (pagosSeleccion.size === 0) { toast.error('Seleccioná al menos un envío'); return }
     setSavingPago(true)
     try {
-      const ids = [...pagosSeleccion]
-      const { error } = await supabase.from('envios').update({
-        costo_pagado: true,
-        fecha_pago_courier: pagoFecha || null,
-        medio_pago_courier: pagoMedio || null,
-      }).in('id', ids)
-      if (error) throw error
-      toast.success(`${ids.length} envío${ids.length > 1 ? 's' : ''} marcado${ids.length > 1 ? 's' : ''} como pagado${ids.length > 1 ? 's' : ''}`)
+      const seleccionados = (enviosPendientesPago as any[]).filter(e => pagosSeleccion.has(e.id))
+      const totalPago = seleccionados.reduce((s, e) => s + Number(e.costo_cotizado ?? 0), 0)
+
+      // C4 — doble firma por umbral (clave maestra del DUEÑO)
+      const umbral = Number((tenant as any)?.envio_pago_doble_firma_umbral ?? 0)
+      if (requiereDobleFirma(totalPago, umbral) && (tenant as any)?.clave_maestra) {
+        if (!pagoClaveMaestra.trim()) {
+          toast.error(`Este pago supera el umbral de doble firma ($${umbral.toLocaleString('es-AR')}): ingresá la clave maestra.`)
+          setSavingPago(false); return
+        }
+        const { data: okClave } = await supabase.rpc('verificar_clave_maestra', { p_tenant_id: tenant!.id, p_clave: pagoClaveMaestra.trim() })
+        if (!okClave) { toast.error('Clave maestra incorrecta.'); setSavingPago(false); return }
+      }
+
+      const generaGasto = (tenant as any)?.envio_courier_genera_gasto !== false
+      const ivaPct = Number((tenant as any)?.envio_courier_iva_pct ?? 21)
+      const esEfectivo = pagoMedio === 'Efectivo'
+      const fechaPago = pagoFecha || new Date().toISOString().split('T')[0]
+
+      // C2 — un gasto por courier (proveedor = courier) con IVA crédito fiscal
+      const grupos = agruparPagosPorCourier(seleccionados.map(e => ({
+        id: e.id, courier: e.courier, costo_cotizado: e.costo_cotizado, sucursal_id: e.sucursal_id,
+      })))
+
+      for (const g of grupos) {
+        let gastoId: string | null = null
+        if (generaGasto && g.total > 0) {
+          const { iva } = desgloseIvaFlete(g.total, ivaPct)
+          const numeros = seleccionados.filter(e => g.ids.includes(e.id)).map(e => `#${e.numero ?? e.id.slice(-6)}`).join(', ')
+          const { data: gastoIns, error: gErr } = await supabase.from('gastos').insert({
+            tenant_id: tenant!.id,
+            descripcion: `Flete ${g.courier} — ${g.ids.length} envío${g.ids.length > 1 ? 's' : ''}`,
+            monto: g.total,
+            categoria: 'Transporte y fletes',
+            categoria_id: categoriaFleteId ?? null,
+            tipo_iva: ivaPct > 0 ? String(ivaPct) : null,
+            iva_monto: iva > 0 ? iva : null,
+            alicuota_iva: ivaPct > 0 ? ivaPct : null,
+            iva_deducible: ivaPct > 0,
+            deduce_ganancias: true,
+            gasto_negocio: true,
+            medio_pago: JSON.stringify([{ tipo: pagoMedio, monto: g.total }]),
+            fecha: fechaPago,
+            sucursal_id: g.sucursalId,
+            usuario_id: user?.id ?? null,
+            monto_pagado: g.total,
+            estado_pago: 'pagado',
+            notas: `Pago a courier (Envíos): ${numeros}`,
+          }).select('id').single()
+          if (gErr) throw gErr
+          gastoId = gastoIns.id
+
+          // Caja: egreso (efectivo) / egreso_informativo (otros medios)
+          if (sesionCajaPago) {
+            const concepto = `Flete ${g.courier} — ${g.ids.length} envío(s)`
+            await supabase.from('caja_movimientos').insert({
+              tenant_id: tenant!.id, sesion_id: sesionCajaPago,
+              tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
+              concepto: esEfectivo ? concepto : `[${pagoMedio}] ${concepto}`,
+              monto: g.total, usuario_id: user?.id ?? null,
+            })
+          } else if (esEfectivo) {
+            toast(`⚠ Sin caja abierta — egreso de $${g.total.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no registrado en caja`, { icon: '⚠' })
+          }
+        }
+
+        const { error } = await supabase.from('envios').update({
+          costo_pagado: true,
+          fecha_pago_courier: pagoFecha || null,
+          medio_pago_courier: pagoMedio || null,
+          ...(gastoId ? { gasto_id: gastoId } : {}),
+        }).in('id', g.ids)
+        if (error) throw error
+      }
+
+      const n = seleccionados.length
+      toast.success(`${n} envío${n > 1 ? 's' : ''} pagado${n > 1 ? 's' : ''}${generaGasto ? ' + gasto registrado' : ''}`)
       qc.invalidateQueries({ queryKey: ['envios-pendientes-pago'] })
       qc.invalidateQueries({ queryKey: ['envios'] })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
+      qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas'] })
       setPagosSeleccion(new Set())
+      setPagoClaveMaestra('')
     } catch (e: any) { toast.error(e.message ?? 'Error al guardar') }
     finally { setSavingPago(false) }
+  }
+
+  // ── EN1/C3: Cargar factura del courier + conciliar contra lo registrado ───────
+  const guardarFacturaCourier = async () => {
+    if (!factForm.courier) { toast.error('Elegí el courier'); return }
+    const totalFact = parseFloat(factForm.total_facturado) || 0
+    setSavingFact(true)
+    try {
+      const desde = factForm.periodo_desde || null
+      const hasta = factForm.periodo_hasta || null
+      // Envíos del courier en el período (por fecha de pago; si no hay, por created_at)
+      let q = supabase.from('envios')
+        .select('id, costo_cotizado, fecha_pago_courier, created_at')
+        .eq('tenant_id', tenant!.id).eq('courier', factForm.courier).gt('costo_cotizado', 0)
+      q = applyFilter(q)
+      const { data: enviosCourier } = await q
+      const enRango = (enviosCourier ?? []).filter((e: any) => {
+        const f = String(e.fecha_pago_courier || e.created_at || '').slice(0, 10)
+        if (desde && f < desde) return false
+        if (hasta && f > hasta) return false
+        return true
+      })
+      const totalReg = enRango.reduce((s: number, e: any) => s + Number(e.costo_cotizado ?? 0), 0)
+      const { diff } = diffFactura(totalFact, totalReg)
+
+      let archivoUrl: string | null = null
+      if (factArchivo) {
+        const ext = factArchivo.name.split('.').pop() || 'pdf'
+        const path = `facturas-courier/${tenant!.id}/${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage.from('etiquetas-envios').upload(path, factArchivo)
+        if (!upErr) {
+          const { data: signed } = await supabase.storage.from('etiquetas-envios').createSignedUrl(path, 60 * 60 * 24 * 365)
+          archivoUrl = signed?.signedUrl ?? null
+        }
+      }
+
+      const { data: fact, error: fErr } = await supabase.from('courier_facturas').insert({
+        tenant_id: tenant!.id, courier: factForm.courier,
+        nro_factura: factForm.nro_factura.trim() || null,
+        periodo_desde: desde, periodo_hasta: hasta,
+        total_facturado: totalFact, total_registrado: totalReg, diferencia: diff,
+        archivo_url: archivoUrl, estado: Math.abs(diff) < 1 ? 'conciliada' : 'borrador',
+        notas: factForm.notas.trim() || null, sucursal_id: sucursalId || null, created_by: user?.id ?? null,
+      }).select('id').single()
+      if (fErr) throw fErr
+
+      if (enRango.length > 0) {
+        await supabase.from('courier_factura_lineas').insert(enRango.map((e: any) => ({
+          tenant_id: tenant!.id, factura_id: fact.id, envio_id: e.id,
+          monto_registrado: Number(e.costo_cotizado ?? 0), monto_facturado: null,
+        })))
+      }
+
+      toast.success(Math.abs(diff) < 1
+        ? 'Factura conciliada ✓ (sin diferencias)'
+        : `Factura cargada — diferencia $${Math.abs(diff).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ${diff > 0 ? '(courier facturó de más)' : '(facturó de menos)'}`)
+      qc.invalidateQueries({ queryKey: ['courier-facturas'] })
+      setFactForm({ courier: '', nro_factura: '', periodo_desde: '', periodo_hasta: '', total_facturado: '', notas: '' })
+      setFactArchivo(null)
+      if (factFileRef.current) factFileRef.current.value = ''
+    } catch (e: any) { toast.error(e.message ?? 'Error al guardar la factura') }
+    finally { setSavingFact(false) }
   }
 
   // ── WhatsApp ─────────────────────────────────────────────────────────────────
@@ -717,6 +899,7 @@ export default function EnviosPage() {
         {([
           { key: 'envios', label: 'Envíos', icon: <Package2 size={14} /> },
           { key: 'pagos',  label: 'Pagos Courier', icon: <CreditCard size={14} />, badge: (enviosPendientesPago as any[]).length || undefined },
+          { key: 'facturas', label: 'Facturas Courier', icon: <FileText size={14} /> },
         ] as const).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t.key ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
@@ -1132,6 +1315,18 @@ export default function EnviosPage() {
                 <input type="date" value={pagoFecha} onChange={e => setPagoFecha(e.target.value)}
                   className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
               </div>
+              {(() => {
+                const totalSel = (enviosPendientesPago as any[]).filter(e => pagosSeleccion.has(e.id)).reduce((s, e) => s + (e.costo_cotizado ?? 0), 0)
+                const umbral = Number((tenant as any)?.envio_pago_doble_firma_umbral ?? 0)
+                const necesitaClave = requiereDobleFirma(totalSel, umbral) && !!(tenant as any)?.clave_maestra
+                return necesitaClave ? (
+                  <div>
+                    <label className="block text-xs text-amber-600 dark:text-amber-400 mb-1">🔒 Clave maestra (supera umbral)</label>
+                    <input type="password" autoComplete="new-password" value={pagoClaveMaestra} onChange={e => setPagoClaveMaestra(e.target.value)}
+                      className="border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+                  </div>
+                ) : null
+              })()}
               <div className="flex-1 flex items-end justify-between gap-3">
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400">Seleccionados: <strong>{pagosSeleccion.size}</strong></p>
@@ -1148,6 +1343,11 @@ export default function EnviosPage() {
                 </button>
               </div>
             </div>
+            {(tenant as any)?.envio_courier_genera_gasto !== false && (
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 -mt-2 mb-3 flex items-center gap-1">
+                <DollarSign size={11} /> Al marcar pagado se genera un gasto en <strong>Transporte y fletes</strong> (IVA {Number((tenant as any)?.envio_courier_iva_pct ?? 21)}% crédito fiscal){pagoMedio === 'Efectivo' ? ' + egreso de caja' : ''}. Configurable en Config → Envíos.
+              </p>
+            )}
 
             {/* Lista de envíos pendientes de pago */}
             {(enviosPendientesPago as any[]).length === 0 ? (
@@ -1215,6 +1415,115 @@ export default function EnviosPage() {
                     </tr>
                   </tfoot>
                 </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══ TAB: FACTURAS COURIER (EN1/C3) ══ */}
+      {tab === 'facturas' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
+              <FileText size={16} className="text-accent" /> Cargar factura del courier
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Cargá la factura/resumen del courier por período. El sistema la concilia contra lo registrado y avisa si hay diferencias.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Courier</label>
+                <select value={factForm.courier} onChange={e => setFactForm(f => ({ ...f, courier: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent">
+                  <option value="">Elegí courier…</option>
+                  {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Nº factura</label>
+                <input type="text" value={factForm.nro_factura} onChange={e => setFactForm(f => ({ ...f, nro_factura: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Total facturado</label>
+                <input type="number" onWheel={ev => ev.currentTarget.blur()} value={factForm.total_facturado} onChange={e => setFactForm(f => ({ ...f, total_facturado: e.target.value }))}
+                  placeholder="0" min="0" step="0.01"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Período desde</label>
+                <input type="date" value={factForm.periodo_desde} onChange={e => setFactForm(f => ({ ...f, periodo_desde: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Período hasta</label>
+                <input type="date" value={factForm.periodo_hasta} onChange={e => setFactForm(f => ({ ...f, periodo_hasta: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Archivo (PDF/CSV, opcional)</label>
+                <input ref={factFileRef} type="file" accept=".pdf,.csv,image/*" onChange={e => setFactArchivo(e.target.files?.[0] ?? null)}
+                  className="w-full text-xs text-gray-600 dark:text-gray-300 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-accent/10 file:text-accent" />
+              </div>
+            </div>
+            <div className="flex items-end justify-between gap-3">
+              <input type="text" value={factForm.notas} onChange={e => setFactForm(f => ({ ...f, notas: e.target.value }))}
+                placeholder="Notas (opcional)"
+                className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+              <button onClick={guardarFacturaCourier} disabled={savingFact || !factForm.courier}
+                className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-4 py-2 rounded-xl transition-all disabled:opacity-40 text-sm whitespace-nowrap">
+                <ClipboardCheck size={16} /> {savingFact ? 'Conciliando…' : 'Cargar y conciliar'}
+              </button>
+            </div>
+          </div>
+
+          {/* Listado de facturas conciliadas */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-3 text-sm">Facturas cargadas</h3>
+            {(courierFacturas as any[]).length === 0 ? (
+              <div className="text-center py-10 text-gray-400">
+                <FileText size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Todavía no cargaste facturas de courier.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(courierFacturas as any[]).map((f: any) => {
+                  const hayDif = Math.abs(Number(f.diferencia ?? 0)) > 1
+                  return (
+                    <div key={f.id} className="flex flex-wrap items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700">
+                      <div className="flex-1 min-w-[160px]">
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                          {f.courier} {f.nro_factura ? <span className="text-gray-400 font-normal">· Nº {f.nro_factura}</span> : null}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {f.periodo_desde ? `${formatFecha(f.periodo_desde)} – ${f.periodo_hasta ? formatFecha(f.periodo_hasta) : '…'}` : 'sin período'}
+                          {' · '}{(f.courier_factura_lineas?.length ?? 0)} envío(s)
+                        </p>
+                      </div>
+                      <div className="text-right text-xs">
+                        <p className="text-gray-500 dark:text-gray-400">Facturado: <strong className="text-gray-700 dark:text-gray-200">${Number(f.total_facturado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></p>
+                        <p className="text-gray-500 dark:text-gray-400">Registrado: <strong className="text-gray-700 dark:text-gray-200">${Number(f.total_registrado).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong></p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {hayDif ? (
+                          <span className="text-xs px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                            <AlertTriangle size={12} /> Dif. ${Math.abs(Number(f.diferencia)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 flex items-center gap-1">
+                            <CheckCircle size={12} /> Conciliada
+                          </span>
+                        )}
+                        {f.archivo_url && (
+                          <a href={f.archivo_url} target="_blank" rel="noopener" className="text-accent hover:underline text-xs flex items-center gap-1">
+                            <ExternalLink size={12} /> Ver
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

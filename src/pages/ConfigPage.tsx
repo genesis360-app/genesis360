@@ -497,6 +497,10 @@ export default function ConfigPage() {
       ? (tenant as any).envio_rangos_horarios.map((r: any) => ({ desde: String(r.desde ?? ''), hasta: String(r.hasta ?? '') }))
       : [{ desde: '08:00', hasta: '13:00' }, { desde: '13:00', hasta: '18:00' }, { desde: '18:00', hasta: '22:00' }]
   )
+  // EN1 — pagos a courier contables
+  const [bizCourierGeneraGasto, setBizCourierGeneraGasto] = useState<boolean>((tenant as any)?.envio_courier_genera_gasto !== false)
+  const [bizCourierIvaPct, setBizCourierIvaPct] = useState<string>(String((tenant as any)?.envio_courier_iva_pct ?? 21))
+  const [bizEnvioDobleFirma, setBizEnvioDobleFirma] = useState<string>(String((tenant as any)?.envio_pago_doble_firma_umbral ?? 0))
 
   // Fase 2 — identidad
   const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
@@ -665,6 +669,10 @@ export default function ConfigPage() {
       costo_envio_por_km: bizCostoKm ? parseFloat(bizCostoKm) : null,
       envio_peso_fuente: bizPesoFuente,
       envio_rangos_horarios: bizEnvioRangos.filter(r => r.desde && r.hasta),
+      // EN1 — pagos a courier contables
+      envio_courier_genera_gasto: bizCourierGeneraGasto,
+      envio_courier_iva_pct: parseFloat(bizCourierIvaPct) || 0,
+      envio_pago_doble_firma_umbral: parseFloat(bizEnvioDobleFirma) || 0,
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
       cuit: bizCuit.trim() || null,
@@ -3291,6 +3299,46 @@ export default function ConfigPage() {
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{opt.d}</p>
                 </button>
               ))}
+            </div>
+            {canEdit && (
+              <div className="flex justify-end">
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* EN1 — pagos a courier contables */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <CreditCard size={18} className="text-accent" /> Pagos a courier (contabilidad)
+            </h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
+              Al marcar pagado un envío de courier tercero en la pestaña "Pagos Courier", se puede generar un gasto contable automático.
+            </p>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={bizCourierGeneraGasto} disabled={!canEdit}
+                onChange={e => setBizCourierGeneraGasto(e.target.checked)} className="accent-accent mt-0.5" />
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                Generar gasto automático <span className="text-gray-400">(categoría "Transporte y fletes", proveedor = courier, IVA crédito fiscal; egreso de caja si el medio es efectivo)</span>
+              </span>
+            </label>
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Alícuota IVA del flete (%)</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCourierIvaPct}
+                  onChange={e => setBizCourierIvaPct(e.target.value)} min="0" step="0.5" disabled={!canEdit || !bizCourierGeneraGasto}
+                  className="w-28 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Umbral doble firma ($, 0 = sin)</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizEnvioDobleFirma}
+                  onChange={e => setBizEnvioDobleFirma(e.target.value)} min="0" step="1" disabled={!canEdit}
+                  className="w-40 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 flex-1 min-w-[180px]">Pagos a courier por encima del umbral exigen la clave maestra del dueño.</p>
             </div>
             {canEdit && (
               <div className="flex justify-end">

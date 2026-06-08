@@ -6,6 +6,36 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-06] cierre-sesión | Resumen para retomar tras /clear (estado: PROD v1.39.0, mig 188)
+
+**Sesión larga. Compras 2.0 completo en PROD. Suite 474 tests verdes.** ⚠ Al cierre, `dev` quedó **adelante de `main`** por: docs del wiki + cambios de email (FROM + email OC HTML/PDF — la Edge Function ya está en PROD, falta el front, que viaja en el próximo merge). Tres bloques:
+
+1. **🎉 Compras 2.0 (CO1-CO8) CERRADO al 100% en PROD.** Esta sesión se hicieron CO5→CO8 (antes ya estaban CO1-CO4): CO5 pago anticipo/contra-entrega/schedule (v1.35.0, mig 186) · CO6 cheques diferidos (v1.36.0, mig 187) · CO7a OC inteligente: enviar OC PDF/email/WhatsApp + auto-draft desde stock bajo (v1.37.0) · CO7b servicios recurrentes/genéricos/comparar presupuestos (v1.38.0, mig 188) · CO8 reportes/alertas/export/calificación proveedor (v1.39.0). Libs nuevas: `comprasPago`, `comprasCheques`, `ocPDF`, `serviciosRecurrentes`, `comprasReportes` (+62 tests). Detalle en entradas de abajo + `project_compras_backlog` (memoria).
+
+2. **Email saliente ✅ RESUELTO + couriers pendiente** (sección "Email + Couriers" en `project_pendientes.md` + memoria `project_email_courier_pendientes`):
+   - **Email saliente ✅:** el dominio `genesis360.pro` ya estaba verificado en Resend → se cambió `FROM` a `noreply@genesis360.pro` **y** se mejoró el **email de OC** (template `type:'oc'` HTML + **PDF adjunto** vía Resend `attachments`). `send-email` redeployada **DEV v21 / PROD v24** (`verify_jwt` ok). Todo el correo saliente usa el dominio propio. Patrón `attachments` reutilizable para factura/estado de cuenta. ⚠ El cambio de **frontend** (`enviarOCEmail`) está en `dev`; llega a PROD con el próximo merge a `main` (la función ya está en PROD y es backward-compatible).
+   - **Couriers:** adapters Andreani/Correo/OCA completos pero **sin validar con cuentas B2B reales**. Plan: GO consigue cuenta (Andreani 1ro) → validar end-to-end; Claude puede dejar logging diagnóstico + botón "Probar credenciales" sin esperar credenciales.
+
+3. **Relevamiento Envíos respondido por GO (A-I)** → `relevamiento_envios_respuestas.md` con respuestas + diseño + modelo de datos + **recomendación contable/IVA** + plan **EN1-EN7**. **Pendiente de implementar.** Top 3: EN1 (pagos courier contables) → EN2 (POD robusto: firma/DNI/OTP/geoloc/sub-estados/reintento) → EN3 (reparto: repartidores/hoja de ruta/notif "en camino"). EN6 (integraciones courier) depende de validar adapters B2B. Pendiente confirmar: alícuota IVA flete, plazos por canal, canal del OTP.
+
+**Próximo paso sugerido al retomar:** empezar **Envíos EN1** (pagos courier contables, cierra gap contable) — es el Top 1 del relevamiento. Pendiente menor: si `dev` sigue adelante de `main`, el próximo deploy (PR dev→main + Vercel) lleva el front del email de OC a PROD. Couriers EN6 espera cuenta B2B. Relevamientos sin responder: **RRHH / Caja**.
+
+---
+
+## [2026-06-06] update | Compras CO8 — reportes + alertas + export + calificación (v1.39.0, PROD ✅) · 🎉 Compras 2.0 COMPLETO
+
+**Deployada a PROD la fase CO8** (G1/G2/G3/E4) — última del plan Compras 2.0. Sin migración. Build + 474 tests verdes. PR #168, release `v1.39.0`, `dev=main`.
+
+- **G1 — reportes:** nuevo tab **Reportes** en Gastos (`src/components/ComprasReportesPanel.tsx`): compras por proveedor (volumen $ + # OCs + % cumplimiento), top productos comprados, **aging** de pagos pendientes (0-30/31-60/61-90/+90), OCs vencidas (entrega esperada pasada sin recibir), evolución de costos por producto (primer vs último precio + variación %).
+- **E4 — calificación de proveedor:** score A/B/C según % de OCs recibidas completas (`calificarProveedor`).
+- **G3 — export:** Excel (xlsx) / CSV / PDF (jsPDF+autotable) por reporte. PDF de OC ya estaba en CO7a.
+- **G2 — alerta:** "bajo mínimo sin OC pendiente" en Alertas (badge *OC en camino* / *Sin OC pendiente* cruzando productos bajo mínimo con ítems de OCs abiertas). Las demás alertas de compras (anticipo sin recepción, cheque próximo a cobrar, costo subió X%) ya existían (CO3/CO5/CO6).
+- **Lib pura** `src/lib/comprasReportes.ts` (`comprasPorProveedor`, `topProductosComprados`, `agingPagos`, `ocsVencidas`, `evolucionCostos`, `calificarProveedor`) + `tests/unit/comprasReportes.test.ts` (10 tests).
+
+**🎉 Compras 2.0 (CO1-CO8) CERRADO al 100% en PROD:** CO1 gobierno OC · CO2 recepción robusta · CO3 costos · CO4 devolución a proveedor · CO5 pago anticipo/schedule · CO6 cheques diferidos · CO7a OC inteligente (enviar OC + auto-draft) · CO7b servicios (recurrentes/genéricos/comparar) · CO8 reportes/alertas/export/calificación. Sin pendientes del módulo.
+
+---
+
 ## [2026-06-06] update | Compras CO7b — servicios: recurrentes + catálogo genérico + comparar presupuestos (v1.38.0, mig 188, PROD ✅)
 
 **Deployada a PROD la fase CO7b** (F1+F2+F3). Build + 464 tests verdes. Mig 188 en DEV y PROD. PR #167, release `v1.38.0`, `dev=main`.

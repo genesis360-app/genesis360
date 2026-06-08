@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.30.0** ✅ (**Conteos 2.0 · cierre 100% — F2b-ref + F3b + A2**, mig 181). **F2b-ref (E3):** escanear durante el conteo un producto fuera de alcance con stock → lo agrega como fila "fuera de alcance" (mercadería mal ubicada); sin stock → aviso hacia Ingreso. **F3b:** snapshot de costo por ítem (`costo_snapshot`, valorización estable al continuar borradores) + **doble conteo formal** (filas sobre umbral exigen re-ingreso vía columna "Recontar"; saltable con **clave maestra** SUPERVISOR/DUEÑO; persiste `cantidad_reconteo`+`reconteo_por`; el ajuste usa el valor recontado). **A2:** toggle `tenants.conteo_wall_to_wall_bloquea` (default OFF) — conteo de sucursal completa con confirmación de DUEÑO bloquea ventas (reserva/despacho) y movimientos hasta cerrarlo (hook `useConteoBloqueante`, badge "Bloqueante", se libera al finalizar/eliminar). **Conteos 2.0 cerrado (F1-F4 + refinamientos).** Antes: v1.29.0 (**Conteos 2.0 · F2b + F4 — cierre del módulo**. **F2b scan-to-count**: botón "Escanear para contar" = cámara persistente que suma a la fila del producto (cantidad del AI GS1 si viene, si no +1; reusa `resolverScanCompuesto`). **F4**: clase **ABC** (`productos.clase_abc` auto Pareto 80/95 por valor de movimiento 12m + override manual `clase_abc_manual`), **conteo cíclico sugerido** (`tenants.conteo_ciclico_dias_a/b/c`, panel "Conviene contar"), **reportes de exactitud + valorización** ($ faltante/sobrante/neto) por conteo y acumulado + export Excel, **trazabilidad por operador** (`inventario_conteo_items.contado_por` + `productos.ultimo_conteo_at`). Lógica pura en `conteoAbc.ts` (+16 tests → suite **362**). Mig **180** (aditiva). Antes: v1.27.0 (Conteos F3 gate+autorizaciones+delta, mig 179). v1.26.0 (F2a modos+ciego+unidad+secuencia, mig 178). v1.25.0 (F1 scope, mig 177). v1.24.0 (Clientes C6+D4).
+Último release en PROD: **v1.39.0** ✅ (**Compras CO8 — reportes/alertas/export/calificación · 🎉 Compras 2.0 CO1-CO8 COMPLETO**, sin migración). Antes en esta sesión: v1.35.0 CO5 (mig 186), v1.36.0 CO6 (mig 187), v1.37.0 CO7a, v1.38.0 CO7b (mig 188). **Relevamiento Envíos respondido → plan EN1-EN7 pendiente.** Historial Conteos/Compras 1-4 abajo. — v1.30.0 (**Conteos 2.0 · cierre 100% — F2b-ref + F3b + A2**, mig 181). **F2b-ref (E3):** escanear durante el conteo un producto fuera de alcance con stock → lo agrega como fila "fuera de alcance" (mercadería mal ubicada); sin stock → aviso hacia Ingreso. **F3b:** snapshot de costo por ítem (`costo_snapshot`, valorización estable al continuar borradores) + **doble conteo formal** (filas sobre umbral exigen re-ingreso vía columna "Recontar"; saltable con **clave maestra** SUPERVISOR/DUEÑO; persiste `cantidad_reconteo`+`reconteo_por`; el ajuste usa el valor recontado). **A2:** toggle `tenants.conteo_wall_to_wall_bloquea` (default OFF) — conteo de sucursal completa con confirmación de DUEÑO bloquea ventas (reserva/despacho) y movimientos hasta cerrarlo (hook `useConteoBloqueante`, badge "Bloqueante", se libera al finalizar/eliminar). **Conteos 2.0 cerrado (F1-F4 + refinamientos).** Antes: v1.29.0 (**Conteos 2.0 · F2b + F4 — cierre del módulo**. **F2b scan-to-count**: botón "Escanear para contar" = cámara persistente que suma a la fila del producto (cantidad del AI GS1 si viene, si no +1; reusa `resolverScanCompuesto`). **F4**: clase **ABC** (`productos.clase_abc` auto Pareto 80/95 por valor de movimiento 12m + override manual `clase_abc_manual`), **conteo cíclico sugerido** (`tenants.conteo_ciclico_dias_a/b/c`, panel "Conviene contar"), **reportes de exactitud + valorización** ($ faltante/sobrante/neto) por conteo y acumulado + export Excel, **trazabilidad por operador** (`inventario_conteo_items.contado_por` + `productos.ultimo_conteo_at`). Lógica pura en `conteoAbc.ts` (+16 tests → suite **362**). Mig **180** (aditiva). Antes: v1.27.0 (Conteos F3 gate+autorizaciones+delta, mig 179). v1.26.0 (F2a modos+ciego+unidad+secuencia, mig 178). v1.25.0 (F1 scope, mig 177). v1.24.0 (Clientes C6+D4).
 
 **Historial Clientes:** v1.19.0 (CL1+CL2), v1.20.0 (CL3 + bugfix origen), v1.23.0 (CL4+CL5+CL6), v1.23.1 (QA/tests CC + agentes).
 
@@ -22,10 +22,10 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.38.0` | `v1.38.0` |
+| APP_VERSION | `v1.39.0` | `v1.39.0` |
 | Migrations | 001–**188** ✅ | 001–**188** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.38.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.38.0 |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.39.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.39.0 |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna (188 ya en PROD).
 
@@ -234,9 +234,27 @@ Respuestas A-H + diseño + modelo de datos + sugerencias completas en **`relevam
 - **CO6 — Cheques diferidos ✅ DEPLOYADO PROD (v1.36.0, mig 187):** D4 tabla `cheques` (propios emitidos a proveedores / de terceros recibidos), `fecha_cobro` diferida, estados (`en_cartera`/`entregado`/`depositado`/`cobrado`/`endosado`/`rechazado`/`anulado`) + endoso (pagar a otro proveedor con cheque de tercero). Nuevo tab **Cheques** en Gastos (`ChequesPanel`): registro, transiciones guiadas por tipo, endoso, filtros, total pendiente y **alerta de próximos a cobrar** (badge + vencidos). Config → `cheques_alerta_dias` (default 7). Lib pura `comprasCheques.ts` + 19 tests → suite **447**.
 - **CO7a — OC inteligente ✅ DEPLOYADO PROD (v1.37.0, sin migración):** A6 enviar OC al proveedor — PDF (`src/lib/ocPDF.ts` con jsPDF/autotable), Email (`send-email` con resumen) y WhatsApp (link `wa.me` con plantilla `textoOC`/`waLinkOC`), botones en el detalle de OC (ProveedoresPage). A3 auto-draft desde stock bajo — en Alertas "Generar OC sugerida" consolida productos bajo mínimo por proveedor (vía `proveedor_productos`) y crea OCs borrador con cantidad faltante sugerida (gateado por `capacidadCrearOC`, exige sucursal). +6 tests → suite **453**.
 - **CO7b — Servicios ✅ DEPLOYADO PROD (v1.38.0, mig 188):** F1 servicios recurrentes (`servicio_items.recurrente`/`frecuencia`/`proximo_vencimiento`; banner de vencidos en el tab Servicios con "Generar gasto" = sweep lazy que crea el gasto y avanza la fecha) · F2 catálogo genérico del tenant (`servicio_items.proveedor_id` nullable + panel "Servicios generales del negocio") · F3 comparar presupuestos lado a lado (`compararPresupuestos` agrupa por concepto normalizado, marca el más barato). Lib pura `serviciosRecurrentes.ts` + 11 tests → suite **464**.
-- **CO8 — Reportes + alertas + export:** todos los reportes/alertas G1/G2 + Excel/PDF/CSV + PDF OC + calificación proveedor.
+- **CO8 — Reportes + alertas + export ✅ DEPLOYADO PROD (v1.39.0, sin migración):** G1 reportes (nuevo tab **Reportes** en Gastos, `ComprasReportesPanel`): compras por proveedor (volumen/cumplimiento), top productos, aging de pagos (0-30/31-60/61-90/+90), OCs vencidas, evolución de costos por producto · E4 calificación de proveedor (score A/B/C por % cumplimiento) · G3 export Excel/CSV/PDF por reporte (PDF OC ya estaba en CO7a) · G2 alerta "bajo mínimo sin OC pendiente" en Alertas (badge OC en camino / Sin OC). Lib pura `comprasReportes.ts` + 10 tests → suite **474**. **🎉 Compras 2.0 (CO1-CO8) COMPLETO.**
 
-**Decisiones confirmadas por GO (2026-06-05):** E3 alta rápida de producto en recepción ✅ SÍ (rol alto + "pendiente revisión") · B6 editar precio en recepción con audit ✅ SÍ · D1 modos `contado/anticipo/contra_entrega/cuenta_corriente` + % anticipo por proveedor (override opcional por OC) ✅ · A6 WA por link `wa.me` ✅. **Estado:** ✅ CO1 (v1.31.0) · ✅ CO2 (v1.32.0) · ✅ CO3 (v1.33.0) · ✅ CO4 (v1.34.0) en PROD · ✅ CO5 (v1.35.0, mig 186) · ✅ CO6 (v1.36.0, mig 187) · ✅ CO7a (v1.37.0, A6+A3) · ✅ CO7b (v1.38.0, mig 188, F1/F2/F3) en PROD. **Pendiente:** CO8 (reportes/alertas/export + E4-reporte diferencias + calificación proveedor: G1/G2/G3).
+**Decisiones confirmadas por GO (2026-06-05):** E3 alta rápida de producto en recepción ✅ SÍ (rol alto + "pendiente revisión") · B6 editar precio en recepción con audit ✅ SÍ · D1 modos `contado/anticipo/contra_entrega/cuenta_corriente` + % anticipo por proveedor (override opcional por OC) ✅ · A6 WA por link `wa.me` ✅. **Estado:** ✅ CO1 (v1.31.0) · ✅ CO2 (v1.32.0) · ✅ CO3 (v1.33.0) · ✅ CO4 (v1.34.0) en PROD · ✅ CO5 (v1.35.0, mig 186) · ✅ CO6 (v1.36.0, mig 187) · ✅ CO7a (v1.37.0, A6+A3) · ✅ CO7b (v1.38.0, mig 188, F1/F2/F3) · ✅ CO8 (v1.39.0, G1/G2/G3/E4) en PROD. **🎉 Compras 2.0 (CO1-CO8) COMPLETO — sin pendientes del módulo.**
+
+### Relevamiento Envíos — plan por fases EN1-EN7 (respondido 2026-06-06) — PENDIENTE DE IMPLEMENTAR
+
+Respuestas A-I + diseño + modelo de datos + recomendación contable/IVA + plan completo en **`relevamiento_envios_respuestas.md`**. Resumen del plan deployable por fases:
+
+- **EN1 — Pagos a courier contables + conciliación (C1/C2/C3/C4):** gasto auto "Logística/Courier" al marcar pagado (**solo courier tercero**, con IVA crédito fiscal) + egreso de caja si efectivo · cargar factura del courier + match + alerta de diferencias · aprobación configurable por rol/umbral. *Cierra el gap contable que GO marcó (hoy marcar pagado es solo un flag).*
+- **EN2 — POD robusto + cierre de entrega (D1-D6):** campos del POD requeridos configurables · multi-foto (mín. 1) · **firma + DNI + OTP sobre umbral** (solo envío propio) · **geoloc con fallback graceful** (si no se puede, registra y no frena) · **sub-estados de no-entrega** (ausente/rechazado/dirección) + motivo catálogo · re-intento con contador + re-cobro.
+- **EN3 — Reparto: repartidores + hoja de ruta + transportista (G1/G3 + E1-E5):** catálogo de repartidores + productividad · hoja de ruta por chofer (token agrupador) + orden por proximidad + cumplimiento · página transportista (token expira config, llamar/WA/incidencia, identidad config) · notificación "en camino" WA (default).
+- **EN4 — Costos y tarifas avanzados (B1-B6):** nivel courier + recargo horario (propio) · factor KM config · costo mínimo/escalonado · política de cobro al cliente (margen/subsidio) · envío gratis condicional (monto/etiqueta/promo) · **diferencia real vs cotizado a-favor/pérdida con motivo** (precio al cliente inmutable post-pago, B6).
+- **EN5 — Creación y alcance (A1-A5):** DEPOSITO crea · **envíos libres** (traslado_interno/muestra/dev_proveedor) · sugerencia de courier por CP + override · plazo de despacho por canal + alerta · **múltiples envíos por venta con `envio_items`** (desglose de qué se fue en cada envío — pedido clave de GO en A5).
+- **EN6 — Integraciones courier (F1/F2/F3):** tracking por número + **cotización comparativa ("más barato")** + etiquetas (descarga + impresión térmica). **Reusa `courier-api` de ISS-174 → depende de validar adapters con cuentas B2B reales** (bloqueante conocido).
+- **EN7 — Envío propio + recursos + reportes/alertas (G2 + H1/H2/H3):** recurso (moto/auto) + KM + **combustible auto-gasto** · todos los reportes (incl. **margen logístico** y mapa por zona) · todas las alertas · export Excel/PDF/CSV + hoja de ruta PDF + etiquetas A4 con QR.
+
+**Recomendación contable/IVA (respuesta a la pregunta de GO en C2):** courier tercero = gasto "Logística/Courier" con **IVA crédito fiscal** (respaldo = factura del courier, C3); envío propio NO genera gasto courier (su costo real va por **combustible**, G2). Lo que paga el cliente es **ingreso dentro de la venta** (no se duplica). Margen logístico = ingreso − costo real.
+
+**Top 3 (GO delegó, I1):** EN1 (contable) → EN2 (POD robusto) → EN3 (reparto). EN6 después de validar adapters B2B.
+
+**Pendientes de confirmación:** alícuota IVA del flete (¿21%?), plazos default por canal (A4), canal del OTP (D3), cuentas B2B para EN6.
 
 ### Bugs / mejoras UX puntuales
 
@@ -299,7 +317,43 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 |---|---|
 | **Aislamiento por sucursal a nivel RLS** | **Pedido GO 2026-05-30.** Hoy el aislamiento por sucursal es **solo cliente** (triple blindaje: fijado al cargar + selector oculto + guard de `setSucursal`). La RLS de la DB es por `tenant_id`, no por `sucursal_id` → un usuario técnico con credenciales podría leer otra sucursal vía API directa. Para que sea **imposible a nivel servidor**: RLS por sucursal en tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …) cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. Cambio grande (políticas en N tablas) — diseñar antes. Detalle en `multi-sucursal.md`. |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
-| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos. **Compras ✅ RESPONDIDO (2026-06-05)** → respuestas + diseño + plan por fases CO1-CO8 en `relevamiento_compras_respuestas.md` (ver sección abajo). **Pendientes de implementar Compras** (plan listo). **Sin responder:** RRHH / Envíos / Caja |
+| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos, **Compras ✅ (CO1-CO8 COMPLETO en PROD, v1.31-1.39)**. **Envíos ✅ RESPONDIDO (2026-06-06)** → respuestas + diseño + plan EN1-EN7 en `relevamiento_envios_respuestas.md` (ver sección abajo); **pendiente de implementar**. **Sin responder:** RRHH / Caja |
+| ~~**Email saliente — dominio Resend sin verificar**~~ | ✅ **RESUELTO 2026-06-06** — dominio ya verificado; `FROM` → `noreply@genesis360.pro`; **+ email de OC con template HTML + PDF adjunto** (`send-email` soporta `attachments`). Redeploy DEV v21 / PROD v24. Ver sección abajo. |
+| **Couriers — adapters sin validar con cuentas B2B reales** | Ver sección detallada **"Email + Couriers — pendientes a seguir"** abajo. |
+
+---
+
+## Email + Couriers — pendientes a seguir (analizado 2026-06-06)
+
+> Surgió al cerrar Compras 2.0. Dos puntos relevados a fondo contra el código. **Prioridad global: Punto 1 primero** (mayor leverage, desbloqueo 90% ops de GO). Punto 2 está bloqueado por conseguir cuenta B2B.
+
+### Punto 1 — Email de la OC (y TODO el email saliente)
+
+**✅ RESUELTO COMPLETO (2026-06-06):** (1) el dominio `genesis360.pro` **ya estaba verificado** en Resend (Cloudflare DNS, sa-east-1 — lo había hecho GO hace ~2 meses); se cambió `FROM` a `Genesis360 <noreply@genesis360.pro>` y se redeployó `send-email`. **Todo el correo saliente usa el dominio propio.** (2) **Mejora del email de OC hecha:** plantilla `type:'oc'` HTML (tabla de ítems + total + anticipo + condiciones, estilo factura) **+ PDF de la OC adjunto** (`generarOCPDF` → base64 → Resend `attachments`); la función ahora soporta `attachments` genéricos. `ProveedoresPage.enviarOCEmail` arma todo. **Redeploys: send-email DEV v21 / PROD v24** (`verify_jwt=true`). **Punto 1 cerrado al 100%.**
+
+**Causa raíz original (histórico):** el remitente. En `supabase/functions/send-email/index.ts:9` estaba `FROM = 'onboarding@resend.dev'` (sender **sandbox** de Resend).
+- Provider: **Resend** (`POST https://api.resend.com/emails`, `RESEND_API_KEY` en env). `APP_URL=https://genesis360.pro`.
+- Con dominio sin verificar: **entregabilidad mala (spam) + Resend restringe destinatarios**. Afecta **todo** lo saliente, no solo Compras: `welcome`, `venta_confirmada`, `alerta_stock`, `notificacion`, `factura_emitida`, `bug_report`. (La OC usa `type:'notificacion'`, texto plano con `<br>`.)
+- El **adjunto** es limitación real pero **secundaria**: Resend soporta `attachments` (base64), pero la función arma el body solo con `{from,to,subject,html}` (línea ~232) — no pasa adjuntos.
+
+**Plan (✅ ambos pasos hechos):**
+1. ~~**[GO / ops]** Verificar `genesis360.pro` en Resend + DNS → flip `FROM` + deploy.~~ ✅ **HECHO** (dominio ya verificado; FROM cambiado + redeploy DEV/PROD).
+2. ~~**[Claude / código]** `type:'oc'` HTML + adjuntar PDF de la OC (Resend `attachments` base64).~~ ✅ **HECHO** (template `oc` + soporte `attachments` en `send-email`; `enviarOCEmail` genera el PDF con `generarOCPDF`→base64; redeploy DEV v21 / PROD v24). *Patrón `attachments` reutilizable para adjuntar PDF a `factura_emitida` / estado de cuenta a futuro.*
+
+### Punto 2 — Adapters de courier (Andreani / Correo / OCA)
+
+**Estado real:** 3 adapters **completos y fail-safe** en `supabase/functions/courier-api/{andreani,correo,oca}.ts` (+ `index.ts` router, `types.ts`). NO son mocks ni tienen TODOs de incompletitud. Andreani: login Basic→token `x-authorization-token`, `GET /v1/tarifas` (cotizar), `POST /v2/ordenes-de-envio` (generar), `/trazas` (tracking). Sin credenciales → error claro y el **alta manual de envío sigue funcionando** (fallback intacto).
+**Riesgo:** **empírico** — endpoints, nombres de campos, auth y forma de respuesta escritos según docs públicas; solo se validan con **cuenta B2B real**. Escribir más código ahora = adivinar.
+
+**Plan:**
+1. **NO tocar los adapters todavía** (están OK hasta tener credenciales).
+2. **[GO]** Conseguir **UNA** cuenta B2B. **Empezar por Andreani** (REST limpia, mejor doc, tiene entorno de prueba) → Correo (Paq.ar) → **OCA al final** (SOAP, lo más frágil). Validar solo los couriers que GO use.
+3. **[GO + Claude, con credenciales]** Validar end-to-end en DEV con dirección real: cotizar → generar → etiqueta → tracking; ajustar mapeos en el adapter.
+4. **[Claude, accionable YA sin credenciales — acelera el día 1]:**
+   - **Logging diagnóstico** en `courier-api`: capturar request/response crudo ante error (status + body recortado) para debug de la primera prueba real.
+   - **Botón "Probar credenciales"** en Config → Envíos (`CourierCredencialesPanel`): hace solo el `login` del adapter y devuelve OK/error al cargar las claves (feedback inmediato).
+
+**Decisión pendiente con GO:** qué accionar del lado código ahora — (a) email OC: template HTML + PDF adjunto; (b) courier: logging + "Probar credenciales"; (c) solo guía de verificación de dominio Resend. (Lo ops — verificar dominio, conseguir cuenta B2B — es de GO.)
 
 ---
 

@@ -2627,3 +2627,36 @@ ALTER TABLE servicio_items
   ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE servicio_items ALTER COLUMN proveedor_id DROP NOT NULL;    -- F2 servicios genéricos del tenant
 -- F3 (comparar presupuestos) = vista en la app sobre servicio_presupuestos, sin cambios de schema.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 189: Envíos · EN1 (Pagos a courier contables + conciliación, C1-C4)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS gasto_id           UUID REFERENCES gastos(id) ON DELETE SET NULL;  -- C2 link al gasto generado
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS courier_factura_id UUID;  -- C3 FK lógica a courier_facturas
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_courier_genera_gasto    BOOLEAN NOT NULL DEFAULT TRUE;  -- C2
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_courier_iva_pct         NUMERIC NOT NULL DEFAULT 21;    -- C2 alícuota IVA flete
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_pago_doble_firma_umbral NUMERIC NOT NULL DEFAULT 0;     -- C4 (0 = sin doble firma)
+-- courier_facturas (C3): factura del courier por período; conciliación contra envíos registrados
+CREATE TABLE IF NOT EXISTS courier_facturas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  courier TEXT NOT NULL, nro_factura TEXT,
+  periodo_desde DATE, periodo_hasta DATE,
+  total_facturado NUMERIC(12,2) NOT NULL DEFAULT 0,
+  total_registrado NUMERIC(12,2) NOT NULL DEFAULT 0,
+  diferencia NUMERIC(12,2) NOT NULL DEFAULT 0,  -- facturado - registrado
+  archivo_url TEXT, estado TEXT NOT NULL DEFAULT 'borrador',  -- borrador|conciliada
+  notas TEXT, sucursal_id UUID REFERENCES sucursales(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES users(id), created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE courier_facturas ENABLE ROW LEVEL SECURITY;  -- policy courier_facturas_tenant
+-- courier_factura_lineas (C3): match por envío (registrado vs facturado)
+CREATE TABLE IF NOT EXISTS courier_factura_lineas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  factura_id UUID NOT NULL REFERENCES courier_facturas(id) ON DELETE CASCADE,
+  envio_id UUID REFERENCES envios(id) ON DELETE SET NULL,
+  monto_registrado NUMERIC(12,2) NOT NULL DEFAULT 0,
+  monto_facturado NUMERIC(12,2), created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE courier_factura_lineas ENABLE ROW LEVEL SECURITY;  -- policy courier_factura_lineas_tenant

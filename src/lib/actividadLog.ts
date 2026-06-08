@@ -21,6 +21,7 @@ export type EntidadLog =
   | 'recurso'
   | 'autorizacion_gasto'
   | 'cliente'
+  | 'cheque'
 
 export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar' | 'solicitar' | 'aprobar' | 'rechazar' | 'ingreso_stock' | 'rebaje_stock' | 'incobrable'
 

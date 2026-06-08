@@ -573,6 +573,8 @@ export default function ConfigPage() {
   const [ocCostoAlertaPct,     setOcCostoAlertaPct]     = useState<string>(String((t142 as any)?.compras_costo_alerta_pct ?? 10))
   const [ocRemitoObligatorio,  setOcRemitoObligatorio]  = useState<boolean>(!!(t142 as any)?.recepcion_remito_obligatorio)
   const [ocOverReceiptPct,     setOcOverReceiptPct]     = useState<string>((t142 as any)?.over_receipt_pct_max != null ? String((t142 as any).over_receipt_pct_max) : '')
+  // CO6 — cheques
+  const [chequesAlertaDias,    setChequesAlertaDias]    = useState<string>(String((t142 as any)?.cheques_alerta_dias ?? 7))
   const [newCategoria,         setNewCategoria]         = useState<{ nombre: string; requiere_sucursal: boolean }>({ nombre: '', requiere_sucursal: false })
 
 
@@ -764,6 +766,8 @@ export default function ConfigPage() {
       compras_costo_alerta_pct:        parseFloat(ocCostoAlertaPct) || 10,
       recepcion_remito_obligatorio:    ocRemitoObligatorio,
       over_receipt_pct_max:            ocOverReceiptPct !== '' ? parseFloat(ocOverReceiptPct) : null,
+      // CO6 — cheques
+      cheques_alerta_dias:             Math.max(1, parseInt(chequesAlertaDias) || 7),
     }
     const { data, error } = await supabase.from('tenants').update(payload).eq('id', tenant!.id).select('*').single()
     if (error) toast.error(error.message)
@@ -3382,6 +3386,14 @@ export default function ConfigPage() {
                   onChange={e => setGDiasAlertaAnticipo(e.target.value)} min="1" max="365" disabled={!canEdit}
                   className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si una OC tiene anticipo (pago hecho) y pasaron N días sin recibir mercadería, el badge se pone en rojo.</p>
+              </div>
+              {/* CO6 — alerta de cheques */}
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Días para alertar Cheques próximos a cobrar</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={chequesAlertaDias}
+                  onChange={e => setChequesAlertaDias(e.target.value)} min="1" max="365" disabled={!canEdit}
+                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Cheques pendientes (Gastos → Cheques) cuya fecha de cobro está dentro de N días (o vencida) se marcan como alerta.</p>
               </div>
             </div>
 

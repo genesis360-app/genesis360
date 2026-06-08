@@ -98,7 +98,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | [[wiki/development/workflow-git]] | Ramas main/dev, PRs, releases, checklist pre-deploy | ✅ |
 | [[wiki/development/convenciones-codigo]] | Naming, imports, patterns, reglas agente LLM | ✅ |
 | [[wiki/development/deploy]] | Vercel + Supabase, dominios, env vars, comandos | ✅ |
-| [[wiki/development/testing]] | **412 unit tests** Vitest + Playwright E2E todos los roles · pipeline QA con agentes · `tests/specs/` | ✅ |
+| [[wiki/development/testing]] | **474 unit tests** Vitest + Playwright E2E todos los roles · pipeline QA con agentes · `tests/specs/` | ✅ |
 | [[wiki/development/agentes-claude-code]] | 9 subagentes de proyecto (.claude/agents/): relevamiento, spec-extractor, test-author, test-runner, migration-reviewer, code-reviewer, bug-fixer, deploy-runner, wiki-keeper | ✅ |
 | [[wiki/development/supabase-dev-vs-prod]] | DEV vs PROD, flujo migraciones, EF deploy, pg_cron | ✅ |
 | [[wiki/development/reglas-negocio]] | Reglas relevadas con GO: caja, ventas, inventario, clientes, **gastos** (Fases 1-5 completas, v1.8.42→v1.9.0) + UAT | ✅ |

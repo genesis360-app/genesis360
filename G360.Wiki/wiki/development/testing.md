@@ -9,7 +9,7 @@ updated: 2026-06-03
 # Testing
 
 Genesis360 tiene cobertura con **Vitest** (unit tests) + **Playwright** (E2E).  
-Total al 2026-06-05: **412 unit tests** (25 archivos) · **16 archivos E2E spec** (todos los roles)
+Total al 2026-06-06: **474 unit tests** (29 archivos) · **16 archivos E2E spec** (todos los roles)
 
 > **Pipeline de QA con agentes (v1.23.1):** el ciclo `relevamiento → spec-extractor → test-author → test-runner → bug-fixer` está soportado por subagentes de proyecto (ver [[wiki/development/agentes-claude-code]]). El plan de escenarios por módulo vive en `tests/specs/<modulo>.plan.md`.
 >
@@ -50,6 +50,11 @@ Total al 2026-06-05: **412 unit tests** (25 archivos) · **16 archivos E2E spec*
 | `tests/unit/recepcionLogic.test.ts` | **Compras CO2 (v1.32.0)**: estadoOCdesdeRecibido (acumulado B5), superaOverReceipt (B3), tieneFaltante (B4), esAjusteCantidad (B1c) | 13 |
 | `tests/unit/comprasCostos.test.ts` | **Compras CO3 (v1.33.0)**: cambioCostoPct, superaAlertaCosto (E1), totalOCconAccesorios (E2) | 10 |
 | `tests/unit/devolucionProveedor.test.ts` | **Compras CO4 (v1.34.0)**: montoDevolucion, validarDevolucion (stock disponible/forma/motivo) | 9 |
+| `tests/unit/comprasPago.test.ts` | **Compras CO5 (v1.35.0)**: labelModoPago, defaultAnticipoOC, montoAnticipo (D1), scheduleValido/totalPctSchedule/montoCuota (D2) | 16 |
+| `tests/unit/comprasCheques.test.ts` | **Compras CO6 (v1.36.0)**: estadosSiguientes/puedeTransicionar/puedeEndosar, chequeProximoACobrar/chequeVencido, validarChequeAlta, totalPendiente | 19 |
+| `tests/unit/ocPDF.test.ts` | **Compras CO7a (v1.37.0)**: subtotalItems/totalOC, textoOC (A6), waLinkOC | 6 |
+| `tests/unit/serviciosRecurrentes.test.ts` | **Compras CO7b (v1.38.0)**: proximoVencimiento/servicioVencido/periodosVencidos (F1), normalizarNombre/compararPresupuestos (F3) | 11 |
+| `tests/unit/comprasReportes.test.ts` | **Compras CO8 (v1.39.0)**: comprasPorProveedor/calificarProveedor (E4), topProductosComprados, agingPagos, ocsVencidas, evolucionCostos | 10 |
 | `tests/unit/ccLogic.test.ts` (ISS-151) | + PSEUDO_METODOS_PAGO / esMetodoRealPago (excluir Incobrable del dashboard) | +4 |
 
 ### Qué se testea

@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-08] update | Envíos EN1 — pagos a courier contables + conciliación (v1.40.0, mig 189, PROD ✅)
+
+**Primera fase del relevamiento de Envíos deployada a PROD.** Build + 488 tests verdes. Mig 189 (aditiva) en DEV y PROD. PR #169, release `v1.40.0`, `dev=main`.
+
+- **C2 — gasto automático:** al marcar pagado un courier **tercero** en el tab "Pagos Courier", se genera un gasto contable (categoría **Transporte y fletes**, proveedor=courier, **IVA crédito fiscal** desglosado del bruto vía `desgloseIvaFlete`) + **egreso de caja** si el medio es efectivo (`egreso`/`egreso_informativo`). Se linkea `envios.gasto_id`. Un gasto por courier (`agruparPagosPorCourier` agrupa la selección).
+- **C3 — Facturas Courier** (nuevo tab): cargar la factura/resumen del courier por período (courier + nº + período + total + archivo opcional a `etiquetas-envios`) → el sistema busca los envíos del courier en el período, suma lo registrado y calcula la diferencia (`diffFactura`). Persiste `courier_facturas` + `courier_factura_lineas` (una línea por envío). Badge "Conciliada" / "Dif. $X". Estado conciliada si |dif| < 1.
+- **C4 — doble firma:** `tenants.envio_pago_doble_firma_umbral` (0 = sin); pagos sobre el umbral piden clave maestra del dueño (`verificar_clave_maestra`, `requiereDobleFirma`).
+- **C1:** pago individual o múltiple (sin cambios).
+- **Config → Envíos:** card "Pagos a courier (contabilidad)" — toggle generar gasto + alícuota IVA flete (default 21%) + umbral doble firma.
+- **Lib pura** `src/lib/enviosCourierPago.ts` (`agruparPagosPorCourier`, `desgloseIvaFlete`, `requiereDobleFirma`, `diffFactura`, `totalRegistrado`) + `tests/unit/enviosCourierPago.test.ts` (14 tests).
+
+**Recomendación contable aplicada:** el gasto se genera SOLO para courier tercero (envío propio va por combustible, EN7); el costo se toma bruto (IVA incluido) y se desglosa el crédito fiscal. **Próximo: EN2 (POD robusto).**
+
+---
+
 ## [2026-06-06] cierre-sesión | Resumen para retomar tras /clear (estado: PROD v1.39.0, mig 188)
 
 **Sesión larga. Compras 2.0 completo en PROD. Suite 474 tests verdes.** ⚠ Al cierre, `dev` quedó **adelante de `main`** por: docs del wiki + cambios de email (FROM + email OC HTML/PDF — la Edge Function ya está en PROD, falta el front, que viaja en el próximo merge). Tres bloques:

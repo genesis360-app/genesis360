@@ -10,6 +10,10 @@ import {
   totalPctSchedule, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
 } from '@/lib/comprasPago'
 import { generarOCPDF, textoOC, waLinkOC, type OCPDFData } from '@/lib/ocPDF'
+import {
+  FRECUENCIAS_SERVICIO, proximoVencimiento, servicioVencido, compararPresupuestos,
+  type PresupuestoComparable,
+} from '@/lib/serviciosRecurrentes'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
@@ -23,7 +27,7 @@ import {
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
   Upload, Download, DollarSign, AlertCircle, TrendingDown, FileDown, RotateCcw,
-  MessageCircle,
+  MessageCircle, Repeat, BarChart3,
 } from 'lucide-react'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes'
@@ -66,6 +70,11 @@ interface FormProdProv {
 interface FormServItem {
   nombre: string; detalle: string; costo: string
   forma_pago: string; hace_factura: boolean; notas: string
+  recurrente: boolean; frecuencia: string; proximo_vencimiento: string  // CO7b/F1
+}
+const FORM_SERV_EMPTY: FormServItem = {
+  nombre: '', detalle: '', costo: '', forma_pago: '', hace_factura: false, notas: '',
+  recurrente: false, frecuencia: 'mensual', proximo_vencimiento: '',
 }
 interface FormPresupuesto {
   nombre: string; fecha: string; monto: string; notas: string
@@ -174,9 +183,11 @@ export default function ProveedoresPage() {
   // ── Servicios state ────────────────────────────────────────────────────────
   const [serviciosSearch, setServiciosSearch] = useState('')
   const [expandedServId, setExpandedServId] = useState<string | null>(null)
-  const [showServItemForm, setShowServItemForm] = useState<string | null>(null) // proveedor_id
+  const [showServItemForm, setShowServItemForm] = useState<string | null>(null) // proveedor_id ('' = genérico)
   const [editServItemId, setEditServItemId] = useState<string | null>(null)
-  const [servItemForm, setServItemForm] = useState<FormServItem>({ nombre: '', detalle: '', costo: '', forma_pago: '', hace_factura: false, notas: '' })
+  const [showComparar, setShowComparar] = useState(false)        // CO7b/F3
+  const [showGenerales, setShowGenerales] = useState(false)      // CO7b/F2
+  const [servItemForm, setServItemForm] = useState<FormServItem>(FORM_SERV_EMPTY)
   const [showPresupForm, setShowPresupForm] = useState<string | null>(null) // proveedor_id
   const [editPresupId, setEditPresupId] = useState<string | null>(null)
   const [presupForm, setPresupForm] = useState<FormPresupuesto>({ nombre: '', fecha: new Date().toISOString().split('T')[0], monto: '', notas: '', servicio_item_id: '' })
@@ -576,6 +587,47 @@ export default function ProveedoresPage() {
     enabled: !!expandedServId,
   })
 
+  // CO7b/F1 — servicios recurrentes del tenant (para el aviso de vencidos)
+  const { data: serviciosRecurrentesData = [] } = useQuery({
+    queryKey: ['servicios-recurrentes', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('servicio_items')
+        .select('*, proveedores:proveedor_id(nombre)')
+        .eq('tenant_id', tenant!.id).eq('recurrente', true).eq('activo', true)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'servicios',
+  })
+  const hoyISO = new Date().toISOString().split('T')[0]
+  const serviciosVencidos = (serviciosRecurrentesData as any[]).filter(s => servicioVencido(s, hoyISO))
+
+  // CO7b/F2 — servicios genéricos del negocio (sin proveedor)
+  const { data: serviciosGenerales = [] } = useQuery({
+    queryKey: ['servicios-generales', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('servicio_items')
+        .select('*').eq('tenant_id', tenant!.id).is('proveedor_id', null).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'servicios',
+  })
+
+  // CO7b/F3 — todos los presupuestos del tenant para comparar lado a lado
+  const { data: presupuestosTodos = [] } = useQuery({
+    queryKey: ['presupuestos-todos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('servicio_presupuestos')
+        .select('id, nombre, monto, fecha, proveedores:proveedor_id(nombre), servicio_items(nombre)')
+        .eq('tenant_id', tenant!.id).order('fecha', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant && showComparar,
+  })
+  const gruposComparacion = compararPresupuestos((presupuestosTodos as any[]).map((p): PresupuestoComparable => ({
+    id: p.id, nombre: p.nombre, servicio_nombre: p.servicio_items?.nombre,
+    proveedor_nombre: p.proveedores?.nombre, monto: p.monto, fecha: p.fecha,
+  })))
+
   const { data: productosAll = [] } = useQuery({
     queryKey: ['productos-todos', tenant?.id],
     queryFn: async () => {
@@ -717,8 +769,12 @@ export default function ProveedoresPage() {
 
   // ── Servicio items mutations ────────────────────────────────────────────────
   const saveServItem = useMutation({
-    mutationFn: async (provId: string) => {
+    mutationFn: async (provId: string | null) => {
       if (!servItemForm.nombre.trim()) throw new Error('El nombre es requerido')
+      // F1 — si es recurrente y no tiene próximo vencimiento, arranca hoy.
+      const proximoVto = servItemForm.recurrente
+        ? (servItemForm.proximo_vencimiento || new Date().toISOString().split('T')[0])
+        : null
       const payload = {
         tenant_id: tenant!.id, proveedor_id: provId,
         nombre: servItemForm.nombre.trim(), detalle: servItemForm.detalle.trim() || null,
@@ -726,6 +782,9 @@ export default function ProveedoresPage() {
         forma_pago: servItemForm.forma_pago.trim() || null,
         hace_factura: servItemForm.hace_factura,
         notas: servItemForm.notas.trim() || null,
+        recurrente: servItemForm.recurrente,                                  // CO7b/F1
+        frecuencia: servItemForm.recurrente ? servItemForm.frecuencia : null, // CO7b/F1
+        proximo_vencimiento: proximoVto,                                      // CO7b/F1
       }
       if (editServItemId) {
         const { error } = await supabase.from('servicio_items').update(payload).eq('id', editServItemId)
@@ -738,8 +797,10 @@ export default function ProveedoresPage() {
     onSuccess: () => {
       toast.success(editServItemId ? 'Servicio actualizado' : 'Servicio agregado')
       qc.invalidateQueries({ queryKey: ['servicio-items', expandedServId] })
+      qc.invalidateQueries({ queryKey: ['servicios-generales'] })       // CO7b/F2
+      qc.invalidateQueries({ queryKey: ['servicios-recurrentes'] })     // CO7b/F1
       setShowServItemForm(null); setEditServItemId(null)
-      setServItemForm({ nombre: '', detalle: '', costo: '', forma_pago: '', hace_factura: false, notas: '' })
+      setServItemForm(FORM_SERV_EMPTY)
     },
     onError: (e: any) => toast.error(e.message),
   })
@@ -749,7 +810,42 @@ export default function ProveedoresPage() {
       const { error } = await supabase.from('servicio_items').delete().eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => { toast.success('Servicio eliminado'); qc.invalidateQueries({ queryKey: ['servicio-items', expandedServId] }) },
+    onSuccess: () => {
+      toast.success('Servicio eliminado')
+      qc.invalidateQueries({ queryKey: ['servicio-items', expandedServId] })
+      qc.invalidateQueries({ queryKey: ['servicios-generales'] })
+      qc.invalidateQueries({ queryKey: ['servicios-recurrentes'] })
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
+  // CO7b/F1 — generar el gasto de un servicio recurrente vencido y avanzar el próximo vencimiento (sweep lazy).
+  const generarGastoServicio = useMutation({
+    mutationFn: async (si: any) => {
+      if (!si.costo || si.costo <= 0) throw new Error('El servicio recurrente no tiene costo cargado.')
+      const fechaGasto = si.proximo_vencimiento ?? new Date().toISOString().split('T')[0]
+      const { error: gErr } = await supabase.from('gastos').insert({
+        tenant_id: tenant!.id,
+        descripcion: `Servicio: ${si.nombre}`,
+        monto: si.costo,
+        categoria: 'Servicios',
+        fecha: fechaGasto,
+        notas: `Generado desde servicio recurrente (${si.frecuencia})`,
+        proveedor_id: si.proveedor_id ?? null,
+        usuario_id: user?.id ?? null,
+      })
+      if (gErr) throw gErr
+      const siguiente = proximoVencimiento(fechaGasto, si.frecuencia)
+      const { error: uErr } = await supabase.from('servicio_items')
+        .update({ proximo_vencimiento: siguiente }).eq('id', si.id)
+      if (uErr) throw uErr
+    },
+    onSuccess: () => {
+      toast.success('Gasto del servicio generado')
+      qc.invalidateQueries({ queryKey: ['servicios-recurrentes'] })
+      qc.invalidateQueries({ queryKey: ['servicio-items', expandedServId] })
+      qc.invalidateQueries({ queryKey: ['servicios-generales'] })
+    },
     onError: (e: any) => toast.error(e.message),
   })
 
@@ -1543,12 +1639,166 @@ export default function ProveedoresPage() {
       {/* ── Tab Servicios ───────────────────────────────────────────────────── */}
       {tab === 'servicios' && (
         <div className="space-y-4">
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
-            <input className="w-full pl-9 pr-3 py-2 border border-border-ds rounded-lg bg-surface text-sm text-primary"
-              placeholder="Buscar por nombre, contacto…"
-              value={serviciosSearch} onChange={e => setServiciosSearch(e.target.value)} />
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+              <input className="w-full pl-9 pr-3 py-2 border border-border-ds rounded-lg bg-surface text-sm text-primary"
+                placeholder="Buscar por nombre, contacto…"
+                value={serviciosSearch} onChange={e => setServiciosSearch(e.target.value)} />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowGenerales(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border-ds text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <Wrench size={14} /> Servicios generales
+              </button>
+              <button onClick={() => setShowComparar(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border-ds text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                <BarChart3 size={14} /> Comparar presupuestos
+              </button>
+            </div>
           </div>
+
+          {/* CO7b/F1 — aviso de servicios recurrentes vencidos */}
+          {serviciosVencidos.length > 0 && (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1.5">
+                <Repeat size={14} /> {serviciosVencidos.length} servicio{serviciosVencidos.length > 1 ? 's' : ''} recurrente{serviciosVencidos.length > 1 ? 's' : ''} a generar
+              </p>
+              <div className="space-y-1.5">
+                {serviciosVencidos.map((si: any) => (
+                  <div key={si.id} className="flex items-center justify-between gap-2 text-sm bg-surface rounded-lg px-3 py-2">
+                    <div className="min-w-0">
+                      <span className="font-medium text-primary">{si.nombre}</span>
+                      <span className="text-xs text-muted ml-2">
+                        {si.proveedores?.nombre ? `${si.proveedores.nombre} · ` : ''}{si.frecuencia} · vence {new Date(si.proximo_vencimiento + 'T12:00:00').toLocaleDateString('es-AR')}
+                        {si.costo != null && ` · $${Number(si.costo).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
+                      </span>
+                    </div>
+                    <button onClick={() => generarGastoServicio.mutate(si)} disabled={generarGastoServicio.isPending}
+                      className="flex-shrink-0 text-xs bg-accent text-white px-3 py-1.5 rounded-lg hover:bg-accent/90 disabled:opacity-50">
+                      Generar gasto
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* CO7b/F2 — servicios generales del negocio (sin proveedor) */}
+          {showGenerales && (
+            <div className="rounded-xl border border-border-ds bg-surface p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-primary">Servicios generales del negocio</p>
+                <button onClick={() => { setShowServItemForm(''); setEditServItemId(null); setServItemForm(FORM_SERV_EMPTY) }}
+                  className="flex items-center gap-1 text-xs text-accent hover:underline">
+                  <Plus className="w-3 h-3" /> Agregar
+                </button>
+              </div>
+              {showServItemForm === '' && (
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-2">
+                  <input type="text" value={servItemForm.nombre} onChange={e => setServItemForm(f => ({ ...f, nombre: e.target.value }))}
+                    placeholder="Nombre del servicio *"
+                    className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={servItemForm.costo}
+                      onChange={e => setServItemForm(f => ({ ...f, costo: e.target.value }))} placeholder="Costo ($)"
+                      className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                    <label className="flex items-center gap-2 text-sm text-primary cursor-pointer">
+                      <input type="checkbox" checked={servItemForm.recurrente}
+                        onChange={e => setServItemForm(f => ({ ...f, recurrente: e.target.checked }))} className="accent-accent" />
+                      Recurrente
+                    </label>
+                  </div>
+                  {servItemForm.recurrente && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={servItemForm.frecuencia} onChange={e => setServItemForm(f => ({ ...f, frecuencia: e.target.value }))}
+                        className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent">
+                        {FRECUENCIAS_SERVICIO.map(fr => <option key={fr.value} value={fr.value}>{fr.label}</option>)}
+                      </select>
+                      <input type="date" value={servItemForm.proximo_vencimiento} title="Próximo vencimiento"
+                        onChange={e => setServItemForm(f => ({ ...f, proximo_vencimiento: e.target.value }))}
+                        className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={() => { setShowServItemForm(null); setEditServItemId(null) }}
+                      className="flex-1 border border-border-ds text-muted py-1.5 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-600">Cancelar</button>
+                    <button onClick={() => saveServItem.mutate(null)} disabled={saveServItem.isPending}
+                      className="flex-1 bg-accent text-white py-1.5 rounded-lg text-sm hover:bg-accent/90 disabled:opacity-50">
+                      {saveServItem.isPending ? 'Guardando…' : 'Guardar'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {(serviciosGenerales as any[]).length === 0 ? (
+                <p className="text-xs text-muted text-center py-1">Sin servicios generales cargados</p>
+              ) : (
+                <div className="space-y-1">
+                  {(serviciosGenerales as any[]).map((si: any) => (
+                    <div key={si.id} className="flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm text-primary">{si.nombre}</span>
+                          {si.recurrente && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Repeat className="w-2.5 h-2.5" />{si.frecuencia}</span>}
+                        </div>
+                        <div className="flex gap-3 mt-0.5 text-xs text-muted">
+                          {si.costo != null && <span className="text-green-600 dark:text-green-400 font-medium">${Number(si.costo).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
+                          {si.recurrente && si.proximo_vencimiento && <span>Próx.: {new Date(si.proximo_vencimiento + 'T12:00:00').toLocaleDateString('es-AR')}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => { setShowGenerales(true); setShowServItemForm(''); setEditServItemId(si.id); setServItemForm({ nombre: si.nombre ?? '', detalle: si.detalle ?? '', costo: si.costo != null ? String(si.costo) : '', forma_pago: si.forma_pago ?? '', hace_factura: !!si.hace_factura, notas: si.notas ?? '', recurrente: !!si.recurrente, frecuencia: si.frecuencia ?? 'mensual', proximo_vencimiento: si.proximo_vencimiento ?? '' }) }}
+                          className="text-muted hover:text-accent"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => { if (confirm('¿Eliminar este servicio?')) deleteServItem.mutate(si.id) }}
+                          className="text-muted hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* CO7b/F3 — comparar presupuestos lado a lado */}
+          {showComparar && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-surface rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-border-ds">
+                  <h3 className="font-semibold text-primary flex items-center gap-2"><BarChart3 size={16} /> Comparar presupuestos</h3>
+                  <button onClick={() => setShowComparar(false)} className="text-muted hover:text-primary"><X size={18} /></button>
+                </div>
+                <div className="p-5 space-y-4">
+                  {gruposComparacion.length === 0 ? (
+                    <p className="text-center text-muted py-8 text-sm">No hay presupuestos cargados. Cargá presupuestos en cada proveedor de servicios para compararlos.</p>
+                  ) : gruposComparacion.map((g, gi) => (
+                    <div key={gi} className="border border-border-ds rounded-xl overflow-hidden">
+                      <div className="px-3 py-2 bg-gray-50 dark:bg-gray-700 text-sm font-semibold text-primary">{g.concepto}</div>
+                      <div className="divide-y divide-border-ds">
+                        {g.presupuestos.map(p => {
+                          const esMin = p.id === g.idMin && g.presupuestos.length > 1
+                          return (
+                            <div key={p.id} className={`flex items-center justify-between px-3 py-2 text-sm ${esMin ? 'bg-green-50 dark:bg-green-900/20' : ''}`}>
+                              <div className="min-w-0">
+                                <span className="text-primary">{p.proveedor_nombre ?? '—'}</span>
+                                {p.nombre && <span className="text-xs text-muted ml-2">{p.nombre}</span>}
+                                {p.fecha && <span className="text-xs text-muted ml-2">{new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-AR')}</span>}
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className={`font-semibold ${esMin ? 'text-green-600 dark:text-green-400' : 'text-primary'}`}>
+                                  {p.monto != null ? `$${Number(p.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'}
+                                </span>
+                                {esMin && <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">Más barato</span>}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {loadingProv ? (
             <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" /></div>
@@ -1608,7 +1858,7 @@ export default function ProveedoresPage() {
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-sm font-semibold text-primary">Servicios que ofrece</p>
-                          <button onClick={() => { setShowServItemForm(s.id); setEditServItemId(null); setServItemForm({ nombre: '', detalle: '', costo: '', forma_pago: '', hace_factura: false, notas: '' }) }}
+                          <button onClick={() => { setShowServItemForm(s.id); setEditServItemId(null); setServItemForm(FORM_SERV_EMPTY) }}
                             className="flex items-center gap-1 text-xs text-accent hover:underline">
                             <Plus className="w-3 h-3" /> Agregar servicio
                           </button>
@@ -1641,6 +1891,26 @@ export default function ProveedoresPage() {
                                 onChange={e => setServItemForm(f => ({ ...f, hace_factura: e.target.checked }))} className="accent-accent" />
                               Emite factura
                             </label>
+                            {/* CO7b/F1 — recurrencia */}
+                            <label className="flex items-center gap-2 text-sm text-primary cursor-pointer">
+                              <input type="checkbox" checked={servItemForm.recurrente}
+                                onChange={e => setServItemForm(f => ({ ...f, recurrente: e.target.checked }))} className="accent-accent" />
+                              Servicio recurrente (genera gasto periódico)
+                            </label>
+                            {servItemForm.recurrente && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <select value={servItemForm.frecuencia} onChange={e => setServItemForm(f => ({ ...f, frecuencia: e.target.value }))}
+                                  className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent">
+                                  {FRECUENCIAS_SERVICIO.map(fr => <option key={fr.value} value={fr.value}>{fr.label}</option>)}
+                                </select>
+                                <div>
+                                  <input type="date" value={servItemForm.proximo_vencimiento}
+                                    onChange={e => setServItemForm(f => ({ ...f, proximo_vencimiento: e.target.value }))}
+                                    title="Próximo vencimiento" placeholder="Próximo vencimiento"
+                                    className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                                </div>
+                              </div>
+                            )}
                             <div className="flex gap-2">
                               <button onClick={() => { setShowServItemForm(null); setEditServItemId(null) }}
                                 className="flex-1 border border-border-ds text-muted py-1.5 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-600">Cancelar</button>
@@ -1659,18 +1929,24 @@ export default function ProveedoresPage() {
                             {(servicioItems as any[]).map((si: any) => (
                               <div key={si.id} className="flex items-start justify-between p-2.5 bg-gray-50 dark:bg-gray-700 rounded-lg">
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-medium text-sm text-primary">{si.nombre}</span>
                                     {si.hace_factura && <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded">Factura</span>}
+                                    {si.recurrente && <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded flex items-center gap-0.5"><Repeat className="w-2.5 h-2.5" />{si.frecuencia ?? 'recurrente'}</span>}
                                   </div>
                                   {si.detalle && <p className="text-xs text-muted mt-0.5">{si.detalle}</p>}
                                   <div className="flex gap-3 mt-1 text-xs text-muted">
                                     {si.costo != null && <span className="text-green-600 dark:text-green-400 font-medium">${Number(si.costo).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
                                     {si.forma_pago && <span>{si.forma_pago}</span>}
+                                    {si.recurrente && si.proximo_vencimiento && <span>Próx.: {new Date(si.proximo_vencimiento + 'T12:00:00').toLocaleDateString('es-AR')}</span>}
                                   </div>
                                 </div>
-                                <button onClick={() => { if (confirm('¿Eliminar este servicio?')) deleteServItem.mutate(si.id) }}
-                                  className="text-muted hover:text-red-500 ml-2 flex-shrink-0"><X className="w-3.5 h-3.5" /></button>
+                                <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                                  <button onClick={() => { setShowServItemForm(s.id); setEditServItemId(si.id); setServItemForm({ nombre: si.nombre ?? '', detalle: si.detalle ?? '', costo: si.costo != null ? String(si.costo) : '', forma_pago: si.forma_pago ?? '', hace_factura: !!si.hace_factura, notas: si.notas ?? '', recurrente: !!si.recurrente, frecuencia: si.frecuencia ?? 'mensual', proximo_vencimiento: si.proximo_vencimiento ?? '' }) }}
+                                    className="text-muted hover:text-accent"><Pencil className="w-3.5 h-3.5" /></button>
+                                  <button onClick={() => { if (confirm('¿Eliminar este servicio?')) deleteServItem.mutate(si.id) }}
+                                    className="text-muted hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
+                                </div>
                               </div>
                             ))}
                           </div>

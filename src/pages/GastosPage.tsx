@@ -9,6 +9,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { puedeRegistrarPagoOC, requiereDobleFirmaPago } from '@/lib/comprasPermisos'
+import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule } from '@/lib/comprasPago'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
@@ -3065,6 +3066,41 @@ export default function GastosPage() {
                     {(() => { const t = calcMontoTotalOC(ocSeleccionada); const raw = parseFloat(ocDescuento) || 0; const desc = ocDescuentoTipo === 'pct' ? Math.round(t * raw / 100 * 100) / 100 : raw; const saldoFinal = Math.max(0, t - Number(ocSeleccionada.monto_pagado ?? 0) - Number(ocSeleccionada.monto_descuento ?? 0) - desc); return (<>{desc > 0 && <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Descuento nuevo{ocDescuentoTipo === 'pct' ? ` (${raw}%)` : ''}</span><span className="text-blue-500">-${desc.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div>}<div className="flex justify-between font-semibold border-t border-gray-200 dark:border-gray-600 pt-1 mt-1"><span>Saldo pendiente</span><span className="text-red-500">${saldoFinal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></div></>) })()}
                   </div>
 
+                  {/* CO5/D1 — anticipo + CO5/D2 — plan de pagos (guía, no obligatorio) */}
+                  {(() => {
+                    const totalOC = calcMontoTotalOC(ocSeleccionada)
+                    const pagado = Number(ocSeleccionada.monto_pagado ?? 0)
+                    const pagaAnt = (ocSeleccionada as any).paga_con_anticipo
+                    const antPct = (ocSeleccionada as any).anticipo_pct
+                    const sched: CuotaSchedule[] | null = Array.isArray((ocSeleccionada as any).pago_schedule)
+                      ? (ocSeleccionada as any).pago_schedule : null
+                    if (!pagaAnt && !sched) return null
+                    return (
+                      <div className="rounded-xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 px-4 py-3 text-xs space-y-1.5">
+                        {pagaAnt && antPct > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-purple-700 dark:text-purple-300 font-medium">💰 Anticipo ({antPct}%)</span>
+                            <span className="font-semibold text-purple-700 dark:text-purple-300">
+                              ${montoAnticipo(totalOC, antPct).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                              {pagado > 0 && ' · ya hay pagos registrados'}
+                            </span>
+                          </div>
+                        )}
+                        {sched && sched.length > 0 && (
+                          <div className="space-y-0.5">
+                            <p className="text-purple-700 dark:text-purple-300 font-medium">Plan de pagos</p>
+                            {sched.map((c, i) => (
+                              <div key={i} className="flex justify-between text-purple-600 dark:text-purple-400">
+                                <span>{c.etiqueta ? `${c.etiqueta} — ` : ''}{labelBaseCuota(c)} ({c.pct}%)</span>
+                                <span>${montoCuota(totalOC, c.pct).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
                   {/* ISS-132 / ISS-149: descuento del proveedor ($ o %) */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -3111,6 +3147,28 @@ export default function GastosPage() {
                         className="mt-2 flex items-center gap-1 text-xs text-accent hover:underline">
                         <Plus size={12} /> Agregar medio
                       </button>
+                      {/* CO5/D3 — comprobante de transferencia adjunto a la OC */}
+                      {ocMediosPago.some(m => m.tipo === 'Transferencia' && parseFloat(m.monto.replace(',', '.')) > 0) && (
+                        <div className="mt-2">
+                          {(ocSeleccionada as any).comprobante_url ? (
+                            <div className="flex items-center gap-2 text-xs text-green-700 dark:text-green-400">
+                              <Paperclip size={12} />
+                              <span>Comprobante adjunto</span>
+                              <button type="button" onClick={() => verComprobante((ocSeleccionada as any).comprobante_url)}
+                                className="text-blue-500 hover:underline inline-flex items-center gap-0.5">
+                                <ExternalLink size={11} /> Ver
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="flex items-center gap-1.5 text-xs text-accent hover:underline cursor-pointer w-fit">
+                              <Paperclip size={12} />
+                              {ocSubiendoFile ? 'Subiendo…' : 'Adjuntar comprobante de transferencia'}
+                              <input type="file" accept="image/*,application/pdf" className="hidden" disabled={ocSubiendoFile}
+                                onChange={e => { const f = e.target.files?.[0]; if (f && ocSeleccionada) void subirComprobanteOC(ocSeleccionada.id, f) }} />
+                            </label>
+                          )}
+                        </div>
+                      )}
                     </div>
                     {/* Días de plazo — solo si hay CC en medios */}
                     {ocMediosPago.some(m => m.tipo === 'Cuenta Corriente' && parseFloat(m.monto.replace(',','.')) > 0) && (

@@ -6,6 +6,58 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-06] update | Compras CO5 — pago anticipo/contra-entrega + schedule (v1.35.0, mig 186, en DEV)
+
+**Implementada la fase CO5 de Compras** (D1/D2/D3). En DEV, build + 428 tests verdes. Mig 186 aplicada en DEV (aditiva), **pendiente PROD**.
+
+- **D1 — modo de pago por proveedor:** `proveedores.modo_pago` (`contado|anticipo|contra_entrega|cuenta_corriente`, CHECK) + `anticipo_pct`. En el form de proveedor: select de modo + % anticipo (solo si modo=anticipo). Al elegir el proveedor en una OC se propone "paga con anticipo" + % (`defaultAnticipoOC`), con override por OC: `ordenes_compra.paga_con_anticipo` + `anticipo_pct` (snapshot). El badge 💰 Anticipo + alerta por días sin recepción ya existía en Gastos → OC (escalado D1b).
+- **D2 — plan de pagos opcional por OC:** `ordenes_compra.pago_schedule JSONB` = `[{etiqueta,base 'confirmacion'|'recepcion'|'dias',dias?,pct}]`. Editor de cuotas en el form de OC (valida suma 100% con `scheduleValido`); se muestra como guía en el modal de pago de Gastos → OC.
+- **D3 — comprobante de transferencia:** reusa `ordenes_compra.comprobante_url` (ISS-096). En el modal de pago, cuando hay un medio Transferencia con monto, aparece "Adjuntar comprobante" (o "Ver" si ya está) vía `subirComprobanteOC`/`verComprobante`.
+- **Lib pura nueva:** `src/lib/comprasPago.ts` (`MODOS_PAGO_PROVEEDOR`, `defaultAnticipoOC`, `montoAnticipo`, `scheduleValido`, `totalPctSchedule`, `montoCuota`, `labelBaseCuota`) + `tests/unit/comprasPago.test.ts` (16 tests).
+- **Tocado:** `ProveedoresPage.tsx` (form proveedor + form OC + saveOC), `GastosPage.tsx` (modal de pago de OC), `brand.ts` (v1.35.0), `schema_full.sql`.
+
+**Próximo paso (Compras CO6-CO8):** CO6 cheques diferidos + endoso (D4) · CO7 enviar OC email/WA + auto-draft stock bajo + servicios recurrentes (A6/A3/F1/F2/F3) · CO8 reportes/alertas/export + reporte diferencias OC vs recepción (E4) + calificación de proveedor (G1/G2/G3).
+
+---
+
+## [2026-06-05] cierre-sesión | Resumen para retomar (estado: PROD v1.34.0, mig 185)
+
+**Sesión larga — todo deployado a PROD, dev=main (salvo commits docs en dev, se foldean en el próximo PR). Suite 412 tests verdes.**
+
+Lo hecho en esta sesión, en orden:
+1. **Conteos 2.0 cerrado al 100%** — F2b scan-to-count (v1.28→1.29), F4 ABC/cíclico/reportes/trazabilidad (v1.29.0, mig 180), y cierre F2b-ref + F3b (doble conteo formal) + A2 (wall-to-wall bloquea sucursal) (v1.30.0, mig 181). Módulo sin pendientes. Memoria: `project_conteos2_backlog.md`.
+2. **ISS-151 cerrado** (v1.30.1) — excluir `Incobrable` de los medios de pago del Dashboard + unificar `PSEUDO_METODOS_PAGO` en `ccLogic.ts`.
+3. **Relevamiento Compras respondido** por GO → `relevamiento_compras_respuestas.md` (plan CO1-CO8). Decisiones GO: E3/B6/D1/A6 ✅.
+4. **Compras CO1-CO4 deployado a PROD:** CO1 gobierno OC (v1.31.0, mig 182) · CO2 recepción robusta + fix B5 (v1.32.0, mig 183) · CO3 costos (v1.33.0, mig 184) · CO4 devolución a proveedor (v1.34.0, mig 185).
+
+**Próximo paso (Compras CO5-CO8):** CO5 anticipo/contra-entrega por proveedor + schedule de pago (D1/D2/D3) · CO6 cheques diferidos + endoso (D4) · CO7 enviar OC email/WA + auto-draft desde stock bajo + servicios recurrentes (A6/A3/F1/F2/F3) · CO8 reportes/alertas/export + reporte diferencias OC vs recepción (E4) + calificación de proveedor (G1/G2/G3). Detalle y diseño en `relevamiento_compras_respuestas.md` + `project_pendientes.md`.
+
+**Otros pendientes abiertos (fuera de Compras):** RLS por sucursal a nivel servidor (deuda técnica, pedido GO) · relevamientos sin responder: RRHH/Envíos/Caja · bug GastosPage (espera stack trace Sentry) · Clientes diferidos (B7 tope deuda global, F2 fidelización -necesita relevamiento-, cobranza CC→arqueo) · convertir planes `.plan.md` e2e a Playwright reales.
+
+**Libs puras nuevas de la sesión:** `conteoAbc.ts`, `comprasPermisos.ts`, `recepcionLogic.ts`, `comprasCostos.ts`, `devolucionProveedor.ts` (todas con tests).
+
+---
+
+## [2026-06-05] deploy | v1.33.0 + v1.34.0 PROD — Compras CO3 (costos) + CO4 (devolución a proveedor)
+
+Dos fases más del módulo **Compras** a PROD. Migraciones **184** (CO3) y **185** (CO4), ambas en DEV y PROD. Build verde, **412 tests** (+10 `comprasCostos`, +9 `devolucionProveedor`).
+
+**CO3 — Costos (v1.33.0, mig 184):**
+- E1 alerta de cambio de costo al recibir (`tenants.compras_costo_alerta_pct`, default 10%) → checkbox por línea para actualizar el `precio_costo` del producto (lib `comprasCostos.superaAlertaCosto`).
+- E2 costos accesorios sueltos en la OC (`costo_aduana/comision/otros`, sin distribuir).
+- B6 editar precio en recepción con audit (`actividad_log`).
+- E3 alta rápida de producto desde la recepción (DUEÑO/SUPERVISOR → `productos.pendiente_revision=true`).
+- Config en Config → Gastos. (E4-reporte de diferencias OC vs recepción se hace en CO8.)
+
+**CO4 — Devolución a proveedor (v1.34.0, mig 185):**
+- C1 entidad separada `devoluciones_proveedor` + `devolucion_proveedor_items` (RLS por tenant + trigger correlativo).
+- Desde el detalle de una OC recibida → "Devolver a proveedor": ítems + cantidades, motivo (catálogo C3) + observación opcional, forma del reembolso (C2): **crédito_cc** (nota de crédito en `proveedor_cc_movimientos`, reduce deuda) / **efectivo** (ingreso a caja abierta) / **reposicion** (OC nueva borrador).
+- Al confirmar rebaja stock FIFO por producto en la sucursal + movimiento `ajuste_rebaje`; valida stock disponible (`devolucionProveedor.validarDevolucion`). Cierra el `tiene_reembolso_pendiente` huérfano.
+
+**Pendiente Compras:** CO5 (anticipo/contra-entrega) · CO6 (cheques) · CO7 (envío+inteligente+servicios) · CO8 (reportes + E4-reporte + calificación proveedor). Plan en `relevamiento_compras_respuestas.md`.
+
+---
+
 ## [2026-06-05] deploy | v1.31.0 + v1.32.0 PROD — Compras CO1 (gobierno OC) + CO2 (recepción robusta)
 
 Dos fases del módulo **Compras** deployadas a PROD. Migraciones **182** (CO1) y **183** (CO2), ambas en DEV y PROD. Build verde, **393 tests** (+14 `comprasPermisos`, +13 `recepcionLogic`).

@@ -2582,3 +2582,16 @@ CREATE TABLE IF NOT EXISTS devolucion_proveedor_items (
 );
 ALTER TABLE devolucion_proveedor_items ENABLE ROW LEVEL SECURITY;  -- policy devprov_items_tenant
 -- trigger set_devprov_numero (correlativo por tenant). Confirm/stock/CC/caja/reposición en la app.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 186: Compras · CO5 (Pago: anticipo + contra-entrega + schedule)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE proveedores
+  ADD COLUMN IF NOT EXISTS modo_pago TEXT NOT NULL DEFAULT 'contado',  -- D1 contado|anticipo|contra_entrega|cuenta_corriente
+  ADD COLUMN IF NOT EXISTS anticipo_pct NUMERIC;                       -- D1 % de anticipo del proveedor
+-- CHECK proveedores_modo_pago_check (contado|anticipo|contra_entrega|cuenta_corriente).
+ALTER TABLE ordenes_compra
+  ADD COLUMN IF NOT EXISTS paga_con_anticipo BOOLEAN NOT NULL DEFAULT false,  -- D1 la OC se paga con anticipo
+  ADD COLUMN IF NOT EXISTS anticipo_pct NUMERIC,                              -- D1 snapshot del % por OC
+  ADD COLUMN IF NOT EXISTS pago_schedule JSONB;                              -- D2 [{etiqueta,base,dias?,pct}]
+-- D3 (transferencia con comprobante) reusa ordenes_compra.comprobante_url (ISS-096), sin columna nueva.

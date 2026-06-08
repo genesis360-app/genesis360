@@ -257,6 +257,20 @@ export default function AlertasPage() {
     },
   })
 
+  // CO8/G2 — productos con OC pendiente (borrador/enviada/confirmada/recibida_parcial), para marcar "sin OC".
+  const { data: productosConOC = new Set<string>() } = useQuery({
+    queryKey: ['productos-con-oc-pendiente', tenant?.id],
+    queryFn: async () => {
+      const { data: ocsAbiertas } = await supabase.from('ordenes_compra')
+        .select('id').eq('tenant_id', tenant!.id).in('estado', ['borrador', 'enviada', 'confirmada', 'recibida_parcial'])
+      const ids = (ocsAbiertas ?? []).map((o: any) => o.id)
+      if (!ids.length) return new Set<string>()
+      const { data: its } = await supabase.from('orden_compra_items').select('producto_id').in('orden_compra_id', ids)
+      return new Set<string>((its ?? []).map((i: any) => i.producto_id))
+    },
+    enabled: !!tenant,
+  })
+
   // CO7/A3 — auto-draft de OCs sugeridas consolidando productos bajo mínimo por proveedor.
   const generarOCsSugeridas = useMutation({
     mutationFn: async () => {
@@ -495,7 +509,15 @@ export default function AlertasPage() {
                       <AlertTriangle size={18} className="text-red-500 dark:text-red-400" />
                     </div>
                     <div>
-                      <p className="font-semibold text-gray-800 dark:text-gray-100">{(a as any).productos?.nombre}</p>
+                      <p className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2 flex-wrap">
+                        {(a as any).productos?.nombre}
+                        {/* CO8/G2 — marca si ya tiene OC pendiente o no */}
+                        {(a as any).productos?.id && (
+                          productosConOC.has((a as any).productos.id)
+                            ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium">OC en camino</span>
+                            : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium">Sin OC pendiente</span>
+                        )}
+                      </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         SKU: {(a as any).productos?.sku} •
                         Stock actual: <span className="text-red-600 dark:text-red-400 font-medium">{(a as any).productos?.stock_actual}</span> •

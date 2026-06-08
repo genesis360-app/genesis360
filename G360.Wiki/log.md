@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-06] cierre-sesión | Resumen para retomar tras /clear (estado: PROD v1.39.0, mig 188)
+
+**Sesión larga. Todo deployado a PROD, `dev=main`. Suite 474 tests verdes.** Tres bloques:
+
+1. **🎉 Compras 2.0 (CO1-CO8) CERRADO al 100% en PROD.** Esta sesión se hicieron CO5→CO8 (antes ya estaban CO1-CO4): CO5 pago anticipo/contra-entrega/schedule (v1.35.0, mig 186) · CO6 cheques diferidos (v1.36.0, mig 187) · CO7a OC inteligente: enviar OC PDF/email/WhatsApp + auto-draft desde stock bajo (v1.37.0) · CO7b servicios recurrentes/genéricos/comparar presupuestos (v1.38.0, mig 188) · CO8 reportes/alertas/export/calificación proveedor (v1.39.0). Libs nuevas: `comprasPago`, `comprasCheques`, `ocPDF`, `serviciosRecurrentes`, `comprasReportes` (+62 tests). Detalle en entradas de abajo + `project_compras_backlog` (memoria).
+
+2. **2 pendientes a seguir documentados** (sección "Email + Couriers — pendientes a seguir" en `project_pendientes.md` + memoria `project_email_courier_pendientes`):
+   - **Email saliente:** `send-email` usa `FROM='onboarding@resend.dev'` (sandbox Resend), dominio `genesis360.pro` **sin verificar** → afecta TODO el correo. Plan: (1) GO verifica dominio en Resend + DNS → flip FROM; (2) luego, template OC HTML + adjuntar PDF (Resend `attachments` base64).
+   - **Couriers:** adapters Andreani/Correo/OCA completos pero **sin validar con cuentas B2B reales**. Plan: GO consigue cuenta (Andreani 1ro) → validar end-to-end; Claude puede dejar logging diagnóstico + botón "Probar credenciales" sin esperar credenciales.
+
+3. **Relevamiento Envíos respondido por GO (A-I)** → `relevamiento_envios_respuestas.md` con respuestas + diseño + modelo de datos + **recomendación contable/IVA** + plan **EN1-EN7**. **Pendiente de implementar.** Top 3: EN1 (pagos courier contables) → EN2 (POD robusto: firma/DNI/OTP/geoloc/sub-estados/reintento) → EN3 (reparto: repartidores/hoja de ruta/notif "en camino"). EN6 (integraciones courier) depende de validar adapters B2B. Pendiente confirmar: alícuota IVA flete, plazos por canal, canal del OTP.
+
+**Próximo paso sugerido al retomar:** o bien empezar **Envíos EN1** (pagos courier contables, cierra gap contable), o las **mejoras de email/courier** (verificación de dominio = tarea de GO). Relevamientos sin responder: **RRHH / Caja**.
+
+---
+
 ## [2026-06-06] update | Compras CO8 — reportes + alertas + export + calificación (v1.39.0, PROD ✅) · 🎉 Compras 2.0 COMPLETO
 
 **Deployada a PROD la fase CO8** (G1/G2/G3/E4) — última del plan Compras 2.0. Sin migración. Build + 474 tests verdes. PR #168, release `v1.39.0`, `dev=main`.

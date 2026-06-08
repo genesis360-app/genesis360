@@ -2,14 +2,16 @@
 title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier]
-sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-31
+sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md]
+updated: 2026-06-06
 ---
 
 # Módulo Envíos
 
 Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.  
-**Última actualización:** ISS-174 F1 (2026-05-31, DEV) — fundación para cotización de envíos por API de courier.
+**Última actualización:** 2026-06-06 — **relevamiento de Envíos respondido por GO** → plan por fases EN1-EN7 (ver al final, "Relevamiento Envíos 2.0").
+
+> **Relevamiento respondido (2026-06-06):** respuestas A-I + diseño + modelo de datos + recomendación contable/IVA + plan EN1-EN7 en `sources/raw/relevamiento_envios_respuestas.md`. **Pendiente de implementar.** Resumen al final de esta página.
 
 **Página:** `src/pages/EnviosPage.tsx` (`/envios`)  
 **Página transportista:** `src/pages/TransportistePage.tsx` (`/transporte/:token` — pública sin auth)  
@@ -302,6 +304,25 @@ tenants.costo_envio_por_km DECIMAL
 Cuando haya contratos con OCA / CorreoAR / Andreani / DHL:
 - **EF `courier-rates`**: consulta APIs en paralelo → tabla comparativa de precios
 - **Label printing**: etiqueta base64 del courier → bucket → impresión
+
+---
+
+## Relevamiento Envíos 2.0 — plan por fases EN1-EN7 (respondido 2026-06-06, PENDIENTE)
+
+Relevado con GO (HTML `relevamiento-envios-reglas-negocio.html`, secciones A-I). Respuestas + diseño + modelo de datos + recomendación contable/IVA + plan completo en **`sources/raw/relevamiento_envios_respuestas.md`**. **Pendiente de implementar.**
+
+**Plan deployable por fases (cada una a PROD con su versión):**
+- **EN1 — Pagos a courier contables (C1-C4):** marcar pagado **genera gasto** "Logística/Courier" (solo courier **tercero**, con IVA crédito fiscal) + egreso de caja si efectivo · cargar **factura del courier** + match + alerta de diferencias · aprobación configurable por rol/umbral. Cierra el gap actual (hoy es solo un flag `costo_pagado`).
+- **EN2 — POD robusto (D1-D6):** campos requeridos configurables · multi-foto (mín. 1) · **firma + DNI + OTP sobre umbral** (envío propio) · **geoloc con fallback** (si no se puede, registra y no frena) · **sub-estados de no-entrega** (ausente/rechazado/dirección) + motivo · re-intento con contador + re-cobro.
+- **EN3 — Reparto (G1/G3 + E1-E5):** catálogo de **repartidores** + productividad · **hoja de ruta** por chofer (token agrupador) + orden por proximidad + cumplimiento · página transportista (token config, llamar/WA/incidencia, identidad config) · notificación **"en camino"** WA (default).
+- **EN4 — Costos/tarifas (B1-B6):** nivel courier + recargo horario · factor KM config · costo mínimo/escalonado · política de cobro al cliente (margen/subsidio) · envío gratis condicional · **diferencia real vs cotizado a-favor/pérdida con motivo** (precio al cliente **inmutable** post-pago).
+- **EN5 — Creación/alcance (A1-A5):** DEPOSITO crea · **envíos libres** (traslado/muestra/dev_proveedor) · sugerencia de courier por CP · plazo de despacho por canal + alerta · **múltiples envíos por venta con `envio_items`** (desglose de qué se fue en cada envío).
+- **EN6 — Integraciones courier (F1/F2/F3):** tracking por número + **cotización comparativa ("más barato")** + etiquetas (descarga + térmica). **Reusa `courier-api` (ISS-174) → depende de validar adapters con cuentas B2B reales.**
+- **EN7 — Envío propio + reportes (G2 + H1-H3):** recurso (moto/auto) + KM + **combustible auto-gasto** · todos los reportes (margen logístico, mapa por zona) · todas las alertas · export Excel/PDF/CSV + hoja de ruta PDF + etiquetas A4 con QR.
+
+**Recomendación contable/IVA (C2):** courier tercero = gasto con **IVA crédito fiscal** (respaldo factura courier); envío propio NO genera gasto courier (su costo real va por **combustible**, G2); lo que paga el cliente es **ingreso dentro de la venta**. Margen logístico = ingreso − costo real.
+
+**Top 3 (GO delegó):** EN1 → EN2 → EN3. **Pendiente confirmar:** alícuota IVA flete, plazos por canal, canal del OTP, cuentas B2B para EN6.
 
 ---
 

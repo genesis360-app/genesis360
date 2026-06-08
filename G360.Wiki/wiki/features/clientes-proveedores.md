@@ -125,7 +125,7 @@ OC confirmada → botón "Recibir mercadería" → `/recepciones/nuevo?oc_id=XXX
 
 ## Módulo Compras 2.0 (relevado 2026-06-05 — plan CO1-CO8)
 
-Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO6 en PROD (v1.31.0-v1.36.0, mig 182-187).** Filosofía: simple para el usuario PyME, robusto por dentro.
+Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO6 + CO7a en PROD (v1.31.0-v1.37.0, mig 182-187).** Filosofía: simple para el usuario PyME, robusto por dentro.
 
 ### CO1 — Gobierno de OC (v1.31.0, mig 182)
 - **A1 creación por rol** (`src/lib/comprasPermisos.ts` → `capacidadCrearOC`): DUEÑO/ADMIN/SUPERVISOR completa · **DEPOSITO solo borradores** ("Nueva OC (borrador)") · CAJERO/CONTADOR sin acceso.
@@ -165,8 +165,13 @@ Lógica pura en `src/lib/comprasCheques.ts`. Tab **Cheques** en Gastos (`src/com
 - **Endoso** (`puedeEndosar`): un cheque de tercero en cartera se endosa a un proveedor (queda `endosado`).
 - **Alerta de cobro** (`chequeProximoACobrar`): cheques pendientes con `fecha_cobro` dentro de `tenants.cheques_alerta_dias` (o vencidos) → badge en el tab + resaltado. Total pendiente sumando los no terminales.
 
-### Pendiente (CO7-CO8)
-- **CO7** enviar OC por email/WA + auto-draft desde stock bajo + servicios recurrentes (A6/A3/F1/F2/F3).
+### CO7a — OC inteligente (v1.37.0 · PROD ✅)
+Lógica pura en `src/lib/ocPDF.ts`.
+- **A6 — enviar OC al proveedor:** desde el detalle de OC, botones **PDF** (`generarOCPDF`, jsPDF/autotable), **Email** (`send-email` con el resumen `textoOC`) y **WhatsApp** (link `wa.me` con plantilla, `waLinkOC`). La OC trae email/teléfono/CUIT/condiciones del proveedor.
+- **A3 — auto-draft desde stock bajo:** en Alertas, **"Generar OC sugerida"** consolida los productos bajo mínimo por proveedor (vía `proveedor_productos`) y crea OCs borrador con la cantidad faltante sugerida. Gateado por `capacidadCrearOC`; exige sucursal.
+
+### Pendiente (CO7b-CO8)
+- **CO7b** servicios: F1 recurrentes (sweep lazy) + F2 catálogo genérico del tenant + F3 comparar presupuestos lado a lado.
 - **CO8** reportes/alertas/export + reporte de diferencias OC vs recepción (E4) + calificación de proveedor (G1/G2/G3).
 
 ---

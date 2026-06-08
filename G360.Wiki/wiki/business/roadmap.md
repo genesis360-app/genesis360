@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.37.0 — Compras CO7a: OC inteligente (PROD ✅)
+
+A6 enviar OC al proveedor — PDF (`ocPDF.ts` jsPDF), Email (`send-email`) y WhatsApp (`wa.me`) desde el detalle de la OC. A3 auto-draft desde stock bajo — "Generar OC sugerida" en Alertas consolida productos bajo mínimo por proveedor y crea OCs borrador. +6 tests → suite 453. Sin migración.
+
 ## v1.36.0 — Compras CO6: cheques diferidos (PROD ✅)
 
 D4 — gestión de cheques diferidos. Tabla `cheques` (propios emitidos a proveedores / de terceros recibidos), `fecha_cobro` diferida, estados (en_cartera/entregado/depositado/cobrado/endosado/rechazado/anulado) + endoso (pagar a otro proveedor con un cheque de tercero). Nuevo tab **Cheques** en Gastos: registro, transiciones por tipo, endoso, filtros, total pendiente y alerta de próximos a cobrar. Config → `cheques_alerta_dias` (default 7). Lib pura `comprasCheques.ts` + 19 tests → suite 447. Mig 187 (aditiva).

@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-06] update | Compras CO7a — OC inteligente: enviar OC + auto-draft stock bajo (v1.37.0, PROD ✅)
+
+**Deployada a PROD la fase CO7a de Compras** (A6 + A3). Sin migración. Suite 453 verde. PR #166, release `v1.37.0`, `dev=main`.
+
+- **A6 — enviar OC al proveedor:** lib pura `src/lib/ocPDF.ts` (`generarOCPDF` jsPDF/autotable, `textoOC`, `waLinkOC`, `totalOC`/`subtotalItems`). En el detalle de OC (ProveedoresPage): botones **PDF** (descarga), **Email** (`send-email` type notificacion con el resumen de la OC) y **WhatsApp** (link `wa.me` con plantilla). La query de OC ahora trae `proveedores(email, telefono, cuit, plazo_pago_dias)` + `sucursales(nombre)`. +6 tests.
+- **A3 — auto-draft desde stock bajo:** en AlertasPage, botón **"Generar OC sugerida"** en la sección Stock bajo mínimo: consolida los productos bajo mínimo por proveedor (vía `proveedor_productos`), calcula la cantidad faltante sugerida (`max(minimo-actual, cantidad_minima, 1)`) y crea **OCs borrador** (una por proveedor), navega a Proveedores → OC. Gateado por `capacidadCrearOC`; exige sucursal específica; reporta productos sin proveedor.
+
+**Próximo (CO7b + CO8):** CO7b servicios (F1 recurrentes sweep lazy + F2 catálogo genérico del tenant + F3 comparar presupuestos) · CO8 reportes (G1) + alertas (G2) + export + PDF OC (G3) + calificación de proveedor (E4).
+
+---
+
 ## [2026-06-06] update | Compras CO6 — cheques diferidos (v1.36.0, mig 187, PROD ✅)
 
 **Implementada y deployada a PROD la fase CO6 de Compras** (D4). Build + 447 tests verdes. Mig 187 en DEV y PROD. PR #165 mergeado, release `v1.36.0`, `dev=main`.

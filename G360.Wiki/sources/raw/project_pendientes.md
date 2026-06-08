@@ -299,7 +299,41 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 |---|---|
 | **Aislamiento por sucursal a nivel RLS** | **Pedido GO 2026-05-30.** Hoy el aislamiento por sucursal es **solo cliente** (triple blindaje: fijado al cargar + selector oculto + guard de `setSucursal`). La RLS de la DB es por `tenant_id`, no por `sucursal_id` → un usuario técnico con credenciales podría leer otra sucursal vía API directa. Para que sea **imposible a nivel servidor**: RLS por sucursal en tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …) cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. Cambio grande (políticas en N tablas) — diseñar antes. Detalle en `multi-sucursal.md`. |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
-| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos. **Compras ✅ RESPONDIDO (2026-06-05)** → respuestas + diseño + plan por fases CO1-CO8 en `relevamiento_compras_respuestas.md` (ver sección abajo). **Pendientes de implementar Compras** (plan listo). **Sin responder:** RRHH / Envíos / Caja |
+| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos, **Compras ✅ (CO1-CO8 COMPLETO en PROD, v1.31-1.39)**. **Sin responder:** RRHH / Envíos / Caja |
+| **Email saliente — dominio Resend sin verificar** | Ver sección detallada **"Email + Couriers — pendientes a seguir"** abajo. |
+| **Couriers — adapters sin validar con cuentas B2B reales** | Ver sección detallada **"Email + Couriers — pendientes a seguir"** abajo. |
+
+---
+
+## Email + Couriers — pendientes a seguir (analizado 2026-06-06)
+
+> Surgió al cerrar Compras 2.0. Dos puntos relevados a fondo contra el código. **Prioridad global: Punto 1 primero** (mayor leverage, desbloqueo 90% ops de GO). Punto 2 está bloqueado por conseguir cuenta B2B.
+
+### Punto 1 — Email de la OC (y TODO el email saliente)
+
+**Causa raíz (NO es "falta el PDF"):** el remitente. En `supabase/functions/send-email/index.ts:9` → `FROM = 'onboarding@resend.dev'` (sender **sandbox** de Resend) con `TODO: cambiar a 'noreply@genesis360.pro' cuando el dominio esté verificado`.
+- Provider: **Resend** (`POST https://api.resend.com/emails`, `RESEND_API_KEY` en env). `APP_URL=https://genesis360.pro`.
+- Con dominio sin verificar: **entregabilidad mala (spam) + Resend restringe destinatarios**. Afecta **todo** lo saliente, no solo Compras: `welcome`, `venta_confirmada`, `alerta_stock`, `notificacion`, `factura_emitida`, `bug_report`. (La OC usa `type:'notificacion'`, texto plano con `<br>`.)
+- El **adjunto** es limitación real pero **secundaria**: Resend soporta `attachments` (base64), pero la función arma el body solo con `{from,to,subject,html}` (línea ~232) — no pasa adjuntos.
+
+**Plan (en orden — el orden importa):**
+1. **[GO / ops, ~30 min]** Verificar `genesis360.pro` en el panel de Resend → agregar registros DNS (SPF/DKIM, y DMARC recomendado) → esperar propagación → cambiar `FROM` a `noreply@genesis360.pro` y deployar la función. **Esto desbloquea TODO el correo.** Sin esto, un email lindo igual no se entrega.
+2. **[Claude / código, post-paso-1]** En `send-email`: agregar `type:'oc'` con plantilla HTML (tabla de ítems + total + condiciones, estilo `facturaEmitidaTemplate`) **+ adjuntar el PDF de la OC**: generar con jsPDF (`generarOCPDF` de `src/lib/ocPDF.ts`, `output('doc')` → `doc.output('datauristring')`/base64) en `ProveedoresPage.enviarOCEmail`, pasarlo en el body, y en la función agregar `attachments:[{filename, content}]` al payload de Resend. Bajo riesgo, chico. Mismo patrón sirve para adjuntar PDF a `factura_emitida` y estado de cuenta a futuro.
+
+### Punto 2 — Adapters de courier (Andreani / Correo / OCA)
+
+**Estado real:** 3 adapters **completos y fail-safe** en `supabase/functions/courier-api/{andreani,correo,oca}.ts` (+ `index.ts` router, `types.ts`). NO son mocks ni tienen TODOs de incompletitud. Andreani: login Basic→token `x-authorization-token`, `GET /v1/tarifas` (cotizar), `POST /v2/ordenes-de-envio` (generar), `/trazas` (tracking). Sin credenciales → error claro y el **alta manual de envío sigue funcionando** (fallback intacto).
+**Riesgo:** **empírico** — endpoints, nombres de campos, auth y forma de respuesta escritos según docs públicas; solo se validan con **cuenta B2B real**. Escribir más código ahora = adivinar.
+
+**Plan:**
+1. **NO tocar los adapters todavía** (están OK hasta tener credenciales).
+2. **[GO]** Conseguir **UNA** cuenta B2B. **Empezar por Andreani** (REST limpia, mejor doc, tiene entorno de prueba) → Correo (Paq.ar) → **OCA al final** (SOAP, lo más frágil). Validar solo los couriers que GO use.
+3. **[GO + Claude, con credenciales]** Validar end-to-end en DEV con dirección real: cotizar → generar → etiqueta → tracking; ajustar mapeos en el adapter.
+4. **[Claude, accionable YA sin credenciales — acelera el día 1]:**
+   - **Logging diagnóstico** en `courier-api`: capturar request/response crudo ante error (status + body recortado) para debug de la primera prueba real.
+   - **Botón "Probar credenciales"** en Config → Envíos (`CourierCredencialesPanel`): hace solo el `login` del adapter y devuelve OK/error al cargar las claves (feedback inmediato).
+
+**Decisión pendiente con GO:** qué accionar del lado código ahora — (a) email OC: template HTML + PDF adjunto; (b) courier: logging + "Probar credenciales"; (c) solo guía de verificación de dominio Resend. (Lo ops — verificar dominio, conseguir cuenta B2B — es de GO.)
 
 ---
 

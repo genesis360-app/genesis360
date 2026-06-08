@@ -4,7 +4,8 @@ import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, Cale
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { capacidadCrearOC } from '@/lib/comprasPermisos'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
@@ -13,9 +14,11 @@ import type { Alerta } from '@/lib/supabase'
 const RESERVAS_DIAS_LIMITE = 3
 
 export default function AlertasPage() {
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
+  const navigate = useNavigate()
+  const puedeGenerarOC = capacidadCrearOC(user?.rol) !== 'ninguna'  // CO7/A3
 
   const fechaLimite = new Date()
   fechaLimite.setDate(fechaLimite.getDate() - RESERVAS_DIAS_LIMITE)
@@ -254,6 +257,52 @@ export default function AlertasPage() {
     },
   })
 
+  // CO7/A3 — auto-draft de OCs sugeridas consolidando productos bajo mínimo por proveedor.
+  const generarOCsSugeridas = useMutation({
+    mutationFn: async () => {
+      if (!sucursalId) throw new Error('Elegí una sucursal específica (no "Todas") para generar las OCs.')
+      const lowStock = (alertas as any[]).filter(a => a.tipo === 'stock_minimo' && a.productos)
+      if (!lowStock.length) throw new Error('No hay productos bajo mínimo.')
+      const prodIds = lowStock.map(a => a.productos.id)
+      const { data: pps } = await supabase.from('proveedor_productos')
+        .select('proveedor_id, producto_id, precio_compra, cantidad_minima, proveedores(nombre)')
+        .in('producto_id', prodIds)
+      const porProveedor = new Map<string, { items: { producto_id: string; cantidad: number; precio: number | null }[] }>()
+      const sinProveedor: string[] = []
+      for (const a of lowStock) {
+        const p = a.productos
+        const faltante = Math.max((Number(p.stock_minimo) || 0) - (Number(p.stock_actual) || 0), 0)
+        const pp = (pps ?? []).find((x: any) => x.producto_id === p.id)
+        if (!pp) { sinProveedor.push(p.nombre); continue }
+        const cantidad = Math.max(faltante, Number(pp.cantidad_minima) || 0, 1)
+        if (!porProveedor.has(pp.proveedor_id)) porProveedor.set(pp.proveedor_id, { items: [] })
+        porProveedor.get(pp.proveedor_id)!.items.push({ producto_id: p.id, cantidad, precio: pp.precio_compra ?? null })
+      }
+      if (!porProveedor.size) throw new Error('Los productos bajo mínimo no tienen proveedor asociado (cargalos en Proveedores → Productos).')
+      let creadas = 0
+      for (const [proveedorId, info] of porProveedor) {
+        const { data: oc, error } = await supabase.from('ordenes_compra').insert({
+          tenant_id: tenant!.id, proveedor_id: proveedorId, numero: 0, estado: 'borrador',
+          sucursal_id: sucursalId, notas: 'OC sugerida automáticamente (stock bajo mínimo)',
+          created_by: user!.id,
+        }).select('id').single()
+        if (error) throw error
+        const { error: itErr } = await supabase.from('orden_compra_items').insert(
+          info.items.map(it => ({ orden_compra_id: oc.id, producto_id: it.producto_id, cantidad: it.cantidad, precio_unitario: it.precio })),
+        )
+        if (itErr) throw itErr
+        creadas++
+      }
+      return { creadas, sinProveedor }
+    },
+    onSuccess: ({ creadas, sinProveedor }) => {
+      qc.invalidateQueries({ queryKey: ['ordenes_compra'] })
+      toast.success(`${creadas} OC borrador creada${creadas !== 1 ? 's' : ''}${sinProveedor.length ? ` · ${sinProveedor.length} sin proveedor` : ''}`)
+      navigate('/proveedores?tab=ordenes')
+    },
+    onError: (e: any) => toast.error(e.message),
+  })
+
   const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length + lineasSinUbicacion.length + lineasSinProveedor.length + lpnsVencidos.length + ocsVencidas.length + ocsProximas.length
   const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda || loadingSinUbic || loadingSinProv || loadingVencidos || loadingOcsVenc || loadingOcsProx
 
@@ -424,10 +473,21 @@ export default function AlertasPage() {
           {/* Alertas de stock */}
           {alertas.length > 0 && (
             <div className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                <AlertTriangle size={14} />
-                Stock bajo mínimo
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                  <AlertTriangle size={14} />
+                  Stock bajo mínimo
+                </h2>
+                {puedeGenerarOC && (
+                  <button
+                    onClick={() => generarOCsSugeridas.mutate()}
+                    disabled={generarOCsSugeridas.isPending}
+                    title="Crea órdenes de compra borrador consolidando los productos bajo mínimo por proveedor"
+                    className="flex items-center gap-1.5 text-xs bg-accent text-white px-3 py-1.5 rounded-lg hover:bg-accent/90 disabled:opacity-50">
+                    <ShoppingCart size={13} /> {generarOCsSugeridas.isPending ? 'Generando…' : 'Generar OC sugerida'}
+                  </button>
+                )}
+              </div>
               {alertas.map(a => (
                 <div key={a.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-red-100 dark:border-red-900/30 flex items-center justify-between">
                   <div className="flex items-center gap-3">

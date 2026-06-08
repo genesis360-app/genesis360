@@ -9,6 +9,7 @@ import {
   MODOS_PAGO_PROVEEDOR, defaultAnticipoOC, montoAnticipo, scheduleValido,
   totalPctSchedule, type ModoPagoProveedor, type CuotaSchedule, type BaseCuota,
 } from '@/lib/comprasPago'
+import { generarOCPDF, textoOC, waLinkOC, type OCPDFData } from '@/lib/ocPDF'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
@@ -22,6 +23,7 @@ import {
   Phone, Mail, MapPin, CreditCard, Building, Clock, ToggleLeft, ToggleRight,
   Warehouse, Wrench, ChevronRight, Paperclip, ExternalLink, Tag, X,
   Upload, Download, DollarSign, AlertCircle, TrendingDown, FileDown, RotateCcw,
+  MessageCircle,
 } from 'lucide-react'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes'
@@ -123,6 +125,38 @@ export default function ProveedoresPage() {
     ocNumeracion === 'sucursal' && oc.numero_sucursal != null ? `S-OC-${String(oc.numero_sucursal).padStart(4, '0')}` : `#${oc.numero}`
   const navigate = useNavigate()
 
+  // CO7/A6 — arma los datos del PDF/texto de la OC desde el detalle abierto + sus ítems.
+  const buildOcPdfData = (oc: any, items: any[]): OCPDFData => ({
+    negocio: tenant?.nombre ?? 'Genesis360',
+    moneda: (tenant as any)?.moneda ?? 'ARS',
+    numeroLabel: ocNumLabel(oc),
+    fecha: oc.created_at,
+    fechaEsperada: oc.fecha_esperada ?? null,
+    sucursal: oc.sucursales?.nombre ?? null,
+    proveedor: {
+      nombre: oc.proveedores?.nombre ?? 'Proveedor',
+      cuit: oc.proveedores?.cuit ?? null,
+      email: oc.proveedores?.email ?? null,
+      telefono: oc.proveedores?.telefono ?? null,
+      condiciones: oc.proveedores?.plazo_pago_dias ? `${oc.proveedores.plazo_pago_dias} días` : null,
+    },
+    items: items.map(it => ({ nombre: it.productos?.nombre ?? '—', cantidad: it.cantidad, precio_unitario: it.precio_unitario })),
+    costoEnvio: oc.costo_envio, costoAduana: oc.costo_aduana, costoComision: oc.costo_comision, costoOtros: oc.costo_otros,
+    pagaConAnticipo: oc.paga_con_anticipo, anticipoPct: oc.anticipo_pct, pagoSchedule: oc.pago_schedule,
+    notas: oc.notas ?? null,
+  })
+
+  const enviarOCEmail = async (oc: any, items: any[]) => {
+    const email = oc.proveedores?.email
+    if (!email) { toast.error('El proveedor no tiene email cargado'); return }
+    const d = buildOcPdfData(oc, items)
+    const { error } = await supabase.functions.invoke('send-email', {
+      body: { type: 'notificacion', to: email, data: { titulo: `Orden de Compra ${d.numeroLabel} — ${d.negocio}`, mensaje: textoOC(d) } },
+    })
+    if (error) toast.error('No se pudo enviar el email')
+    else toast.success(`OC enviada por email a ${email}`)
+  }
+
   const [tab, setTab] = useState<Tab>('proveedores')
 
   // ── Proveedores state ──────────────────────────────────────────────────────
@@ -213,7 +247,7 @@ export default function ProveedoresPage() {
     queryFn: async () => {
       const { data } = await applyFilter(
         supabase.from('ordenes_compra')
-          .select('*, proveedores(id, nombre)')
+          .select('*, proveedores(id, nombre, email, telefono, cuit, plazo_pago_dias), sucursales(nombre)')
           .eq('tenant_id', tenant!.id)
           .order('numero', { ascending: false })
       )
@@ -2552,6 +2586,23 @@ export default function ProveedoresPage() {
                 <span className={`text-sm px-3 py-1 rounded-full font-medium ${ESTADO_OC_COLOR[showOcDetail.estado as EstadoOC]}`}>
                   {ESTADO_OC_LABEL[showOcDetail.estado as EstadoOC]}
                 </span>
+              </div>
+
+              {/* CO7/A6 — enviar / imprimir OC */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button onClick={() => generarOCPDF(buildOcPdfData(showOcDetail, ocItemsData as any[]), 'save')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-ds text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <FileDown size={13} /> PDF
+                </button>
+                <button onClick={() => enviarOCEmail(showOcDetail, ocItemsData as any[])}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-ds text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <Mail size={13} /> Email
+                </button>
+                <a href={waLinkOC((showOcDetail as any).proveedores?.telefono, textoOC(buildOcPdfData(showOcDetail, ocItemsData as any[])))}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 dark:border-green-800 text-xs font-medium text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20">
+                  <MessageCircle size={13} /> WhatsApp
+                </a>
               </div>
 
               {/* Tabs — visibles cuando hay recepciones */}

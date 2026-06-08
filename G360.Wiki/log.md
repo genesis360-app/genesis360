@@ -6,9 +6,9 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-06] update | Compras CO5 — pago anticipo/contra-entrega + schedule (v1.35.0, mig 186, en DEV)
+## [2026-06-06] update | Compras CO5 — pago anticipo/contra-entrega + schedule (v1.35.0, mig 186, PROD ✅)
 
-**Implementada la fase CO5 de Compras** (D1/D2/D3). En DEV, build + 428 tests verdes. Mig 186 aplicada en DEV (aditiva), **pendiente PROD**.
+**Implementada y deployada a PROD la fase CO5 de Compras** (D1/D2/D3). Build + 428 tests verdes. Mig 186 aplicada en DEV y PROD (aditiva). PR #164 mergeado a `main`, release `v1.35.0` (`--latest`), Vercel PROD deployado. `dev=main`.
 
 - **D1 — modo de pago por proveedor:** `proveedores.modo_pago` (`contado|anticipo|contra_entrega|cuenta_corriente`, CHECK) + `anticipo_pct`. En el form de proveedor: select de modo + % anticipo (solo si modo=anticipo). Al elegir el proveedor en una OC se propone "paga con anticipo" + % (`defaultAnticipoOC`), con override por OC: `ordenes_compra.paga_con_anticipo` + `anticipo_pct` (snapshot). El badge 💰 Anticipo + alerta por días sin recepción ya existía en Gastos → OC (escalado D1b).
 - **D2 — plan de pagos opcional por OC:** `ordenes_compra.pago_schedule JSONB` = `[{etiqueta,base 'confirmacion'|'recepcion'|'dias',dias?,pct}]`. Editor de cuotas en el form de OC (valida suma 100% con `scheduleValido`); se muestra como guía en el modal de pago de Gastos → OC.

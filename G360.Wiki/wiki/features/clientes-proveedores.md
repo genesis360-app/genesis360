@@ -167,7 +167,7 @@ Lógica pura en `src/lib/comprasCheques.ts`. Tab **Cheques** en Gastos (`src/com
 
 ### CO7a — OC inteligente (v1.37.0 · PROD ✅)
 Lógica pura en `src/lib/ocPDF.ts`.
-- **A6 — enviar OC al proveedor:** desde el detalle de OC, botones **PDF** (`generarOCPDF`, jsPDF/autotable), **Email** (`send-email` con el resumen `textoOC`) y **WhatsApp** (link `wa.me` con plantilla, `waLinkOC`). La OC trae email/teléfono/CUIT/condiciones del proveedor.
+- **A6 — enviar OC al proveedor:** desde el detalle de OC, botones **PDF** (`generarOCPDF`, jsPDF/autotable), **Email** y **WhatsApp** (link `wa.me` con plantilla, `waLinkOC`). La OC trae email/teléfono/CUIT/condiciones del proveedor. **Email (mejorado 2026-06-06):** usa `send-email` `type:'oc'` con **plantilla HTML** (tabla de ítems + total + anticipo + condiciones) **y el PDF de la OC adjunto** (base64 vía Resend `attachments`); remitente `noreply@genesis360.pro` (dominio verificado).
 - **A3 — auto-draft desde stock bajo:** en Alertas, **"Generar OC sugerida"** consolida los productos bajo mínimo por proveedor (vía `proveedor_productos`) y crea OCs borrador con la cantidad faltante sugerida. Gateado por `capacidadCrearOC`; exige sucursal.
 
 ### CO7b — Servicios (v1.38.0, mig 188 · PROD ✅)

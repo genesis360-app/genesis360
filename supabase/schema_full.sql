@@ -2616,3 +2616,14 @@ CREATE TABLE IF NOT EXISTS cheques (
 );
 ALTER TABLE cheques ENABLE ROW LEVEL SECURITY;  -- policy cheques_tenant + CHECKs tipo/estado + trigger correlativo
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cheques_alerta_dias INTEGER NOT NULL DEFAULT 7;  -- CO6 alerta
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 188: Compras · CO7b (Servicios: recurrentes F1 + catálogo genérico F2)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE servicio_items
+  ADD COLUMN IF NOT EXISTS recurrente BOOLEAN NOT NULL DEFAULT false,  -- F1
+  ADD COLUMN IF NOT EXISTS frecuencia TEXT,                            -- F1 mensual|bimestral|trimestral|semestral|anual
+  ADD COLUMN IF NOT EXISTS proximo_vencimiento DATE,                   -- F1 sweep lazy genera gasto
+  ADD COLUMN IF NOT EXISTS activo BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE servicio_items ALTER COLUMN proveedor_id DROP NOT NULL;    -- F2 servicios genéricos del tenant
+-- F3 (comparar presupuestos) = vista en la app sobre servicio_presupuestos, sin cambios de schema.

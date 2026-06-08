@@ -125,7 +125,7 @@ OC confirmada → botón "Recibir mercadería" → `/recepciones/nuevo?oc_id=XXX
 
 ## Módulo Compras 2.0 (relevado 2026-06-05 — plan CO1-CO8)
 
-Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO5 en PROD (v1.31.0-v1.35.0, mig 182-186).** Filosofía: simple para el usuario PyME, robusto por dentro.
+Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO6 en PROD (v1.31.0-v1.36.0, mig 182-187).** Filosofía: simple para el usuario PyME, robusto por dentro.
 
 ### CO1 — Gobierno de OC (v1.31.0, mig 182)
 - **A1 creación por rol** (`src/lib/comprasPermisos.ts` → `capacidadCrearOC`): DUEÑO/ADMIN/SUPERVISOR completa · **DEPOSITO solo borradores** ("Nueva OC (borrador)") · CAJERO/CONTADOR sin acceso.
@@ -158,8 +158,14 @@ Lógica pura en `src/lib/comprasPago.ts`.
 - **D2 — plan de pagos opcional por OC:** `ordenes_compra.pago_schedule JSONB` = `[{etiqueta, base 'confirmacion'|'recepcion'|'dias', dias?, pct}]`. Editor de cuotas en el form de OC; `scheduleValido` exige que sumen 100%. Es **opcional** (plantilla, no obligatorio) y se muestra como **guía** en el modal de pago.
 - **D3 — comprobante de transferencia:** reusa `ordenes_compra.comprobante_url` (ISS-096). En el modal de pago, cuando hay un medio **Transferencia** con monto, aparece **"Adjuntar comprobante"** (o "Ver" si ya está) — bucket `comprobantes-gastos`, path `<tenant>/oc/<ocId>.<ext>`.
 
-### Pendiente (CO6-CO8)
-- **CO6** cheques diferidos + endoso (D4).
+### CO6 — Cheques diferidos (v1.36.0, mig 187 · PROD ✅)
+Lógica pura en `src/lib/comprasCheques.ts`. Tab **Cheques** en Gastos (`src/components/ChequesPanel.tsx`).
+- **Tabla `cheques`** (RLS por tenant + correlativo): `tipo` propio (emitido a un proveedor) / tercero (recibido de un cliente), `nro_cheque`, `banco`, `monto`, `fecha_emision`, `fecha_cobro` (diferida), `estado`, `proveedor_id`, `endosado_a_proveedor_id`, `cliente_origen`, `oc_id`, `sucursal_id`.
+- **Estados + transiciones guiadas por tipo** (`estadosSiguientes`): propio `en_cartera→entregado→cobrado|rechazado|anulado`; tercero `en_cartera→endosado|depositado→cobrado|rechazado|anulado`.
+- **Endoso** (`puedeEndosar`): un cheque de tercero en cartera se endosa a un proveedor (queda `endosado`).
+- **Alerta de cobro** (`chequeProximoACobrar`): cheques pendientes con `fecha_cobro` dentro de `tenants.cheques_alerta_dias` (o vencidos) → badge en el tab + resaltado. Total pendiente sumando los no terminales.
+
+### Pendiente (CO7-CO8)
 - **CO7** enviar OC por email/WA + auto-draft desde stock bajo + servicios recurrentes (A6/A3/F1/F2/F3).
 - **CO8** reportes/alertas/export + reporte de diferencias OC vs recepción (E4) + calificación de proveedor (G1/G2/G3).
 

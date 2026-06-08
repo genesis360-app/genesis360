@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-06] update | Compras CO6 — cheques diferidos (v1.36.0, mig 187, PROD ✅)
+
+**Implementada y deployada a PROD la fase CO6 de Compras** (D4). Build + 447 tests verdes. Mig 187 en DEV y PROD. PR #165 mergeado, release `v1.36.0`, `dev=main`.
+
+- **Tabla `cheques`** (RLS por tenant + trigger correlativo `set_cheque_numero`): `tipo` propio/tercero, `nro_cheque`, `banco`, `monto`, `fecha_emision`, `fecha_cobro` (diferida), `estado` (en_cartera/entregado/depositado/cobrado/endosado/rechazado/anulado), `proveedor_id`, `endosado_a_proveedor_id`, `cliente_origen`, `oc_id`, `sucursal_id`.
+- **Nuevo tab "Cheques" en Gastos** (`src/components/ChequesPanel.tsx`): registro/edición, transiciones de estado guiadas por tipo (`estadosSiguientes`), **endoso** de cheque de tercero a un proveedor, filtros (tipo/estado), total pendiente y **alerta de próximos a cobrar** (badge en el tab + resaltado de vencidos). Config → Gastos: `cheques_alerta_dias` (default 7).
+- **Lib pura** `src/lib/comprasCheques.ts` (estados/transiciones, `chequeProximoACobrar`, `chequeVencido`, `puedeEndosar`, `validarChequeAlta`, `totalPendiente`) + `tests/unit/comprasCheques.test.ts` (19 tests). `EntidadLog` += `'cheque'`.
+
+**Próximo (CO7-CO8):** CO7 enviar OC email/WA (A6) + auto-draft desde stock bajo (A3) + servicios recurrentes (F1) + catálogo (F2) + comparar presupuestos (F3) · CO8 reportes (G1) + alertas (G2) + export Excel/PDF/CSV + PDF OC (G3) + calificación de proveedor (E4).
+
+---
+
 ## [2026-06-06] update | Compras CO5 — pago anticipo/contra-entrega + schedule (v1.35.0, mig 186, PROD ✅)
 
 **Implementada y deployada a PROD la fase CO5 de Compras** (D1/D2/D3). Build + 428 tests verdes. Mig 186 aplicada en DEV y PROD (aditiva). PR #164 mergeado a `main`, release `v1.35.0` (`--latest`), Vercel PROD deployado. `dev=main`.

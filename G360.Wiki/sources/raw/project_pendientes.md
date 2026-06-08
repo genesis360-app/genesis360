@@ -22,12 +22,12 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.37.0` | `v1.37.0` |
-| Migrations | 001–**187** ✅ | 001–**187** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.37.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.37.0 |
+| APP_VERSION | `v1.38.0` | `v1.38.0` |
+| Migrations | 001–**188** ✅ | 001–**188** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.38.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.38.0 |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (187 ya en PROD).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (188 ya en PROD).
 
 **ISS-174 — cotización/generación de envíos por API (v1.14.0, PROD):**
 - **F1 (fundación)** — servicio = select dependiente en POS; catálogo `src/lib/couriers/catalogo.ts`; mig 162 (`courier_credenciales` + `tenants.envio_peso_fuente`), 163 (CP idempotente), 164 (productos peso/dim); Config → Envíos (toggle peso-fuente + `CourierCredencialesPanel` owner-only); peso/dim en form de producto.
@@ -233,10 +233,10 @@ Respuestas A-H + diseño + modelo de datos + sugerencias completas en **`relevam
 - **CO5 — Pago anticipo/contra-entrega ✅ DEPLOYADO PROD (v1.35.0, mig 186):** D1 modo de pago por proveedor (`proveedores.modo_pago` contado/anticipo/contra_entrega/cuenta_corriente + `anticipo_pct`) → al elegir el proveedor en la OC se propone "paga con anticipo" + % (override por OC: `ordenes_compra.paga_con_anticipo`/`anticipo_pct` snapshot); badge 💰 Anticipo + alerta por días sin recepción ya existía en Gastos → OC (escalado D1b) · D2 plan de pagos opcional por OC (`ordenes_compra.pago_schedule JSONB` = `[{etiqueta,base 'confirmacion'|'recepcion'|'dias',dias?,pct}]`, valida suma 100%, se muestra como guía en el modal de pago) · D3 comprobante de transferencia (reusa `ordenes_compra.comprobante_url` ISS-096: adjuntar/ver en el modal de pago cuando hay medio Transferencia). Lib pura `src/lib/comprasPago.ts` + 16 tests → suite **428**.
 - **CO6 — Cheques diferidos ✅ DEPLOYADO PROD (v1.36.0, mig 187):** D4 tabla `cheques` (propios emitidos a proveedores / de terceros recibidos), `fecha_cobro` diferida, estados (`en_cartera`/`entregado`/`depositado`/`cobrado`/`endosado`/`rechazado`/`anulado`) + endoso (pagar a otro proveedor con cheque de tercero). Nuevo tab **Cheques** en Gastos (`ChequesPanel`): registro, transiciones guiadas por tipo, endoso, filtros, total pendiente y **alerta de próximos a cobrar** (badge + vencidos). Config → `cheques_alerta_dias` (default 7). Lib pura `comprasCheques.ts` + 19 tests → suite **447**.
 - **CO7a — OC inteligente ✅ DEPLOYADO PROD (v1.37.0, sin migración):** A6 enviar OC al proveedor — PDF (`src/lib/ocPDF.ts` con jsPDF/autotable), Email (`send-email` con resumen) y WhatsApp (link `wa.me` con plantilla `textoOC`/`waLinkOC`), botones en el detalle de OC (ProveedoresPage). A3 auto-draft desde stock bajo — en Alertas "Generar OC sugerida" consolida productos bajo mínimo por proveedor (vía `proveedor_productos`) y crea OCs borrador con cantidad faltante sugerida (gateado por `capacidadCrearOC`, exige sucursal). +6 tests → suite **453**.
-- **CO7b — Servicios (PENDIENTE):** F1 servicios recurrentes (sweep lazy genera gasto) · F2 catálogo de servicios genéricos del tenant (además de por proveedor) · F3 comparar presupuestos lado a lado.
+- **CO7b — Servicios ✅ DEPLOYADO PROD (v1.38.0, mig 188):** F1 servicios recurrentes (`servicio_items.recurrente`/`frecuencia`/`proximo_vencimiento`; banner de vencidos en el tab Servicios con "Generar gasto" = sweep lazy que crea el gasto y avanza la fecha) · F2 catálogo genérico del tenant (`servicio_items.proveedor_id` nullable + panel "Servicios generales del negocio") · F3 comparar presupuestos lado a lado (`compararPresupuestos` agrupa por concepto normalizado, marca el más barato). Lib pura `serviciosRecurrentes.ts` + 11 tests → suite **464**.
 - **CO8 — Reportes + alertas + export:** todos los reportes/alertas G1/G2 + Excel/PDF/CSV + PDF OC + calificación proveedor.
 
-**Decisiones confirmadas por GO (2026-06-05):** E3 alta rápida de producto en recepción ✅ SÍ (rol alto + "pendiente revisión") · B6 editar precio en recepción con audit ✅ SÍ · D1 modos `contado/anticipo/contra_entrega/cuenta_corriente` + % anticipo por proveedor (override opcional por OC) ✅ · A6 WA por link `wa.me` ✅. **Estado:** ✅ CO1 (v1.31.0) · ✅ CO2 (v1.32.0) · ✅ CO3 (v1.33.0) · ✅ CO4 (v1.34.0) en PROD · ✅ CO5 (v1.35.0, mig 186) · ✅ CO6 (v1.36.0, mig 187) · ✅ CO7a (v1.37.0, A6+A3) en PROD. **Pendientes:** CO7b (servicios: F1 recurrentes/F2 catálogo genérico/F3 comparar presupuestos) · CO8 (reportes/alertas/export + E4-reporte diferencias + calificación proveedor: G1/G2/G3).
+**Decisiones confirmadas por GO (2026-06-05):** E3 alta rápida de producto en recepción ✅ SÍ (rol alto + "pendiente revisión") · B6 editar precio en recepción con audit ✅ SÍ · D1 modos `contado/anticipo/contra_entrega/cuenta_corriente` + % anticipo por proveedor (override opcional por OC) ✅ · A6 WA por link `wa.me` ✅. **Estado:** ✅ CO1 (v1.31.0) · ✅ CO2 (v1.32.0) · ✅ CO3 (v1.33.0) · ✅ CO4 (v1.34.0) en PROD · ✅ CO5 (v1.35.0, mig 186) · ✅ CO6 (v1.36.0, mig 187) · ✅ CO7a (v1.37.0, A6+A3) · ✅ CO7b (v1.38.0, mig 188, F1/F2/F3) en PROD. **Pendiente:** CO8 (reportes/alertas/export + E4-reporte diferencias + calificación proveedor: G1/G2/G3).
 
 ### Bugs / mejoras UX puntuales
 

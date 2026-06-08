@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-06] update | Compras CO7b — servicios: recurrentes + catálogo genérico + comparar presupuestos (v1.38.0, mig 188, PROD ✅)
+
+**Deployada a PROD la fase CO7b** (F1+F2+F3). Build + 464 tests verdes. Mig 188 en DEV y PROD. PR #167, release `v1.38.0`, `dev=main`.
+
+- **F1 — servicios recurrentes:** `servicio_items` += `recurrente`/`frecuencia`/`proximo_vencimiento`/`activo`. En el tab Servicios, checkbox recurrente en el form + badge en el listado + **banner de recurrentes vencidos** con "Generar gasto" (`generarGastoServicio`: inserta en `gastos` categoría Servicios y avanza `proximo_vencimiento` con `proximoVencimiento`). Sweep lazy = al abrir el módulo.
+- **F2 — catálogo genérico:** `servicio_items.proveedor_id` ahora nullable → panel **"Servicios generales del negocio"** (toggle) para servicios del tenant sin proveedor, con su propio alta/edición.
+- **F3 — comparar presupuestos:** modal **"Comparar presupuestos"** que trae todos los `servicio_presupuestos` del tenant, los agrupa por concepto normalizado (`compararPresupuestos`) y marca el **más barato** lado a lado.
+- **Lib pura** `src/lib/serviciosRecurrentes.ts` (`proximoVencimiento`, `servicioVencido`, `periodosVencidos`, `normalizarNombre`, `compararPresupuestos`) + `tests/unit/serviciosRecurrentes.test.ts` (11 tests).
+
+**Próximo (CO8 — última fase de Compras):** G1 reportes (OCs vencidas, compras por proveedor, top productos, aging de pagos, evolución de costos) · G2 alertas · G3 export Excel/PDF/CSV + PDF OC · E4 calificación de proveedor.
+
+---
+
 ## [2026-06-06] update | Compras CO7a — OC inteligente: enviar OC + auto-draft stock bajo (v1.37.0, PROD ✅)
 
 **Deployada a PROD la fase CO7a de Compras** (A6 + A3). Sin migración. Suite 453 verde. PR #166, release `v1.37.0`, `dev=main`.

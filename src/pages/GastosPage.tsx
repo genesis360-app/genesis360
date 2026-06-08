@@ -4,7 +4,7 @@ import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
   ChevronDown, ChevronUp, Paperclip, ExternalLink, Repeat, ToggleLeft, ToggleRight,
   Info, ChevronRight, User, Bell, History, ShoppingCart, AlertCircle,
-  Clock, CheckCircle, CreditCard, DollarSign, Landmark, Lock, FileCheck,
+  Clock, CheckCircle, CreditCard, DollarSign, Landmark, Lock, FileCheck, BarChart3,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -24,6 +24,7 @@ import BandejaAutorizacionesGasto from '@/components/BandejaAutorizacionesGasto'
 import BandejaAutorizacionesCC from '@/components/BandejaAutorizacionesCC'
 import CierresContablesPanel from '@/components/CierresContablesPanel'
 import ChequesPanel from '@/components/ChequesPanel'
+import ComprasReportesPanel from '@/components/ComprasReportesPanel'
 import { chequeProximoACobrar } from '@/lib/comprasCheques'
 import { useCierreContable, manejarErrorPeriodoCerrado } from '@/hooks/useCierreContable'
 
@@ -152,7 +153,7 @@ export default function GastosPage() {
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const [searchParams] = useSearchParams()
-  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'cheques', 'recursos', 'autorizaciones', 'cierres'] as const
+  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'cheques', 'reportes-compras', 'recursos', 'autorizaciones', 'cierres'] as const
   type TabGastos = typeof tabValidos[number]
   const tabFromUrl = searchParams.get('tab') as TabGastos | null
   const [tab, setTab] = useState<TabGastos>(tabValidos.includes(tabFromUrl as TabGastos) ? (tabFromUrl as TabGastos) : 'gastos')
@@ -1604,6 +1605,7 @@ export default function GastosPage() {
           { id: 'fijos'    as const, label: 'Gastos fijos',     icon: <Repeat size={14} />, badge: 0 },
           { id: 'oc'       as const, label: 'Órdenes de Compra',icon: <ShoppingCart size={14} />, badge: 0 },
           { id: 'cheques'  as const, label: 'Cheques',          icon: <FileCheck size={14} />, badge: chequesAlertaCount },
+          { id: 'reportes-compras' as const, label: 'Reportes', icon: <BarChart3 size={14} />, badge: 0 },
           { id: 'recursos' as const, label: 'Recursos',         icon: <Landmark size={14} />, badge: 0 },
           ...(puedeAprobarRoles
             ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones', icon: <AlertCircle size={14} />, badge: autorizacionesPendientesCount }]
@@ -2851,6 +2853,11 @@ export default function GastosPage() {
       {/* ══ TAB: CHEQUES (CO6) ══ */}
       {tab === 'cheques' && (
         <ChequesPanel tenant={tenant} user={user} sucursalId={sucursalId} />
+      )}
+
+      {/* ══ TAB: REPORTES DE COMPRAS (CO8) ══ */}
+      {tab === 'reportes-compras' && (
+        <ComprasReportesPanel tenant={tenant} />
       )}
 
       {/* ══ TAB: ÓRDENES DE COMPRA ══ */}

@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.38.0 — Compras CO7b: servicios (PROD ✅)
+
+F1 servicios recurrentes (`servicio_items.recurrente`/`frecuencia`/`proximo_vencimiento`; banner "Generar gasto" con sweep lazy). F2 catálogo genérico del tenant (`proveedor_id` nullable + panel "Servicios generales"). F3 comparar presupuestos lado a lado (agrupa por concepto, marca el más barato). Lib `serviciosRecurrentes.ts` + 11 tests → suite 464. Mig 188.
+
 ## v1.37.0 — Compras CO7a: OC inteligente (PROD ✅)
 
 A6 enviar OC al proveedor — PDF (`ocPDF.ts` jsPDF), Email (`send-email`) y WhatsApp (`wa.me`) desde el detalle de la OC. A3 auto-draft desde stock bajo — "Generar OC sugerida" en Alertas consolida productos bajo mínimo por proveedor y crea OCs borrador. +6 tests → suite 453. Sin migración.

@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.36.0 — Compras CO6: cheques diferidos (PROD ✅)
+
+D4 — gestión de cheques diferidos. Tabla `cheques` (propios emitidos a proveedores / de terceros recibidos), `fecha_cobro` diferida, estados (en_cartera/entregado/depositado/cobrado/endosado/rechazado/anulado) + endoso (pagar a otro proveedor con un cheque de tercero). Nuevo tab **Cheques** en Gastos: registro, transiciones por tipo, endoso, filtros, total pendiente y alerta de próximos a cobrar. Config → `cheques_alerta_dias` (default 7). Lib pura `comprasCheques.ts` + 19 tests → suite 447. Mig 187 (aditiva).
+
 ## v1.35.0 — Compras CO5: pago anticipo/contra-entrega + schedule (PROD ✅)
 
 D1 modo de pago por proveedor (`proveedores.modo_pago` contado/anticipo/contra_entrega/cuenta_corriente + `anticipo_pct`) → la OC propone "paga con anticipo" + % al elegir el proveedor (override por OC, snapshot en `ordenes_compra.paga_con_anticipo`/`anticipo_pct`). D2 plan de pagos opcional por OC (`pago_schedule JSONB`, valida suma 100%, guía en el modal de pago). D3 comprobante de transferencia (reusa `ordenes_compra.comprobante_url`). Lib pura `comprasPago.ts` + 16 tests → suite 428. Mig 186 (aditiva).

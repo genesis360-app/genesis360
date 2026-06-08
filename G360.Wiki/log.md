@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-06] update | Compras CO8 — reportes + alertas + export + calificación (v1.39.0, PROD ✅) · 🎉 Compras 2.0 COMPLETO
+
+**Deployada a PROD la fase CO8** (G1/G2/G3/E4) — última del plan Compras 2.0. Sin migración. Build + 474 tests verdes. PR #168, release `v1.39.0`, `dev=main`.
+
+- **G1 — reportes:** nuevo tab **Reportes** en Gastos (`src/components/ComprasReportesPanel.tsx`): compras por proveedor (volumen $ + # OCs + % cumplimiento), top productos comprados, **aging** de pagos pendientes (0-30/31-60/61-90/+90), OCs vencidas (entrega esperada pasada sin recibir), evolución de costos por producto (primer vs último precio + variación %).
+- **E4 — calificación de proveedor:** score A/B/C según % de OCs recibidas completas (`calificarProveedor`).
+- **G3 — export:** Excel (xlsx) / CSV / PDF (jsPDF+autotable) por reporte. PDF de OC ya estaba en CO7a.
+- **G2 — alerta:** "bajo mínimo sin OC pendiente" en Alertas (badge *OC en camino* / *Sin OC pendiente* cruzando productos bajo mínimo con ítems de OCs abiertas). Las demás alertas de compras (anticipo sin recepción, cheque próximo a cobrar, costo subió X%) ya existían (CO3/CO5/CO6).
+- **Lib pura** `src/lib/comprasReportes.ts` (`comprasPorProveedor`, `topProductosComprados`, `agingPagos`, `ocsVencidas`, `evolucionCostos`, `calificarProveedor`) + `tests/unit/comprasReportes.test.ts` (10 tests).
+
+**🎉 Compras 2.0 (CO1-CO8) CERRADO al 100% en PROD:** CO1 gobierno OC · CO2 recepción robusta · CO3 costos · CO4 devolución a proveedor · CO5 pago anticipo/schedule · CO6 cheques diferidos · CO7a OC inteligente (enviar OC + auto-draft) · CO7b servicios (recurrentes/genéricos/comparar) · CO8 reportes/alertas/export/calificación. Sin pendientes del módulo.
+
+---
+
 ## [2026-06-06] update | Compras CO7b — servicios: recurrentes + catálogo genérico + comparar presupuestos (v1.38.0, mig 188, PROD ✅)
 
 **Deployada a PROD la fase CO7b** (F1+F2+F3). Build + 464 tests verdes. Mig 188 en DEV y PROD. PR #167, release `v1.38.0`, `dev=main`.

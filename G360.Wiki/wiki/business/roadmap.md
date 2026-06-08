@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.39.0 — Compras CO8: reportes, alertas, export y calificación · Compras 2.0 completo (PROD ✅)
+
+G1 reportes (tab Reportes en Gastos): compras por proveedor, top productos, aging de pagos, OCs vencidas, evolución de costos. E4 calificación de proveedor (A/B/C). G3 export Excel/CSV/PDF. G2 alerta "bajo mínimo sin OC pendiente". Lib `comprasReportes.ts` + 10 tests → suite 474. Sin migración. **Cierra el plan Compras 2.0 (CO1-CO8).**
+
 ## v1.38.0 — Compras CO7b: servicios (PROD ✅)
 
 F1 servicios recurrentes (`servicio_items.recurrente`/`frecuencia`/`proximo_vencimiento`; banner "Generar gasto" con sweep lazy). F2 catálogo genérico del tenant (`proveedor_id` nullable + panel "Servicios generales"). F3 comparar presupuestos lado a lado (agrupa por concepto, marca el más barato). Lib `serviciosRecurrentes.ts` + 11 tests → suite 464. Mig 188.

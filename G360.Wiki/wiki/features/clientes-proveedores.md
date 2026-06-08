@@ -125,7 +125,7 @@ OC confirmada → botón "Recibir mercadería" → `/recepciones/nuevo?oc_id=XXX
 
 ## Módulo Compras 2.0 (relevado 2026-06-05 — plan CO1-CO8)
 
-Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO7 en PROD (v1.31.0-v1.38.0, mig 182-188).** Filosofía: simple para el usuario PyME, robusto por dentro.
+Relevamiento completo + diseño + plan por fases en `sources/raw/relevamiento_compras_respuestas.md`. **CO1-CO8 en PROD (v1.31.0-v1.39.0, mig 182-188) — 🎉 Compras 2.0 COMPLETO.** Filosofía: simple para el usuario PyME, robusto por dentro.
 
 ### CO1 — Gobierno de OC (v1.31.0, mig 182)
 - **A1 creación por rol** (`src/lib/comprasPermisos.ts` → `capacidadCrearOC`): DUEÑO/ADMIN/SUPERVISOR completa · **DEPOSITO solo borradores** ("Nueva OC (borrador)") · CAJERO/CONTADOR sin acceso.
@@ -176,8 +176,14 @@ Lógica pura en `src/lib/serviciosRecurrentes.ts`. Tab Servicios en ProveedoresP
 - **F2 — catálogo genérico:** `servicio_items.proveedor_id` nullable → panel **"Servicios generales del negocio"** (servicios del tenant sin proveedor).
 - **F3 — comparar presupuestos:** modal que agrupa `servicio_presupuestos` por concepto normalizado (`compararPresupuestos`) y marca el **más barato** lado a lado.
 
-### Pendiente (CO8)
-- **CO8** reportes/alertas/export + reporte de diferencias OC vs recepción (E4) + calificación de proveedor (G1/G2/G3).
+### CO8 — Reportes, alertas y export (v1.39.0 · PROD ✅)
+Lógica pura en `src/lib/comprasReportes.ts`. Tab **Reportes** en Gastos (`src/components/ComprasReportesPanel.tsx`).
+- **G1 — reportes:** compras por proveedor (volumen $ + % cumplimiento), top productos comprados, **aging** de pagos pendientes (0-30/31-60/61-90/+90), OCs vencidas, evolución de costos por producto.
+- **E4 — calificación de proveedor:** score A/B/C según % de OCs recibidas completas (`calificarProveedor`).
+- **G3 — export:** Excel / CSV / PDF por reporte. El PDF imprimible de la OC vive en CO7a (`ocPDF.ts`).
+- **G2 — alerta:** "bajo mínimo sin OC pendiente" en Alertas (badge *OC en camino* / *Sin OC pendiente*). Las demás alertas de compras ya existían (anticipo CO5, cheque CO6, costo CO3).
+
+> 🎉 **Compras 2.0 (CO1-CO8) cerrado al 100%.** Sin pendientes del módulo.
 
 ---
 

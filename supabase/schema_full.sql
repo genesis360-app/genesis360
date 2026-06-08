@@ -2595,3 +2595,24 @@ ALTER TABLE ordenes_compra
   ADD COLUMN IF NOT EXISTS anticipo_pct NUMERIC,                              -- D1 snapshot del % por OC
   ADD COLUMN IF NOT EXISTS pago_schedule JSONB;                              -- D2 [{etiqueta,base,dias?,pct}]
 -- D3 (transferencia con comprobante) reusa ordenes_compra.comprobante_url (ISS-096), sin columna nueva.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 187: Compras · CO6 (Cheques diferidos)
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS cheques (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  numero_interno INTEGER,              -- correlativo por tenant (trigger set_cheque_numero)
+  tipo TEXT NOT NULL DEFAULT 'propio', -- CHECK propio|tercero
+  nro_cheque TEXT, banco TEXT, monto NUMERIC NOT NULL DEFAULT 0,
+  fecha_emision DATE, fecha_cobro DATE,
+  estado TEXT NOT NULL DEFAULT 'en_cartera', -- CHECK en_cartera|entregado|depositado|cobrado|endosado|rechazado|anulado
+  proveedor_id UUID REFERENCES proveedores(id) ON DELETE SET NULL,
+  endosado_a_proveedor_id UUID REFERENCES proveedores(id) ON DELETE SET NULL,
+  cliente_origen TEXT, oc_id UUID REFERENCES ordenes_compra(id) ON DELETE SET NULL,
+  sucursal_id UUID REFERENCES sucursales(id), notas TEXT,
+  created_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE cheques ENABLE ROW LEVEL SECURITY;  -- policy cheques_tenant + CHECKs tipo/estado + trigger correlativo
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cheques_alerta_dias INTEGER NOT NULL DEFAULT 7;  -- CO6 alerta

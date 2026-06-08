@@ -4,7 +4,7 @@ import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
   ChevronDown, ChevronUp, Paperclip, ExternalLink, Repeat, ToggleLeft, ToggleRight,
   Info, ChevronRight, User, Bell, History, ShoppingCart, AlertCircle,
-  Clock, CheckCircle, CreditCard, DollarSign, Landmark, Lock,
+  Clock, CheckCircle, CreditCard, DollarSign, Landmark, Lock, FileCheck,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -23,6 +23,8 @@ import SolicitarOverrideCCModal from '@/components/SolicitarOverrideCCModal'
 import BandejaAutorizacionesGasto from '@/components/BandejaAutorizacionesGasto'
 import BandejaAutorizacionesCC from '@/components/BandejaAutorizacionesCC'
 import CierresContablesPanel from '@/components/CierresContablesPanel'
+import ChequesPanel from '@/components/ChequesPanel'
+import { chequeProximoACobrar } from '@/lib/comprasCheques'
 import { useCierreContable, manejarErrorPeriodoCerrado } from '@/hooks/useCierreContable'
 
 // Fallback solo si la query a categorias_gasto falla. Se sobreescribe con la tabla.
@@ -150,7 +152,7 @@ export default function GastosPage() {
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const [searchParams] = useSearchParams()
-  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'recursos', 'autorizaciones', 'cierres'] as const
+  const tabValidos = ['gastos', 'historial', 'fijos', 'oc', 'cheques', 'recursos', 'autorizaciones', 'cierres'] as const
   type TabGastos = typeof tabValidos[number]
   const tabFromUrl = searchParams.get('tab') as TabGastos | null
   const [tab, setTab] = useState<TabGastos>(tabValidos.includes(tabFromUrl as TabGastos) ? (tabFromUrl as TabGastos) : 'gastos')
@@ -486,6 +488,19 @@ export default function GastosPage() {
       return (data ?? []).filter((s: any) => s.cajas?.sucursal_id === sucursalId)
     },
     enabled: !!tenant && tab === 'oc',
+  })
+
+  // CO6 — cheques próximos a cobrar (badge del tab Cheques)
+  const { data: chequesAlertaCount = 0 } = useQuery({
+    queryKey: ['cheques-alerta', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('cheques')
+        .select('fecha_cobro, estado').eq('tenant_id', tenant!.id)
+      const hoyISO = new Date().toISOString().split('T')[0]
+      const dias = (tenant as any)?.cheques_alerta_dias ?? 7
+      return (data ?? []).filter((c: any) => chequeProximoACobrar(c, dias, hoyISO)).length
+    },
+    enabled: !!tenant,
   })
 
   // ISS-133: métodos de pago desde Config (tabla metodos_pago)
@@ -1588,6 +1603,7 @@ export default function GastosPage() {
           { id: 'historial'as const, label: 'Historial',        icon: <History size={14} />, badge: 0 },
           { id: 'fijos'    as const, label: 'Gastos fijos',     icon: <Repeat size={14} />, badge: 0 },
           { id: 'oc'       as const, label: 'Órdenes de Compra',icon: <ShoppingCart size={14} />, badge: 0 },
+          { id: 'cheques'  as const, label: 'Cheques',          icon: <FileCheck size={14} />, badge: chequesAlertaCount },
           { id: 'recursos' as const, label: 'Recursos',         icon: <Landmark size={14} />, badge: 0 },
           ...(puedeAprobarRoles
             ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones', icon: <AlertCircle size={14} />, badge: autorizacionesPendientesCount }]
@@ -2830,6 +2846,11 @@ export default function GastosPage() {
           {autSubTab === 'gastos' && <BandejaAutorizacionesGasto />}
           {autSubTab === 'cc'     && <BandejaAutorizacionesCC />}
         </div>
+      )}
+
+      {/* ══ TAB: CHEQUES (CO6) ══ */}
+      {tab === 'cheques' && (
+        <ChequesPanel tenant={tenant} user={user} sucursalId={sucursalId} />
       )}
 
       {/* ══ TAB: ÓRDENES DE COMPRA ══ */}

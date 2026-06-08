@@ -5,8 +5,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// TODO: Cambiar a 'Genesis360 <noreply@genesis360.pro>' cuando el dominio esté verificado en Resend
-const FROM = 'onboarding@resend.dev'
+// Dominio genesis360.pro verificado en Resend (Cloudflare DNS, región sa-east-1) — 2026-06-06.
+const FROM = 'Genesis360 <noreply@genesis360.pro>'
 const APP_URL = 'https://genesis360.pro'
 const BRAND = 'Genesis360'
 

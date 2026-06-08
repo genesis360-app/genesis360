@@ -318,7 +318,7 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 | **Aislamiento por sucursal a nivel RLS** | **Pedido GO 2026-05-30.** Hoy el aislamiento por sucursal es **solo cliente** (triple blindaje: fijado al cargar + selector oculto + guard de `setSucursal`). La RLS de la DB es por `tenant_id`, no por `sucursal_id` → un usuario técnico con credenciales podría leer otra sucursal vía API directa. Para que sea **imposible a nivel servidor**: RLS por sucursal en tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …) cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. Cambio grande (políticas en N tablas) — diseñar antes. Detalle en `multi-sucursal.md`. |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
 | Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos, **Compras ✅ (CO1-CO8 COMPLETO en PROD, v1.31-1.39)**. **Envíos ✅ RESPONDIDO (2026-06-06)** → respuestas + diseño + plan EN1-EN7 en `relevamiento_envios_respuestas.md` (ver sección abajo); **pendiente de implementar**. **Sin responder:** RRHH / Caja |
-| **Email saliente — dominio Resend sin verificar** | Ver sección detallada **"Email + Couriers — pendientes a seguir"** abajo. |
+| ~~**Email saliente — dominio Resend sin verificar**~~ | ✅ **RESUELTO 2026-06-06** — dominio ya verificado; `FROM` → `noreply@genesis360.pro` + `send-email` redeployada DEV/PROD. Opcional pendiente: template OC HTML + PDF adjunto. Ver sección abajo. |
 | **Couriers — adapters sin validar con cuentas B2B reales** | Ver sección detallada **"Email + Couriers — pendientes a seguir"** abajo. |
 
 ---
@@ -329,14 +329,16 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 
 ### Punto 1 — Email de la OC (y TODO el email saliente)
 
-**Causa raíz (NO es "falta el PDF"):** el remitente. En `supabase/functions/send-email/index.ts:9` → `FROM = 'onboarding@resend.dev'` (sender **sandbox** de Resend) con `TODO: cambiar a 'noreply@genesis360.pro' cuando el dominio esté verificado`.
+**✅ RESUELTO (2026-06-06):** el dominio `genesis360.pro` **ya estaba verificado** en Resend (Cloudflare DNS, región sa-east-1 — lo había hecho GO hace ~2 meses). Se cambió `FROM` a `Genesis360 <noreply@genesis360.pro>` en `send-email/index.ts:9` y se **redeployó la Edge Function `send-email` a DEV (v20) y PROD (v23)** vía MCP (`verify_jwt=true` preservado). **Todo el correo saliente ahora usa el dominio propio** (mejor entregabilidad, sin restricción de destinatarios del sandbox). **Pendiente opcional (mejora, no bloqueante):** plantilla `type:'oc'` HTML + adjuntar el PDF de la OC (Resend `attachments` base64) — el email de OC hoy sale como texto (`type:'notificacion'`).
+
+**Causa raíz original (histórico):** el remitente. En `supabase/functions/send-email/index.ts:9` estaba `FROM = 'onboarding@resend.dev'` (sender **sandbox** de Resend).
 - Provider: **Resend** (`POST https://api.resend.com/emails`, `RESEND_API_KEY` en env). `APP_URL=https://genesis360.pro`.
 - Con dominio sin verificar: **entregabilidad mala (spam) + Resend restringe destinatarios**. Afecta **todo** lo saliente, no solo Compras: `welcome`, `venta_confirmada`, `alerta_stock`, `notificacion`, `factura_emitida`, `bug_report`. (La OC usa `type:'notificacion'`, texto plano con `<br>`.)
 - El **adjunto** es limitación real pero **secundaria**: Resend soporta `attachments` (base64), pero la función arma el body solo con `{from,to,subject,html}` (línea ~232) — no pasa adjuntos.
 
-**Plan (en orden — el orden importa):**
-1. **[GO / ops, ~30 min]** Verificar `genesis360.pro` en el panel de Resend → agregar registros DNS (SPF/DKIM, y DMARC recomendado) → esperar propagación → cambiar `FROM` a `noreply@genesis360.pro` y deployar la función. **Esto desbloquea TODO el correo.** Sin esto, un email lindo igual no se entrega.
-2. **[Claude / código, post-paso-1]** En `send-email`: agregar `type:'oc'` con plantilla HTML (tabla de ítems + total + condiciones, estilo `facturaEmitidaTemplate`) **+ adjuntar el PDF de la OC**: generar con jsPDF (`generarOCPDF` de `src/lib/ocPDF.ts`, `output('doc')` → `doc.output('datauristring')`/base64) en `ProveedoresPage.enviarOCEmail`, pasarlo en el body, y en la función agregar `attachments:[{filename, content}]` al payload de Resend. Bajo riesgo, chico. Mismo patrón sirve para adjuntar PDF a `factura_emitida` y estado de cuenta a futuro.
+**Plan:**
+1. ~~**[GO / ops]** Verificar `genesis360.pro` en Resend + DNS → flip `FROM` + deploy.~~ ✅ **HECHO** (dominio ya estaba verificado; FROM cambiado + función redeployada DEV/PROD el 2026-06-06).
+2. **[Claude / código, OPCIONAL — mejora]** En `send-email`: agregar `type:'oc'` con plantilla HTML (tabla de ítems + total + condiciones, estilo `facturaEmitidaTemplate`) **+ adjuntar el PDF de la OC**: generar con jsPDF (`generarOCPDF` de `src/lib/ocPDF.ts`, `output('doc')` → `doc.output('datauristring')`/base64) en `ProveedoresPage.enviarOCEmail`, pasarlo en el body, y en la función agregar `attachments:[{filename, content}]` al payload de Resend. Bajo riesgo. Mismo patrón sirve para adjuntar PDF a `factura_emitida` y estado de cuenta a futuro.
 
 ### Punto 2 — Adapters de courier (Andreani / Correo / OCA)
 

@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.42.0 — Envíos EN3: reparto (repartidores + hoja de ruta) (PROD ✅)
+
+G1 catálogo de repartidores + asignación + productividad. G3/E3 hoja de ruta del día (orden por proximidad/zona, PDF, link agrupado `/hoja-ruta/:token` + cumplimiento). E1 expiración del token config. E2 transportista llamar/WA/incidencia. E4 identidad config. E5 notif "en camino" WA. Lib `enviosReparto.ts` + 8 tests → suite 514. Mig 191.
+
+---
+
 ## v1.41.0 — Envíos EN2: POD robusto + cierre de entrega (PROD ✅)
 
 D1 campos POD requeridos configurables · D2 mín. de fotos · D3 firma del receptor (canvas) + DNI + OTP sobre umbral (propio, código al cliente por WA) · D4 geoloc con fallback graceful · D5 sub-estados de no-entrega + motivo · D6 reintento con contador + recargo. RPCs del transportista ampliadas, página del chofer renovada. Lib `enviosPod.ts` + 18 tests → suite 506. Mig 190.

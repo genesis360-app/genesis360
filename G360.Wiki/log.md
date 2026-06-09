@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-09] update | Email saliente (Resend) RESUELTO — era API key vieja en el secret
+
+**El correo saliente quedó funcionando.** GO confirmó que le llegaron mails de Genesis. Causa real: el secret `RESEND_API_KEY` en Supabase era una **API key vieja/revocada** → Resend devolvía 401 "API key is invalid" (afectaba TODO el correo: ticket de venta, OC, etc.). NO era un problema de dominio (`genesis360.pro` estaba verificado DKIM/SPF) ni de código (FROM=noreply@genesis360.pro correcto en DEV v21 / PROD v24). GO regeneró la key en Resend y actualizó el secret → resuelto.
+
+Fix de diagnóstico que quedó en el código (v1.42.0/v1.44.0): `enviarOCEmail` (Proveedores → OC) y el envío de **ticket de venta** (VentasPage) ahora leen `error.context.json()` y muestran el **mensaje real de Resend** en vez del genérico "No se pudo enviar". **Aprendizaje:** ante `send-email` non-2xx, revisar primero la validez del `RESEND_API_KEY`. Wiki `resend-email.md` actualizada (estaba desfasada: decía FROM=onboarding@resend.dev).
+
+---
+
 ## [2026-06-09] cierre-sesión | Envíos EN1-EN5 en PROD (v1.40.0→v1.44.0) · falta EN6 (bloqueado B2B) + EN7
 
 **Sesión larga. Relevamiento Envíos EN1-EN5 deployado a PROD, una fase por release. Suite 541 verde. `dev=main`.** Resumen de lo hecho hoy:

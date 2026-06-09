@@ -29,7 +29,7 @@ type: project
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna (193 ya en PROD).
 
-**⚠ Email saliente (Resend) — pendiente de GO:** el `RESEND_API_KEY` cargado como secret en Supabase (DEV y PROD) está **inválido** → Resend responde 401 "API key is invalid" (afecta TODO el correo: ticket, OC, etc.). El dominio `genesis360.pro` SÍ está verificado (DKIM/SPF OK). Claude NO tocó el secret. **Acción GO:** generar una API key nueva en Resend (Sending access) y cargarla como secret `RESEND_API_KEY` en ambos proyectos Supabase (sin espacios/comillas). El front ahora muestra el error real de Resend (fix en `enviarOCEmail` + ticket de venta).
+**✅ Email saliente (Resend) — RESUELTO 2026-06-09:** el `RESEND_API_KEY` cargado como secret en Supabase era una **key vieja/inválida** (Resend respondía 401 "API key is invalid"). GO la regeneró y actualizó el secret → **correo funcionando** (confirmado: llegaron mails de Genesis). Dominio `genesis360.pro` verificado (DKIM/SPF). El front muestra el error real de Resend si vuelve a fallar (fix en `enviarOCEmail` + ticket de venta). Aprendizaje: ante "Edge Function non-2xx" en `send-email`, revisar primero la validez del `RESEND_API_KEY` en el secret de Supabase.
 
 **ISS-174 — cotización/generación de envíos por API (v1.14.0, PROD):**
 - **F1 (fundación)** — servicio = select dependiente en POS; catálogo `src/lib/couriers/catalogo.ts`; mig 162 (`courier_credenciales` + `tenants.envio_peso_fuente`), 163 (CP idempotente), 164 (productos peso/dim); Config → Envíos (toggle peso-fuente + `CourierCredencialesPanel` owner-only); peso/dim en form de producto.

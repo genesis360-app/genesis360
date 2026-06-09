@@ -35,7 +35,7 @@ const navItems = [
   { to: '/productos',     icon: Package,         label: 'Productos',      modulo: 'inventario',    depositoVisible: true },
   { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos',   depositoVisible: true },
   { to: '/clientes',      icon: Users,           label: 'Clientes',       modulo: 'clientes',      cajeroVisible: true, contadorVisible: true },
-  { to: '/envios',        icon: Send,            label: 'Envíos',         modulo: 'envios',        cajeroVisible: true },
+  { to: '/envios',        icon: Send,            label: 'Envíos',         modulo: 'envios',        cajeroVisible: true, depositoVisible: true },
   { to: '/facturacion',   icon: Receipt,         label: 'Facturación',    modulo: 'facturacion',   ownerOnly: true },
   { to: '/proveedores',   icon: Truck,           label: 'Prov./Servicios', modulo: 'proveedores',  ownerOnly: true },
   { to: '/recursos',      icon: Landmark,        label: 'Recursos',       modulo: 'recursos',      ownerOnly: true },
@@ -56,7 +56,7 @@ const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
 const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion', '/ventas', '/clientes']  // J3: CONTADOR read-only en Ventas · CL1-H2: read-only en Clientes
-const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones']
+const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones', '/envios']
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen]       = useState(false)

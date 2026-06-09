@@ -2751,3 +2751,20 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_gratis_reglas    JSONB   NOT 
 ALTER TABLE envios ADD COLUMN IF NOT EXISTS diferencia_tipo   TEXT;     -- a_favor|perdida|neutro
 ALTER TABLE envios ADD COLUMN IF NOT EXISTS diferencia_monto  NUMERIC;
 ALTER TABLE envios ADD COLUMN IF NOT EXISTS diferencia_motivo TEXT;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 193: Envíos · EN5 (Creación y alcance, A1-A5)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS tipo               TEXT NOT NULL DEFAULT 'venta'; -- A2 venta|traslado_interno|muestra|dev_proveedor|otro
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS motivo             TEXT;                           -- A2
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS sucursal_destino_id UUID REFERENCES sucursales(id) ON DELETE SET NULL; -- A2 traslado interno
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS cp_courier_preferido JSONB NOT NULL DEFAULT '[]'::jsonb;  -- A3 [{desde,hasta,courier}]
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_plazo_despacho JSONB NOT NULL DEFAULT '{}'::jsonb;  -- A4 {presencial,online,mayorista} horas
+-- envio_items (A5): desglose de qué se despachó en cada envío (split de una venta en varios envíos)
+CREATE TABLE IF NOT EXISTS envio_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  envio_id UUID NOT NULL REFERENCES envios(id) ON DELETE CASCADE, producto_id UUID REFERENCES productos(id) ON DELETE SET NULL,
+  cantidad NUMERIC NOT NULL DEFAULT 0, lpn TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE envio_items ENABLE ROW LEVEL SECURITY;  -- policy envio_items_tenant
+-- A1 (DEPOSITO crea envíos) = solo permiso de UI (AppLayout depositoVisible + DEPOSITO_ALLOWED), sin DDL.

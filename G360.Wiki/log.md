@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-08] update | Envíos EN3 — reparto: repartidores + hoja de ruta + transportista (v1.42.0, mig 191, PROD ✅)
+
+**Tercera fase de Envíos en PROD.** Build + 514 tests verdes. Mig 191 (aditiva) en DEV y PROD. PR #171, release `v1.42.0`, `dev=main`.
+
+- **G1 repartidores:** tabla `repartidores` (vinculables a `empleados` RRHH) + `envios.repartidor_id`. CRUD en Config → Envíos (`RepartidoresPanel`), asignación en el modal de envío (envío propio), productividad (`productividadRepartidor`).
+- **G3/E3 hoja de ruta:** nuevo tab **Reparto** en EnviosPage. Elegís fecha + repartidor → lista ordenada (`ordenarHojaRuta`: vecino más cercano si hay coords y modo proximidad, si no por zona/hora) → **PDF** (jsPDF/autotable) + **link agrupado para el chofer** (`crearHojaRutaToken` → `/hoja-ruta/:token`, página pública `HojaRutaPage` con RPC `get_hoja_ruta_by_token`) + **cumplimiento del día** (`cumplimientoDia`). Tablas `hojas_ruta` + `hoja_ruta_envios`.
+- **E1 expiración token:** `tenants.envio_token_politica` (al_entregar/dias) + `envio_token_dias`; al compartir se setea `envios.token_expira_at` (`tokenExpiraAt`); `get_envio_by_token` devuelve null si expiró.
+- **E2 transportista:** botones **Llamar** (`tel:`) + **WhatsApp** al cliente + **reportar incidencia** (catálogo `INCIDENCIA_TIPOS` → `envio_incidencias` vía RPC `reportar_incidencia_envio`).
+- **E4 identidad:** `tenants.envio_identidad_modo` (anonimo/nombre_dni); en modo nombre_dni la página del chofer pide nombre+DNI antes de operar.
+- **E5 notif "en camino":** `tenants.envio_notif_en_camino` (no/wa/wa_tracking); al pasar a en_camino se abre WhatsApp al cliente (con link de tracking si wa_tracking).
+- **Lib pura** `src/lib/enviosReparto.ts` (`productividadRepartidor`, `cumplimientoDia`, `ordenarHojaRuta`, `tokenExpiraAt` + constantes) + 8 tests. RPCs públicas SECURITY DEFINER (anon+auth). **Próximo: EN4 (costos/tarifas).**
+
+**Email saliente (Resend) — diagnóstico actualizado con GO:** el dominio `genesis360.pro` **SÍ está verificado** (DKIM/SPF OK, captura de GO). El error real es **"API key is invalid"** (Resend 401) → el secret `RESEND_API_KEY` en Supabase está inválido/desactualizado. Claude NO tocó el secret. Acción de GO: generar API key nueva en Resend y cargarla como secret en ambos proyectos (DEV+PROD). Front mejorado: `enviarOCEmail` (OC) y el envío de ticket de venta ahora muestran el mensaje real de Resend.
+
+---
+
 ## [2026-06-08] update | Envíos EN2 — POD robusto + cierre de entrega (v1.41.0, mig 190, PROD ✅)
 
 **Segunda fase de Envíos en PROD.** Build + 506 tests verdes. Mig 190 (aditiva) en DEV y PROD. PR #170, release `v1.41.0`, `dev=main`.

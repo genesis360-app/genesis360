@@ -518,6 +518,23 @@ export default function ConfigPage() {
   const [bizIdentidadModo, setBizIdentidadModo] = useState<string>((tenant as any)?.envio_identidad_modo ?? 'anonimo')
   const [bizNotifEnCamino, setBizNotifEnCamino] = useState<string>((tenant as any)?.envio_notif_en_camino ?? 'wa')
   const [bizHojaRutaModo, setBizHojaRutaModo] = useState<string>((tenant as any)?.envio_hoja_ruta_modo ?? 'agrupada')
+  // EN4 — costos y tarifas
+  const [bizFactorKm, setBizFactorKm] = useState<string>(String((tenant as any)?.envio_factor_km ?? 1.35))
+  const [bizCostoMinimo, setBizCostoMinimo] = useState<string>(String((tenant as any)?.envio_costo_minimo ?? 0))
+  const [bizTramos, setBizTramos] = useState<Array<{ hasta: string; precio: string }>>(
+    Array.isArray((tenant as any)?.envio_tramos) ? (tenant as any).envio_tramos.map((t: any) => ({ hasta: String(t.hasta ?? ''), precio: String(t.precio ?? '') })) : []
+  )
+  const [bizRecargoHorario, setBizRecargoHorario] = useState<Array<{ desde: string; hasta: string; recargo: string }>>(
+    Array.isArray((tenant as any)?.envio_recargo_horario) ? (tenant as any).envio_recargo_horario.map((r: any) => ({ desde: String(r.desde ?? ''), hasta: String(r.hasta ?? ''), recargo: String(r.recargo ?? '') })) : []
+  )
+  const [bizCobroPolitica, setBizCobroPolitica] = useState<string>((tenant as any)?.envio_cobro_politica ?? 'cliente_100')
+  const [bizCobroMargen, setBizCobroMargen] = useState<string>(String((tenant as any)?.envio_cobro_margen_pct ?? 0))
+  const [bizSubsidioUmbral, setBizSubsidioUmbral] = useState<string>(String((tenant as any)?.envio_subsidio_umbral ?? 0))
+  const _gr = ((tenant as any)?.envio_gratis_reglas ?? {}) as any
+  const [bizGratisMonto, setBizGratisMonto] = useState<string>(String(_gr.montoMinimo ?? ''))
+  const [bizGratisEtiquetas, setBizGratisEtiquetas] = useState<string>(Array.isArray(_gr.etiquetas) ? _gr.etiquetas.join(', ') : '')
+  const [bizGratisDesde, setBizGratisDesde] = useState<string>(_gr.promoDesde ?? '')
+  const [bizGratisHasta, setBizGratisHasta] = useState<string>(_gr.promoHasta ?? '')
 
   // Fase 2 — identidad
   const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
@@ -703,6 +720,20 @@ export default function ConfigPage() {
       envio_identidad_modo: bizIdentidadModo,
       envio_notif_en_camino: bizNotifEnCamino,
       envio_hoja_ruta_modo: bizHojaRutaModo,
+      // EN4 — costos y tarifas
+      envio_factor_km: parseFloat(bizFactorKm) || 1.35,
+      envio_costo_minimo: parseFloat(bizCostoMinimo) || 0,
+      envio_tramos: bizTramos.filter(t => t.hasta && t.precio).map(t => ({ hasta: parseFloat(t.hasta), precio: parseFloat(t.precio) })),
+      envio_recargo_horario: bizRecargoHorario.filter(r => r.desde && r.hasta && r.recargo).map(r => ({ desde: r.desde, hasta: r.hasta, recargo: parseFloat(r.recargo) })),
+      envio_cobro_politica: bizCobroPolitica,
+      envio_cobro_margen_pct: parseFloat(bizCobroMargen) || 0,
+      envio_subsidio_umbral: parseFloat(bizSubsidioUmbral) || 0,
+      envio_gratis_reglas: {
+        montoMinimo: bizGratisMonto ? parseFloat(bizGratisMonto) : null,
+        etiquetas: bizGratisEtiquetas.split(',').map(s => s.trim()).filter(Boolean),
+        promoDesde: bizGratisDesde || null,
+        promoHasta: bizGratisHasta || null,
+      },
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
       cuit: bizCuit.trim() || null,
@@ -3246,6 +3277,118 @@ export default function ConfigPage() {
                 onChange={e => setBizCostoKm(e.target.value)} placeholder="Ej: 150" min="0" step="0.01" disabled={!canEdit}
                 className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               <p className="text-xs text-gray-400 dark:text-gray-500">Default global. Si una sucursal tiene su propio $/km en Sucursales, ese valor predomina.</p>
+            </div>
+            {canEdit && (
+              <div className="flex justify-end">
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* EN4 — costos y tarifas (envío propio) */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <DollarSign size={18} className="text-accent" /> Tarifas y cobro del envío propio
+            </h3>
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Factor KM</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizFactorKm} onChange={e => setBizFactorKm(e.target.value)}
+                  min="1" step="0.05" disabled={!canEdit}
+                  className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Costo mínimo ($)</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCostoMinimo} onChange={e => setBizCostoMinimo(e.target.value)}
+                  min="0" step="1" disabled={!canEdit}
+                  className="w-28 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              </div>
+            </div>
+            {/* Tramos escalonados (B3) */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Costo escalonado por km (opcional, pisa el $/km)</p>
+              <div className="space-y-1.5">
+                {bizTramos.map((t, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">hasta</span>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={t.hasta} disabled={!canEdit}
+                      onChange={e => setBizTramos(arr => arr.map((x, j) => j === i ? { ...x, hasta: e.target.value } : x))}
+                      placeholder="km" className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <span className="text-xs text-gray-400">km =</span>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={t.precio} disabled={!canEdit}
+                      onChange={e => setBizTramos(arr => arr.map((x, j) => j === i ? { ...x, precio: e.target.value } : x))}
+                      placeholder="$" className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    {canEdit && <button onClick={() => setBizTramos(arr => arr.filter((_, j) => j !== i))} className="text-red-500 text-xs">Quitar</button>}
+                  </div>
+                ))}
+              </div>
+              {canEdit && <button onClick={() => setBizTramos(arr => [...arr, { hasta: '', precio: '' }])} className="text-xs text-accent hover:underline mt-1">+ Agregar tramo</button>}
+            </div>
+            {/* Recargo horario (B1) */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Recargo por franja horaria (opcional)</p>
+              <div className="space-y-1.5">
+                {bizRecargoHorario.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input type="time" value={r.desde} disabled={!canEdit}
+                      onChange={e => setBizRecargoHorario(arr => arr.map((x, j) => j === i ? { ...x, desde: e.target.value } : x))}
+                      className="border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <span className="text-xs text-gray-400">a</span>
+                    <input type="time" value={r.hasta} disabled={!canEdit}
+                      onChange={e => setBizRecargoHorario(arr => arr.map((x, j) => j === i ? { ...x, hasta: e.target.value } : x))}
+                      className="border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <span className="text-xs text-gray-400">+$</span>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={r.recargo} disabled={!canEdit}
+                      onChange={e => setBizRecargoHorario(arr => arr.map((x, j) => j === i ? { ...x, recargo: e.target.value } : x))}
+                      placeholder="recargo" className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    {canEdit && <button onClick={() => setBizRecargoHorario(arr => arr.filter((_, j) => j !== i))} className="text-red-500 text-xs">Quitar</button>}
+                  </div>
+                ))}
+              </div>
+              {canEdit && <button onClick={() => setBizRecargoHorario(arr => [...arr, { desde: '', hasta: '', recargo: '' }])} className="text-xs text-accent hover:underline mt-1">+ Agregar recargo</button>}
+            </div>
+            {/* Cobro al cliente (B4) */}
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cómo cobra el envío al cliente</label>
+                <select value={bizCobroPolitica} onChange={e => setBizCobroPolitica(e.target.value)} disabled={!canEdit}
+                  className="border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800">
+                  <option value="cliente_100">Cliente paga 100%</option>
+                  <option value="cliente_margen">Cliente + margen %</option>
+                  <option value="subsidio">Subsidio (gratis sobre umbral)</option>
+                </select>
+              </div>
+              {bizCobroPolitica === 'cliente_margen' && (
+                <div><label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Margen %</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCobroMargen} onChange={e => setBizCobroMargen(e.target.value)} min="0" step="1" disabled={!canEdit}
+                    className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" /></div>
+              )}
+              {bizCobroPolitica === 'subsidio' && (
+                <div><label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Gratis si venta &gt; $</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} value={bizSubsidioUmbral} onChange={e => setBizSubsidioUmbral(e.target.value)} min="0" step="1" disabled={!canEdit}
+                    className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" /></div>
+              )}
+            </div>
+            {/* Envío gratis condicional (B5) */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Envío gratis condicional (opcional)</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizGratisMonto} onChange={e => setBizGratisMonto(e.target.value)} placeholder="Monto mínimo de venta ($)" disabled={!canEdit}
+                  className="border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                <input type="text" value={bizGratisEtiquetas} onChange={e => setBizGratisEtiquetas(e.target.value)} placeholder="Etiquetas de cliente (Mayorista, VIP)" disabled={!canEdit}
+                  className="border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-400">Promo</span>
+                  <input type="date" value={bizGratisDesde} onChange={e => setBizGratisDesde(e.target.value)} disabled={!canEdit}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  <span className="text-xs text-gray-400">a</span>
+                  <input type="date" value={bizGratisHasta} onChange={e => setBizGratisHasta(e.target.value)} disabled={!canEdit}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+              </div>
             </div>
             {canEdit && (
               <div className="flex justify-end">

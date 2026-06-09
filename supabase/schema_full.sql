@@ -2735,3 +2735,19 @@ CREATE TABLE IF NOT EXISTS envio_incidencias (
 ALTER TABLE envio_incidencias ENABLE ROW LEVEL SECURITY;  -- policy envio_incidencias_tenant
 -- RPCs públicas: get_envio_by_token (agrega repartidor/identidad + chequea token_expira_at),
 -- reportar_incidencia_envio, get_hoja_ruta_by_token. Todas SECURITY DEFINER, GRANT anon+authenticated.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 192: Envíos · EN4 (Costos y tarifas avanzados, B1-B6)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_factor_km        NUMERIC NOT NULL DEFAULT 1.35; -- B2
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_costo_minimo     NUMERIC NOT NULL DEFAULT 0;    -- B3
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_tramos           JSONB   NOT NULL DEFAULT '[]'::jsonb;  -- B3 [{hasta,precio}]
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_recargo_horario  JSONB   NOT NULL DEFAULT '[]'::jsonb;  -- B1 [{desde,hasta,recargo}]
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_cobro_politica   TEXT    NOT NULL DEFAULT 'cliente_100'; -- B4 cliente_100|cliente_margen|subsidio
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_cobro_margen_pct NUMERIC NOT NULL DEFAULT 0;    -- B4
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_subsidio_umbral  NUMERIC NOT NULL DEFAULT 0;    -- B4
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_gratis_reglas    JSONB   NOT NULL DEFAULT '{}'::jsonb;   -- B5 {montoMinimo,etiquetas,promoDesde,promoHasta}
+-- B6 — diferencia real vs cotizado (precio al cliente inmutable post-pago)
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS diferencia_tipo   TEXT;     -- a_favor|perdida|neutro
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS diferencia_monto  NUMERIC;
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS diferencia_motivo TEXT;

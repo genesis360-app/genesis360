@@ -24,6 +24,7 @@ import { agruparPagosPorCourier, desgloseIvaFlete, requiereDobleFirma, diffFactu
 import SignaturePad from '@/components/SignaturePad'
 import { podFaltantes, SUBESTADOS_NO_ENTREGA, resolverNoEntrega, type SubestadoNoEntrega } from '@/lib/enviosPod'
 import { productividadRepartidor, cumplimientoDia, ordenarHojaRuta, tokenExpiraAt } from '@/lib/enviosReparto'
+import { costoEnvioPropio, diferenciaReal, DIFERENCIA_MOTIVOS } from '@/lib/enviosTarifas'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
@@ -143,6 +144,11 @@ export default function EnviosPage() {
   const [noEntregaSub, setNoEntregaSub] = useState<SubestadoNoEntrega>('ausente')
   const [noEntregaMotivo, setNoEntregaMotivo] = useState('')
   const [savingNoEntrega, setSavingNoEntrega] = useState(false)
+  // EN4/B6 — modal "Registrar costo real" (diferencia vs cotizado)
+  const [diffEnvio, setDiffEnvio] = useState<any | null>(null)
+  const [diffCostoReal, setDiffCostoReal] = useState('')
+  const [diffMotivo, setDiffMotivo] = useState<string>(DIFERENCIA_MOTIVOS[0])
+  const [savingDiff, setSavingDiff] = useState(false)
   // ISS-166 (v1.8.40): el upload de foto del POD se delegó al componente PodFotosManager (migration 144).
 
   // ISS-169: Pagos courier
@@ -363,9 +369,15 @@ export default function EnviosPage() {
       if (km !== null) {
         setDistanciaKm(km)
         const costoKm = sucursalActiva?.costo_km_envio || (tenant as any)?.costo_envio_por_km || 0
-        if (costoKm > 0) {
-          setForm(f => ({ ...f, costo_cotizado: (km * costoKm).toFixed(2) }))
-        }
+        // EN4/B1-B3 — motor de tarifas: factor KM + costo mínimo + tramos + recargo horario
+        const costo = costoEnvioPropio(km, {
+          costoKm,
+          factorKm: (tenant as any)?.envio_factor_km,
+          costoMinimo: (tenant as any)?.envio_costo_minimo,
+          tramos: (tenant as any)?.envio_tramos,
+          recargoHorario: (tenant as any)?.envio_recargo_horario,
+        }, form.hora_entrega_acordada || null)
+        if (costo > 0) setForm(f => ({ ...f, costo_cotizado: String(costo) }))
       }
     } finally {
       setCalculandoKm(false)
@@ -801,6 +813,29 @@ export default function EnviosPage() {
       if (factFileRef.current) factFileRef.current.value = ''
     } catch (e: any) { toast.error(e.message ?? 'Error al guardar la factura') }
     finally { setSavingFact(false) }
+  }
+
+  // ── EN4/B6 — Registrar costo real → diferencia a-favor/pérdida (precio al cliente inmutable) ──
+  const registrarDiferencia = async () => {
+    if (!diffEnvio) return
+    const real = parseFloat(diffCostoReal)
+    if (isNaN(real) || real < 0) { toast.error('Ingresá el costo real'); return }
+    const dif = diferenciaReal(Number(diffEnvio.costo_cotizado ?? 0), real)
+    setSavingDiff(true)
+    try {
+      const { error } = await supabase.from('envios').update({
+        costo_real: real,
+        diferencia_tipo: dif.tipo,
+        diferencia_monto: dif.monto,
+        diferencia_motivo: dif.tipo === 'neutro' ? null : diffMotivo,
+      }).eq('id', diffEnvio.id)
+      if (error) throw error
+      toast.success(dif.tipo === 'neutro' ? 'Costo real registrado (sin diferencia)'
+        : `Costo real registrado — ${dif.tipo === 'a_favor' ? 'a favor' : 'pérdida'} $${dif.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`)
+      qc.invalidateQueries({ queryKey: ['envios'] })
+      setDiffEnvio(null); setDiffCostoReal(''); setDiffMotivo(DIFERENCIA_MOTIVOS[0])
+    } catch (e: any) { toast.error(e.message ?? 'Error al guardar') }
+    finally { setSavingDiff(false) }
   }
 
   // ── EN3/G3 — Hoja de ruta: ordenar + generar PDF + token agrupador ───────────
@@ -1372,6 +1407,13 @@ export default function EnviosPage() {
                                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                                     <FileText size={13} /> Generar remito
                                   </button>
+                                  {/* EN4/B6: Registrar costo real (diferencia vs cotizado) */}
+                                  {(e.costo_cotizado ?? 0) > 0 && (
+                                    <button onClick={() => { setDiffEnvio(e); setDiffCostoReal(e.costo_real ? String(e.costo_real) : ''); setDiffMotivo(e.diferencia_motivo ?? DIFERENCIA_MOTIVOS[0]) }}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                                      <DollarSign size={13} /> {e.diferencia_tipo ? 'Costo real ✓' : 'Registrar costo real'}
+                                    </button>
+                                  )}
                                   {/* ISS-165: Compartir link con transportista */}
                                   <button onClick={async () => {
                                     let token = e.token_transportista
@@ -2400,6 +2442,55 @@ export default function EnviosPage() {
           </div>
         </div>
       )}
+
+      {/* ══ MODAL: REGISTRAR COSTO REAL — diferencia (EN4/B6) ══ */}
+      {diffEnvio && (() => {
+        const real = parseFloat(diffCostoReal)
+        const prev = !isNaN(real) ? diferenciaReal(Number(diffEnvio.costo_cotizado ?? 0), real) : null
+        return (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  <DollarSign size={18} className="text-accent" /> Costo real del envío
+                </h2>
+                <button onClick={() => setDiffEnvio(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  El precio que pagó el cliente (cotizado: <strong>${Number(diffEnvio.costo_cotizado ?? 0).toLocaleString('es-AR')}</strong>) <strong>no se modifica</strong>. Registrá el costo real para trazar la diferencia.
+                </p>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Costo real ($)</label>
+                  <input type="number" onWheel={ev => ev.currentTarget.blur()} value={diffCostoReal} onChange={e => setDiffCostoReal(e.target.value)}
+                    min="0" step="0.01" autoFocus
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                {prev && prev.tipo !== 'neutro' && (
+                  <>
+                    <div className={`rounded-xl px-3 py-2 text-sm font-medium ${prev.tipo === 'a_favor' ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'}`}>
+                      {prev.tipo === 'a_favor' ? '↓ A favor' : '↑ Pérdida'}: ${prev.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo de la diferencia</label>
+                      <select value={diffMotivo} onChange={e => setDiffMotivo(e.target.value)}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        {DIFERENCIA_MOTIVOS.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="px-5 pb-5 flex gap-3">
+                <button onClick={() => setDiffEnvio(null)}
+                  className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">Cancelar</button>
+                <button onClick={registrarDiferencia} disabled={savingDiff}
+                  className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">{savingDiff ? 'Guardando…' : 'Guardar'}</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

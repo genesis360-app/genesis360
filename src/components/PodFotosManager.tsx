@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, Trash2, Loader2, Image as ImageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -11,6 +11,8 @@ interface Props {
   onPrincipalChange?: (url: string | null) => void
   /** En modo read-only no muestra controles de upload/eliminar */
   readOnly?: boolean
+  /** Notifica la cantidad de fotos cargadas (EN2/D2 — validación de mínimo). */
+  onCountChange?: (n: number) => void
 }
 
 interface PodFoto {
@@ -22,7 +24,7 @@ interface PodFoto {
   created_at: string
 }
 
-export default function PodFotosManager({ envioId, onPrincipalChange, readOnly = false }: Props) {
+export default function PodFotosManager({ envioId, onPrincipalChange, readOnly = false, onCountChange }: Props) {
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -43,6 +45,8 @@ export default function PodFotosManager({ envioId, onPrincipalChange, readOnly =
     },
     enabled: !!envioId,
   })
+
+  useEffect(() => { onCountChange?.(fotos.length) }, [fotos.length, onCountChange])
 
   async function refrescarPrincipal(nuevoListado: PodFoto[]) {
     const principal = nuevoListado[0]?.url ?? null

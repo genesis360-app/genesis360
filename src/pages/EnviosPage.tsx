@@ -21,6 +21,8 @@ import { buildWhatsAppUrl, expandirPlantilla, PLANTILLA_DEFAULT } from '@/lib/wh
 import { COURIERS, SERVICIOS_POR_COURIER, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, generarEnvioCourier, trackingEnvioCourier, type CotizacionOpcion } from '@/lib/couriers/api'
 import { agruparPagosPorCourier, desgloseIvaFlete, requiereDobleFirma, diffFactura } from '@/lib/enviosCourierPago'
+import SignaturePad from '@/components/SignaturePad'
+import { podFaltantes, SUBESTADOS_NO_ENTREGA, resolverNoEntrega, type SubestadoNoEntrega } from '@/lib/enviosPod'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
@@ -127,8 +129,17 @@ export default function EnviosPage() {
 
   // POD modal — registrar prueba de entrega desde la fila expandida
   const [podModalId, setPodModalId]   = useState<string | null>(null)
-  const [podForm, setPodForm]         = useState({ pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '' })
+  const [podForm, setPodForm]         = useState({ pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '', pod_dni: '' })
   const [savingPod, setSavingPod]     = useState(false)
+  // EN2 — firma + conteo de fotos para validación de POD
+  const [podFirmaDataUrl, setPodFirmaDataUrl] = useState<string | null>(null)
+  const [podFirmaUrlExistente, setPodFirmaUrlExistente] = useState<string | null>(null)
+  const [podFotosCount, setPodFotosCount] = useState(0)
+  // EN2/D5 — modal "No entregado" (operador)
+  const [noEntregaId, setNoEntregaId] = useState<string | null>(null)
+  const [noEntregaSub, setNoEntregaSub] = useState<SubestadoNoEntrega>('ausente')
+  const [noEntregaMotivo, setNoEntregaMotivo] = useState('')
+  const [savingNoEntrega, setSavingNoEntrega] = useState(false)
   // ISS-166 (v1.8.40): el upload de foto del POD se delegó al componente PodFotosManager (migration 144).
 
   // ISS-169: Pagos courier
@@ -513,28 +524,78 @@ export default function EnviosPage() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  // ── POD — guardar prueba de entrega ──────────────────────────────────────────
+  // EN2 — config POD del tenant (campos requeridos + mínimo de fotos)
+  const podRequeridos = ((tenant as any)?.pod_campos_requeridos ?? { fecha: true, receptor: true }) as Record<string, boolean>
+  const podFotoMin = Number((tenant as any)?.pod_foto_min ?? 0)
+
+  // ── POD — guardar prueba de entrega (EN2/D1-D3) ──────────────────────────────
   const savePod = async () => {
     if (!podModalId) return
+    // D1/D2 — validar campos requeridos configurados
+    const faltan = podFaltantes(
+      { fecha: podForm.pod_fecha, receptor: podForm.pod_receptor, dni: podForm.pod_dni,
+        firma_url: podFirmaDataUrl ?? podFirmaUrlExistente, fotos: podFotosCount },
+      podRequeridos, podFotoMin,
+    )
+    if (faltan.length > 0) { toast.error(`Faltan datos del POD: ${faltan.join(', ')}`); return }
     setSavingPod(true)
     try {
+      // D3 — subir la firma (dataURL → storage) si se firmó en este modal
+      let firmaUrl = podFirmaUrlExistente
+      if (podFirmaDataUrl) {
+        const blob = await (await fetch(podFirmaDataUrl)).blob()
+        const path = `pod/${podModalId}/firma_${Date.now()}.png`
+        const { error: upErr } = await supabase.storage.from('etiquetas-envios').upload(path, blob, { upsert: true, contentType: 'image/png' })
+        if (!upErr) {
+          const { data: signed } = await supabase.storage.from('etiquetas-envios').createSignedUrl(path, 60 * 60 * 24 * 365)
+          firmaUrl = signed?.signedUrl ?? firmaUrl
+        }
+      }
       const { error } = await supabase.from('envios').update({
-        pod_fecha:    podForm.pod_fecha || null,
-        pod_receptor: podForm.pod_receptor.trim() || null,
-        pod_notas:    podForm.pod_notas.trim() || null,
-        pod_url:      podForm.pod_url.trim() || null,
-        estado:       'entregado',
+        pod_fecha:     podForm.pod_fecha || null,
+        pod_receptor:  podForm.pod_receptor.trim() || null,
+        pod_notas:     podForm.pod_notas.trim() || null,
+        pod_url:       podForm.pod_url.trim() || null,
+        pod_dni:       podForm.pod_dni.trim() || null,
+        pod_firma_url: firmaUrl || null,
+        estado:        'entregado',
       }).eq('id', podModalId)
       if (error) throw error
       toast.success('Prueba de entrega registrada')
       qc.invalidateQueries({ queryKey: ['envios'] })
       setPodModalId(null)
-      setPodForm({ pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '' })
+      setPodForm({ pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '', pod_dni: '' })
+      setPodFirmaDataUrl(null); setPodFirmaUrlExistente(null); setPodFotosCount(0)
     } catch (e: any) {
       toast.error(e.message ?? 'Error al guardar POD')
     } finally {
       setSavingPod(false)
     }
+  }
+
+  // ── EN2/D5+D6 — registrar "No entregado" (operador) ──────────────────────────
+  const registrarNoEntrega = async () => {
+    if (!noEntregaId) return
+    if (!noEntregaMotivo.trim()) { toast.error('Indicá el motivo de la no entrega'); return }
+    const envio = (envios as any[]).find(e => e.id === noEntregaId)
+    const max = Number((tenant as any)?.envio_reintentos_max ?? 3)
+    const r = resolverNoEntrega(Number(envio?.intentos ?? 0), max, noEntregaSub)
+    setSavingNoEntrega(true)
+    try {
+      const { error } = await supabase.from('envios').update({
+        estado: r.estado,
+        intentos: r.nuevoIntentos,
+        subestado_no_entrega: noEntregaSub,
+        no_entrega_motivo: noEntregaMotivo.trim(),
+      }).eq('id', noEntregaId)
+      if (error) throw error
+      toast.success(r.reintenta
+        ? `Registrado — vuelve a "En camino" (intento ${r.nuevoIntentos}/${max})`
+        : 'Registrado — pasa a Devolución')
+      qc.invalidateQueries({ queryKey: ['envios'] })
+      setNoEntregaId(null); setNoEntregaSub('ausente'); setNoEntregaMotivo('')
+    } catch (e: any) { toast.error(e.message ?? 'Error al registrar') }
+    finally { setSavingNoEntrega(false) }
   }
 
 
@@ -1244,7 +1305,8 @@ export default function EnviosPage() {
                                   {(e.estado === 'en_camino' || e.estado === 'en_bodega' || e.estado === 'entregado') && (
                                     <button onClick={() => {
                                       setPodModalId(e.id)
-                                      setPodForm({ pod_fecha: e.pod_fecha ?? '', pod_receptor: e.pod_receptor ?? '', pod_notas: e.pod_notas ?? '', pod_url: e.pod_url ?? '' })
+                                      setPodForm({ pod_fecha: e.pod_fecha ?? '', pod_receptor: e.pod_receptor ?? '', pod_notas: e.pod_notas ?? '', pod_url: e.pod_url ?? '', pod_dni: e.pod_dni ?? '' })
+                                      setPodFirmaDataUrl(null); setPodFirmaUrlExistente(e.pod_firma_url ?? null); setPodFotosCount(0)
                                     }}
                                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-green-300 dark:border-green-700 rounded-lg text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors">
                                       <ClipboardCheck size={13} /> {e.pod_fecha ? 'Actualizar POD' : 'Registrar POD'}
@@ -1262,11 +1324,24 @@ export default function EnviosPage() {
                                   {e.estado === 'en_bodega' && (
                                     <button onClick={() => {
                                       setPodModalId(e.id)
-                                      setPodForm({ pod_fecha: new Date().toISOString().split('T')[0], pod_receptor: '', pod_notas: '', pod_url: '' })
+                                      setPodForm({ pod_fecha: new Date().toISOString().split('T')[0], pod_receptor: '', pod_notas: '', pod_url: '', pod_dni: e.pod_dni ?? '' })
+                                      setPodFirmaDataUrl(null); setPodFirmaUrlExistente(e.pod_firma_url ?? null); setPodFotosCount(0)
                                     }}
                                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                                       <ClipboardCheck size={13} /> Registrar entrega (POD)
                                     </button>
+                                  )}
+                                  {/* EN2/D5 — No entregado (sub-estado + reintento) */}
+                                  {(e.estado === 'en_camino' || e.estado === 'en_bodega' || e.estado === 'despachado') && (
+                                    <button onClick={() => { setNoEntregaId(e.id); setNoEntregaSub('ausente'); setNoEntregaMotivo('') }}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-orange-300 dark:border-orange-700 rounded-lg text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-colors">
+                                      <RotateCcw size={13} /> No entregado
+                                    </button>
+                                  )}
+                                  {e.intentos > 0 && (
+                                    <span className="text-[11px] px-2 py-1 rounded-full bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-300 self-center">
+                                      Intento {e.intentos}{e.subestado_no_entrega ? ` · ${SUBESTADOS_NO_ENTREGA.find(s => s.v === e.subestado_no_entrega)?.t ?? ''}` : ''}
+                                    </span>
                                   )}
                                   {e.estado !== 'cancelado' && e.estado !== 'entregado' && (
                                     <button onClick={() => actualizarEstado.mutate({ id: e.id, estado: 'cancelado', envio: e })}
@@ -1958,8 +2033,8 @@ export default function EnviosPage() {
       {/* ══ MODAL: REGISTRAR POD ══ */}
       {podModalId && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
               <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
                 <ClipboardCheck size={18} className="text-green-500" /> Prueba de entrega (POD)
               </h2>
@@ -1967,7 +2042,7 @@ export default function EnviosPage() {
                 className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto">
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Completá los datos de entrega. Al guardar, el estado del envío se actualizará a <strong>Entregado</strong>.
               </p>
@@ -1980,22 +2055,42 @@ export default function EnviosPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  <UserIcon size={13} className="inline mr-1" />Nombre de quien recibió
+                  <UserIcon size={13} className="inline mr-1" />Nombre de quien recibió {podRequeridos.receptor && <span className="text-red-500">*</span>}
                 </label>
                 <input type="text" value={podForm.pod_receptor} onChange={e => setPodForm(f => ({ ...f, pod_receptor: e.target.value }))}
                   placeholder="Ej: Juan García"
                   className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
+              {(podRequeridos.dni || podForm.pod_dni) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">DNI del receptor {podRequeridos.dni && <span className="text-red-500">*</span>}</label>
+                  <input type="text" inputMode="numeric" value={podForm.pod_dni} onChange={e => setPodForm(f => ({ ...f, pod_dni: e.target.value }))}
+                    placeholder="Ej: 30111222"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Comprobantes / fotos</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Comprobantes / fotos {(podRequeridos.foto || podFotoMin > 0) && <span className="text-red-500">*</span>}
+                  {podFotoMin > 0 && <span className="text-xs text-gray-400 font-normal ml-1">(mín. {Math.max(podRequeridos.foto ? 1 : 0, podFotoMin)})</span>}
+                </label>
                 {podModalId && (
                   <PodFotosManager
                     envioId={podModalId}
                     onPrincipalChange={(url) => setPodForm(f => ({ ...f, pod_url: url ?? '' }))}
+                    onCountChange={setPodFotosCount}
                   />
                 )}
               </div>
+
+              {(podRequeridos.firma || podFirmaUrlExistente) && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Firma del receptor {podRequeridos.firma && <span className="text-red-500">*</span>}</label>
+                  <SignaturePad accent="#16a34a" initialUrl={podFirmaUrlExistente} onChange={setPodFirmaDataUrl} />
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Observaciones</label>
@@ -2005,7 +2100,7 @@ export default function EnviosPage() {
               </div>
             </div>
 
-            <div className="px-5 pb-5 flex gap-3">
+            <div className="px-5 py-4 flex gap-3 flex-shrink-0 border-t border-gray-100 dark:border-gray-700">
               <button onClick={() => setPodModalId(null)}
                 className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
                 Cancelar
@@ -2013,6 +2108,51 @@ export default function EnviosPage() {
               <button onClick={savePod} disabled={savingPod}
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
                 {savingPod ? 'Guardando…' : 'Confirmar entrega'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ MODAL: NO ENTREGADO (EN2/D5+D6) ══ */}
+      {noEntregaId && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <RotateCcw size={18} className="text-orange-500" /> Registrar no entregado
+              </h2>
+              <button onClick={() => setNoEntregaId(null)}
+                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo de la no entrega</label>
+                <select value={noEntregaSub} onChange={e => setNoEntregaSub(e.target.value as SubestadoNoEntrega)}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                  {SUBESTADOS_NO_ENTREGA.map(s => <option key={s.v} value={s.v}>{s.t}</option>)}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  {noEntregaSub === 'ausente'
+                    ? `Si quedan intentos vuelve a "En camino" para reintentar (máx. ${Number((tenant as any)?.envio_reintentos_max ?? 3)}).`
+                    : 'Pasa directo a Devolución.'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Detalle</label>
+                <textarea value={noEntregaMotivo} onChange={e => setNoEntregaMotivo(e.target.value)} rows={2}
+                  placeholder="Ej: timbre sin respuesta, dirección inexistente…"
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex gap-3">
+              <button onClick={() => setNoEntregaId(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">
+                Cancelar
+              </button>
+              <button onClick={registrarNoEntrega} disabled={savingNoEntrega}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
+                {savingNoEntrega ? 'Guardando…' : 'Registrar'}
               </button>
             </div>
           </div>

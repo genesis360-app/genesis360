@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -501,6 +501,16 @@ export default function ConfigPage() {
   const [bizCourierGeneraGasto, setBizCourierGeneraGasto] = useState<boolean>((tenant as any)?.envio_courier_genera_gasto !== false)
   const [bizCourierIvaPct, setBizCourierIvaPct] = useState<string>(String((tenant as any)?.envio_courier_iva_pct ?? 21))
   const [bizEnvioDobleFirma, setBizEnvioDobleFirma] = useState<string>(String((tenant as any)?.envio_pago_doble_firma_umbral ?? 0))
+  // EN2 — POD robusto
+  const [bizPodReq, setBizPodReq] = useState<Record<string, boolean>>(() => {
+    const d = (tenant as any)?.pod_campos_requeridos
+    return (d && typeof d === 'object') ? d : { fecha: true, receptor: true, foto: false, firma: false, dni: false }
+  })
+  const [bizPodFotoMin, setBizPodFotoMin] = useState<string>(String((tenant as any)?.pod_foto_min ?? 0))
+  const [bizPodOtpUmbral, setBizPodOtpUmbral] = useState<string>(String((tenant as any)?.pod_otp_umbral ?? 0))
+  const [bizGeolocAlertaKm, setBizGeolocAlertaKm] = useState<string>(String((tenant as any)?.envio_geoloc_alerta_km ?? 0))
+  const [bizReintentosMax, setBizReintentosMax] = useState<string>(String((tenant as any)?.envio_reintentos_max ?? 3))
+  const [bizReintentoRecargo, setBizReintentoRecargo] = useState<string>(String((tenant as any)?.envio_reintento_recargo ?? 0))
 
   // Fase 2 — identidad
   const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
@@ -673,6 +683,13 @@ export default function ConfigPage() {
       envio_courier_genera_gasto: bizCourierGeneraGasto,
       envio_courier_iva_pct: parseFloat(bizCourierIvaPct) || 0,
       envio_pago_doble_firma_umbral: parseFloat(bizEnvioDobleFirma) || 0,
+      // EN2 — POD robusto
+      pod_campos_requeridos: bizPodReq,
+      pod_foto_min: parseInt(bizPodFotoMin) || 0,
+      pod_otp_umbral: parseFloat(bizPodOtpUmbral) || 0,
+      envio_geoloc_alerta_km: parseFloat(bizGeolocAlertaKm) || 0,
+      envio_reintentos_max: parseInt(bizReintentosMax) || 3,
+      envio_reintento_recargo: parseFloat(bizReintentoRecargo) || 0,
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
       cuit: bizCuit.trim() || null,
@@ -3340,6 +3357,72 @@ export default function ConfigPage() {
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 flex-1 min-w-[180px]">Pagos a courier por encima del umbral exigen la clave maestra del dueño.</p>
             </div>
+            {canEdit && (
+              <div className="flex justify-end">
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* EN2 — POD robusto */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <ClipboardCheck size={18} className="text-accent" /> Prueba de entrega (POD)
+            </h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
+              Definí qué datos exige el comprobante de entrega y las reglas de no-entrega / reintento.
+            </p>
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Campos requeridos para marcar "Entregado"</p>
+              <div className="flex flex-wrap gap-3">
+                {([
+                  { k: 'fecha', t: 'Fecha' }, { k: 'receptor', t: 'Receptor' }, { k: 'foto', t: 'Foto' },
+                  { k: 'firma', t: 'Firma' }, { k: 'dni', t: 'DNI' },
+                ] as const).map(c => (
+                  <label key={c.k} className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={!!bizPodReq[c.k]} disabled={!canEdit}
+                      onChange={e => setBizPodReq(p => ({ ...p, [c.k]: e.target.checked }))} className="accent-accent" />
+                    {c.t}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Mín. de fotos</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizPodFotoMin} onChange={e => setBizPodFotoMin(e.target.value)}
+                  min="0" step="1" disabled={!canEdit}
+                  className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">OTP sobre monto ($, 0 = off)</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizPodOtpUmbral} onChange={e => setBizPodOtpUmbral(e.target.value)}
+                  min="0" step="1" disabled={!canEdit}
+                  className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Geoloc alerta (km, 0 = off)</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizGeolocAlertaKm} onChange={e => setBizGeolocAlertaKm(e.target.value)}
+                  min="0" step="0.5" disabled={!canEdit}
+                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Máx. reintentos</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizReintentosMax} onChange={e => setBizReintentosMax(e.target.value)}
+                  min="1" step="1" disabled={!canEdit}
+                  className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Recargo tras máx. ($)</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizReintentoRecargo} onChange={e => setBizReintentoRecargo(e.target.value)}
+                  min="0" step="1" disabled={!canEdit}
+                  className="w-28 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">El OTP solo aplica a envíos propios sobre el monto indicado. La geoloc tiene fallback: si no se puede capturar, igual permite confirmar.</p>
             {canEdit && (
               <div className="flex justify-end">
                 <button onClick={handleSaveBiz} disabled={savingBiz}

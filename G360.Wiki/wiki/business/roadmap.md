@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.40.0 — Envíos EN1: pagos a courier contables + conciliación (PROD ✅)
+
+C2 gasto automático al pagar courier tercero (Transporte y fletes, IVA crédito fiscal) + egreso de caja si efectivo + link `envios.gasto_id`. C3 tab "Facturas Courier": cargar factura del courier por período + conciliar contra lo registrado + alerta de diferencias (`courier_facturas` + `courier_factura_lineas`). C4 doble firma por umbral con clave maestra. Config → Envíos: toggle gasto + alícuota IVA + umbral. Lib `enviosCourierPago.ts` + 14 tests → suite 488. Mig 189. **Primera fase del relevamiento Envíos (EN1-EN7).**
+
+---
+
 ## v1.39.0 — Compras CO8: reportes, alertas, export y calificación · Compras 2.0 completo (PROD ✅)
 
 G1 reportes (tab Reportes en Gastos): compras por proveedor, top productos, aging de pagos, OCs vencidas, evolución de costos. E4 calificación de proveedor (A/B/C). G3 export Excel/CSV/PDF. G2 alerta "bajo mínimo sin OC pendiente". Lib `comprasReportes.ts` + 10 tests → suite 474. Sin migración. **Cierra el plan Compras 2.0 (CO1-CO8).**

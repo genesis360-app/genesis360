@@ -252,6 +252,7 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 186 | `186_compras_co5_pago_anticipo.sql` | **Compras CO5** · `proveedores.modo_pago` (CHECK contado\|anticipo\|contra_entrega\|cuenta_corriente) + `anticipo_pct` (D1) · `ordenes_compra.paga_con_anticipo` + `anticipo_pct` snapshot (D1) + `pago_schedule JSONB` (D2). D3 transferencia con comprobante reusa `ordenes_compra.comprobante_url` (sin columna). Aditiva |
 | 187 | `187_compras_co6_cheques.sql` | **Compras CO6** · tabla `cheques` (tipo propio/tercero, nro/banco/monto, fecha_emision/cobro, estado CHECK en_cartera\|entregado\|depositado\|cobrado\|endosado\|rechazado\|anulado, proveedor_id, endosado_a_proveedor_id, cliente_origen, oc_id, sucursal_id), RLS por tenant + trigger `set_cheque_numero` (correlativo) + `tenants.cheques_alerta_dias` (default 7). Aditiva |
 | 188 | `188_compras_co7b_servicios.sql` | **Compras CO7b** · `servicio_items` += `recurrente`/`frecuencia`/`proximo_vencimiento`/`activo` (F1) + `proveedor_id` ahora **nullable** (F2 servicios genéricos del tenant). F3 (comparar presupuestos) = vista en la app. Aditiva |
+| 189 | `189_envios_en1_pagos_courier.sql` | **Envíos EN1** · `envios.gasto_id`/`courier_factura_id` (C2/C3) + `tenants.envio_courier_genera_gasto`/`envio_courier_iva_pct`/`envio_pago_doble_firma_umbral` (C2/C4) + tablas `courier_facturas` + `courier_factura_lineas` con RLS (C3 conciliación). Aditiva |
 
 ---
 

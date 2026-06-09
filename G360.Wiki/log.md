@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-08] update | Envíos EN2 — POD robusto + cierre de entrega (v1.41.0, mig 190, PROD ✅)
+
+**Segunda fase de Envíos en PROD.** Build + 506 tests verdes. Mig 190 (aditiva) en DEV y PROD. PR #170, release `v1.41.0`, `dev=main`.
+
+- **D1** campos del POD requeridos configurables por tenant (`tenants.pod_campos_requeridos` JSONB: fecha/receptor/foto/firma/dni). **D2** mínimo de fotos (`pod_foto_min`). Validación con `podFaltantes`.
+- **D3** firma del receptor con **canvas** (nuevo `src/components/SignaturePad.tsx`, sin deps → dataURL PNG a `etiquetas-envios`, `envios.pod_firma_url`) + **DNI** (`pod_dni`) + **OTP** sobre umbral solo envío propio (`tenants.pod_otp_umbral`, tabla `envio_otp`). Flujo OTP: el transportista genera el código (`generar_otp_envio`), se lo manda al cliente por WhatsApp (`buildWhatsAppUrl`), el cliente se lo dicta y se verifica (`verificar_otp_envio`); sin OTP verificado no se puede marcar entregado (gate en el RPC). Default off (umbral 0).
+- **D4** geoloc del celular al entregar con **fallback graceful** (`navigator.geolocation`; `pod_lat/lon` + `pod_geo_estado` ok/no_disponible). Si el permiso falla o no hay señal, registra `no_disponible` y **no frena** la entrega (pedido GO).
+- **D5** sub-estados de no-entrega (`subestado_no_entrega`: ausente/rechazado/direccion_incorrecta + `no_entrega_motivo`), botón "No entregado" en EnviosPage y TransportistePage. **D6** reintento: ausente vuelve a `en_camino` con `intentos++` hasta `envio_reintentos_max`; rechazado/dirección o agotado → `devolucion`. Recargo configurable (`envio_reintento_recargo`). Lógica en `resolverNoEntrega` + el RPC `update_envio_by_token`.
+- **RPCs del transportista ampliadas** (`get_envio_by_token` devuelve config POD + `es_propio`; `update_envio_by_token` toma firma/DNI/geoloc/sub-estado; nuevas `generar_otp_envio`/`verificar_otp_envio`), todas SECURITY DEFINER con GRANT a anon+authenticated.
+- **Config → Envíos**: card "Prueba de entrega (POD)" con los toggles de requeridos + mín fotos + OTP + geoloc alerta + reintentos + recargo. `PodFotosManager` ahora expone `onCountChange` (validación D2).
+- **Lib pura** `src/lib/enviosPod.ts` (`podFaltantes`, `requiereOtp`, `geoEstado`, `resolverNoEntrega`, `recargoReintento`, `haversineKm`, `generarCodigoOtp`) + `tests/unit/enviosPod.test.ts` (18 tests). **Próximo: EN3 (reparto).**
+
+**Bug de email de OC (DEV) — diagnóstico:** GO reportó "No se pudo enviar el email" al mandar una OC a un gmail. Causa: **Resend rechaza** (logs DEV `send-email → 500`). El código está OK (FROM=noreply@genesis360.pro en DEV v21 y PROD v24); falta verificar el dominio `genesis360.pro` en la cuenta de Resend del `RESEND_API_KEY` de DEV (en testing solo envía al email del dueño). Se mejoró `enviarOCEmail` para **mostrar el mensaje real de Resend** (lee `error.context.json`). Acción pendiente de GO: verificar dominio en Resend + confirmar que la API key es de esa cuenta.
+
+---
+
 ## [2026-06-08] update | Envíos EN1 — pagos a courier contables + conciliación (v1.40.0, mig 189, PROD ✅)
 
 **Primera fase del relevamiento de Envíos deployada a PROD.** Build + 488 tests verdes. Mig 189 (aditiva) en DEV y PROD. PR #169, release `v1.40.0`, `dev=main`.

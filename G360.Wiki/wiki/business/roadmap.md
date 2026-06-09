@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.41.0 — Envíos EN2: POD robusto + cierre de entrega (PROD ✅)
+
+D1 campos POD requeridos configurables · D2 mín. de fotos · D3 firma del receptor (canvas) + DNI + OTP sobre umbral (propio, código al cliente por WA) · D4 geoloc con fallback graceful · D5 sub-estados de no-entrega + motivo · D6 reintento con contador + recargo. RPCs del transportista ampliadas, página del chofer renovada. Lib `enviosPod.ts` + 18 tests → suite 506. Mig 190.
+
+---
+
 ## v1.40.0 — Envíos EN1: pagos a courier contables + conciliación (PROD ✅)
 
 C2 gasto automático al pagar courier tercero (Transporte y fletes, IVA crédito fiscal) + egreso de caja si efectivo + link `envios.gasto_id`. C3 tab "Facturas Courier": cargar factura del courier por período + conciliar contra lo registrado + alerta de diferencias (`courier_facturas` + `courier_factura_lineas`). C4 doble firma por umbral con clave maestra. Config → Envíos: toggle gasto + alícuota IVA + umbral. Lib `enviosCourierPago.ts` + 14 tests → suite 488. Mig 189. **Primera fase del relevamiento Envíos (EN1-EN7).**

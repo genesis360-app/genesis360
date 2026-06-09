@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.45.0 — Envíos EN7: envío propio + recursos + reportes/alertas (DEV — pendiente PROD)
+## v1.45.0 — Envíos EN7: envío propio + recursos + reportes/alertas (PROD ✅)
 
 G2 envío propio con **vehículo** (recurso) + KM + **combustible auto-gasto** (suma KM al recurso) · H1 tab **Reportes** (pendientes/atrasados, cumplimiento por courier, pagos/mes, **margen logístico**, distribución por zona/CP, productividad de repartidores) · H2 **Alertas** configurables · H3 export Excel/CSV/PDF + **etiquetas A4** con QR + hoja de ruta PDF. Libs `enviosRecurso.ts` + `enviosReportes.ts` + 17 tests → suite 558. Mig 194. **Cierra Envíos salvo EN6 (integraciones courier, bloqueado por cuentas B2B).**
 

@@ -14,6 +14,9 @@ import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { logActividad } from '@/lib/actividadLog'
+import { calcularItemsNomina, mejorSueldoSemestre, sacMejorSueldo, type ConceptoNomina } from '@/lib/rrhhNomina'
+import { generarReciboSueldoPDF } from '@/lib/reciboSueldoPDF'
+import { LICENCIA_TIPOS, montoHorasExtra, sueldoHora } from '@/lib/rrhhAsistencia'
 import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -27,6 +30,12 @@ interface Concepto {
   nombre: string
   tipo: 'HABER' | 'DESCUENTO'
   activo: boolean
+  // RH2/B4
+  tipo_calculo?: 'fijo' | 'porcentaje' | 'sobre_bruto'
+  default_pct?: number | null
+  default_monto?: number | null
+  es_aporte?: boolean
+  predefinido?: boolean
 }
 
 interface Salario {
@@ -43,6 +52,9 @@ interface Salario {
   caja_movimiento_id: string | null
   medio_pago: 'efectivo' | 'transferencia_banco' | 'mp' | null
   notas: string | null
+  // RH3/B6+B7
+  gasto_id: string | null
+  comprobante_firmado_url: string | null
   empleado?: Empleado
 }
 
@@ -128,6 +140,19 @@ interface Empleado {
   tipo_contrato: string
   salario_bruto: number | null
   activo: boolean
+  // RH1/A2 + A4
+  motivo_egreso: string | null
+  cbu: string | null
+  alias_cbu: string | null
+  banco: string | null
+  tipo_cuenta: string | null
+  titular_cuenta: string | null
+  // RH2/B4
+  config_aportes?: string[]
+  beneficios_extra?: { nombre: string; tipo: 'monto' | 'porcentaje'; valor: number }[]
+  // RH6/D2
+  horario_entrada?: string | null
+  horario_salida?: string | null
   created_at: string
   updated_at: string
   // Joins
@@ -199,11 +224,13 @@ interface Feriado {
 
 export default function RrhhPage() {
   const { limits } = usePlanLimits()
-  const { tenant, user } = useAuthStore()
+  const { tenant, user, setTenant } = useAuthStore()
   const qc = useQueryClient()
   const [activeTab, setActiveTab] = useState<Tab>(() => user?.rol === 'SUPERVISOR' ? 'equipo' : 'empleados')
   const [formMode, setFormMode] = useState<FormMode>(null)
   const [selectedEmpleado, setSelectedEmpleado] = useState<Empleado | null>(null)
+  // RH1/A2 — modal de baja con motivo
+  const [bajaEmpleado, setBajaEmpleado] = useState<{ id: string; nombre: string; motivo: string; fecha: string } | null>(null)
   const [editingPuesto, setEditingPuesto] = useState<Puesto | null>(null)
   const [editingDepartamento, setEditingDepartamento] = useState<Departamento | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -216,7 +243,7 @@ export default function RrhhPage() {
     tipo_doc: 'DNI',
     genero: 'OTRO',
     fecha_ingreso: format(new Date(), 'yyyy-MM-dd'),
-    tipo_contrato: 'INDEFINIDO',
+    tipo_contrato: '',
     activo: true,
   })
   const [puestoForm, setPuestoForm] = useState<Partial<Puesto>>({ nombre: '', activo: true })
@@ -230,7 +257,7 @@ export default function RrhhPage() {
   const [expandedSalario, setExpandedSalario] = useState<string | null>(null)
   const [showConceptoForm, setShowConceptoForm] = useState(false)
   const [editingConcepto, setEditingConcepto] = useState<Concepto | null>(null)
-  const [conceptoForm, setConceptoForm] = useState<{ nombre: string; tipo: 'HABER' | 'DESCUENTO' }>({ nombre: '', tipo: 'HABER' })
+  const [conceptoForm, setConceptoForm] = useState<{ nombre: string; tipo: 'HABER' | 'DESCUENTO'; tipo_calculo: 'fijo' | 'porcentaje' | 'sobre_bruto'; default_pct: string; default_monto: string; es_aporte: boolean }>({ nombre: '', tipo: 'HABER', tipo_calculo: 'fijo', default_pct: '', default_monto: '', es_aporte: false })
   const [newItem, setNewItem] = useState<{ descripcion: string; tipo: 'HABER' | 'DESCUENTO'; monto: string; concepto_id: string }>({ descripcion: '', tipo: 'HABER', monto: '', concepto_id: '' })
   const [cajaSessionId, setCajaSessionId] = useState<string>('')
   const [medioPagoNomina, setMedioPagoNomina] = useState<'efectivo' | 'transferencia_banco' | 'mp'>('efectivo')
@@ -252,10 +279,12 @@ export default function RrhhPage() {
   const [asistFecha, setAsistFecha] = useState(() => format(new Date(), 'yyyy-MM'))
   const [showAsistForm, setShowAsistForm] = useState(false)
   const [editingAsistencia, setEditingAsistencia] = useState<Asistencia | null>(null)
-  const [asistForm, setAsistForm] = useState<{ empleado_id: string; fecha: string; hora_entrada: string; hora_salida: string; estado: string; motivo: string }>({
-    empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), hora_entrada: '', hora_salida: '', estado: 'presente', motivo: '',
+  const [asistForm, setAsistForm] = useState<{ empleado_id: string; fecha: string; hora_entrada: string; hora_salida: string; estado: string; motivo: string; tipo_licencia: string }>({
+    empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), hora_entrada: '', hora_salida: '', estado: 'presente', motivo: '', tipo_licencia: '',
   })
   const [asistFiltroEmpleado, setAsistFiltroEmpleado] = useState('')
+  // RH6/D5 — horas extra
+  const [horaExtraForm, setHoraExtraForm] = useState({ empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), horas: '', multiplicador: '50' })
 
   // Check-in rápido state
   const [checkinEmpleadoId, setCheckinEmpleadoId] = useState('')
@@ -263,8 +292,8 @@ export default function RrhhPage() {
   // Feriados state
   const [showFeriadoForm, setShowFeriadoForm] = useState(false)
   const [editingFeriado, setEditingFeriado] = useState<Feriado | null>(null)
-  const [feriadoForm, setFeriadoForm] = useState<{ nombre: string; fecha: string; tipo: string }>({
-    nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional',
+  const [feriadoForm, setFeriadoForm] = useState<{ nombre: string; fecha: string; tipo: string; regla_pago: string }>({
+    nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional', regla_pago: 'doble',
   })
 
   // Documentos state
@@ -329,6 +358,30 @@ export default function RrhhPage() {
     },
     enabled: !!tenant,
   })
+
+  // RH1/A3 — catálogo configurable de tipos de contrato
+  const { data: tiposContrato = [] } = useQuery({
+    queryKey: ['rrhh-tipos-contrato', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('rrhh_tipos_contrato')
+        .select('*').eq('tenant_id', tenant!.id).order('nombre')
+      if (error) throw error
+      return (data ?? []) as { id: string; nombre: string; es_relacion_dependencia: boolean; activo: boolean; predefinido: boolean }[]
+    },
+    enabled: !!tenant,
+  })
+
+  const agregarTipoContrato = async () => {
+    const nombre = window.prompt('Nombre del nuevo tipo de contrato:')?.trim()
+    if (!nombre) return
+    const relDep = window.confirm('¿Es "relación de dependencia"? (Aceptar = sí → aplica auto-aportes)')
+    const { error } = await supabase.from('rrhh_tipos_contrato')
+      .insert({ tenant_id: tenant!.id, nombre, es_relacion_dependencia: relDep })
+    if (error) { toast.error(error.message); return }
+    toast.success('Tipo de contrato agregado')
+    qc.invalidateQueries({ queryKey: ['rrhh-tipos-contrato'] })
+    setFormData(f => ({ ...f, tipo_contrato: nombre }))
+  }
 
   // Nómina queries
   const nominaPeriodo = `${nominaAnio}-${nominaMes}-01`
@@ -613,12 +666,16 @@ export default function RrhhPage() {
   })
 
   const toggleEmpleadoActivo = useMutation({
-    mutationFn: async (empId: string) => {
+    mutationFn: async ({ empId, motivo, fecha }: { empId: string; motivo?: string; fecha?: string }) => {
       const emp = empleados.find((e) => e.id === empId)
       if (!emp) return
+      // RH1/A2 — baja captura motivo+fecha de egreso; reactivar los limpia
+      const payload = emp.activo
+        ? { activo: false, motivo_egreso: motivo ?? null, fecha_egreso: fecha ?? format(new Date(), 'yyyy-MM-dd') }
+        : { activo: true, motivo_egreso: null, fecha_egreso: null }
       const { error } = await supabase
         .from('empleados')
-        .update({ activo: !emp.activo })
+        .update(payload)
         .eq('id', empId)
       if (error) throw error
       logActividad({
@@ -715,12 +772,20 @@ export default function RrhhPage() {
 
   // ─── Nómina mutations ───────────────────────────────────────────────────────
   const saveConcepto = useMutation({
-    mutationFn: async (data: { nombre: string; tipo: 'HABER' | 'DESCUENTO' }) => {
+    mutationFn: async (data: typeof conceptoForm) => {
+      const payload = {
+        nombre: data.nombre.trim(),
+        tipo: data.tipo,
+        tipo_calculo: data.tipo_calculo,
+        default_pct: data.tipo_calculo !== 'fijo' && data.default_pct ? parseFloat(data.default_pct) : null,
+        default_monto: data.tipo_calculo === 'fijo' && data.default_monto ? parseFloat(data.default_monto) : null,
+        es_aporte: data.es_aporte,
+      }
       if (editingConcepto) {
-        const { error } = await supabase.from('rrhh_conceptos').update(data).eq('id', editingConcepto.id)
+        const { error } = await supabase.from('rrhh_conceptos').update(payload).eq('id', editingConcepto.id)
         if (error) throw error
       } else {
-        const { error } = await supabase.from('rrhh_conceptos').insert({ tenant_id: tenant!.id, ...data })
+        const { error } = await supabase.from('rrhh_conceptos').insert({ tenant_id: tenant!.id, ...payload })
         if (error) throw error
       }
     },
@@ -729,7 +794,7 @@ export default function RrhhPage() {
       qc.invalidateQueries({ queryKey: ['rrhh_conceptos'] })
       setShowConceptoForm(false)
       setEditingConcepto(null)
-      setConceptoForm({ nombre: '', tipo: 'HABER' })
+      setConceptoForm({ nombre: '', tipo: 'HABER', tipo_calculo: 'fijo', default_pct: '', default_monto: '', es_aporte: false })
     },
     onError: (err: any) => toast.error(err.message ?? 'Error al guardar concepto'),
   })
@@ -743,35 +808,76 @@ export default function RrhhPage() {
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
 
+  // RH2/B4 — conceptos que son aporte (para inyectar en la liquidación)
+  const conceptosAporte = (conceptos as Concepto[]).filter(c => c.es_aporte).map<ConceptoNomina>(c => ({
+    id: c.id, nombre: c.nombre, tipo: c.tipo, tipo_calculo: c.tipo_calculo ?? 'sobre_bruto',
+    default_pct: c.default_pct, default_monto: c.default_monto, es_aporte: c.es_aporte,
+  }))
+
   const crearLiquidacion = useMutation({
     mutationFn: async (emp: Empleado) => {
       const id = crypto.randomUUID()
       const basico = emp.salario_bruto ?? 0
+      // RH2/B4 — inyecta sueldo básico + beneficios extra (HABER) + aportes activos del empleado (DESCUENTO)
+      const { items, totalHaberes, totalDescuentos, neto } = calcularItemsNomina(
+        basico, conceptosAporte, emp.config_aportes ?? [], emp.beneficios_extra ?? [],
+      )
       const { error } = await supabase.from('rrhh_salarios').insert({
         id,
         tenant_id: tenant!.id,
         empleado_id: emp.id,
         periodo: nominaPeriodo,
         basico,
-        total_haberes: basico,
-        total_descuentos: 0,
-        neto: basico,
+        total_haberes: totalHaberes,
+        total_descuentos: totalDescuentos,
+        neto,
       })
       if (error) throw error
-      // Insert item de sueldo base
-      if (basico > 0) {
-        await supabase.from('rrhh_salario_items').insert({
-          tenant_id: tenant!.id,
-          salario_id: id,
-          descripcion: 'Sueldo básico',
-          tipo: 'HABER',
-          monto: basico,
-        })
+      if (items.length > 0) {
+        await supabase.from('rrhh_salario_items').insert(
+          items.map(it => ({ tenant_id: tenant!.id, salario_id: id, concepto_id: it.concepto_id, descripcion: it.descripcion, tipo: it.tipo, monto: it.monto })),
+        )
       }
       logActividad({ entidad: 'nomina', entidad_id: id, entidad_nombre: nombreEmpleado(emp), accion: 'crear', pagina: '/rrhh' })
     },
     onSuccess: () => { toast.success('Liquidación creada'); refetchSalarios() },
     onError: (err: any) => toast.error(err.message ?? 'Error al crear liquidación'),
+  })
+
+  // RH2/B5 — generar aguinaldo (SAC) del semestre: 50% del mejor sueldo del semestre
+  const generarSAC = useMutation({
+    mutationFn: async (semestre: 1 | 2) => {
+      const anio = Number(nominaAnio)
+      const desde = `${anio}-${semestre === 1 ? '01' : '07'}-01`
+      const hasta = `${anio}-${semestre === 1 ? '06' : '12'}-01`
+      const periodoSAC = `${anio}-${semestre === 1 ? '06' : '12'}-01`
+      const activos = empleados.filter(e => e.activo)
+      let creados = 0
+      for (const emp of activos) {
+        // mejor básico del semestre (de los salarios del empleado)
+        const { data: sems } = await supabase.from('rrhh_salarios')
+          .select('basico').eq('tenant_id', tenant!.id).eq('empleado_id', emp.id)
+          .gte('periodo', desde).lte('periodo', hasta)
+        const basicos = (sems ?? []).map((s: any) => Number(s.basico) || 0)
+        const mejor = mejorSueldoSemestre(basicos.length ? basicos : [emp.salario_bruto ?? 0])
+        const sac = sacMejorSueldo(mejor)
+        if (sac <= 0) continue
+        const id = crypto.randomUUID()
+        const { error } = await supabase.from('rrhh_salarios').insert({
+          id, tenant_id: tenant!.id, empleado_id: emp.id, periodo: periodoSAC,
+          basico: 0, total_haberes: sac, total_descuentos: 0, neto: sac,
+          notas: `SAC ${semestre === 1 ? '1er' : '2do'} semestre ${anio} (50% mejor sueldo)`,
+        })
+        if (error) continue // ya existe liquidación de ese período (UNIQUE) → saltear
+        await supabase.from('rrhh_salario_items').insert({
+          tenant_id: tenant!.id, salario_id: id, descripcion: `Aguinaldo (SAC) ${semestre}° sem.`, tipo: 'HABER', monto: sac,
+        })
+        creados++
+      }
+      return creados
+    },
+    onSuccess: (n) => { toast.success(`${n} liquidaciones de SAC generadas`); refetchSalarios() },
+    onError: (err: any) => toast.error(err.message ?? 'Error al generar SAC'),
   })
 
   const generarNominaMes = useMutation({
@@ -838,6 +944,115 @@ export default function RrhhPage() {
     },
     onError: (err: any) => toast.error(err.message ?? 'Error al pagar nómina'),
   })
+
+  // RH3/B8 — gate de doble validación: quién puede generar el gasto / pagar la nómina
+  const puedeAprobarNomina = (() => {
+    if (!(tenant as any)?.rrhh_nomina_doble_validacion) return true
+    if (user?.rol === 'DUEÑO' || user?.rol === 'ADMIN') return true
+    if ((tenant as any)?.rrhh_nomina_supervisor_aprueba && user?.rol === 'SUPERVISOR') return true
+    return false
+  })()
+
+  // RH3/B7 — generar el gasto de la nómina en el módulo Gastos (estado pendiente)
+  const generarGastoNomina = useMutation({
+    mutationFn: async (salario: Salario) => {
+      if (!puedeAprobarNomina) throw new Error('Requiere aprobación de DUEÑO/ADMIN (doble validación activada)')
+      if (salario.gasto_id) throw new Error('Ya tiene un gasto generado')
+      const catSueldos = (await supabase.from('categorias_gasto').select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Sueldos').maybeSingle()).data?.id ?? null
+      const { data: gasto, error } = await supabase.from('gastos').insert({
+        tenant_id: tenant!.id,
+        descripcion: `Sueldo ${nombreEmpleado(salario.empleado)} — ${salario.periodo.slice(0, 7)}`,
+        monto: salario.neto,
+        categoria: 'Sueldos',
+        categoria_id: catSueldos,
+        fecha: new Date().toISOString().split('T')[0],
+        usuario_id: user?.id ?? null,
+        gasto_negocio: true,
+        deduce_ganancias: true,
+        monto_pagado: 0,
+        estado_pago: 'pendiente',
+        notas: `Nómina RRHH (pendiente de pago en Gastos)`,
+      }).select('id').single()
+      if (error) throw error
+      await supabase.from('rrhh_salarios').update({ gasto_id: gasto.id }).eq('id', salario.id)
+      logActividad({ entidad: 'nomina', entidad_id: salario.id, entidad_nombre: nombreEmpleado(salario.empleado), accion: 'editar', campo: 'gasto', pagina: '/rrhh' })
+    },
+    onSuccess: () => { toast.success('Gasto generado en Gastos (pendiente de pago)'); refetchSalarios(); qc.invalidateQueries({ queryKey: ['gastos'] }) },
+    onError: (err: any) => toast.error(err.message ?? 'Error al generar el gasto'),
+  })
+
+  // RH3/B7 — acumular las cargas sociales (aportes) del período en gastos por concepto
+  const generarCargasSociales = useMutation({
+    mutationFn: async () => {
+      if (!puedeAprobarNomina) throw new Error('Requiere aprobación de DUEÑO/ADMIN (doble validación activada)')
+      // sumar los ítems de aporte (DESCUENTO) de todas las liquidaciones del período
+      const salarioIds = salarios.map(s => s.id)
+      if (salarioIds.length === 0) throw new Error('No hay liquidaciones en el período')
+      const { data: items } = await supabase.from('rrhh_salario_items')
+        .select('descripcion, tipo, monto, concepto_id').in('salario_id', salarioIds).eq('tipo', 'DESCUENTO')
+      const aporteConceptIds = new Set(conceptosAporte.map(c => c.id))
+      const porConcepto = new Map<string, number>()
+      for (const it of (items ?? []) as any[]) {
+        if (!it.concepto_id || !aporteConceptIds.has(it.concepto_id)) continue
+        porConcepto.set(it.descripcion, (porConcepto.get(it.descripcion) ?? 0) + Number(it.monto || 0))
+      }
+      if (porConcepto.size === 0) throw new Error('No hay aportes en las liquidaciones del período')
+      const catCargas = (await supabase.from('categorias_gasto').select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Cargas sociales').maybeSingle()).data?.id ?? null
+      let n = 0
+      for (const [concepto, monto] of porConcepto) {
+        if (monto <= 0) continue
+        await supabase.from('gastos').insert({
+          tenant_id: tenant!.id,
+          descripcion: `${concepto} — ${nominaPeriodo.slice(0, 7)}`,
+          monto: Math.round(monto * 100) / 100,
+          categoria: 'Cargas sociales', categoria_id: catCargas,
+          fecha: new Date().toISOString().split('T')[0], usuario_id: user?.id ?? null,
+          gasto_negocio: true, deduce_ganancias: true, monto_pagado: 0, estado_pago: 'pendiente',
+          notas: `Aporte acumulado de nómina ${nominaPeriodo.slice(0, 7)}`,
+        })
+        n++
+      }
+      return n
+    },
+    onSuccess: (n) => { toast.success(`${n} gasto(s) de cargas sociales generados (pendientes)`); qc.invalidateQueries({ queryKey: ['gastos'] }) },
+    onError: (err: any) => toast.error(err.message ?? 'Error al generar cargas sociales'),
+  })
+
+  // RH3/B6 — recibo de sueldo PDF
+  const descargarRecibo = async (salario: Salario) => {
+    const { data: items } = await supabase.from('rrhh_salario_items')
+      .select('descripcion, tipo, monto').eq('salario_id', salario.id).order('tipo')
+    const emp = salario.empleado
+    const puesto = puestos.find(p => p.id === emp?.puesto_id)?.nombre ?? null
+    generarReciboSueldoPDF({
+      negocio: tenant?.nombre ?? 'Recibo',
+      cuit: (tenant as any)?.cuit ?? null,
+      empleado: nombreEmpleado(emp),
+      dni: emp?.dni_rut ?? null,
+      puesto,
+      periodo: salario.periodo,
+      basico: salario.basico,
+      items: (items ?? []) as any[],
+      totalHaberes: salario.total_haberes,
+      totalDescuentos: salario.total_descuentos,
+      neto: salario.neto,
+      moneda: (tenant as any)?.moneda ?? 'ARS',
+    })
+  }
+
+  // RH3/B6 — subir comprobante firmado de recepción del pago
+  const subirComprobanteFirmado = async (salario: Salario, file: File) => {
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `recibos/${salario.empleado_id}/${salario.id}_${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('empleados').upload(path, file, { upsert: true })
+      if (upErr) throw upErr
+      const { data: signed } = await supabase.storage.from('empleados').createSignedUrl(path, 60 * 60 * 24 * 365)
+      await supabase.from('rrhh_salarios').update({ comprobante_firmado_url: signed?.signedUrl ?? path }).eq('id', salario.id)
+      toast.success('Comprobante firmado adjuntado')
+      refetchSalarios()
+    } catch (err: any) { toast.error(err.message ?? 'Error al subir comprobante') }
+  }
 
   // ─── Vacaciones mutations ────────────────────────────────────────────────────
   const crearSolicitudVac = useMutation({
@@ -924,6 +1139,7 @@ export default function RrhhPage() {
         hora_salida: form.hora_salida || null,
         estado: form.estado,
         motivo: form.motivo || null,
+        tipo_licencia: form.estado === 'licencia' ? (form.tipo_licencia || null) : null,
       }
       if (editingAsistencia) {
         const { error } = await supabase.from('rrhh_asistencia').update(payload).eq('id', editingAsistencia.id)
@@ -940,7 +1156,7 @@ export default function RrhhPage() {
       toast.success(editingAsistencia ? 'Asistencia actualizada' : 'Asistencia registrada')
       setShowAsistForm(false)
       setEditingAsistencia(null)
-      setAsistForm({ empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), hora_entrada: '', hora_salida: '', estado: 'presente', motivo: '' })
+      setAsistForm({ empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), hora_entrada: '', hora_salida: '', estado: 'presente', motivo: '', tipo_licencia: '' })
       refetchAsistencias()
     },
     onError: (err: any) => toast.error(err.message ?? 'Error al guardar'),
@@ -955,12 +1171,62 @@ export default function RrhhPage() {
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
 
+  // RH6/D5 — horas extra del mes
+  const { data: horasExtra = [], refetch: refetchHorasExtra } = useQuery({
+    queryKey: ['rrhh-horas-extra', tenant?.id, asistFecha],
+    queryFn: async () => {
+      const desde = `${asistFecha}-01`
+      const hasta = `${asistFecha}-31`
+      const { data, error } = await supabase.from('rrhh_horas_extra')
+        .select('*, empleado:empleados(nombre, apellido, dni_rut, salario_bruto)')
+        .eq('tenant_id', tenant!.id).gte('fecha', desde).lte('fecha', hasta).order('fecha', { ascending: false })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && activeTab === 'asistencia',
+  })
+
+  const registrarHoraExtra = useMutation({
+    mutationFn: async (f: typeof horaExtraForm) => {
+      if (!f.empleado_id) throw new Error('Seleccioná un empleado')
+      if (!f.horas || parseFloat(f.horas) <= 0) throw new Error('Indicá las horas')
+      const requiereAprob = !!(tenant as any)?.rrhh_horas_extra_requiere_aprobacion
+      const { error } = await supabase.from('rrhh_horas_extra').insert({
+        tenant_id: tenant!.id, empleado_id: f.empleado_id, fecha: f.fecha,
+        horas: parseFloat(f.horas), multiplicador: parseInt(f.multiplicador) || 50,
+        aprobada: !requiereAprob,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Horas extra registradas')
+      setHoraExtraForm({ empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), horas: '', multiplicador: '50' })
+      refetchHorasExtra()
+    },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
+  const aprobarHoraExtra = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('rrhh_horas_extra').update({ aprobada: true, aprobada_por: user?.id ?? null }).eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Horas extra aprobadas'); refetchHorasExtra() },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
   // ─── Check-in rápido ────────────────────────────────────────────────────────
   const checkinRapido = useMutation({
-    mutationFn: async ({ tipo }: { tipo: 'entrada' | 'salida' }) => {
+    mutationFn: async ({ tipo, origen = 'manual' }: { tipo: 'entrada' | 'salida'; origen?: 'manual' | 'celular' | 'qr' }) => {
       if (!checkinEmpleadoId) throw new Error('Seleccioná un empleado')
       const hoy = format(new Date(), 'yyyy-MM-dd')
       const hora = format(new Date(), 'HH:mm')
+      // RH6/D1 — registrar la fichada en el ledger
+      const empSuc = empleados.find(e => e.id === checkinEmpleadoId)
+      await supabase.from('rrhh_fichadas').insert({
+        tenant_id: tenant!.id, empleado_id: checkinEmpleadoId,
+        sucursal_id: (empSuc as any)?.sucursal_id ?? null, tipo, origen,
+      })
       if (asistenciaHoy) {
         const patch = tipo === 'entrada' ? { hora_entrada: hora, estado: 'presente' } : { hora_salida: hora }
         const { error } = await supabase.from('rrhh_asistencia').update(patch).eq('id', asistenciaHoy.id)
@@ -1031,7 +1297,7 @@ export default function RrhhPage() {
 
   // ─── Feriados mutations ──────────────────────────────────────────────────────
   const saveFeriado = useMutation({
-    mutationFn: async (form: { nombre: string; fecha: string; tipo: string }) => {
+    mutationFn: async (form: { nombre: string; fecha: string; tipo: string; regla_pago: string }) => {
       if (!form.nombre.trim()) throw new Error('Ingresá el nombre del feriado')
       if (!form.fecha) throw new Error('Indicá la fecha')
       const payload = {
@@ -1039,6 +1305,7 @@ export default function RrhhPage() {
         nombre: form.nombre.trim(),
         fecha: form.fecha,
         tipo: form.tipo,
+        regla_pago: form.regla_pago,
         created_by: user!.id,
       }
       if (editingFeriado) {
@@ -1053,7 +1320,7 @@ export default function RrhhPage() {
       toast.success(editingFeriado ? 'Feriado actualizado' : 'Feriado agregado')
       setShowFeriadoForm(false)
       setEditingFeriado(null)
-      setFeriadoForm({ nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional' })
+      setFeriadoForm({ nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional', regla_pago: 'doble' })
       refetchFeriados()
     },
     onError: (err: any) => toast.error(err.message ?? 'Error'),
@@ -1150,6 +1417,11 @@ export default function RrhhPage() {
       toast.error('Fecha de ingreso es requerida')
       return
     }
+    // RH1/A1 — obligatorios adicionales
+    if (!formData.email_personal?.trim()) { toast.error('Email es requerido'); return }
+    if (!formData.tel_personal?.trim()) { toast.error('Teléfono es requerido'); return }
+    if (!formData.puesto_id) { toast.error('Puesto es requerido'); return }
+    if (!formData.departamento_id) { toast.error('Departamento es requerido'); return }
     if (formData.user_id) {
       const yaVinculado = empleados.find(e => e.user_id === formData.user_id && e.id !== selectedEmpleado?.id)
       if (yaVinculado) {
@@ -1675,16 +1947,25 @@ export default function RrhhPage() {
                     </select>
                   </div>
 
-                  <select
-                    value={formData.tipo_contrato ?? 'INDEFINIDO'}
-                    onChange={(e) => setFormData({ ...formData, tipo_contrato: e.target.value })}
-                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
-                  >
-                    <option value="INDEFINIDO">Indefinido</option>
-                    <option value="PLAZO_FIJO">Plazo fijo</option>
-                    <option value="FREELANCE">Freelance</option>
-                    <option value="TEMPORAL">Temporal</option>
-                  </select>
+                  {/* RH1/A3 — tipo de contrato desde catálogo configurable */}
+                  <div className="flex gap-1.5">
+                    <select
+                      value={formData.tipo_contrato ?? ''}
+                      onChange={(e) => setFormData({ ...formData, tipo_contrato: e.target.value })}
+                      className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
+                    >
+                      <option value="">Tipo de contrato...</option>
+                      {tiposContrato.filter(t => t.activo).map(t => (
+                        <option key={t.id} value={t.nombre}>{t.nombre}</option>
+                      ))}
+                      {/* compat: tipos legacy del enum viejo */}
+                      {formData.tipo_contrato && !tiposContrato.some(t => t.nombre === formData.tipo_contrato) && (
+                        <option value={formData.tipo_contrato}>{formData.tipo_contrato}</option>
+                      )}
+                    </select>
+                    <button type="button" onClick={agregarTipoContrato} title="Agregar tipo de contrato"
+                      className="px-3 border border-gray-300 dark:border-gray-600 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20">+</button>
+                  </div>
 
                   <input
                     type="number" onWheel={e => e.currentTarget.blur()}
@@ -1693,6 +1974,92 @@ export default function RrhhPage() {
                     onChange={(e) => setFormData({ ...formData, salario_bruto: e.target.value ? parseFloat(e.target.value) : null })}
                     className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   />
+
+                  {/* RH1/A4 — datos bancarios (opcionales) */}
+                  <div className="col-span-2 grid grid-cols-2 gap-3 border-t border-gray-100 dark:border-gray-700 pt-3 mt-1">
+                    <p className="col-span-2 text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5"><CreditCard size={13} /> Datos bancarios (opcional)</p>
+                    <input type="text" placeholder="CBU" value={formData.cbu ?? ''}
+                      onChange={(e) => setFormData({ ...formData, cbu: e.target.value })}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg" />
+                    <input type="text" placeholder="Alias CBU" value={formData.alias_cbu ?? ''}
+                      onChange={(e) => setFormData({ ...formData, alias_cbu: e.target.value })}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg" />
+                    <input type="text" placeholder="Banco" value={formData.banco ?? ''}
+                      onChange={(e) => setFormData({ ...formData, banco: e.target.value })}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg" />
+                    <select value={formData.tipo_cuenta ?? ''}
+                      onChange={(e) => setFormData({ ...formData, tipo_cuenta: e.target.value || null })}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg">
+                      <option value="">Tipo de cuenta...</option>
+                      <option value="caja_ahorro">Caja de ahorro</option>
+                      <option value="cuenta_corriente">Cuenta corriente</option>
+                    </select>
+                    <input type="text" placeholder="Titular de la cuenta" value={formData.titular_cuenta ?? ''}
+                      onChange={(e) => setFormData({ ...formData, titular_cuenta: e.target.value })}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg col-span-2" />
+                  </div>
+
+                  {/* RH6/D2 — horario de trabajo */}
+                  <div className="col-span-2 grid grid-cols-2 gap-3 border-t border-gray-100 dark:border-gray-700 pt-3 mt-1">
+                    <p className="col-span-2 text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5"><Clock size={13} /> Horario de trabajo (opcional)</p>
+                    <div>
+                      <label className="text-[11px] text-gray-400 block mb-1">Entrada</label>
+                      <input type="time" value={formData.horario_entrada ?? ''} onChange={(e) => setFormData({ ...formData, horario_entrada: e.target.value || null })}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-400 block mb-1">Salida</label>
+                      <input type="time" value={formData.horario_salida ?? ''} onChange={(e) => setFormData({ ...formData, horario_salida: e.target.value || null })}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg" />
+                    </div>
+                  </div>
+
+                  {/* RH2/B4 — aportes activos del empleado + beneficios extra */}
+                  <div className="col-span-2 border-t border-gray-100 dark:border-gray-700 pt-3 mt-1 space-y-2">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5"><DollarSign size={13} /> Aportes y beneficios (nómina)</p>
+                    {conceptosAporte.length === 0 ? (
+                      <p className="text-[11px] text-gray-400">No hay conceptos marcados como "aporte". Configurá los % en Nómina → Catálogo de conceptos.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-3">
+                        {conceptosAporte.map(c => {
+                          const activo = (formData.config_aportes ?? []).includes(c.id)
+                          return (
+                            <label key={c.id} className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                              <input type="checkbox" checked={activo}
+                                onChange={(e) => {
+                                  const set = new Set(formData.config_aportes ?? [])
+                                  if (e.target.checked) set.add(c.id); else set.delete(c.id)
+                                  setFormData({ ...formData, config_aportes: [...set] })
+                                }} />
+                              {c.nombre}{c.default_pct ? ` (${c.default_pct}%)` : ''}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {/* Beneficios extra */}
+                    <div className="space-y-1.5">
+                      {(formData.beneficios_extra ?? []).map((b, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <input type="text" placeholder="Beneficio" value={b.nombre}
+                            onChange={(e) => setFormData({ ...formData, beneficios_extra: (formData.beneficios_extra ?? []).map((x, j) => j === i ? { ...x, nombre: e.target.value } : x) })}
+                            className="flex-1 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs" />
+                          <select value={b.tipo} onChange={(e) => setFormData({ ...formData, beneficios_extra: (formData.beneficios_extra ?? []).map((x, j) => j === i ? { ...x, tipo: e.target.value as 'monto' | 'porcentaje' } : x) })}
+                            className="px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs">
+                            <option value="monto">$</option>
+                            <option value="porcentaje">%</option>
+                          </select>
+                          <input type="number" onWheel={e => e.currentTarget.blur()} placeholder="Valor" value={b.valor}
+                            onChange={(e) => setFormData({ ...formData, beneficios_extra: (formData.beneficios_extra ?? []).map((x, j) => j === i ? { ...x, valor: parseFloat(e.target.value) || 0 } : x) })}
+                            className="w-24 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs" />
+                          <button type="button" onClick={() => setFormData({ ...formData, beneficios_extra: (formData.beneficios_extra ?? []).filter((_, j) => j !== i) })}
+                            className="text-red-500 text-xs">✕</button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => setFormData({ ...formData, beneficios_extra: [...(formData.beneficios_extra ?? []), { nombre: '', tipo: 'monto', valor: 0 }] })}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline">+ Beneficio extra</button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Buttons */}
@@ -1770,7 +2137,10 @@ export default function RrhhPage() {
                           <Edit size={16} />
                         </button>
                         <button
-                          onClick={() => toggleEmpleadoActivo.mutate(emp.id)}
+                          onClick={() => emp.activo
+                            ? setBajaEmpleado({ id: emp.id, nombre: nombreEmpleado(emp), motivo: 'renuncia', fecha: format(new Date(), 'yyyy-MM-dd') })
+                            : toggleEmpleadoActivo.mutate({ empId: emp.id })}
+                          title={emp.activo ? 'Dar de baja' : 'Reactivar'}
                           className={`${emp.activo ? 'text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400' : 'text-green-600 dark:text-green-400 hover:text-green-800 dark:text-green-400'}`}
                         >
                           {emp.activo ? <Trash2 size={16} /> : '✓'}
@@ -1780,6 +2150,37 @@ export default function RrhhPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* RH1/A2 — Modal de baja con motivo */}
+          {bajaEmpleado && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-4">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2"><UserX size={18} className="text-red-500" /> Dar de baja — {bajaEmpleado.nombre}</h3>
+                <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Motivo de egreso</label>
+                  <select value={bajaEmpleado.motivo} onChange={e => setBajaEmpleado({ ...bajaEmpleado, motivo: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    <option value="renuncia">Renuncia</option>
+                    <option value="despido_con_causa">Despido con causa</option>
+                    <option value="despido_sin_causa">Despido sin causa</option>
+                    <option value="fin_contrato">Fin de contrato</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Fecha de egreso</label>
+                  <input type="date" value={bajaEmpleado.fecha} onChange={e => setBajaEmpleado({ ...bajaEmpleado, fecha: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <p className="text-[11px] text-gray-400">El empleado queda inactivo (soft delete). Se puede reactivar después. La liquidación final se calcula en Reportes (RH8).</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setBajaEmpleado(null)}
+                    className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 dark:text-gray-300 text-sm">Cancelar</button>
+                  <button onClick={() => { toggleEmpleadoActivo.mutate({ empId: bajaEmpleado.id, motivo: bajaEmpleado.motivo, fecha: bajaEmpleado.fecha }); setBajaEmpleado(null) }}
+                    className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium">Dar de baja</button>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -2023,6 +2424,35 @@ export default function RrhhPage() {
             >
               <Plus size={16} /> Generar nómina del mes
             </button>
+            {/* RH2/B5 — aguinaldo (SAC) */}
+            <button onClick={() => generarSAC.mutate(1)} disabled={generarSAC.isPending}
+              title="SAC 1er semestre (jun) = 50% del mejor sueldo"
+              className="flex items-center gap-2 px-3 py-2 border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50 text-sm">
+              <DollarSign size={15} /> SAC 1° sem
+            </button>
+            <button onClick={() => generarSAC.mutate(2)} disabled={generarSAC.isPending}
+              title="SAC 2do semestre (dic) = 50% del mejor sueldo"
+              className="flex items-center gap-2 px-3 py-2 border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50 text-sm">
+              <DollarSign size={15} /> SAC 2° sem
+            </button>
+            {/* RH3/B7 — acumular cargas sociales del período en Gastos */}
+            <button onClick={() => generarCargasSociales.mutate()} disabled={generarCargasSociales.isPending || salarios.length === 0}
+              title="Acumular los aportes del período como gastos en Gastos (pendientes)"
+              className="flex items-center gap-2 px-3 py-2 border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-400 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50 text-sm">
+              <FileSpreadsheet size={15} /> Cargas sociales → Gastos
+            </button>
+            {/* RH3/B8 — doble validación (solo DUEÑO/ADMIN configura) */}
+            {(user?.rol === 'DUEÑO' || user?.rol === 'ADMIN') && (
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 px-2" title="Si está activo, solo DUEÑO/ADMIN puede generar el gasto/pagar la nómina">
+                <input type="checkbox" checked={!!(tenant as any)?.rrhh_nomina_doble_validacion}
+                  onChange={async (e) => {
+                    const v = e.target.checked
+                    const { data } = await supabase.from('tenants').update({ rrhh_nomina_doble_validacion: v }).eq('id', tenant!.id).select().single()
+                    if (data) setTenant(data as any)
+                  }} />
+                Doble validación
+              </label>
+            )}
 
             {/* Selector caja + método de pago */}
             {cajaSesiones.length > 0 && (
@@ -2130,6 +2560,29 @@ export default function RrhhPage() {
                           <DollarSign size={13}/> Pagar
                         </button>
                       )}
+                      {/* RH3 — recibo PDF + generar gasto (B6/B7) */}
+                      <button onClick={() => descargarRecibo(sal)} title="Recibo de sueldo PDF"
+                        className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <Download size={13}/> Recibo
+                      </button>
+                      {sal.gasto_id ? (
+                        <span className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-lg text-xs font-medium" title="Gasto generado en módulo Gastos">
+                          <FileSpreadsheet size={12}/> En Gastos
+                        </span>
+                      ) : (
+                        <button onClick={() => generarGastoNomina.mutate(sal)} disabled={generarGastoNomina.isPending}
+                          title="Generar el gasto en el módulo Gastos (pendiente de pago)"
+                          className="flex items-center gap-1 px-2.5 py-1.5 border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-400 rounded-lg text-xs hover:bg-purple-50 dark:hover:bg-purple-900/20 disabled:opacity-50">
+                          <FileSpreadsheet size={12}/> Generar gasto
+                        </button>
+                      )}
+                      {/* RH3/B6 — comprobante firmado (opcional) */}
+                      <label title={sal.comprobante_firmado_url ? 'Comprobante firmado adjunto' : 'Adjuntar comprobante firmado'}
+                        className={`flex items-center gap-1 px-2.5 py-1.5 border rounded-lg text-xs cursor-pointer ${sal.comprobante_firmado_url ? 'border-green-300 dark:border-green-700 text-green-600 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                        <Paperclip size={12}/> {sal.comprobante_firmado_url ? 'Firmado ✓' : 'Firma'}
+                        <input type="file" accept="image/*,application/pdf" className="hidden"
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) subirComprobanteFirmado(sal, f); e.currentTarget.value = '' }} />
+                      </label>
                     </div>
 
                     {/* Items expandidos */}
@@ -2235,36 +2688,60 @@ export default function RrhhPage() {
             {showConceptoForm && (
               <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-4">
                 {/* Form */}
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
                   <input type="text" placeholder="Nombre del concepto"
                     value={conceptoForm.nombre} onChange={(e) => setConceptoForm({ ...conceptoForm, nombre: e.target.value })}
-                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm flex-1" />
+                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm col-span-2" />
                   <select value={conceptoForm.tipo} onChange={(e) => setConceptoForm({ ...conceptoForm, tipo: e.target.value as 'HABER' | 'DESCUENTO' })}
                     className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
                     <option value="HABER">Haber</option>
                     <option value="DESCUENTO">Descuento</option>
                   </select>
-                  <button onClick={() => saveConcepto.mutate(conceptoForm)} disabled={saveConcepto.isPending || !conceptoForm.nombre.trim()}
-                    className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
-                    {editingConcepto ? 'Actualizar' : 'Agregar'}
-                  </button>
-                  {editingConcepto && (
-                    <button onClick={() => { setEditingConcepto(null); setConceptoForm({ nombre: '', tipo: 'HABER' }) }}
-                      className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      Cancelar
-                    </button>
+                  <select value={conceptoForm.tipo_calculo} onChange={(e) => setConceptoForm({ ...conceptoForm, tipo_calculo: e.target.value as any })}
+                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
+                    <option value="fijo">Monto fijo</option>
+                    <option value="porcentaje">% del básico</option>
+                    <option value="sobre_bruto">% sobre bruto</option>
+                  </select>
+                  {conceptoForm.tipo_calculo === 'fijo' ? (
+                    <input type="number" onWheel={e => e.currentTarget.blur()} placeholder="Monto" value={conceptoForm.default_monto}
+                      onChange={(e) => setConceptoForm({ ...conceptoForm, default_monto: e.target.value })}
+                      className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm" />
+                  ) : (
+                    <input type="number" onWheel={e => e.currentTarget.blur()} placeholder="%" value={conceptoForm.default_pct}
+                      onChange={(e) => setConceptoForm({ ...conceptoForm, default_pct: e.target.value })}
+                      className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm" />
                   )}
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                    <input type="checkbox" checked={conceptoForm.es_aporte} onChange={(e) => setConceptoForm({ ...conceptoForm, es_aporte: e.target.checked })} />
+                    Aporte (por empleado)
+                  </label>
+                  <div className="col-span-2 md:col-span-6 flex gap-2">
+                    <button onClick={() => saveConcepto.mutate(conceptoForm)} disabled={saveConcepto.isPending || !conceptoForm.nombre.trim()}
+                      className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">
+                      {editingConcepto ? 'Actualizar' : 'Agregar'}
+                    </button>
+                    {editingConcepto && (
+                      <button onClick={() => { setEditingConcepto(null); setConceptoForm({ nombre: '', tipo: 'HABER', tipo_calculo: 'fijo', default_pct: '', default_monto: '', es_aporte: false }) }}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
                 </div>
                 {/* Lista */}
                 <div className="divide-y divide-gray-200 dark:divide-gray-700">
                   {conceptos.map(c => (
                     <div key={c.id} className="flex items-center gap-3 py-2">
                       <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.tipo === 'HABER' ? 'bg-green-400' : 'bg-red-400'}`}/>
-                      <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">{c.nombre}</span>
+                      <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">{c.nombre}
+                        {c.es_aporte && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">aporte</span>}
+                        {(c.default_pct || c.default_monto) && <span className="ml-1.5 text-xs text-gray-400">{c.default_pct ? `${c.default_pct}%` : `$${c.default_monto}`}</span>}
+                      </span>
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.tipo === 'HABER' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                         {c.tipo}
                       </span>
-                      <button onClick={() => { setEditingConcepto(c); setConceptoForm({ nombre: c.nombre, tipo: c.tipo }) }}
+                      <button onClick={() => { setEditingConcepto(c); setConceptoForm({ nombre: c.nombre, tipo: c.tipo, tipo_calculo: c.tipo_calculo ?? 'fijo', default_pct: c.default_pct != null ? String(c.default_pct) : '', default_monto: c.default_monto != null ? String(c.default_monto) : '', es_aporte: !!c.es_aporte }) }}
                         className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"><Edit size={14}/></button>
                       <button onClick={() => { if (confirm('¿Eliminar concepto?')) deleteConcepto.mutate(c.id) }}
                         className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"><Trash2 size={14}/></button>
@@ -2835,11 +3312,57 @@ export default function RrhhPage() {
             </div>
             <button onClick={() => {
               setEditingAsistencia(null)
-              setAsistForm({ empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), hora_entrada: '', hora_salida: '', estado: 'presente', motivo: '' })
+              setAsistForm({ empleado_id: '', fecha: format(new Date(), 'yyyy-MM-dd'), hora_entrada: '', hora_salida: '', estado: 'presente', motivo: '', tipo_licencia: '' })
               setShowAsistForm(true)
             }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
               <Plus size={16}/> Registrar asistencia
             </button>
+          </div>
+
+          {/* RH6/D5 — Horas extra */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 mb-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Clock size={15}/> Horas extra del mes</h3>
+            <div className="flex flex-wrap gap-2 items-end mb-3">
+              <select value={horaExtraForm.empleado_id} onChange={e => setHoraExtraForm({ ...horaExtraForm, empleado_id: e.target.value })}
+                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
+                <option value="">Empleado...</option>
+                {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>)}
+              </select>
+              <input type="date" value={horaExtraForm.fecha} onChange={e => setHoraExtraForm({ ...horaExtraForm, fecha: e.target.value })}
+                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm" />
+              <input type="number" onWheel={e => e.currentTarget.blur()} placeholder="Horas" value={horaExtraForm.horas} onChange={e => setHoraExtraForm({ ...horaExtraForm, horas: e.target.value })}
+                className="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm" />
+              <select value={horaExtraForm.multiplicador} onChange={e => setHoraExtraForm({ ...horaExtraForm, multiplicador: e.target.value })}
+                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
+                <option value="50">+50%</option>
+                <option value="100">+100%</option>
+              </select>
+              <button onClick={() => registrarHoraExtra.mutate(horaExtraForm)} disabled={registrarHoraExtra.isPending}
+                className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">Registrar</button>
+            </div>
+            {(horasExtra as any[]).length === 0 ? (
+              <p className="text-xs text-gray-400 italic">Sin horas extra registradas este mes.</p>
+            ) : (
+              <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                {(horasExtra as any[]).map(h => {
+                  const sh = sueldoHora(Number(h.empleado?.salario_bruto) || 0, Number((tenant as any)?.rrhh_horas_mes_base ?? 200))
+                  const monto = montoHorasExtra(Number(h.horas), sh, Number(h.multiplicador))
+                  return (
+                    <div key={h.id} className="flex items-center gap-3 py-2 text-sm">
+                      <span className="flex-1 text-gray-700 dark:text-gray-300">{[h.empleado?.nombre, h.empleado?.apellido].filter(Boolean).join(' ') || h.empleado?.dni_rut}</span>
+                      <span className="text-gray-400 text-xs">{format(new Date(h.fecha + 'T00:00:00'), 'dd/MM')}</span>
+                      <span className="text-xs">{h.horas}h +{h.multiplicador}%</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-200">${monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                      {h.aprobada ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Aprobada</span>
+                      ) : (
+                        <button onClick={() => aprobarHoraExtra.mutate(h.id)} className="text-xs px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20">Aprobar</button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* Modal crear/editar */}
@@ -2888,6 +3411,17 @@ export default function RrhhPage() {
                         className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2" />
                     </div>
                   </div>
+                  {/* RH6/D4 — tipo de licencia */}
+                  {asistForm.estado === 'licencia' && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Tipo de licencia</label>
+                      <select value={asistForm.tipo_licencia} onChange={(e) => setAsistForm({ ...asistForm, tipo_licencia: e.target.value })}
+                        className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
+                        <option value="">Sin especificar</option>
+                        {LICENCIA_TIPOS.map(l => <option key={l.v} value={l.v}>{l.t}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Motivo</label>
                     <input type="text" value={asistForm.motivo} onChange={(e) => setAsistForm({ ...asistForm, motivo: e.target.value })}
@@ -2956,7 +3490,7 @@ export default function RrhhPage() {
                               <div className="flex gap-1">
                                 <button onClick={() => {
                                   setEditingAsistencia(a)
-                                  setAsistForm({ empleado_id: a.empleado_id, fecha: a.fecha, hora_entrada: a.hora_entrada ?? '', hora_salida: a.hora_salida ?? '', estado: a.estado, motivo: a.motivo ?? '' })
+                                  setAsistForm({ empleado_id: a.empleado_id, fecha: a.fecha, hora_entrada: a.hora_entrada ?? '', hora_salida: a.hora_salida ?? '', estado: a.estado, motivo: a.motivo ?? '', tipo_licencia: (a as any).tipo_licencia ?? '' })
                                   setShowAsistForm(true)
                                 }} className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
                                   <Edit size={14}/>
@@ -3037,7 +3571,7 @@ export default function RrhhPage() {
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm disabled:opacity-50">
                     🇦🇷 AR 2026
                   </button>
-                  <button onClick={() => { setEditingFeriado(null); setFeriadoForm({ nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional' }); setShowFeriadoForm(true) }}
+                  <button onClick={() => { setEditingFeriado(null); setFeriadoForm({ nombre: '', fecha: format(new Date(), 'yyyy-MM-dd'), tipo: 'nacional', regla_pago: 'doble' }); setShowFeriadoForm(true) }}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
                     <Plus size={14}/> Agregar feriado
                   </button>
@@ -3073,6 +3607,16 @@ export default function RrhhPage() {
                           <option value="provincial">Provincial</option>
                           <option value="personalizado">Personalizado</option>
                           <option value="no_laborable">No laborable</option>
+                        </select>
+                      </div>
+                      {/* RH6/D6 — regla de pago del feriado trabajado */}
+                      <div className="col-span-2">
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Pago si se trabaja</label>
+                        <select value={feriadoForm.regla_pago} onChange={e => setFeriadoForm({ ...feriadoForm, regla_pago: e.target.value })}
+                          className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-white text-sm">
+                          <option value="simple">Simple (x1)</option>
+                          <option value="doble">Doble (x2)</option>
+                          <option value="triple">Triple (x3)</option>
                         </select>
                       </div>
                     </div>
@@ -3122,7 +3666,7 @@ export default function RrhhPage() {
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${tipoBadge[f.tipo] ?? tipoBadge.personalizado}`}>{f.tipo}</span>
                         {esRrhhAdmin && (
                           <>
-                            <button title="Editar" onClick={() => { setEditingFeriado(f); setFeriadoForm({ nombre: f.nombre, fecha: f.fecha, tipo: f.tipo }); setShowFeriadoForm(true) }}
+                            <button title="Editar" onClick={() => { setEditingFeriado(f); setFeriadoForm({ nombre: f.nombre, fecha: f.fecha, tipo: f.tipo, regla_pago: (f as any).regla_pago ?? 'doble' }); setShowFeriadoForm(true) }}
                               className="text-blue-600 dark:text-blue-400 hover:text-blue-800"><Edit size={14}/></button>
                             <button title="Eliminar" onClick={() => { if (confirm('¿Eliminar feriado?')) deleteFeriado.mutate(f.id) }}
                               className="text-red-500 hover:text-red-700"><Trash2 size={14}/></button>

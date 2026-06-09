@@ -6,9 +6,9 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-09] update | v1.45.0 DEV — Envíos EN7 (envío propio + recursos + reportes/alertas) — solo falta EN6
+## [2026-06-09] deploy | v1.45.0 PROD — Envíos EN7 (envío propio + recursos + reportes/alertas) — Envíos cerrado salvo EN6
 
-**EN7 implementado y en DEV** (mig 194 aplicada en DEV, build verde, suite **558** = 541 + 17). Cierra el módulo Envíos salvo EN6 (integraciones courier, bloqueado por cuentas B2B).
+**EN7 deployado a PROD** (mig 194 aplicada en DEV+PROD, PR #174 dev→main merged, release v1.45.0 latest, Vercel production deploy desde `main`). Build verde, suite **558** = 541 + 17. **Cierra el módulo Envíos salvo EN6** (integraciones courier, bloqueado por cuentas B2B reales que GO aún no tiene).
 
 - **G2 — Envío propio + vehículo + combustible:** el modal de envío propio permite asociar un **vehículo** (recurso categoría Vehículo) + KM del viaje. Desde el detalle del envío, "**Registrar combustible**" genera un **gasto "Combustible"** (IVA crédito fiscal, link `envios.gasto_combustible_id`), **suma los KM al vehículo** (`recursos.km_acumulado`) y estima el monto con `consumo_litros_100km × precio del litro` (`tenants.envio_combustible_precio_litro`, editable). El consumo se carga por vehículo en Recursos. Lib pura `enviosRecurso.ts`.
 - **H1 — Reportes (nuevo tab Reportes, `EnviosReportesPanel`):** pendientes/atrasados · cumplimiento por courier (tiempo medio + % entregados) · pagos a courier por mes · **margen logístico** (ingreso `ventas.costo_envio` − costo real, cuenta subsidiados) · distribución por zona/CP · productividad de repartidores (reusa `productividadRepartidor` de EN3). Lib pura `enviosReportes.ts`.
@@ -17,7 +17,7 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 - **Config → Envíos:** card "Envío propio y alertas" (precio litro + 4 umbrales). **Recursos:** campo "Consumo (L/100km)" en vehículos.
 - **Mig 194** (aditiva): `envios.recurso_id/km_recorridos/gasto_combustible_id`, `recursos.km_acumulado/consumo_litros_100km`, `tenants.envio_combustible_precio_litro` + 4 umbrales de alerta, seed idempotente de categoría "Combustible".
 
-**Pendiente:** deploy de v1.45.0 a PROD (aplicar mig 194 en PROD + PR dev→main + release). **EN6** sigue bloqueado hasta tener cuentas B2B de courier.
+**Único pendiente del módulo Envíos:** **EN6** (integraciones courier: tracking + cotización comparativa + etiquetas térmicas) — bloqueado hasta tener cuentas B2B reales de courier (Andreani 1ro) para validar los adapters de `courier-api`.
 
 ## [2026-06-09] update | Email saliente (Resend) RESUELTO — era API key vieja en el secret
 

@@ -2784,3 +2784,61 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_alerta_pago_courier_dias  INT
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_alerta_diferencia_pct     NUMERIC NOT NULL DEFAULT 15; -- H2-d
 -- Categoría de gasto "Combustible" (predefinida, mig 130 orden 90) garantizada para tenants viejos (idempotente).
 -- H1/H3 (reportes + export Excel/PDF/CSV + etiquetas A4 con QR) son solo frontend, sin DDL.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 195-198: RRHH RH1+RH2+RH3+RH6 (v1.46.0)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- RH1 (mig 195) — Empleados 2.0
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS motivo_egreso TEXT;       -- A2
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS cbu TEXT;                 -- A4
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS alias_cbu TEXT;
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS banco TEXT;
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS tipo_cuenta TEXT;
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS titular_cuenta TEXT;
+ALTER TABLE empleados DROP CONSTRAINT IF EXISTS empleados_tipo_contrato_check;  -- A3 (catálogo configurable)
+CREATE TABLE IF NOT EXISTS rrhh_tipos_contrato (  -- A3
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre TEXT NOT NULL, es_relacion_dependencia BOOLEAN NOT NULL DEFAULT TRUE, activo BOOLEAN NOT NULL DEFAULT TRUE,
+  predefinido BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE (tenant_id, nombre)
+);
+ALTER TABLE rrhh_tipos_contrato ENABLE ROW LEVEL SECURITY;  -- policy rrhh_tipos_contrato_tenant + seed base AR
+-- RH2 (mig 196) — Conceptos + aportes AR + SAC
+ALTER TABLE rrhh_conceptos ADD COLUMN IF NOT EXISTS pais TEXT;
+ALTER TABLE rrhh_conceptos ADD COLUMN IF NOT EXISTS predefinido BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE rrhh_conceptos ADD COLUMN IF NOT EXISTS tipo_calculo TEXT NOT NULL DEFAULT 'fijo';  -- fijo|porcentaje|sobre_bruto
+ALTER TABLE rrhh_conceptos ADD COLUMN IF NOT EXISTS default_pct NUMERIC;
+ALTER TABLE rrhh_conceptos ADD COLUMN IF NOT EXISTS default_monto NUMERIC;
+ALTER TABLE rrhh_conceptos ADD COLUMN IF NOT EXISTS es_aporte BOOLEAN NOT NULL DEFAULT FALSE;  -- B4 toggleable por empleado
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS config_aportes JSONB NOT NULL DEFAULT '[]'::jsonb;   -- B4 concepto_id activos
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS beneficios_extra JSONB NOT NULL DEFAULT '[]'::jsonb; -- B4
+-- (seed catálogo AR: Antigüedad/Presentismo/Jubilación 11%/Obra Social 3%/Ley 19.032 3%/Sindicato, idempotente)
+-- RH3 (mig 197) — Nómina contable + recibo + Gastos
+ALTER TABLE rrhh_salarios ADD COLUMN IF NOT EXISTS gasto_id UUID REFERENCES gastos(id) ON DELETE SET NULL;  -- B7
+ALTER TABLE rrhh_salarios ADD COLUMN IF NOT EXISTS comprobante_firmado_url TEXT;  -- B6
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_nomina_doble_validacion BOOLEAN NOT NULL DEFAULT FALSE;   -- B8
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_nomina_supervisor_aprueba BOOLEAN NOT NULL DEFAULT FALSE; -- B8
+-- (categorías de gasto "Sueldos" + "Cargas sociales" predefinidas, idempotente)
+-- RH6 (mig 198) — Asistencia 2.0
+CREATE TABLE IF NOT EXISTS rrhh_fichadas (  -- D1
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  empleado_id UUID NOT NULL REFERENCES empleados(id) ON DELETE CASCADE, sucursal_id UUID REFERENCES sucursales(id) ON DELETE SET NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('entrada','salida')), ts TIMESTAMPTZ NOT NULL DEFAULT NOW(), origen TEXT NOT NULL DEFAULT 'manual', created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE rrhh_fichadas ENABLE ROW LEVEL SECURITY;  -- policy rrhh_fichadas_tenant
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS horario_entrada TIME;  -- D2
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS horario_salida TIME;
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS dias_laborales JSONB NOT NULL DEFAULT '[1,2,3,4,5]'::jsonb;
+ALTER TABLE rrhh_asistencia ADD COLUMN IF NOT EXISTS tipo_licencia TEXT;    -- D4
+ALTER TABLE rrhh_asistencia ADD COLUMN IF NOT EXISTS comprobante_url TEXT;  -- D4
+ALTER TABLE rrhh_asistencia ADD COLUMN IF NOT EXISTS minutos_tarde INT;     -- D3
+CREATE TABLE IF NOT EXISTS rrhh_horas_extra (  -- D5
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  empleado_id UUID NOT NULL REFERENCES empleados(id) ON DELETE CASCADE, fecha DATE NOT NULL, horas NUMERIC NOT NULL DEFAULT 0,
+  multiplicador INT NOT NULL DEFAULT 50, aprobada BOOLEAN NOT NULL DEFAULT FALSE, aprobada_por UUID REFERENCES users(id) ON DELETE SET NULL, notas TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE rrhh_horas_extra ENABLE ROW LEVEL SECURITY;  -- policy rrhh_horas_extra_tenant
+ALTER TABLE rrhh_feriados ADD COLUMN IF NOT EXISTS regla_pago TEXT NOT NULL DEFAULT 'doble';  -- D6
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_tardanza_modo TEXT NOT NULL DEFAULT 'registrar';  -- D3
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_tardanza_tolerancia_min INT NOT NULL DEFAULT 0;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_horas_extra_requiere_aprobacion BOOLEAN NOT NULL DEFAULT TRUE;  -- D5
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_horas_mes_base INT NOT NULL DEFAULT 200;

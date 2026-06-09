@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-08] update | Envíos EN4 — costos y tarifas avanzados (v1.43.0, mig 192, PROD ✅)
+
+**Cuarta fase de Envíos en PROD.** Build + 529 tests verdes. Mig 192 (aditiva) en DEV y PROD. PR #172, release `v1.43.0`, `dev=main`.
+
+- **Motor de tarifas puro** `src/lib/enviosTarifas.ts`: `costoEnvioPropio` (B1 recargo franja horaria + B2 factor KM + B3 costo mínimo/tramos escalonados), `cobroCliente` (B4 cliente_100/cliente_margen/subsidio), `envioGratis` (B5 monto/etiqueta/promo), `diferenciaReal` (B6 a_favor/perdida).
+- **Config → Envíos** card "Tarifas y cobro del envío propio": factor KM, costo mínimo, editor de tramos, editor de recargo horario, política de cobro (+margen/umbral), envío gratis condicional (monto/etiquetas/promo). Campos en `tenants`: `envio_factor_km`, `envio_costo_minimo`, `envio_tramos`, `envio_recargo_horario`, `envio_cobro_politica`, `envio_cobro_margen_pct`, `envio_subsidio_umbral`, `envio_gratis_reglas`.
+- **Aplicación:** el cálculo de KM del envío propio (EnviosPage `calcularKmAuto`) ahora usa `costoEnvioPropio` (factor + mínimo + tramos + recargo horario según la hora acordada).
+- **B6:** modal "Registrar costo real" en cada envío con costo cotizado → calcula la diferencia a-favor/pérdida + motivo (catálogo `DIFERENCIA_MOTIVOS`), persiste `envios.costo_real/diferencia_tipo/diferencia_monto/diferencia_motivo`. El precio que pagó el cliente (`costo_cotizado`) NO se toca. +15 tests. **Próximo: EN5 (creación/alcance).**
+
+---
+
 ## [2026-06-08] update | Envíos EN3 — reparto: repartidores + hoja de ruta + transportista (v1.42.0, mig 191, PROD ✅)
 
 **Tercera fase de Envíos en PROD.** Build + 514 tests verdes. Mig 191 (aditiva) en DEV y PROD. PR #171, release `v1.42.0`, `dev=main`.

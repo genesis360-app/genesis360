@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.46.0 — RRHH RH1+RH2+RH3+RH6: empleados 2.0 · aportes/SAC · nómina contable · asistencia 2.0 (PROD ✅)
+
+RH1 empleados 2.0 (obligatorios, motivo de egreso + reactivar, **tipo de contrato configurable** drop CHECK, datos bancarios) · RH2 **aportes AR configurables por empleado** (checkbox, % en Config) + beneficios extra + **SAC = 50% del mejor sueldo del semestre** · RH3 **nómina contable** (pagar genera gasto en Gastos pendiente + cargas sociales por concepto + recibo PDF + comprobante firmado + doble validación) · RH6 **asistencia 2.0** (fichado, horario por empleado, licencias subdivididas + comprobante, horas extra 50/100%, feriados con regla de pago). Libs `rrhhNomina.ts` + `rrhhAsistencia.ts` + `reciboSueldoPDF.ts` + 20 tests → suite 578. Migs 195-198. **Pendientes RRHH: RH4/RH5/RH7/RH8 + (en RH6) QR público de fichado y auto-descuento de tardanza.**
+
+---
+
 ## v1.45.0 — Envíos EN7: envío propio + recursos + reportes/alertas (PROD ✅)
 
 G2 envío propio con **vehículo** (recurso) + KM + **combustible auto-gasto** (suma KM al recurso) · H1 tab **Reportes** (pendientes/atrasados, cumplimiento por courier, pagos/mes, **margen logístico**, distribución por zona/CP, productividad de repartidores) · H2 **Alertas** configurables · H3 export Excel/CSV/PDF + **etiquetas A4** con QR + hoja de ruta PDF. Libs `enviosRecurso.ts` + `enviosReportes.ts` + 17 tests → suite 558. Mig 194. **Cierra Envíos salvo EN6 (integraciones courier, bloqueado por cuentas B2B).**

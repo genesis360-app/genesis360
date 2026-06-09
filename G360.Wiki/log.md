@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-09] update | v1.45.0 DEV — Envíos EN7 (envío propio + recursos + reportes/alertas) — solo falta EN6
+
+**EN7 implementado y en DEV** (mig 194 aplicada en DEV, build verde, suite **558** = 541 + 17). Cierra el módulo Envíos salvo EN6 (integraciones courier, bloqueado por cuentas B2B).
+
+- **G2 — Envío propio + vehículo + combustible:** el modal de envío propio permite asociar un **vehículo** (recurso categoría Vehículo) + KM del viaje. Desde el detalle del envío, "**Registrar combustible**" genera un **gasto "Combustible"** (IVA crédito fiscal, link `envios.gasto_combustible_id`), **suma los KM al vehículo** (`recursos.km_acumulado`) y estima el monto con `consumo_litros_100km × precio del litro` (`tenants.envio_combustible_precio_litro`, editable). El consumo se carga por vehículo en Recursos. Lib pura `enviosRecurso.ts`.
+- **H1 — Reportes (nuevo tab Reportes, `EnviosReportesPanel`):** pendientes/atrasados · cumplimiento por courier (tiempo medio + % entregados) · pagos a courier por mes · **margen logístico** (ingreso `ventas.costo_envio` − costo real, cuenta subsidiados) · distribución por zona/CP · productividad de repartidores (reusa `productividadRepartidor` de EN3). Lib pura `enviosReportes.ts`.
+- **H2 — Alertas (sección del tab Reportes):** sin despachar +Nh · POD pendiente +Nd · pago courier pendiente +Nd · diferencia cotizado vs real ≥N%. Umbrales configurables (`tenants.envio_alerta_*`).
+- **H3 — Export + etiquetas:** Excel/CSV/PDF en cada reporte (patrón `ComprasReportesPanel`) + **etiquetas A4** 4/6/12 por hoja con QR (link `/transporte/:token`) + datos del destinatario (`etiquetasEnvioPDF.ts`, botón en tab Reparto) + hoja de ruta PDF (ya existía en EN3).
+- **Config → Envíos:** card "Envío propio y alertas" (precio litro + 4 umbrales). **Recursos:** campo "Consumo (L/100km)" en vehículos.
+- **Mig 194** (aditiva): `envios.recurso_id/km_recorridos/gasto_combustible_id`, `recursos.km_acumulado/consumo_litros_100km`, `tenants.envio_combustible_precio_litro` + 4 umbrales de alerta, seed idempotente de categoría "Combustible".
+
+**Pendiente:** deploy de v1.45.0 a PROD (aplicar mig 194 en PROD + PR dev→main + release). **EN6** sigue bloqueado hasta tener cuentas B2B de courier.
+
 ## [2026-06-09] update | Email saliente (Resend) RESUELTO — era API key vieja en el secret
 
 **El correo saliente quedó funcionando.** GO confirmó que le llegaron mails de Genesis. Causa real: el secret `RESEND_API_KEY` en Supabase era una **API key vieja/revocada** → Resend devolvía 401 "API key is invalid" (afectaba TODO el correo: ticket de venta, OC, etc.). NO era un problema de dominio (`genesis360.pro` estaba verificado DKIM/SPF) ni de código (FROM=noreply@genesis360.pro correcto en DEV v21 / PROD v24). GO regeneró la key en Resend y actualizó el secret → resuelto.

@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.45.0 — Envíos EN7: envío propio + recursos + reportes/alertas (DEV — pendiente PROD)
+
+G2 envío propio con **vehículo** (recurso) + KM + **combustible auto-gasto** (suma KM al recurso) · H1 tab **Reportes** (pendientes/atrasados, cumplimiento por courier, pagos/mes, **margen logístico**, distribución por zona/CP, productividad de repartidores) · H2 **Alertas** configurables · H3 export Excel/CSV/PDF + **etiquetas A4** con QR + hoja de ruta PDF. Libs `enviosRecurso.ts` + `enviosReportes.ts` + 17 tests → suite 558. Mig 194. **Cierra Envíos salvo EN6 (integraciones courier, bloqueado por cuentas B2B).**
+
+---
+
 ## v1.44.0 — Envíos EN5: creación y alcance (PROD ✅)
 
 A1 DEPOSITO crea envíos · A2 envíos libres sin venta (traslado/muestra/dev_proveedor) · A3 sugerencia de courier por CP · A4 plazo de despacho por canal + badge "Atrasado" · A5 múltiples envíos por venta con desglose (`envio_items`). Lib `enviosCreacion.ts` + 12 tests → suite 541. Mig 193.

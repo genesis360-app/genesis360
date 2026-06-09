@@ -35,6 +35,7 @@ const FORM_EMPTY = {
   nombre: '', descripcion: '', categoria: 'Tecnología', estado: 'activo' as Recurso['estado'],
   valor: '', fecha_adquisicion: '', proveedor_id: '', ubicacion: '',
   numero_serie: '', garantia_hasta: '', notas: '',
+  consumo_litros_100km: '',
   es_recurrente: false,
   frecuencia_valor: '1',
   frecuencia_unidad: 'semana' as 'dia' | 'semana' | 'mes' | 'año',
@@ -262,6 +263,7 @@ export default function RecursosPage() {
         numero_serie:        form.numero_serie.trim() || null,
         garantia_hasta:      form.garantia_hasta || null,
         notas:               form.notas.trim() || null,
+        consumo_litros_100km: form.categoria === 'Vehículo' && form.consumo_litros_100km ? parseFloat(form.consumo_litros_100km) : null,
         es_recurrente:       form.es_recurrente,
         frecuencia_valor:    form.es_recurrente ? fv : null,
         frecuencia_unidad:   form.es_recurrente ? form.frecuencia_unidad : null,
@@ -349,6 +351,7 @@ export default function RecursosPage() {
       numero_serie:        r.numero_serie ?? '',
       garantia_hasta:      r.garantia_hasta ?? '',
       notas:               r.notas ?? '',
+      consumo_litros_100km: (r as any).consumo_litros_100km != null ? String((r as any).consumo_litros_100km) : '',
       es_recurrente:       r.es_recurrente ?? false,
       frecuencia_valor:    r.frecuencia_valor != null ? String(r.frecuencia_valor) : '1',
       frecuencia_unidad:   r.frecuencia_unidad ?? 'semana',
@@ -788,6 +791,17 @@ export default function RecursosPage() {
                   className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary"
                   placeholder="0" min={0} />
               </div>
+              {/* EN7/G2 — consumo del vehículo (para auto-gasto de combustible en Envíos) */}
+              {form.categoria === 'Vehículo' && (
+                <div>
+                  <label className="text-xs font-medium text-muted mb-1 block">Consumo de combustible (litros / 100 km)</label>
+                  <input type="number" value={form.consumo_litros_100km} onChange={e => setForm(f => ({ ...f, consumo_litros_100km: e.target.value }))}
+                    onWheel={e => e.currentTarget.blur()}
+                    className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary"
+                    placeholder="ej. 8" min={0} step={0.1} />
+                  <p className="text-[11px] text-muted mt-1">Lo usa Envíos para estimar el gasto de combustible por viaje (con el precio del litro de Config → Envíos).</p>
+                </div>
+              )}
               {/* Proveedor */}
               <div>
                 <label className="text-xs font-medium text-muted mb-1 block">Proveedor</label>

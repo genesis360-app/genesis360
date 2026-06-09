@@ -2768,3 +2768,19 @@ CREATE TABLE IF NOT EXISTS envio_items (
 );
 ALTER TABLE envio_items ENABLE ROW LEVEL SECURITY;  -- policy envio_items_tenant
 -- A1 (DEPOSITO crea envíos) = solo permiso de UI (AppLayout depositoVisible + DEPOSITO_ALLOWED), sin DDL.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 194: Envíos · EN7 (Envío propio + recursos + reportes/alertas, G2 + H1/H2/H3)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS recurso_id           UUID REFERENCES recursos(id) ON DELETE SET NULL; -- G2 vehículo
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS km_recorridos        NUMERIC;                                          -- G2
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS gasto_combustible_id UUID REFERENCES gastos(id) ON DELETE SET NULL;   -- G2
+ALTER TABLE recursos ADD COLUMN IF NOT EXISTS km_acumulado         NUMERIC NOT NULL DEFAULT 0;  -- G2 odómetro
+ALTER TABLE recursos ADD COLUMN IF NOT EXISTS consumo_litros_100km NUMERIC;                     -- G2 rendimiento L/100km
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_combustible_precio_litro NUMERIC NOT NULL DEFAULT 0;  -- G2
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_alerta_sin_despacho_horas INT NOT NULL DEFAULT 24;    -- H2-a
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_alerta_pod_pendiente_dias INT NOT NULL DEFAULT 3;     -- H2-b
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_alerta_pago_courier_dias  INT NOT NULL DEFAULT 7;     -- H2-c
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_alerta_diferencia_pct     NUMERIC NOT NULL DEFAULT 15; -- H2-d
+-- Categoría de gasto "Combustible" (predefinida, mig 130 orden 90) garantizada para tenants viejos (idempotente).
+-- H1/H3 (reportes + export Excel/PDF/CSV + etiquetas A4 con QR) son solo frontend, sin DDL.

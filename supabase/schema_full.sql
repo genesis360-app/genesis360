@@ -2842,3 +2842,27 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_tardanza_modo TEXT NOT NULL DE
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_tardanza_tolerancia_min INT NOT NULL DEFAULT 0;
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_horas_extra_requiere_aprobacion BOOLEAN NOT NULL DEFAULT TRUE;  -- D5
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_horas_mes_base INT NOT NULL DEFAULT 200;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 199-200: RRHH RH4+RH5 (v1.47.0)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- RH4 (mig 199) — Frecuencia de liquidación + anticipos
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS frecuencia_liquidacion TEXT NOT NULL DEFAULT 'mensual';  -- B1 mensual|quincenal|semanal|personalizado
+ALTER TABLE empleados ADD COLUMN IF NOT EXISTS frecuencia_dias INT;  -- B1 (personalizado)
+CREATE TABLE IF NOT EXISTS rrhh_anticipos (  -- B10
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  empleado_id UUID NOT NULL REFERENCES empleados(id) ON DELETE CASCADE, monto NUMERIC NOT NULL DEFAULT 0, fecha DATE NOT NULL DEFAULT CURRENT_DATE,
+  motivo TEXT, gasto_id UUID REFERENCES gastos(id) ON DELETE SET NULL, descontado_en_salario_id UUID REFERENCES rrhh_salarios(id) ON DELETE SET NULL,
+  saldado BOOLEAN NOT NULL DEFAULT FALSE, created_by UUID REFERENCES users(id) ON DELETE SET NULL, created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE rrhh_anticipos ENABLE ROW LEVEL SECURITY;  -- policy rrhh_anticipos_tenant
+-- (categoría de gasto "Adelantos al personal" predefinida, idempotente)
+-- RH5 (mig 200) — Vacaciones 2.0
+ALTER TABLE rrhh_vacaciones_solicitud DROP CONSTRAINT IF EXISTS rrhh_vacaciones_solicitud_estado_check;  -- C2 (estados validados en app: pendiente|preaprobada|aprobada|rechazada)
+ALTER TABLE rrhh_vacaciones_solicitud ADD COLUMN IF NOT EXISTS preaprobado_por UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE rrhh_vacaciones_solicitud ADD COLUMN IF NOT EXISTS preaprobado_at TIMESTAMPTZ;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_vacaciones_flujo JSONB NOT NULL DEFAULT '{"supervisor":"preaprueba","rrhh":"aprueba"}'::jsonb;  -- C2
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_vacaciones_aviso JSONB NOT NULL DEFAULT '{"modo":"alerta","dias":30}'::jsonb;  -- C3
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_vacaciones_remanente_max INT NOT NULL DEFAULT 0;  -- C6
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_vacaciones_min_bloque INT NOT NULL DEFAULT 0;  -- C5
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_vacaciones_max_bloques INT NOT NULL DEFAULT 0;  -- C5

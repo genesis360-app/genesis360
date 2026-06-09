@@ -17,6 +17,8 @@ import { logActividad } from '@/lib/actividadLog'
 import { calcularItemsNomina, mejorSueldoSemestre, sacMejorSueldo, type ConceptoNomina } from '@/lib/rrhhNomina'
 import { generarReciboSueldoPDF } from '@/lib/reciboSueldoPDF'
 import { LICENCIA_TIPOS, montoHorasExtra, sueldoHora } from '@/lib/rrhhAsistencia'
+import { FRECUENCIAS, basicoProrrateado, anticiposADescontar } from '@/lib/rrhhLiquidacion'
+import { diasVacacionesLCT, antiguedadAnios, remanenteSiguiente, solapamientos, evaluarAviso } from '@/lib/rrhhVacaciones'
 import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -153,6 +155,9 @@ interface Empleado {
   // RH6/D2
   horario_entrada?: string | null
   horario_salida?: string | null
+  // RH4/B1
+  frecuencia_liquidacion?: string
+  frecuencia_dias?: number | null
   created_at: string
   updated_at: string
   // Joins
@@ -263,6 +268,9 @@ export default function RrhhPage() {
   const [medioPagoNomina, setMedioPagoNomina] = useState<'efectivo' | 'transferencia_banco' | 'mp'>('efectivo')
   const [historialEmpleadoId, setHistorialEmpleadoId] = useState<string>('')
   const [showHistorialSueldos, setShowHistorialSueldos] = useState(false)
+  // RH4/B10 — anticipos
+  const [anticipoForm, setAnticipoForm] = useState({ empleado_id: '', monto: '', motivo: '', generaGasto: true })
+  const [showAnticipos, setShowAnticipos] = useState(false)
 
   // Dashboard state
   const [dashMes, setDashMes] = useState(() => format(new Date(), 'yyyy-MM'))
@@ -817,20 +825,25 @@ export default function RrhhPage() {
   const crearLiquidacion = useMutation({
     mutationFn: async (emp: Empleado) => {
       const id = crypto.randomUUID()
-      const basico = emp.salario_bruto ?? 0
+      // RH4/B1 — prorratea el básico mensual según la frecuencia del empleado
+      const basico = basicoProrrateado(emp.salario_bruto ?? 0, emp.frecuencia_liquidacion ?? 'mensual', emp.frecuencia_dias)
       // RH2/B4 — inyecta sueldo básico + beneficios extra (HABER) + aportes activos del empleado (DESCUENTO)
-      const { items, totalHaberes, totalDescuentos, neto } = calcularItemsNomina(
-        basico, conceptosAporte, emp.config_aportes ?? [], emp.beneficios_extra ?? [],
-      )
+      const calc = calcularItemsNomina(basico, conceptosAporte, emp.config_aportes ?? [], emp.beneficios_extra ?? [])
+      const items = [...calc.items]
+      let totalDescuentos = calc.totalDescuentos
+      // RH4/B10 — descuenta anticipos pendientes del empleado (sin dejar neto negativo)
+      const { data: anticipos } = await supabase.from('rrhh_anticipos')
+        .select('id, monto').eq('tenant_id', tenant!.id).eq('empleado_id', emp.id).eq('saldado', false)
+      const netoSinAnticipo = calc.totalHaberes - calc.totalDescuentos
+      const desc = anticiposADescontar((anticipos ?? []) as any[], netoSinAnticipo)
+      if (desc.monto > 0) {
+        items.push({ concepto_id: null, descripcion: 'Descuento de anticipo', tipo: 'DESCUENTO', monto: desc.monto })
+        totalDescuentos = Math.round((totalDescuentos + desc.monto) * 100) / 100
+      }
+      const neto = Math.round((calc.totalHaberes - totalDescuentos) * 100) / 100
       const { error } = await supabase.from('rrhh_salarios').insert({
-        id,
-        tenant_id: tenant!.id,
-        empleado_id: emp.id,
-        periodo: nominaPeriodo,
-        basico,
-        total_haberes: totalHaberes,
-        total_descuentos: totalDescuentos,
-        neto,
+        id, tenant_id: tenant!.id, empleado_id: emp.id, periodo: nominaPeriodo,
+        basico, total_haberes: calc.totalHaberes, total_descuentos: totalDescuentos, neto,
       })
       if (error) throw error
       if (items.length > 0) {
@@ -838,9 +851,13 @@ export default function RrhhPage() {
           items.map(it => ({ tenant_id: tenant!.id, salario_id: id, concepto_id: it.concepto_id, descripcion: it.descripcion, tipo: it.tipo, monto: it.monto })),
         )
       }
+      // marcar los anticipos saldados completos
+      if (desc.saldadosIds.length > 0) {
+        await supabase.from('rrhh_anticipos').update({ saldado: true, descontado_en_salario_id: id }).in('id', desc.saldadosIds)
+      }
       logActividad({ entidad: 'nomina', entidad_id: id, entidad_nombre: nombreEmpleado(emp), accion: 'crear', pagina: '/rrhh' })
     },
-    onSuccess: () => { toast.success('Liquidación creada'); refetchSalarios() },
+    onSuccess: () => { toast.success('Liquidación creada'); refetchSalarios(); qc.invalidateQueries({ queryKey: ['rrhh-anticipos'] }) },
     onError: (err: any) => toast.error(err.message ?? 'Error al crear liquidación'),
   })
 
@@ -1018,6 +1035,46 @@ export default function RrhhPage() {
     onError: (err: any) => toast.error(err.message ?? 'Error al generar cargas sociales'),
   })
 
+  // RH4/B10 — anticipos pendientes (se descuentan en la próxima liquidación)
+  const { data: anticiposPend = [], refetch: refetchAnticipos } = useQuery({
+    queryKey: ['rrhh-anticipos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('rrhh_anticipos')
+        .select('*, empleado:empleados(nombre, apellido, dni_rut)')
+        .eq('tenant_id', tenant!.id).eq('saldado', false).order('fecha', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant && activeTab === 'nomina',
+  })
+
+  const registrarAnticipo = useMutation({
+    mutationFn: async (f: { empleado_id: string; monto: string; motivo: string; generaGasto: boolean }) => {
+      if (!f.empleado_id) throw new Error('Seleccioná un empleado')
+      const monto = parseFloat(f.monto) || 0
+      if (monto <= 0) throw new Error('Indicá el monto del anticipo')
+      let gastoId: string | null = null
+      if (f.generaGasto) {
+        const catId = (await supabase.from('categorias_gasto').select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Adelantos al personal').maybeSingle()).data?.id ?? null
+        const emp = empleados.find(e => e.id === f.empleado_id)
+        const { data: gasto } = await supabase.from('gastos').insert({
+          tenant_id: tenant!.id, descripcion: `Anticipo ${nombreEmpleado(emp)}`, monto,
+          categoria: 'Adelantos al personal', categoria_id: catId,
+          fecha: new Date().toISOString().split('T')[0], usuario_id: user?.id ?? null,
+          gasto_negocio: true, deduce_ganancias: false, monto_pagado: 0, estado_pago: 'pendiente',
+          notas: f.motivo || 'Anticipo a empleado (se descuenta de la próxima liquidación)',
+        }).select('id').single()
+        gastoId = gasto?.id ?? null
+      }
+      const { error } = await supabase.from('rrhh_anticipos').insert({
+        tenant_id: tenant!.id, empleado_id: f.empleado_id, monto, motivo: f.motivo || null,
+        gasto_id: gastoId, created_by: user?.id ?? null,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Anticipo registrado'); refetchAnticipos(); qc.invalidateQueries({ queryKey: ['gastos'] }) },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
   // RH3/B6 — recibo de sueldo PDF
   const descargarRecibo = async (salario: Salario) => {
     const { data: items } = await supabase.from('rrhh_salario_items')
@@ -1084,12 +1141,27 @@ export default function RrhhPage() {
 
   const aprobarVacacion = useMutation({
     mutationFn: async (solicitudId: string) => {
+      // RH5/C3+C4 — chequear plazo de aviso y solapamiento antes de aprobar (alerta, no bloqueo duro)
+      const sol = (vacSolicitudes as any[]).find(s => s.id === solicitudId)
+      if (sol) {
+        const aviso = (tenant as any)?.rrhh_vacaciones_aviso ?? { modo: 'alerta', dias: 30 }
+        const ev = evaluarAviso(new Date().toISOString().split('T')[0], sol.desde, aviso)
+        if (!ev.ok) throw new Error(`Plazo de aviso insuficiente (${ev.diasAnticipacion}d, se piden ${aviso.dias}d)`)
+        if (ev.aviso && !window.confirm(`Aviso: la solicitud se pidió con ${ev.diasAnticipacion} días (mín. recomendado ${aviso.dias}). ¿Aprobar igual?`)) {
+          throw new Error('__cancelado__')
+        }
+        const otras = (vacSolicitudes as any[]).filter(s => s.id !== solicitudId && s.estado === 'aprobada')
+        const solap = solapamientos({ desde: sol.desde, hasta: sol.hasta }, otras)
+        if (solap.length > 0 && !window.confirm(`Hay ${solap.length} empleado(s) ya aprobado(s) en ese período. ¿Aprobar igual?`)) {
+          throw new Error('__cancelado__')
+        }
+      }
       const { error } = await supabase.rpc('aprobar_vacacion', { p_solicitud_id: solicitudId, p_user_id: user!.id })
       if (error) throw error
       logActividad({ entidad: 'vacacion', entidad_id: solicitudId, accion: 'cambio_estado', valor_nuevo: 'aprobada', pagina: '/rrhh' })
     },
     onSuccess: () => { toast.success('Vacación aprobada'); refetchVacSolicitudes(); refetchVacSaldos() },
-    onError: (err: any) => toast.error(err.message ?? 'Error al aprobar'),
+    onError: (err: any) => { if (err.message !== '__cancelado__') toast.error(err.message ?? 'Error al aprobar') },
   })
 
   const rechazarVacacion = useMutation({
@@ -1975,6 +2047,19 @@ export default function RrhhPage() {
                     className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg"
                   />
 
+                  {/* RH4/B1 — frecuencia de liquidación (prorratea el básico) */}
+                  <div className="flex gap-1.5">
+                    <select value={formData.frecuencia_liquidacion ?? 'mensual'} onChange={(e) => setFormData({ ...formData, frecuencia_liquidacion: e.target.value })}
+                      className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg">
+                      {FRECUENCIAS.map(f => <option key={f.v} value={f.v}>{f.t}</option>)}
+                    </select>
+                    {formData.frecuencia_liquidacion === 'personalizado' && (
+                      <input type="number" onWheel={e => e.currentTarget.blur()} placeholder="días" value={formData.frecuencia_dias ?? ''}
+                        onChange={(e) => setFormData({ ...formData, frecuencia_dias: e.target.value ? parseInt(e.target.value) : null })}
+                        className="w-20 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg" />
+                    )}
+                  </div>
+
                   {/* RH1/A4 — datos bancarios (opcionales) */}
                   <div className="col-span-2 grid grid-cols-2 gap-3 border-t border-gray-100 dark:border-gray-700 pt-3 mt-1">
                     <p className="col-span-2 text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5"><CreditCard size={13} /> Datos bancarios (opcional)</p>
@@ -2753,6 +2838,49 @@ export default function RrhhPage() {
             )}
           </div>
 
+          {/* RH4/B10 — Anticipos a empleados */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <button onClick={() => setShowAnticipos(v => !v)}
+              className="w-full flex items-center justify-between px-5 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+              <span className="flex items-center gap-2"><DollarSign size={15}/> Anticipos / adelantos {(anticiposPend as any[]).length > 0 && <span className="text-xs px-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{(anticiposPend as any[]).length} pend.</span>}</span>
+              <ChevronDown size={14} className={`transition-transform ${showAnticipos ? 'rotate-180' : ''}`} />
+            </button>
+            {showAnticipos && (
+              <div className="border-t border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                <div className="flex flex-wrap gap-2 items-end">
+                  <select value={anticipoForm.empleado_id} onChange={e => setAnticipoForm({ ...anticipoForm, empleado_id: e.target.value })}
+                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm">
+                    <option value="">Empleado...</option>
+                    {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>)}
+                  </select>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} placeholder="Monto" value={anticipoForm.monto} onChange={e => setAnticipoForm({ ...anticipoForm, monto: e.target.value })}
+                    className="w-28 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm" />
+                  <input type="text" placeholder="Motivo (opcional)" value={anticipoForm.motivo} onChange={e => setAnticipoForm({ ...anticipoForm, motivo: e.target.value })}
+                    className="flex-1 min-w-[140px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm" />
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                    <input type="checkbox" checked={anticipoForm.generaGasto} onChange={e => setAnticipoForm({ ...anticipoForm, generaGasto: e.target.checked })} /> Genera gasto
+                  </label>
+                  <button onClick={() => registrarAnticipo.mutate(anticipoForm, { onSuccess: () => setAnticipoForm({ empleado_id: '', monto: '', motivo: '', generaGasto: true }) })} disabled={registrarAnticipo.isPending}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">Registrar</button>
+                </div>
+                {(anticiposPend as any[]).length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">Sin anticipos pendientes. Se descuentan automáticamente al generar la próxima liquidación.</p>
+                ) : (
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {(anticiposPend as any[]).map(a => (
+                      <div key={a.id} className="flex items-center gap-3 py-2 text-sm">
+                        <span className="flex-1 text-gray-700 dark:text-gray-300">{[a.empleado?.nombre, a.empleado?.apellido].filter(Boolean).join(' ') || a.empleado?.dni_rut}</span>
+                        <span className="text-gray-400 text-xs">{format(new Date(a.fecha + 'T00:00:00'), 'dd/MM')}</span>
+                        {a.motivo && <span className="text-xs text-gray-400 truncate max-w-[160px]">{a.motivo}</span>}
+                        <span className="font-medium text-amber-600 dark:text-amber-400">${Number(a.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Historial de sueldos por empleado */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             <button
@@ -3066,6 +3194,46 @@ export default function RrhhPage() {
             </button>
           </div>
 
+          {/* RH5/C3+C6 — config de vacaciones (DUEÑO/RRHH) */}
+          {(user?.rol === 'DUEÑO' || user?.rol === 'ADMIN' || user?.rol === 'RRHH') && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 flex flex-wrap items-end gap-4 text-sm">
+              <span className="font-semibold text-gray-700 dark:text-gray-300">Reglas:</span>
+              <div>
+                <label className="block text-[11px] text-gray-400 mb-1">Plazo de aviso</label>
+                <div className="flex gap-1.5">
+                  <select value={(tenant as any)?.rrhh_vacaciones_aviso?.modo ?? 'alerta'}
+                    onChange={async (e) => {
+                      const aviso = { ...((tenant as any)?.rrhh_vacaciones_aviso ?? { dias: 30 }), modo: e.target.value }
+                      const { data } = await supabase.from('tenants').update({ rrhh_vacaciones_aviso: aviso }).eq('id', tenant!.id).select().single()
+                      if (data) setTenant(data as any)
+                    }}
+                    className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm">
+                    <option value="sin">Sin plazo</option>
+                    <option value="alerta">Solo alerta</option>
+                    <option value="fijo">Bloquear</option>
+                  </select>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} value={(tenant as any)?.rrhh_vacaciones_aviso?.dias ?? 30}
+                    onChange={async (e) => {
+                      const aviso = { ...((tenant as any)?.rrhh_vacaciones_aviso ?? { modo: 'alerta' }), dias: parseInt(e.target.value) || 0 }
+                      const { data } = await supabase.from('tenants').update({ rrhh_vacaciones_aviso: aviso }).eq('id', tenant!.id).select().single()
+                      if (data) setTenant(data as any)
+                    }}
+                    className="w-16 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm" title="días" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] text-gray-400 mb-1">Remanente máx. arrastrable</label>
+                <input type="number" onWheel={e => e.currentTarget.blur()} value={(tenant as any)?.rrhh_vacaciones_remanente_max ?? 0}
+                  onChange={async (e) => {
+                    const { data } = await supabase.from('tenants').update({ rrhh_vacaciones_remanente_max: parseInt(e.target.value) || 0 }).eq('id', tenant!.id).select().single()
+                    if (data) setTenant(data as any)
+                  }}
+                  className="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm" title="0 = sin límite" />
+              </div>
+              <span className="text-[11px] text-gray-400">0 = sin límite. Las vacaciones se pagan dentro del sueldo del mes (C7).</span>
+            </div>
+          )}
+
           {/* Modal nueva solicitud */}
           {showVacForm && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -3184,13 +3352,35 @@ export default function RrhhPage() {
                       </h3>
                       <div className="space-y-3">
                         <div>
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Días totales asignados</label>
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center justify-between">
+                            Días totales asignados
+                            {/* RH5/C1 — sugerencia por antigüedad LCT */}
+                            {(() => {
+                              const emp = editingSaldo.empleado ?? empleados.find(e => e.id === editingSaldo.empleado_id)
+                              const ing = (emp as any)?.fecha_ingreso
+                              if (!ing) return null
+                              const sug = diasVacacionesLCT(antiguedadAnios(ing, `${vacAnio}-12-31`))
+                              return <button type="button" onClick={() => setSaldoForm({ ...saldoForm, dias_totales: String(sug) })}
+                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Sugerir LCT: {sug}d</button>
+                            })()}
+                          </label>
                           <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={saldoForm.dias_totales}
                             onChange={(e) => setSaldoForm({ ...saldoForm, dias_totales: e.target.value })}
                             className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2" />
                         </div>
                         <div>
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Remanente del año anterior</label>
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center justify-between">
+                            Remanente del año anterior
+                            {/* RH5/C6 — auto-calcular desde el saldo del año anterior */}
+                            {(() => {
+                              const prev = (vacSaldos as any[]).find(s => s.empleado_id === editingSaldo.empleado_id && s.anio === vacAnio - 1)
+                              if (!prev) return null
+                              const max = Number((tenant as any)?.rrhh_vacaciones_remanente_max ?? 0)
+                              const rem = remanenteSiguiente(prev.dias_totales, prev.dias_usados, prev.remanente_anterior, max)
+                              return <button type="button" onClick={() => setSaldoForm({ ...saldoForm, remanente_anterior: String(rem) })}
+                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Auto: {rem}d{max > 0 ? ` (máx ${max})` : ''}</button>
+                            })()}
+                          </label>
                           <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={saldoForm.remanente_anterior}
                             onChange={(e) => setSaldoForm({ ...saldoForm, remanente_anterior: e.target.value })}
                             className="mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2" />

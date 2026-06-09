@@ -23,12 +23,13 @@ import { cotizarEnvio, generarEnvioCourier, trackingEnvioCourier, type Cotizacio
 import { agruparPagosPorCourier, desgloseIvaFlete, requiereDobleFirma, diffFactura } from '@/lib/enviosCourierPago'
 import SignaturePad from '@/components/SignaturePad'
 import { podFaltantes, SUBESTADOS_NO_ENTREGA, resolverNoEntrega, type SubestadoNoEntrega } from '@/lib/enviosPod'
+import { productividadRepartidor, cumplimientoDia, ordenarHojaRuta, tokenExpiraAt } from '@/lib/enviosReparto'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'en_bodega' | 'entregado' | 'devolucion' | 'cancelado'
-type TabEnvio = 'envios' | 'pagos' | 'facturas'
+type TabEnvio = 'envios' | 'pagos' | 'facturas' | 'reparto'
 
 const MEDIOS_PAGO_COURIER = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro']
 
@@ -68,6 +69,8 @@ interface FormEnvio {
   rango_horario_idx: string
   // POD — Prueba de entrega
   pod_fecha: string; pod_receptor: string; pod_notas: string; pod_url: string
+  // EN3 — repartidor asignado (envío propio)
+  repartidor_id: string
 }
 const FORM_VACIO: FormEnvio = {
   venta_id: '', cliente_nombre: '',
@@ -77,7 +80,7 @@ const FORM_VACIO: FormEnvio = {
   costo_cotizado: '', fecha_entrega_acordada: '', hora_entrega_acordada: '',
   zona_entrega: '', notas: '',
   pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '',
-  rango_horario_idx: '',
+  rango_horario_idx: '', repartidor_id: '',
 }
 
 export default function EnviosPage() {
@@ -302,6 +305,39 @@ export default function EnviosPage() {
     enabled: !!tenant && !!sucursalId && tab === 'pagos',
   })
 
+  // EN3/G1 — repartidores activos (asignación + reparto)
+  const { data: repartidores = [] } = useQuery({
+    queryKey: ['repartidores-envio', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('repartidores')
+        .select('id, nombre, telefono, vehiculo, activo').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
+  // EN3/G3 — hoja de ruta (estado de la pestaña Reparto)
+  const [hrFecha, setHrFecha] = useState(new Date().toISOString().split('T')[0])
+  const [hrRepartidor, setHrRepartidor] = useState('')
+  const [hrGuardando, setHrGuardando] = useState(false)
+
+  const { data: enviosReparto = [] } = useQuery({
+    queryKey: ['envios-reparto', tenant?.id, sucursalId, hrFecha, hrRepartidor],
+    queryFn: async () => {
+      let q = supabase.from('envios')
+        .select('id, numero, estado, repartidor_id, zona_entrega, hora_entrega_acordada, fecha_entrega_acordada, token_transportista, ventas(numero, numero_sucursal, sucursal_id, clientes(nombre, telefono)), cliente_domicilios(calle, numero, ciudad)')
+        .eq('tenant_id', tenant!.id)
+        .eq('courier', 'Envío propio')
+        .order('hora_entrega_acordada', { ascending: true })
+      q = applyFilter(q)
+      if (hrRepartidor) q = q.eq('repartidor_id', hrRepartidor)
+      const { data } = await q
+      // filtrar por fecha de entrega acordada = hrFecha (o sin fecha)
+      return (data ?? []).filter((e: any) => !hrFecha || !e.fecha_entrega_acordada || e.fecha_entrega_acordada === hrFecha)
+    },
+    enabled: !!tenant && tab === 'reparto',
+  })
+
   // EN1/C3 — facturas del courier cargadas (conciliación)
   const { data: courierFacturas = [] } = useQuery({
     queryKey: ['courier-facturas', tenant?.id, sucursalId],
@@ -444,6 +480,7 @@ export default function EnviosPage() {
         pod_receptor: form.pod_receptor.trim() || null,
         pod_notas: form.pod_notas.trim() || null,
         pod_url: form.pod_url.trim() || null,
+        repartidor_id: form.repartidor_id || null,
         created_by: user?.id,
       }
       if (editId) {
@@ -483,9 +520,22 @@ export default function EnviosPage() {
       const { error } = await supabase.from('envios').update({ estado }).eq('id', id)
       if (error) throw error
     },
-    onSuccess: (_, { estado }) => {
+    onSuccess: (_, { estado, envio }) => {
       toast.success(`Estado: ${ESTADO_CFG[estado].label}`)
       qc.invalidateQueries({ queryKey: ['envios'] })
+      // EN3/E5 — notificación "en camino" al cliente por WhatsApp (configurable)
+      if (estado === 'en_camino') {
+        const modo = (tenant as any)?.envio_notif_en_camino ?? 'wa'
+        const tel = envio?.ventas?.clientes?.telefono
+        if (modo !== 'no' && tel) {
+          let msg = `¡Hola! Tu pedido ${envio.ventas ? formatVentaNum(envio.ventas) : `#${envio.numero ?? ''}`} de ${tenant?.nombre ?? BRAND.name} está en camino.`
+          if (modo === 'wa_tracking' && envio.token_transportista) {
+            msg += ` Seguí la entrega acá: ${(import.meta as any).env?.VITE_APP_URL ?? window.location.origin}/transporte/${envio.token_transportista}`
+          }
+          const url = buildWhatsAppUrl(tel, msg)
+          if (url) window.open(url, '_blank', 'noopener')
+        }
+      }
     },
     onError: (e: any) => { if (e.message !== 'pago_pendiente') toast.error(e.message) },
   })
@@ -753,6 +803,74 @@ export default function EnviosPage() {
     finally { setSavingFact(false) }
   }
 
+  // ── EN3/G3 — Hoja de ruta: ordenar + generar PDF + token agrupador ───────────
+  const hojaRutaOrdenada = () => {
+    const modo = (tenant as any)?.envio_hoja_ruta_modo ?? 'agrupada'
+    return ordenarHojaRuta(
+      (enviosReparto as any[]).map((e: any) => ({
+        id: e.id, repartidor_id: e.repartidor_id, estado: e.estado,
+        zona_entrega: e.zona_entrega, hora_entrega_acordada: e.hora_entrega_acordada,
+      })),
+      { proximidad: modo === 'agrupada_proximidad' },
+    ).map(o => (enviosReparto as any[]).find((e: any) => e.id === o.id)).filter(Boolean)
+  }
+
+  const generarHojaRutaPDF = () => {
+    const ordenados = hojaRutaOrdenada()
+    if (ordenados.length === 0) { toast.error('No hay envíos para la hoja de ruta'); return }
+    const rep = (repartidores as any[]).find(r => r.id === hrRepartidor)
+    const doc = new jsPDF()
+    doc.setFontSize(15); doc.text(`Hoja de ruta — ${tenant?.nombre ?? BRAND.name}`, 14, 16)
+    doc.setFontSize(10)
+    doc.text(`Fecha: ${formatFecha(hrFecha)}${rep ? `   ·   Repartidor: ${rep.nombre}` : ''}`, 14, 23)
+    autoTable(doc, {
+      startY: 28,
+      head: [['#', 'Cliente', 'Dirección', 'Zona', 'Hora', 'Estado']],
+      body: ordenados.map((e: any, i: number) => [
+        String(i + 1),
+        e.ventas?.clientes?.nombre ?? '—',
+        [e.cliente_domicilios?.calle, e.cliente_domicilios?.numero, e.cliente_domicilios?.ciudad].filter(Boolean).join(' ') || '—',
+        e.zona_entrega ?? '—',
+        e.hora_entrega_acordada?.slice(0, 5) ?? '—',
+        ESTADO_CFG[e.estado as EstadoEnvio]?.label ?? e.estado,
+      ]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [30, 58, 95] },
+    })
+    doc.save(`hoja_ruta_${hrFecha}${rep ? '_' + rep.nombre.replace(/\s+/g, '_') : ''}.pdf`)
+  }
+
+  const crearHojaRutaToken = async () => {
+    const ordenados = hojaRutaOrdenada()
+    if (ordenados.length === 0) { toast.error('No hay envíos para agrupar'); return }
+    if (!hrRepartidor) { toast.error('Elegí un repartidor para la hoja agrupada'); return }
+    setHrGuardando(true)
+    try {
+      const token = crypto.randomUUID()
+      const { data: hoja, error } = await supabase.from('hojas_ruta').insert({
+        tenant_id: tenant!.id, fecha: hrFecha, repartidor_id: hrRepartidor,
+        token, sucursal_id: sucursalId || null, created_by: user?.id ?? null,
+      }).select('id').single()
+      if (error) throw error
+      await supabase.from('hoja_ruta_envios').insert(ordenados.map((e: any, i: number) => ({
+        tenant_id: tenant!.id, hoja_id: hoja.id, envio_id: e.id, orden: i,
+      })))
+      // asegurar token transportista por envío (para los links individuales de la hoja)
+      for (const e of ordenados as any[]) {
+        if (!e.token_transportista) {
+          const t = crypto.randomUUID()
+          const expira = tokenExpiraAt((tenant as any)?.envio_token_politica ?? 'al_entregar', Number((tenant as any)?.envio_token_dias ?? 30))
+          await supabase.from('envios').update({ token_transportista: t, token_expira_at: expira }).eq('id', e.id)
+        }
+      }
+      const url = `${import.meta.env.VITE_APP_URL || window.location.origin}/hoja-ruta/${token}`
+      await navigator.clipboard.writeText(url).catch(() => {})
+      toast.success('Hoja de ruta creada — link copiado para el chofer 📋', { duration: 4000 })
+      qc.invalidateQueries({ queryKey: ['envios-reparto'] })
+    } catch (e: any) { toast.error(e.message ?? 'Error al crear la hoja de ruta') }
+    finally { setHrGuardando(false) }
+  }
+
   // ── WhatsApp ─────────────────────────────────────────────────────────────────
   const abrirWhatsApp = (envio: any) => {
     const cliente = envio.ventas?.clientes
@@ -921,6 +1039,7 @@ export default function EnviosPage() {
         const idx = rangos.findIndex(r => r.desde === e.rango_horario_desde?.slice(0,5) && r.hasta === e.rango_horario_hasta?.slice(0,5))
         return idx >= 0 ? String(idx) : ''
       })(),
+      repartidor_id: e.repartidor_id ?? '',
     })
     setShowModal(true)
   }
@@ -961,6 +1080,7 @@ export default function EnviosPage() {
           { key: 'envios', label: 'Envíos', icon: <Package2 size={14} /> },
           { key: 'pagos',  label: 'Pagos Courier', icon: <CreditCard size={14} />, badge: (enviosPendientesPago as any[]).length || undefined },
           { key: 'facturas', label: 'Facturas Courier', icon: <FileText size={14} /> },
+          { key: 'reparto', label: 'Reparto', icon: <Navigation size={14} /> },
         ] as const).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t.key ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
@@ -1257,7 +1377,9 @@ export default function EnviosPage() {
                                     let token = e.token_transportista
                                     if (!token) {
                                       token = crypto.randomUUID()
-                                      await supabase.from('envios').update({ token_transportista: token }).eq('id', e.id)
+                                      // EN3/E1 — expiración del token según la política del tenant
+                                      const expira = tokenExpiraAt((tenant as any)?.envio_token_politica ?? 'al_entregar', Number((tenant as any)?.envio_token_dias ?? 30))
+                                      await supabase.from('envios').update({ token_transportista: token, token_expira_at: expira }).eq('id', e.id)
                                     }
                                     const url = `${import.meta.env.VITE_APP_URL || window.location.origin}/transporte/${token}`
                                     await navigator.clipboard.writeText(url).catch(() => {})
@@ -1605,6 +1727,115 @@ export default function EnviosPage() {
         </div>
       )}
 
+      {/* ══ TAB: REPARTO (EN3 — G3 hoja de ruta + cumplimiento + productividad) ══ */}
+      {tab === 'reparto' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
+              <Navigation size={16} className="text-accent" /> Hoja de ruta (envío propio)
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              Planificá el reparto del día por repartidor: orden de visita, hoja de ruta PDF y link agrupado para el chofer.
+            </p>
+            <div className="flex flex-wrap gap-3 items-end mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha</label>
+                <input type="date" value={hrFecha} onChange={e => setHrFecha(e.target.value)}
+                  className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Repartidor</label>
+                <select value={hrRepartidor} onChange={e => setHrRepartidor(e.target.value)}
+                  className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                  <option value="">Todos</option>
+                  {(repartidores as any[]).map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                </select>
+              </div>
+              <button onClick={generarHojaRutaPDF}
+                className="flex items-center gap-2 border border-accent/40 text-accent px-3 py-2 rounded-xl text-sm hover:bg-accent/10">
+                <Printer size={15} /> Hoja de ruta PDF
+              </button>
+              <button onClick={crearHojaRutaToken} disabled={hrGuardando || !hrRepartidor}
+                className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-4 py-2 rounded-xl text-sm disabled:opacity-40">
+                <Send size={15} /> {hrGuardando ? 'Creando…' : 'Link agrupado para el chofer'}
+              </button>
+            </div>
+
+            {/* Cumplimiento del día */}
+            {(() => {
+              const c = cumplimientoDia((enviosReparto as any[]).map((e: any) => ({ id: e.id, estado: e.estado })))
+              return (
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="rounded-xl border border-gray-100 dark:border-gray-700 p-3 text-center">
+                    <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{c.total}</p>
+                    <p className="text-xs text-gray-400">Planificados</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 dark:border-gray-700 p-3 text-center">
+                    <p className="text-2xl font-bold text-green-600">{c.entregados}</p>
+                    <p className="text-xs text-gray-400">Entregados</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 dark:border-gray-700 p-3 text-center">
+                    <p className="text-2xl font-bold text-accent">{c.pct}%</p>
+                    <p className="text-xs text-gray-400">Cumplimiento</p>
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Lista ordenada */}
+            {(enviosReparto as any[]).length === 0 ? (
+              <div className="text-center py-10 text-gray-400">
+                <Navigation size={30} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No hay envíos propios para esa fecha/repartidor.</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {hojaRutaOrdenada().map((e: any, i: number) => (
+                  <div key={e.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-700">
+                    <span className="w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
+                        {e.ventas?.clientes?.nombre ?? '—'} <span className="text-gray-400 font-normal">#{e.numero}</span>
+                      </p>
+                      <p className="text-xs text-gray-400 truncate">
+                        {[e.cliente_domicilios?.calle, e.cliente_domicilios?.numero, e.cliente_domicilios?.ciudad].filter(Boolean).join(' ') || e.zona_entrega || '—'}
+                        {e.hora_entrega_acordada ? ` · ${e.hora_entrega_acordada.slice(0,5)}` : ''}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${ESTADO_CFG[e.estado as EstadoEnvio]?.color ?? ''}`}>
+                      {ESTADO_CFG[e.estado as EstadoEnvio]?.label ?? e.estado}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Productividad por repartidor */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+            <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-3 text-sm">Productividad por repartidor (del filtro)</h3>
+            {(() => {
+              const prod = productividadRepartidor((enviosReparto as any[]).map((e: any) => ({ id: e.id, repartidor_id: e.repartidor_id, estado: e.estado })))
+              if (prod.length === 0) return <p className="text-xs text-gray-400 italic">Sin datos.</p>
+              return (
+                <div className="space-y-1.5">
+                  {prod.map(p => {
+                    const rep = (repartidores as any[]).find(r => r.id === p.repartidorId)
+                    return (
+                      <div key={p.repartidorId ?? 'sin'} className="flex items-center gap-3 text-sm p-2 rounded-lg border border-gray-100 dark:border-gray-700">
+                        <span className="flex-1 font-medium text-gray-700 dark:text-gray-200">{rep?.nombre ?? 'Sin asignar'}</span>
+                        <span className="text-xs text-gray-500">{p.entregados}/{p.asignados} entregados</span>
+                        <span className="text-xs font-semibold text-accent">{p.pctCumplimiento}%</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
       {/* ══ MODAL: NUEVO / EDITAR ENVÍO ══ */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -1911,6 +2142,17 @@ export default function EnviosPage() {
                     placeholder="Ej: CABA, GBA Norte"
                     className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
+                {/* EN3/G1 — Repartidor asignado (envío propio) */}
+                {(form.courier === 'Envío propio' || form.repartidor_id) && (repartidores as any[]).length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Repartidor asignado</label>
+                    <select value={form.repartidor_id} onChange={e => setForm(f => ({ ...f, repartidor_id: e.target.value }))}
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                      <option value="">Sin asignar</option>
+                      {(repartidores as any[]).map(r => <option key={r.id} value={r.id}>{r.nombre}{r.vehiculo ? ` (${r.vehiculo})` : ''}</option>)}
+                    </select>
+                  </div>
+                )}
                 {/* Fecha entrega */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha de entrega acordada</label>

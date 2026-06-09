@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { MapPin, Package, CheckCircle, RotateCcw, Truck, Clock, Camera, Loader2, Warehouse, AlertTriangle, User, PenLine, Navigation, ShieldCheck, MessageCircle } from 'lucide-react'
+import { MapPin, Package, CheckCircle, RotateCcw, Truck, Clock, Camera, Loader2, Warehouse, AlertTriangle, User, PenLine, Navigation, ShieldCheck, MessageCircle, Phone, Flag } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import toast, { Toaster } from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 import SignaturePad from '@/components/SignaturePad'
 import { podFaltantes, requiereOtp, SUBESTADOS_NO_ENTREGA, type SubestadoNoEntrega } from '@/lib/enviosPod'
+import { INCIDENCIA_TIPOS } from '@/lib/enviosReparto'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
 
 type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'en_bodega' | 'entregado' | 'devolucion' | 'cancelado'
@@ -58,6 +59,15 @@ export default function TransportistePage() {
   const [showNoEntrega,   setShowNoEntrega]   = useState(false)
   const [noEntregaSub,    setNoEntregaSub]    = useState<SubestadoNoEntrega>('ausente')
   const [noEntregaMotivo, setNoEntregaMotivo] = useState('')
+
+  // EN3/E2 — incidencia
+  const [showIncidencia, setShowIncidencia] = useState(false)
+  const [incTipo, setIncTipo] = useState<string>('rotura')
+  const [incDetalle, setIncDetalle] = useState('')
+  // EN3/E4 — identidad del transportista (gate nombre+DNI)
+  const [identNombre, setIdentNombre] = useState('')
+  const [identDni, setIdentDni] = useState('')
+  const [identificado, setIdentificado] = useState(false)
 
   const [saving,        setSaving]       = useState(false)
   const [uploadingFoto, setUploadingFoto] = useState(false)
@@ -180,6 +190,16 @@ export default function TransportistePage() {
     toast.success('Registrado')
   }
 
+  // EN3/E2 — reportar incidencia
+  const reportarIncidencia = async () => {
+    if (!token) return
+    if (!incDetalle.trim()) { toast.error('Contanos qué pasó'); return }
+    const { data: ok, error } = await supabase.rpc('reportar_incidencia_envio', { p_token: token, p_tipo: incTipo, p_detalle: incDetalle.trim() })
+    if (error || !ok) { toast.error('No se pudo reportar'); return }
+    toast.success('Incidencia reportada al local')
+    setShowIncidencia(false); setIncDetalle(''); setIncTipo('rotura')
+  }
+
   // EN2/D3 — generar + enviar OTP al cliente por WhatsApp
   const enviarOtp = async () => {
     if (!token) return
@@ -236,6 +256,26 @@ export default function TransportistePage() {
   )
 
   const terminado = envio.estado === 'entregado' || envio.estado === 'cancelado'
+
+  // EN3/E4 — gate de identidad (nombre + DNI) antes de operar
+  if (envio.envio_identidad_modo === 'nombre_dni' && !identificado && !terminado) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6">
+        <Toaster position="top-center" />
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 max-w-sm w-full space-y-3">
+          <p className="text-xs font-medium text-gray-400">{envio.tenant_nombre ?? BRAND.name}</p>
+          <h1 className="text-lg font-bold text-gray-800 flex items-center gap-2"><User size={18} className="text-violet-600" /> Identificate</h1>
+          <p className="text-sm text-gray-500">Para gestionar el envío #{envio.numero}, ingresá tu nombre y DNI.</p>
+          <input value={identNombre} onChange={e => setIdentNombre(e.target.value)} placeholder="Nombre y apellido"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-500" />
+          <input value={identDni} onChange={e => setIdentDni(e.target.value)} inputMode="numeric" placeholder="DNI"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-500" />
+          <button onClick={() => { if (identNombre.trim() && identDni.trim()) setIdentificado(true); else toast.error('Completá nombre y DNI') }}
+            className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm">Continuar</button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-10">
@@ -331,6 +371,39 @@ export default function TransportistePage() {
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold text-sm disabled:opacity-40">
               <RotateCcw size={18} /> No entregado
             </button>
+
+            {/* EN3/E2 — contactar al cliente + reportar incidencia */}
+            <div className="grid grid-cols-3 gap-2">
+              <a href={envio.cliente_telefono ? `tel:${envio.cliente_telefono}` : undefined}
+                className={`flex flex-col items-center gap-1 py-2.5 rounded-xl text-xs font-medium ${envio.cliente_telefono ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-50 text-gray-300 pointer-events-none'}`}>
+                <Phone size={16} /> Llamar
+              </a>
+              <button onClick={() => {
+                  const url = envio.cliente_telefono ? buildWhatsAppUrl(envio.cliente_telefono, `Hola, soy el transportista de tu pedido #${envio.numero}.`) : null
+                  if (url) window.open(url, '_blank', 'noopener'); else toast.error('Sin teléfono del cliente')
+                }}
+                className="flex flex-col items-center gap-1 py-2.5 rounded-xl text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200">
+                <MessageCircle size={16} /> WhatsApp
+              </button>
+              <button onClick={() => setShowIncidencia(v => !v)}
+                className="flex flex-col items-center gap-1 py-2.5 rounded-xl text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200">
+                <Flag size={16} /> Incidencia
+              </button>
+            </div>
+
+            {showIncidencia && (
+              <div className="border border-amber-200 rounded-xl p-3 space-y-2 bg-amber-50/50">
+                <select value={incTipo} onChange={e => setIncTipo(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-500">
+                  {INCIDENCIA_TIPOS.map(t => <option key={t.v} value={t.v}>{t.t}</option>)}
+                </select>
+                <textarea value={incDetalle} onChange={e => setIncDetalle(e.target.value)} rows={2}
+                  placeholder="Contanos qué pasó…"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-violet-500 resize-none" />
+                <button onClick={reportarIncidencia}
+                  className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm">Reportar incidencia</button>
+              </div>
+            )}
 
             {showNoEntrega && (
               <div className="border border-orange-200 rounded-xl p-3 space-y-2 bg-orange-50/50">

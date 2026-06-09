@@ -2692,3 +2692,46 @@ ALTER TABLE envio_otp ENABLE ROW LEVEL SECURITY;  -- policy envio_otp_tenant
 -- RPCs públicas del transportista ampliadas: get_envio_by_token (devuelve config POD + es_propio),
 -- update_envio_by_token (firma/DNI/geoloc/sub-estado/reintento), generar_otp_envio, verificar_otp_envio.
 -- Todas SECURITY DEFINER, GRANT a anon + authenticated.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 191: Envíos · EN3 (Reparto: repartidores + hoja de ruta + transportista)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- repartidores (G1): catálogo de repartidores del envío propio (vinculables a empleados)
+CREATE TABLE IF NOT EXISTS repartidores (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre TEXT NOT NULL, empleado_id UUID REFERENCES empleados(id) ON DELETE SET NULL,
+  telefono TEXT, vehiculo TEXT, activo BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE repartidores ENABLE ROW LEVEL SECURITY;  -- policy repartidores_tenant
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS repartidor_id UUID REFERENCES repartidores(id) ON DELETE SET NULL; -- G1
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS token_expira_at TIMESTAMPTZ;  -- E1
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS hoja_ruta_id UUID;            -- E3
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_token_politica  TEXT NOT NULL DEFAULT 'al_entregar'; -- E1 al_entregar|dias
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_token_dias      INT  NOT NULL DEFAULT 30;            -- E1
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_identidad_modo  TEXT NOT NULL DEFAULT 'anonimo';     -- E4 anonimo|nombre_dni
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_notif_en_camino TEXT NOT NULL DEFAULT 'wa';          -- E5 no|wa|wa_tracking
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_hoja_ruta_modo  TEXT NOT NULL DEFAULT 'agrupada';    -- E3 por_envio|agrupada|agrupada_proximidad
+-- hojas_ruta + hoja_ruta_envios (E3/G3): hoja agrupada por chofer con token público
+CREATE TABLE IF NOT EXISTS hojas_ruta (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  fecha DATE NOT NULL DEFAULT CURRENT_DATE, repartidor_id UUID REFERENCES repartidores(id) ON DELETE SET NULL,
+  token TEXT UNIQUE, sucursal_id UUID REFERENCES sucursales(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES users(id), created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE hojas_ruta ENABLE ROW LEVEL SECURITY;  -- policy hojas_ruta_tenant
+CREATE TABLE IF NOT EXISTS hoja_ruta_envios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  hoja_id UUID NOT NULL REFERENCES hojas_ruta(id) ON DELETE CASCADE,
+  envio_id UUID NOT NULL REFERENCES envios(id) ON DELETE CASCADE, orden INT NOT NULL DEFAULT 0
+);
+ALTER TABLE hoja_ruta_envios ENABLE ROW LEVEL SECURITY;  -- policy hoja_ruta_envios_tenant
+-- envio_incidencias (E2): incidencias reportadas por el transportista
+CREATE TABLE IF NOT EXISTS envio_incidencias (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  envio_id UUID NOT NULL REFERENCES envios(id) ON DELETE CASCADE, tipo TEXT NOT NULL, detalle TEXT,
+  reportado_at TIMESTAMPTZ DEFAULT NOW(), created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE envio_incidencias ENABLE ROW LEVEL SECURITY;  -- policy envio_incidencias_tenant
+-- RPCs públicas: get_envio_by_token (agrega repartidor/identidad + chequea token_expira_at),
+-- reportar_incidencia_envio, get_hoja_ruta_by_token. Todas SECURITY DEFINER, GRANT anon+authenticated.

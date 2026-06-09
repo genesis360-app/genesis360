@@ -12,6 +12,7 @@ import { uploadCertificates } from '@/lib/afip'
 import type { TenantCertificate } from '@/lib/supabase'
 import { CodigoPerfilesPanel } from '@/components/CodigoPerfilesPanel'
 import { CourierCredencialesPanel } from '@/components/CourierCredencialesPanel'
+import RepartidoresPanel from '@/components/RepartidoresPanel'
 import { CanalesVentaPanel } from '@/components/CanalesVentaPanel'
 import toast from 'react-hot-toast'
 
@@ -511,6 +512,12 @@ export default function ConfigPage() {
   const [bizGeolocAlertaKm, setBizGeolocAlertaKm] = useState<string>(String((tenant as any)?.envio_geoloc_alerta_km ?? 0))
   const [bizReintentosMax, setBizReintentosMax] = useState<string>(String((tenant as any)?.envio_reintentos_max ?? 3))
   const [bizReintentoRecargo, setBizReintentoRecargo] = useState<string>(String((tenant as any)?.envio_reintento_recargo ?? 0))
+  // EN3 — reparto
+  const [bizTokenPolitica, setBizTokenPolitica] = useState<string>((tenant as any)?.envio_token_politica ?? 'al_entregar')
+  const [bizTokenDias, setBizTokenDias] = useState<string>(String((tenant as any)?.envio_token_dias ?? 30))
+  const [bizIdentidadModo, setBizIdentidadModo] = useState<string>((tenant as any)?.envio_identidad_modo ?? 'anonimo')
+  const [bizNotifEnCamino, setBizNotifEnCamino] = useState<string>((tenant as any)?.envio_notif_en_camino ?? 'wa')
+  const [bizHojaRutaModo, setBizHojaRutaModo] = useState<string>((tenant as any)?.envio_hoja_ruta_modo ?? 'agrupada')
 
   // Fase 2 — identidad
   const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
@@ -690,6 +697,12 @@ export default function ConfigPage() {
       envio_geoloc_alerta_km: parseFloat(bizGeolocAlertaKm) || 0,
       envio_reintentos_max: parseInt(bizReintentosMax) || 3,
       envio_reintento_recargo: parseFloat(bizReintentoRecargo) || 0,
+      // EN3 — reparto
+      envio_token_politica: bizTokenPolitica,
+      envio_token_dias: parseInt(bizTokenDias) || 30,
+      envio_identidad_modo: bizIdentidadModo,
+      envio_notif_en_camino: bizNotifEnCamino,
+      envio_hoja_ruta_modo: bizHojaRutaModo,
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
       cuit: bizCuit.trim() || null,
@@ -3423,6 +3436,65 @@ export default function ConfigPage() {
               </div>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500">El OTP solo aplica a envíos propios sobre el monto indicado. La geoloc tiene fallback: si no se puede capturar, igual permite confirmar.</p>
+            {canEdit && (
+              <div className="flex justify-end">
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* EN3 — reparto (repartidores + reglas del transportista) */}
+          <RepartidoresPanel canEdit={canEdit} />
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Navigation size={18} className="text-accent" /> Reparto y página del transportista
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Notificación "en camino"</label>
+                <select value={bizNotifEnCamino} onChange={e => setBizNotifEnCamino(e.target.value)} disabled={!canEdit}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800">
+                  <option value="no">No notificar</option>
+                  <option value="wa">WhatsApp "en camino" (recomendado)</option>
+                  <option value="wa_tracking">WhatsApp + link de seguimiento</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Identidad del transportista</label>
+                <select value={bizIdentidadModo} onChange={e => setBizIdentidadModo(e.target.value)} disabled={!canEdit}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800">
+                  <option value="anonimo">Anónimo por link (default)</option>
+                  <option value="nombre_dni">Pedir nombre + DNI al abrir</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Hoja de ruta</label>
+                <select value={bizHojaRutaModo} onChange={e => setBizHojaRutaModo(e.target.value)} disabled={!canEdit}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800">
+                  <option value="por_envio">Un link por envío</option>
+                  <option value="agrupada">Hoja agrupada por chofer</option>
+                  <option value="agrupada_proximidad">Hoja agrupada + orden por proximidad</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Expiración del link del transportista</label>
+                <div className="flex gap-2">
+                  <select value={bizTokenPolitica} onChange={e => setBizTokenPolitica(e.target.value)} disabled={!canEdit}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800">
+                    <option value="al_entregar">Al entregar / cancelar</option>
+                    <option value="dias">A los N días</option>
+                  </select>
+                  {bizTokenPolitica === 'dias' && (
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={bizTokenDias} onChange={e => setBizTokenDias(e.target.value)}
+                      min="1" step="1" disabled={!canEdit}
+                      className="w-20 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  )}
+                </div>
+              </div>
+            </div>
             {canEdit && (
               <div className="flex justify-end">
                 <button onClick={handleSaveBiz} disabled={savingBiz}

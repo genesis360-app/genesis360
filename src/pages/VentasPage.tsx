@@ -176,11 +176,22 @@ export default function VentasPage() {
           },
         },
       })
-      if (error) throw error
+      if (error) {
+        // Surface the real Resend/Edge-Function reason (ej. "API key is invalid")
+        let detalle = ''
+        try {
+          const body = await (error as any).context?.json?.()
+          if (body?.error) detalle = String(body.error)
+        } catch { /* context no disponible */ }
+        throw new Error(detalle || error.message || 'No se pudo enviar el email')
+      }
       toast.success(`Ticket enviado a ${email}`)
       setEmailTicketOpen(false); setEmailTicketValue('')
     } catch (e: any) {
-      toast.error(e?.message ?? 'No se pudo enviar el email')
+      const msg = String(e?.message ?? '')
+      toast.error(/api key/i.test(msg)
+        ? 'Resend rechazó la API key (revisá el secret RESEND_API_KEY en Supabase).'
+        : (msg || 'No se pudo enviar el email'), { duration: 8000 })
     } finally { setEmailTicketSending(false) }
   }
   // VF3/J2 — pide la clave maestra (si está configurada) antes de ejecutar una acción sensible

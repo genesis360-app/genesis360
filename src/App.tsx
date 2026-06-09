@@ -44,6 +44,7 @@ const RecepcionesPage     = lazy(() => import('@/pages/RecepcionesPage'))
 const EnviosPage          = lazy(() => import('@/pages/EnviosPage'))
 const FacturacionPage     = lazy(() => import('@/pages/FacturacionPage'))
 const TransportistePage   = lazy(() => import('@/pages/TransportistePage'))
+const HojaRutaPage        = lazy(() => import('@/pages/HojaRutaPage'))
 const CuentaClientePage   = lazy(() => import('@/pages/CuentaClientePage'))
 
 // app.genesis360.pro → directo al login/dashboard (sin landing)
@@ -120,6 +121,8 @@ function App() {
             <Route path="/suscripcion" element={<SuscripcionPage />} />
             {/* Ruta pública para transportistas — sin auth */}
             <Route path="/transporte/:token" element={<TransportistePage />} />
+            {/* EN3 — Hoja de ruta pública para el chofer — sin auth */}
+            <Route path="/hoja-ruta/:token" element={<HojaRutaPage />} />
             {/* B8 — Portal público de estado de cuenta del cliente — sin auth */}
             <Route path="/cuenta/:token" element={<CuentaClientePage />} />
 

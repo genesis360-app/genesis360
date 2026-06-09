@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.44.0 — Envíos EN5: creación y alcance (PROD ✅)
+
+A1 DEPOSITO crea envíos · A2 envíos libres sin venta (traslado/muestra/dev_proveedor) · A3 sugerencia de courier por CP · A4 plazo de despacho por canal + badge "Atrasado" · A5 múltiples envíos por venta con desglose (`envio_items`). Lib `enviosCreacion.ts` + 12 tests → suite 541. Mig 193.
+
+---
+
 ## v1.43.0 — Envíos EN4: costos y tarifas avanzados (PROD ✅)
 
 B1 recargo horario · B2 factor KM · B3 costo mínimo/escalonado · B4 cobro al cliente (100%/margen/subsidio) · B5 envío gratis condicional · B6 diferencia real vs cotizado a-favor/pérdida (precio al cliente inmutable). Motor `enviosTarifas.ts` + 15 tests → suite 529. Mig 192.

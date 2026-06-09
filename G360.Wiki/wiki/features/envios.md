@@ -3,7 +3,7 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md]
-updated: 2026-06-06
+updated: 2026-06-09
 ---
 
 # Módulo Envíos
@@ -311,7 +311,11 @@ Cuando haya contratos con OCA / CorreoAR / Andreani / DHL:
 
 Relevado con GO (HTML `relevamiento-envios-reglas-negocio.html`, secciones A-I). Respuestas + diseño + modelo de datos + recomendación contable/IVA + plan completo en **`sources/raw/relevamiento_envios_respuestas.md`**. **Pendiente de implementar.**
 
-**Estado:** ✅ **EN1 (v1.40.0, mig 189)** y ✅ **EN2 (v1.41.0, mig 190)** deployados a PROD. Faltan EN3-EN7.
+**Estado:** ✅ **EN1-EN5 deployados a PROD** (v1.40.0→v1.44.0, mig 189-193). Faltan **EN6** (integraciones courier — bloqueado hasta validar adapters con cuentas B2B) y **EN7** (envío propio + reportes/alertas/export).
+
+- **EN3 (v1.42.0, mig 191):** repartidores + asignación + productividad (`enviosReparto.ts`); tab **Reparto** (hoja de ruta PDF + link agrupado `/hoja-ruta/:token` + cumplimiento); token expiración config (E1); transportista llamar/WA/incidencia (E2, `envio_incidencias`); identidad config (E4); notif "en camino" WA (E5).
+- **EN4 (v1.43.0, mig 192):** motor de tarifas `enviosTarifas.ts` — factor KM, costo mínimo/tramos, recargo horario (B1-B3); cobro al cliente 100/margen/subsidio (B4); envío gratis condicional (B5); diferencia real vs cotizado a-favor/pérdida, precio al cliente inmutable (B6).
+- **EN5 (v1.44.0, mig 193):** DEPOSITO crea (A1); envíos libres sin venta `tipo`/`motivo` (A2); sugerencia courier por CP (A3); plazo despacho por canal + badge "Atrasado" (A4); múltiples envíos por venta con desglose `envio_items` (A5). Lib `enviosCreacion.ts`.
 
 **Plan deployable por fases (cada una a PROD con su versión):**
 - **EN1 — Pagos a courier contables (C1-C4) ✅ v1.40.0:** marcar pagado **genera gasto** "Transporte y fletes" (solo courier **tercero**, con IVA crédito fiscal vía `desgloseIvaFlete`) + egreso de caja si efectivo + link `envios.gasto_id` · tab **"Facturas Courier"**: cargar **factura del courier** + conciliar contra lo registrado + alerta de diferencias (`courier_facturas`/`courier_factura_lineas`) · doble firma por umbral (clave maestra). Lib `enviosCourierPago.ts`.

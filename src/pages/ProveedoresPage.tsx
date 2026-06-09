@@ -189,8 +189,25 @@ export default function ProveedoresPage() {
           attachments: [{ filename: `OC_${d.numeroLabel.replace(/[^\w-]/g, '_')}.pdf`, content: base64 }],
         },
       })
-      if (error) toast.error('No se pudo enviar el email')
-      else toast.success(`OC enviada por email a ${email} (con PDF adjunto)`)
+      if (error) {
+        // Surface the real Resend/Edge-Function reason instead of a generic toast
+        let detalle = ''
+        try {
+          const body = await (error as any).context?.json?.()
+          if (body?.error) detalle = String(body.error)
+        } catch { /* context no disponible */ }
+        const esDominio = /verif|domain|testing emails|own email/i.test(detalle)
+        toast.error(
+          detalle
+            ? (esDominio
+                ? `Resend rechazó el envío: ${detalle}. Verificá el dominio genesis360.pro en Resend.`
+                : `No se pudo enviar: ${detalle}`)
+            : 'No se pudo enviar el email',
+          { duration: 8000 },
+        )
+      } else {
+        toast.success(`OC enviada por email a ${email} (con PDF adjunto)`)
+      }
     } catch (e: any) {
       toast.error(e.message ?? 'No se pudo enviar el email')
     }

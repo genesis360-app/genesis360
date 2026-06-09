@@ -535,6 +535,14 @@ export default function ConfigPage() {
   const [bizGratisEtiquetas, setBizGratisEtiquetas] = useState<string>(Array.isArray(_gr.etiquetas) ? _gr.etiquetas.join(', ') : '')
   const [bizGratisDesde, setBizGratisDesde] = useState<string>(_gr.promoDesde ?? '')
   const [bizGratisHasta, setBizGratisHasta] = useState<string>(_gr.promoHasta ?? '')
+  // EN5 — creación/alcance
+  const _pd = ((tenant as any)?.envio_plazo_despacho ?? {}) as any
+  const [bizPlazoPresencial, setBizPlazoPresencial] = useState<string>(String(_pd.presencial ?? ''))
+  const [bizPlazoOnline, setBizPlazoOnline] = useState<string>(String(_pd.online ?? ''))
+  const [bizPlazoMayorista, setBizPlazoMayorista] = useState<string>(String(_pd.mayorista ?? ''))
+  const [bizCpCourier, setBizCpCourier] = useState<Array<{ desde: string; hasta: string; courier: string }>>(
+    Array.isArray((tenant as any)?.cp_courier_preferido) ? (tenant as any).cp_courier_preferido.map((r: any) => ({ desde: String(r.desde ?? r.cp ?? ''), hasta: String(r.hasta ?? r.cp ?? ''), courier: String(r.courier ?? '') })) : []
+  )
 
   // Fase 2 — identidad
   const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
@@ -734,6 +742,13 @@ export default function ConfigPage() {
         promoDesde: bizGratisDesde || null,
         promoHasta: bizGratisHasta || null,
       },
+      // EN5 — creación/alcance
+      envio_plazo_despacho: {
+        presencial: parseFloat(bizPlazoPresencial) || 0,
+        online: parseFloat(bizPlazoOnline) || 0,
+        mayorista: parseFloat(bizPlazoMayorista) || 0,
+      },
+      cp_courier_preferido: bizCpCourier.filter(r => r.courier && (r.desde || r.hasta)).map(r => ({ desde: r.desde, hasta: r.hasta || r.desde, courier: r.courier })),
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
       cuit: bizCuit.trim() || null,
@@ -3637,6 +3652,53 @@ export default function ConfigPage() {
                   )}
                 </div>
               </div>
+            </div>
+            {canEdit && (
+              <div className="flex justify-end">
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* EN5 — creación y alcance */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Clock size={18} className="text-accent" /> Plazo de despacho y sugerencia de courier
+            </h3>
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plazo de despacho por canal (horas, 0 = sin alerta)</p>
+              <div className="flex flex-wrap gap-3">
+                {([['Presencial', bizPlazoPresencial, setBizPlazoPresencial], ['Online', bizPlazoOnline, setBizPlazoOnline], ['Mayorista', bizPlazoMayorista, setBizPlazoMayorista]] as const).map(([label, val, setter]) => (
+                  <div key={label}>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={val} onChange={e => (setter as any)(e.target.value)} min="0" step="1" disabled={!canEdit}
+                      className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Courier sugerido por rango de CP (opcional)</p>
+              <div className="space-y-1.5">
+                {bizCpCourier.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">CP</span>
+                    <input value={r.desde} onChange={e => setBizCpCourier(arr => arr.map((x, j) => j === i ? { ...x, desde: e.target.value } : x))} placeholder="desde" disabled={!canEdit}
+                      className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <span className="text-xs text-gray-400">a</span>
+                    <input value={r.hasta} onChange={e => setBizCpCourier(arr => arr.map((x, j) => j === i ? { ...x, hasta: e.target.value } : x))} placeholder="hasta" disabled={!canEdit}
+                      className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <span className="text-xs text-gray-400">→</span>
+                    <input value={r.courier} onChange={e => setBizCpCourier(arr => arr.map((x, j) => j === i ? { ...x, courier: e.target.value } : x))} placeholder="Courier" disabled={!canEdit}
+                      className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    {canEdit && <button onClick={() => setBizCpCourier(arr => arr.filter((_, j) => j !== i))} className="text-red-500 text-xs">Quitar</button>}
+                  </div>
+                ))}
+              </div>
+              {canEdit && <button onClick={() => setBizCpCourier(arr => [...arr, { desde: '', hasta: '', courier: '' }])} className="text-xs text-accent hover:underline mt-1">+ Agregar regla</button>}
             </div>
             {canEdit && (
               <div className="flex justify-end">

@@ -25,6 +25,7 @@ import SignaturePad from '@/components/SignaturePad'
 import { podFaltantes, SUBESTADOS_NO_ENTREGA, resolverNoEntrega, type SubestadoNoEntrega } from '@/lib/enviosPod'
 import { productividadRepartidor, cumplimientoDia, ordenarHojaRuta, tokenExpiraAt } from '@/lib/enviosReparto'
 import { costoEnvioPropio, diferenciaReal, DIFERENCIA_MOTIVOS } from '@/lib/enviosTarifas'
+import { TIPOS_ENVIO, sugerirCourierPorCp, plazoDespachoVencido } from '@/lib/enviosCreacion'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
@@ -72,6 +73,8 @@ interface FormEnvio {
   pod_fecha: string; pod_receptor: string; pod_notas: string; pod_url: string
   // EN3 — repartidor asignado (envío propio)
   repartidor_id: string
+  // EN5 — tipo de envío (A2) + motivo + sucursal destino (traslado interno)
+  tipo: string; motivo: string; sucursal_destino_id: string
 }
 const FORM_VACIO: FormEnvio = {
   venta_id: '', cliente_nombre: '',
@@ -82,6 +85,7 @@ const FORM_VACIO: FormEnvio = {
   zona_entrega: '', notas: '',
   pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '',
   rango_horario_idx: '', repartidor_id: '',
+  tipo: 'venta', motivo: '', sucursal_destino_id: '',
 }
 
 export default function EnviosPage() {
@@ -130,6 +134,8 @@ export default function EnviosPage() {
   // Selección de domicilio al crear envío
   const [ventaSearch, setVentaSearch]       = useState('')
   const [ventaSeleccionada, setVentaSeleccionada] = useState<any | null>(null)
+  // EN5/A5 — desglose de ítems que van en este envío (editable)
+  const [ventaItemsForm, setVentaItemsForm] = useState<Array<{ producto_id: string | null; nombre: string; cantidad: number; lpn: string | null }>>([])
 
   // POD modal — registrar prueba de entrega desde la fila expandida
   const [podModalId, setPodModalId]   = useState<string | null>(null)
@@ -194,14 +200,14 @@ export default function EnviosPage() {
   const { data: ventasRecientes = [] } = useQuery({
     queryKey: ['ventas-envio-search', tenant?.id, ventaSearch],
     queryFn: async () => {
-      // Excluir ventas que ya tienen un envío asignado
+      // EN5/A5 — ya NO se excluyen las ventas con envío (se permite dividir en varios envíos);
+      // se marca cuántos envíos tiene cada una para que el operador lo sepa.
       const { data: conEnvio } = await supabase
-        .from('envios')
-        .select('venta_id')
-        .eq('tenant_id', tenant!.id)
-        .not('venta_id', 'is', null)
-      const idsConEnvio = (conEnvio ?? []).map((e: any) => e.venta_id).filter(Boolean)
-
+        .from('envios').select('venta_id').eq('tenant_id', tenant!.id).not('venta_id', 'is', null)
+      const cuentaEnvios = new Map<string, number>()
+      for (const e of (conEnvio ?? []) as any[]) {
+        if (e.venta_id) cuentaEnvios.set(e.venta_id, (cuentaEnvios.get(e.venta_id) ?? 0) + 1)
+      }
       let q = supabase.from('ventas')
         .select('id, numero, numero_sucursal, sucursal_id, total, costo_envio, estado, origen, created_at, cliente_id, clientes(nombre, id)')
         .eq('tenant_id', tenant!.id)
@@ -212,9 +218,8 @@ export default function EnviosPage() {
         const n = parseInt(ventaSearch)
         if (!isNaN(n)) q = q.eq('numero', n)
       }
-      if (idsConEnvio.length > 0) q = q.not('id', 'in', `(${idsConEnvio.join(',')})`)
       const { data } = await q
-      return data ?? []
+      return (data ?? []).map((v: any) => ({ ...v, _nEnvios: cuentaEnvios.get(v.id) ?? 0 }))
     },
     enabled: !!tenant && showModal,
   })
@@ -493,6 +498,10 @@ export default function EnviosPage() {
         pod_notas: form.pod_notas.trim() || null,
         pod_url: form.pod_url.trim() || null,
         repartidor_id: form.repartidor_id || null,
+        // EN5/A2 — tipo de envío + motivo + sucursal destino (traslado interno)
+        tipo: form.tipo || 'venta',
+        motivo: form.motivo.trim() || null,
+        sucursal_destino_id: form.tipo === 'traslado_interno' ? (form.sucursal_destino_id || null) : null,
         created_by: user?.id,
       }
       if (editId) {
@@ -503,8 +512,15 @@ export default function EnviosPage() {
         // o si es envío propio (sin courier a quien pagar), nace saldado → no va a Pagos Courier.
         const envioYaSaldado = form.courier === 'Envío propio'
           || (!!ventaSeleccionada && Number(ventaSeleccionada.costo_envio ?? 0) > 0 && ventaSeleccionada.estado === 'despachada')
-        const { error } = await supabase.from('envios').insert({ ...payload, costo_pagado: envioYaSaldado })
+        const { data: nuevo, error } = await supabase.from('envios').insert({ ...payload, costo_pagado: envioYaSaldado }).select('id').single()
         if (error) throw error
+        // EN5/A5 — desglose: persistir qué ítems se fueron en este envío (de la venta)
+        if (nuevo?.id && ventaSeleccionada?.id && (ventaItemsForm as any[]).length > 0) {
+          const filas = (ventaItemsForm as any[])
+            .filter(it => Number(it.cantidad) > 0)
+            .map(it => ({ tenant_id: tenant!.id, envio_id: nuevo.id, producto_id: it.producto_id ?? null, cantidad: Number(it.cantidad), lpn: it.lpn ?? null }))
+          if (filas.length > 0) await supabase.from('envio_items').insert(filas)
+        }
       }
     },
     onSuccess: () => {
@@ -1044,7 +1060,7 @@ export default function EnviosPage() {
   // ── Helpers form ─────────────────────────────────────────────────────────────
   const abrirNuevo = () => {
     setEditId(null); setForm(FORM_VACIO)
-    setVentaSeleccionada(null); setVentaSearch('')
+    setVentaSeleccionada(null); setVentaSearch(''); setVentaItemsForm([])
     setDistanciaKm(null); setDireccionEntrega('')
     setShowModal(true)
   }
@@ -1075,16 +1091,32 @@ export default function EnviosPage() {
         return idx >= 0 ? String(idx) : ''
       })(),
       repartidor_id: e.repartidor_id ?? '',
+      tipo: e.tipo ?? 'venta', motivo: e.motivo ?? '', sucursal_destino_id: e.sucursal_destino_id ?? '',
     })
+    setVentaItemsForm([])
     setShowModal(true)
   }
 
-  const seleccionarVenta = (v: any) => {
+  const seleccionarVenta = async (v: any) => {
     setVentaSeleccionada(v)
     setForm(f => ({
       ...f, venta_id: v.id,
       cliente_nombre: v.clientes?.nombre ?? '',
       canal: v.origen ?? 'POS',  // autocompletado desde el canal de la venta
+    }))
+    // EN5/A5 — cargar ítems de la venta y restar lo ya despachado en envíos previos
+    const [{ data: vi }, { data: yaEnv }] = await Promise.all([
+      supabase.from('venta_items').select('producto_id, cantidad, linea_id, productos(nombre), inventario_lineas(lpn)').eq('venta_id', v.id),
+      supabase.from('envio_items').select('producto_id, cantidad, envios!inner(venta_id)').eq('envios.venta_id', v.id),
+    ])
+    const enviadoPorProd = new Map<string, number>()
+    for (const e of (yaEnv ?? []) as any[]) {
+      if (e.producto_id) enviadoPorProd.set(e.producto_id, (enviadoPorProd.get(e.producto_id) ?? 0) + Number(e.cantidad ?? 0))
+    }
+    setVentaItemsForm((vi ?? []).map((it: any) => {
+      const yaEnviado = it.producto_id ? (enviadoPorProd.get(it.producto_id) ?? 0) : 0
+      const restante = Math.max(0, Number(it.cantidad ?? 0) - yaEnviado)
+      return { producto_id: it.producto_id ?? null, nombre: it.productos?.nombre ?? 'Ítem', cantidad: restante, lpn: (it.inventario_lineas as any)?.lpn ?? null }
     }))
   }
 
@@ -1242,6 +1274,18 @@ export default function EnviosPage() {
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
                                 {cfg.icon}{cfg.label}
                               </span>
+                              {/* EN5/A4 — atrasado de despacho */}
+                              {plazoDespachoVencido({ createdAt: e.created_at, estado: e.estado, canal: e.canal, plazos: (tenant as any)?.envio_plazo_despacho }).vencido && (
+                                <span className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300">
+                                  <AlertTriangle size={9} /> Atrasado
+                                </span>
+                              )}
+                              {/* EN5/A2 — tipo libre */}
+                              {e.tipo && e.tipo !== 'venta' && (
+                                <span className="ml-1 inline-block px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300">
+                                  {TIPOS_ENVIO.find(t => t.v === e.tipo)?.t ?? e.tipo}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">
                               {e.canal ?? '—'}
@@ -1889,8 +1933,35 @@ export default function EnviosPage() {
             </div>
 
             <div className="p-5 space-y-4 overflow-y-auto">
+              {/* EN5/A2 — Tipo de envío (libre sin venta) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de envío</label>
+                <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                  {TIPOS_ENVIO.map(t => <option key={t.v} value={t.v}>{t.t}</option>)}
+                </select>
+              </div>
+              {form.tipo !== 'venta' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
+                    <input type="text" value={form.motivo} onChange={e => setForm(f => ({ ...f, motivo: e.target.value }))}
+                      placeholder="Ej: muestra para cliente X" className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  {form.tipo === 'traslado_interno' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sucursal destino</label>
+                      <select value={form.sucursal_destino_id} onChange={e => setForm(f => ({ ...f, sucursal_destino_id: e.target.value }))}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        <option value="">Elegí…</option>
+                        {(sucursales as any[]).filter(s => s.id !== sucursalId).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* Seleccionar venta */}
-              {!editId && (
+              {!editId && form.tipo === 'venta' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Venta asociada (opcional)</label>
                   {ventaSeleccionada ? (
@@ -1912,13 +1983,32 @@ export default function EnviosPage() {
                       <div className="space-y-1 max-h-32 overflow-y-auto">
                         {(ventasRecientes as any[]).map((v: any) => (
                           <button key={v.id} onClick={() => seleccionarVenta(v)}
-                            className="w-full text-left px-3 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700 text-gray-800 dark:text-gray-100">
-                            {formatVentaNum(v)} — {v.clientes?.nombre ?? 'Sin cliente'} — {formatMoneda(v.total ?? 0)}
+                            className="w-full text-left px-3 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-100 dark:border-gray-700 text-gray-800 dark:text-gray-100 flex items-center justify-between gap-2">
+                            <span>{formatVentaNum(v)} — {v.clientes?.nombre ?? 'Sin cliente'} — {formatMoneda(v.total ?? 0)}</span>
+                            {v._nEnvios > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 whitespace-nowrap">{v._nEnvios} envío{v._nEnvios > 1 ? 's' : ''}</span>}
                           </button>
                         ))}
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* EN5/A5 — desglose: qué ítems se van en este envío */}
+              {!editId && form.tipo === 'venta' && ventaSeleccionada && ventaItemsForm.length > 0 && (
+                <div className="border border-gray-100 dark:border-gray-700 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Contenido de este envío (editá lo que va ahora)</p>
+                  <div className="space-y-1.5">
+                    {ventaItemsForm.map((it, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="flex-1 text-sm text-gray-700 dark:text-gray-200 truncate">{it.nombre}{it.lpn ? <span className="text-gray-400"> · {it.lpn}</span> : null}</span>
+                        <input type="number" onWheel={e => e.currentTarget.blur()} value={it.cantidad}
+                          onChange={e => setVentaItemsForm(arr => arr.map((x, j) => j === i ? { ...x, cantidad: Math.max(0, parseFloat(e.target.value) || 0) } : x))}
+                          min="0" className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-2">Si dividís la venta en varios envíos, cargá acá solo lo que sale en éste. Lo ya despachado se descuenta automáticamente.</p>
                 </div>
               )}
 
@@ -1932,7 +2022,14 @@ export default function EnviosPage() {
                         ${form.destino_id === d.id ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
                         <input type="radio" checked={form.destino_id === d.id}
                           onChange={() => {
-                            setForm(f => ({ ...f, destino_id: d.id, destino_descripcion: `${d.calle}${d.numero ? ` ${d.numero}` : ''}${d.piso_depto ? `, ${d.piso_depto}` : ''}, ${d.ciudad ?? ''} ${d.provincia ?? ''} ${d.codigo_postal ?? ''}`.trim() }))
+                            // EN5/A3 — sugerir courier por CP (solo si no se eligió uno)
+                            const sugerido = sugerirCourierPorCp(d.codigo_postal, (tenant as any)?.cp_courier_preferido)
+                            setForm(f => ({
+                              ...f, destino_id: d.id,
+                              destino_descripcion: `${d.calle}${d.numero ? ` ${d.numero}` : ''}${d.piso_depto ? `, ${d.piso_depto}` : ''}, ${d.ciudad ?? ''} ${d.provincia ?? ''} ${d.codigo_postal ?? ''}`.trim(),
+                              courier: (!f.courier && sugerido && tipoEnvio === 'tercero') ? sugerido : f.courier,
+                            }))
+                            if (sugerido && !form.courier && tipoEnvio === 'tercero') toast(`Sugerido: ${sugerido} (por CP ${d.codigo_postal})`, { icon: '📦' })
                             setEditandoDomId(null)
                           }} className="accent-accent mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">

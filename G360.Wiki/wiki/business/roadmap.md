@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.43.0 — Envíos EN4: costos y tarifas avanzados (PROD ✅)
+
+B1 recargo horario · B2 factor KM · B3 costo mínimo/escalonado · B4 cobro al cliente (100%/margen/subsidio) · B5 envío gratis condicional · B6 diferencia real vs cotizado a-favor/pérdida (precio al cliente inmutable). Motor `enviosTarifas.ts` + 15 tests → suite 529. Mig 192.
+
+---
+
 ## v1.42.0 — Envíos EN3: reparto (repartidores + hoja de ruta) (PROD ✅)
 
 G1 catálogo de repartidores + asignación + productividad. G3/E3 hoja de ruta del día (orden por proximidad/zona, PDF, link agrupado `/hoja-ruta/:token` + cumplimiento). E1 expiración del token config. E2 transportista llamar/WA/incidencia. E4 identidad config. E5 notif "en camino" WA. Lib `enviosReparto.ts` + 8 tests → suite 514. Mig 191.

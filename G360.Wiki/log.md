@@ -6,6 +6,58 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-09] update | v1.45.0 DEV — Envíos EN7 (envío propio + recursos + reportes/alertas) — solo falta EN6
+
+**EN7 implementado y en DEV** (mig 194 aplicada en DEV, build verde, suite **558** = 541 + 17). Cierra el módulo Envíos salvo EN6 (integraciones courier, bloqueado por cuentas B2B).
+
+- **G2 — Envío propio + vehículo + combustible:** el modal de envío propio permite asociar un **vehículo** (recurso categoría Vehículo) + KM del viaje. Desde el detalle del envío, "**Registrar combustible**" genera un **gasto "Combustible"** (IVA crédito fiscal, link `envios.gasto_combustible_id`), **suma los KM al vehículo** (`recursos.km_acumulado`) y estima el monto con `consumo_litros_100km × precio del litro` (`tenants.envio_combustible_precio_litro`, editable). El consumo se carga por vehículo en Recursos. Lib pura `enviosRecurso.ts`.
+- **H1 — Reportes (nuevo tab Reportes, `EnviosReportesPanel`):** pendientes/atrasados · cumplimiento por courier (tiempo medio + % entregados) · pagos a courier por mes · **margen logístico** (ingreso `ventas.costo_envio` − costo real, cuenta subsidiados) · distribución por zona/CP · productividad de repartidores (reusa `productividadRepartidor` de EN3). Lib pura `enviosReportes.ts`.
+- **H2 — Alertas (sección del tab Reportes):** sin despachar +Nh · POD pendiente +Nd · pago courier pendiente +Nd · diferencia cotizado vs real ≥N%. Umbrales configurables (`tenants.envio_alerta_*`).
+- **H3 — Export + etiquetas:** Excel/CSV/PDF en cada reporte (patrón `ComprasReportesPanel`) + **etiquetas A4** 4/6/12 por hoja con QR (link `/transporte/:token`) + datos del destinatario (`etiquetasEnvioPDF.ts`, botón en tab Reparto) + hoja de ruta PDF (ya existía en EN3).
+- **Config → Envíos:** card "Envío propio y alertas" (precio litro + 4 umbrales). **Recursos:** campo "Consumo (L/100km)" en vehículos.
+- **Mig 194** (aditiva): `envios.recurso_id/km_recorridos/gasto_combustible_id`, `recursos.km_acumulado/consumo_litros_100km`, `tenants.envio_combustible_precio_litro` + 4 umbrales de alerta, seed idempotente de categoría "Combustible".
+
+**Pendiente:** deploy de v1.45.0 a PROD (aplicar mig 194 en PROD + PR dev→main + release). **EN6** sigue bloqueado hasta tener cuentas B2B de courier.
+
+## [2026-06-09] update | Email saliente (Resend) RESUELTO — era API key vieja en el secret
+
+**El correo saliente quedó funcionando.** GO confirmó que le llegaron mails de Genesis. Causa real: el secret `RESEND_API_KEY` en Supabase era una **API key vieja/revocada** → Resend devolvía 401 "API key is invalid" (afectaba TODO el correo: ticket de venta, OC, etc.). NO era un problema de dominio (`genesis360.pro` estaba verificado DKIM/SPF) ni de código (FROM=noreply@genesis360.pro correcto en DEV v21 / PROD v24). GO regeneró la key en Resend y actualizó el secret → resuelto.
+
+Fix de diagnóstico que quedó en el código (v1.42.0/v1.44.0): `enviarOCEmail` (Proveedores → OC) y el envío de **ticket de venta** (VentasPage) ahora leen `error.context.json()` y muestran el **mensaje real de Resend** en vez del genérico "No se pudo enviar". **Aprendizaje:** ante `send-email` non-2xx, revisar primero la validez del `RESEND_API_KEY`. Wiki `resend-email.md` actualizada (estaba desfasada: decía FROM=onboarding@resend.dev).
+
+---
+
+## [2026-06-09] cierre-sesión | Envíos EN1-EN5 en PROD (v1.40.0→v1.44.0) · falta EN6 (bloqueado B2B) + EN7
+
+**Sesión larga. Relevamiento Envíos EN1-EN5 deployado a PROD, una fase por release. Suite 541 verde. `dev=main`.** Resumen de lo hecho hoy:
+
+1. **EN1 (v1.40.0, mig 189)** — pagos courier contables: gasto auto (Transporte y fletes, IVA crédito) + egreso caja + tab "Facturas Courier" (conciliación) + doble firma.
+2. **EN2 (v1.41.0, mig 190)** — POD robusto: campos requeridos config, firma canvas, DNI, OTP sobre umbral (propio), geoloc con fallback, sub-estados no-entrega + reintento.
+3. **EN3 (v1.42.0, mig 191)** — reparto: repartidores + productividad, tab Reparto (hoja de ruta PDF + link agrupado `/hoja-ruta/:token` + cumplimiento), token expiración config, transportista llamar/WA/incidencia, identidad config, notif "en camino".
+4. **EN4 (v1.43.0, mig 192)** — costos/tarifas: factor KM, costo mínimo/tramos, recargo horario, cobro al cliente (100/margen/subsidio), envío gratis condicional, diferencia real vs cotizado (B6).
+5. **EN5 (v1.44.0, mig 193)** — creación/alcance: DEPOSITO crea, envíos libres, sugerencia courier por CP, plazo despacho por canal + alerta, múltiples envíos por venta con `envio_items`.
+
+**Libs puras nuevas:** `enviosCourierPago`, `enviosPod`, `enviosReparto`, `enviosTarifas`, `enviosCreacion` (todas con tests). Componentes nuevos: `SignaturePad`, `RepartidoresPanel`, `HojaRutaPage`. Migraciones 189-193.
+
+**Pendiente Envíos:** **EN6** (integraciones courier: tracking/cotización comparativa/etiquetas) **bloqueado** hasta validar adapters de `courier-api` con cuentas B2B reales (ver Email+Couriers). **EN7** (envío propio + recursos + reportes/alertas/export). Quedan también RRHH/Caja sin relevar.
+
+**⚠ Email saliente (Resend) — acción pendiente de GO:** el `RESEND_API_KEY` cargado en Supabase (DEV+PROD) está **inválido** (Resend 401 "API key is invalid"); el dominio `genesis360.pro` SÍ está verificado. Claude NO tocó el secret. GO debe generar una API key nueva en Resend (Sending access) y cargarla como secret en ambos proyectos. El front ya muestra el error real de Resend (OC + ticket).
+
+---
+
+## [2026-06-09] update | Envíos EN5 — creación y alcance (v1.44.0, mig 193, PROD ✅)
+
+**Quinta fase de Envíos en PROD.** Build + 541 tests verdes. Mig 193 (aditiva) DEV+PROD. PR #173, release `v1.44.0`, `dev=main`.
+
+- **A1** DEPOSITO ve y crea envíos (`AppLayout`: `/envios` con `depositoVisible` + agregado a `DEPOSITO_ALLOWED`).
+- **A2** Envíos **libres sin venta**: `envios.tipo` (venta/traslado_interno/muestra/dev_proveedor/otro) + `motivo` + `sucursal_destino_id` (traslado interno). Select de tipo en el modal; badge de tipo en la lista.
+- **A3** Sugerencia de courier por CP: `tenants.cp_courier_preferido` (rangos desde-hasta → courier); al elegir domicilio con CP propone el courier (`sugerirCourierPorCp`, override permitido). Config → Envíos editor de reglas.
+- **A4** Plazo de despacho por canal: `tenants.envio_plazo_despacho` {presencial/online/mayorista} en horas; badge **"Atrasado"** en la lista (`plazoDespachoVencido` + `clasificarCanal`). Config → Envíos.
+- **A5** Múltiples envíos por venta con **desglose** (`envio_items`): al seleccionar la venta se cargan los ítems con cantidad restante (descuenta lo ya despachado en envíos previos); editor de qué sale en este envío; se relajó la exclusión de ventas con envío (badge "N envíos" en el selector). Persiste en `envio_items` al crear.
+- **Lib pura** `src/lib/enviosCreacion.ts` (`TIPOS_ENVIO`, `sugerirCourierPorCp`, `clasificarCanal`, `plazoDespachoVencido`, `unidadesEnviadas`) + 12 tests.
+
+---
+
 ## [2026-06-08] update | Envíos EN4 — costos y tarifas avanzados (v1.43.0, mig 192, PROD ✅)
 
 **Cuarta fase de Envíos en PROD.** Build + 529 tests verdes. Mig 192 (aditiva) en DEV y PROD. PR #172, release `v1.43.0`, `dev=main`.

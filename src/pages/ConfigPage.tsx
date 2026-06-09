@@ -543,6 +543,12 @@ export default function ConfigPage() {
   const [bizCpCourier, setBizCpCourier] = useState<Array<{ desde: string; hasta: string; courier: string }>>(
     Array.isArray((tenant as any)?.cp_courier_preferido) ? (tenant as any).cp_courier_preferido.map((r: any) => ({ desde: String(r.desde ?? r.cp ?? ''), hasta: String(r.hasta ?? r.cp ?? ''), courier: String(r.courier ?? '') })) : []
   )
+  // EN7 — envío propio (combustible) + umbrales de alertas
+  const [bizCombustiblePrecio, setBizCombustiblePrecio] = useState<string>(String((tenant as any)?.envio_combustible_precio_litro ?? 0))
+  const [bizAlertaSinDespacho, setBizAlertaSinDespacho] = useState<string>(String((tenant as any)?.envio_alerta_sin_despacho_horas ?? 24))
+  const [bizAlertaPodDias, setBizAlertaPodDias] = useState<string>(String((tenant as any)?.envio_alerta_pod_pendiente_dias ?? 3))
+  const [bizAlertaPagoDias, setBizAlertaPagoDias] = useState<string>(String((tenant as any)?.envio_alerta_pago_courier_dias ?? 7))
+  const [bizAlertaDifPct, setBizAlertaDifPct] = useState<string>(String((tenant as any)?.envio_alerta_diferencia_pct ?? 15))
 
   // Fase 2 — identidad
   const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
@@ -749,6 +755,12 @@ export default function ConfigPage() {
         mayorista: parseFloat(bizPlazoMayorista) || 0,
       },
       cp_courier_preferido: bizCpCourier.filter(r => r.courier && (r.desde || r.hasta)).map(r => ({ desde: r.desde, hasta: r.hasta || r.desde, courier: r.courier })),
+      // EN7 — envío propio (combustible) + umbrales de alertas
+      envio_combustible_precio_litro: parseFloat(bizCombustiblePrecio) || 0,
+      envio_alerta_sin_despacho_horas: parseInt(bizAlertaSinDespacho) || 24,
+      envio_alerta_pod_pendiente_dias: parseInt(bizAlertaPodDias) || 3,
+      envio_alerta_pago_courier_dias: parseInt(bizAlertaPagoDias) || 7,
+      envio_alerta_diferencia_pct: parseFloat(bizAlertaDifPct) || 15,
       // Facturación
       facturacion_habilitada: bizFactHabilitada,
       cuit: bizCuit.trim() || null,
@@ -3699,6 +3711,44 @@ export default function ConfigPage() {
                 ))}
               </div>
               {canEdit && <button onClick={() => setBizCpCourier(arr => [...arr, { desde: '', hasta: '', courier: '' }])} className="text-xs text-accent hover:underline mt-1">+ Agregar regla</button>}
+            </div>
+            {canEdit && (
+              <div className="flex justify-end">
+                <button onClick={handleSaveBiz} disabled={savingBiz}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                  {savingBiz ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* EN7 — envío propio (combustible) + alertas de envíos */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Truck size={18} className="text-accent" /> Envío propio y alertas
+            </h3>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio del litro de combustible</label>
+              <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCombustiblePrecio} onChange={e => setBizCombustiblePrecio(e.target.value)} min="0" step="0.01" disabled={!canEdit}
+                className="w-40 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+              <p className="text-xs text-gray-400 mt-1">Estima el gasto de combustible por envío (KM × consumo del vehículo × precio). El consumo se carga por vehículo en Recursos.</p>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Umbrales de alertas (Reportes → Alertas)</p>
+              <div className="flex flex-wrap gap-3">
+                {([
+                  ['Sin despachar (horas)', bizAlertaSinDespacho, setBizAlertaSinDespacho],
+                  ['POD pendiente (días)', bizAlertaPodDias, setBizAlertaPodDias],
+                  ['Pago courier (días)', bizAlertaPagoDias, setBizAlertaPagoDias],
+                  ['Diferencia cot. vs real (%)', bizAlertaDifPct, setBizAlertaDifPct],
+                ] as const).map(([label, val, setter]) => (
+                  <div key={label}>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={val} onChange={e => (setter as any)(e.target.value)} min="0" step="1" disabled={!canEdit}
+                      className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  </div>
+                ))}
+              </div>
             </div>
             {canEdit && (
               <div className="flex justify-end">

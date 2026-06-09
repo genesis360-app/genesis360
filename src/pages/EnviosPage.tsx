@@ -6,7 +6,7 @@ import {
   ExternalLink, MapPin, Truck, Clock, CheckCircle, RotateCcw,
   AlertTriangle, Send, Scale, Ruler, ChevronDown, Pencil, Trash2,
   FileText, RefreshCw, Navigation, Loader2, Warehouse, ClipboardCheck, Upload, User as UserIcon,
-  Camera, CreditCard, DollarSign, PackageCheck, QrCode, Tag,
+  Camera, CreditCard, DollarSign, PackageCheck, QrCode, Tag, BarChart3, Fuel, Car,
 } from 'lucide-react'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import PodFotosManager from '@/components/PodFotosManager'
@@ -26,12 +26,15 @@ import { podFaltantes, SUBESTADOS_NO_ENTREGA, resolverNoEntrega, type SubestadoN
 import { productividadRepartidor, cumplimientoDia, ordenarHojaRuta, tokenExpiraAt } from '@/lib/enviosReparto'
 import { costoEnvioPropio, diferenciaReal, DIFERENCIA_MOTIVOS } from '@/lib/enviosTarifas'
 import { TIPOS_ENVIO, sugerirCourierPorCp, plazoDespachoVencido } from '@/lib/enviosCreacion'
+import { costoCombustible, kmAcumuladoNuevo, desgloseIvaCombustible } from '@/lib/enviosRecurso'
+import { generarEtiquetasA4PDF, type EtiquetaEnvio, type EtiquetasPorHoja } from '@/lib/etiquetasEnvioPDF'
+import EnviosReportesPanel from '@/components/EnviosReportesPanel'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 type EstadoEnvio = 'pendiente' | 'despachado' | 'en_camino' | 'en_bodega' | 'entregado' | 'devolucion' | 'cancelado'
-type TabEnvio = 'envios' | 'pagos' | 'facturas' | 'reparto'
+type TabEnvio = 'envios' | 'pagos' | 'facturas' | 'reparto' | 'reportes'
 
 const MEDIOS_PAGO_COURIER = ['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Otro']
 
@@ -75,6 +78,8 @@ interface FormEnvio {
   repartidor_id: string
   // EN5 — tipo de envío (A2) + motivo + sucursal destino (traslado interno)
   tipo: string; motivo: string; sucursal_destino_id: string
+  // EN7/G2 — vehículo (recurso) + km del envío propio
+  recurso_id: string; km_recorridos: string
 }
 const FORM_VACIO: FormEnvio = {
   venta_id: '', cliente_nombre: '',
@@ -86,6 +91,7 @@ const FORM_VACIO: FormEnvio = {
   pod_fecha: '', pod_receptor: '', pod_notas: '', pod_url: '',
   rango_horario_idx: '', repartidor_id: '',
   tipo: 'venta', motivo: '', sucursal_destino_id: '',
+  recurso_id: '', km_recorridos: '',
 }
 
 export default function EnviosPage() {
@@ -303,6 +309,81 @@ export default function EnviosPage() {
     enabled: !!tenant && (tab === 'pagos' || tab === 'facturas'),
   })
 
+  // EN7/G2 — categoría de gasto "Combustible" (predefinida, mig 130/194) para el gasto del envío propio
+  const { data: categoriaCombustibleId } = useQuery({
+    queryKey: ['categoria-combustible', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('categorias_gasto')
+        .select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Combustible').maybeSingle()
+      return data?.id ?? null
+    },
+    enabled: !!tenant,
+  })
+
+  // EN7/G2 — modal de combustible: envío + monto estimado editable
+  const [combustibleEnvio, setCombustibleEnvio] = useState<any | null>(null)
+  const [combustibleMonto, setCombustibleMonto] = useState('')
+  const [combustibleKm, setCombustibleKm] = useState('')
+  const [savingCombustible, setSavingCombustible] = useState(false)
+
+  const abrirCombustible = (e: any) => {
+    const veh = (vehiculos as any[]).find(v => v.id === e.recurso_id)
+    const km = Number(e.km_recorridos) || 0
+    const estimado = costoCombustible(km, {
+      consumoLitros100km: veh?.consumo_litros_100km,
+      precioLitro: (tenant as any)?.envio_combustible_precio_litro,
+    })
+    setCombustibleEnvio(e)
+    setCombustibleKm(km ? String(km) : '')
+    setCombustibleMonto(estimado > 0 ? String(estimado) : '')
+  }
+
+  const registrarCombustible = async () => {
+    if (!combustibleEnvio) return
+    const monto = parseFloat(combustibleMonto) || 0
+    const km = parseFloat(combustibleKm) || 0
+    if (monto <= 0) { toast.error('Ingresá el monto del combustible'); return }
+    const veh = (vehiculos as any[]).find(v => v.id === combustibleEnvio.recurso_id)
+    setSavingCombustible(true)
+    try {
+      const ivaPct = Number((tenant as any)?.envio_courier_iva_pct ?? 21)
+      const { iva } = desgloseIvaCombustible(monto, ivaPct)
+      const { data: gastoIns, error: gErr } = await supabase.from('gastos').insert({
+        tenant_id: tenant!.id,
+        descripcion: `Combustible — envío #${combustibleEnvio.numero ?? combustibleEnvio.id.slice(-6)}${veh ? ` (${veh.nombre})` : ''}`,
+        monto,
+        categoria: 'Combustible',
+        categoria_id: categoriaCombustibleId ?? null,
+        recurso_id: combustibleEnvio.recurso_id ?? null,
+        tipo_iva: ivaPct > 0 ? String(ivaPct) : null,
+        iva_monto: iva > 0 ? iva : null,
+        alicuota_iva: ivaPct > 0 ? ivaPct : null,
+        iva_deducible: ivaPct > 0,
+        deduce_ganancias: true,
+        gasto_negocio: true,
+        medio_pago: JSON.stringify([{ tipo: 'Efectivo', monto }]),
+        fecha: new Date().toISOString().split('T')[0],
+        sucursal_id: combustibleEnvio.sucursal_id ?? null,
+        usuario_id: user?.id ?? null,
+        monto_pagado: monto,
+        estado_pago: 'pagado',
+        notas: `Combustible del envío propio (${km} km)`,
+      }).select('id').single()
+      if (gErr) throw gErr
+      // suma KM al vehículo + link al gasto
+      if (combustibleEnvio.recurso_id && veh) {
+        await supabase.from('recursos').update({ km_acumulado: kmAcumuladoNuevo(veh.km_acumulado, km) }).eq('id', combustibleEnvio.recurso_id)
+      }
+      await supabase.from('envios').update({ gasto_combustible_id: gastoIns.id, km_recorridos: km || combustibleEnvio.km_recorridos || null }).eq('id', combustibleEnvio.id)
+      toast.success('Combustible registrado como gasto')
+      qc.invalidateQueries({ queryKey: ['envios'] })
+      qc.invalidateQueries({ queryKey: ['vehiculos-envio'] })
+      qc.invalidateQueries({ queryKey: ['gastos'] })
+      setCombustibleEnvio(null)
+    } catch (e: any) { toast.error(e.message ?? 'Error al registrar combustible') }
+    finally { setSavingCombustible(false) }
+  }
+
   // EN1/C2 — sesión de caja abierta del usuario en la sucursal (para egreso si paga efectivo)
   const { data: sesionCajaPago } = useQuery({
     queryKey: ['caja-sesion-pago-courier', tenant?.id, sucursalId, user?.id],
@@ -327,10 +408,23 @@ export default function EnviosPage() {
     enabled: !!tenant,
   })
 
+  // EN7/G2 — vehículos (recursos activos) para asociar al envío propio + auto-gasto combustible
+  const { data: vehiculos = [] } = useQuery({
+    queryKey: ['vehiculos-envio', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('recursos')
+        .select('id, nombre, categoria, estado, consumo_litros_100km, km_acumulado')
+        .eq('tenant_id', tenant!.id).eq('estado', 'activo').order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+
   // EN3/G3 — hoja de ruta (estado de la pestaña Reparto)
   const [hrFecha, setHrFecha] = useState(new Date().toISOString().split('T')[0])
   const [hrRepartidor, setHrRepartidor] = useState('')
   const [hrGuardando, setHrGuardando] = useState(false)
+  const [etqPorHoja, setEtqPorHoja] = useState<EtiquetasPorHoja>(6)
 
   const { data: enviosReparto = [] } = useQuery({
     queryKey: ['envios-reparto', tenant?.id, sucursalId, hrFecha, hrRepartidor],
@@ -502,6 +596,9 @@ export default function EnviosPage() {
         tipo: form.tipo || 'venta',
         motivo: form.motivo.trim() || null,
         sucursal_destino_id: form.tipo === 'traslado_interno' ? (form.sucursal_destino_id || null) : null,
+        // EN7/G2 — vehículo (recurso) + km del envío propio
+        recurso_id: tipoEnvio === 'propio' ? (form.recurso_id || null) : null,
+        km_recorridos: form.km_recorridos ? parseFloat(form.km_recorridos) : (distanciaKm ?? null),
         created_by: user?.id,
       }
       if (editId) {
@@ -891,6 +988,26 @@ export default function EnviosPage() {
     doc.save(`hoja_ruta_${hrFecha}${rep ? '_' + rep.nombre.replace(/\s+/g, '_') : ''}.pdf`)
   }
 
+  // EN7/H3 — etiquetas A4 (4/6/12 por hoja) con QR + datos del destinatario, de la hoja de ruta del día
+  const generarEtiquetas = async () => {
+    const ordenados = hojaRutaOrdenada()
+    if (ordenados.length === 0) { toast.error('No hay envíos para etiquetas'); return }
+    const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin
+    const etiquetas: EtiquetaEnvio[] = (ordenados as any[]).map((e: any) => ({
+      numero: e.numero,
+      negocio: tenant?.nombre ?? BRAND.name,
+      destinatario: e.ventas?.clientes?.nombre ?? '—',
+      direccion: [e.cliente_domicilios?.calle, e.cliente_domicilios?.numero, e.cliente_domicilios?.ciudad].filter(Boolean).join(' '),
+      zona: e.zona_entrega,
+      telefono: e.ventas?.clientes?.telefono,
+      courier: 'Envío propio',
+      qrTexto: e.token_transportista ? `${baseUrl}/transporte/${e.token_transportista}` : `Envío #${e.numero}`,
+    }))
+    try {
+      await generarEtiquetasA4PDF(etiquetas, etqPorHoja)
+    } catch (err: any) { toast.error(err.message ?? 'Error al generar etiquetas') }
+  }
+
   const crearHojaRutaToken = async () => {
     const ordenados = hojaRutaOrdenada()
     if (ordenados.length === 0) { toast.error('No hay envíos para agrupar'); return }
@@ -1092,6 +1209,7 @@ export default function EnviosPage() {
       })(),
       repartidor_id: e.repartidor_id ?? '',
       tipo: e.tipo ?? 'venta', motivo: e.motivo ?? '', sucursal_destino_id: e.sucursal_destino_id ?? '',
+      recurso_id: e.recurso_id ?? '', km_recorridos: e.km_recorridos ? String(e.km_recorridos) : '',
     })
     setVentaItemsForm([])
     setShowModal(true)
@@ -1148,6 +1266,7 @@ export default function EnviosPage() {
           { key: 'pagos',  label: 'Pagos Courier', icon: <CreditCard size={14} />, badge: (enviosPendientesPago as any[]).length || undefined },
           { key: 'facturas', label: 'Facturas Courier', icon: <FileText size={14} /> },
           { key: 'reparto', label: 'Reparto', icon: <Navigation size={14} /> },
+          { key: 'reportes', label: 'Reportes', icon: <BarChart3 size={14} /> },
         ] as const).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t.key ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
@@ -1520,6 +1639,19 @@ export default function EnviosPage() {
                                       <ClipboardCheck size={13} /> {e.pod_fecha ? 'Actualizar POD' : 'Registrar POD'}
                                     </button>
                                   )}
+                                  {/* EN7/G2 — Registrar combustible (envío propio con vehículo asignado) */}
+                                  {e.courier === 'Envío propio' && e.recurso_id && (
+                                    e.gasto_combustible_id ? (
+                                      <span className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-300 self-center">
+                                        <Fuel size={13} /> Combustible registrado
+                                      </span>
+                                    ) : (
+                                      <button onClick={() => abrirCombustible(e)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-amber-300 dark:border-amber-700 rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+                                        <Fuel size={13} /> Registrar combustible
+                                      </button>
+                                    )
+                                  )}
                                   {/* Avanzar estado */}
                                   {ESTADO_SIGUIENTE[e.estado as EstadoEnvio] && e.estado !== 'en_bodega' && (
                                     <button
@@ -1841,6 +1973,19 @@ export default function EnviosPage() {
                 className="flex items-center gap-2 border border-accent/40 text-accent px-3 py-2 rounded-xl text-sm hover:bg-accent/10">
                 <Printer size={15} /> Hoja de ruta PDF
               </button>
+              {/* EN7/H3 — etiquetas A4 con QR */}
+              <div className="flex items-center gap-1.5">
+                <select value={etqPorHoja} onChange={e => setEtqPorHoja(Number(e.target.value) as EtiquetasPorHoja)}
+                  className="border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                  <option value={4}>4/hoja</option>
+                  <option value={6}>6/hoja</option>
+                  <option value={12}>12/hoja</option>
+                </select>
+                <button onClick={generarEtiquetas}
+                  className="flex items-center gap-2 border border-accent/40 text-accent px-3 py-2 rounded-xl text-sm hover:bg-accent/10">
+                  <Tag size={15} /> Etiquetas A4
+                </button>
+              </div>
               <button onClick={crearHojaRutaToken} disabled={hrGuardando || !hrRepartidor}
                 className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-4 py-2 rounded-xl text-sm disabled:opacity-40">
                 <Send size={15} /> {hrGuardando ? 'Creando…' : 'Link agrupado para el chofer'}
@@ -1920,6 +2065,11 @@ export default function EnviosPage() {
             })()}
           </div>
         </div>
+      )}
+
+      {/* ══ TAB: REPORTES (EN7 — H1 reportes + H2 alertas + export) ══ */}
+      {tab === 'reportes' && (
+        <EnviosReportesPanel tenant={tenant} sucursalId={sucursalId} />
       )}
 
       {/* ══ MODAL: NUEVO / EDITAR ENVÍO ══ */}
@@ -2292,6 +2442,27 @@ export default function EnviosPage() {
                     </select>
                   </div>
                 )}
+                {/* EN7/G2 — Vehículo (recurso) + KM para auto-gasto de combustible (envío propio) */}
+                {tipoEnvio === 'propio' && (vehiculos as any[]).length > 0 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5"><Car size={13} className="text-gray-400" /> Vehículo</label>
+                      <select value={form.recurso_id} onChange={e => setForm(f => ({ ...f, recurso_id: e.target.value }))}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        <option value="">Sin vehículo</option>
+                        {(vehiculos as any[]).map(v => <option key={v.id} value={v.id}>{v.nombre}{v.consumo_litros_100km ? ` · ${v.consumo_litros_100km}L/100km` : ''}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">KM del envío</label>
+                      <input type="number" min="0" step="0.1" value={form.km_recorridos}
+                        onChange={e => setForm(f => ({ ...f, km_recorridos: e.target.value }))}
+                        placeholder={distanciaKm != null ? String(distanciaKm) : 'auto'}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <p className="col-span-2 text-[11px] text-gray-400 -mt-1 flex items-center gap-1"><Fuel size={11} /> El combustible se registra como gasto desde el detalle del envío (suma KM al vehículo).</p>
+                  </div>
+                )}
                 {/* Fecha entrega */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha de entrega acordada</label>
@@ -2588,6 +2759,53 @@ export default function EnviosPage() {
           </div>
         )
       })()}
+
+      {/* ══ MODAL: COMBUSTIBLE (EN7/G2) ══ */}
+      {combustibleEnvio && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2"><Fuel size={18} className="text-amber-500" /> Registrar combustible</h2>
+              <button onClick={() => setCombustibleEnvio(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Envío #{combustibleEnvio.numero ?? combustibleEnvio.id.slice(-6)} ·{' '}
+                {(vehiculos as any[]).find(v => v.id === combustibleEnvio.recurso_id)?.nombre ?? 'vehículo'}.
+                Genera un <strong>gasto en Combustible</strong> (IVA crédito fiscal) y suma los KM al vehículo.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">KM recorridos</label>
+                  <input type="number" min="0" step="0.1" value={combustibleKm}
+                    onChange={e => {
+                      setCombustibleKm(e.target.value)
+                      const veh = (vehiculos as any[]).find(v => v.id === combustibleEnvio.recurso_id)
+                      const est = costoCombustible(parseFloat(e.target.value) || 0, { consumoLitros100km: veh?.consumo_litros_100km, precioLitro: (tenant as any)?.envio_combustible_precio_litro })
+                      if (est > 0) setCombustibleMonto(String(est))
+                    }}
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto del gasto</label>
+                  <input type="number" min="0" step="0.01" value={combustibleMonto}
+                    onChange={e => setCombustibleMonto(e.target.value)}
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+              </div>
+              {!(tenant as any)?.envio_combustible_precio_litro && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">Configurá el precio del litro en Config → Envíos para estimar el monto automáticamente.</p>
+              )}
+            </div>
+            <div className="px-5 pb-5 flex gap-3">
+              <button onClick={() => setCombustibleEnvio(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-all text-sm">Cancelar</button>
+              <button onClick={registrarCombustible} disabled={savingCombustible}
+                className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">{savingCombustible ? 'Guardando…' : 'Registrar gasto'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

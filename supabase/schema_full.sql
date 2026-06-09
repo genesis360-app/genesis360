@@ -2660,3 +2660,35 @@ CREATE TABLE IF NOT EXISTS courier_factura_lineas (
   monto_facturado NUMERIC(12,2), created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE courier_factura_lineas ENABLE ROW LEVEL SECURITY;  -- policy courier_factura_lineas_tenant
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 190: Envíos · EN2 (POD robusto + cierre de entrega, D1-D6)
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS pod_firma_url TEXT;          -- D3 firma del receptor (canvas → storage)
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS pod_dni TEXT;                -- D3 DNI del receptor
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS pod_lat NUMERIC;            -- D4 geoloc al entregar
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS pod_lon NUMERIC;            -- D4
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS pod_geo_estado TEXT;        -- D4 ok|fuera_rango|no_disponible
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS pod_otp_verificado BOOLEAN NOT NULL DEFAULT FALSE; -- D3
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS intentos INT NOT NULL DEFAULT 0;          -- D6
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS reintento_motivo TEXT;      -- D6
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS subestado_no_entrega TEXT;  -- D5 ausente|rechazado|direccion_incorrecta
+ALTER TABLE envios ADD COLUMN IF NOT EXISTS no_entrega_motivo TEXT;     -- D5
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS pod_campos_requeridos JSONB NOT NULL DEFAULT '{"fecha":true,"receptor":true,"foto":false,"firma":false,"dni":false}'::jsonb; -- D1
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS pod_foto_min INT NOT NULL DEFAULT 0;            -- D2
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS pod_otp_umbral NUMERIC NOT NULL DEFAULT 0;      -- D3 (0 = off)
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_geoloc_alerta_km NUMERIC NOT NULL DEFAULT 0; -- D4 (0 = off)
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_reintentos_max INT NOT NULL DEFAULT 3;    -- D6
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS envio_reintento_recargo NUMERIC NOT NULL DEFAULT 0; -- D6
+-- envio_otp (D3): código de un solo uso para validar la entrega (envío propio sobre umbral)
+CREATE TABLE IF NOT EXISTS envio_otp (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  envio_id UUID NOT NULL REFERENCES envios(id) ON DELETE CASCADE,
+  codigo TEXT NOT NULL, telefono TEXT,
+  enviado_at TIMESTAMPTZ DEFAULT NOW(), verificado_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE envio_otp ENABLE ROW LEVEL SECURITY;  -- policy envio_otp_tenant
+-- RPCs públicas del transportista ampliadas: get_envio_by_token (devuelve config POD + es_propio),
+-- update_envio_by_token (firma/DNI/geoloc/sub-estado/reintento), generar_otp_envio, verificar_otp_envio.
+-- Todas SECURITY DEFINER, GRANT a anon + authenticated.

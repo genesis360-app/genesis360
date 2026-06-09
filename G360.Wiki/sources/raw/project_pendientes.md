@@ -258,6 +258,21 @@ Respuestas A-I + diseño + modelo de datos + recomendación contable/IVA + plan 
 
 **Pendientes de confirmación:** alícuota IVA del flete (¿21%?), plazos default por canal (A4), canal del OTP (D3), cuentas B2B para EN6.
 
+### Relevamiento RRHH — plan por fases RH1-RH8 (respondido 2026-06-09) — PENDIENTE DE IMPLEMENTAR
+
+Respuestas A-H + diseño + modelo de datos + plan completo en **`relevamiento_rrhh_respuestas.md`** (fuente de verdad). **Nada implementado aún** (el módulo RRHH ya es maduro: 13 tablas, RrhhPage ~3700 líneas; varias respuestas ya cumplidas por código → A5 `empleados.user_id`, A1-c `fecha_ingreso NOT NULL`, `fecha_egreso`/`supervisor_id`). Plan deployable por fases:
+
+- **RH1 — Empleados 2.0 (A1-A5):** obligatorios en form (email/tel/puesto/depto) · motivo de egreso + reactivar · **tipo de contrato configurable** (dropear CHECK, A3) · datos bancarios opcionales · exponer user_id en UI.
+- **RH2 — Conceptos + aportes AR + SAC (B3/B4/B5):** catálogo base por país + custom · **auto-aportes (jubilación 11%/OS 3%/ley 19.032 3%) configurables POR EMPLEADO con checkbox** (% centralizado en Config, no se tocan al togglear) + override + beneficios extra $/% · aguinaldo/SAC por **mejor sueldo del semestre** (botón jun/dic, opcional).
+- **RH3 — Nómina contable + recibo + Gastos (B6/B7/B8):** **medios de pago = cuentas de origen**; "Pagar nómina" **genera gasto en Gastos → variables (pendiente)**, un gasto por sueldo + acumulados por aporte cada uno con su categoría · recibo PDF + **comprobante firmado opcional** · doble validación configurable (RRHH prepara → DUEÑO/SUPERVISOR firma).
+- **RH4 — Frecuencia + anticipos (B1/B10):** frecuencia de liquidación configurable por empleado · anticipo simple con descuento automático en la próxima liquidación.
+- **RH5 — Vacaciones 2.0 (C1-C7):** días por antigüedad LCT (sugerencia)+override · aprobación configurable por rol · plazo de aviso · alerta de solapamiento + calendario · partidas configurables · remanente auto+límite · pago dentro del sueldo.
+- **RH6 — Asistencia 2.0 (D1-D6):** **fichado celular + QR del local** · horarios configurables · tardanza configurable · licencias subdivididas+comprobante+descuento · horas extra con multiplicador+aprobación · feriados con reglas de pago doble/triple.
+- **RH7 — Documentos + capacitaciones + supervisor + portal (E1-E4/F1-F4):** catálogo de documentos obligatorios+vencimiento+alertas · capacitaciones obligatorias por puesto · supervisor registra asistencia+evalúa · **portal del empleado configurable** · notificaciones del ciclo completo · evaluación de desempeño 1-10 + 360° opcional.
+- **RH8 — Reportes + export + liquidación final (G1/G2 + A2-c):** todos los reportes (costo laboral/asistencia/vacaciones/antigüedad-rotación/cumpleaños/recibos) + export Excel/PDF/CSV · **liquidación final** al egreso (vac no gozadas + SAC proporcional + indemnización).
+
+**Top 3 (GO delegó, H1 "me da igual"):** RH2 (aportes AR+SAC) → RH3 (nómina contable + recibo + Gastos) → RH6 (fichado). **RH1 conviene primero** (prerequisito liviano). **Pendientes de confirmar:** % aportes editables en Config, fórmula de indemnización (RH8), categorías de gasto de nómina (Sueldos/Cargas sociales), prorrateo del básico por frecuencia. Patrón: relevamiento→fases deployables (cada una a PROD con su versión).
+
 ### Bugs / mejoras UX puntuales
 
 | ID | Módulo | Descripción | Estado |

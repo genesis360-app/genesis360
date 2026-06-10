@@ -85,3 +85,20 @@ export function requiereClaveMaestra(accion: AccionCaja, claveMaestraConfigurada
   if (!claveMaestraConfigurada) return false
   return ACCIONES_CON_CLAVE_MAESTRA.includes(accion)
 }
+
+/**
+ * E1 — ¿el usuario puede ver/operar la Bóveda (Caja Fuerte)?
+ * `tenants.caja_fuerte_roles` guarda roles fijos (`'DUEÑO'`, `'SUPERVISOR'`, …) y
+ * roles personalizados como `'custom:<rolCustomId>'`. Así el DUEÑO puede habilitar
+ * la visibilidad de la bóveda tanto a un rol estándar como a uno custom.
+ */
+export function accedeABoveda(
+  rol: RolUsuario | null | undefined,
+  rolCustomId: string | null | undefined,
+  cajaFuerteRoles: string[] | null | undefined,
+): boolean {
+  const roles = cajaFuerteRoles ?? ['DUEÑO']
+  if (rol && roles.includes(rol)) return true
+  if (rolCustomId && roles.includes(`custom:${rolCustomId}`)) return true
+  return false
+}

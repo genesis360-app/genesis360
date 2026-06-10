@@ -10,7 +10,8 @@
 
 import {
   CourierAdapter, CourierCred, CotizarParams, CotizacionOpcion,
-  GenerarParams, GenerarResult, TrackingResult, CourierError,
+  GenerarParams, GenerarResult, TrackingResult, ProbarResult, CourierError,
+  courierFetch,
 } from './types.ts'
 
 const BASE = 'https://api.correoargentino.com.ar/micorreo/v1'
@@ -20,7 +21,7 @@ const DELIVERED: Record<string, string> = { D: 'A domicilio', S: 'A sucursal' }
 async function getToken(cred: CourierCred): Promise<string> {
   if (!cred.usuario || !cred.password) throw new CourierError('Correo Argentino: falta usuario/contraseña.')
   const basic = btoa(`${cred.usuario}:${cred.password}`)
-  const res = await fetch(`${BASE}/token`, {
+  const res = await courierFetch('Correo token', `${BASE}/token`, {
     method: 'POST',
     headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/json' },
   })
@@ -49,7 +50,7 @@ export const correo: CourierAdapter = {
           length: p.largo_cm ?? 10,
         }],
       }
-      const res = await fetch(`${BASE}/rates`, {
+      const res = await courierFetch('Correo rates', `${BASE}/rates`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -104,7 +105,7 @@ export const correo: CourierAdapter = {
       },
     }
 
-    const res = await fetch(`${BASE}/register`, {
+    const res = await courierFetch('Correo register', `${BASE}/register`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -124,9 +125,16 @@ export const correo: CourierAdapter = {
     }
   },
 
+  async probar(cred): Promise<ProbarResult> {
+    // El paso de auth de Correo es POST /token (Basic). Valida usuario/contraseña.
+    await getToken(cred)
+    if (!cred.nro_cliente) throw new CourierError('Correo Argentino: token OK, pero falta el Nº de cliente para cotizar.')
+    return { ok: true, detalle: 'Token obtenido. El Nº de cliente se valida al cotizar.' }
+  },
+
   async tracking(cred, trackingNumber: string): Promise<TrackingResult> {
     const token = await getToken(cred)
-    const res = await fetch(`${BASE}/tracking/${encodeURIComponent(trackingNumber)}`, {
+    const res = await courierFetch('Correo tracking', `${BASE}/tracking/${encodeURIComponent(trackingNumber)}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!res.ok) throw new CourierError(`Correo Argentino: tracking falló (${res.status}).`)

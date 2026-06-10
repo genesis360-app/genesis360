@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Truck, Save, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react'
+import { Truck, Save, ChevronDown, ChevronRight, CheckCircle2, Plug, XCircle, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { COURIERS_API, camposCredencialesDe } from '@/lib/couriers/catalogo'
+import { probarCredencialesCourier } from '@/lib/couriers/api'
 import toast from 'react-hot-toast'
 
 // ISS-174 F1 — carga de credenciales de API de courier por tenant.
@@ -78,9 +79,29 @@ function CourierItem({ courier, row, canEdit, tenantId, onSaved }: {
   useEffect(() => {
     setVals(row?.credenciales ?? {})
     setActivo(row?.activo ?? true)
+    setProbado(null)
   }, [row])
 
+  const [probado, setProbado] = useState<{ ok: boolean; msg: string } | null>(null)
+
   const configurado = !!row && campos.some(c => (row.credenciales?.[c.key] ?? '').trim() !== '')
+  // Hay cambios sin guardar respecto de lo persistido → probar testearía claves viejas.
+  const dirty = campos.some(c => (vals[c.key] ?? '').trim() !== (row?.credenciales?.[c.key] ?? '').trim())
+
+  const probar = useMutation({
+    mutationFn: () => probarCredencialesCourier(courier),
+    onMutate: () => setProbado(null),
+    onSuccess: (r) => {
+      const msg = r.detalle ?? 'Credenciales válidas.'
+      setProbado({ ok: true, msg })
+      toast.success(`${courier}: ${msg}`)
+    },
+    onError: (e: any) => {
+      const msg = e?.message ?? 'No se pudieron validar las credenciales.'
+      setProbado({ ok: false, msg })
+      toast.error(`${courier}: ${msg}`)
+    },
+  })
 
   const guardar = useMutation({
     mutationFn: async () => {
@@ -133,14 +154,31 @@ function CourierItem({ courier, row, canEdit, tenantId, onSaved }: {
               onChange={e => setActivo(e.target.checked)} className="accent-accent" />
             Activo (usar este courier para cotizar)
           </label>
-          {canEdit && (
-            <div className="flex justify-end pt-1">
-              <button onClick={() => guardar.mutate()} disabled={guardar.isPending}
-                className="px-4 py-1.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-lg transition-all disabled:opacity-60 text-xs flex items-center gap-1.5">
-                <Save size={13} /> {guardar.isPending ? 'Guardando…' : 'Guardar'}
-              </button>
+          {probado && (
+            <div className={`flex items-start gap-1.5 text-xs rounded-lg px-2.5 py-1.5 ${probado.ok
+              ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+              : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'}`}>
+              {probado.ok ? <CheckCircle2 size={13} className="mt-0.5 shrink-0" /> : <XCircle size={13} className="mt-0.5 shrink-0" />}
+              <span>{probado.msg}</span>
             </div>
           )}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={() => probar.mutate()}
+              disabled={probar.isPending || !configurado || dirty}
+              title={!configurado ? 'Guardá las credenciales primero' : dirty ? 'Guardá los cambios antes de probar' : 'Valida las credenciales contra el courier'}
+              className="px-3 py-1.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed text-xs flex items-center gap-1.5">
+              {probar.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />}
+              {probar.isPending ? 'Probando…' : 'Probar credenciales'}
+            </button>
+            {dirty && canEdit && <span className="text-xs text-amber-600 dark:text-amber-400">Guardá los cambios para probar</span>}
+            {canEdit && (
+              <button onClick={() => guardar.mutate()} disabled={guardar.isPending}
+                className="ml-auto px-4 py-1.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-lg transition-all disabled:opacity-60 text-xs flex items-center gap-1.5">
+                <Save size={13} /> {guardar.isPending ? 'Guardando…' : 'Guardar'}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

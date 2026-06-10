@@ -2898,3 +2898,19 @@ CREATE TABLE IF NOT EXISTS rrhh_liquidaciones_finales (
   notas TEXT, created_by UUID REFERENCES users(id) ON DELETE SET NULL, created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE rrhh_liquidaciones_finales ENABLE ROW LEVEL SECURITY;  -- policy rrhh_liq_finales_tenant
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 203: Caja — cierre del relevamiento (v1.50.0) — E3 arqueo bóveda · L3 préstamo
+-- ─────────────────────────────────────────────────────────────────────────────
+-- E3 — arqueo manual de bóveda (sin cerrarla). RLS estricta solo DUEÑO/ADMIN/SUPER_USUARIO.
+CREATE TABLE IF NOT EXISTS boveda_arqueos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  cuenta_origen_id UUID REFERENCES cuentas_origen(id) ON DELETE SET NULL,
+  saldo_sistema DECIMAL(14,2) NOT NULL DEFAULT 0, saldo_contado DECIMAL(14,2) NOT NULL DEFAULT 0,
+  diferencia DECIMAL(14,2) NOT NULL DEFAULT 0, notas TEXT,
+  usuario_id UUID NOT NULL REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE boveda_arqueos ENABLE ROW LEVEL SECURITY;  -- policy boveda_arqueos_solo_dueno (DUEÑO/ADMIN/SUPER_USUARIO)
+-- L3 — préstamo a empleado: flag + nota firmada adjunta (reusa rrhh_anticipos)
+ALTER TABLE rrhh_anticipos ADD COLUMN IF NOT EXISTS es_prestamo BOOLEAN NOT NULL DEFAULT FALSE;  -- L3
+ALTER TABLE rrhh_anticipos ADD COLUMN IF NOT EXISTS documento_url TEXT;  -- L3 (bucket empleados)

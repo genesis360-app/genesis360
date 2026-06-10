@@ -9,7 +9,7 @@ updated: 2026-06-09
 # Módulo Envíos
 
 Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.  
-**Última actualización:** 2026-06-09 — **EN7 (envío propio + recursos + reportes/alertas) en DEV** (v1.45.0, mig 194). Envíos cerrado salvo EN6 (integraciones courier, bloqueado por cuentas B2B). Ver "Relevamiento Envíos 2.0" al final.
+**Última actualización:** 2026-06-10 — **courier `probar` + logging diagnóstico en `courier-api`** (v1.49.0, **solo DEV**): botón "Probar credenciales" en Config → Envíos + logs del intercambio HTTP crudo (sin credenciales) para validar adapters con cuentas B2B. Antes: EN7 (envío propio + recursos + reportes/alertas) en PROD (v1.45.0, mig 194). Envíos cerrado salvo EN6 (integraciones courier, bloqueado por cuentas B2B). Ver "Relevamiento Envíos 2.0" al final.
 
 > **Relevamiento respondido (2026-06-06):** respuestas A-I + diseño + modelo de datos + recomendación contable/IVA + plan EN1-EN7 en `sources/raw/relevamiento_envios_respuestas.md`. **Pendiente de implementar.** Resumen al final de esta página.
 
@@ -118,7 +118,7 @@ Capa de datos y config, sin tocar APIs todavía:
 - **POS** (`VentasPage`): el campo *Servicio* del modal de envío pasó de texto libre a **select dependiente del courier** (igual que Envíos); se resetea al cambiar de courier.
 - **Config → Envíos**:
   - Card "**Peso y medidas para cotizar envíos**" → toggle `tenants.envio_peso_fuente`: `manual` (operador carga peso/medidas del bulto por envío, default) o `producto` (se toma del dato maestro y se suma el carrito).
-  - Panel "**Credenciales de courier**" (`CourierCredencialesPanel`, owner-only): carga por courier (Andreani/Correo/OCA) con campos típicos de cada API; secretos como `password`; estado "Configurado". Guarda en `courier_credenciales` (JSONB por tenant). Aún no se usan.
+  - Panel "**Credenciales de courier**" (`CourierCredencialesPanel`, owner-only): carga por courier (Andreani/Correo/OCA) con campos típicos de cada API; secretos como `password`; estado "Configurado". Guarda en `courier_credenciales` (JSONB por tenant). Botón "**Probar credenciales**" (v1.49.0, solo DEV) valida las claves guardadas contra el courier (resultado inline ✓/✗); las consume `courier-api`.
 - **Producto** (`ProductoFormPage`): campos `peso_kg / largo_cm / ancho_cm / alto_cm` (para fuente `producto`).
 - **CP estructurado**: `sucursales.codigo_postal` y `cliente_domicilios.codigo_postal` (ya existían, mig 124/074) son el origen/destino para cotizar. `AddressAutocompleteInput` ahora devuelve `postcode` best-effort (Nominatim) para autocompletar el CP en F2.
 - Migrations **162** (`courier_credenciales` + `envio_peso_fuente`), **163** (CP, idempotente), **164** (productos peso/dim).
@@ -128,12 +128,15 @@ Edge Function **`courier-api`** (`supabase/functions/courier-api/`) con router p
 - **`cotizar`** → devuelve lista normalizada `[{servicio, precio, plazo_dias, codigo_servicio}]`.
 - **`generar`** → crea la orden en el courier y guarda tracking + etiqueta + `courier_orden_id` (mig 165: `envios.cotizacion_json/courier_orden_id/cotizado_api`).
 - **`tracking`** → eventos de seguimiento.
+- **`probar`** (v1.49.0, **solo DEV**) → valida las credenciales guardadas con el paso de auth más barato del courier (Andreani→`login`, Correo→`getToken`, OCA→tarifa de muestra); no cotiza ni genera nada. Se valida aunque el courier esté inactivo.
 - **Adapters**: `andreani.ts` (REST, F2), `correo.ts` (Paq.ar, F3), `oca.ts` (SOAP, F4); tracking en los tres (F5). Las credenciales (`courier_credenciales`) se leen SOLO server-side con service_role.
-- **Front** (`src/lib/couriers/api.ts`): `cotizarEnvio` / `generarEnvioCourier` / `trackingEnvioCourier`.
+- **Front** (`src/lib/couriers/api.ts`): `cotizarEnvio` / `generarEnvioCourier` / `trackingEnvioCourier` / `probarCredencialesCourier` (v1.49.0).
   - **POS**: botón "Cotizar {courier}" (CP destino + peso) → elegir opción setea servicio + costo (editable).
   - **EnviosPage**: "Cotizar" en el modal; "Generar con courier" / "Etiqueta" / "Actualizar tracking" en el panel del envío (solo couriers con API vía `esCourierApi()`).
 
-**⚠ Adapters pendientes de validar con cuentas B2B reales** — escritos según documentación pública de cada courier. Al cargar credenciales reales en Config → Envíos hay que validar/ajustar endpoints y mapeos. Sin credenciales la cotización devuelve un error claro y el alta manual de envíos sigue intacta.
+**Logging diagnóstico (v1.49.0, solo DEV):** helper `courierFetch` en `types.ts` loguea `método + URL + status + body recortado (600 chars)` ante error de courier; log inline en el `soapCall` de OCA; log de entrada en el router (`action`/`courier`/`tenant`) y catch con contexto. **Nunca** se loguean credenciales. Visible en Supabase → Edge Function logs — pensado para debuggear la 1ª prueba real con cuenta B2B.
+
+**⚠ Adapters pendientes de validar con cuentas B2B reales** — escritos según documentación pública de cada courier. Al cargar credenciales reales en Config → Envíos hay que validar/ajustar endpoints y mapeos. Sin credenciales la cotización devuelve un error claro y el alta manual de envíos sigue intacta. El botón "Probar credenciales" (Config → Envíos) + el logging diagnóstico aceleran esta validación.
 
 ## Estados del envío (v1.8.39+)
 

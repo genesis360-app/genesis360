@@ -4,10 +4,11 @@
 // SOLO acá con service_role; nunca viajan al front. El usuario se autentica por JWT y se
 // resuelve su tenant_id; las credenciales se filtran por ese tenant.
 //
-// Body: { action: 'cotizar'|'generar'|'tracking', ... }
+// Body: { action: 'cotizar'|'generar'|'tracking'|'probar', ... }
 //   cotizar  → { courier, origen_cp, destino_cp, peso_kg, largo_cm?, ancho_cm?, alto_cm?, valor_declarado? }
 //   generar  → { envio_id, codigo_servicio? }
 //   tracking → { envio_id }
+//   probar   → { courier }  (valida credenciales con el paso de auth más barato; no genera nada)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -49,15 +50,20 @@ serve(async (req) => {
   let payload: any
   try { payload = await req.json() } catch { return json({ error: 'Body inválido' }, 400) }
   const action = payload?.action
+  // Log de entrada (sin credenciales): qué acción, qué courier, qué tenant.
+  console.log(`[courier-api] → action=${action ?? '—'} courier=${payload?.courier ?? '—'} tenant=${tenantId}`)
 
-  async function credsFor(courier: string): Promise<{ adapter: CourierAdapter; cred: CourierCred }> {
+  // requireActivo=false para "probar": se valida aunque el courier esté inactivo
+  // (el dueño puede testear las claves antes de marcarlo activo).
+  async function credsFor(courier: string, requireActivo = true): Promise<{ adapter: CourierAdapter; cred: CourierCred }> {
     const adapter = ADAPTERS[courier]
     if (!adapter) throw new CourierError(`Courier "${courier}" no soporta cotización por API.`)
     const { data: row } = await admin
       .from('courier_credenciales')
       .select('credenciales, activo')
       .eq('tenant_id', tenantId).eq('courier', courier).maybeSingle()
-    if (!row || !row.activo) throw new CourierError(`${courier} no tiene credenciales configuradas/activas. Cargalas en Config → Envíos.`)
+    if (!row) throw new CourierError(`${courier} no tiene credenciales configuradas. Cargalas en Config → Envíos.`)
+    if (requireActivo && !row.activo) throw new CourierError(`${courier} está inactivo. Activalo en Config → Envíos.`)
     return { adapter, cred: (row.credenciales ?? {}) as CourierCred }
   }
 
@@ -157,10 +163,24 @@ serve(async (req) => {
       return json({ tracking: r })
     }
 
+    // ── PROBAR CREDENCIALES ───────────────────────────────────────────────────
+    // Hace solo el paso de auth/login más barato del courier (sin cotizar ni generar).
+    if (action === 'probar') {
+      const { courier } = payload
+      if (!courier) return json({ error: 'Falta el courier.' }, 400)
+      const { adapter, cred } = await credsFor(courier, false)
+      const resultado = await adapter.probar(cred)
+      console.log(`[courier-api] probar ${courier} → OK`)
+      return json({ resultado })
+    }
+
     return json({ error: 'Acción no soportada.' }, 400)
   } catch (e) {
-    if (e instanceof CourierError) return json({ error: e.message }, 400)
-    console.error('courier-api error', e)
+    if (e instanceof CourierError) {
+      console.warn(`[courier-api] CourierError (action=${action}, courier=${payload?.courier ?? '—'}): ${e.message}`)
+      return json({ error: e.message }, 400)
+    }
+    console.error(`[courier-api] error interno (action=${action}, courier=${payload?.courier ?? '—'})`, e)
     return json({ error: 'Error interno al contactar el courier.' }, 500)
   }
 })

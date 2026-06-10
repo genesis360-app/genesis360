@@ -9,7 +9,25 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 3 de Junio, 2026
+**Última actualización:** 10 de Junio, 2026
+
+---
+
+## v1.50.0 — Caja: tanda final (E1/E3/L3/M3/M4) · 🎉 relevamiento Caja A-M COMPLETO (⚠ SOLO DEV)
+
+Cierre del relevamiento Caja: la mayoría ya estaba en PROD (migs 136-142, hito v1.10.0); esta tanda cierra los ítems chicos que faltaban. **E1** visibilidad de bóveda para roles personalizados (`accedeABoveda`, `caja_fuerte_roles` con `custom:<id>`) · **E3** arqueo manual de bóveda (`boveda_arqueos`, RLS DUEÑO+, modal + historial) · **L3** préstamo a empleado (checkbox + nota firmada en RRHH → Anticipos, `rrhh_anticipos.es_prestamo`/`documento_url`) · **M3** panel de cajero simplificado `/caja/panel` (`PanelCajeroPage`, full-screen touch) · **M4** sonido al cobrar (`sonidoCobro.ts`, Web Audio). Mig **203**. +5 tests (`accedeABoveda`) → suite **618**. **Quedó SOLO en DEV** (decisión GO); pendiente subir a PROD con v1.49.0.
+
+---
+
+## v1.49.0 — Courier: logging diagnóstico + "Probar credenciales" (⚠ SOLO DEV)
+
+Accionable del Punto 2 (Email+Couriers) sin necesidad de cuenta B2B. **Logging diagnóstico** en `courier-api` (helper `courierFetch`: método + URL + status + body recortado ante error; log inline en SOAP de OCA; log de entrada/catch en el router; **nunca** credenciales) + nueva acción **`probar`** y botón "**Probar credenciales**" por courier en Config → Envíos (`CourierCredencialesPanel`) que valida las claves guardadas con el paso de auth más barato (Andreani→`login`, Correo→`getToken`, OCA→tarifa de muestra). Front `probarCredencialesCourier()`. Sin migración. Build + suite 613 verdes. **Quedó solo en DEV** (decisión GO); `courier-api` deployada a DEV. Pendiente subir a PROD (deploy de la función + PR `dev → main` + release).
+
+---
+
+## v1.48.0 — RRHH RH7+RH8 · 🎉 RRHH 2.0 COMPLETO (PROD ✅)
+
+RH7 documentos obligatorios + vencimiento (E1/E2) · capacitación obligatoria (E3) · **evaluación de desempeño 1-10/360°** (F4) · config portal del empleado (F2) + notificaciones del ciclo (F3) · RH8 **tab Reportes** (costo laboral/asistencia/vacaciones/antigüedad/recibos + export Excel/CSV/PDF) + **liquidación final** al egreso (indemnización LCT 245 + SAC proporcional + vacaciones no gozadas, editable). Libs `rrhhDocumentos.ts` + `rrhhReportes.ts` + `liquidacionFinal.ts` + `RrhhReportesPanel.tsx` + 17 tests → suite 613. Migs 201-202. **RRHH 2.0 (RH1-RH8) COMPLETO.** Diferidos: QR público de fichado + auto-descuento tardanza (RH6) + portal del empleado UI.
 
 ---
 

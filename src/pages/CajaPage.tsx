@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { BRAND } from '@/config/brand'
 import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History, Trash2,
-  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft, Receipt, RotateCcw
+  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft, Receipt, RotateCcw, Tablet
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { createClient } from '@supabase/supabase-js'
@@ -20,7 +21,7 @@ type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'reportes' | 'configuracion' |
 
 // formatMoneda ahora viene del helper central — se redefine dentro del componente con tenant.moneda
 import { formatMoneda as formatMonedaLib, MONEDAS_DISPONIBLES } from '@/lib/formato'
-import { puede as cajaPuede, type ConfigCaja } from '@/lib/cajaPermisos'
+import { puede as cajaPuede, accedeABoveda, type ConfigCaja } from '@/lib/cajaPermisos'
 import {
   extraerNumeroVenta, extraerMedioPago, signoMovimiento, saldoSesion,
   calcularDiferenciaCierre, calcularDiferenciaApertura, superaUmbralDiferencia,
@@ -49,6 +50,7 @@ function getTipoDisplay(tipo: string, concepto: string): string {
 }
 
 export default function CajaPage() {
+  const navigate = useNavigate()
   const { tenant, user, sucursales } = useAuthStore()
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
@@ -97,6 +99,10 @@ export default function CajaPage() {
   const [extraerTipo, setExtraerTipo] = useState<'banco' | 'retiro_personal' | 'gasto' | 'inversion' | 'pago_proveedor' | 'otro'>('retiro_personal')
   const [extraerMotivo, setExtraerMotivo] = useState('')
   const [extraerNotas, setExtraerNotas] = useState('')
+  // E3 — arqueo manual de bóveda (sin cerrarla)
+  const [showArqueoBoveda, setShowArqueoBoveda] = useState(false)
+  const [arqueoBovedaConteo, setArqueoBovedaConteo] = useState<Record<string, string>>({})
+  const [arqueoBovedaNotas, setArqueoBovedaNotas] = useState('')
   // A2 — abrir caja a nombre de cajero (DUEÑO/SUPERVISOR)
   const [aperturaParaUsuarioId, setAperturaParaUsuarioId] = useState<string>('')
   // B5 — clave maestra al cerrar caja ajena
@@ -219,6 +225,64 @@ export default function CajaPage() {
       return data ?? []
     },
     enabled: !!tenant && tab === 'caja_fuerte' && puedeExtraerBoveda,
+  })
+
+  // Roles personalizados del tenant — para habilitar acceso a bóveda a roles custom (E1)
+  const { data: rolesCustom = [] } = useQuery({
+    queryKey: ['roles-custom', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('roles_custom')
+        .select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && puedeAdministrarCaja && tab === 'configuracion',
+  })
+
+  // E3 — Historial de arqueos de bóveda — RLS estricta: solo DUEÑO/ADMIN/SUPER_USUARIO
+  const { data: bovedaArqueos = [] } = useQuery({
+    queryKey: ['boveda-arqueos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('boveda_arqueos')
+        .select('*, users:usuario_id(nombre_display), cuentas_origen:cuenta_origen_id(nombre, tipo)')
+        .eq('tenant_id', tenant!.id)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'caja_fuerte' && puedeExtraerBoveda,
+  })
+
+  // E3 — Mutation: arqueo manual de bóveda. Inserta una fila por cuenta contada (no cierra nada).
+  const arquearBoveda = useMutation({
+    mutationFn: async () => {
+      if (!puedeExtraerBoveda) throw new Error('No tenés permiso para arquear la bóveda')
+      const cuentasActivas = (bovedaCuentas as any[]).filter((c: any) => c.activo)
+      const filas = cuentasActivas
+        .filter((c: any) => (arqueoBovedaConteo[c.cuenta_origen_id] ?? '').trim() !== '')
+        .map((c: any) => {
+          const contado = parseFloat(arqueoBovedaConteo[c.cuenta_origen_id])
+          const sistema = Number(c.saldo || 0)
+          return {
+            tenant_id: tenant!.id,
+            cuenta_origen_id: c.cuenta_origen_id,
+            saldo_sistema: sistema,
+            saldo_contado: isNaN(contado) ? 0 : contado,
+            diferencia: (isNaN(contado) ? 0 : contado) - sistema,
+            notas: arqueoBovedaNotas.trim() || null,
+            usuario_id: user!.id,
+          }
+        })
+      if (filas.length === 0) throw new Error('Ingresá al menos un saldo contado')
+      const { error } = await supabase.from('boveda_arqueos').insert(filas)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Arqueo de bóveda registrado')
+      logActividad({ entidad: 'caja', entidad_nombre: 'Bóveda', accion: 'crear', valor_nuevo: 'Arqueo manual de bóveda', pagina: '/caja' })
+      qc.invalidateQueries({ queryKey: ['boveda-arqueos'] })
+      setShowArqueoBoveda(false); setArqueoBovedaConteo({}); setArqueoBovedaNotas('')
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   // Mutation: extraer dinero de la bóveda (egreso real del sistema, no traspaso)
@@ -1346,12 +1410,20 @@ export default function CajaPage() {
           <h1 className="text-2xl font-bold text-primary">Caja</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Gestioná la caja de tu negocio</p>
         </div>
+        {/* M3 — acceso al panel de cajero simplificado (tablets/touch) */}
+        {!esSoloLectura && (
+          <button onClick={() => navigate('/caja/panel')}
+            title="Modo cajero — vista simplificada para tablet/touch"
+            className="flex items-center gap-2 px-3 py-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-semibold rounded-xl transition-colors">
+            <Tablet size={16} /> <span className="hidden sm:inline">Modo panel</span>
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
       {(() => {
         const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
-        const puedeCajaFuerte = !!user?.rol && cajaFuerteRoles.includes(user.rol)
+        const puedeCajaFuerte = accedeABoveda(user?.rol as any, (user as any)?.rol_custom_id, cajaFuerteRoles)
         const tabs = [
           { id: 'caja', label: 'Caja actual', visible: true },
           { id: 'cobranzas', label: '💳 Cobranzas CC', visible: true },
@@ -1645,7 +1717,7 @@ export default function CajaPage() {
                 </button>
                 {cajaFuerte && (() => {
                   const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
-                  return cajaFuerteRoles.includes(user?.rol ?? '') ? (
+                  return accedeABoveda(user?.rol as any, (user as any)?.rol_custom_id, cajaFuerteRoles) ? (
                     <button onClick={() => setShowDepositoFuerte(true)}
                       title="Depositar en Caja Fuerte"
                       className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-yellow-400 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 font-semibold rounded-xl transition-all">
@@ -1860,9 +1932,16 @@ export default function CajaPage() {
                 <ArrowRightLeft size={15} /> Enviar a Caja
               </button>
               {puedeExtraerBoveda && (
+                <button onClick={() => { setShowArqueoBoveda(true); setArqueoBovedaConteo({}); setArqueoBovedaNotas('') }}
+                  title="Arqueo manual de la bóveda — contar el saldo sin cerrarla"
+                  className="flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-semibold rounded-xl transition-colors ml-auto">
+                  <CheckCircle size={15} /> Arquear bóveda
+                </button>
+              )}
+              {puedeExtraerBoveda && (
                 <button onClick={() => setShowExtraerBoveda(true)}
                   title="Extraer dinero del negocio (retiro personal, banco, gasto, etc.)"
-                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors ml-auto">
+                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">
                   <Minus size={15} /> Extraer dinero
                 </button>
               )}
@@ -1962,6 +2041,42 @@ export default function CajaPage() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* E3 — Historial de arqueos de bóveda — solo DUEÑO/ADMIN/SUPER_USUARIO (RLS) */}
+          {puedeExtraerBoveda && (bovedaArqueos as any[]).length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={13} className="text-gray-500 dark:text-gray-400" />
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Historial de arqueos de bóveda</p>
+                </div>
+                <span className="text-xs text-gray-400 dark:text-gray-500">{(bovedaArqueos as any[]).length} registros</span>
+              </div>
+              <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                {(bovedaArqueos as any[]).map((a: any) => {
+                  const dif = Number(a.diferencia || 0)
+                  return (
+                    <div key={a.id} className="px-5 py-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{a.cuentas_origen?.nombre ?? 'Efectivo'}</p>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">Sistema {formatMoneda(Number(a.saldo_sistema))} · Contado {formatMoneda(Number(a.saldo_contado))}</span>
+                        </div>
+                        {a.notas && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{a.notas}</p>}
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          {new Date(a.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                          {a.users?.nombre_display && ` · ${a.users.nombre_display}`}
+                        </p>
+                      </div>
+                      <span className={`font-bold shrink-0 ${dif === 0 ? 'text-gray-500 dark:text-gray-400' : dif > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {dif === 0 ? 'OK' : `${dif > 0 ? '+' : ''}${formatMoneda(dif)}`}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -2103,6 +2218,64 @@ export default function CajaPage() {
       )}
 
       {/* Modal Extraer dinero — solo DUEÑO/ADMIN/SUPER_USUARIO */}
+      {/* E3 — Modal arqueo de bóveda */}
+      {showArqueoBoveda && puedeExtraerBoveda && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowArqueoBoveda(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                <CheckCircle size={16} className="text-accent" /> Arqueo de bóveda
+              </h3>
+              <button onClick={() => setShowArqueoBoveda(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Contá el saldo real de cada cuenta. La bóveda <strong>no se cierra</strong>; el arqueo queda en el historial con tu usuario y la fecha. Dejá en blanco las cuentas que no quieras arquear.
+            </p>
+            <div className="space-y-3">
+              {(bovedaCuentas as any[]).filter((c: any) => c.activo).map((c: any) => {
+                const sistema = Number(c.saldo || 0)
+                const raw = arqueoBovedaConteo[c.cuenta_origen_id] ?? ''
+                const dif = raw.trim() === '' ? null : (parseFloat(raw) || 0) - sistema
+                return (
+                  <div key={c.cuenta_origen_id} className="border border-gray-100 dark:border-gray-700 rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{c.nombre}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">Sistema: {formatMoneda(sistema)}</span>
+                    </div>
+                    <input type="number" inputMode="decimal" placeholder="Saldo contado…"
+                      value={raw}
+                      onChange={e => setArqueoBovedaConteo(prev => ({ ...prev, [c.cuenta_origen_id]: e.target.value }))}
+                      className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                    {dif !== null && (
+                      <p className={`text-xs mt-1 font-medium ${dif === 0 ? 'text-gray-500 dark:text-gray-400' : dif > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {dif === 0 ? 'Coincide' : `Diferencia: ${dif > 0 ? '+' : ''}${formatMoneda(dif)}`}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+              {(bovedaCuentas as any[]).filter((c: any) => c.activo).length === 0 && (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay cuentas activas para arquear.</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Notas (opcional)</label>
+              <input type="text" value={arqueoBovedaNotas} onChange={e => setArqueoBovedaNotas(e.target.value)}
+                placeholder="Observaciones del arqueo…"
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setShowArqueoBoveda(false)}
+                className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm font-semibold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700">Cancelar</button>
+              <button onClick={() => arquearBoveda.mutate()} disabled={arquearBoveda.isPending}
+                className="flex-1 px-4 py-2.5 bg-accent hover:bg-accent/90 text-white text-sm font-semibold rounded-xl disabled:opacity-60">
+                {arquearBoveda.isPending ? 'Guardando…' : 'Registrar arqueo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showExtraerBoveda && puedeExtraerBoveda && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowExtraerBoveda(false)}>
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md space-y-4" onClick={e => e.stopPropagation()}>
@@ -2560,28 +2733,34 @@ export default function CajaPage() {
           {/* Roles que pueden ver la Caja Fuerte */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Acceso a Caja Fuerte / Bóveda</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Solo el Dueño tiene acceso por defecto. Habilitá otros roles.</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Solo el Dueño ve el saldo de la bóveda por defecto (E1). Habilitá la visibilidad a otros roles estándar o personalizados.</p>
             <div className="space-y-2">
-              {['SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'CONTADOR', 'DEPOSITO', 'RRHH'].map(rol => {
-                const roles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
-                const enabled = roles.includes(rol)
-                return (
-                  <label key={rol} className="flex items-center gap-3 cursor-pointer">
-                    <div onClick={async () => {
-                      const current: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
-                      const updated = enabled ? current.filter(r => r !== rol) : [...current, rol]
-                      await supabase.from('tenants').update({ caja_fuerte_roles: updated }).eq('id', tenant!.id)
-                      // Reload tenant data
-                      qc.invalidateQueries({ queryKey: ['cajas'] })
-                      window.location.reload() // reload para que authStore refresque el tenant
-                    }}
-                      className={`w-9 h-5 rounded-full transition-colors flex items-center px-0.5 ${enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                      <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                    </div>
-                    <span className="text-sm text-gray-700 dark:text-gray-300">{rol}</span>
-                  </label>
-                )
-              })}
+              {(() => {
+                // value = identificador guardado en caja_fuerte_roles. Roles fijos por nombre, custom como 'custom:<id>'.
+                const opciones: { value: string; label: string }[] = [
+                  ...['SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'CONTADOR', 'DEPOSITO', 'RRHH'].map(r => ({ value: r, label: r })),
+                  ...(rolesCustom as any[]).map(rc => ({ value: `custom:${rc.id}`, label: `${rc.nombre} (personalizado)` })),
+                ]
+                return opciones.map(({ value, label }) => {
+                  const roles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
+                  const enabled = roles.includes(value)
+                  return (
+                    <label key={value} className="flex items-center gap-3 cursor-pointer">
+                      <div onClick={async () => {
+                        const current: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
+                        const updated = enabled ? current.filter(r => r !== value) : [...current, value]
+                        await supabase.from('tenants').update({ caja_fuerte_roles: updated }).eq('id', tenant!.id)
+                        qc.invalidateQueries({ queryKey: ['cajas'] })
+                        window.location.reload() // reload para que authStore refresque el tenant
+                      }}
+                        className={`w-9 h-5 rounded-full transition-colors flex items-center px-0.5 ${enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}`}>
+                        <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                      </div>
+                      <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                    </label>
+                  )
+                })
+              })()}
             </div>
           </div>
         </div>

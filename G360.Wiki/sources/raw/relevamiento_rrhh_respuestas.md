@@ -6,6 +6,8 @@ type: project
 
 # Relevamiento RRHH (empleados / nómina / vacaciones / asistencia / documentos) — respuestas + diseño
 
+> **✅ ESTADO (2026-06-09): RH1-RH8 COMPLETO en PROD** (v1.46.0-v1.48.0, mig 195-202, suite 613). Detalle de implementación por fase en `project_pendientes.md` (sección RRHH) y `wiki/features/rrhh.md`. **Solo quedan diferidos** (mejoras futuras): fichado por QR público (`/fichar/:token`), auto-descuento de tardanza en nómina (lib `descuentoTardanza` lista, falta el sweep), y la UI completa del portal del empleado (F2; flag configurable ya está). Este documento queda como **referencia de diseño** del relevamiento original.
+>
 > Fuente: HTML `relevamiento-rrhh-reglas-negocio.html` (secciones A-H, v1.10.0 base).
 > Respondido por GO + socio. Acá: respuesta elegida + **diseño consolidado**, **sugerencias**, **modelo de datos**
 > y el **plan por fases (RH1-RH8)**. Filosofía del proyecto: **simple para el PyME por fuera, robusto por dentro**.

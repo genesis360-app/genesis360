@@ -276,7 +276,7 @@ export default function RrhhPage() {
   const [historialEmpleadoId, setHistorialEmpleadoId] = useState<string>('')
   const [showHistorialSueldos, setShowHistorialSueldos] = useState(false)
   // RH4/B10 — anticipos
-  const [anticipoForm, setAnticipoForm] = useState({ empleado_id: '', monto: '', motivo: '', generaGasto: true })
+  const [anticipoForm, setAnticipoForm] = useState<{ empleado_id: string; monto: string; motivo: string; generaGasto: boolean; esPrestamo: boolean; documento: File | null }>({ empleado_id: '', monto: '', motivo: '', generaGasto: true, esPrestamo: false, documento: null })
   const [showAnticipos, setShowAnticipos] = useState(false)
 
   // Dashboard state
@@ -1059,30 +1059,42 @@ export default function RrhhPage() {
   })
 
   const registrarAnticipo = useMutation({
-    mutationFn: async (f: { empleado_id: string; monto: string; motivo: string; generaGasto: boolean }) => {
+    mutationFn: async (f: { empleado_id: string; monto: string; motivo: string; generaGasto: boolean; esPrestamo: boolean; documento: File | null }) => {
       if (!f.empleado_id) throw new Error('Seleccioná un empleado')
       const monto = parseFloat(f.monto) || 0
-      if (monto <= 0) throw new Error('Indicá el monto del anticipo')
+      if (monto <= 0) throw new Error('Indicá el monto')
+      const emp = empleados.find(e => e.id === f.empleado_id)
+      const etiqueta = f.esPrestamo ? 'Préstamo' : 'Anticipo'
+      // L3 — préstamo: subir la nota/documentación firmada al bucket empleados
+      let documentoUrl: string | null = null
+      if (f.documento) {
+        const ext = f.documento.name.split('.').pop()
+        const path = `prestamos/${f.empleado_id}/${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage.from('empleados').upload(path, f.documento, { upsert: true })
+        if (upErr) throw upErr
+        const { data: signed } = await supabase.storage.from('empleados').createSignedUrl(path, 60 * 60 * 24 * 365)
+        documentoUrl = signed?.signedUrl ?? path
+      }
       let gastoId: string | null = null
       if (f.generaGasto) {
         const catId = (await supabase.from('categorias_gasto').select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Adelantos al personal').maybeSingle()).data?.id ?? null
-        const emp = empleados.find(e => e.id === f.empleado_id)
         const { data: gasto } = await supabase.from('gastos').insert({
-          tenant_id: tenant!.id, descripcion: `Anticipo ${nombreEmpleado(emp)}`, monto,
+          tenant_id: tenant!.id, descripcion: `${etiqueta} ${nombreEmpleado(emp)}`, monto,
           categoria: 'Adelantos al personal', categoria_id: catId,
           fecha: new Date().toISOString().split('T')[0], usuario_id: user?.id ?? null,
           gasto_negocio: true, deduce_ganancias: false, monto_pagado: 0, estado_pago: 'pendiente',
-          notas: f.motivo || 'Anticipo a empleado (se descuenta de la próxima liquidación)',
+          notas: f.motivo || `${etiqueta} a empleado (se descuenta de la próxima liquidación)`,
         }).select('id').single()
         gastoId = gasto?.id ?? null
       }
       const { error } = await supabase.from('rrhh_anticipos').insert({
         tenant_id: tenant!.id, empleado_id: f.empleado_id, monto, motivo: f.motivo || null,
         gasto_id: gastoId, created_by: user?.id ?? null,
+        es_prestamo: f.esPrestamo, documento_url: documentoUrl,
       })
       if (error) throw error
     },
-    onSuccess: () => { toast.success('Anticipo registrado'); refetchAnticipos(); qc.invalidateQueries({ queryKey: ['gastos'] }) },
+    onSuccess: () => { toast.success('Registrado'); refetchAnticipos(); qc.invalidateQueries({ queryKey: ['gastos'] }) },
     onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
 
@@ -3108,9 +3120,25 @@ export default function RrhhPage() {
                   <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
                     <input type="checkbox" checked={anticipoForm.generaGasto} onChange={e => setAnticipoForm({ ...anticipoForm, generaGasto: e.target.checked })} /> Genera gasto
                   </label>
-                  <button onClick={() => registrarAnticipo.mutate(anticipoForm, { onSuccess: () => setAnticipoForm({ empleado_id: '', monto: '', motivo: '', generaGasto: true }) })} disabled={registrarAnticipo.isPending}
+                  {/* L3 — préstamo formal con nota firmada */}
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                    <input type="checkbox" checked={anticipoForm.esPrestamo} onChange={e => setAnticipoForm({ ...anticipoForm, esPrestamo: e.target.checked, documento: e.target.checked ? anticipoForm.documento : null })} /> Es préstamo
+                  </label>
+                  <button onClick={() => registrarAnticipo.mutate(anticipoForm, { onSuccess: () => setAnticipoForm({ empleado_id: '', monto: '', motivo: '', generaGasto: true, esPrestamo: false, documento: null }) })} disabled={registrarAnticipo.isPending}
                     className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">Registrar</button>
                 </div>
+                {/* L3 — adjuntar la nota de préstamo firmada (colaborador + RRHH) */}
+                {anticipoForm.esPrestamo && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2">
+                    <span className="font-medium">Préstamo:</span>
+                    <span>se descuenta del próximo sueldo. Adjuntá la nota firmada por el colaborador y RRHH.</span>
+                    <label className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 border border-amber-300 dark:border-amber-700 rounded-lg cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40">
+                      <Paperclip size={12}/> {anticipoForm.documento ? anticipoForm.documento.name : 'Adjuntar nota firmada'}
+                      <input type="file" accept="image/*,application/pdf" className="hidden"
+                        onChange={e => setAnticipoForm({ ...anticipoForm, documento: e.target.files?.[0] ?? null })} />
+                    </label>
+                  </div>
+                )}
                 {(anticiposPend as any[]).length === 0 ? (
                   <p className="text-xs text-gray-400 italic">Sin anticipos pendientes. Se descuentan automáticamente al generar la próxima liquidación.</p>
                 ) : (
@@ -3118,6 +3146,8 @@ export default function RrhhPage() {
                     {(anticiposPend as any[]).map(a => (
                       <div key={a.id} className="flex items-center gap-3 py-2 text-sm">
                         <span className="flex-1 text-gray-700 dark:text-gray-300">{[a.empleado?.nombre, a.empleado?.apellido].filter(Boolean).join(' ') || a.empleado?.dni_rut}</span>
+                        {a.es_prestamo && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-medium">Préstamo</span>}
+                        {a.documento_url && <a href={a.documento_url} target="_blank" rel="noreferrer" title="Ver nota firmada" className="text-blue-500 hover:text-blue-600"><Paperclip size={13}/></a>}
                         <span className="text-gray-400 text-xs">{format(new Date(a.fecha + 'T00:00:00'), 'dd/MM')}</span>
                         {a.motivo && <span className="text-xs text-gray-400 truncate max-w-[160px]">{a.motivo}</span>}
                         <span className="font-medium text-amber-600 dark:text-amber-400">${Number(a.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>

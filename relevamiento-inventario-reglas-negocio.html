@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Módulo Inventario / WMS · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Módulo Inventario / WMS</h1>
+<div class="meta">
+  Genesis360 · v1.50.0 · Fecha: 10 de junio de 2026 · Relevamiento con Gastón Otranto + socio
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre en el recuadro punteado). Las preguntas marcadas con
+  <span class="tag tag-existente">EXISTENTE</span> piden <em>confirmar o cambiar</em> una regla ya implementada;
+  <span class="tag tag-nuevo">NUEVO</span> piden definir reglas/funciones que todavía no existen;
+  <span class="tag tag-cambio">CAMBIO</span> señalan una decisión a tomar sobre algo ambiguo.
+  Cuando contesten, cargo las respuestas en el wiki y armamos el plan de implementación por fases.
+  <br><br>
+  <strong>Importante:</strong> el sub-módulo de <strong>Conteos</strong> (2.0) ya fue relevado e implementado por separado,
+  así que acá <em>no</em> entran preguntas de conteo. Tampoco los códigos GS1/escaneo compuesto (ya relevados) ni el
+  historial/trazabilidad (ya cerrado). El foco es: <strong>maestro de producto, ingreso, ubicaciones/almacenaje,
+  rebaje/salida, estados y vencimientos, LPN/series/lotes, KITs, autorizaciones, multi-sucursal y la visión WMS de picking.</strong>
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual del módulo (lo que ya hace hoy):</strong> modelo <strong>LPN</strong> (toda unidad de stock es una línea
+  con ubicación + producto + lote/serie, LPN único auto-generado) · ingreso unitario y masivo inline con scan ·
+  rebaje con reglas <strong>FIFO / FEFO / LEFO / LIFO / Manual</strong> (default Manual) · <strong>KITs</strong> (armado en 2 fases con reserva + desarmado) ·
+  estados de inventario configurables + <strong>aging profiles</strong> (cambio de estado por días) · ubicaciones con
+  tipo/dimensiones/capacidad, <strong>prioridad</strong> (orden de rebaje) y <strong>secuencia</strong> (orden de recorrido) ·
+  <strong>mono-SKU</strong> por ubicación · ubicación DEV (devoluciones) · combinar LPN / LPN madre · series y lotes ·
+  stock mínimo global y por sucursal · stock aislado por sucursal · <strong>autorizaciones</strong> para que DEPOSITO no aplique
+  cambios directos · importación masiva + escaneo de ticket con IA. <strong>Pendiente (sin implementar):</strong> almacenaje dirigido
+  (sugerir ubicación al ingresar) y la <strong>Fase 3 de WMS</strong> (tareas dirigidas + listas de picking + reposición).
+</div>
+
+<!-- ============================ A. MAESTRO DE PRODUCTO ============================ -->
+<h2>A. Maestro de producto (alta y datos)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    SKU automático cuando se deja vacío <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: si no cargás SKU, se autogenera con <code>calcularSiguienteSKU()</code> (correlativo).</div>
+  <ul class="opciones">
+    <li>(a) Mantener: autogenerar correlativo simple</li>
+    <li>(b) Autogenerar con prefijo por categoría/marca (ej: <code>BEB-0001</code>)</li>
+    <li>(c) SKU obligatorio siempre (no autogenerar)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Código de barras duplicado entre productos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy no hay validación de unicidad del código de barras al dar de alta/editar.</div>
+  <ul class="opciones">
+    <li>(a) Permitir duplicados (no validar)</li>
+    <li>(b) Avisar si ya existe otro producto con ese código, pero dejar guardar</li>
+    <li>(c) Rechazar: el código de barras debe ser único por negocio</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Precio de costo no obligatorio al dar de alta <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: el costo no es obligatorio; si queda en $0 se muestra una alerta. El costo real también puede venir de la recepción/ticket.</div>
+  <ul class="opciones">
+    <li>(a) Mantener (opcional + alerta si $0)</li>
+    <li>(b) Obligatorio para poder vender el producto</li>
+    <li>(c) Obligatorio solo si el producto tiene margen objetivo cargado</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    Producto inactivo <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: un producto inactivo no permite ingresar stock. ¿Qué más debería bloquear?</div>
+  <ul class="opciones">
+    <li>(a) Mantener: solo bloquea ingreso de stock (se puede seguir vendiendo lo que ya hay)</li>
+    <li>(b) Bloquear también la venta (no aparece en el POS)</li>
+    <li>(c) Bloquear venta + ocultar de listados por defecto (ya hay toggle "ver inactivos")</li>
+    <li>(d) No permitir desactivar si todavía tiene stock</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span><span class="pregunta-titulo">
+    Atributos de variante por producto <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy hay toggles por producto: país de origen, talle, color, encaje, formato, sabor/aroma; y grupos de variantes. Los valores se capturan al ingresar stock (en el LPN).</div>
+  <ul class="opciones">
+    <li>(a) Está bien así (toggles + valor en cada LPN)</li>
+    <li>(b) Falta algún atributo que usen seguido: ____</li>
+    <li>(c) Querría que algún atributo sea obligatorio al ingresar (ej: talle en ropa): ____</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A6</span><span class="pregunta-titulo">
+    Unidad de medida y fraccionamiento <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: unidad de medida por producto (unidad/kg/g/L/ml/… + personalizadas). El stock por kg/lt admite decimales; por unidad, enteros.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está</li>
+    <li>(b) Necesito vender/ingresar en una unidad y stockear en otra (ej: compro por caja, vendo por unidad) con conversión automática</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. INGRESO DE STOCK ============================ -->
+<h2>B. Ingreso de stock (alta manual / recepción)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    LPN obligatorio (auto-generado si no se carga) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: toda unidad de stock tiene LPN; si no se ingresa, se genera solo. Regla de oro del modelo.</div>
+  <ul class="opciones">
+    <li>(a) Mantener (auto-generar siempre que falte)</li>
+    <li>(b) Permitir definir el formato del LPN auto (prefijo + correlativo) por negocio: ____</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Defaults al elegir el producto para ingresar <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: al elegir producto (scan o búsqueda) se pre-rellena ubicación (por sucursal → global), estado de inventario y proveedor del maestro. Editable antes de confirmar.</div>
+  <ul class="opciones">
+    <li>(a) Mantener</li>
+    <li>(b) Pre-rellenar también lote/vencimiento sugeridos (ej: vencimiento = hoy + shelf life)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Costo al ingresar y actualización del costo del producto <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy: el LPN guarda un <code>precio_costo_snapshot</code> (lo que costó esa partida). En Compras/Recepciones ya hay alerta de cambio de costo. ¿Qué debería pasar con el costo del <strong>maestro</strong> al ingresar stock con un costo distinto fuera de una OC?</div>
+  <ul class="opciones">
+    <li>(a) No tocar el costo del maestro (solo guardar el snapshot del LPN)</li>
+    <li>(b) Avisar si el costo nuevo difiere &gt; X% del actual y dejar que el operador decida actualizarlo</li>
+    <li>(c) Actualizar siempre el costo del maestro al último ingresado</li>
+    <li>(d) Usar costo promedio ponderado (recalcular con cada ingreso)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Over-receipt / ingresar más de lo esperado <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: existe <code>tenants.permite_over_receipt</code> y en Recepciones hay umbral % de exceso con autorización. En el ingreso manual libre (sin OC) no hay tope.</div>
+  <ul class="opciones">
+    <li>(a) Mantener: el ingreso manual libre no tiene tope (es alta de mercadería sin documento)</li>
+    <li>(b) El ingreso manual de un rol bajo (DEPOSITO) siempre pasa por autorización (como hoy)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span><span class="pregunta-titulo">
+    Ubicación de devolución (DEV) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: una ubicación marcada <code>es_devolucion</code> recibe stock pero queda excluida de la venta (mercadería a revisar). Las devoluciones pueden ir a DEV o reintegrarse a stock vendible.</div>
+  <ul class="opciones">
+    <li>(a) Mantener como está</li>
+    <li>(b) Que el stock en DEV genere una tarea/alerta de "revisar y reubicar" para que no quede olvidado</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. UBICACIONES Y ALMACENAJE ============================ -->
+<h2>C. Ubicaciones y almacenaje (WMS)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Prioridad vs. Secuencia de la ubicación <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: <code>prioridad</code> define de qué ubicación se rebaja primero al vender (FIFO/LIFO la respetan); <code>secuencia</code> define el orden de recorrido físico (conteo y, a futuro, picking). Son dos cosas distintas.</div>
+  <ul class="opciones">
+    <li>(a) Está claro y bien así</li>
+    <li>(b) Es confuso tener las dos — unificarlas en un solo "orden": ____</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Mono-SKU (una sola SKU por ubicación) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: si una ubicación es <code>mono_sku</code> y ya tiene otro producto con stock, el ingreso de un producto distinto da error.</div>
+  <ul class="opciones">
+    <li>(a) Mantener (error duro)</li>
+    <li>(b) Avisar y permitir igual (override de SUPERVISOR/DUEÑO)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Almacenaje dirigido — sugerir ubicación al ingresar <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Visión WMS no implementada: el sistema sugiere la mejor ubicación al ingresar comparando dimensiones/peso del producto vs. tipo/capacidad disponible de las ubicaciones.</div>
+  <ul class="opciones">
+    <li>(a) No me interesa por ahora — sigo eligiendo la ubicación a mano</li>
+    <li>(b) Sí, que <strong>sugiera</strong> una ubicación (puedo aceptarla o cambiarla)</li>
+    <li>(c) Sí, y que sea <strong>obligatoria</strong> salvo override (almacenaje 100% dirigido)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    Control de capacidad de la ubicación <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy las ubicaciones tienen <code>capacidad_pallets</code> / <code>peso_max_kg</code> pero no se valida al ingresar.</div>
+  <ul class="opciones">
+    <li>(a) No validar capacidad (los datos son solo informativos)</li>
+    <li>(b) Avisar si la ubicación queda sobre-ocupada, pero permitir</li>
+    <li>(c) Bloquear el ingreso si supera la capacidad</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. REBAJE / SALIDA ============================ -->
+<h2>D. Rebaje / salida de stock</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Regla de selección de lote por defecto <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: jerarquía <strong>regla del SKU → regla del negocio → FIFO</strong>. Default en negocio nuevo: <strong>Manual</strong> (el operador elige el lote). Opciones: FIFO / FEFO / LEFO / LIFO / Manual.</div>
+  <ul class="opciones">
+    <li>(a) Mantener default Manual</li>
+    <li>(b) Default FIFO (más antiguo primero) para todo el negocio</li>
+    <li>(c) Default FEFO (vence primero) para todo el negocio</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Líneas excluidas de la venta <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy una línea NO se puede vender si: la ubicación tiene <code>disponible_surtido=false</code>, el estado tiene <code>es_disponible_venta=false</code>, o el LPN está vencido (<code>fecha_vencimiento &lt; hoy</code>).</div>
+  <ul class="opciones">
+    <li>(a) Las 3 reglas están bien</li>
+    <li>(b) El vencido debería poder venderse con autorización (ej: liquidación) en vez de bloquearse: ____</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    Permitir stock negativo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">¿Se puede vender/rebajar más de lo que figura en stock (quedar en negativo) cuando hay mercadería física que el sistema todavía no registró?</div>
+  <ul class="opciones">
+    <li>(a) Nunca — no se puede rebajar más de lo disponible</li>
+    <li>(b) Permitir con aviso y dejarlo registrado para regularizar después</li>
+    <li>(c) Permitir solo a DUEÑO/SUPERVISOR (con clave maestra)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span><span class="pregunta-titulo">
+    Motivos de rebaje manual (merma/rotura/consumo interno) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el rebaje manual pide un motivo de texto. ¿Querés un catálogo de motivos para poder reportar mermas?</div>
+  <ul class="opciones">
+    <li>(a) Texto libre está bien</li>
+    <li>(b) Catálogo configurable (merma, rotura, vencido, consumo interno, robo, ajuste…) + reporte por motivo</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. ESTADOS Y VENCIMIENTOS ============================ -->
+<h2>E. Estados del inventario, vencimientos y aging</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    Estados del inventario configurables <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: estados configurables por negocio (ej: Disponible, En revisión, Dañado, Cuarentena…), cada uno con <code>es_disponible_venta</code> y <code>disponible_surtido</code>. ¿Te sirven los que tenés o faltan estados?</div>
+  <div class="respuesta-libre">Estados que usás / faltan: ____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Aging profiles (cambio de estado por días) <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: un perfil de aging puede mover un LPN de estado según los días que lleva (ej: a "Liquidar" a los 60 días). Se asigna por producto. <strong>Hoy se dispara manualmente</strong> (botón) — no hay corrida automática diaria (pg_cron no está habilitado).</div>
+  <ul class="opciones">
+    <li>(a) No lo uso / no me interesa</li>
+    <li>(b) Lo uso y me alcanza disparándolo a mano</li>
+    <li>(c) Quiero que corra <strong>automático</strong> (cada día) — habría que resolver el scheduler</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Alerta de próximos a vencer <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy se bloquea la venta del LPN ya vencido y se muestra en Alertas. ¿Querés aviso <em>antes</em> de que venza?</div>
+  <ul class="opciones">
+    <li>(a) No hace falta</li>
+    <li>(b) Alertar X días antes del vencimiento (configurable), por producto/lote</li>
+    <li>(c) Alertar + sugerir acción (liquidar / promocionar / devolver a proveedor)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. LPN: ACCIONES ============================ -->
+<h2>F. LPN — acciones (editar, mover, combinar)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    Editar un LPN con stock reservado <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: si un LPN tiene <code>cantidad_reservada &gt; 0</code> solo se permite Mover (no editar cantidad/estado), con banner de aviso.</div>
+  <ul class="opciones">
+    <li>(a) Mantener (proteger lo reservado)</li>
+    <li>(b) Permitir editar con autorización de SUPERVISOR/DUEÑO</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Combinar / LPN madre <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: se pueden fusionar LPNs del mismo producto (todo el stock al destino) o agruparlos bajo un "LPN madre" (pallet) sin mover stock.</div>
+  <ul class="opciones">
+    <li>(a) Funciona bien, sin cambios</li>
+    <li>(b) Falta algo: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    Mover stock entre sucursales <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: se mueve un LPN a otra sucursal directo (el LPN hereda la sucursal destino). No hay un estado "en tránsito" ni confirmación de recepción en destino.</div>
+  <ul class="opciones">
+    <li>(a) Mantener (movimiento directo, instantáneo)</li>
+    <li>(b) Quiero un flujo de <strong>transferencia entre sucursales</strong> con "en tránsito" + confirmación de recepción en destino</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. SERIES Y LOTES ============================ -->
+<h2>G. Series y lotes</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Transferir una serie entre LPNs sin venta <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Regla confirmada: una serie puede transferirse entre LPNs sin pasar por venta/devolución.</div>
+  <ul class="opciones">
+    <li>(a) Mantener</li>
+    <li>(b) Restringir a ciertos roles: ____</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Unicidad del número de serie <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">¿El número de serie debe ser único por producto / por negocio, o puede repetirse?</div>
+  <ul class="opciones">
+    <li>(a) Único por producto (no puede haber dos series iguales del mismo SKU activas)</li>
+    <li>(b) Único por negocio (global)</li>
+    <li>(c) Sin validación (puede repetirse)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. KITS ============================ -->
+<h2>H. KITs / Kitting</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    Armado de KIT en 2 fases <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: "Iniciar armado" reserva los componentes; "Confirmar" rebaja componentes e ingresa el KIT; "Cancelar" libera la reserva. También hay desarmado inverso.</div>
+  <ul class="opciones">
+    <li>(a) Está bien así</li>
+    <li>(b) Para mi negocio el KIT se arma al instante (no necesito la fase de reserva): ____</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Vender un KIT sin stock armado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el KIT es un producto con su propio stock (hay que armarlo antes de vender). ¿Querés poder venderlo "al vuelo" descontando los componentes si no hay KIT armado?</div>
+  <ul class="opciones">
+    <li>(a) No — el KIT se arma primero y después se vende (como hoy)</li>
+    <li>(b) Sí — si no hay KIT armado, la venta descuenta los componentes automáticamente</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. AUTORIZACIONES ============================ -->
+<h2>I. Autorizaciones (rol DEPOSITO)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    Qué acciones de DEPOSITO requieren aprobación <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy quedan pendientes de aprobación (DUEÑO/SUPERVISOR/ADMIN): cambiar cantidad de un LPN, eliminar LPN, eliminar serie, ajustes de conteo, edición masiva de atributos. El ingreso de stock nuevo sí lo puede hacer directo.</div>
+  <ul class="opciones">
+    <li>(a) Está bien el alcance actual</li>
+    <li>(b) Agregar a la lista: ____ (ej: mover entre sucursales, rebaje manual)</li>
+    <li>(c) Sacar de la lista: ____</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    Umbral para exigir autorización <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy todas las acciones de DEPOSITO de la lista van a aprobación, sin importar el monto/cantidad.</div>
+  <ul class="opciones">
+    <li>(a) Mantener: siempre aprobación (no importa la magnitud)</li>
+    <li>(b) Solo pedir aprobación si supera un umbral (unidades / % / valor $) — como en Conteos</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ J. STOCK MÍNIMO Y ALERTAS ============================ -->
+<h2>J. Stock mínimo y alertas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J1</span><span class="pregunta-titulo">
+    Stock mínimo global vs. por sucursal <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: stock mínimo global por producto + override por sucursal. La alerta de "bajo mínimo" ya existe y puede generar OC sugerida (Compras).</div>
+  <ul class="opciones">
+    <li>(a) Está bien así</li>
+    <li>(b) Quiero también un <strong>stock máximo</strong> (para sugerir cuánto reponer / no sobre-stockear): ____</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J2</span><span class="pregunta-titulo">
+    Punto de reposición sugerido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el mínimo es un número fijo. ¿Querés que el sistema sugiera el mínimo/reposición según la rotación (venta promedio + tiempo de entrega del proveedor)?</div>
+  <ul class="opciones">
+    <li>(a) No, prefiero el mínimo fijo que cargo a mano</li>
+    <li>(b) Sí, que sugiera el punto de reposición por rotación (puedo ajustarlo)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ K. MULTI-SUCURSAL ============================ -->
+<h2>K. Stock multi-sucursal</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K1</span><span class="pregunta-titulo">
+    Aislamiento del stock por sucursal <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: cada query de stock filtra por la sucursal activa; un usuario de una sola sucursal no ve ni opera otra. Ver una vista consolidada "todas las sucursales" es solo para DUEÑO/habilitados.</div>
+  <ul class="opciones">
+    <li>(a) Está bien así</li>
+    <li>(b) Quiero ver fácilmente "¿en qué sucursal hay stock de este producto?" desde el POS/ficha (para derivar al cliente)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ L. IMPORTACIÓN ============================ -->
+<h2>L. Carga masiva e importación</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L1</span><span class="pregunta-titulo">
+    Importar inventario / escaneo de ticket <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy: importación masiva por archivo + "escanear ticket" (foto → IA extrae productos/precios y los matchea contra el catálogo).</div>
+  <ul class="opciones">
+    <li>(a) Funciona bien, sin cambios</li>
+    <li>(b) Falta algo en la importación (campos, formato, validaciones): ____</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ M. WMS FASE 3 (PICKING) ============================ -->
+<h2>M. WMS avanzado — picking y tareas (visión futura)</h2>
+
+<div class="seccion-resumen">
+  <strong>Contexto:</strong> hoy NO existe el módulo de tareas dirigidas. La Fase 3 de WMS agregaría <strong>listas de picking</strong>
+  (qué SKU/LPN/ubicación levantar para cada pedido, en ruta óptima), <strong>tareas de putaway</strong> (guardado dirigido),
+  <strong>reposición</strong> de zona de picking y, a largo plazo, cross-docking. Es una feature grande; estas preguntas son para
+  saber si vale la pena y con qué alcance arrancar.
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">M1</span><span class="pregunta-titulo">
+    ¿Te sirve el picking dirigido? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">El operador recibe una lista ordenada (por recorrido) de qué levantar de cada ubicación para preparar un pedido/despacho.</div>
+  <ul class="opciones">
+    <li>(a) No por ahora — el depósito es chico, se levanta de memoria</li>
+    <li>(b) Sí, una lista de picking simple por pedido (papel / pantalla)</li>
+    <li>(c) Sí, picking dirigido con confirmación por scan de cada ubicación/LPN</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">M2</span><span class="pregunta-titulo">
+    Reposición de zona de picking <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">¿Manejás zona de picking (góndola/estante de salida) separada del bulk (estiba/depósito de fondo) y necesitás reponer la primera desde la segunda?</div>
+  <ul class="opciones">
+    <li>(a) No, no separo zonas</li>
+    <li>(b) Sí, separo zonas pero la reposición la decido a ojo</li>
+    <li>(c) Sí, quiero que el sistema genere tareas de reposición cuando la zona de picking baja de un umbral</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ N. ABIERTOS ============================ -->
+<h2>N. Abiertos y prioridades</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">N1</span><span class="pregunta-titulo">
+    Dolor principal del módulo Inventario hoy
+  </span>
+  <div class="contexto">¿Qué es lo que más te molesta o te hace perder tiempo HOY al manejar el stock? (lo que sea, aunque no esté en las preguntas de arriba)</div>
+  <div class="respuesta-libre">____</div>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">N2</span><span class="pregunta-titulo">
+    Top 3 a implementar primero
+  </span>
+  <div class="contexto">De todo lo de este relevamiento, ¿cuáles son las 3 cosas que más impacto tendrían para tu operación?</div>
+  <div class="respuesta-libre">1) ____  2) ____  3) ____</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Inventario / WMS · v1.50.0 · Generado el 10/06/2026 — para responder offline con tu socio.
+</div>
+
+</body>
+</html>

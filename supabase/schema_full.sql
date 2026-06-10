@@ -2866,3 +2866,35 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_vacaciones_aviso JSONB NOT NUL
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_vacaciones_remanente_max INT NOT NULL DEFAULT 0;  -- C6
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_vacaciones_min_bloque INT NOT NULL DEFAULT 0;  -- C5
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_vacaciones_max_bloques INT NOT NULL DEFAULT 0;  -- C5
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 201-202: RRHH RH7+RH8 (v1.48.0) — RRHH 2.0 COMPLETO
+-- ─────────────────────────────────────────────────────────────────────────────
+-- RH7 (mig 201) — documentos obligatorios + vencimiento + capacitación obligatoria + evaluación + portal/notif
+CREATE TABLE IF NOT EXISTS rrhh_documentos_catalogo (  -- E1
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  nombre TEXT NOT NULL, obligatorio BOOLEAN NOT NULL DEFAULT TRUE, activo BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT NOW(), UNIQUE (tenant_id, nombre)
+);
+ALTER TABLE rrhh_documentos_catalogo ENABLE ROW LEVEL SECURITY;  -- policy rrhh_doc_catalogo_tenant
+ALTER TABLE rrhh_documentos ADD COLUMN IF NOT EXISTS fecha_vencimiento DATE;  -- E2
+ALTER TABLE rrhh_documentos ADD COLUMN IF NOT EXISTS catalogo_id UUID REFERENCES rrhh_documentos_catalogo(id) ON DELETE SET NULL;
+ALTER TABLE rrhh_capacitaciones ADD COLUMN IF NOT EXISTS obligatoria BOOLEAN NOT NULL DEFAULT FALSE;  -- E3
+CREATE TABLE IF NOT EXISTS rrhh_evaluaciones (  -- F4
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  empleado_id UUID NOT NULL REFERENCES empleados(id) ON DELETE CASCADE, periodo TEXT NOT NULL, tipo TEXT NOT NULL DEFAULT 'supervisor',
+  evaluador_id UUID REFERENCES users(id) ON DELETE SET NULL, puntaje INT, comentarios TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE rrhh_evaluaciones ENABLE ROW LEVEL SECURITY;  -- policy rrhh_evaluaciones_tenant
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_portal_empleado BOOLEAN NOT NULL DEFAULT FALSE;  -- F2
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_portal_capacidades JSONB NOT NULL DEFAULT '{"vacaciones":true,"recibos":true,"documentos":false,"firma":false}'::jsonb;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_notif_config JSONB NOT NULL DEFAULT '{"cumpleanos":true,"aniversario":true,"vacaciones_proximas":true,"doc_vencer":true,"contrato_vencer":true}'::jsonb;  -- F3
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS rrhh_doc_alerta_dias INT NOT NULL DEFAULT 30;  -- E2
+-- RH8 (mig 202) — liquidación final (A2-c). G1 reportes + G2 export = solo frontend.
+CREATE TABLE IF NOT EXISTS rrhh_liquidaciones_finales (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  empleado_id UUID NOT NULL REFERENCES empleados(id) ON DELETE CASCADE, fecha_egreso DATE, motivo_egreso TEXT,
+  antiguedad_anios INT, mejor_sueldo NUMERIC, indemnizacion NUMERIC NOT NULL DEFAULT 0, sac_proporcional NUMERIC NOT NULL DEFAULT 0,
+  vacaciones_no_gozadas NUMERIC NOT NULL DEFAULT 0, total NUMERIC NOT NULL DEFAULT 0, gasto_id UUID REFERENCES gastos(id) ON DELETE SET NULL,
+  notas TEXT, created_by UUID REFERENCES users(id) ON DELETE SET NULL, created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE rrhh_liquidaciones_finales ENABLE ROW LEVEL SECURITY;  -- policy rrhh_liq_finales_tenant

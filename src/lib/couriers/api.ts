@@ -67,3 +67,14 @@ export async function trackingEnvioCourier(envioId: string): Promise<TrackingRes
   const data = await invoke<{ tracking: TrackingResult }>({ action: 'tracking', envio_id: envioId })
   return data.tracking
 }
+
+export interface ProbarResult {
+  ok: boolean
+  detalle?: string
+}
+
+/** Valida las credenciales GUARDADAS del courier (solo el paso de auth, no genera nada). */
+export async function probarCredencialesCourier(courier: string): Promise<ProbarResult> {
+  const data = await invoke<{ resultado: ProbarResult }>({ action: 'probar', courier })
+  return data.resultado
+}

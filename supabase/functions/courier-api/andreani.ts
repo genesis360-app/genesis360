@@ -12,7 +12,8 @@
 
 import {
   CourierAdapter, CourierCred, CotizarParams, CotizacionOpcion,
-  GenerarParams, GenerarResult, TrackingResult, CourierError, volumenCm3,
+  GenerarParams, GenerarResult, TrackingResult, ProbarResult, CourierError,
+  volumenCm3, courierFetch,
 } from './types.ts'
 
 const BASE = 'https://apis.andreani.com'
@@ -28,7 +29,7 @@ const SERVICIOS: Record<string, string> = {
 async function login(cred: CourierCred): Promise<string> {
   if (!cred.usuario || !cred.password) throw new CourierError('Andreani: falta usuario/contraseña en las credenciales.')
   const basic = btoa(`${cred.usuario}:${cred.password}`)
-  const res = await fetch(`${BASE}/login`, { headers: { Authorization: `Basic ${basic}` } })
+  const res = await courierFetch('Andreani login', `${BASE}/login`, { headers: { Authorization: `Basic ${basic}` } })
   if (!res.ok) throw new CourierError(`Andreani: login falló (${res.status}). Verificá usuario/contraseña.`)
   const token = res.headers.get('x-authorization-token')
   if (!token) throw new CourierError('Andreani: el login no devolvió token.')
@@ -53,7 +54,7 @@ export const andreani: CourierAdapter = {
         'bultos[0][kilos]': String(p.peso_kg || 1),
         'bultos[0][pesoAforado]': String(p.peso_kg || 1),
       })
-      const res = await fetch(`${BASE}/v1/tarifas?${qs}`, {
+      const res = await courierFetch('Andreani tarifas', `${BASE}/v1/tarifas?${qs}`, {
         headers: { 'x-authorization-token': token },
       })
       if (!res.ok) continue
@@ -117,7 +118,7 @@ export const andreani: CourierAdapter = {
       }],
     }
 
-    const res = await fetch(`${BASE}/v2/ordenes-de-envio`, {
+    const res = await courierFetch('Andreani alta-orden', `${BASE}/v2/ordenes-de-envio`, {
       method: 'POST',
       headers: { 'x-authorization-token': token, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -138,9 +139,16 @@ export const andreani: CourierAdapter = {
     }
   },
 
+  async probar(cred): Promise<ProbarResult> {
+    // El paso de auth de Andreani es el login Basic → token. Valida usuario/contraseña.
+    await login(cred)
+    if (!cred.nro_contrato) throw new CourierError('Andreani: login OK, pero falta el Nº de contrato para cotizar.')
+    return { ok: true, detalle: 'Login correcto. El Nº de contrato se valida al cotizar.' }
+  },
+
   async tracking(cred, trackingNumber: string): Promise<TrackingResult> {
     const token = await login(cred)
-    const res = await fetch(`${BASE}/v2/ordenes-de-envio/${encodeURIComponent(trackingNumber)}/trazas`, {
+    const res = await courierFetch('Andreani trazas', `${BASE}/v2/ordenes-de-envio/${encodeURIComponent(trackingNumber)}/trazas`, {
       headers: { 'x-authorization-token': token },
     })
     if (!res.ok) throw new CourierError(`Andreani: no se pudo consultar el tracking (${res.status}).`)

@@ -18,16 +18,19 @@ type: project
 
 ---
 
-## Estado actual DEV / PROD — cierre sesión 2026-06-09
+## Estado actual DEV / PROD — cierre sesión 2026-06-10
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.48.0` | `v1.48.0` |
+| APP_VERSION | `v1.49.0` | `v1.48.0` |
 | Migrations | 001–**202** ✅ | 001–**202** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.48.0) |
+| Branch | `dev` (adelantado 1 release) | `main` (release v1.48.0) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.48.0 |
+| Edge Function `courier-api` | **v con logging + `probar`** ✅ DEV | versión vieja (sin `probar`) |
 
 **Migrations DEV pendientes de aplicar en PROD:** ninguna (202 ya en PROD).
+
+**⚠ v1.49.0 quedó SOLO en DEV** (decisión GO 2026-06-10): courier `probar` + logging diagnóstico (sin migración). Para subir a PROD: deploy `courier-api` a PROD (`supabase functions deploy courier-api --project-ref jjffnbrdjchquexdfgwq`) + PR `dev → main` + release. Detalle en la sección "Email + Couriers" abajo.
 
 **✅ Email saliente (Resend) — RESUELTO 2026-06-09:** el `RESEND_API_KEY` cargado como secret en Supabase era una **key vieja/inválida** (Resend respondía 401 "API key is invalid"). GO la regeneró y actualizó el secret → **correo funcionando** (confirmado: llegaron mails de Genesis). Dominio `genesis360.pro` verificado (DKIM/SPF). El front muestra el error real de Resend si vuelve a fallar (fix en `enviarOCEmail` + ticket de venta). Aprendizaje: ante "Edge Function non-2xx" en `send-email`, revisar primero la validez del `RESEND_API_KEY` en el secret de Supabase.
 
@@ -366,11 +369,12 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 1. **NO tocar los adapters todavía** (están OK hasta tener credenciales).
 2. **[GO]** Conseguir **UNA** cuenta B2B. **Empezar por Andreani** (REST limpia, mejor doc, tiene entorno de prueba) → Correo (Paq.ar) → **OCA al final** (SOAP, lo más frágil). Validar solo los couriers que GO use.
 3. **[GO + Claude, con credenciales]** Validar end-to-end en DEV con dirección real: cotizar → generar → etiqueta → tracking; ajustar mapeos en el adapter.
-4. **[Claude, accionable YA sin credenciales — acelera el día 1]:**
-   - **Logging diagnóstico** en `courier-api`: capturar request/response crudo ante error (status + body recortado) para debug de la primera prueba real.
-   - **Botón "Probar credenciales"** en Config → Envíos (`CourierCredencialesPanel`): hace solo el `login` del adapter y devuelve OK/error al cargar las claves (feedback inmediato).
+4. **[Claude, accionable YA sin credenciales — acelera el día 1] ✅ HECHO en DEV (v1.49.0, 2026-06-10):**
+   - ✅ **Logging diagnóstico** en `courier-api`: helper `courierFetch` (en `types.ts`) loguea `método + URL + status + body recortado (600 chars)` ante error en todos los fetches de Andreani/Correo + log inline en `soapCall` de OCA. Log de entrada en el router (`action`/`courier`/`tenant`, **nunca** credenciales) y catch con contexto. Visible en Supabase → Edge Function logs.
+   - ✅ **Botón "Probar credenciales"** en Config → Envíos (`CourierCredencialesPanel`): nueva acción `probar` en `courier-api` + método `probar(cred)` por adapter (Andreani→`login`, Correo→`getToken`, OCA→tarifa de muestra que valida CUIT+operativa). Cliente front `probarCredencialesCourier()`. Testea las credenciales **guardadas** aunque el courier esté inactivo; resultado inline ✓/✗ + guard de "guardá los cambios primero".
+   - **Deploy:** `courier-api` deployada a **DEV** (`gcmhzdedrkmmzfzfveig`). **Pendiente subir a PROD** (`jjffnbrdjchquexdfgwq`) cuando se haga el release a main.
 
-**Decisión pendiente con GO:** qué accionar del lado código ahora — (a) email OC: template HTML + PDF adjunto; (b) courier: logging + "Probar credenciales"; (c) solo guía de verificación de dominio Resend. (Lo ops — verificar dominio, conseguir cuenta B2B — es de GO.)
+**Decisión pendiente con GO:** subir v1.49.0 (courier `probar` + logging) a PROD cuando quiera. (Lo ops — verificar dominio, conseguir cuenta B2B — es de GO.)
 
 ---
 

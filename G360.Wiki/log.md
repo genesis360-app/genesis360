@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-10] update | v1.49.0 (SOLO DEV) — Courier: logging diagnóstico + "Probar credenciales"
+
+**Accionable del Punto 2 (Email+Couriers) sin necesidad de cuenta B2B.** GO eligió dejarlo **solo en DEV** por ahora (decisión 2026-06-10). Build + suite **613** verdes. Sin migración. `courier-api` deployada a DEV (`gcmhzdedrkmmzfzfveig`); `dev` adelantado 1 release respecto de `main` (PROD sigue en v1.48.0).
+
+- **Logging diagnóstico en `courier-api`:** helper `courierFetch` en `types.ts` que loguea `método + URL + status + body recortado (600 chars)` ante error, aplicado a todos los fetches de Andreani/Correo; log inline en el `soapCall` de OCA (SOAP). Log de entrada en el router (`action`/`courier`/`tenant`) y catch con contexto. **Nunca** se loguean las credenciales. Visible en Supabase → Edge Function logs para debuggear la 1ª prueba real con cuenta B2B.
+- **Acción `probar` + botón "Probar credenciales":** nueva `action: 'probar'` en el router + método `probar(cred)` por adapter — Andreani→`login` Basic, Correo→`getToken`, OCA→tarifa de muestra (valida CUIT+operativa; usr/psw se ejercen recién al generar). Cliente front `probarCredencialesCourier()`. Botón por courier en `CourierCredencialesPanel` (Config → Envíos) con resultado inline ✓/✗; testea las credenciales **guardadas** aunque el courier esté inactivo (para validar antes de activar) + guard de "guardá los cambios primero".
+- **Pendiente subir a PROD:** deploy `courier-api` a `jjffnbrdjchquexdfgwq` + PR `dev → main` + release v1.49.0 cuando GO lo decida.
+
 ## [2026-06-09] deploy | v1.48.0 PROD — RRHH RH7+RH8 · 🎉 RRHH 2.0 (RH1-RH8) COMPLETO
 
 **Cierre del módulo RRHH 2.0** (migs 201-202 en DEV+PROD, PR #177, release v1.48.0 latest). Build verde, suite **613** (596 + 17). GO pidió RH7+RH8 seguidas y autónomas hasta PROD.

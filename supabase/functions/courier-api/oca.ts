@@ -13,7 +13,8 @@
 
 import {
   CourierAdapter, CourierCred, CotizarParams, CotizacionOpcion,
-  GenerarParams, GenerarResult, TrackingResult, CourierError, volumenCm3,
+  GenerarParams, GenerarResult, TrackingResult, ProbarResult, CourierError,
+  volumenCm3, courierLog,
 } from './types.ts'
 
 const ENDPOINT = 'https://webservice.oca.com.ar/epak_tracking/Oepak.asmx'
@@ -59,7 +60,12 @@ async function soapCall(action: string, bodyInner: string): Promise<string> {
     body: envelope,
   })
   const text = await res.text()
-  if (!res.ok) throw new CourierError(`OCA: ${action} falló (${res.status}). ${text.slice(0, 200)}`)
+  // Logging diagnóstico (SOAP no usa courierFetch porque ya consumimos el body acá).
+  if (!res.ok) {
+    courierLog(`OCA ${action} POST ${ENDPOINT}`, `${res.status} ${res.statusText} :: ${text.slice(0, 600)}`)
+    throw new CourierError(`OCA: ${action} falló (${res.status}). ${text.slice(0, 200)}`)
+  }
+  courierLog(`OCA ${action} POST ${ENDPOINT}`, `${res.status}`)
   return text
 }
 
@@ -133,6 +139,27 @@ export const oca: CourierAdapter = {
       courier_orden_id: orNumero ?? nroEnvio,
       costo_real: null,
     }
+  },
+
+  async probar(cred): Promise<ProbarResult> {
+    // OCA (SOAP) no tiene endpoint de login. Validamos la cuenta operativa con una
+    // tarifa de muestra (valida CUIT + Nº de cuenta). usuario/contraseña se ejercen
+    // recién al generar la orden (IngresoOR), que es destructivo y no se prueba acá.
+    if (!cred.cuit || !cred.nro_cuenta) throw new CourierError('OCA: faltan CUIT y/o Nº de cuenta (operativa).')
+    const volumenM3 = (1000 / 1_000_000).toFixed(6)
+    const inner =
+      `<Tarifar_Envio_Corporativo xmlns="${NS}">` +
+      `<PesoTotal>1</PesoTotal>` +
+      `<VolumenTotal>${volumenM3}</VolumenTotal>` +
+      `<CodigoPostalOrigen>1000</CodigoPostalOrigen>` +
+      `<CodigoPostalDestino>5000</CodigoPostalDestino>` +
+      `<CantidadPaquetes>1</CantidadPaquetes>` +
+      `<Cuit>${cred.cuit}</Cuit>` +
+      `<Operativa>${cred.nro_cuenta}</Operativa>` +
+      `</Tarifar_Envio_Corporativo>`
+    // soapCall lanza CourierError si el WS responde error (status no-2xx con el detalle).
+    await soapCall('Tarifar_Envio_Corporativo', inner)
+    return { ok: true, detalle: 'Cuenta operativa válida (tarifa de muestra). Usuario/clave se validan al generar la orden.' }
   },
 
   async tracking(cred, trackingNumber: string): Promise<TrackingResult> {

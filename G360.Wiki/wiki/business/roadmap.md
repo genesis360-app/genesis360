@@ -9,7 +9,13 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 3 de Junio, 2026
+**Última actualización:** 10 de Junio, 2026
+
+---
+
+## v1.49.0 — Courier: logging diagnóstico + "Probar credenciales" (⚠ SOLO DEV)
+
+Accionable del Punto 2 (Email+Couriers) sin necesidad de cuenta B2B. **Logging diagnóstico** en `courier-api` (helper `courierFetch`: método + URL + status + body recortado ante error; log inline en SOAP de OCA; log de entrada/catch en el router; **nunca** credenciales) + nueva acción **`probar`** y botón "**Probar credenciales**" por courier en Config → Envíos (`CourierCredencialesPanel`) que valida las claves guardadas con el paso de auth más barato (Andreani→`login`, Correo→`getToken`, OCA→tarifa de muestra). Front `probarCredencialesCourier()`. Sin migración. Build + suite 613 verdes. **Quedó solo en DEV** (decisión GO); `courier-api` deployada a DEV. Pendiente subir a PROD (deploy de la función + PR `dev → main` + release).
 
 ---
 

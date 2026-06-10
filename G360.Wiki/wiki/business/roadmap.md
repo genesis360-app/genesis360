@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.48.0 — RRHH RH7+RH8 · 🎉 RRHH 2.0 COMPLETO (PROD ✅)
+
+RH7 documentos obligatorios + vencimiento (E1/E2) · capacitación obligatoria (E3) · **evaluación de desempeño 1-10/360°** (F4) · config portal del empleado (F2) + notificaciones del ciclo (F3) · RH8 **tab Reportes** (costo laboral/asistencia/vacaciones/antigüedad/recibos + export Excel/CSV/PDF) + **liquidación final** al egreso (indemnización LCT 245 + SAC proporcional + vacaciones no gozadas, editable). Libs `rrhhDocumentos.ts` + `rrhhReportes.ts` + `liquidacionFinal.ts` + `RrhhReportesPanel.tsx` + 17 tests → suite 613. Migs 201-202. **RRHH 2.0 (RH1-RH8) COMPLETO.** Diferidos: QR público de fichado + auto-descuento tardanza (RH6) + portal del empleado UI.
+
+---
+
 ## v1.47.0 — RRHH RH4+RH5: frecuencia/anticipos + vacaciones 2.0 (PROD ✅)
 
 RH4 frecuencia de liquidación por empleado (**prorratea el básico**) + **anticipos** con descuento automático en la próxima liquidación · RH5 vacaciones 2.0: **días por antigüedad LCT** (sugerencia+override), aprobación con **alerta de aviso + solapamiento**, **remanente auto** con límite. Libs `rrhhLiquidacion.ts` + `rrhhVacaciones.ts` + 18 tests → suite 596. Migs 199-200. **Pendientes RRHH: RH7/RH8 + (RH6) QR público y auto-descuento tardanza.**

@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-09] deploy | v1.48.0 PROD — RRHH RH7+RH8 · 🎉 RRHH 2.0 (RH1-RH8) COMPLETO
+
+**Cierre del módulo RRHH 2.0** (migs 201-202 en DEV+PROD, PR #177, release v1.48.0 latest). Build verde, suite **613** (596 + 17). GO pidió RH7+RH8 seguidas y autónomas hasta PROD.
+
+- **RH7 (mig 201):** **catálogo de documentos obligatorios** (E1, `rrhh_documentos_catalogo`) + alerta de **faltantes** y **próximos a vencer** (E2, `rrhh_documentos.fecha_vencimiento` + umbral `rrhh_doc_alerta_dias`) · **capacitación obligatoria** por puesto (E3) · **evaluación de desempeño** 1-10 + 360° (F4, `rrhh_evaluaciones`, panel en Reportes) · config **portal del empleado** (F2) + **notificaciones del ciclo** (F3). E4 (costo capacitación) = NO. Lib `rrhhDocumentos.ts`.
+- **RH8 (mig 202):** nuevo **tab Reportes** (`RrhhReportesPanel`): costo laboral por depto · asistencia consolidada · vacaciones gozadas/pendientes · antigüedad/rotación · recibos + export Excel/CSV/PDF · **liquidación final** al egreso (A2-c, `liquidacionFinal.ts`): indemnización LCT 245 + SAC proporcional + vacaciones no gozadas, **editable**, genera gasto + `rrhh_liquidaciones_finales`. Libs `rrhhReportes.ts` + `liquidacionFinal.ts`.
+
+**🎉 RRHH 2.0 (RH1-RH8) COMPLETO en PROD.** Diferidos (mejoras futuras): fichado por **QR público** + **auto-descuento de tardanza** en nómina (RH6; lib `descuentoTardanza` lista) y la **UI completa del portal del empleado** (F2; flag ya configurable). Confirmado por GO: fórmula de indemnización LCT 245 editable.
+
 ## [2026-06-09] deploy | v1.47.0 PROD — RRHH RH4+RH5 (frecuencia/anticipos + vacaciones 2.0)
 
 **2 fases más de RRHH a PROD** (migs 199-200 en DEV+PROD, PR #176, release v1.47.0 latest). Build verde, suite **596** (578 + 18). GO pidió RH4+RH5 seguidas y autónomas hasta PROD.

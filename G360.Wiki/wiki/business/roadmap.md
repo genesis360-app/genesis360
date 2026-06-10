@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.47.0 — RRHH RH4+RH5: frecuencia/anticipos + vacaciones 2.0 (PROD ✅)
+
+RH4 frecuencia de liquidación por empleado (**prorratea el básico**) + **anticipos** con descuento automático en la próxima liquidación · RH5 vacaciones 2.0: **días por antigüedad LCT** (sugerencia+override), aprobación con **alerta de aviso + solapamiento**, **remanente auto** con límite. Libs `rrhhLiquidacion.ts` + `rrhhVacaciones.ts` + 18 tests → suite 596. Migs 199-200. **Pendientes RRHH: RH7/RH8 + (RH6) QR público y auto-descuento tardanza.**
+
+---
+
 ## v1.46.0 — RRHH RH1+RH2+RH3+RH6: empleados 2.0 · aportes/SAC · nómina contable · asistencia 2.0 (PROD ✅)
 
 RH1 empleados 2.0 (obligatorios, motivo de egreso + reactivar, **tipo de contrato configurable** drop CHECK, datos bancarios) · RH2 **aportes AR configurables por empleado** (checkbox, % en Config) + beneficios extra + **SAC = 50% del mejor sueldo del semestre** · RH3 **nómina contable** (pagar genera gasto en Gastos pendiente + cargas sociales por concepto + recibo PDF + comprobante firmado + doble validación) · RH6 **asistencia 2.0** (fichado, horario por empleado, licencias subdivididas + comprobante, horas extra 50/100%, feriados con regla de pago). Libs `rrhhNomina.ts` + `rrhhAsistencia.ts` + `reciboSueldoPDF.ts` + 20 tests → suite 578. Migs 195-198. **Pendientes RRHH: RH4/RH5/RH7/RH8 + (en RH6) QR público de fichado y auto-descuento de tardanza.**

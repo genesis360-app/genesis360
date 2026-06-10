@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-09] deploy | v1.47.0 PROD — RRHH RH4+RH5 (frecuencia/anticipos + vacaciones 2.0)
+
+**2 fases más de RRHH a PROD** (migs 199-200 en DEV+PROD, PR #176, release v1.47.0 latest). Build verde, suite **596** (578 + 18). GO pidió RH4+RH5 seguidas y autónomas hasta PROD.
+
+- **RH4 — Frecuencia + anticipos (mig 199):** `empleados.frecuencia_liquidacion` (+`frecuencia_dias`) **prorratea el básico** al generar la liquidación (mensual=1 / quincenal=½ / semanal=¼ / personalizado=días/30, lib `rrhhLiquidacion.ts`) · **anticipos** (`rrhh_anticipos`, panel en Nómina): registra + opcional genera gasto "Adelantos al personal" (pendiente) y **se descuentan automáticamente en la próxima liquidación** sin dejar el neto negativo (descuento parcial deja el resto pendiente).
+- **RH5 — Vacaciones 2.0 (mig 200):** **días por antigüedad LCT** 14/21/28/35 (botón "Sugerir LCT" + override) · aprobación con **alerta de plazo de aviso** (sin/alerta/bloquea) + **solapamiento** con otras vacaciones aprobadas · **remanente auto-calculado** con límite configurable · panel de config en el tab (aviso + remanente máx). Vacaciones se pagan dentro del sueldo (C7). Lib `rrhhVacaciones.ts`.
+
+**Pendientes RRHH:** **RH7** (documentos obligatorios/portal del empleado/evaluación de desempeño), **RH8** (reportes + liquidación final con indemnización) + (en RH6) fichado por QR público y auto-descuento de tardanza. Detalle en `relevamiento_rrhh_respuestas.md` + `project_pendientes.md`.
+
 ## [2026-06-09] deploy | v1.46.0 PROD — RRHH RH1+RH2+RH3+RH6 (empleados 2.0, aportes/SAC, nómina contable, asistencia 2.0)
 
 **4 fases de RRHH deployadas a PROD** (migs 195-198 en DEV+PROD, PR #175, release v1.46.0 latest, Vercel production). Build verde, suite **578** (558 + 20). GO confirmó las 4 asunciones del plan y pidió RH1+RH2+RH3+RH6 seguidas y autónomas hasta PROD. El módulo RRHH ya era maduro (13 tablas, RrhhPage ~3700 líneas); estas fases lo potencian.

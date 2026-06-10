@@ -20,6 +20,8 @@ const ImportarProductosPage  = lazy(() => import('@/pages/ImportarProductosPage'
 const ImportarInventarioPage = lazy(() => import('@/pages/ImportarInventarioPage'))
 const CajaPage             = lazy(() => import('@/pages/CajaPage'))
 const PanelCajeroPage      = lazy(() => import('@/pages/PanelCajeroPage'))
+const FicharPage           = lazy(() => import('@/pages/FicharPage'))
+const MiPortalPage         = lazy(() => import('@/pages/MiPortalPage'))
 const MetricasPage         = lazy(() => import('@/pages/MetricasPage'))
 const VentasPage       = lazy(() => import('@/pages/VentasPage'))
 const AlertasPage      = lazy(() => import('@/pages/AlertasPage'))
@@ -126,6 +128,8 @@ function App() {
             <Route path="/hoja-ruta/:token" element={<HojaRutaPage />} />
             {/* B8 — Portal público de estado de cuenta del cliente — sin auth */}
             <Route path="/cuenta/:token" element={<CuentaClientePage />} />
+            {/* RH6 — Fichado por QR público (kiosco) — sin auth */}
+            <Route path="/fichar/:token" element={<FicharPage />} />
 
             {/* Rutas protegidas */}
             <Route element={<AuthGuard />}>
@@ -149,6 +153,7 @@ function App() {
                   <Route path="/usuarios" element={<UsuariosPage />} />
                   <Route path="/rrhh" element={<RrhhPage />} />
                   <Route path="/mi-cuenta" element={<MiCuentaPage />} />
+                  <Route path="/mi-portal" element={<MiPortalPage />} />
                   <Route path="/ayuda" element={<AyudaPage />} />
                   <Route path="/sucursales" element={<SucursalesPage />} />
                   <Route path="/configuracion" element={<ConfigPage />} />

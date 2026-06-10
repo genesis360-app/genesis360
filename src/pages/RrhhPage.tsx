@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import QRCode from 'qrcode'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Trash2, Edit, Search, Users2,
@@ -6,7 +7,7 @@ import {
   DollarSign, CreditCard, ChevronRight, CheckCircle, Clock,
   Plane, ClipboardList, Check, X, LayoutDashboard, FileSpreadsheet,
   UserCheck, UserX, TrendingUp, Download, Paperclip, FolderOpen, File,
-  BookOpen, Award, Network, FileText, Star,
+  BookOpen, Award, Network, FileText, Star, QrCode, Copy,
 } from 'lucide-react'
 import { utils as xlsxUtils, writeFile as xlsxWriteFile } from 'xlsx'
 import { supabase } from '@/lib/supabase'
@@ -16,7 +17,7 @@ import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { logActividad } from '@/lib/actividadLog'
 import { calcularItemsNomina, mejorSueldoSemestre, sacMejorSueldo, type ConceptoNomina } from '@/lib/rrhhNomina'
 import { generarReciboSueldoPDF } from '@/lib/reciboSueldoPDF'
-import { LICENCIA_TIPOS, montoHorasExtra, sueldoHora } from '@/lib/rrhhAsistencia'
+import { LICENCIA_TIPOS, montoHorasExtra, sueldoHora, minutosTardeFacturables, descuentoTardanza } from '@/lib/rrhhAsistencia'
 import { FRECUENCIAS, basicoProrrateado, anticiposADescontar } from '@/lib/rrhhLiquidacion'
 import { diasVacacionesLCT, antiguedadAnios, remanenteSiguiente, solapamientos, evaluarAviso } from '@/lib/rrhhVacaciones'
 import { documentosFaltantes, documentosPorVencer, type DocCatalogo } from '@/lib/rrhhDocumentos'
@@ -237,6 +238,21 @@ export default function RrhhPage() {
   const [activeTab, setActiveTab] = useState<Tab>(() => user?.rol === 'SUPERVISOR' ? 'equipo' : 'empleados')
   const [formMode, setFormMode] = useState<FormMode>(null)
   const [selectedEmpleado, setSelectedEmpleado] = useState<Empleado | null>(null)
+  // RH6 — fichado por QR público
+  const fichadoToken = (tenant as any)?.fichado_token as string | null | undefined
+  const fichadoLink = fichadoToken ? `${(import.meta as any).env?.VITE_APP_URL ?? window.location.origin}/fichar/${fichadoToken}` : ''
+  const [fichadoQr, setFichadoQr] = useState('')
+  const esDuenoRrhh = user?.rol === 'DUEÑO' || user?.rol === 'ADMIN' || user?.rol === 'SUPER_USUARIO'
+  useEffect(() => {
+    if (!fichadoLink) { setFichadoQr(''); return }
+    QRCode.toDataURL(fichadoLink, { width: 240, margin: 1 }).then(setFichadoQr).catch(() => setFichadoQr(''))
+  }, [fichadoLink])
+  const generarFichadoToken = async (rotar = false) => {
+    if (fichadoToken && !rotar) return
+    const nuevo = crypto.randomUUID()
+    const { data } = await supabase.from('tenants').update({ fichado_token: nuevo }).eq('id', tenant!.id).select().single()
+    if (data) setTenant(data as any)
+  }
   // RH1/A2 — modal de baja con motivo
   const [bajaEmpleado, setBajaEmpleado] = useState<{ id: string; nombre: string; motivo: string; fecha: string } | null>(null)
   // RH8/A2-c — liquidación final
@@ -842,6 +858,23 @@ export default function RrhhPage() {
       const calc = calcularItemsNomina(basico, conceptosAporte, emp.config_aportes ?? [], emp.beneficios_extra ?? [])
       const items = [...calc.items]
       let totalDescuentos = calc.totalDescuentos
+      // RH6/D3 — descuento por tardanza: suma las fichadas de entrada del período vs el horario del empleado
+      const tardModo = ((tenant as any)?.rrhh_tardanza_modo ?? 'registrar') as 'registrar' | 'proporcional' | 'umbral'
+      if (tardModo !== 'registrar' && emp.horario_entrada) {
+        const [py, pm] = nominaPeriodo.split('-')
+        const ultimoDia = new Date(Number(py), Number(pm), 0).getDate()
+        const { data: fichEntradas } = await supabase.from('rrhh_fichadas')
+          .select('ts').eq('tenant_id', tenant!.id).eq('empleado_id', emp.id).eq('tipo', 'entrada')
+          .gte('ts', `${py}-${pm}-01T00:00:00`).lte('ts', `${py}-${pm}-${String(ultimoDia).padStart(2, '0')}T23:59:59`)
+        const cfgTard = { modo: tardModo, toleranciaMin: (tenant as any)?.rrhh_tardanza_tolerancia_min ?? 0 }
+        const minTarde = minutosTardeFacturables((fichEntradas ?? []) as any[], emp.horario_entrada, cfgTard)
+        const sh = sueldoHora(emp.salario_bruto ?? 0, (tenant as any)?.rrhh_horas_mes_base ?? 200)
+        const descTard = descuentoTardanza(minTarde, sh, { modo: 'proporcional' })
+        if (descTard > 0) {
+          items.push({ concepto_id: null, descripcion: `Descuento por tardanza (${minTarde} min)`, tipo: 'DESCUENTO', monto: descTard })
+          totalDescuentos = Math.round((totalDescuentos + descTard) * 100) / 100
+        }
+      }
       // RH4/B10 — descuenta anticipos pendientes del empleado (sin dejar neto negativo)
       const { data: anticipos } = await supabase.from('rrhh_anticipos')
         .select('id, monto').eq('tenant_id', tenant!.id).eq('empleado_id', emp.id).eq('saldado', false)
@@ -3764,6 +3797,50 @@ export default function RrhhPage() {
                   {asistenciaHoy.hora_salida ? ` · Salida ${asistenciaHoy.hora_salida}` : ''}
                 </span>
               </p>
+            )}
+          </div>
+
+          {/* RH6 — Fichado por QR público (kiosco). Solo DUEÑO/ADMIN/SUPER_USUARIO genera/rota el token. */}
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+              <QrCode size={15} className="text-accent" /> Fichado por QR (kiosco)
+            </h3>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+              Imprimí el QR y dejalo en la entrada. Cada empleado lo escanea, toca su nombre y queda registrada la entrada/salida (sin login).
+            </p>
+            {!fichadoToken ? (
+              esDuenoRrhh ? (
+                <button onClick={() => generarFichadoToken()}
+                  className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-semibold">
+                  <QrCode size={16}/> Generar QR de fichado
+                </button>
+              ) : <p className="text-xs text-gray-400 italic">El QR lo genera el dueño.</p>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-5 items-start">
+                {fichadoQr && (
+                  <div className="text-center shrink-0">
+                    <img src={fichadoQr} alt="QR de fichado" className="w-40 h-40 border border-gray-200 dark:border-gray-700 rounded-lg" />
+                    <a href={fichadoQr} download="qr-fichado.png" className="text-xs text-accent hover:underline mt-1 inline-block">Descargar PNG</a>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 space-y-2">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Link público del fichado</label>
+                  <div className="flex gap-2">
+                    <input readOnly value={fichadoLink}
+                      className="flex-1 min-w-0 border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-gray-200 rounded-lg px-2.5 py-1.5 text-xs" />
+                    <button onClick={() => { navigator.clipboard.writeText(fichadoLink); toast.success('Link copiado') }}
+                      className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <Copy size={13}/> Copiar
+                    </button>
+                  </div>
+                  {esDuenoRrhh && (
+                    <button onClick={() => { if (confirm('¿Regenerar el QR? El QR actual dejará de funcionar.')) generarFichadoToken(true) }}
+                      className="text-xs text-red-500 hover:text-red-600 hover:underline">
+                      Regenerar QR (invalida el anterior)
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 

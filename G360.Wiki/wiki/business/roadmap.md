@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.51.0 — RRHH diferidos: tardanza + fichado QR + portal del empleado (⚠ SOLO DEV)
+
+Cierre de los 3 pendientes diferidos de RRHH 2.0. **Auto-descuento de tardanza** en la liquidación (`minutosTardeFacturables` desde `rrhh_fichadas` vs `empleados.horario_entrada` + `descuentoTardanza`, config `rrhh_tardanza_modo`/`_tolerancia_min`/`_horas_mes_base`) · **fichado por QR público** `/fichar/:token` (`FicharPage` + `tenants.fichado_token` + RPCs `get_fichado_info`/`fichar_qr` SECURITY DEFINER anon, config QR en RRHH→Asistencia) · **portal del empleado** `/mi-portal` (`MiPortalPage`: recibos/vacaciones/documentos del empleado logueado según `rrhh_portal_capacidades`, nav "Mi Portal"). Mig **204**. +7 tests → suite **625**. **No quedan diferidos de RRHH.**
+
+---
+
 ## v1.50.0 — Caja: tanda final (E1/E3/L3/M3/M4) · 🎉 relevamiento Caja A-M COMPLETO (PROD ✅)
 
 Cierre del relevamiento Caja: la mayoría ya estaba en PROD (migs 136-142, hito v1.10.0); esta tanda cierra los ítems chicos que faltaban. **E1** visibilidad de bóveda para roles personalizados (`accedeABoveda`, `caja_fuerte_roles` con `custom:<id>`) · **E3** arqueo manual de bóveda (`boveda_arqueos`, RLS DUEÑO+, modal + historial) · **L3** préstamo a empleado (checkbox + nota firmada en RRHH → Anticipos, `rrhh_anticipos.es_prestamo`/`documento_url`) · **M3** panel de cajero simplificado `/caja/panel` (`PanelCajeroPage`, full-screen touch) · **M4** sonido al cobrar (`sonidoCobro.ts`, Web Audio). Mig **203**. +5 tests (`accedeABoveda`) → suite **618**. PROD vía PR #178 (incluye v1.49.0).

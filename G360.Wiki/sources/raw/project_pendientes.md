@@ -22,13 +22,15 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.50.0` | `v1.50.0` ✅ |
-| Migrations | 001–**203** ✅ | 001–**203** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.50.0) |
+| APP_VERSION | `v1.51.0` | `v1.50.0` |
+| Migrations | 001–**204** ✅ | 001–**203** ✅ |
+| Branch | `dev` (adelantado 1 release) | `main` (release v1.50.0) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.50.0 |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (203 ya en PROD).
+**Migration DEV pendiente de aplicar en PROD:** **204** (`tenants.fichado_token` + RPCs `get_fichado_info`/`fichar_qr` SECURITY DEFINER anon).
+
+**⏳ v1.51.0 en DEV (RRHH diferidos, mig 204):** (1) **auto-descuento de tardanza** en nómina — `crearLiquidacion` suma las fichadas de entrada del período vs `empleados.horario_entrada` (`minutosTardeFacturables`) y descuenta según `tenants.rrhh_tardanza_modo`/`_tolerancia_min`/`_horas_mes_base`; (2) **fichado por QR público** `/fichar/:token` (`FicharPage` + `tenants.fichado_token` + RPCs anon; config con QR descargable en RRHH → Asistencia); (3) **portal del empleado** `/mi-portal` (`MiPortalPage`: recibos/vacaciones/documentos del empleado logueado, gateado por `tenants.rrhh_portal_empleado`/`_capacidades`; nav "Mi Portal"). +7 tests → suite **625**. Pendiente subir a PROD.
 
 **✅ v1.49.0 + v1.50.0 EN PROD (2026-06-10, PR #178, `dev=main`):**
 - **v1.49.0** — courier `probar` + logging diagnóstico (sin migración). `courier-api` deployada a DEV+PROD.
@@ -276,7 +278,7 @@ Respuestas A-H + diseño + modelo de datos + plan completo en **`relevamiento_rr
 - **RH7 — Documentos + capacitaciones + evaluación + portal/notif (E1-E4/F1-F4) ✅ PROD (v1.48.0, mig 201):** **catálogo de documentos obligatorios** (E1, `rrhh_documentos_catalogo` CRUD) + alerta de **faltantes** (`documentosFaltantes`) y **próximos a vencer** (E2, `rrhh_documentos.fecha_vencimiento` + `documentosPorVencer`, umbral `tenants.rrhh_doc_alerta_dias`) · **capacitación obligatoria** (E3, `rrhh_capacitaciones.obligatoria`) · **evaluación de desempeño** 1-10 + tipo auto/supervisor/par (F4, `rrhh_evaluaciones`, panel en Reportes) · config **portal del empleado** (F2, `tenants.rrhh_portal_empleado`/`_capacidades`) + **notificaciones del ciclo** (F3, `tenants.rrhh_notif_config`). E4 (costo capacitación) = NO. Lib `rrhhDocumentos.ts` (+5 tests).
 - **RH8 — Reportes + export + liquidación final (G1/G2 + A2-c) ✅ PROD (v1.48.0, mig 202):** nuevo **tab Reportes** (`RrhhReportesPanel`): costo laboral por departamento · asistencia consolidada · vacaciones gozadas/pendientes · antigüedad/rotación · recibos pagados/pendientes (G1) + export Excel/CSV/PDF (G2) · **liquidación final** al egreso (A2-c, `liquidacionFinal.ts`): **indemnización** LCT 245 (mejor sueldo × años, fracción > 3 meses suma año, mín 1 sueldo) + **SAC proporcional** + **vacaciones no gozadas** (sueldo/25 × días), todo **editable**, genera gasto en Gastos + persiste en `rrhh_liquidaciones_finales`. Botón en empleados dados de baja. Libs `rrhhReportes.ts` + `liquidacionFinal.ts` (+12 tests).
 
-**Estado:** 🎉 **RRHH 2.0 (RH1-RH8) COMPLETO en PROD.** Diferidos (mejoras futuras, no en el plan original): **fichado por QR público** (`/fichar/:token`) + **auto-descuento de tardanza** inyectado en nómina (RH6; la lib `descuentoTardanza` ya existe) y la **UI completa del portal del empleado** (F2; el flag de config ya está). Libs RRHH: `rrhhNomina` + `rrhhAsistencia` + `rrhhLiquidacion` + `rrhhVacaciones` + `rrhhDocumentos` + `rrhhReportes` + `liquidacionFinal` + `reciboSueldoPDF` + componente `RrhhReportesPanel`.
+**Estado:** 🎉 **RRHH 2.0 (RH1-RH8) COMPLETO en PROD.** **Diferidos ✅ CERRADOS en DEV (v1.51.0, mig 204, 2026-06-10):** **fichado por QR público** (`/fichar/:token`, `FicharPage` + RPCs anon + config QR) · **auto-descuento de tardanza** inyectado en nómina (`crearLiquidacion` usa `minutosTardeFacturables` desde las fichadas + `descuentoTardanza`) · **UI del portal del empleado** (`/mi-portal`, `MiPortalPage`: recibos/vacaciones/documentos según `rrhh_portal_capacidades`). Pendiente subir a PROD. **No quedan diferidos de RRHH.** Libs RRHH: `rrhhNomina` + `rrhhAsistencia` + `rrhhLiquidacion` + `rrhhVacaciones` + `rrhhDocumentos` + `rrhhReportes` + `liquidacionFinal` + `reciboSueldoPDF` + componente `RrhhReportesPanel`.
 
 ### Bugs / mejoras UX puntuales
 

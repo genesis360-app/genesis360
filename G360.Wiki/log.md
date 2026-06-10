@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-10] deploy | v1.50.0 PROD — Caja tanda final + Courier (v1.49.0) · `dev=main`
+
+**Los 2 releases que estaban en DEV pasaron a PROD** (GO: "pasemos todo a PRD para quedar = DEV"). PR **#178** `dev→main` merged, release **v1.50.0** `--latest`. PROD: v1.48.0 → **v1.50.0**. Mig **203** aplicada en PROD (antes del merge, aditiva). Edge Function `courier-api` deployada a PROD (con logging + `probar`). Vercel production deploy desde `main` (commit 2bee3326). Suite **618**.
+
+- **v1.50.0 (Caja, mig 203):** E1 bóveda para roles custom · E3 arqueo manual de bóveda (`boveda_arqueos`) · L3 préstamo a empleado (RRHH → Anticipos, nota firmada) · M3 panel de cajero `/caja/panel` · M4 sonido al cobrar. **🎉 relevamiento Caja A-M COMPLETO en PROD.**
+- **v1.49.0 (Courier, sin migración):** logging diagnóstico en `courier-api` + acción `probar`/botón "Probar credenciales".
+
+**Pendiente (ops de GO):** cuenta B2B de courier (Andreani) para validar adapters end-to-end (= EN6 de Envíos).
+
 ## [2026-06-10] update | v1.50.0 (SOLO DEV) — Caja: tanda final (E1/E3/L3/M3/M4) · 🎉 relevamiento Caja A-M COMPLETO
 
 **Reconciliación + cierre del relevamiento Caja.** GO reportó que tenía notas de que Caja estaba "entregado y en PROD" contra la nota stale del wiki que decía "Caja sin responder". **Verificado contra código: las notas de GO eran las correctas** — el relevamiento A-M (2026-05-25) ya estaba casi todo en PROD (migs 136-142, hito v1.10.0). El `caja_2026-05-25.md` y la lista de "pendientes" de `caja.md` quedaron congelados antes de migs 140-142 (stale). Se corrigió la nota errónea y se cerraron los pocos ítems chicos que faltaban. Build + suite **618** verdes (613 + 5 de `accedeABoveda`). Mig **203** en DEV. GO eligió dejarlo en DEV.

@@ -22,19 +22,17 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.50.0` | `v1.48.0` |
-| Migrations | 001–**203** ✅ | 001–**202** ✅ |
-| Branch | `dev` (adelantado 2 releases) | `main` (release v1.48.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.48.0 |
-| Edge Function `courier-api` | **v con logging + `probar`** ✅ DEV | versión vieja (sin `probar`) |
+| APP_VERSION | `v1.50.0` | `v1.50.0` ✅ |
+| Migrations | 001–**203** ✅ | 001–**203** ✅ |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.50.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.50.0 |
+| Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migration DEV pendiente de aplicar en PROD:** **203** (`boveda_arqueos` + `rrhh_anticipos.es_prestamo/documento_url`).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (203 ya en PROD).
 
-**⚠ v1.49.0 + v1.50.0 quedaron SOLO en DEV** (decisión GO 2026-06-10):
-- **v1.49.0** — courier `probar` + logging diagnóstico (sin migración). Deploy `courier-api` a PROD pendiente.
-- **v1.50.0** — Caja tanda final (cierra el módulo al 100%): E1 bóveda para roles custom · E3 arqueo manual de bóveda (`boveda_arqueos`) · L3 préstamo a empleado (flag + nota firmada en RRHH) · M3 panel de cajero `/caja/panel` · M4 sonido al cobrar. Mig **203** en DEV. Suite **618**.
-
-Para subir AMBOS a PROD: aplicar mig 203 en PROD + deploy `courier-api` a PROD (`--project-ref jjffnbrdjchquexdfgwq`) + PR `dev → main` + release.
+**✅ v1.49.0 + v1.50.0 EN PROD (2026-06-10, PR #178, `dev=main`):**
+- **v1.49.0** — courier `probar` + logging diagnóstico (sin migración). `courier-api` deployada a DEV+PROD.
+- **v1.50.0** — Caja tanda final (cierra el módulo al 100%): E1 bóveda para roles custom · E3 arqueo manual de bóveda (`boveda_arqueos`) · L3 préstamo a empleado (flag + nota firmada en RRHH) · M3 panel de cajero `/caja/panel` · M4 sonido al cobrar. Mig **203** en DEV+PROD. Suite **618**. **🎉 relevamiento Caja A-M COMPLETO.**
 
 **✅ Email saliente (Resend) — RESUELTO 2026-06-09:** el `RESEND_API_KEY` cargado como secret en Supabase era una **key vieja/inválida** (Resend respondía 401 "API key is invalid"). GO la regeneró y actualizó el secret → **correo funcionando** (confirmado: llegaron mails de Genesis). Dominio `genesis360.pro` verificado (DKIM/SPF). El front muestra el error real de Resend si vuelve a fallar (fix en `enviarOCEmail` + ticket de venta). Aprendizaje: ante "Edge Function non-2xx" en `send-email`, revisar primero la validez del `RESEND_API_KEY` en el secret de Supabase.
 
@@ -364,7 +362,7 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 - **M4** ✅ — **sonido al confirmar cobro** (`src/lib/sonidoCobro.ts`, Web Audio, preferencia localStorage default ON, toggle en el panel). Suena al despachar una venta en el POS.
 - **N** (top 3 / abiertos) — nunca respondido; quedó moot.
 
-**🎉 Relevamiento Caja A-M COMPLETO** (mayoría en PROD v1.9.1→v1.10.0; estos 5 ítems chicos en DEV v1.50.0 esperando deploy a PROD).
+**🎉 Relevamiento Caja A-M COMPLETO en PROD** (mayoría v1.9.1→v1.10.0; estos 5 ítems chicos en v1.50.0, mig 203, PROD 2026-06-10).
 
 **Preguntas abiertas de GO (2026-06-10), resueltas:**
 - **J2** (¿DEPOSITO puede hacer devoluciones con efectivo desde caja?): opción **(a)** — DEPOSITO NO opera caja; las devoluciones con efectivo las hace CAJERO/SUPERVISOR/DUEÑO desde el historial de venta con selector de caja (= L1, ya implementado).
@@ -405,9 +403,9 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 4. **[Claude, accionable YA sin credenciales — acelera el día 1] ✅ HECHO en DEV (v1.49.0, 2026-06-10):**
    - ✅ **Logging diagnóstico** en `courier-api`: helper `courierFetch` (en `types.ts`) loguea `método + URL + status + body recortado (600 chars)` ante error en todos los fetches de Andreani/Correo + log inline en `soapCall` de OCA. Log de entrada en el router (`action`/`courier`/`tenant`, **nunca** credenciales) y catch con contexto. Visible en Supabase → Edge Function logs.
    - ✅ **Botón "Probar credenciales"** en Config → Envíos (`CourierCredencialesPanel`): nueva acción `probar` en `courier-api` + método `probar(cred)` por adapter (Andreani→`login`, Correo→`getToken`, OCA→tarifa de muestra que valida CUIT+operativa). Cliente front `probarCredencialesCourier()`. Testea las credenciales **guardadas** aunque el courier esté inactivo; resultado inline ✓/✗ + guard de "guardá los cambios primero".
-   - **Deploy:** `courier-api` deployada a **DEV** (`gcmhzdedrkmmzfzfveig`). **Pendiente subir a PROD** (`jjffnbrdjchquexdfgwq`) cuando se haga el release a main.
+   - **Deploy:** `courier-api` deployada a **DEV + PROD** ✅ (v1.49.0, PR #178, 2026-06-10).
 
-**Decisión pendiente con GO:** subir v1.49.0 (courier `probar` + logging) a PROD cuando quiera. (Lo ops — verificar dominio, conseguir cuenta B2B — es de GO.)
+**Lo único que sigue pendiente (ops de GO):** conseguir cuenta B2B (Andreani 1ro) para validar los adapters end-to-end (= EN6 de Envíos). El logging + "Probar credenciales" ya están en PROD para acelerar ese día.
 
 ---
 

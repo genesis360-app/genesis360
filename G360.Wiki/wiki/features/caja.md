@@ -12,7 +12,7 @@ La caja es el registro de efectivo físico del negocio. Es obligatoria para regi
 
 **Página:** `src/pages/CajaPage.tsx` · panel cajero simplificado `src/pages/PanelCajeroPage.tsx` (`/caja/panel`, M3)  
 **Shortcuts:** `Shift+I` = ingreso · (egreso solo vía Gastos)  
-**Última actualización:** 2026-06-10 — 🎉 **relevamiento Caja A-M COMPLETO**. Tanda final v1.50.0 (SOLO DEV, mig 203): E1 bóveda roles custom · E3 arqueo de bóveda · L3 préstamo a empleado · M3 panel cajero · M4 sonido al cobrar. Ver "Estado del relevamiento" abajo.
+**Última actualización:** 2026-06-10 — 🎉 **relevamiento Caja A-M COMPLETO en PROD**. Tanda final v1.50.0 (PROD, mig 203, PR #178): E1 bóveda roles custom · E3 arqueo de bóveda · L3 préstamo a empleado · M3 panel cajero · M4 sonido al cobrar. Ver "Estado del relevamiento" abajo.
 
 ---
 
@@ -336,7 +336,7 @@ Resultado del relevamiento con Gastón Otranto + socio (2026-05-25, respuestas A
 
 **En PROD (migs 136-142, v1.9.1→v1.10.2):** C2 (mail al DUEÑO + sin PDF auto, v1.10.2) · B7 (doble validación al cierre, `config_caja.doble_validacion_cierre`) · E4/E5 (retiros bóveda) · B4/B5/B6 (clave maestra ampliada) · B1/B2/B3 (alertas de diferencia con umbral) · G1 (botón "Corregir" con reversa + audit) · C1/C3 (ticket enriquecido + 58/80mm) · K2/K3 (snapshot + numeración correlativa) · I1/I2 (reportes + export, `CajaReportes.tsx`) · J permisos (matriz J3, `cajaPermisos.ts`) · L1 (selector de caja en devolución efectivo).
 
-**Tanda final ✅ DEV (v1.50.0, mig 203, 2026-06-10) — cierra los ítems chicos que faltaban:**
+**Tanda final ✅ PROD (v1.50.0, mig 203, 2026-06-10, PR #178) — cierra los ítems chicos que faltaban:**
 - **E1** — visibilidad de bóveda configurable para **roles personalizados** (helper `accedeABoveda`; `caja_fuerte_roles` acepta `custom:<rolCustomId>`; Config → Caja lista roles estándar + custom).
 - **E3** — **arqueo manual de bóveda** (`boveda_arqueos`, RLS DUEÑO/ADMIN/SUPER_USUARIO): botón "Arquear bóveda" + modal conteo por cuenta vs sistema + historial. La bóveda no se cierra.
 - **L3** — **préstamo a empleado** (RRHH → Anticipos): checkbox "Es préstamo" + nota firmada adjunta (`rrhh_anticipos.es_prestamo`/`documento_url`). Egreso por Gastos + descuento del próximo sueldo.

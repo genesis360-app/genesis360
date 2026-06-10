@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-09] deploy | v1.46.0 PROD — RRHH RH1+RH2+RH3+RH6 (empleados 2.0, aportes/SAC, nómina contable, asistencia 2.0)
+
+**4 fases de RRHH deployadas a PROD** (migs 195-198 en DEV+PROD, PR #175, release v1.46.0 latest, Vercel production). Build verde, suite **578** (558 + 20). GO confirmó las 4 asunciones del plan y pidió RH1+RH2+RH3+RH6 seguidas y autónomas hasta PROD. El módulo RRHH ya era maduro (13 tablas, RrhhPage ~3700 líneas); estas fases lo potencian.
+
+- **RH1 — Empleados 2.0 (mig 195):** obligatorios en el alta (email/tel/puesto/depto) · **motivo de egreso** (modal de baja) + reactivar · **tipo de contrato configurable** (tabla `rrhh_tipos_contrato` + seed base AR, se eliminó la CHECK rígida; `es_relacion_dependencia` dispara aportes) · datos bancarios (CBU/alias/banco/tipo cuenta/titular).
+- **RH2 — Aportes AR + SAC (mig 196):** `rrhh_conceptos` += tipo_calculo/default_pct/es_aporte + seed AR (Jubilación 11%/OS 3%/Ley 19.032 3%/etc.) · **aportes configurables por empleado vía checkbox** (`empleados.config_aportes`; el % vive en el concepto/Config; "en negro" = sin checkboxes) + **beneficios extra** ($/%) · `crearLiquidacion` inyecta básico+beneficios+aportes (lib pura `rrhhNomina.ts`) · **SAC = 50% del mejor sueldo del semestre** (botones SAC 1°/2° sem). +11 tests.
+- **RH3 — Nómina contable (mig 197):** **"Generar gasto"** por salario → inserta gasto en módulo **Gastos** (categoría Sueldos, estado pendiente, link `rrhh_salarios.gasto_id`) · **"Cargas sociales → Gastos"** acumula aportes del período por concepto (categoría Cargas sociales) · **recibo de sueldo PDF** (`reciboSueldoPDF.ts`) + **comprobante firmado** opcional · **doble validación** configurable (RRHH prepara → DUEÑO/ADMIN o SUPERVISOR firma; toggle owner-only). Categorías Sueldos/Cargas sociales seedeadas idempotentes.
+- **RH6 — Asistencia 2.0 (mig 198):** **fichado** clock-in/out (`rrhh_fichadas`, origen manual/celular/qr) · **horario por empleado** · **licencias subdivididas** (`tipo_licencia` + catálogo) + comprobante · **horas extra** (`rrhh_horas_extra`, multiplicador 50/100 + aprobación, panel con monto) · **feriados con regla de pago** (simple/doble/triple). Lib pura `rrhhAsistencia.ts` (+9 tests).
+
+**Diferido (backlog RRHH):** **RH4** (frecuencia/anticipos), **RH5** (vacaciones 2.0), **RH7** (documentos/portal/evaluación), **RH8** (reportes + liquidación final), y dentro de RH6 el **fichado por QR público** + el **auto-descuento de tardanza** inyectado en nómina (la lib `descuentoTardanza` ya existe, falta el sweep). Detalle en `relevamiento_rrhh_respuestas.md` + `project_pendientes.md`.
+
 ## [2026-06-09] deploy | v1.45.0 PROD — Envíos EN7 (envío propio + recursos + reportes/alertas) — Envíos cerrado salvo EN6
 
 **EN7 deployado a PROD** (mig 194 aplicada en DEV+PROD, PR #174 dev→main merged, release v1.45.0 latest, Vercel production deploy desde `main`). Build verde, suite **558** = 541 + 17. **Cierra el módulo Envíos salvo EN6** (integraciones courier, bloqueado por cuentas B2B reales que GO aún no tiene).

@@ -1,17 +1,30 @@
 ---
 title: Módulo RRHH
 category: features
-tags: [rrhh, empleados, nomina, vacaciones, asistencia, capacitaciones]
-sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-28
+tags: [rrhh, empleados, nomina, vacaciones, asistencia, capacitaciones, aportes, sac, fichado, recibo-sueldo]
+sources: [CLAUDE.md, ROADMAP.md, relevamiento_rrhh_respuestas.md]
+updated: 2026-06-09
 ---
 
 # Módulo RRHH
 
-Módulo completo de recursos humanos. 5 fases implementadas en producción.
+Módulo completo de recursos humanos. 5 fases base + **RRHH 2.0 (RH1+RH2+RH3+RH6) en PROD** (v1.46.0, mig 195-198).
 
 **Página:** `src/pages/RrhhPage.tsx`  
 **Acceso:** Roles OWNER y RRHH (via `is_rrhh()` SECURITY DEFINER)
+
+---
+
+## RRHH 2.0 — relevamiento RH1-RH8 (respondido 2026-06-09)
+
+Respuestas + diseño + modelo de datos + plan en `sources/raw/relevamiento_rrhh_respuestas.md`. **RH1+RH2+RH3+RH6 ✅ PROD (v1.46.0, mig 195-198).**
+
+- **RH1 — Empleados 2.0 (mig 195):** alta con obligatorios (email/tel/puesto/depto) · **motivo de egreso** (modal de baja: renuncia/despido con o sin causa/fin contrato) + **reactivar** · **tipo de contrato configurable** (tabla `rrhh_tipos_contrato` + seed base AR; se eliminó la CHECK rígida; select con "+" inline; `es_relacion_dependencia` dispara los auto-aportes) · **datos bancarios** (`empleados.cbu/alias_cbu/banco/tipo_cuenta/titular_cuenta`).
+- **RH2 — Aportes AR + SAC (mig 196):** `rrhh_conceptos` += `tipo_calculo` (fijo/porcentaje/sobre_bruto) / `default_pct` / `default_monto` / `es_aporte`; seed base AR (Jubilación 11% · Obra Social 3% · Ley 19.032 3% · Antigüedad · Presentismo · Sindicato) · **aportes configurables por empleado** (`empleados.config_aportes` JSONB, checkboxes en el form; el % vive en el concepto/Config — togglear no lo toca; "en negro" = sin checkboxes) + **beneficios extra** ($/%, `empleados.beneficios_extra`) · `crearLiquidacion` inyecta básico+beneficios+aportes vía `src/lib/rrhhNomina.ts` · **SAC = 50% del mejor sueldo del semestre** (botones SAC 1°/2° semestre).
+- **RH3 — Nómina contable (mig 197):** **"Generar gasto"** por salario → inserta gasto en el módulo **Gastos** (categoría **Sueldos**, `estado_pago=pendiente`, link `rrhh_salarios.gasto_id`) · **"Cargas sociales → Gastos"** acumula los aportes del período por concepto (categoría **Cargas sociales**) · **recibo de sueldo PDF** (`src/lib/reciboSueldoPDF.ts`, con líneas de firma) · **comprobante firmado** opcional (bucket `empleados`, `rrhh_salarios.comprobante_firmado_url`) · **doble validación** configurable (`tenants.rrhh_nomina_doble_validacion`/`_supervisor_aprueba`; gate `puedeAprobarNomina`; toggle owner-only). Categorías Sueldos/Cargas sociales seedeadas idempotentes.
+- **RH6 — Asistencia 2.0 (mig 198):** **fichado** clock-in/out (`rrhh_fichadas` con origen manual/celular/qr; el check-in rápido ya escribe el ledger) · **horario por empleado** (`horario_entrada/salida`, `dias_laborales`) · **licencias subdivididas** (`rrhh_asistencia.tipo_licencia` + catálogo `LICENCIA_TIPOS`) + `comprobante_url` · **horas extra** (`rrhh_horas_extra`, multiplicador 50/100 + aprobación; panel con monto vía `montoHorasExtra`) · **feriados con regla de pago** (`rrhh_feriados.regla_pago` simple/doble/triple). Lib pura `src/lib/rrhhAsistencia.ts`.
+
+**Pendientes RRHH:** **RH4** (frecuencia de liquidación + anticipos), **RH5** (vacaciones 2.0), **RH7** (documentos obligatorios/portal del empleado/evaluación), **RH8** (reportes + liquidación final). Dentro de RH6 quedó diferido el **fichado por QR público** (`/fichar/:token`) y el **auto-descuento de tardanza** inyectado en la nómina (la lib `descuentoTardanza` ya existe; falta el sweep). Confirmado por GO: % de aportes editables en Config, categorías Sueldos/Cargas sociales, prorrateo del básico por frecuencia, indemnización a definir en RH8.
 
 ---
 

@@ -240,7 +240,7 @@ Respuestas A-H + diseño + modelo de datos + sugerencias completas en **`relevam
 
 **Decisiones confirmadas por GO (2026-06-05):** E3 alta rápida de producto en recepción ✅ SÍ (rol alto + "pendiente revisión") · B6 editar precio en recepción con audit ✅ SÍ · D1 modos `contado/anticipo/contra_entrega/cuenta_corriente` + % anticipo por proveedor (override opcional por OC) ✅ · A6 WA por link `wa.me` ✅. **Estado:** ✅ CO1 (v1.31.0) · ✅ CO2 (v1.32.0) · ✅ CO3 (v1.33.0) · ✅ CO4 (v1.34.0) en PROD · ✅ CO5 (v1.35.0, mig 186) · ✅ CO6 (v1.36.0, mig 187) · ✅ CO7a (v1.37.0, A6+A3) · ✅ CO7b (v1.38.0, mig 188, F1/F2/F3) · ✅ CO8 (v1.39.0, G1/G2/G3/E4) en PROD. **🎉 Compras 2.0 (CO1-CO8) COMPLETO — sin pendientes del módulo.**
 
-### Relevamiento Envíos — plan por fases EN1-EN7 (respondido 2026-06-06) — PENDIENTE DE IMPLEMENTAR
+### Relevamiento Envíos — plan por fases EN1-EN7 (respondido 2026-06-06) — EN1-EN5+EN7 ✅ PROD, falta EN6 (bloqueado)
 
 Respuestas A-I + diseño + modelo de datos + recomendación contable/IVA + plan completo en **`relevamiento_envios_respuestas.md`**. Resumen del plan deployable por fases:
 
@@ -334,7 +334,7 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 |---|---|
 | **Aislamiento por sucursal a nivel RLS** | **Pedido GO 2026-05-30.** Hoy el aislamiento por sucursal es **solo cliente** (triple blindaje: fijado al cargar + selector oculto + guard de `setSucursal`). La RLS de la DB es por `tenant_id`, no por `sucursal_id` → un usuario técnico con credenciales podría leer otra sucursal vía API directa. Para que sea **imposible a nivel servidor**: RLS por sucursal en tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …) cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. Cambio grande (políticas en N tablas) — diseñar antes. Detalle en `multi-sucursal.md`. |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
-| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos, **Compras ✅ (CO1-CO8 COMPLETO en PROD, v1.31-1.39)**. **Envíos ✅ RESPONDIDO (2026-06-06)** → respuestas + diseño + plan EN1-EN7 en `relevamiento_envios_respuestas.md` (ver sección abajo); **pendiente de implementar**. **Sin responder:** RRHH / Caja |
+| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos, **Compras ✅ (CO1-CO8 COMPLETO en PROD)**, **Envíos ✅ (EN1-EN5+EN7 en PROD, falta EN6 bloqueado por cuentas B2B)**, **🎉 RRHH ✅ (RH1-RH8 COMPLETO en PROD, v1.46-v1.48)**. **Sin responder:** Caja |
 | ~~**Email saliente — dominio Resend sin verificar**~~ | ✅ **RESUELTO 2026-06-06** — dominio ya verificado; `FROM` → `noreply@genesis360.pro`; **+ email de OC con template HTML + PDF adjunto** (`send-email` soporta `attachments`). Redeploy DEV v21 / PROD v24. Ver sección abajo. |
 | **Couriers — adapters sin validar con cuentas B2B reales** | Ver sección detallada **"Email + Couriers — pendientes a seguir"** abajo. |
 

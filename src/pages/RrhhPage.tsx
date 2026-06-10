@@ -6,7 +6,7 @@ import {
   DollarSign, CreditCard, ChevronRight, CheckCircle, Clock,
   Plane, ClipboardList, Check, X, LayoutDashboard, FileSpreadsheet,
   UserCheck, UserX, TrendingUp, Download, Paperclip, FolderOpen, File,
-  BookOpen, Award, Network,
+  BookOpen, Award, Network, FileText, Star,
 } from 'lucide-react'
 import { utils as xlsxUtils, writeFile as xlsxWriteFile } from 'xlsx'
 import { supabase } from '@/lib/supabase'
@@ -19,11 +19,14 @@ import { generarReciboSueldoPDF } from '@/lib/reciboSueldoPDF'
 import { LICENCIA_TIPOS, montoHorasExtra, sueldoHora } from '@/lib/rrhhAsistencia'
 import { FRECUENCIAS, basicoProrrateado, anticiposADescontar } from '@/lib/rrhhLiquidacion'
 import { diasVacacionesLCT, antiguedadAnios, remanenteSiguiente, solapamientos, evaluarAviso } from '@/lib/rrhhVacaciones'
+import { documentosFaltantes, documentosPorVencer, type DocCatalogo } from '@/lib/rrhhDocumentos'
+import { liquidacionFinal, generaIndemnizacion } from '@/lib/liquidacionFinal'
+import RrhhReportesPanel from '@/components/RrhhReportesPanel'
 import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia' | 'documentos' | 'capacitaciones' | 'equipo'
+type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia' | 'documentos' | 'capacitaciones' | 'equipo' | 'reportes'
 type FormMode = 'crear' | 'editar' | null
 
 interface Concepto {
@@ -236,6 +239,10 @@ export default function RrhhPage() {
   const [selectedEmpleado, setSelectedEmpleado] = useState<Empleado | null>(null)
   // RH1/A2 — modal de baja con motivo
   const [bajaEmpleado, setBajaEmpleado] = useState<{ id: string; nombre: string; motivo: string; fecha: string } | null>(null)
+  // RH8/A2-c — liquidación final
+  const [liqFinal, setLiqFinal] = useState<any | null>(null)
+  const [liqForm, setLiqForm] = useState({ mejorSueldo: '', antiguedadAnios: '', mesesFraccion: '', mejorSueldoSemestre: '', diasTrabajadosSemestre: '', diasVacacionesPendientes: '', sueldoMensual: '', conIndemnizacion: true })
+  const [savingLiq, setSavingLiq] = useState(false)
   const [editingPuesto, setEditingPuesto] = useState<Puesto | null>(null)
   const [editingDepartamento, setEditingDepartamento] = useState<Departamento | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -307,10 +314,12 @@ export default function RrhhPage() {
   // Documentos state
   const [docEmpleadoFiltro, setDocEmpleadoFiltro] = useState('')
   const [docUploading, setDocUploading] = useState(false)
-  const [docForm, setDocForm] = useState<{ empleado_id: string; nombre: string; descripcion: string; tipo: string; file: File | null }>({
-    empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null,
+  const [docForm, setDocForm] = useState<{ empleado_id: string; nombre: string; descripcion: string; tipo: string; file: File | null; fecha_vencimiento: string }>({
+    empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null, fecha_vencimiento: '',
   })
   const [showDocForm, setShowDocForm] = useState(false)
+  // RH7/E1 — catálogo de documentos obligatorios
+  const [catDocForm, setCatDocForm] = useState({ nombre: '', obligatorio: true })
 
   // Capacitaciones state
   const [capFiltroEmpleado, setCapFiltroEmpleado] = useState('')
@@ -321,11 +330,13 @@ export default function RrhhPage() {
   const [capForm, setCapForm] = useState<{
     empleado_id: string; nombre: string; descripcion: string
     fecha_inicio: string; fecha_fin: string; horas: string
-    proveedor: string; estado: string; resultado: string; certFile: File | null
+    proveedor: string; estado: string; resultado: string; certFile: File | null; obligatoria: boolean
   }>({
     empleado_id: '', nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '',
-    horas: '', proveedor: '', estado: 'planificada', resultado: '', certFile: null,
+    horas: '', proveedor: '', estado: 'planificada', resultado: '', certFile: null, obligatoria: false,
   })
+  // RH7/F4 — evaluaciones de desempeño
+  const [evalForm, setEvalForm] = useState({ empleado_id: '', periodo: '', tipo: 'supervisor', puntaje: '', comentarios: '' })
 
   // Queries
   const { data: empleados = [], isLoading: loadingEmpleados } = useQuery({
@@ -1509,6 +1520,59 @@ export default function RrhhPage() {
     return [emp.nombre, emp.apellido].filter(Boolean).join(' ') || emp.dni_rut || ''
   }
 
+  // RH8/A2-c — abrir liquidación final (precarga desde el empleado)
+  const abrirLiqFinal = async (emp: Empleado) => {
+    const refEgreso = emp.fecha_egreso ?? new Date().toISOString().split('T')[0]
+    const aniosT = antiguedadAnios(emp.fecha_ingreso, refEgreso)
+    const bruto = emp.salario_bruto ?? 0
+    // días de vacaciones pendientes del año (si hay saldo cargado)
+    const { data: saldo } = await supabase.from('rrhh_vacaciones_saldo')
+      .select('dias_totales, dias_usados, remanente_anterior').eq('tenant_id', tenant!.id).eq('empleado_id', emp.id).eq('anio', new Date().getFullYear()).maybeSingle()
+    const vacPend = saldo ? Math.max(0, (saldo.dias_totales + saldo.remanente_anterior) - saldo.dias_usados) : 0
+    setLiqFinal(emp)
+    setLiqForm({
+      mejorSueldo: String(bruto), antiguedadAnios: String(aniosT), mesesFraccion: '0',
+      mejorSueldoSemestre: String(bruto), diasTrabajadosSemestre: '0',
+      diasVacacionesPendientes: String(vacPend), sueldoMensual: String(bruto),
+      conIndemnizacion: generaIndemnizacion(emp.motivo_egreso),
+    })
+  }
+
+  const guardarLiqFinal = async () => {
+    if (!liqFinal) return
+    const r = liquidacionFinal({
+      mejorSueldo: parseFloat(liqForm.mejorSueldo) || 0,
+      antiguedadAnios: parseFloat(liqForm.antiguedadAnios) || 0,
+      mesesFraccion: parseFloat(liqForm.mesesFraccion) || 0,
+      mejorSueldoSemestre: parseFloat(liqForm.mejorSueldoSemestre) || 0,
+      diasTrabajadosSemestre: parseFloat(liqForm.diasTrabajadosSemestre) || 0,
+      diasVacacionesPendientes: parseFloat(liqForm.diasVacacionesPendientes) || 0,
+      sueldoMensual: parseFloat(liqForm.sueldoMensual) || 0,
+      conIndemnizacion: liqForm.conIndemnizacion,
+    })
+    setSavingLiq(true)
+    try {
+      // genera gasto en Gastos (categoría Sueldos, pendiente)
+      const catSueldos = (await supabase.from('categorias_gasto').select('id').eq('tenant_id', tenant!.id).eq('nombre', 'Sueldos').maybeSingle()).data?.id ?? null
+      const { data: gasto } = await supabase.from('gastos').insert({
+        tenant_id: tenant!.id, descripcion: `Liquidación final ${nombreEmpleado(liqFinal)}`, monto: r.total,
+        categoria: 'Sueldos', categoria_id: catSueldos, fecha: new Date().toISOString().split('T')[0],
+        usuario_id: user?.id ?? null, gasto_negocio: true, deduce_ganancias: true, monto_pagado: 0, estado_pago: 'pendiente',
+        notas: `Liquidación final (indemnización ${r.indemnizacion} + SAC ${r.sacProporcional} + vacaciones ${r.vacacionesNoGozadas})`,
+      }).select('id').single()
+      await supabase.from('rrhh_liquidaciones_finales').insert({
+        tenant_id: tenant!.id, empleado_id: liqFinal.id, fecha_egreso: liqFinal.fecha_egreso ?? null, motivo_egreso: liqFinal.motivo_egreso ?? null,
+        antiguedad_anios: parseInt(liqForm.antiguedadAnios) || 0, mejor_sueldo: parseFloat(liqForm.mejorSueldo) || 0,
+        indemnizacion: r.indemnizacion, sac_proporcional: r.sacProporcional, vacaciones_no_gozadas: r.vacacionesNoGozadas, total: r.total,
+        gasto_id: gasto?.id ?? null, created_by: user?.id ?? null,
+      })
+      toast.success('Liquidación final registrada + gasto generado')
+      qc.invalidateQueries({ queryKey: ['gastos'] })
+      setLiqFinal(null)
+    } catch (e: any) { toast.error(e.message ?? 'Error') }
+    finally { setSavingLiq(false) }
+  }
+
   // Documentos queries & mutations
   const { data: documentos = [], refetch: refetchDocumentos } = useQuery({
     queryKey: ['rrhh-documentos', tenant?.id, docEmpleadoFiltro],
@@ -1523,6 +1587,60 @@ export default function RrhhPage() {
       return data as Documento[]
     },
     enabled: !!tenant && activeTab === 'documentos',
+  })
+
+  // RH7/E1 — catálogo de documentos obligatorios
+  const { data: docCatalogo = [], refetch: refetchDocCatalogo } = useQuery({
+    queryKey: ['rrhh-doc-catalogo', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('rrhh_documentos_catalogo').select('*').eq('tenant_id', tenant!.id).order('nombre')
+      return (data ?? []) as DocCatalogo[]
+    },
+    enabled: !!tenant && activeTab === 'documentos',
+  })
+
+  // RH7/F4 — evaluaciones de desempeño
+  const { data: evaluaciones = [], refetch: refetchEvaluaciones } = useQuery({
+    queryKey: ['rrhh-evaluaciones', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('rrhh_evaluaciones')
+        .select('*, empleado:empleados(nombre, apellido, dni_rut)')
+        .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(50)
+      return data ?? []
+    },
+    enabled: !!tenant && activeTab === 'reportes',
+  })
+
+  const saveEvaluacion = useMutation({
+    mutationFn: async (f: typeof evalForm) => {
+      if (!f.empleado_id) throw new Error('Seleccioná un empleado')
+      if (!f.periodo.trim()) throw new Error('Indicá el período')
+      const p = parseInt(f.puntaje)
+      if (f.puntaje && (p < 1 || p > 10)) throw new Error('El puntaje va de 1 a 10')
+      const { error } = await supabase.from('rrhh_evaluaciones').insert({
+        tenant_id: tenant!.id, empleado_id: f.empleado_id, periodo: f.periodo.trim(),
+        tipo: f.tipo, evaluador_id: user?.id ?? null, puntaje: f.puntaje ? p : null, comentarios: f.comentarios || null,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Evaluación guardada'); setEvalForm({ empleado_id: '', periodo: '', tipo: 'supervisor', puntaje: '', comentarios: '' }); refetchEvaluaciones() },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
+  const saveCatDoc = useMutation({
+    mutationFn: async (f: typeof catDocForm) => {
+      if (!f.nombre.trim()) throw new Error('Nombre requerido')
+      const { error } = await supabase.from('rrhh_documentos_catalogo').insert({ tenant_id: tenant!.id, nombre: f.nombre.trim(), obligatorio: f.obligatorio })
+      if (error) throw error
+    },
+    onSuccess: () => { toast.success('Documento agregado al catálogo'); setCatDocForm({ nombre: '', obligatorio: true }); refetchDocCatalogo() },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
+  })
+
+  const deleteCatDoc = useMutation({
+    mutationFn: async (id: string) => { const { error } = await supabase.from('rrhh_documentos_catalogo').delete().eq('id', id); if (error) throw error },
+    onSuccess: () => { refetchDocCatalogo() },
+    onError: (err: any) => toast.error(err.message ?? 'Error'),
   })
 
   const uploadDocumento = async () => {
@@ -1545,12 +1663,13 @@ export default function RrhhPage() {
         storage_path: path,
         tamanio: docForm.file.size,
         mime_type: docForm.file.type,
+        fecha_vencimiento: docForm.fecha_vencimiento || null,
         created_by: user?.id ?? null,
       })
       if (dbErr) throw dbErr
       toast.success('Documento subido')
       setShowDocForm(false)
-      setDocForm({ empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null })
+      setDocForm({ empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null, fecha_vencimiento: '' })
       refetchDocumentos()
     } catch (err: any) {
       toast.error(err.message)
@@ -1618,6 +1737,7 @@ export default function RrhhPage() {
         estado: capForm.estado,
         resultado: capForm.resultado || null,
         certificado_path: certPath,
+        obligatoria: capForm.obligatoria,
         created_by: user?.id ?? null,
       }
       if (editingCap) {
@@ -1631,7 +1751,7 @@ export default function RrhhPage() {
       }
       setShowCapForm(false)
       setEditingCap(null)
-      setCapForm({ empleado_id: '', nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '', horas: '', proveedor: '', estado: 'planificada', resultado: '', certFile: null })
+      setCapForm({ empleado_id: '', nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '', horas: '', proveedor: '', estado: 'planificada', resultado: '', certFile: null, obligatoria: false })
       refetchCapacitaciones()
     } catch (err: any) {
       toast.error(err.message)
@@ -1663,6 +1783,7 @@ export default function RrhhPage() {
       estado: cap.estado,
       resultado: cap.resultado ?? '',
       certFile: null,
+      obligatoria: (cap as any).obligatoria ?? false,
     })
     setShowCapForm(true)
   }
@@ -1785,7 +1906,7 @@ export default function RrhhPage() {
       <div className="flex gap-2 mb-8 border-b border-gray-200 dark:border-gray-700 flex-wrap">
         {(esSupervisor
           ? (['equipo', 'asistencia', 'vacaciones', 'cumpleanos'] as Tab[])
-          : (['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'capacitaciones', 'documentos', 'equipo'] as Tab[])
+          : (['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'capacitaciones', 'documentos', 'reportes', 'equipo'] as Tab[])
         ).map((tab) => (
           <button
             key={tab}
@@ -1806,10 +1927,83 @@ export default function RrhhPage() {
             {tab === 'asistencia'     && <span className="flex items-center gap-1"><ClipboardList size={14}/>Asistencia</span>}
             {tab === 'documentos'     && <span className="flex items-center gap-1"><Paperclip size={14}/>Documentos</span>}
             {tab === 'capacitaciones' && <span className="flex items-center gap-1"><BookOpen size={14}/>Capacitaciones</span>}
+            {tab === 'reportes'       && <span className="flex items-center gap-1"><TrendingUp size={14}/>Reportes</span>}
             {tab === 'equipo'         && <span className="flex items-center gap-1"><Network size={14}/>Mi Equipo</span>}
           </button>
         ))}
       </div>
+
+      {/* RH8 — REPORTES TAB (+ RH7 F4 evaluaciones + F2/F3 config) */}
+      {activeTab === 'reportes' && (
+        <div className="space-y-6">
+          <RrhhReportesPanel tenant={tenant} />
+
+          {/* RH7/F4 — evaluaciones de desempeño */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Star size={15}/> Evaluaciones de desempeño</h3>
+            <div className="flex flex-wrap gap-2 items-end mb-3">
+              <select value={evalForm.empleado_id} onChange={e => setEvalForm({ ...evalForm, empleado_id: e.target.value })}
+                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white">
+                <option value="">Empleado...</option>
+                {empleados.filter(e => e.activo).map(e => <option key={e.id} value={e.id}>{nombreEmpleado(e)}</option>)}
+              </select>
+              <input type="text" placeholder="Período (2026-S1)" value={evalForm.periodo} onChange={e => setEvalForm({ ...evalForm, periodo: e.target.value })}
+                className="w-32 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white" />
+              <select value={evalForm.tipo} onChange={e => setEvalForm({ ...evalForm, tipo: e.target.value })}
+                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white">
+                <option value="supervisor">Supervisor</option>
+                <option value="auto">Auto-evaluación</option>
+                <option value="par">Par (360°)</option>
+              </select>
+              <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="10" placeholder="1-10" value={evalForm.puntaje} onChange={e => setEvalForm({ ...evalForm, puntaje: e.target.value })}
+                className="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white" />
+              <input type="text" placeholder="Comentarios" value={evalForm.comentarios} onChange={e => setEvalForm({ ...evalForm, comentarios: e.target.value })}
+                className="flex-1 min-w-[140px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white" />
+              <button onClick={() => saveEvaluacion.mutate(evalForm)} disabled={saveEvaluacion.isPending} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">Guardar</button>
+            </div>
+            {(evaluaciones as any[]).length === 0 ? <p className="text-xs text-gray-400 italic">Sin evaluaciones cargadas.</p> : (
+              <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                {(evaluaciones as any[]).map(ev => (
+                  <div key={ev.id} className="flex items-center gap-3 py-2 text-sm">
+                    <span className="flex-1 text-gray-700 dark:text-gray-300">{[ev.empleado?.nombre, ev.empleado?.apellido].filter(Boolean).join(' ') || ev.empleado?.dni_rut}</span>
+                    <span className="text-xs text-gray-400">{ev.periodo} · {ev.tipo}</span>
+                    {ev.puntaje != null && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ev.puntaje >= 7 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : ev.puntaje >= 4 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'}`}>{ev.puntaje}/10</span>}
+                    {ev.comentarios && <span className="text-xs text-gray-400 truncate max-w-[200px]">{ev.comentarios}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* RH7/F2+F3 — config portal del empleado + notificaciones (DUEÑO/ADMIN/RRHH) */}
+          {(user?.rol === 'DUEÑO' || user?.rol === 'ADMIN' || user?.rol === 'RRHH') && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 space-y-3 text-sm">
+              <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"><Users2 size={15}/> Portal del empleado y notificaciones</h3>
+              <label className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+                <input type="checkbox" checked={!!(tenant as any)?.rrhh_portal_empleado}
+                  onChange={async e => { const { data } = await supabase.from('tenants').update({ rrhh_portal_empleado: e.target.checked }).eq('id', tenant!.id).select().single(); if (data) setTenant(data as any) }} />
+                Activar portal del empleado (auto-servicio: solicitar vacaciones + descargar recibos)
+              </label>
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Notificaciones del ciclo del empleado</p>
+                <div className="flex flex-wrap gap-3">
+                  {([['cumpleanos','Cumpleaños'],['aniversario','Aniversario'],['vacaciones_proximas','Vacaciones próximas'],['doc_vencer','Documento por vencer'],['contrato_vencer','Contrato por vencer']] as const).map(([k, label]) => (
+                    <label key={k} className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                      <input type="checkbox" checked={((tenant as any)?.rrhh_notif_config ?? {})[k] !== false}
+                        onChange={async e => {
+                          const cfg = { ...((tenant as any)?.rrhh_notif_config ?? {}), [k]: e.target.checked }
+                          const { data } = await supabase.from('tenants').update({ rrhh_notif_config: cfg }).eq('id', tenant!.id).select().single()
+                          if (data) setTenant(data as any)
+                        }} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* EMPLEADOS TAB */}
       {activeTab === 'empleados' && (
@@ -2230,6 +2424,13 @@ export default function RrhhPage() {
                         >
                           {emp.activo ? <Trash2 size={16} /> : '✓'}
                         </button>
+                        {/* RH8/A2-c — liquidación final (empleados dados de baja) */}
+                        {!emp.activo && (
+                          <button onClick={() => abrirLiqFinal(emp)} title="Liquidación final"
+                            className="text-purple-600 dark:text-purple-400 hover:text-purple-800">
+                            <FileText size={16} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -2268,6 +2469,53 @@ export default function RrhhPage() {
               </div>
             </div>
           )}
+
+          {/* RH8/A2-c — Modal de liquidación final */}
+          {liqFinal && (() => {
+            const r = liquidacionFinal({
+              mejorSueldo: parseFloat(liqForm.mejorSueldo) || 0, antiguedadAnios: parseFloat(liqForm.antiguedadAnios) || 0,
+              mesesFraccion: parseFloat(liqForm.mesesFraccion) || 0, mejorSueldoSemestre: parseFloat(liqForm.mejorSueldoSemestre) || 0,
+              diasTrabajadosSemestre: parseFloat(liqForm.diasTrabajadosSemestre) || 0, diasVacacionesPendientes: parseFloat(liqForm.diasVacacionesPendientes) || 0,
+              sueldoMensual: parseFloat(liqForm.sueldoMensual) || 0, conIndemnizacion: liqForm.conIndemnizacion,
+            })
+            const f$ = (n: number) => `$${n.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+            return (
+              <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-3">
+                  <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2"><FileText size={18} className="text-purple-500" /> Liquidación final — {nombreEmpleado(liqFinal)}</h3>
+                  <p className="text-[11px] text-gray-400">Fórmula LCT (editable). Genera un gasto en Gastos (categoría Sueldos, pendiente).</p>
+                  <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                    <input type="checkbox" checked={liqForm.conIndemnizacion} onChange={e => setLiqForm({ ...liqForm, conIndemnizacion: e.target.checked })} />
+                    Corresponde indemnización (despido sin causa / fin de contrato)
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {([
+                      ['Mejor sueldo', 'mejorSueldo'], ['Antigüedad (años)', 'antiguedadAnios'], ['Meses fracción', 'mesesFraccion'],
+                      ['Mejor sueldo semestre', 'mejorSueldoSemestre'], ['Días trab. en semestre', 'diasTrabajadosSemestre'],
+                      ['Días vac. pendientes', 'diasVacacionesPendientes'], ['Sueldo mensual', 'sueldoMensual'],
+                    ] as const).map(([label, key]) => (
+                      <div key={key}>
+                        <label className="block text-[11px] text-gray-400 mb-1">{label}</label>
+                        <input type="number" onWheel={e => e.currentTarget.blur()} value={(liqForm as any)[key]}
+                          onChange={e => setLiqForm({ ...liqForm, [key]: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-xl bg-gray-50 dark:bg-gray-700/50 p-3 text-sm space-y-1">
+                    <div className="flex justify-between"><span>Indemnización</span><span className="font-medium">{f$(r.indemnizacion)}</span></div>
+                    <div className="flex justify-between"><span>SAC proporcional</span><span className="font-medium">{f$(r.sacProporcional)}</span></div>
+                    <div className="flex justify-between"><span>Vacaciones no gozadas</span><span className="font-medium">{f$(r.vacacionesNoGozadas)}</span></div>
+                    <div className="flex justify-between border-t border-gray-200 dark:border-gray-600 pt-1 mt-1 font-bold text-primary dark:text-white"><span>Total</span><span>{f$(r.total)}</span></div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setLiqFinal(null)} className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
+                    <button onClick={guardarLiqFinal} disabled={savingLiq} className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">{savingLiq ? 'Guardando…' : 'Registrar + generar gasto'}</button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
 
@@ -3874,6 +4122,46 @@ export default function RrhhPage() {
       {/* DOCUMENTOS TAB */}
       {activeTab === 'documentos' && (
         <div>
+          {/* RH7/E1+E2 — catálogo de obligatorios + alerta de vencimiento */}
+          <div className="grid md:grid-cols-2 gap-4 mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5"><Star size={14}/> Documentos obligatorios (catálogo)</h3>
+              <div className="flex gap-2 mb-2">
+                <input type="text" placeholder="Ej. Contrato, DNI, Libreta..." value={catDocForm.nombre} onChange={e => setCatDocForm({ ...catDocForm, nombre: e.target.value })}
+                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm dark:bg-gray-700 dark:text-white" />
+                <label className="flex items-center gap-1 text-xs text-gray-500"><input type="checkbox" checked={catDocForm.obligatorio} onChange={e => setCatDocForm({ ...catDocForm, obligatorio: e.target.checked })} /> Oblig.</label>
+                <button onClick={() => saveCatDoc.mutate(catDocForm)} disabled={saveCatDoc.isPending} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50">+</button>
+              </div>
+              {(docCatalogo as DocCatalogo[]).length === 0 ? <p className="text-xs text-gray-400 italic">Sin documentos requeridos definidos.</p> : (
+                <div className="flex flex-wrap gap-1.5">
+                  {(docCatalogo as DocCatalogo[]).map(c => (
+                    <span key={c.id} className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${c.obligatorio ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'}`}>
+                      {c.nombre}<button onClick={() => deleteCatDoc.mutate(c.id)} className="ml-0.5 hover:text-red-500">✕</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5"><AlertTriangle size={14} className="text-amber-500"/> Documentos por vencer</h3>
+              {(() => {
+                const docs = (documentos as Documento[]).map(d => ({ id: d.id, nombre: d.nombre, fecha_vencimiento: (d as any).fecha_vencimiento, empleado: [d.empleado?.nombre, d.empleado?.apellido].filter(Boolean).join(' ') }))
+                const porVencer = documentosPorVencer(docs, new Date().toISOString().split('T')[0], Number((tenant as any)?.rrhh_doc_alerta_dias ?? 30))
+                if (porVencer.length === 0) return <p className="text-xs text-gray-400 italic">Nada por vencer en los próximos {(tenant as any)?.rrhh_doc_alerta_dias ?? 30} días 🎉</p>
+                return (
+                  <div className="space-y-1">
+                    {porVencer.map(d => (
+                      <div key={d.id} className={`flex items-center justify-between text-xs rounded-lg px-2 py-1.5 ${d.diasRestantes < 0 ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300' : 'bg-amber-50 dark:bg-amber-900/15 text-amber-700 dark:text-amber-300'}`}>
+                        <span>{d.empleado} · {d.nombre}</span>
+                        <span>{d.diasRestantes < 0 ? `vencido hace ${-d.diasRestantes}d` : `en ${d.diasRestantes}d`}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+
           {/* Header + filtro */}
           <div className="flex flex-col sm:flex-row gap-3 mb-6">
             <select
@@ -3934,6 +4222,12 @@ export default function RrhhPage() {
                   onChange={(e) => setDocForm({ ...docForm, descripcion: e.target.value })}
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
                 />
+                {/* RH7/E2 — fecha de vencimiento */}
+                <div className="sm:col-span-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">Vencimiento (opcional — libreta sanitaria, ART, contrato...)</label>
+                  <input type="date" value={docForm.fecha_vencimiento} onChange={(e) => setDocForm({ ...docForm, fecha_vencimiento: e.target.value })}
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white w-full sm:w-auto" />
+                </div>
                 <div className="sm:col-span-2">
                   <input
                     type="file"
@@ -3953,7 +4247,7 @@ export default function RrhhPage() {
                   {docUploading ? 'Subiendo...' : 'Guardar'}
                 </button>
                 <button
-                  onClick={() => { setShowDocForm(false); setDocForm({ empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null }) }}
+                  onClick={() => { setShowDocForm(false); setDocForm({ empleado_id: '', nombre: '', descripcion: '', tipo: 'otro', file: null, fecha_vencimiento: '' }) }}
                   className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
                 >
                   Cancelar
@@ -4030,7 +4324,7 @@ export default function RrhhPage() {
               </select>
             </div>
             <button
-              onClick={() => { setEditingCap(null); setCapForm({ empleado_id: '', nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '', horas: '', proveedor: '', estado: 'planificada', resultado: '', certFile: null }); setShowCapForm(true) }}
+              onClick={() => { setEditingCap(null); setCapForm({ empleado_id: '', nombre: '', descripcion: '', fecha_inicio: '', fecha_fin: '', horas: '', proveedor: '', estado: 'planificada', resultado: '', certFile: null, obligatoria: false }); setShowCapForm(true) }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
             >
               <Plus size={16} /> Nueva capacitación
@@ -4102,6 +4396,11 @@ export default function RrhhPage() {
                   <option value="completada">Completada</option>
                   <option value="cancelada">Cancelada</option>
                 </select>
+                {/* RH7/E3 — obligatoria por puesto */}
+                <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 px-1">
+                  <input type="checkbox" checked={capForm.obligatoria} onChange={(e) => setCapForm({ ...capForm, obligatoria: e.target.checked })} />
+                  Obligatoria (alerta si falta)
+                </label>
                 <input
                   type="text"
                   placeholder="Resultado / calificación"

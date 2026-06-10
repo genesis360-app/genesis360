@@ -22,15 +22,19 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.49.0` | `v1.48.0` |
-| Migrations | 001–**202** ✅ | 001–**202** ✅ |
-| Branch | `dev` (adelantado 1 release) | `main` (release v1.48.0) |
+| APP_VERSION | `v1.50.0` | `v1.48.0` |
+| Migrations | 001–**203** ✅ | 001–**202** ✅ |
+| Branch | `dev` (adelantado 2 releases) | `main` (release v1.48.0) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.48.0 |
 | Edge Function `courier-api` | **v con logging + `probar`** ✅ DEV | versión vieja (sin `probar`) |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (202 ya en PROD).
+**Migration DEV pendiente de aplicar en PROD:** **203** (`boveda_arqueos` + `rrhh_anticipos.es_prestamo/documento_url`).
 
-**⚠ v1.49.0 quedó SOLO en DEV** (decisión GO 2026-06-10): courier `probar` + logging diagnóstico (sin migración). Para subir a PROD: deploy `courier-api` a PROD (`supabase functions deploy courier-api --project-ref jjffnbrdjchquexdfgwq`) + PR `dev → main` + release. Detalle en la sección "Email + Couriers" abajo.
+**⚠ v1.49.0 + v1.50.0 quedaron SOLO en DEV** (decisión GO 2026-06-10):
+- **v1.49.0** — courier `probar` + logging diagnóstico (sin migración). Deploy `courier-api` a PROD pendiente.
+- **v1.50.0** — Caja tanda final (cierra el módulo al 100%): E1 bóveda para roles custom · E3 arqueo manual de bóveda (`boveda_arqueos`) · L3 préstamo a empleado (flag + nota firmada en RRHH) · M3 panel de cajero `/caja/panel` · M4 sonido al cobrar. Mig **203** en DEV. Suite **618**.
+
+Para subir AMBOS a PROD: aplicar mig 203 en PROD + deploy `courier-api` a PROD (`--project-ref jjffnbrdjchquexdfgwq`) + PR `dev → main` + release.
 
 **✅ Email saliente (Resend) — RESUELTO 2026-06-09:** el `RESEND_API_KEY` cargado como secret en Supabase era una **key vieja/inválida** (Resend respondía 401 "API key is invalid"). GO la regeneró y actualizó el secret → **correo funcionando** (confirmado: llegaron mails de Genesis). Dominio `genesis360.pro` verificado (DKIM/SPF). El front muestra el error real de Resend si vuelve a fallar (fix en `enviarOCEmail` + ticket de venta). Aprendizaje: ante "Edge Function non-2xx" en `send-email`, revisar primero la validez del `RESEND_API_KEY` en el secret de Supabase.
 
@@ -337,9 +341,38 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 |---|---|
 | **Aislamiento por sucursal a nivel RLS** | **Pedido GO 2026-05-30.** Hoy el aislamiento por sucursal es **solo cliente** (triple blindaje: fijado al cargar + selector oculto + guard de `setSucursal`). La RLS de la DB es por `tenant_id`, no por `sucursal_id` → un usuario técnico con credenciales podría leer otra sucursal vía API directa. Para que sea **imposible a nivel servidor**: RLS por sucursal en tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …) cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. Cambio grande (políticas en N tablas) — diseñar antes. Detalle en `multi-sucursal.md`. |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
-| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos, **Compras ✅ (CO1-CO8 COMPLETO en PROD)**, **Envíos ✅ (EN1-EN5+EN7 en PROD, falta EN6 bloqueado por cuentas B2B)**, **🎉 RRHH ✅ (RH1-RH8 COMPLETO en PROD, v1.46-v1.48)**. **Sin responder:** Caja |
+| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos, **Compras ✅ (CO1-CO8 COMPLETO en PROD)**, **Envíos ✅ (EN1-EN5+EN7 en PROD, falta EN6 bloqueado por cuentas B2B)**, **🎉 RRHH ✅ (RH1-RH8 COMPLETO en PROD, v1.46-v1.48)**, **Caja ✅ (relevado A-M 2026-05-25; mayoría en PROD v1.9.1→v1.10.0, migs 136-142). ⚠ La nota previa "Caja sin responder" era STALE/incorrecta** — ver sección "Relevamiento Caja — estado real" abajo. **Todos los relevamientos están respondidos.** |
 | ~~**Email saliente — dominio Resend sin verificar**~~ | ✅ **RESUELTO 2026-06-06** — dominio ya verificado; `FROM` → `noreply@genesis360.pro`; **+ email de OC con template HTML + PDF adjunto** (`send-email` soporta `attachments`). Redeploy DEV v21 / PROD v24. Ver sección abajo. |
 | **Couriers — adapters sin validar con cuentas B2B reales** | Ver sección detallada **"Email + Couriers — pendientes a seguir"** abajo. |
+
+---
+
+## Relevamiento Caja — estado real (reconciliado 2026-06-10)
+
+> **GO reportó (2026-06-10) que tenía notas de que Caja estaba "entregado y en PROD", contra la nota stale que decía "Caja sin responder". Se verificó contra el código real: las notas de GO son las correctas.** El `sources/relevamientos/caja_2026-05-25.md` y la lista de "pendientes" de `wiki/features/caja.md` quedaron **congelados antes de las migs 140-142** (stale) — por eso parecían incompletos.
+
+**Caja relevado A-M (2026-05-25, GO+socio) y mayoría implementado en PROD** en 3 tandas:
+- **Tanda 1 (v1.9.1, mig 136):** F1 cajas por moneda · H1 cuentas de origen + bóveda discriminada · G2/G3 sin egreso manual · D3 arqueo pre-cierre obligatorio.
+- **Tanda 1.5 (v1.9.2, migs 137-138):** E4/E5 retiros de bóveda solo DUEÑO + historial privado · M1 selector de caja auto-asignado.
+- **Fase 2 (v1.9.3→v1.10.x, migs 140-142):** **mig 140** A2 abrir a nombre de cajero (`caja_sesiones.abierta_por`)/A4/B5/B6/C2/J permisos (`tenants.config_caja_jsonb`) · **mig 141** C1/C3 ticket enriquecido+58/80mm/K2 snapshot/K3 numeración correlativa por sucursal (`caja_sesiones.numero`)/B1/B2/B3 diferencias+umbral+alertas/B4 diferencia caja · **mig 142 (HITO v1.10.0)** I1/I2 reportes + export (`vw_caja_resumen_diario`, `CajaReportes.tsx`). · **v1.10.2** C2 mail al DUEÑO + se eliminó el PDF auto al cerrar. · Verificado en código: **B7 doble validación al cierre** (`configCaja.doble_validacion_cierre`), **G1 botón Corregir** (reversa + audit), **L1 selector de caja en devolución efectivo** (VentasPage).
+
+**Ítems chicos que faltaban → ✅ CERRADOS en DEV (v1.50.0, mig 203, 2026-06-10):**
+- **E1** ✅ — visibilidad de bóveda configurable para **roles personalizados** (helper `accedeABoveda` en `cajaPermisos.ts`; `caja_fuerte_roles` ahora acepta `custom:<rolCustomId>`; Config → Caja lista roles estándar + custom). +5 tests.
+- **E3** ✅ — **arqueo manual de bóveda** (`boveda_arqueos`, RLS solo DUEÑO/ADMIN/SUPER_USUARIO): botón "Arquear bóveda" en el tab Caja Fuerte, modal con conteo por cuenta vs sistema + diferencia, historial de arqueos. No cierra la bóveda.
+- **L3** ✅ — **préstamo a empleado**: en RRHH → Anticipos, checkbox "Es préstamo" + adjuntar **nota firmada** (bucket `empleados`, `rrhh_anticipos.documento_url` + `es_prestamo`). El egreso de caja sale por Gastos (efectivo, consistente con G2/G3) y se descuenta del próximo sueldo (RH4). Badge "Préstamo" + link al doc en la lista.
+- **M3** ✅ — **panel de cajero simplificado** (`/caja/panel`, `PanelCajeroPage`, full-screen sin sidebar): estado de caja + botones grandes Cobrar/Operar caja + toggle de sonido. Acceso desde botón "Modo panel" en CajaPage.
+- **M4** ✅ — **sonido al confirmar cobro** (`src/lib/sonidoCobro.ts`, Web Audio, preferencia localStorage default ON, toggle en el panel). Suena al despachar una venta en el POS.
+- **N** (top 3 / abiertos) — nunca respondido; quedó moot.
+
+**🎉 Relevamiento Caja A-M COMPLETO** (mayoría en PROD v1.9.1→v1.10.0; estos 5 ítems chicos en DEV v1.50.0 esperando deploy a PROD).
+
+**Preguntas abiertas de GO (2026-06-10), resueltas:**
+- **J2** (¿DEPOSITO puede hacer devoluciones con efectivo desde caja?): opción **(a)** — DEPOSITO NO opera caja; las devoluciones con efectivo las hace CAJERO/SUPERVISOR/DUEÑO desde el historial de venta con selector de caja (= L1, ya implementado).
+- **B4** (¿asociar diferencia al cajero o qué recomendás?): ya implementado como se recomendó — movimiento contable "Diferencia caja" + queda asociado al cajero (vía sesión) + sin descuento automático de sueldo (decisión humana).
+- **K1** (recomendación fiscal): cierre Z **digital** (numeración correlativa + snapshot), sin integrar controlador fiscal físico. Implementado.
+- **K2** (¿backup de tickets o regenerar?): regeneración **on-demand** desde snapshot JSONB enriquecido + backups automáticos de Supabase; NO se guarda el PDF (evita desync). Implementado.
+
+**Pendiente de cierre documental:** realinear `caja_2026-05-25.md` + `wiki/features/caja.md` (sus listas de "pendientes" están stale) y, si GO quiere, cerrar los 3-4 ítems chicos (E3 / L3 / M3 / M4 / E1-roles-custom).
 
 ---
 

@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-10] update | v1.50.0 (SOLO DEV) — Caja: tanda final (E1/E3/L3/M3/M4) · 🎉 relevamiento Caja A-M COMPLETO
+
+**Reconciliación + cierre del relevamiento Caja.** GO reportó que tenía notas de que Caja estaba "entregado y en PROD" contra la nota stale del wiki que decía "Caja sin responder". **Verificado contra código: las notas de GO eran las correctas** — el relevamiento A-M (2026-05-25) ya estaba casi todo en PROD (migs 136-142, hito v1.10.0). El `caja_2026-05-25.md` y la lista de "pendientes" de `caja.md` quedaron congelados antes de migs 140-142 (stale). Se corrigió la nota errónea y se cerraron los pocos ítems chicos que faltaban. Build + suite **618** verdes (613 + 5 de `accedeABoveda`). Mig **203** en DEV. GO eligió dejarlo en DEV.
+
+- **E1** — visibilidad de bóveda para **roles personalizados** (helper `accedeABoveda` en `cajaPermisos.ts`; `caja_fuerte_roles` acepta `custom:<id>`; editor en Config → Caja lista roles estándar + custom).
+- **E3** — **arqueo manual de bóveda** (`boveda_arqueos`, RLS DUEÑO/ADMIN/SUPER_USUARIO): botón "Arquear bóveda" en tab Caja Fuerte + modal conteo por cuenta vs sistema + historial. La bóveda no se cierra.
+- **L3** — **préstamo a empleado**: checkbox "Es préstamo" + adjuntar nota firmada en RRHH → Anticipos (`rrhh_anticipos.es_prestamo` + `documento_url`, bucket empleados). Egreso por Gastos (efectivo, G2/G3) + descuento del próximo sueldo (RH4).
+- **M3** — **panel de cajero** `/caja/panel` (`PanelCajeroPage`, full-screen sin AppLayout): estado de caja + botones grandes Cobrar/Operar + acceso desde "Modo panel" en CajaPage.
+- **M4** — **sonido al cobrar** (`src/lib/sonidoCobro.ts`, Web Audio, pref localStorage default ON, toggle en el panel). Suena al despachar venta en el POS.
+
+**🎉 Relevamiento Caja A-M COMPLETO** (mayoría en PROD; estos 5 en DEV esperando deploy). **Pendiente subir a PROD:** mig 203 + estos cambios + v1.49.0 (courier) → PR `dev → main`.
+
 ## [2026-06-10] update | v1.49.0 (SOLO DEV) — Courier: logging diagnóstico + "Probar credenciales"
 
 **Accionable del Punto 2 (Email+Couriers) sin necesidad de cuenta B2B.** GO eligió dejarlo **solo en DEV** por ahora (decisión 2026-06-10). Build + suite **613** verdes. Sin migración. `courier-api` deployada a DEV (`gcmhzdedrkmmzfzfveig`); `dev` adelantado 1 release respecto de `main` (PROD sigue en v1.48.0).

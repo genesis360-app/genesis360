@@ -19,6 +19,7 @@ const ProductoFormPage = lazy(() => import('@/pages/ProductoFormPage'))
 const ImportarProductosPage  = lazy(() => import('@/pages/ImportarProductosPage'))
 const ImportarInventarioPage = lazy(() => import('@/pages/ImportarInventarioPage'))
 const CajaPage             = lazy(() => import('@/pages/CajaPage'))
+const PanelCajeroPage      = lazy(() => import('@/pages/PanelCajeroPage'))
 const MetricasPage         = lazy(() => import('@/pages/MetricasPage'))
 const VentasPage       = lazy(() => import('@/pages/VentasPage'))
 const AlertasPage      = lazy(() => import('@/pages/AlertasPage'))
@@ -167,6 +168,8 @@ function App() {
                   <Route path="/recursos"   element={<RecursosPage />} />
                   <Route path="/configuracion/importar" element={<ImportarMasterPage />} />
                 </Route>
+                {/* M3 — Panel de cajero simplificado (full-screen, sin AppLayout) */}
+                <Route path="/caja/panel" element={<PanelCajeroPage />} />
               </Route>
             </Route>
 

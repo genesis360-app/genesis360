@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.50.0 — Caja: tanda final (E1/E3/L3/M3/M4) · 🎉 relevamiento Caja A-M COMPLETO (⚠ SOLO DEV)
+
+Cierre del relevamiento Caja: la mayoría ya estaba en PROD (migs 136-142, hito v1.10.0); esta tanda cierra los ítems chicos que faltaban. **E1** visibilidad de bóveda para roles personalizados (`accedeABoveda`, `caja_fuerte_roles` con `custom:<id>`) · **E3** arqueo manual de bóveda (`boveda_arqueos`, RLS DUEÑO+, modal + historial) · **L3** préstamo a empleado (checkbox + nota firmada en RRHH → Anticipos, `rrhh_anticipos.es_prestamo`/`documento_url`) · **M3** panel de cajero simplificado `/caja/panel` (`PanelCajeroPage`, full-screen touch) · **M4** sonido al cobrar (`sonidoCobro.ts`, Web Audio). Mig **203**. +5 tests (`accedeABoveda`) → suite **618**. **Quedó SOLO en DEV** (decisión GO); pendiente subir a PROD con v1.49.0.
+
+---
+
 ## v1.49.0 — Courier: logging diagnóstico + "Probar credenciales" (⚠ SOLO DEV)
 
 Accionable del Punto 2 (Email+Couriers) sin necesidad de cuenta B2B. **Logging diagnóstico** en `courier-api` (helper `courierFetch`: método + URL + status + body recortado ante error; log inline en SOAP de OCA; log de entrada/catch en el router; **nunca** credenciales) + nueva acción **`probar`** y botón "**Probar credenciales**" por courier en Config → Envíos (`CourierCredencialesPanel`) que valida las claves guardadas con el paso de auth más barato (Andreani→`login`, Correo→`getToken`, OCA→tarifa de muestra). Front `probarCredencialesCourier()`. Sin migración. Build + suite 613 verdes. **Quedó solo en DEV** (decisión GO); `courier-api` deployada a DEV. Pendiente subir a PROD (deploy de la función + PR `dev → main` + release).

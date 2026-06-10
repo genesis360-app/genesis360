@@ -266,6 +266,7 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 200 | `200_rrhh_rh5_vacaciones.sql` | **RRHH RH5 (vacaciones 2.0)** · `rrhh_vacaciones_solicitud` **drop** estado_check (C2, estados validados en app) + preaprobado_por/at + `tenants` += rrhh_vacaciones_flujo (C2) / rrhh_vacaciones_aviso (C3) / rrhh_vacaciones_remanente_max (C6) / rrhh_vacaciones_min_bloque/max_bloques (C5). C1 (días LCT) y C4 (solapamiento) = frontend. Aditiva |
 | 201 | `201_rrhh_rh7_docs_evaluacion.sql` | **RRHH RH7 (docs/evaluación/portal)** · tabla `rrhh_documentos_catalogo` (E1, RLS) + `rrhh_documentos` += fecha_vencimiento/catalogo_id (E2) + `rrhh_capacitaciones` += obligatoria (E3) + tabla `rrhh_evaluaciones` (F4, RLS) + `tenants` += rrhh_portal_empleado/_capacidades (F2) / rrhh_notif_config (F3) / rrhh_doc_alerta_dias (E2). Aditiva |
 | 202 | `202_rrhh_rh8_liquidacion_final.sql` | **RRHH RH8 (liquidación final)** · tabla `rrhh_liquidaciones_finales` (A2-c, RLS; indemnización+SAC proporcional+vacaciones no gozadas, link al gasto). G1 reportes + G2 export = solo frontend. Aditiva. **🎉 RRHH 2.0 (RH1-RH8) COMPLETO** |
+| 203 | `203_caja_cierre_relevamiento.sql` | **Caja — cierre del relevamiento (v1.50.0, SOLO DEV)** · tabla `boveda_arqueos` (E3 arqueo manual de bóveda, RLS DUEÑO/ADMIN/SUPER_USUARIO + GRANT) + `rrhh_anticipos` += `es_prestamo`/`documento_url` (L3 préstamo a empleado). E1 (bóveda roles custom), M3 (panel cajero), M4 (sonido) = solo frontend. Aditiva. **⚠ En DEV; pendiente PROD** |
 
 ---
 

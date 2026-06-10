@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { puede, requiereClaveMaestra } from '@/lib/cajaPermisos'
+import { puede, requiereClaveMaestra, accedeABoveda } from '@/lib/cajaPermisos'
 
 // Plan: tests/specs/caja.plan.md (sección 10 — matriz J3 / B5 / B6)
 
@@ -47,5 +47,25 @@ describe('requiereClaveMaestra (B5)', () => {
   })
   it('anular_venta requiere clave si está configurada', () => {
     expect(requiereClaveMaestra('anular_venta', true)).toBe(true)
+  })
+})
+
+describe('accedeABoveda (E1 — bóveda para roles fijos y custom)', () => {
+  it('CAJA-BOV-01 default ([DUEÑO]) — solo el DUEÑO ve la bóveda', () => {
+    expect(accedeABoveda('DUEÑO', null, undefined)).toBe(true)
+    expect(accedeABoveda('CAJERO', null, undefined)).toBe(false)
+  })
+  it('CAJA-BOV-02 rol estándar habilitado en caja_fuerte_roles', () => {
+    expect(accedeABoveda('SUPERVISOR', null, ['DUEÑO', 'SUPERVISOR'])).toBe(true)
+    expect(accedeABoveda('CAJERO', null, ['DUEÑO', 'SUPERVISOR'])).toBe(false)
+  })
+  it('CAJA-BOV-03 rol custom habilitado como custom:<id>', () => {
+    expect(accedeABoveda('CAJERO', 'rc-1', ['DUEÑO', 'custom:rc-1'])).toBe(true)
+  })
+  it('CAJA-BOV-04 rol custom NO habilitado → false', () => {
+    expect(accedeABoveda('CAJERO', 'rc-2', ['DUEÑO', 'custom:rc-1'])).toBe(false)
+  })
+  it('CAJA-BOV-05 sin rolCustomId no matchea un custom:', () => {
+    expect(accedeABoveda('CAJERO', null, ['custom:rc-1'])).toBe(false)
   })
 })

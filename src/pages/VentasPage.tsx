@@ -4,6 +4,7 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
+import { reproducirSonidoCobro } from '@/lib/sonidoCobro'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
 import { evaluarLimiteCC, evaluarMorosidad } from '@/lib/ccLogic'
@@ -2253,6 +2254,7 @@ export default function VentasPage() {
       }
       const msg = estado === 'despachada' ? 'Venta finalizada' : estado === 'reservada' ? 'Venta reservada' : 'Presupuesto guardado'
       toast.success(msg)
+      if (estado === 'despachada') reproducirSonidoCobro()  // M4 — sonido al cobrar
       if (estado !== 'pendiente') {
         setTicketVenta({ ...venta, items: cart.map(i => ({ ...i, subtotal: getItemSubtotal(i) })), vuelto: vuelto > 0.5 ? vuelto : 0 })
       }

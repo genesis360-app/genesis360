@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  sueldoHora, descuentoTardanza, montoHorasExtra, montoFeriadoTrabajado,
+  sueldoHora, descuentoTardanza, montoHorasExtra, montoFeriadoTrabajado, minutosTardeFacturables,
 } from '@/lib/rrhhAsistencia'
 
 // RRHH RH6 — tardanza + horas extra + feriados
@@ -24,6 +24,33 @@ describe('descuentoTardanza (D3)', () => {
   })
   it("'umbral' dentro de la tolerancia no descuenta", () => {
     expect(descuentoTardanza(8, sh, { modo: 'umbral', toleranciaMin: 10 })).toBe(0)
+  })
+})
+
+describe('minutosTardeFacturables (D3 — desde fichadas)', () => {
+  // ts sin timezone → se interpretan en hora local (determinista en cualquier runner)
+  it("modo 'registrar' siempre 0", () => {
+    expect(minutosTardeFacturables([{ ts: '2026-06-02T09:30:00' }], '09:00', { modo: 'registrar' })).toBe(0)
+  })
+  it('sin horario de entrada → 0', () => {
+    expect(minutosTardeFacturables([{ ts: '2026-06-02T09:30:00' }], null, { modo: 'proporcional' })).toBe(0)
+  })
+  it("proporcional: suma minutos de atraso vs horario", () => {
+    expect(minutosTardeFacturables([{ ts: '2026-06-02T09:15:00' }], '09:00', { modo: 'proporcional' })).toBe(15)
+  })
+  it('toma la PRIMERA entrada de cada día', () => {
+    const entradas = [{ ts: '2026-06-02T09:20:00' }, { ts: '2026-06-02T09:05:00' }]
+    expect(minutosTardeFacturables(entradas, '09:00', { modo: 'proporcional' })).toBe(5)
+  })
+  it("umbral: aplica la tolerancia por día", () => {
+    expect(minutosTardeFacturables([{ ts: '2026-06-02T09:15:00' }], '09:00', { modo: 'umbral', toleranciaMin: 10 })).toBe(5)
+  })
+  it('suma a través de varios días', () => {
+    const entradas = [{ ts: '2026-06-02T09:10:00' }, { ts: '2026-06-03T09:30:00' }]
+    expect(minutosTardeFacturables(entradas, '09:00', { modo: 'proporcional' })).toBe(40)
+  })
+  it('llegar temprano no genera atraso', () => {
+    expect(minutosTardeFacturables([{ ts: '2026-06-02T08:45:00' }], '09:00', { modo: 'proporcional' })).toBe(0)
   })
 })
 

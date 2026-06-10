@@ -22,19 +22,19 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.50.0` | `v1.48.0` |
-| Migrations | 001–**203** ✅ | 001–**202** ✅ |
-| Branch | `dev` (adelantado 2 releases) | `main` (release v1.48.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.48.0 |
-| Edge Function `courier-api` | **v con logging + `probar`** ✅ DEV | versión vieja (sin `probar`) |
+| APP_VERSION | `v1.51.0` | `v1.50.0` |
+| Migrations | 001–**204** ✅ | 001–**203** ✅ |
+| Branch | `dev` (adelantado 1 release) | `main` (release v1.50.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.50.0 |
+| Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migration DEV pendiente de aplicar en PROD:** **203** (`boveda_arqueos` + `rrhh_anticipos.es_prestamo/documento_url`).
+**Migration DEV pendiente de aplicar en PROD:** **204** (`tenants.fichado_token` + RPCs `get_fichado_info`/`fichar_qr` SECURITY DEFINER anon).
 
-**⚠ v1.49.0 + v1.50.0 quedaron SOLO en DEV** (decisión GO 2026-06-10):
-- **v1.49.0** — courier `probar` + logging diagnóstico (sin migración). Deploy `courier-api` a PROD pendiente.
-- **v1.50.0** — Caja tanda final (cierra el módulo al 100%): E1 bóveda para roles custom · E3 arqueo manual de bóveda (`boveda_arqueos`) · L3 préstamo a empleado (flag + nota firmada en RRHH) · M3 panel de cajero `/caja/panel` · M4 sonido al cobrar. Mig **203** en DEV. Suite **618**.
+**⏳ v1.51.0 en DEV (RRHH diferidos, mig 204):** (1) **auto-descuento de tardanza** en nómina — `crearLiquidacion` suma las fichadas de entrada del período vs `empleados.horario_entrada` (`minutosTardeFacturables`) y descuenta según `tenants.rrhh_tardanza_modo`/`_tolerancia_min`/`_horas_mes_base`; (2) **fichado por QR público** `/fichar/:token` (`FicharPage` + `tenants.fichado_token` + RPCs anon; config con QR descargable en RRHH → Asistencia); (3) **portal del empleado** `/mi-portal` (`MiPortalPage`: recibos/vacaciones/documentos del empleado logueado, gateado por `tenants.rrhh_portal_empleado`/`_capacidades`; nav "Mi Portal"). +7 tests → suite **625**. Pendiente subir a PROD.
 
-Para subir AMBOS a PROD: aplicar mig 203 en PROD + deploy `courier-api` a PROD (`--project-ref jjffnbrdjchquexdfgwq`) + PR `dev → main` + release.
+**✅ v1.49.0 + v1.50.0 EN PROD (2026-06-10, PR #178, `dev=main`):**
+- **v1.49.0** — courier `probar` + logging diagnóstico (sin migración). `courier-api` deployada a DEV+PROD.
+- **v1.50.0** — Caja tanda final (cierra el módulo al 100%): E1 bóveda para roles custom · E3 arqueo manual de bóveda (`boveda_arqueos`) · L3 préstamo a empleado (flag + nota firmada en RRHH) · M3 panel de cajero `/caja/panel` · M4 sonido al cobrar. Mig **203** en DEV+PROD. Suite **618**. **🎉 relevamiento Caja A-M COMPLETO.**
 
 **✅ Email saliente (Resend) — RESUELTO 2026-06-09:** el `RESEND_API_KEY` cargado como secret en Supabase era una **key vieja/inválida** (Resend respondía 401 "API key is invalid"). GO la regeneró y actualizó el secret → **correo funcionando** (confirmado: llegaron mails de Genesis). Dominio `genesis360.pro` verificado (DKIM/SPF). El front muestra el error real de Resend si vuelve a fallar (fix en `enviarOCEmail` + ticket de venta). Aprendizaje: ante "Edge Function non-2xx" en `send-email`, revisar primero la validez del `RESEND_API_KEY` en el secret de Supabase.
 
@@ -278,7 +278,7 @@ Respuestas A-H + diseño + modelo de datos + plan completo en **`relevamiento_rr
 - **RH7 — Documentos + capacitaciones + evaluación + portal/notif (E1-E4/F1-F4) ✅ PROD (v1.48.0, mig 201):** **catálogo de documentos obligatorios** (E1, `rrhh_documentos_catalogo` CRUD) + alerta de **faltantes** (`documentosFaltantes`) y **próximos a vencer** (E2, `rrhh_documentos.fecha_vencimiento` + `documentosPorVencer`, umbral `tenants.rrhh_doc_alerta_dias`) · **capacitación obligatoria** (E3, `rrhh_capacitaciones.obligatoria`) · **evaluación de desempeño** 1-10 + tipo auto/supervisor/par (F4, `rrhh_evaluaciones`, panel en Reportes) · config **portal del empleado** (F2, `tenants.rrhh_portal_empleado`/`_capacidades`) + **notificaciones del ciclo** (F3, `tenants.rrhh_notif_config`). E4 (costo capacitación) = NO. Lib `rrhhDocumentos.ts` (+5 tests).
 - **RH8 — Reportes + export + liquidación final (G1/G2 + A2-c) ✅ PROD (v1.48.0, mig 202):** nuevo **tab Reportes** (`RrhhReportesPanel`): costo laboral por departamento · asistencia consolidada · vacaciones gozadas/pendientes · antigüedad/rotación · recibos pagados/pendientes (G1) + export Excel/CSV/PDF (G2) · **liquidación final** al egreso (A2-c, `liquidacionFinal.ts`): **indemnización** LCT 245 (mejor sueldo × años, fracción > 3 meses suma año, mín 1 sueldo) + **SAC proporcional** + **vacaciones no gozadas** (sueldo/25 × días), todo **editable**, genera gasto en Gastos + persiste en `rrhh_liquidaciones_finales`. Botón en empleados dados de baja. Libs `rrhhReportes.ts` + `liquidacionFinal.ts` (+12 tests).
 
-**Estado:** 🎉 **RRHH 2.0 (RH1-RH8) COMPLETO en PROD.** Diferidos (mejoras futuras, no en el plan original): **fichado por QR público** (`/fichar/:token`) + **auto-descuento de tardanza** inyectado en nómina (RH6; la lib `descuentoTardanza` ya existe) y la **UI completa del portal del empleado** (F2; el flag de config ya está). Libs RRHH: `rrhhNomina` + `rrhhAsistencia` + `rrhhLiquidacion` + `rrhhVacaciones` + `rrhhDocumentos` + `rrhhReportes` + `liquidacionFinal` + `reciboSueldoPDF` + componente `RrhhReportesPanel`.
+**Estado:** 🎉 **RRHH 2.0 (RH1-RH8) COMPLETO en PROD.** **Diferidos ✅ CERRADOS en DEV (v1.51.0, mig 204, 2026-06-10):** **fichado por QR público** (`/fichar/:token`, `FicharPage` + RPCs anon + config QR) · **auto-descuento de tardanza** inyectado en nómina (`crearLiquidacion` usa `minutosTardeFacturables` desde las fichadas + `descuentoTardanza`) · **UI del portal del empleado** (`/mi-portal`, `MiPortalPage`: recibos/vacaciones/documentos según `rrhh_portal_capacidades`). Pendiente subir a PROD. **No quedan diferidos de RRHH.** Libs RRHH: `rrhhNomina` + `rrhhAsistencia` + `rrhhLiquidacion` + `rrhhVacaciones` + `rrhhDocumentos` + `rrhhReportes` + `liquidacionFinal` + `reciboSueldoPDF` + componente `RrhhReportesPanel`.
 
 ### Bugs / mejoras UX puntuales
 
@@ -341,7 +341,7 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 |---|---|
 | **Aislamiento por sucursal a nivel RLS** | **Pedido GO 2026-05-30.** Hoy el aislamiento por sucursal es **solo cliente** (triple blindaje: fijado al cargar + selector oculto + guard de `setSucursal`). La RLS de la DB es por `tenant_id`, no por `sucursal_id` → un usuario técnico con credenciales podría leer otra sucursal vía API directa. Para que sea **imposible a nivel servidor**: RLS por sucursal en tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …) cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. Cambio grande (políticas en N tablas) — diseñar antes. Detalle en `multi-sucursal.md`. |
 | Gastos | Crash en GastosPage — pendiente stack trace Sentry del ErrorBoundary instrumentado |
-| Relevamientos | 7 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos). **Respondidos + implementados:** Ventas, Clientes, Conteos, **Compras ✅ (CO1-CO8 COMPLETO en PROD)**, **Envíos ✅ (EN1-EN5+EN7 en PROD, falta EN6 bloqueado por cuentas B2B)**, **🎉 RRHH ✅ (RH1-RH8 COMPLETO en PROD, v1.46-v1.48)**, **Caja ✅ (relevado A-M 2026-05-25; mayoría en PROD v1.9.1→v1.10.0, migs 136-142). ⚠ La nota previa "Caja sin responder" era STALE/incorrecta** — ver sección "Relevamiento Caja — estado real" abajo. **Todos los relevamientos están respondidos.** |
+| Relevamientos | 8 HTMLs generados (Ventas / RRHH / Clientes / Compras / Envíos / Caja / Conteos / **Inventario**). **Respondidos + implementados:** Ventas, Clientes, Conteos, **Compras ✅ (CO1-CO8 COMPLETO en PROD)**, **Envíos ✅ (EN1-EN5+EN7 en PROD, falta EN6 bloqueado por cuentas B2B)**, **🎉 RRHH ✅ (RH1-RH8 COMPLETO en PROD, v1.46-v1.48)**, **Caja ✅ (A-M COMPLETO en PROD, v1.9.1→v1.10.0 + v1.50.0 mig 203)**. **⏳ SIN RESPONDER: Inventario/WMS** — HTML `relevamiento-inventario-reglas-negocio.html` generado 2026-06-10 (14 secciones A-N: maestro, ingreso, ubicaciones/almacenaje, rebaje, estados/aging, LPN/series/lotes, KITs, autorizaciones, stock mínimo, multi-sucursal, importación, WMS picking). Esperando que GO + socio lo respondan offline. |
 | ~~**Email saliente — dominio Resend sin verificar**~~ | ✅ **RESUELTO 2026-06-06** — dominio ya verificado; `FROM` → `noreply@genesis360.pro`; **+ email de OC con template HTML + PDF adjunto** (`send-email` soporta `attachments`). Redeploy DEV v21 / PROD v24. Ver sección abajo. |
 | **Couriers — adapters sin validar con cuentas B2B reales** | Ver sección detallada **"Email + Couriers — pendientes a seguir"** abajo. |
 
@@ -364,7 +364,7 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 - **M4** ✅ — **sonido al confirmar cobro** (`src/lib/sonidoCobro.ts`, Web Audio, preferencia localStorage default ON, toggle en el panel). Suena al despachar una venta en el POS.
 - **N** (top 3 / abiertos) — nunca respondido; quedó moot.
 
-**🎉 Relevamiento Caja A-M COMPLETO** (mayoría en PROD v1.9.1→v1.10.0; estos 5 ítems chicos en DEV v1.50.0 esperando deploy a PROD).
+**🎉 Relevamiento Caja A-M COMPLETO en PROD** (mayoría v1.9.1→v1.10.0; estos 5 ítems chicos en v1.50.0, mig 203, PROD 2026-06-10).
 
 **Preguntas abiertas de GO (2026-06-10), resueltas:**
 - **J2** (¿DEPOSITO puede hacer devoluciones con efectivo desde caja?): opción **(a)** — DEPOSITO NO opera caja; las devoluciones con efectivo las hace CAJERO/SUPERVISOR/DUEÑO desde el historial de venta con selector de caja (= L1, ya implementado).
@@ -405,9 +405,9 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 4. **[Claude, accionable YA sin credenciales — acelera el día 1] ✅ HECHO en DEV (v1.49.0, 2026-06-10):**
    - ✅ **Logging diagnóstico** en `courier-api`: helper `courierFetch` (en `types.ts`) loguea `método + URL + status + body recortado (600 chars)` ante error en todos los fetches de Andreani/Correo + log inline en `soapCall` de OCA. Log de entrada en el router (`action`/`courier`/`tenant`, **nunca** credenciales) y catch con contexto. Visible en Supabase → Edge Function logs.
    - ✅ **Botón "Probar credenciales"** en Config → Envíos (`CourierCredencialesPanel`): nueva acción `probar` en `courier-api` + método `probar(cred)` por adapter (Andreani→`login`, Correo→`getToken`, OCA→tarifa de muestra que valida CUIT+operativa). Cliente front `probarCredencialesCourier()`. Testea las credenciales **guardadas** aunque el courier esté inactivo; resultado inline ✓/✗ + guard de "guardá los cambios primero".
-   - **Deploy:** `courier-api` deployada a **DEV** (`gcmhzdedrkmmzfzfveig`). **Pendiente subir a PROD** (`jjffnbrdjchquexdfgwq`) cuando se haga el release a main.
+   - **Deploy:** `courier-api` deployada a **DEV + PROD** ✅ (v1.49.0, PR #178, 2026-06-10).
 
-**Decisión pendiente con GO:** subir v1.49.0 (courier `probar` + logging) a PROD cuando quiera. (Lo ops — verificar dominio, conseguir cuenta B2B — es de GO.)
+**Lo único que sigue pendiente (ops de GO):** conseguir cuenta B2B (Andreani 1ro) para validar los adapters end-to-end (= EN6 de Envíos). El logging + "Probar credenciales" ya están en PROD para acelerar ese día.
 
 ---
 

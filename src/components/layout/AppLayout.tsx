@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
   ChevronRight, ChevronLeft, ShoppingCart, DollarSign, TrendingDown,
-  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark,
+  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -48,15 +48,17 @@ const navItems = [
   { to: '/sucursales',    icon: Building2,       label: 'Sucursales',     modulo: 'sucursales',    ownerOnly: true },
   { to: '/usuarios',      icon: Shield,          label: 'Usuarios',       modulo: 'usuarios',      ownerOnly: true },
   { to: '/configuracion', icon: Settings,        label: 'Configuración',  modulo: 'configuracion', ownerOnly: true },
+  // RH7/F2 — Portal del empleado: visible para todos los roles cuando el negocio lo habilita (gate por tenant.rrhh_portal_empleado)
+  { to: '/mi-portal',     icon: UserCircle2,     label: 'Mi Portal',      modulo: 'mi_portal',     portalEmpleado: true, cajeroVisible: true, contadorVisible: true, depositoVisible: true, rrhhVisible: true },
 ]
 
 const PROD_HOSTNAMES = ['app.genesis360.pro', 'genesis360.pro', 'www.genesis360.pro']
 const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 
-const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta']
+const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta', '/mi-portal']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
-const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion', '/ventas', '/clientes']  // J3: CONTADOR read-only en Ventas · CL1-H2: read-only en Clientes
-const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones', '/envios']
+const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion', '/ventas', '/clientes', '/mi-portal']  // J3: CONTADOR read-only en Ventas · CL1-H2: read-only en Clientes
+const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones', '/envios', '/mi-portal']
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen]       = useState(false)
@@ -133,7 +135,7 @@ export function AppLayout() {
   // Restricciones de rutas por rol
   useEffect(() => {
     if (!user) return
-    if (user.rol === 'RRHH' && !pathname.startsWith('/rrhh') && !pathname.startsWith('/mi-cuenta')) {
+    if (user.rol === 'RRHH' && !pathname.startsWith('/rrhh') && !pathname.startsWith('/mi-cuenta') && !pathname.startsWith('/mi-portal')) {
       navigate('/rrhh', { replace: true })
     } else if (user.rol === 'CAJERO' && !CAJERO_ALLOWED.some(r => pathname.startsWith(r))) {
       navigate('/ventas', { replace: true })
@@ -266,7 +268,8 @@ export function AppLayout() {
 
         {/* Navegación */}
         <nav className={`flex-1 py-3 space-y-0.5 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-2'}`}>
-          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible, contadorVisible, depositoVisible, modulo }: any) => {
+          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible, contadorVisible, depositoVisible, portalEmpleado, modulo }: any) => {
+            if (portalEmpleado && !(tenant as any)?.rrhh_portal_empleado) return null
             if (user?.rol === 'RRHH' && !rrhhVisible) return null
             if (user?.rol === 'CAJERO' && !cajeroVisible) return null
             if (user?.rol === 'CONTADOR' && !contadorVisible) return null

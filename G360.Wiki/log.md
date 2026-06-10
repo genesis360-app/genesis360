@@ -6,6 +6,25 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-10] update | v1.51.0 (SOLO DEV) — RRHH diferidos: tardanza + fichado QR + portal del empleado
+
+**Cierre de los 3 pendientes diferidos de RRHH 2.0** (mientras GO responde el relevamiento de Inventario). Build + suite **625** verdes (+7 de `minutosTardeFacturables`). Mig **204** en DEV. GO eligió "RRHH diferidos y luego testing e2e".
+
+- **Auto-descuento de tardanza:** `crearLiquidacion` ahora junta las fichadas de **entrada** del período (`rrhh_fichadas`), calcula los minutos de atraso vs `empleados.horario_entrada` (primera entrada de cada día, tolerancia por día) con `minutosTardeFacturables` y descuenta con `descuentoTardanza` según `tenants.rrhh_tardanza_modo` (registrar/proporcional/umbral) + `rrhh_horas_mes_base`. Item "Descuento por tardanza (N min)" antes del descuento de anticipos.
+- **Fichado por QR público** (`/fichar/:token`, `FicharPage`): kiosco sin login. Mig 204: `tenants.fichado_token` + RPCs `get_fichado_info`/`fichar_qr` SECURITY DEFINER anon (auto-toggle entrada/salida según el último fichaje del día, origen 'qr'). Config en RRHH → Asistencia: generar/rotar QR + link + descargar PNG (owner-only).
+- **Portal del empleado** (`/mi-portal`, `MiPortalPage`): el usuario vinculado a un legajo (`empleados.user_id`) ve **sus** recibos (con PDF), vacaciones (saldo + solicitudes) y documentos, según `tenants.rrhh_portal_capacidades`. Gateado por `rrhh_portal_empleado`; nav "Mi Portal" + allowed-lists de roles. Read-only (scoping client-side; el aislamiento server-side sigue siendo la deuda de RLS).
+
+**Pendiente:** subir v1.51.0 a PROD (mig 204) + el siguiente ítem que pidió GO: **testing e2e** (planes `tests/specs/*.plan.md` → Playwright reales).
+
+## [2026-06-10] deploy | v1.50.0 PROD — Caja tanda final + Courier (v1.49.0) · `dev=main`
+
+**Los 2 releases que estaban en DEV pasaron a PROD** (GO: "pasemos todo a PRD para quedar = DEV"). PR **#178** `dev→main` merged, release **v1.50.0** `--latest`. PROD: v1.48.0 → **v1.50.0**. Mig **203** aplicada en PROD (antes del merge, aditiva). Edge Function `courier-api` deployada a PROD (con logging + `probar`). Vercel production deploy desde `main` (commit 2bee3326). Suite **618**.
+
+- **v1.50.0 (Caja, mig 203):** E1 bóveda para roles custom · E3 arqueo manual de bóveda (`boveda_arqueos`) · L3 préstamo a empleado (RRHH → Anticipos, nota firmada) · M3 panel de cajero `/caja/panel` · M4 sonido al cobrar. **🎉 relevamiento Caja A-M COMPLETO en PROD.**
+- **v1.49.0 (Courier, sin migración):** logging diagnóstico en `courier-api` + acción `probar`/botón "Probar credenciales".
+
+**Pendiente (ops de GO):** cuenta B2B de courier (Andreani) para validar adapters end-to-end (= EN6 de Envíos).
+
 ## [2026-06-10] update | v1.50.0 (SOLO DEV) — Caja: tanda final (E1/E3/L3/M3/M4) · 🎉 relevamiento Caja A-M COMPLETO
 
 **Reconciliación + cierre del relevamiento Caja.** GO reportó que tenía notas de que Caja estaba "entregado y en PROD" contra la nota stale del wiki que decía "Caja sin responder". **Verificado contra código: las notas de GO eran las correctas** — el relevamiento A-M (2026-05-25) ya estaba casi todo en PROD (migs 136-142, hito v1.10.0). El `caja_2026-05-25.md` y la lista de "pendientes" de `caja.md` quedaron congelados antes de migs 140-142 (stale). Se corrigió la nota errónea y se cerraron los pocos ítems chicos que faltaban. Build + suite **618** verdes (613 + 5 de `accedeABoveda`). Mig **203** en DEV. GO eligió dejarlo en DEV.

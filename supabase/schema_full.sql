@@ -2914,3 +2914,13 @@ ALTER TABLE boveda_arqueos ENABLE ROW LEVEL SECURITY;  -- policy boveda_arqueos_
 -- L3 — préstamo a empleado: flag + nota firmada adjunta (reusa rrhh_anticipos)
 ALTER TABLE rrhh_anticipos ADD COLUMN IF NOT EXISTS es_prestamo BOOLEAN NOT NULL DEFAULT FALSE;  -- L3
 ALTER TABLE rrhh_anticipos ADD COLUMN IF NOT EXISTS documento_url TEXT;  -- L3 (bucket empleados)
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 204: RRHH — fichado por QR público (v1.51.0)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Token público de fichado por tenant + RPCs SECURITY DEFINER anon (get_fichado_info / fichar_qr).
+-- Auto-descuento de tardanza (en crearLiquidacion) y portal del empleado (/mi-portal) = solo frontend,
+-- usan columnas/config ya existentes (rrhh_tardanza_*, rrhh_horas_mes_base, rrhh_portal_*).
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS fichado_token TEXT;  -- RH6: QR de fichado /fichar/:token
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_fichado_token ON tenants(fichado_token) WHERE fichado_token IS NOT NULL;
+-- + funciones get_fichado_info(text) / fichar_qr(text,uuid) SECURITY DEFINER, GRANT EXECUTE a anon (ver mig 204).

@@ -51,6 +51,39 @@ export function descuentoTardanza(minutosTarde: number, sueldoHoraValor: number,
   return round2(min * porMinuto)
 }
 
+/**
+ * D3 — Minutos tarde "facturables" del período a partir de las fichadas de entrada.
+ * Toma la PRIMERA entrada de cada día, la compara contra el horario de entrada del
+ * empleado y suma los minutos de atraso. La tolerancia se aplica por día (solo en
+ * modo 'umbral'). Devuelve 0 si no hay horario, si el modo es 'registrar' o si no hubo atraso.
+ * El descuento se calcula después con descuentoTardanza(min, sueldoHora, {modo:'proporcional'}).
+ */
+export function minutosTardeFacturables(
+  entradas: { ts: string }[],
+  horarioEntrada: string | null | undefined,
+  cfg: TardanzaConfig,
+): number {
+  if (!horarioEntrada || cfg.modo === 'registrar' || !entradas?.length) return 0
+  const tol = cfg.modo === 'umbral' ? Math.max(0, Number(cfg.toleranciaMin) || 0) : 0
+  const [hh, mm] = horarioEntrada.split(':').map(Number)
+  const horarioMin = (hh || 0) * 60 + (mm || 0)
+  // Primera entrada de cada día (hora local del navegador del que liquida).
+  const primeraPorDia = new Map<string, number>()
+  for (const e of entradas) {
+    const d = new Date(e.ts)
+    if (isNaN(d.getTime())) continue
+    const dia = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+    const minDia = d.getHours() * 60 + d.getMinutes()
+    const prev = primeraPorDia.get(dia)
+    if (prev === undefined || minDia < prev) primeraPorDia.set(dia, minDia)
+  }
+  let total = 0
+  for (const minDia of primeraPorDia.values()) {
+    total += Math.max(0, minDia - horarioMin - tol)
+  }
+  return total
+}
+
 /** D5 — Monto de horas extra = horas × sueldo/hora × (1 + multiplicador/100). */
 export function montoHorasExtra(horas: number, sueldoHoraValor: number, multiplicadorPct: number): number {
   const h = Math.max(0, Number(horas) || 0)

@@ -6,7 +6,11 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-10] update | v1.51.0 (SOLO DEV) — RRHH diferidos: tardanza + fichado QR + portal del empleado
+## [2026-06-10] deploy | v1.51.0 PROD — RRHH diferidos (tardanza + fichado QR + portal) · `dev=main`
+
+**v1.51.0 a PROD** (GO: "ahora a PROD"). PR **#179** `dev→main` merged, release v1.51.0 `--latest`, mig **204** en PROD (antes del merge), Vercel production deploy desde `main` (commit 672ef264). PROD v1.50.0 → **v1.51.0**. **No quedan diferidos de RRHH.** Suite **625**. Detalle de las 3 features en la entrada `update` de abajo.
+
+## [2026-06-10] update | v1.51.0 — RRHH diferidos: tardanza + fichado QR + portal del empleado
 
 **Cierre de los 3 pendientes diferidos de RRHH 2.0** (mientras GO responde el relevamiento de Inventario). Build + suite **625** verdes (+7 de `minutosTardeFacturables`). Mig **204** en DEV. GO eligió "RRHH diferidos y luego testing e2e".
 

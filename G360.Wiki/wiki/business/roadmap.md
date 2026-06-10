@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.51.0 — RRHH diferidos: tardanza + fichado QR + portal del empleado (⚠ SOLO DEV)
+## v1.51.0 — RRHH diferidos: tardanza + fichado QR + portal del empleado (PROD ✅)
 
 Cierre de los 3 pendientes diferidos de RRHH 2.0. **Auto-descuento de tardanza** en la liquidación (`minutosTardeFacturables` desde `rrhh_fichadas` vs `empleados.horario_entrada` + `descuentoTardanza`, config `rrhh_tardanza_modo`/`_tolerancia_min`/`_horas_mes_base`) · **fichado por QR público** `/fichar/:token` (`FicharPage` + `tenants.fichado_token` + RPCs `get_fichado_info`/`fichar_qr` SECURITY DEFINER anon, config QR en RRHH→Asistencia) · **portal del empleado** `/mi-portal` (`MiPortalPage`: recibos/vacaciones/documentos del empleado logueado según `rrhh_portal_capacidades`, nav "Mi Portal"). Mig **204**. +7 tests → suite **625**. **No quedan diferidos de RRHH.**
 

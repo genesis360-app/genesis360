@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.48.0** ✅ (**RRHH RH7+RH8** — docs/evaluación + reportes/liquidación final, mig 201-202, suite **613**). 🎉 **RRHH 2.0 (RH1-RH8) COMPLETO.** Antes en PROD: v1.47.0 (RRHH RH4+RH5, mig 199-200), v1.46.0 (RRHH RH1+RH2+RH3+RH6, mig 195-198), v1.45.0 (Envíos EN7, mig 194). Antes: v1.43.0 EN4 tarifas (mig 192), v1.42.0 EN3 reparto (mig 191), v1.41.0 EN2 POD (mig 190), v1.40.0 EN1 (mig 189), v1.39.0 Compras CO8 (🎉 Compras 2.0 COMPLETO). **Relevamiento Envíos → EN1-EN5 ✅ en PROD + EN7 ✅ en DEV; solo falta EN6 (integraciones courier, BLOQUEADO por adapters B2B sin cuentas reales).** Historial Conteos/Compras 1-4 abajo. — v1.30.0 (**Conteos 2.0 · cierre 100% — F2b-ref + F3b + A2**, mig 181). **F2b-ref (E3):** escanear durante el conteo un producto fuera de alcance con stock → lo agrega como fila "fuera de alcance" (mercadería mal ubicada); sin stock → aviso hacia Ingreso. **F3b:** snapshot de costo por ítem (`costo_snapshot`, valorización estable al continuar borradores) + **doble conteo formal** (filas sobre umbral exigen re-ingreso vía columna "Recontar"; saltable con **clave maestra** SUPERVISOR/DUEÑO; persiste `cantidad_reconteo`+`reconteo_por`; el ajuste usa el valor recontado). **A2:** toggle `tenants.conteo_wall_to_wall_bloquea` (default OFF) — conteo de sucursal completa con confirmación de DUEÑO bloquea ventas (reserva/despacho) y movimientos hasta cerrarlo (hook `useConteoBloqueante`, badge "Bloqueante", se libera al finalizar/eliminar). **Conteos 2.0 cerrado (F1-F4 + refinamientos).** Antes: v1.29.0 (**Conteos 2.0 · F2b + F4 — cierre del módulo**. **F2b scan-to-count**: botón "Escanear para contar" = cámara persistente que suma a la fila del producto (cantidad del AI GS1 si viene, si no +1; reusa `resolverScanCompuesto`). **F4**: clase **ABC** (`productos.clase_abc` auto Pareto 80/95 por valor de movimiento 12m + override manual `clase_abc_manual`), **conteo cíclico sugerido** (`tenants.conteo_ciclico_dias_a/b/c`, panel "Conviene contar"), **reportes de exactitud + valorización** ($ faltante/sobrante/neto) por conteo y acumulado + export Excel, **trazabilidad por operador** (`inventario_conteo_items.contado_por` + `productos.ultimo_conteo_at`). Lógica pura en `conteoAbc.ts` (+16 tests → suite **362**). Mig **180** (aditiva). Antes: v1.27.0 (Conteos F3 gate+autorizaciones+delta, mig 179). v1.26.0 (F2a modos+ciego+unidad+secuencia, mig 178). v1.25.0 (F1 scope, mig 177). v1.24.0 (Clientes C6+D4).
+Último release en PROD: **v1.51.1** ✅ (**Testing e2e** — suite e2e reparada + gobernanza caja, `vitest fileParallelism:false`, sin migraciones, suite unit **625** / e2e **129**, PR #180). Antes: v1.51.0 (RRHH diferidos: tardanza + fichado QR + portal, mig 204), v1.50.0 (Caja A-M completo, mig 203), v1.49.0 (courier probar/logging). 🎉 **RRHH 2.0 (RH1-RH8) COMPLETO** en v1.48.0 (mig 201-202). Antes en PROD: v1.47.0 (RRHH RH4+RH5, mig 199-200), v1.46.0 (RRHH RH1+RH2+RH3+RH6, mig 195-198), v1.45.0 (Envíos EN7, mig 194). Antes: v1.43.0 EN4 tarifas (mig 192), v1.42.0 EN3 reparto (mig 191), v1.41.0 EN2 POD (mig 190), v1.40.0 EN1 (mig 189), v1.39.0 Compras CO8 (🎉 Compras 2.0 COMPLETO). **Relevamiento Envíos → EN1-EN5 ✅ en PROD + EN7 ✅ en DEV; solo falta EN6 (integraciones courier, BLOQUEADO por adapters B2B sin cuentas reales).** Historial Conteos/Compras 1-4 abajo. — v1.30.0 (**Conteos 2.0 · cierre 100% — F2b-ref + F3b + A2**, mig 181). **F2b-ref (E3):** escanear durante el conteo un producto fuera de alcance con stock → lo agrega como fila "fuera de alcance" (mercadería mal ubicada); sin stock → aviso hacia Ingreso. **F3b:** snapshot de costo por ítem (`costo_snapshot`, valorización estable al continuar borradores) + **doble conteo formal** (filas sobre umbral exigen re-ingreso vía columna "Recontar"; saltable con **clave maestra** SUPERVISOR/DUEÑO; persiste `cantidad_reconteo`+`reconteo_por`; el ajuste usa el valor recontado). **A2:** toggle `tenants.conteo_wall_to_wall_bloquea` (default OFF) — conteo de sucursal completa con confirmación de DUEÑO bloquea ventas (reserva/despacho) y movimientos hasta cerrarlo (hook `useConteoBloqueante`, badge "Bloqueante", se libera al finalizar/eliminar). **Conteos 2.0 cerrado (F1-F4 + refinamientos).** Antes: v1.29.0 (**Conteos 2.0 · F2b + F4 — cierre del módulo**. **F2b scan-to-count**: botón "Escanear para contar" = cámara persistente que suma a la fila del producto (cantidad del AI GS1 si viene, si no +1; reusa `resolverScanCompuesto`). **F4**: clase **ABC** (`productos.clase_abc` auto Pareto 80/95 por valor de movimiento 12m + override manual `clase_abc_manual`), **conteo cíclico sugerido** (`tenants.conteo_ciclico_dias_a/b/c`, panel "Conviene contar"), **reportes de exactitud + valorización** ($ faltante/sobrante/neto) por conteo y acumulado + export Excel, **trazabilidad por operador** (`inventario_conteo_items.contado_por` + `productos.ultimo_conteo_at`). Lógica pura en `conteoAbc.ts` (+16 tests → suite **362**). Mig **180** (aditiva). Antes: v1.27.0 (Conteos F3 gate+autorizaciones+delta, mig 179). v1.26.0 (F2a modos+ciego+unidad+secuencia, mig 178). v1.25.0 (F1 scope, mig 177). v1.24.0 (Clientes C6+D4).
 
 **Historial Clientes:** v1.19.0 (CL1+CL2), v1.20.0 (CL3 + bugfix origen), v1.23.0 (CL4+CL5+CL6), v1.23.1 (QA/tests CC + agentes).
 
@@ -18,21 +18,31 @@ type: project
 
 ---
 
-## Estado actual DEV / PROD — cierre sesión 2026-06-10
+## Estado actual DEV / PROD — cierre sesión 2026-06-11
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.51.0` | `v1.51.0` ✅ |
+| APP_VERSION | `v1.51.1` | `v1.51.1` ✅ |
 | Migrations | 001–**204** ✅ | 001–**204** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.51.0) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.51.0 |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.51.1) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.51.1 (auto desde `main`) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (204 ya en PROD).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (204 ya en PROD; v1.51.1 no agregó migraciones).
 
-### ▶ PRÓXIMA SESIÓN (acordado con GO 2026-06-10): **Testing e2e**
+### ▶ Testing e2e — ✅ HECHO (v1.51.1, 2026-06-11)
 
-Convertir los planes `tests/specs/{caja,inventario,ventas}.plan.md` a **tests Playwright reales** (la infra e2e ya está montada: `tests/e2e/*.spec.ts`, `npm run test:e2e`, `tests/e2e/.env.test.local`). Escenarios e2e listados en los `.plan.md` (apertura de caja ajena, multi-sesión cajero, validación de clave maestra real, propagación de traspaso end-to-end, etc.). GO eligió "RRHH diferidos y luego testing e2e"; los diferidos quedaron cerrados, el e2e quedó para retomar. **También pendiente de responder:** relevamiento **Inventario/WMS** (`relevamiento-inventario-reglas-negocio.html`, GO lo contesta offline).
+**La suite e2e estaba podrida** tras ~50 versiones de evolución de UI (11 smoke tests fallando por selectores/rutas viejos). Se reparó toda la suite contra la UI real y se agregaron tests de **gobernanza** del plan `caja.plan.md`. Detalle en `G360.Wiki/wiki/development/testing.md`.
+- **11 smoke reparados:** dashboard (chips de área + menú avatar), inventario (CRUD productos → `/productos`), movimientos (`/movimientos` huérfano → tabs Agregar/Quitar stock de `/inventario`), caja U2 (gate de arqueo previo), clientes (DNI/tel obligatorios + baja A6), suscripción (acceso vía avatar), coherencia (badge capea en "9+").
+- **Nuevos (gobernanza caja, fuera de alcance unit):** A2 apertura "a nombre de" cajero ajeno + traspaso entre cajas (ISS-193). Defensivos (se omiten si la precondición de estado no está).
+- **Unit:** `vitest fileParallelism:false` — el paralelismo agotaba la RAM (jsdom por worker) y mataba toda la suite con un error genérico; secuencial = **625 verdes** estable.
+- **Verificación:** unit **625/625** · e2e **129/129** (owner+cajero+supervisor+rrhh) · build verde · sin migraciones. PR #180, release v1.51.1.
+
+**Pendientes futuros de testing (no bloqueantes):** e2e mutante real de traspaso/cierre end-to-end (hoy defensivo), cobertura POS de visibilidad de costo G4 por rol, usuarios DEPOSITO/CONTADOR para specs de rol.
+
+### ▶ PRÓXIMA SESIÓN — pendiente de GO
+
+**Relevamiento Inventario/WMS** (`relevamiento-inventario-reglas-negocio.html`, GO lo contesta offline) — sigue pendiente de responder.
 
 ---
 

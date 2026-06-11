@@ -3,13 +3,17 @@ title: Testing — Unit + E2E
 category: development
 tags: [testing, vitest, playwright, e2e, unit-tests]
 sources: [CLAUDE.md]
-updated: 2026-06-03
+updated: 2026-06-11
 ---
 
 # Testing
 
 Genesis360 tiene cobertura con **Vitest** (unit tests) + **Playwright** (E2E).  
-Total al 2026-06-06: **474 unit tests** (29 archivos) · **16 archivos E2E spec** (todos los roles)
+Total al 2026-06-11 (v1.51.1): **625 unit tests** (43 archivos) · **129 E2E** en **16 archivos spec** (roles OWNER/CAJERO/SUPERVISOR/RRHH).
+
+> **v1.51.1 — sesión de testing e2e (reparación + gobernanza):** 11 smoke tests E2E se habían "podrido" tras ~50 versiones de evolución de UI (selectores/rutas viejos) → reescritos contra la UI real. Se agregaron tests E2E de **gobernanza de caja** (A2 apertura ajena, traspaso entre cajas ISS-193) tomados del plan `caja.plan.md` (escenarios fuera de alcance unit). Suite: **unit 625/625 · e2e 129/129**.
+>
+> ⚠ **Unit suite — `fileParallelism: false`:** correr los 43 archivos en paralelo levanta un entorno jsdom por worker, agota la RAM (12 cores) y mata **toda** la suite con un error genérico (`Cannot read properties of undefined (reading 'config')`) — falla aunque los tests estén bien. La config fuerza ejecución secuencial (~90 s) y es 100% estable. Si en el futuro se reactiva el paralelismo, capar `maxWorkers` no alcanza: hay que dejarlo secuencial o aumentar la RAM disponible.
 
 > **Pipeline de QA con agentes (v1.23.1):** el ciclo `relevamiento → spec-extractor → test-author → test-runner → bug-fixer` está soportado por subagentes de proyecto (ver [[wiki/development/agentes-claude-code]]). El plan de escenarios por módulo vive en `tests/specs/<modulo>.plan.md`.
 >
@@ -99,21 +103,24 @@ npm run test:unit:coverage # coverage report
 
 | Archivo | Módulo | Estado |
 |---------|--------|-------|
-| `01_dashboard.spec.ts` | Dashboard | ✅ |
-| `02_productos.spec.ts` | Productos | ✅ |
-| `03_inventario.spec.ts` | Inventario | ✅ |
-| `04_ventas.spec.ts` | Ventas | ✅ |
-| `05_caja.spec.ts` | Caja | ✅ |
+| `01_dashboard.spec.ts` | Dashboard (chips de área, sub-tabs, menú de avatar) | ✅ |
+| `02_inventario.spec.ts` | Inventario (líneas de stock) + Productos (CRUD en `/productos`) | ✅ |
+| `03_movimientos.spec.ts` | Movimientos de stock (`/movimientos`→`/inventario` + tabs Agregar/Quitar) | ✅ |
+| `04_ventas.spec.ts` | Ventas / POS | ✅ |
+| `05_caja.spec.ts` | Caja + **gobernanza** (U2 arqueo, A2 apertura ajena, traspaso ISS-193) | ✅ |
 | `06_gastos.spec.ts` | Gastos | ✅ |
-| `07_clientes.spec.ts` | Clientes | ✅ |
-| `08_alertas.spec.ts` | Alertas | ✅ |
-| `09_reportes.spec.ts` | Reportes | ✅ |
-| `10_rrhh.spec.ts` | RRHH | ✅ |
-| `13_rol_cajero.spec.ts` | Rol CAJERO | ✅ 20 tests |
-| `14_coherencia_numeros.spec.ts` | Coherencia KPIs | ✅ |
-| `15_rol_supervisor.spec.ts` | Rol SUPERVISOR | ✅ 23 tests |
-| `16_rol_rrhh.spec.ts` | Rol RRHH | ✅ 18 tests |
-| `12_navegacion_sidebar.spec.ts` | Navegación | ✅ |
+| `07_alertas.spec.ts` | Alertas | ✅ |
+| `08_clientes.spec.ts` | Clientes (alta con DNI/tel oblig. + baja A6) | ✅ |
+| `09_suscripcion_plan.spec.ts` | Suscripción / Mi Plan | ✅ |
+| `10_configuracion.spec.ts` | Configuración | ✅ |
+| `11_reportes_historial.spec.ts` | Reportes / Historial / Recomendaciones | ✅ |
+| `12_navegacion_sidebar.spec.ts` | Navegación (smoke todas las rutas) | ✅ |
+| `13_rol_cajero.spec.ts` | Rol CAJERO | ✅ |
+| `14_coherencia_numeros.spec.ts` | Coherencia KPIs (badge alertas capea en "9+") | ✅ |
+| `15_rol_supervisor.spec.ts` | Rol SUPERVISOR | ✅ |
+| `16_rol_rrhh.spec.ts` | Rol RRHH | ✅ |
+
+> Las specs E2E son **defensivas**: corren contra el DEV compartido y se omiten (sin fallar) cuando la precondición de estado no está dada (ej. caja sin sesión, <2 cajas para traspaso). Nunca mutan sin limpiar (crear→verificar→baja/eliminar).
 
 ### Configuración Playwright
 

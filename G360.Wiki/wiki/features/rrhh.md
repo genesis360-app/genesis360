@@ -31,12 +31,12 @@ Respuestas + diseño + modelo de datos + plan en `sources/raw/relevamiento_rrhh_
 
 **🎉 RRHH 2.0 (RH1-RH8) COMPLETO.** Confirmado por GO: % de aportes editables en Config, categorías Sueldos/Cargas sociales, prorrateo del básico por frecuencia, indemnización LCT 245 editable.
 
-### Diferidos cerrados — v1.51.0 (⚠ SOLO DEV, mig 204)
+### Diferidos cerrados — v1.51.0 (PROD ✅, mig 204)
 
-Los 3 pendientes que habían quedado fuera de RRHH 2.0 se implementaron en DEV:
+Los 3 pendientes que habían quedado fuera de RRHH 2.0 se implementaron (PROD, PR #179):
 - **Auto-descuento de tardanza en nómina:** `crearLiquidacion` junta las fichadas de **entrada** del período (`rrhh_fichadas`), calcula los minutos de atraso vs `empleados.horario_entrada` (primera entrada de cada día, tolerancia por día) con `minutosTardeFacturables` (lib `rrhhAsistencia.ts`) y descuenta con `descuentoTardanza` según `tenants.rrhh_tardanza_modo` (registrar/proporcional/umbral) + `rrhh_horas_mes_base`. Aparece como ítem "Descuento por tardanza (N min)".
 - **Fichado por QR público** (`/fichar/:token`, `FicharPage.tsx`): kiosco sin login. `tenants.fichado_token` + RPCs `get_fichado_info`/`fichar_qr` (SECURITY DEFINER anon; auto-toggle entrada/salida según el último fichaje del día, `origen='qr'`). Config en **RRHH → Asistencia**: generar/rotar el QR + link + descargar PNG (owner-only).
-- **Portal del empleado** (`/mi-portal`, `MiPortalPage.tsx`): el usuario vinculado a un legajo (`empleados.user_id`) ve **sus** recibos (PDF), vacaciones (saldo + solicitudes) y documentos, según `tenants.rrhh_portal_capacidades`. Gateado por `tenants.rrhh_portal_empleado`; nav "Mi Portal". Read-only (scoping client-side por `empleado_id`; el aislamiento server-side queda atado a la deuda de RLS por sucursal). Pendiente subir a PROD.
+- **Portal del empleado** (`/mi-portal`, `MiPortalPage.tsx`): el usuario vinculado a un legajo (`empleados.user_id`) ve **sus** recibos (PDF), vacaciones (saldo + solicitudes) y documentos, según `tenants.rrhh_portal_capacidades`. Gateado por `tenants.rrhh_portal_empleado`; nav "Mi Portal". Read-only (scoping client-side por `empleado_id`; el aislamiento server-side queda atado a la deuda de RLS por sucursal).
 
 ---
 

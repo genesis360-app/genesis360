@@ -18,9 +18,11 @@ test.describe('Dashboard', () => {
     await expect(page.getByText(/total productos|alertas activas|stock crítico/i).first()).toBeVisible()
   })
 
-  test('tabs General, Insights y Métricas están presentes', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'General' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Insights' })).toBeVisible()
+  // v1.51: el dashboard tiene chips de ÁREA (Todo, Ventas, …) + sub-tabs
+  // (Insights, Métricas, Rentabilidad, …). El viejo tab "General" ya no existe.
+  test('chips de área y sub-tabs Insights/Métricas están presentes', async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'Todo', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Insights', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Métricas', exact: true })).toBeVisible()
   })
 
@@ -40,7 +42,12 @@ test.describe('Dashboard', () => {
     ).toBeVisible({ timeout: 8000 })
   })
 
-  test('sidebar muestra link Mi Plan', async ({ page }) => {
-    await expect(page.getByRole('link', { name: /plan/i }).first()).toBeVisible()
+  // v1.51: el acceso a la cuenta/plan migró del sidebar al menú de avatar (header).
+  // El botón "Mi cuenta" abre el dropdown con Perfil + gestión de cuentas.
+  test('header muestra menú de cuenta (avatar)', async ({ page }) => {
+    const avatar = page.getByRole('button', { name: /mi cuenta/i }).first()
+    await expect(avatar).toBeVisible()
+    await avatar.click()
+    await expect(page.getByRole('button', { name: /perfil/i }).first()).toBeVisible({ timeout: 5000 })
   })
 })

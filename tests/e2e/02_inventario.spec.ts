@@ -1,11 +1,16 @@
 /**
  * 02_inventario.spec.ts
- * Valida el módulo de inventario: listado, búsqueda y creación de producto.
+ * Valida el módulo de inventario (líneas de stock + LPNs) y el CRUD de productos.
+ *
+ * v1.51 — la página /inventario muestra LÍNEAS DE STOCK (tabs Inventario / Agregar stock /
+ * Quitar stock / Kits / Conteos / Historial / Autorizaciones). El alta/baja de PRODUCTOS
+ * (maestro) vive en /productos → /productos/nuevo (ProductoFormPage). Los tests se separan
+ * en consecuencia.
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp, uniqueName } from './helpers/navigation'
 
-test.describe('Inventario', () => {
+test.describe('Inventario (líneas de stock)', () => {
   test.beforeEach(async ({ page }) => {
     await goto(page, '/inventario')
     await waitForApp(page)
@@ -13,79 +18,84 @@ test.describe('Inventario', () => {
 
   test('página carga y muestra tabla o mensaje vacío', async ({ page }) => {
     await expect(
-      page.getByText(/producto|inventario|sin productos/i).first()
+      page.getByText(/producto|inventario|sin datos|no hay productos/i).first()
     ).toBeVisible({ timeout: 8000 })
   })
 
-  test('buscador filtra resultados', async ({ page }) => {
+  test('buscador filtra resultados (estado vacío con término inexistente)', async ({ page }) => {
     const buscador = page.getByPlaceholder(/buscar/i).first()
-    if (await buscador.isVisible()) {
-      await buscador.fill('zzz_test_inexistente')
-      await page.waitForTimeout(500)
-      // Debe mostrar estado vacío o cero resultados
-      await expect(
-        page.getByText(/sin resultado|no encontr|0 producto/i).first()
-      ).toBeVisible({ timeout: 5000 })
-      await buscador.clear()
-    }
+    if (!await buscador.isVisible().catch(() => false)) return
+    await buscador.fill('zzz_test_inexistente_xyz')
+    // La búsqueda filtra client-side + puede pegar a la red; en máquinas lentas
+    // el estado vacío tarda en aparecer. Timeout generoso.
+    await expect(
+      page.getByText(/no se encontraron|sin resultado|sin datos|no hay productos/i).first()
+    ).toBeVisible({ timeout: 10000 })
+    await buscador.clear()
   })
 
-  test('botón Nuevo Producto abre formulario', async ({ page }) => {
-    const btn = page.getByRole('button', { name: /nuevo producto/i })
-    await expect(btn).toBeVisible()
-    await btn.click()
-    // El modal/form debe aparecer
+  // v1.51 — tabs de movimiento de stock (lo que antes era /movimientos, hoy huérfano)
+  test('tabs Agregar stock y Quitar stock están presentes', async ({ page }) => {
+    await expect(page.getByRole('button', { name: /agregar stock/i })).toBeVisible({ timeout: 8000 })
+    await expect(page.getByRole('button', { name: /quitar stock/i })).toBeVisible()
+  })
+})
+
+test.describe('Productos (maestro)', () => {
+  test.beforeEach(async ({ page }) => {
+    await goto(page, '/productos')
+    await waitForApp(page)
+  })
+
+  test('página carga con botón Nuevo producto', async ({ page }) => {
+    await expect(page.getByRole('button', { name: /nuevo producto/i }).first()).toBeVisible({ timeout: 8000 })
+  })
+
+  test('botón Nuevo producto abre el formulario', async ({ page }) => {
+    await page.getByRole('button', { name: /nuevo producto/i }).first().click()
+    // Navega a ProductoFormPage (heading "Nuevo producto" + campo nombre)
     await expect(
-      page.getByText(/nombre|sku|precio/i).first()
-    ).toBeVisible({ timeout: 5000 })
-    // Cerrar con ESC
-    await page.keyboard.press('Escape')
+      page.getByPlaceholder(/tornillo/i).first()
+    ).toBeVisible({ timeout: 8000 })
+    await expect(page.getByRole('button', { name: 'Crear producto', exact: true })).toBeVisible()
   })
 
   test('crear y eliminar producto de prueba', async ({ page }) => {
-    const nombre = uniqueName('TEST')
+    const nombre = uniqueName('TESTPROD')
 
-    // Abrir formulario
-    await page.getByRole('button', { name: /nuevo producto/i }).click()
-    await page.waitForTimeout(300)
+    await page.getByRole('button', { name: /nuevo producto/i }).first().click()
 
-    // Completar nombre y SKU (ambos obligatorios) — ProductoFormPage
+    // Solo el nombre es obligatorio (el SKU se autogenera si queda vacío)
     const nombreInput = page.getByPlaceholder(/tornillo/i).first()
-    await nombreInput.scrollIntoViewIfNeeded()
+    await expect(nombreInput).toBeVisible({ timeout: 8000 })
     await nombreInput.fill(nombre)
     await expect(nombreInput).toHaveValue(nombre)
 
-    const skuInput = page.getByPlaceholder(/TORN-0001/i).first()
-    await skuInput.fill(`TST-${Date.now()}`)
-
-    // Guardar con el botón específico de la página
     await page.getByRole('button', { name: 'Crear producto', exact: true }).click()
-    // Esperar que navegue de vuelta al inventario
-    await page.waitForURL('**/inventario', { timeout: 10000 }).catch(() => {})
-    await page.waitForTimeout(500)
 
-    // Buscar el producto creado en el buscador
+    // Vuelve a /productos
+    await page.waitForURL('**/productos', { timeout: 12000 }).catch(() => {})
+    await waitForApp(page)
+
+    // Buscar el producto recién creado
     const buscador = page.getByPlaceholder(/buscar/i).first()
-    if (await buscador.isVisible()) {
+    if (await buscador.isVisible().catch(() => false)) {
       await buscador.fill(nombre)
       await page.waitForTimeout(800)
     }
+    await expect(page.getByText(nombre).first()).toBeVisible({ timeout: 10000 })
 
-    // El producto debe aparecer en la lista
-    await expect(page.getByText(nombre)).toBeVisible({ timeout: 8000 })
-
-    // Click en el botón de eliminar (puede ser un ícono/menú contextual)
-    const fila = page.getByText(nombre).first()
-    await fila.hover()
-    const btnEliminar = page.getByRole('button', { name: /eliminar|delete/i }).first()
-    if (await btnEliminar.isVisible()) {
+    // Cleanup best-effort: eliminar el producto (sin stock → eliminable).
+    // Acepta confirm nativo si aparece.
+    page.on('dialog', d => d.accept().catch(() => {}))
+    const btnEliminar = page.getByRole('button', { name: /^eliminar$/i }).first()
+    if (await btnEliminar.isVisible().catch(() => false)) {
       await btnEliminar.click()
-      // Confirmar si hay diálogo
-      const confirm = page.getByRole('button', { name: /confirmar|aceptar|sí/i })
+      const confirm = page.getByRole('button', { name: /confirmar|aceptar|sí|eliminar/i }).last()
       if (await confirm.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await confirm.click()
+        await confirm.click().catch(() => {})
       }
-      await page.waitForTimeout(1000)
+      await page.waitForTimeout(800)
     }
   })
 })

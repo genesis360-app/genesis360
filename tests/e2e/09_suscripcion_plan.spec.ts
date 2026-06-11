@@ -14,13 +14,14 @@ test.describe('Suscripción / Mi Plan', () => {
     ).toBeVisible({ timeout: 8000 })
   })
 
-  test('sidebar tiene link "Mi Plan" que lleva a /suscripcion', async ({ page }) => {
+  // v1.51 — el acceso a la cuenta/plan migró del sidebar al menú de avatar.
+  // "Perfil" lleva a /mi-cuenta (donde se ve el plan y se gestiona la suscripción).
+  test('menú de cuenta da acceso al perfil (/mi-cuenta)', async ({ page }) => {
     await goto(page, '/dashboard')
     await waitForApp(page)
-    const linkPlan = page.getByRole('link', { name: /plan/i }).first()
-    await expect(linkPlan).toBeVisible()
-    await linkPlan.click()
-    await expect(page).toHaveURL(/suscripcion/, { timeout: 5000 })
+    await page.getByRole('button', { name: /mi cuenta/i }).first().click()
+    await page.getByRole('button', { name: /perfil/i }).first().click()
+    await expect(page).toHaveURL(/mi-cuenta/, { timeout: 5000 })
   })
 
   test('muestra información del plan actual', async ({ page }) => {

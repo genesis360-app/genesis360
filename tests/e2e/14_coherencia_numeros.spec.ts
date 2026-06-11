@@ -37,6 +37,9 @@ test.describe('Coherencia números Dashboard → páginas destino', () => {
 
     const badgeText = await badge.textContent() ?? '0'
     const badgeCount = extractNumber(badgeText)
+    // El badge del sidebar capea en "9+": cuando hay más de 9 alertas muestra "9+",
+    // así que badgeCount=9 significa "9 o más" y no puede compararse por igualdad.
+    const badgeCapped = badgeText.includes('+')
 
     // 2. Ir a AlertasPage y verificar que el total coincide aproximadamente
     await goto(page, '/alertas')
@@ -47,9 +50,13 @@ test.describe('Coherencia números Dashboard → páginas destino', () => {
     if (await tituloBadge.isVisible().catch(() => false)) {
       const alertasText = await tituloBadge.textContent() ?? '0'
       const alertasCount = extractNumber(alertasText)
-      // El badge del sidebar debe coincidir con el total de alertas urgentes
-      // (puede diferir en ±1 por race condition de carga, pero no debería ser >5 de diferencia)
-      expect(Math.abs(badgeCount - alertasCount)).toBeLessThanOrEqual(5)
+      if (badgeCapped) {
+        // Badge capeado: el total real debe ser al menos lo que indica el badge.
+        expect(alertasCount).toBeGreaterThanOrEqual(badgeCount)
+      } else {
+        // Sin capear: debe coincidir con el total (±5 por race de carga).
+        expect(Math.abs(badgeCount - alertasCount)).toBeLessThanOrEqual(5)
+      }
     }
   })
 

@@ -38,36 +38,38 @@ test.describe('Clientes', () => {
     }
   })
 
-  test('crear y eliminar cliente de prueba', async ({ page }) => {
+  test('crear y dar de baja cliente de prueba', async ({ page }) => {
     const nombre = uniqueName('Cliente Test')
+    // v1.51 — Nombre, DNI y Teléfono son obligatorios. DNI 7-8 dígitos único; tel 8-11 dígitos.
+    const dni = String(Date.now()).slice(-8)
+    const telefono = '11 ' + String(Date.now()).slice(-8)
 
     await page.getByRole('button', { name: /nuevo cliente/i }).click()
     await page.waitForTimeout(300)
 
-    const nombreInput = page.getByPlaceholder(/nombre completo|razón social/i).first()
-    await nombreInput.fill(nombre)
+    await page.getByPlaceholder(/nombre completo|razón social/i).first().fill(nombre)
+    await page.getByPlaceholder(/30123456|ej: 30/i).first().fill(dni)
+    await page.getByPlaceholder(/1234-5678|ej: \+54/i).first().fill(telefono)
 
-    await page.getByRole('button', { name: /guardar|crear/i }).last().click()
-    await page.waitForTimeout(1000)
+    await page.getByRole('button', { name: 'Crear cliente', exact: true }).click()
+    await page.waitForTimeout(1200)
 
-    await expect(page.getByText(nombre)).toBeVisible({ timeout: 8000 })
-
-    // Buscar y eliminar
+    // Buscar el cliente recién creado
     const buscador = page.getByPlaceholder(/buscar/i).first()
-    if (await buscador.isVisible()) {
+    if (await buscador.isVisible().catch(() => false)) {
       await buscador.fill(nombre)
-      await page.waitForTimeout(500)
+      await page.waitForTimeout(600)
     }
-    const fila = page.getByText(nombre).first()
-    await fila.hover()
-    const btnEliminar = page.getByRole('button', { name: /eliminar/i }).first()
-    if (await btnEliminar.isVisible()) {
-      await btnEliminar.click()
-      const confirm = page.getByRole('button', { name: /confirmar|aceptar|sí/i })
-      if (await confirm.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await confirm.click()
-      }
-      await page.waitForTimeout(1000)
+    await expect(page.getByText(nombre).first()).toBeVisible({ timeout: 8000 })
+
+    // Soft-delete (A6): botón "Dar de baja" en la fila → modal → confirmar.
+    const btnBaja = page.getByRole('button', { name: /dar de baja/i }).first()
+    if (await btnBaja.isVisible().catch(() => false)) {
+      await btnBaja.click()
+      // El confirm del modal es el último botón "Dar de baja"
+      const confirmar = page.getByRole('button', { name: /dar de baja/i }).last()
+      await confirmar.click()
+      await page.waitForTimeout(800)
     }
   })
 })

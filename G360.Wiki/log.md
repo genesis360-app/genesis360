@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-12] cierre-sesión | Sesión 2026-06-11/12: testing e2e + auditoría de procesos #1-6 → 4 releases en PROD · `dev=main`
+
+**Sesión larga con 4 releases a PROD** (v1.51.1 → v1.54.0), todas con `dev=main` al cierre. Suites al cierre: **unit 665/665** (45 archivos) · **e2e 130** (16 specs, 4 roles) · migrations 001-**206** en DEV+PROD.
+
+1. **v1.51.1 — Testing e2e** (PR #180): suite e2e reparada (11 smoke podridos tras ~50 versiones de UI) + tests de gobernanza de caja + `vitest fileParallelism:false` (OOM con paralelismo).
+2. **Auditoría de procesos** (pedido GO): flujos cruzados entre módulos verificados contra código → 6 hallazgos accionables + riesgos. Registrada en `project_pendientes.md` → "Auditoría de procesos 2026-06-11".
+3. **v1.52.0 — quick wins #1-3** (PR #182, sin mig): cobranza CC impacta caja (3 vías) · anular venta cancela envíos `pendiente` · envío devuelto → CTA devolución.
+4. **v1.53.0 — #4 traslados entre sucursales** (PR #184, mig **205**): tab Traslados en Inventario con tránsito + confirmación del destino + faltantes auditados (relevamiento corto con GO: 4 decisiones).
+5. **v1.54.0 — #5+#6 cheques conectados + limpieza EF** (PR #186, mig **206**): pagar OC/gasto con "Cheque" crea el cheque vinculado; rechazado revierte el pago (deuda reaparece en CC proveedor) · `process-aging` eliminada (muerta) · `birthday-notifications` verificada (cron GH Actions diario — hallazgo de auditoría corregido).
+
+**Pendientes de la auditoría:** **#7 cron externo para sweeps** (infra GH Actions lista — próximo candidato) · **#8 RLS por sucursal** (deuda de seguridad). **Pendiente de GO:** responder relevamiento Inventario/WMS (`relevamiento-inventario-reglas-negocio.html`) · conseguir cuenta B2B courier (EN6).
+
 ## [2026-06-12] deploy | v1.54.0 PROD — Cheques conectados al circuito de pago + limpieza EF (mig 206) · `dev=main`
 
 **Ítems #5 y #6 de la auditoría de procesos.** PR **#186** merged, release **v1.54.0** `--latest`, mig **206** en DEV+PROD (aditiva, antes del merge). Suites: unit **665/665** (+11) · e2e owner 69/69 · build verde.

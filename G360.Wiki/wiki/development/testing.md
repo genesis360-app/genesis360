@@ -9,7 +9,9 @@ updated: 2026-06-11
 # Testing
 
 Genesis360 tiene cobertura con **Vitest** (unit tests) + **Playwright** (E2E).  
-Total al 2026-06-11 (v1.51.1): **625 unit tests** (43 archivos) · **129 E2E** en **16 archivos spec** (roles OWNER/CAJERO/SUPERVISOR/RRHH).
+Total al 2026-06-12 (v1.54.0): **665 unit tests** (45 archivos) · **130 E2E** en **16 archivos spec** (roles OWNER/CAJERO/SUPERVISOR/RRHH).
+
+> **Tests agregados en la tanda de auditoría de procesos (v1.52-v1.54):** `cobranzaCaja.test.ts` (7 — `movimientoCajaCobranza`: efectivo→ingreso real / otro→informativo), `trasladoLogic.test.ts` (22 — permisos/validaciones/recepción de traslados entre sucursales) y +11 en `comprasCheques.test.ts` (`montoChequeDeMedios` + reversiones de pago por cheque rechazado). E2e: +1 smoke del tab Traslados en `02_inventario.spec.ts`.
 
 > **v1.51.1 — sesión de testing e2e (reparación + gobernanza):** 11 smoke tests E2E se habían "podrido" tras ~50 versiones de evolución de UI (selectores/rutas viejos) → reescritos contra la UI real. Se agregaron tests E2E de **gobernanza de caja** (A2 apertura ajena, traspaso entre cajas ISS-193) tomados del plan `caja.plan.md` (escenarios fuera de alcance unit). Suite: **unit 625/625 · e2e 129/129**.
 >

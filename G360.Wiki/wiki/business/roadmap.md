@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.53.0 — Traslados de stock entre sucursales: tránsito + confirmación (PROD ✅)
+
+Ítem #4 de la auditoría de procesos — **antes no existía forma formal de mover stock entre sucursales**. Mig **205**: `traslados` + `traslado_items` (snapshot LPN/lote/venc/costo/series, correlativo por tenant). Tab **Traslados** en Inventario: despachar (DEPOSITO+, sale del origen, queda **en tránsito**) → confirmar recepción (solo el destino; entra con el mismo LPN/lote/series) → faltantes auditados (`recibido_parcial`) · cancelar = reingreso. Ledger `movimientos_stock` tipo `traslado` en ambas puntas + Historial de actividad. Lib `trasladoLogic.ts` +22 tests → suite **654**. Decisiones relevadas con GO (tránsito+confirmación · por LPN · destino confirma · parcial auditado). PR #184.
+
+---
+
 ## v1.52.0 — Auditoría de procesos: módulos conectados (caja/envíos/devoluciones) (PROD ✅)
 
 Quick wins 1+2+3 de la **auditoría de flujos cruzados** (2026-06-11, verificada contra código). **Sin migraciones.** (1) **Cobranza CC impacta la caja**: las 3 vías (ficha/POS/Caja) registran `ingreso` real si es efectivo o `ingreso_informativo` si no — cierra el descuadre histórico de arqueo; sin caja imputable → warning. (2) **Anular venta cancela sus envíos `pendiente`** (en curso: avisa). (3) **Envío devuelto → CTA "Registrar devolución de la venta"** (`/ventas?id=X&devolver=1`). Lógica pura `movimientoCajaCobranza` +7 tests → suite **632**. Hallazgos restantes de la auditoría (traslado entre sucursales, cheques conectados, EFs huérfanas, cron externo) en `project_pendientes.md`. PR #182.

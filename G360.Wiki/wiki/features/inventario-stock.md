@@ -31,10 +31,11 @@ Toda unidad de stock es una `inventario_lineas` identificada por:
 1. **Inventario** — vista LPNs por producto o por ubicación
 2. **Agregar stock** — ingreso unitario y masivo inline
 3. **Quitar stock** — rebaje unitario y masivo
-4. **Kits** — CRUD recetas, ejecutar kitting/des-kitting
-5. **Conteos** — conteo por ubicación o producto con ajuste automático
-6. **Historial** — movimientos con filtros fecha/cat/tipo/motivo
-7. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO
+4. **Traslados** (v1.53.0, mig 205) — traslado formal entre sucursales con tránsito + confirmación del destino; ver [[wiki/features/multi-sucursal]] → "Traslados entre sucursales"
+5. **Kits** — CRUD recetas, ejecutar kitting/des-kitting
+6. **Conteos** — conteo por ubicación o producto con ajuste automático
+7. **Historial** — movimientos con filtros fecha/cat/tipo/motivo (badge "Traslado" ámbar para tipo `traslado`)
+8. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO
 
 ---
 

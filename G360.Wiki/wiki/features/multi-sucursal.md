@@ -185,6 +185,18 @@ Desde v0.84.0 (Sprint A):
 - Visible solo con ≥ 2 sucursales configuradas
 - El nuevo LPN hereda `sucursal_id` seleccionada
 
+> ⚠ Es un movimiento instantáneo de bajo nivel (sin documento ni confirmación). Para el **proceso formal** usar Traslados (abajo).
+
+## Traslados entre sucursales — proceso formal con tránsito (migration 205 · v1.53.0)
+
+Auditoría de procesos 2026-06-11, ítem #4. Tab **Traslados** en Inventario (`TrasladosPanel.tsx`):
+
+- **Despachar** (DEPOSITO/SUPERVISOR/ADMIN/DUEÑO, desde la sucursal origen activa): destino + líneas/LPN — lote, vencimiento, costo y **series viajan con la línea**. El stock sale del origen (re-chequeo fresco contra carreras + guard de conteo wall-to-wall) y queda **en tránsito** (no está en ninguna sucursal).
+- **Confirmar recepción** (solo usuarios de la sucursal destino, o quien `puedeVerTodas`): entra con el **mismo LPN/lote/series** a la ubicación elegida. Si llegó menos → faltante **auditado** (`recibido_parcial` + acción `faltante_traslado` en Historial); series no recibidas quedan inactivas.
+- **Cancelar en tránsito** → reingreso completo al origen.
+- Ledger: `movimientos_stock` tipo `traslado` en ambas puntas. Tablas `traslados` (correlativo por tenant, `envio_id` reservado para el link logístico futuro) + `traslado_items` (snapshot completo). Lógica pura en `src/lib/trasladoLogic.ts` (22 tests).
+- Decisiones relevadas con GO: tránsito + confirmación · por LPN/línea · DEPOSITO+ crea, destino confirma · recepción parcial auditada.
+
 ---
 
 ## Stock mínimo por sucursal (migration 052)

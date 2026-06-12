@@ -31,6 +31,8 @@ Disponible para ventas en estado `despachada` o `facturada`.
 
 ## Flujo de devolución
 
+**Puntos de entrada:** historial de Ventas (botón Devolver) y, desde v1.52.0, el módulo **Envíos** — un envío en estado `devolucion` muestra el CTA "Registrar devolución de la venta" que abre este flujo pre-apuntado (`/ventas?id=<venta>&devolver=1`). Ver [[wiki/features/envios]].
+
 ### Stock no serializado
 
 1. Crea nueva `inventario_lineas` con destino según selección del operador (ver "Destino del stock devuelto" abajo)

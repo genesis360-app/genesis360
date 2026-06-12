@@ -494,6 +494,8 @@ Primeras 3 fases del backlog Ventas H-K. Respuestas en `sources/raw/relevamiento
 ### VF3 — Auditoría y permisos (J1-J3)
 - **J1**: `venta_auditoria` (mig 169) + `logVentaAuditoria()` + **timeline en el modal** de la venta (anulación / cambio de cliente / override de descuento).
 - **J2**: **clave maestra** (RPC `verificar_clave_maestra`) para **anular venta despachada**, **cambiar cliente** (botones nuevos en el detalle) y **override de descuento** (autoriza descuentos sobre el tope de rol/canal, re-ejecuta la venta con `overrideDescuento`). Sin `tenants.clave_maestra` configurada no se exige.
+- **Anulación → envíos** (v1.52.0, auditoría de procesos): al pasar una venta a `cancelada`, sus envíos `pendiente` se cancelan automáticamente (+toast); envíos ya despachados/en camino no se tocan pero se avisa para gestionarlos en Envíos. Antes el envío quedaba vivo y el depósito podía despachar una venta anulada.
+- **`?id=<venta>&devolver=1`** (v1.52.0): el patrón `?id=` de la URL ahora acepta `devolver=1` para abrir directo `abrirModalDevolucion` (CTA desde Envíos cuando un envío vuelve en estado `devolucion`). La **cobranza CC del POS** también registra su movimiento de caja (ver [[wiki/features/caja]]).
 - **J3**: **CONTADOR read-only** — `/ventas` en `CONTADOR_ALLOWED` + nav visible; en `VentasPage` solo el tab Historial (sin POS, sin devolución/anular/registrar; guards en `registrarVenta`/`abrirModalDevolucion`).
 
 ### VF4 — Reportes y alertas (K1-K3, v1.16.0)

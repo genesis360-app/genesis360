@@ -149,6 +149,7 @@ pendiente → despachado → en_camino → en_bodega → entregado
 - `en_bodega` (NUEVO v1.8.39, migration 127): paquete está en depósito del courier, esperando recolección final
 - Badge violeta + icono Warehouse
 - Desde `en_bodega` el botón "Avanzar" lleva al modal POD para confirmar entrega
+- **`devolucion` → CTA "Registrar devolución de la venta"** (v1.52.0, auditoría de procesos): el envío que volvió ya no muere en el limbo — botón violeta que navega a `/ventas?id=<venta>&devolver=1` y abre el flujo de devolución del POS (reingreso de stock + NC/egreso de caja, respeta plazo de canal + clave maestra). Además, **anular la venta cancela automáticamente sus envíos `pendiente`** (los que ya están en la calle se avisan con toast para gestionarlos acá).
 
 ---
 

@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release en PROD: **v1.51.1** ✅ (**Testing e2e** — suite e2e reparada + gobernanza caja, `vitest fileParallelism:false`, sin migraciones, suite unit **625** / e2e **129**, PR #180). Antes: v1.51.0 (RRHH diferidos: tardanza + fichado QR + portal, mig 204), v1.50.0 (Caja A-M completo, mig 203), v1.49.0 (courier probar/logging). 🎉 **RRHH 2.0 (RH1-RH8) COMPLETO** en v1.48.0 (mig 201-202). Antes en PROD: v1.47.0 (RRHH RH4+RH5, mig 199-200), v1.46.0 (RRHH RH1+RH2+RH3+RH6, mig 195-198), v1.45.0 (Envíos EN7, mig 194). Antes: v1.43.0 EN4 tarifas (mig 192), v1.42.0 EN3 reparto (mig 191), v1.41.0 EN2 POD (mig 190), v1.40.0 EN1 (mig 189), v1.39.0 Compras CO8 (🎉 Compras 2.0 COMPLETO). **Relevamiento Envíos → EN1-EN5 ✅ en PROD + EN7 ✅ en DEV; solo falta EN6 (integraciones courier, BLOQUEADO por adapters B2B sin cuentas reales).** Historial Conteos/Compras 1-4 abajo. — v1.30.0 (**Conteos 2.0 · cierre 100% — F2b-ref + F3b + A2**, mig 181). **F2b-ref (E3):** escanear durante el conteo un producto fuera de alcance con stock → lo agrega como fila "fuera de alcance" (mercadería mal ubicada); sin stock → aviso hacia Ingreso. **F3b:** snapshot de costo por ítem (`costo_snapshot`, valorización estable al continuar borradores) + **doble conteo formal** (filas sobre umbral exigen re-ingreso vía columna "Recontar"; saltable con **clave maestra** SUPERVISOR/DUEÑO; persiste `cantidad_reconteo`+`reconteo_por`; el ajuste usa el valor recontado). **A2:** toggle `tenants.conteo_wall_to_wall_bloquea` (default OFF) — conteo de sucursal completa con confirmación de DUEÑO bloquea ventas (reserva/despacho) y movimientos hasta cerrarlo (hook `useConteoBloqueante`, badge "Bloqueante", se libera al finalizar/eliminar). **Conteos 2.0 cerrado (F1-F4 + refinamientos).** Antes: v1.29.0 (**Conteos 2.0 · F2b + F4 — cierre del módulo**. **F2b scan-to-count**: botón "Escanear para contar" = cámara persistente que suma a la fila del producto (cantidad del AI GS1 si viene, si no +1; reusa `resolverScanCompuesto`). **F4**: clase **ABC** (`productos.clase_abc` auto Pareto 80/95 por valor de movimiento 12m + override manual `clase_abc_manual`), **conteo cíclico sugerido** (`tenants.conteo_ciclico_dias_a/b/c`, panel "Conviene contar"), **reportes de exactitud + valorización** ($ faltante/sobrante/neto) por conteo y acumulado + export Excel, **trazabilidad por operador** (`inventario_conteo_items.contado_por` + `productos.ultimo_conteo_at`). Lógica pura en `conteoAbc.ts` (+16 tests → suite **362**). Mig **180** (aditiva). Antes: v1.27.0 (Conteos F3 gate+autorizaciones+delta, mig 179). v1.26.0 (F2a modos+ciego+unidad+secuencia, mig 178). v1.25.0 (F1 scope, mig 177). v1.24.0 (Clientes C6+D4).
+Último release en PROD: **v1.52.0** ✅ (**Auditoría de procesos — quick wins 1+2+3**: cobranza CC impacta caja + anular venta cancela envíos pendientes + CTA devolución desde envío devuelto; sin migración, suite unit **632** / e2e owner 68, PR #182). Antes: v1.51.1 (**Testing e2e** — suite e2e reparada + gobernanza caja, `vitest fileParallelism:false`, sin migraciones, suite unit 625 / e2e 129, PR #180). Antes: v1.51.0 (RRHH diferidos: tardanza + fichado QR + portal, mig 204), v1.50.0 (Caja A-M completo, mig 203), v1.49.0 (courier probar/logging). 🎉 **RRHH 2.0 (RH1-RH8) COMPLETO** en v1.48.0 (mig 201-202). Antes en PROD: v1.47.0 (RRHH RH4+RH5, mig 199-200), v1.46.0 (RRHH RH1+RH2+RH3+RH6, mig 195-198), v1.45.0 (Envíos EN7, mig 194). Antes: v1.43.0 EN4 tarifas (mig 192), v1.42.0 EN3 reparto (mig 191), v1.41.0 EN2 POD (mig 190), v1.40.0 EN1 (mig 189), v1.39.0 Compras CO8 (🎉 Compras 2.0 COMPLETO). **Relevamiento Envíos → EN1-EN5 ✅ en PROD + EN7 ✅ en DEV; solo falta EN6 (integraciones courier, BLOQUEADO por adapters B2B sin cuentas reales).** Historial Conteos/Compras 1-4 abajo. — v1.30.0 (**Conteos 2.0 · cierre 100% — F2b-ref + F3b + A2**, mig 181). **F2b-ref (E3):** escanear durante el conteo un producto fuera de alcance con stock → lo agrega como fila "fuera de alcance" (mercadería mal ubicada); sin stock → aviso hacia Ingreso. **F3b:** snapshot de costo por ítem (`costo_snapshot`, valorización estable al continuar borradores) + **doble conteo formal** (filas sobre umbral exigen re-ingreso vía columna "Recontar"; saltable con **clave maestra** SUPERVISOR/DUEÑO; persiste `cantidad_reconteo`+`reconteo_por`; el ajuste usa el valor recontado). **A2:** toggle `tenants.conteo_wall_to_wall_bloquea` (default OFF) — conteo de sucursal completa con confirmación de DUEÑO bloquea ventas (reserva/despacho) y movimientos hasta cerrarlo (hook `useConteoBloqueante`, badge "Bloqueante", se libera al finalizar/eliminar). **Conteos 2.0 cerrado (F1-F4 + refinamientos).** Antes: v1.29.0 (**Conteos 2.0 · F2b + F4 — cierre del módulo**. **F2b scan-to-count**: botón "Escanear para contar" = cámara persistente que suma a la fila del producto (cantidad del AI GS1 si viene, si no +1; reusa `resolverScanCompuesto`). **F4**: clase **ABC** (`productos.clase_abc` auto Pareto 80/95 por valor de movimiento 12m + override manual `clase_abc_manual`), **conteo cíclico sugerido** (`tenants.conteo_ciclico_dias_a/b/c`, panel "Conviene contar"), **reportes de exactitud + valorización** ($ faltante/sobrante/neto) por conteo y acumulado + export Excel, **trazabilidad por operador** (`inventario_conteo_items.contado_por` + `productos.ultimo_conteo_at`). Lógica pura en `conteoAbc.ts` (+16 tests → suite **362**). Mig **180** (aditiva). Antes: v1.27.0 (Conteos F3 gate+autorizaciones+delta, mig 179). v1.26.0 (F2a modos+ciego+unidad+secuencia, mig 178). v1.25.0 (F1 scope, mig 177). v1.24.0 (Clientes C6+D4).
 
 **Historial Clientes:** v1.19.0 (CL1+CL2), v1.20.0 (CL3 + bugfix origen), v1.23.0 (CL4+CL5+CL6), v1.23.1 (QA/tests CC + agentes).
 
@@ -18,17 +18,32 @@ type: project
 
 ---
 
-## Estado actual DEV / PROD — cierre sesión 2026-06-11
+## Estado actual DEV / PROD — cierre sesión 2026-06-11 (2ª tanda)
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.51.1` | `v1.51.1` ✅ |
+| APP_VERSION | `v1.52.0` | `v1.52.0` ✅ |
 | Migrations | 001–**204** ✅ | 001–**204** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.51.1) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.51.1 (auto desde `main`) |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.52.0) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.52.0 (auto desde `main`) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (204 ya en PROD; v1.51.1 no agregó migraciones).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (204 ya en PROD; v1.51.1/v1.52.0 no agregaron migraciones).
+
+### ▶ Auditoría de procesos 2026-06-11 — hallazgos y estado
+
+Auditoría de flujos cruzados entre módulos (verificada contra código). **Quick wins 1-3 ✅ CERRADOS en v1.52.0 (PR #182):**
+1. ✅ **Cobranza CC → caja**: `cobrarDeudaCCFIFO` registra movimiento de caja en las 3 vías (ficha/POS/Caja). Efectivo → `ingreso` real; otro → `ingreso_informativo` (+cuenta origen en POS). Resolución de sesión: explícita > propia del usuario > única abierta; sin caja imputable → warning. Lógica pura `movimientoCajaCobranza` (+7 tests).
+2. ✅ **Anular venta → cancela envíos `pendiente`** (en curso: no se tocan, se avisa). En el branch `cancelada` de VentasPage.
+3. ✅ **Envío `devolucion` → CTA "Registrar devolución de la venta"** (`/ventas?id=X&devolver=1` reusa `abrirModalDevolucion` con plazo de canal + clave maestra).
+
+**Backlog de auditoría — PENDIENTES (por prioridad):**
+4. 🔴 **Traslado de stock entre sucursales NO existe**: el envío `traslado_interno` es solo logístico (guarda `sucursal_destino_id`, no toca `movimientos_stock`); en Inventario no hay traspaso. Hoy: rebaje manual + ingreso manual desconectados, sin estado "en tránsito" ni trazabilidad. Diseño sugerido: entidad traslado colgada del envío `traslado_interno` (egreso en origen al despachar + ingreso en destino al confirmar recepción). Feature mediana, relevamiento corto antes.
+5. 🟡 **Cheques desconectados del circuito de pago**: `cheques` sin `oc_id`/`gasto_id`; pagar con medio "Cheque" no crea el cheque; rechazado no reactiva deuda CC proveedor; depositado/cobrado no toca cuenta de origen. Feature mediana.
+6. 🟡 **Edge Functions huérfanas**: `birthday-notifications` (diseñada para cron, nadie la invoca) y `process-aging` — confirmar si son código muerto o falta el cron externo (GitHub Actions schedule → invoke) que las dispare.
+7. 🟠 **Sweeps lazy sin cron** (riesgo creciente): intereses CC, reservas vencidas, servicios recurrentes solo corren al abrir la página correcta. Un cron externo barato (GitHub Actions schedule → RPC) resolvería el lote completo + punto 6.
+8. 🟠 **RLS por sucursal + portal empleado**: aislamiento solo client-side (deuda conocida, re-confirmada en auditoría).
+9. Conocidos ya en backlog: ISS-073 (TN→ventas completas), NC electrónica AFIP (L1), EN6 couriers (bloqueado B2B), venta física USD.
 
 ### ▶ Testing e2e — ✅ HECHO (v1.51.1, 2026-06-11)
 

@@ -13,6 +13,7 @@ import { LpnAccionesModal } from '@/components/LpnAccionesModal'
 import { CodigoMasivoModal } from '@/components/CodigoMasivoModal'
 import { MasivoModal } from '@/components/MasivoModal'
 import type { MasivoTipo } from '@/components/MasivoModal'
+import TrasladosPanel from '@/components/TrasladosPanel'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
@@ -33,7 +34,7 @@ import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralCo
 import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
 import * as XLSX from 'xlsx'
 
-type Tab = 'inventario' | 'agregar' | 'quitar' | 'kits' | 'conteo' | 'historial' | 'autorizaciones'
+type Tab = 'inventario' | 'agregar' | 'quitar' | 'traslados' | 'kits' | 'conteo' | 'historial' | 'autorizaciones'
 type ModalType = 'ingreso' | 'rebaje' | null
 
 const emptyIngreso = {
@@ -2305,6 +2306,7 @@ export default function InventarioPage() {
     if (tipo === 'kitting') return { label: 'Kitting', bg: 'bg-violet-100 dark:bg-violet-900/30', text: 'text-violet-700 dark:text-violet-400' }
     if (tipo === 'des_kitting') return { label: 'Desarmado', bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400' }
     if (tipo === 'ajuste') return { label: 'Ajuste', bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' }
+    if (tipo === 'traslado') return { label: 'Traslado', bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400' }
     return { label: 'Rebaje', bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400' }
   }
 
@@ -2488,6 +2490,7 @@ export default function InventarioPage() {
             { id: 'inventario' as const, label: 'Inventario' },
             { id: 'agregar' as const, label: 'Agregar stock' },
             { id: 'quitar' as const, label: 'Quitar stock' },
+            { id: 'traslados' as const, label: 'Traslados' },
             { id: 'kits' as const, label: 'Kits' },
             { id: 'conteo' as const, label: 'Conteos' },
             { id: 'historial' as const, label: 'Historial' },
@@ -4582,6 +4585,9 @@ export default function InventarioPage() {
       )}
 
       {/* ════════════════════════ TAB: KITS ════════════════════════ */}
+      {/* ── TRASLADOS entre sucursales (mig 205, auditoría de procesos #4) ── */}
+      {tab === 'traslados' && <TrasladosPanel />}
+
       {tab === 'kits' && (
         <>
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex gap-3 items-start">

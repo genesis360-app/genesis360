@@ -39,6 +39,16 @@ test.describe('Inventario (líneas de stock)', () => {
     await expect(page.getByRole('button', { name: /agregar stock/i })).toBeVisible({ timeout: 8000 })
     await expect(page.getByRole('button', { name: /quitar stock/i })).toBeVisible()
   })
+
+  // v1.53 (mig 205) — traslados entre sucursales: tab + panel con CTA
+  test('tab Traslados abre el panel de traslados entre sucursales', async ({ page }) => {
+    await page.getByRole('button', { name: 'Traslados', exact: true }).click()
+    await expect(
+      page.getByText(/traslados entre sucursales/i).first()
+    ).toBeVisible({ timeout: 8000 })
+    // El owner (DUEÑO) debe ver el botón de crear
+    await expect(page.getByRole('button', { name: /nuevo traslado/i })).toBeVisible()
+  })
 })
 
 test.describe('Productos (maestro)', () => {
